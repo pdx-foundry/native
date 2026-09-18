@@ -307,37 +307,6 @@ fn interruption(event: Input) -> CandidateOutcome {
     }
 }
 
-#[cfg(test)]
-mod interruption_tests {
-    use super::*;
-    #[test]
-    fn valid_holds_complete_after_their_full_window_even_with_polling_delay() {
-        let hold = Duration::from_millis(29_999);
-        assert_eq!(hold_outcome(hold, hold - Duration::from_millis(1)), None);
-        assert_eq!(hold_outcome(hold, hold), Some(CandidateOutcome::Completed));
-        assert_eq!(
-            hold_outcome(hold, HOLD_LIMIT + Duration::from_millis(100)),
-            Some(CandidateOutcome::Completed)
-        );
-        assert_eq!(
-            hold_outcome(HOLD_LIMIT, HOLD_LIMIT),
-            Some(CandidateOutcome::TimedOut)
-        );
-    }
-    #[test]
-    fn prelaunch_and_running_interruptions_keep_their_cause() {
-        assert_eq!(
-            interruption(Input::Control(Control::WorkerLost)),
-            CandidateOutcome::WorkerLost
-        );
-        assert_eq!(
-            interruption(Input::Control(Control::Cancel)),
-            CandidateOutcome::Cancelled
-        );
-        assert_eq!(interruption(Input::Lost), CandidateOutcome::CallerLost);
-    }
-}
-
 fn prepare_profile(output: &Path) -> Result<(), SupervisorError> {
     binding::private_directory(&output.join("profile"))?;
     fs::write(
@@ -552,5 +521,36 @@ mod tests {
         // OS lock is now free, but unresolved durable ownership still prevents launch.
         assert!(binding::test_reservation(root.path()).is_ok());
         assert!(reserve(root.path(), "afterdeath", output.path()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod interruption_tests {
+    use super::*;
+    #[test]
+    fn valid_holds_complete_after_their_full_window_even_with_polling_delay() {
+        let hold = Duration::from_millis(29_999);
+        assert_eq!(hold_outcome(hold, hold - Duration::from_millis(1)), None);
+        assert_eq!(hold_outcome(hold, hold), Some(CandidateOutcome::Completed));
+        assert_eq!(
+            hold_outcome(hold, HOLD_LIMIT + Duration::from_millis(100)),
+            Some(CandidateOutcome::Completed)
+        );
+        assert_eq!(
+            hold_outcome(HOLD_LIMIT, HOLD_LIMIT),
+            Some(CandidateOutcome::TimedOut)
+        );
+    }
+    #[test]
+    fn prelaunch_and_running_interruptions_keep_their_cause() {
+        assert_eq!(
+            interruption(Input::Control(Control::WorkerLost)),
+            CandidateOutcome::WorkerLost
+        );
+        assert_eq!(
+            interruption(Input::Control(Control::Cancel)),
+            CandidateOutcome::Cancelled
+        );
+        assert_eq!(interruption(Input::Lost), CandidateOutcome::CallerLost);
     }
 }

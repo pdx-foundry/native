@@ -41,7 +41,7 @@ and reservation snapshots. It has 285 files and 2,159,557 compressed bytes.
 
 - Archive SHA-256: `c8aac6f3dab589776622bbe7331b890e57911b04c2de0aaa4d7697a7909ceb1f`
 - Manifest SHA-256: `34af2495e9fa8692ca430cab67acb45391e49a05964e1883c323410971537044`
-- Final linked Native build identity: `7bc577542a63ba8010b99854a42bbce95e64510ab3d12299302fc96b65b55145`
+- Captured linked Native build identity: `7bc577542a63ba8010b99854a42bbce95e64510ab3d12299302fc96b65b55145`
 
 The tracked [inventory](source-inventory.json) pins both bundle identities. Archive and per-file
 verification passed; the archive and manifest have a hash-verified second local copy at the existing
@@ -82,13 +82,13 @@ and the unrelated sentinel remained unchanged throughout.
 | caller-loss | `20790-1789759707634971000` | 3.501 | Reaped |
 | timeout | `20800-1789759711143179000` | 33.547 | Reaped |
 
-Private bundle `sdk-516-lifecycle-review` retains this fresh batch, final source, executable, review
+Private bundle `sdk-516-lifecycle-review` retains this fresh batch, captured source, executable, review
 findings, and reservation snapshots (194 files; 1,052,021 compressed bytes).
 Both files were verified and copied to the existing second local preservation location.
 
 - Archive SHA-256: `8858f19a016a45211f1a8616f8630882d9d042ec73a173ec5e45edd46bbba0c3`
 - Manifest SHA-256: `1285c9d0dc0645d65fb2244d3bef89cd9b520a7eafd8ce4162163466880b1abb`
-- Final linked Native build identity: `1b4ecd7ffae6d39c60eb6eca46c4eb3a1e5fc6e160fb73a6d64e78bdad89b47e`
+- Captured linked Native build identity: `1b4ecd7ffae6d39c60eb6eca46c4eb3a1e5fc6e160fb73a6d64e78bdad89b47e`
 
 ```sh
 python3 tools/evidence.py sdk-516-lifecycle-review
@@ -96,3 +96,5 @@ python3 tools/evidence.py sdk-516-lifecycle-review
 
 The earlier bundle remains intact. These fixes and captures do not promote a public live operation
 or qualify any debugger/observation behavior.
+
+A subsequent CI-only change moved the shared test module below runtime items for Clippy on non-Mac hosts. No lifecycle runtime logic changed; the capture identities above still identify the executed source exactly.
