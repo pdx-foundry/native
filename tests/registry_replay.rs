@@ -91,7 +91,11 @@ fn recorded_registry_is_game_free_synthetic_and_distinct_from_early_replay() {
     let root = tempfile::tempdir().unwrap();
     let request = fixture(root.path());
     let result = Engine.replay_registry(request.clone()).unwrap();
-    assert_eq!(result.entries[0].key, "synthetic");
+    assert_eq!(result.registered_items[0].key, "synthetic");
+    assert_eq!(
+        serde_json::to_value(&result).unwrap()["registeredItems"][0]["key"],
+        "synthetic"
+    );
     assert_eq!(result.capture_origin, CaptureOrigin::Synthetic);
     assert_eq!(result.origin, ResultOrigin::Replay);
     assert_eq!(result.completion, Completion::Complete);

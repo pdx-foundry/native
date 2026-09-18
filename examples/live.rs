@@ -29,9 +29,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     eprintln!("capability: {:?}", native.capability(&args[2]));
     let report = if mode == "normal" {
-        native.get_registry(&args[2])?
+        native.get_registry_items(&args[2])?
     } else {
-        let mut job = native.start_registry(&args[2])?;
+        let mut job = native.start_registry_items(&args[2])?;
         if job.started()? {
             if mode == "cancel" {
                 job.cancel()?;
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let retained = Engine.replay_registry(replay)?;
         eprintln!(
             "replay: {} entries, {:?}, {:?}",
-            retained.entries.len(),
+            retained.registered_items.len(),
             retained.completion,
             retained.disposal
         );

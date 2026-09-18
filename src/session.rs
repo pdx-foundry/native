@@ -51,7 +51,7 @@ impl EngineContext {
 }
 
 impl EngineContext {
-    /// Configure consumer-hosted supervision and retention once, then call `get_registry`.
+    /// Configure consumer-hosted supervision and retention once, then call `get_registry_items`.
     /// The command must start a dedicated direct child that calls `supervisor::serve`.
     pub fn with_supervisor(
         self,

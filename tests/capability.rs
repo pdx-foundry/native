@@ -186,10 +186,10 @@ fn accepted_synthetic_context_never_starts_a_live_registry_query() {
             },
         )
         .unwrap();
-    let error = native.get_registry("traditions").unwrap_err();
+    let error = native.get_registry_items("traditions").unwrap_err();
     assert!(error.to_string().contains("Synthetic"));
     assert!(matches!(
-        native.get_registry("technology"),
+        native.get_registry_items("technology"),
         Err(pdx_native::RegistryError::Unsupported { .. })
     ));
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);

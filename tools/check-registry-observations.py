@@ -62,7 +62,7 @@ def main():
                 if expected:
                     assert replay['completion'] == expected, replay
                 if scenario == 'normal':
-                    assert replay['activation'] == 'demonstrated' and len(replay['entries']) > 0, replay
+                    assert replay['activation'] == 'demonstrated' and len(replay['registeredItems']) > 0, replay
                 if scenario in ('missing-hook', 'late-hook'):
                     rows = [json.loads(line) for line in (evidence / 'raw-trace.jsonl').read_text().splitlines()]
                     assert all(row['kind'] != 'resume' for row in rows), rows

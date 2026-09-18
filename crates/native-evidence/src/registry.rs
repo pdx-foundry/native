@@ -34,8 +34,9 @@ pub struct RegistryProvenance {
 pub struct RegistryResult {
     /// Stable public name of the queried registry.
     pub registry: String,
-    /// Keys in engine collection order. Partial results retain established entries.
-    pub entries: Vec<RegistryEntry>,
+    /// Registered items in engine collection order. Partial results retain established items.
+    #[serde(rename = "registeredItems")]
+    pub registered_items: Vec<RegistryEntry>,
     /// Whether every slot in the collection was captured at the stated boundary.
     pub completion: Completion,
     /// Whether required hooks were installed before engine execution resumed.
@@ -93,7 +94,7 @@ pub fn replay(
         completion = Completion::Incomplete;
     }
     Ok(RegistryResult {
-        registry: name.into(), entries, activation, completion,
+        registry: name.into(), registered_items: entries, activation, completion,
         disposal: crate::stream::disposal(&retained.owner), origin: ResultOrigin::Replay,
         capture_origin: retained.descriptor.origin,
         provenance: RegistryProvenance { descriptor: reference.clone(), evidence: retained.evidence },

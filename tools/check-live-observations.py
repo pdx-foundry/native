@@ -119,7 +119,7 @@ def main():
                     normalized = dict(live['result']['Ok'], origin='replay')
                     assert normalized == replay, 'live/replay observation contract differs'
                 if scenario == 'normal':
-                    assert replay['activation'] == 'demonstrated' and replay['completion'] == 'complete' and len(replay['entries']) > 0
+                    assert replay['activation'] == 'demonstrated' and replay['completion'] == 'complete' and len(replay['registeredItems']) > 0
                 if scenario == 'incomplete':
                     assert replay['completion'] == 'incomplete', replay
                 if scenario == 'worker-loss':

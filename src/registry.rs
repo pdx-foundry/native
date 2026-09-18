@@ -48,7 +48,7 @@ impl From<SupervisorError> for RegistryError {
 }
 
 /// Configured Native consumer. Each query creates and reaps a dedicated supervisor child.
-/// Use `get_registry` for completion or `start_registry` when cancellation is needed.
+/// Use `get_registry_items` for completion or `start_registry_items` when cancellation is needed.
 pub struct RegistryClient {
     context: crate::EngineContext,
     command: Command,
@@ -87,12 +87,12 @@ impl RegistryClient {
     /// Retrieve engine collection keys for `traditions` or `tradition_categories`.
     /// Unknown names return `Unsupported`; unavailable admission never starts a process.
     /// Completion, evidence finalization, and disposal remain independent in the report.
-    pub fn get_registry(&mut self, registry: &str) -> Result<RegistryReport, RegistryError> {
-        self.start_registry(registry)?.finish()
+    pub fn get_registry_items(&mut self, registry: &str) -> Result<RegistryReport, RegistryError> {
+        self.start_registry_items(registry)?.finish()
     }
 
     /// Start a registry query and return a cancellable job. Native owns plans and probes.
-    pub fn start_registry(&mut self, registry: &str) -> Result<RegistryJob, RegistryError> {
+    pub fn start_registry_items(&mut self, registry: &str) -> Result<RegistryJob, RegistryError> {
         let id = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| RegistryError::InvalidOptions(error.to_string()))?

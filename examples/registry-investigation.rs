@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?;
         eprintln!(
             "replay: {} entries, {:?}, {:?}",
-            retained.entries.len(),
+            retained.registered_items.len(),
             retained.completion,
             retained.disposal
         );
