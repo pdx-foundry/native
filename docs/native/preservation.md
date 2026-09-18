@@ -21,6 +21,8 @@ The accepted SDK-479 policy calls for manifests and bulk release assets in a pri
 | source-git | Selected SDK/Typed branch bundles plus exact named Windows/shared-source/specification snapshots |
 | linear-records | Native project metadata/issue listing, Atlas map, accepted native decisions, testing maps/documents/comments, downloaded review and native archive assets |
 | linear-supplement | Additional lifecycle, recursive event, locator, scripts/stockpiles/shared-suite/harness resolutions and archives; duplicate assets point to linear-records |
+| sdk-515-loader-entry | Initial Native debugger-worker candidate: two retained four-control batches and source/tool identities |
+| sdk-515-loader-entry-review | Final candidate rerun after PR review: strengthened joins and raw preservation hashes; see [result](loader-entry-worker.md) |
 
 No `sdk-atlas` directory exists in the supplied Developer directory; the verified source is `pdx-atlas`. Its local planning/glossary and consumer conclusions stay Atlas-owned. Full mixed historical capsules are privately retained here to keep native provenance and replay intact, not promoted into a Native rule database.
 

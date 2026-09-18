@@ -20,3 +20,4 @@ jobs:
       - run: cargo test --workspace --locked --features test-support
       - run: python tools/check-replay-boundary.py
       - run: python tools/check-admission-boundary.py
+      - run: python -m unittest discover -s tools/loader-entry-trial -p 'test_*.py'

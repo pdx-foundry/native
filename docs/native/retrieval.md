@@ -64,4 +64,10 @@ checkout with `cargo test --workspace`. Their results remain synthetic.
 
 ## Fresh capture prerequisites
 
+SDK-515's `sdk-515-loader-entry-review` bundle retains the final candidate debugger-worker
+trial. Its initial batches remain in `sdk-515-loader-entry`.
+Use its [result and restore instructions](loader-entry-worker.md) for offline verification.
+The separate `tools/loader-entry-trial/run.py` command **launches games** and requires the
+exact retained installation. It is not a public live adapter or production qualification.
+
 Fresh captures require the **particular** target/architecture, compatible save or parser fixture, declared installed content and DLC, OS/toolchain/debugger access, and no conflicting live game. Native capture scripts retain original absolute installation/profile/helper paths. Retarget working copies and record the changes; preserve hash gates and qualification controls. Do not silently substitute another binary or mock source. Missing installations, old source saves, Mythos/dependency content and Windows host access limit fresh reproduction even when offline replay succeeds.
