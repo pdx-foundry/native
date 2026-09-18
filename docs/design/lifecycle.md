@@ -33,8 +33,8 @@ process after return; its input thread may still be waiting for controller EOF. 
 must return EOF when their peer closes. Logs must not share the protocol output.
 
 Native's reader/writer threads own no game resources. Output backpressure cannot stall the owner.
-Handshake reads have a 15-second bound. The attempt has a 30-second owner deadline and a separate
-10-second disposal budget. Candidate requests select a suspended hold of 1–30,000 milliseconds;
+Handshake reads have a 15-second bound. Setup and the suspended hold each have a separate 30-second owner bound, followed by a separate
+10-second disposal budget. Setup time does not consume the requested suspended hold. Candidate requests select a suspended hold of 1–30,000 milliseconds;
 a full 30,000-millisecond request terminates as timed out. The child is never resumed. OS process
 termination is not graceful in-game exit. Supervisor termination leaves unresolved ownership;
 there is no automatic orphan recovery or in-process lifetime guarantee.
@@ -93,8 +93,8 @@ cargo run --release --features maintainer-tools --example investigate -- \
 ```
 
 The installation must be the exact M45-observe executable/content snapshot identified by Native.
-The output parent must exist and the output directory must be new. Other scenarios are `cancel`,
-`caller-loss`, `worker-loss`, and `timeout`. The worker-loss scenario injects the consumer's loss
+The output parent must exist and the output directory must be new. Other scenarios are `long-hold` (29,999 milliseconds), `cancel`,
+`caller-loss`, `worker-loss`, `worker-loss-before-launch`, and `timeout`. The worker-loss scenario injects the consumer's loss
 notification; no debugger qualification follows from it. Each successful allocation retains the
 request, private profile, owner journal snapshot, report, capture, and game stdout/stderr.
 

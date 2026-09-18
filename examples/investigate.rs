@@ -12,16 +12,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if args.len() < 2 || args.len() > 3 {
-        return Err("usage: investigate INSTALLATION NEW_ABSOLUTE_OUTPUT [normal|cancel|caller-loss|worker-loss|timeout]".into());
+        return Err("usage: investigate INSTALLATION NEW_ABSOLUTE_OUTPUT [normal|long-hold|cancel|caller-loss|worker-loss|worker-loss-before-launch|timeout]".into());
     }
     let scenario = args.get(2).and_then(|v| v.to_str()).unwrap_or("normal");
-    if !["normal", "cancel", "caller-loss", "worker-loss", "timeout"].contains(&scenario) {
+    if ![
+        "normal",
+        "long-hold",
+        "cancel",
+        "caller-loss",
+        "worker-loss",
+        "worker-loss-before-launch",
+        "timeout",
+    ]
+    .contains(&scenario)
+    {
         return Err("unknown scenario".into());
     }
     let request = CandidateRequest {
         installation_hint: PathBuf::from(&args[0]),
         output: PathBuf::from(&args[1]),
-        hold_ms: if scenario == "normal" { 250 } else { 30_000 },
+        hold_ms: match scenario {
+            "normal" => 250,
+            "long-hold" => 29_999,
+            _ => 30_000,
+        },
     };
     let plan = investigation::prepare(request)?;
     let mut child = Command::new(std::env::current_exe()?)
@@ -35,6 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         child.stdin.take().unwrap(),
         plan,
     )?;
+    if scenario == "worker-loss-before-launch" {
+        job.worker_lost()?;
+    }
     let Some((attempt, game)) = job.started()? else {
         println!("{}", serde_json::to_string_pretty(&job.finish()?)?);
         child.wait()?;

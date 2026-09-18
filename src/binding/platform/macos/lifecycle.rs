@@ -435,7 +435,21 @@ mod tests {
         let first = acquire_at(root.path()).unwrap();
         assert!(acquire_at(root.path()).is_err());
         drop(first);
-        assert!(acquire_at(root.path()).is_ok());
+        // Parallel tests can briefly fork with CLOEXEC descriptors before their exec closes
+        // them. Require release within a bound, rather than depending on that scheduling gap.
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match acquire_at(root.path()) {
+                Ok(reservation) => {
+                    drop(reservation);
+                    break;
+                }
+                Err(error) if Instant::now() >= deadline => {
+                    panic!("Lock remained unavailable: {error}")
+                }
+                Err(_) => std::thread::sleep(Duration::from_millis(5)),
+            }
+        }
         fs::remove_file(root.path().join("lock")).unwrap();
         std::os::unix::fs::symlink("missing", root.path().join("lock")).unwrap();
         assert!(acquire_at(root.path()).is_err());

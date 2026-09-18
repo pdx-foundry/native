@@ -81,6 +81,8 @@ def ordinary_conflict(harness, installation, output):
         assert run.returncode == 0, run.stderr
         report = json.loads(run.stdout)
         assert report['disposal'] == 'NotLaunched' and 'Conflicting ordinary game' in report['outcome']['Failed'], report
+        assert json.loads((output / 'ordinary-conflict/report.json').read_text()) == report
+        assert (output / 'ordinary-conflict/capture.json').is_file()
         assert ordinary.poll() is None
         after = subprocess.check_output(identity_command, text=True)
         assert before == after
@@ -103,7 +105,7 @@ def main():
     before = snapshot(ordinary)
     (output / 'ordinary-before.json').write_text(json.dumps(before, indent=2))
     sentinel = subprocess.Popen(['/bin/sleep', '180'])
-    outcomes = {'normal': 'Completed', 'cancel': 'Cancelled', 'worker-loss': 'WorkerLost', 'caller-loss': 'CallerLost', 'timeout': 'TimedOut'}
+    outcomes = {'normal': 'Completed', 'long-hold': 'Completed', 'worker-loss-before-launch': 'WorkerLost', 'cancel': 'Cancelled', 'worker-loss': 'WorkerLost', 'caller-loss': 'CallerLost', 'timeout': 'TimedOut'}
     results = []
     try:
         for scenario, expected in outcomes.items():
@@ -117,12 +119,16 @@ def main():
             owner = json.loads((attempt / 'owner.json').read_text())
             assert report['origin'] == 'unqualified-candidate'
             assert report['outcome'] == expected, report
-            assert report['disposal'] == 'Reaped' and report['reservation_resolved'], report
+            expected_disposal = 'NotLaunched' if scenario == 'worker-loss-before-launch' else 'Reaped'
+            assert report['disposal'] == expected_disposal and report['reservation_resolved'], report
             assert not report['diagnostics'], report
             assert owner['state'] == 'Disposed' and owner['attempt'] == report['attempt']
-            pid = owner['game']['pid']
-            # Absence supplements the direct owner's reaping fact; it cannot replace it.
-            assert subprocess.run(['/bin/ps', '-p', str(pid)], capture_output=True).returncode != 0
+            if expected_disposal == 'Reaped':
+                pid = owner['game']['pid']
+                # Absence supplements the direct owner's reaping fact; it cannot replace it.
+                assert subprocess.run(['/bin/ps', '-p', str(pid)], capture_output=True).returncode != 0
+            else:
+                assert owner['game'] is None
             assert sentinel.poll() is None, 'Unrelated sentinel process changed'
             after = snapshot(ordinary)
             assert after == before, 'Ordinary profile changed'

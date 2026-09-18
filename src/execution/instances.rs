@@ -74,8 +74,12 @@ impl Reservation {
         Ok(serde_json::to_value(&self.journal)?)
     }
     pub fn disposed(&mut self) -> Result<(), SupervisorError> {
-        self.journal.state = State::Disposed;
-        self.persist(false)
+        let previous = std::mem::replace(&mut self.journal.state, State::Disposed);
+        if let Err(error) = self.persist(false) {
+            self.journal.state = previous;
+            return Err(error);
+        }
+        Ok(())
     }
     fn persist(&self, initial: bool) -> Result<(), SupervisorError> {
         let destination = self

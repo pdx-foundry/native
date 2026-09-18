@@ -1,6 +1,6 @@
 # SDK-516 candidate lifecycle controls
 
-The final `batch-04` controls ran the exact M45-observe target through the consumer-hosted Rust
+The initial `batch-04` controls ran the exact M45-observe target through the consumer-hosted Rust
 supervisor on 2026-09-18. Each game remained suspended and was independently reaped. This proves
 bounded candidate lifecycle behavior, not observation activation or public live qualification.
 
@@ -34,7 +34,7 @@ Batches 02–03 supplied successful lifecycle records, but their copied Apple sy
 fixtures were killed by macOS before inspection. The final batch compiles its own stable fixture.
 The inventory also uses untruncated process paths, covered by a long-path regression test.
 
-## Preservation
+## Initial preservation
 
 Private bundle `sdk-516-lifecycle` contains all four batches, the final source and harness binary,
 and reservation snapshots. It has 285 files and 2,159,557 compressed bytes.
@@ -57,3 +57,42 @@ See [consumer-hosted lifecycle](../design/lifecycle.md) for integration, provisi
 explicit real-game control command. Default, synthetic, and maintainer suites, Clippy, architecture
 boundary checks, private replay, and a Windows maintainer cross-compilation check passed locally.
 Windows/Linux runtime support is not implied by those checks.
+
+## Review corrections and fresh repeat
+
+After [PR #4 review](https://github.com/pdx-foundry/native/pull/4), the implementation preserves
+pre-start worker-loss causes, restores reserved state after a failed disposal commit, writes the
+report after capture diagnostics are known, retains conflict attempts before returning, and hashes
+the linked evidence manifest into build identity. Setup and suspended hold now have separate
+30-second bounds, so a valid 29,999 ms hold gets its full window. Regression tests cover these
+policies and unsupported-host refusal before resource allocation.
+
+A fresh seven-control batch passed on the corrected implementation. Six games were reaped; the
+pre-start worker-loss attempt correctly launched none. Contention and the ordinary-instance
+control passed again, with the conflict report and capture now retained. Ordinary-profile hashes
+and the unrelated sentinel remained unchanged throughout.
+
+| Control | Attempt | Controller wall seconds | Disposal |
+| --- | --- | ---: | --- |
+| normal | `20542-1789759660309380000` | 3.890 | Reaped |
+| long-hold | `20549-1789759664058353000` | 33.563 | Reaped |
+| worker-loss-before-launch | `20764-1789759697590258000` | 3.079 | NotLaunched |
+| cancel | `20773-1789759700673976000` | 3.452 | Reaped |
+| worker-loss | `20784-1789759704136239000` | 3.482 | Reaped |
+| caller-loss | `20790-1789759707634971000` | 3.501 | Reaped |
+| timeout | `20800-1789759711143179000` | 33.547 | Reaped |
+
+Private bundle `sdk-516-lifecycle-review` retains this fresh batch, final source, executable, review
+findings, and reservation snapshots (194 files; 1,052,021 compressed bytes).
+Both files were verified and copied to the existing second local preservation location.
+
+- Archive SHA-256: `8858f19a016a45211f1a8616f8630882d9d042ec73a173ec5e45edd46bbba0c3`
+- Manifest SHA-256: `1285c9d0dc0645d65fb2244d3bef89cd9b520a7eafd8ce4162163466880b1abb`
+- Final linked Native build identity: `1b4ecd7ffae6d39c60eb6eca46c4eb3a1e5fc6e160fb73a6d64e78bdad89b47e`
+
+```sh
+python3 tools/evidence.py sdk-516-lifecycle-review
+```
+
+The earlier bundle remains intact. These fixes and captures do not promote a public live operation
+or qualify any debugger/observation behavior.

@@ -23,6 +23,7 @@ fn main() {
     for path in [
         "src",
         "crates/native-evidence/src",
+        "crates/native-evidence/Cargo.toml",
         "Cargo.toml",
         "Cargo.lock",
         "build.rs",

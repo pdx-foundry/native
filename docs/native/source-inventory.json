@@ -488,6 +488,26 @@
       "archiveBytes": 2159557,
       "fileManifest": ".local/evidence/bundles/sdk-516-lifecycle.manifest.json",
       "manifestSha256": "34af2495e9fa8692ca430cab67acb45391e49a05964e1883c323410971537044"
+    },
+    {
+      "id": "sdk-516-lifecycle-review",
+      "createdAt": "2026-09-18T19:30:26.746206+00:00",
+      "archive": "sdk-516-lifecycle-review-8858f19a016a4521.tar.gz",
+      "sha256": "8858f19a016a45211f1a8616f8630882d9d042ec73a173ec5e45edd46bbba0c3",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/sdk-516-lifecycle-review",
+          "archivePath": "sdk-516-lifecycle-review",
+          "gitHead": "a66e49d62b7532da5fbb90b3efb1dc138045a036",
+          "note": "Fresh capture after six PR review fixes; working source is pinned per file"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [],
+      "files": 194,
+      "archiveBytes": 1052021,
+      "fileManifest": ".local/evidence/bundles/sdk-516-lifecycle-review.manifest.json",
+      "manifestSha256": "1285c9d0dc0645d65fb2244d3bef89cd9b520a7eafd8ce4162163466880b1abb"
     }
   ]
 }

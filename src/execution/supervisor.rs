@@ -17,7 +17,8 @@ use std::{
 };
 
 const HANDSHAKE_BUDGET: Duration = Duration::from_secs(15);
-const ATTEMPT_BUDGET: Duration = Duration::from_secs(30);
+const SETUP_BUDGET: Duration = Duration::from_secs(30);
+const HOLD_LIMIT: Duration = Duration::from_secs(30);
 const DISPOSAL_BUDGET: Duration = Duration::from_secs(10);
 
 enum Input {
@@ -167,26 +168,26 @@ fn run(
     let mut game = None;
     let mut owns_output = false;
     let operation = (|| -> Result<(), SupervisorError> {
+        binding::private_directory(&report.output)?;
+        owns_output = true;
+        write_new(&report.output.join("request.json"), &request)?;
         if binding::conflicting_game(None)? {
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
-        binding::private_directory(&report.output)?;
-        owns_output = true;
         prepare_profile(&report.output)?;
-        write_new(&report.output.join("request.json"), &request)?;
         plan.integrity()?;
         match input.try_recv() {
-            Ok(Input::Control(Control::Cancel)) => {
-                report.outcome = CandidateOutcome::Cancelled;
+            Ok(event) => {
+                report.outcome = interruption(event);
                 return Ok(());
             }
-            Ok(_) | Err(mpsc::TryRecvError::Disconnected) => {
+            Err(mpsc::TryRecvError::Disconnected) => {
                 report.outcome = CandidateOutcome::CallerLost;
                 return Ok(());
             }
             Err(mpsc::TryRecvError::Empty) => {}
         }
-        if started.elapsed() >= ATTEMPT_BUDGET {
+        if started.elapsed() >= SETUP_BUDGET {
             report.outcome = CandidateOutcome::TimedOut;
             return Ok(());
         }
@@ -198,6 +199,10 @@ fn run(
                 "Child suspension was not established".into(),
             ));
         }
+        if started.elapsed() >= SETUP_BUDGET {
+            report.outcome = CandidateOutcome::TimedOut;
+            return Ok(());
+        }
         output.send(Reply::Started {
             attempt: report.attempt.clone(),
             game: child.pid(),
@@ -205,7 +210,7 @@ fn run(
         report.outcome = observe(
             input,
             child,
-            started,
+            Instant::now(),
             Duration::from_millis(request.request.hold_ms),
         )?;
         Ok(())
@@ -232,21 +237,41 @@ fn run(
         }
     }
     if owns_output {
-        let capture = investigation::CandidateCapture {
-            version: 1,
-            build: env!("PDX_NATIVE_BUILD").into(),
-            report: report.clone(),
-        };
-        let retain = (|| -> Result<(), SupervisorError> {
-            write_new(&report.output.join("owner.json"), &reservation.snapshot()?)?;
-            write_new(&report.output.join("report.json"), &report)?;
-            write_new(&report.output.join("capture.json"), &capture)
-        })();
-        if let Err(error) = retain {
-            report.diagnostics.push(error.to_string());
-        }
+        retain_report(&reservation, &mut report);
     }
     Ok(report)
+}
+
+fn retain_report(reservation: &Reservation, report: &mut InvestigationReport) {
+    let owner = reservation
+        .snapshot()
+        .and_then(|snapshot| write_new(&report.output.join("owner.json"), &snapshot));
+    if let Err(error) = owner {
+        report.diagnostics.push(format!("owner.json: {error}"));
+    }
+    let capture = investigation::CandidateCapture {
+        version: 1,
+        build: env!("PDX_NATIVE_BUILD").into(),
+        report: report.clone(),
+    };
+    if let Err(error) = write_new(&report.output.join("capture.json"), &capture) {
+        report.diagnostics.push(format!("capture.json: {error}"));
+    }
+    // Write the report last so a missing capture remains visible even after controller loss.
+    if let Err(error) = write_new(&report.output.join("report.json"), report) {
+        report.diagnostics.push(format!("report.json: {error}"));
+    }
+}
+
+fn hold_outcome(hold: Duration, elapsed: Duration) -> Option<CandidateOutcome> {
+    if elapsed < hold {
+        return None;
+    }
+    Some(if hold == HOLD_LIMIT {
+        CandidateOutcome::TimedOut
+    } else {
+        CandidateOutcome::Completed
+    })
 }
 
 fn observe(
@@ -255,10 +280,9 @@ fn observe(
     started: Instant,
     hold: Duration,
 ) -> Result<CandidateOutcome, SupervisorError> {
-    let hold_started = Instant::now();
     loop {
-        if started.elapsed() >= ATTEMPT_BUDGET {
-            return Ok(CandidateOutcome::TimedOut);
+        if let Some(outcome) = hold_outcome(hold, started.elapsed()) {
+            return Ok(outcome);
         }
         if binding::conflicting_game(Some(child.pid()))? {
             return Err(SupervisorError(
@@ -268,17 +292,52 @@ fn observe(
         if !child.suspended()? {
             return Err(SupervisorError("Owned game no longer suspended".into()));
         }
-        if hold_started.elapsed() >= hold {
-            return Ok(CandidateOutcome::Completed);
-        }
         match input.recv_timeout(Duration::from_millis(100)) {
-            Ok(Input::Control(Control::Cancel)) => return Ok(CandidateOutcome::Cancelled),
-            Ok(Input::Control(Control::WorkerLost)) => return Ok(CandidateOutcome::WorkerLost),
-            Ok(_) | Err(RecvTimeoutError::Disconnected) => return Ok(CandidateOutcome::CallerLost),
+            Ok(event) => return Ok(interruption(event)),
+            Err(RecvTimeoutError::Disconnected) => return Ok(CandidateOutcome::CallerLost),
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
 }
+fn interruption(event: Input) -> CandidateOutcome {
+    match event {
+        Input::Control(Control::Cancel) => CandidateOutcome::Cancelled,
+        Input::Control(Control::WorkerLost) => CandidateOutcome::WorkerLost,
+        _ => CandidateOutcome::CallerLost,
+    }
+}
+
+#[cfg(test)]
+mod interruption_tests {
+    use super::*;
+    #[test]
+    fn valid_holds_complete_after_their_full_window_even_with_polling_delay() {
+        let hold = Duration::from_millis(29_999);
+        assert_eq!(hold_outcome(hold, hold - Duration::from_millis(1)), None);
+        assert_eq!(hold_outcome(hold, hold), Some(CandidateOutcome::Completed));
+        assert_eq!(
+            hold_outcome(hold, HOLD_LIMIT + Duration::from_millis(100)),
+            Some(CandidateOutcome::Completed)
+        );
+        assert_eq!(
+            hold_outcome(HOLD_LIMIT, HOLD_LIMIT),
+            Some(CandidateOutcome::TimedOut)
+        );
+    }
+    #[test]
+    fn prelaunch_and_running_interruptions_keep_their_cause() {
+        assert_eq!(
+            interruption(Input::Control(Control::WorkerLost)),
+            CandidateOutcome::WorkerLost
+        );
+        assert_eq!(
+            interruption(Input::Control(Control::Cancel)),
+            CandidateOutcome::Cancelled
+        );
+        assert_eq!(interruption(Input::Lost), CandidateOutcome::CallerLost);
+    }
+}
+
 fn prepare_profile(output: &Path) -> Result<(), SupervisorError> {
     binding::private_directory(&output.join("profile"))?;
     fs::write(
@@ -343,7 +402,7 @@ mod tests {
             assert!(child.suspended().unwrap());
             let (send, input) = mpsc::sync_channel(1);
             let started = if expected == CandidateOutcome::TimedOut {
-                Instant::now() - ATTEMPT_BUDGET
+                Instant::now() - HOLD_LIMIT
             } else {
                 Instant::now()
             };
@@ -367,6 +426,8 @@ mod tests {
                 started,
                 if expected == CandidateOutcome::Completed {
                     Duration::ZERO
+                } else if expected == CandidateOutcome::TimedOut {
+                    HOLD_LIMIT
                 } else {
                     Duration::from_secs(1)
                 },
@@ -389,11 +450,42 @@ mod tests {
         assert!(reservation.record_game(child.identity().unwrap()).is_err());
         child.dispose(DISPOSAL_BUDGET).unwrap();
         assert!(reservation.disposed().is_err());
+        assert_eq!(reservation.snapshot().unwrap()["state"], "Reserved");
         drop(reservation);
         assert!(reserve(root.path(), "next", output.path()).is_err());
         assert_eq!(
             fs::read_to_string(root.path().join("partial.pending")).unwrap(),
             "interrupted write"
+        );
+    }
+
+    #[test]
+    fn retained_report_records_capture_failure_without_overwriting_it() {
+        let root = store();
+        let output = store();
+        let mut reservation = reserve(root.path(), "capture-failure", output.path()).unwrap();
+        reservation.disposed().unwrap();
+        fs::write(output.path().join("capture.json"), "existing evidence").unwrap();
+        let mut report = InvestigationReport {
+            origin: "unqualified-candidate".into(),
+            attempt: "capture-failure".into(),
+            composition: "test".into(),
+            outcome: CandidateOutcome::Cancelled,
+            disposal: CandidateDisposal::NotLaunched,
+            reservation_resolved: true,
+            output: output.path().into(),
+            diagnostics: Vec::new(),
+        };
+        retain_report(&reservation, &mut report);
+        let retained: InvestigationReport =
+            serde_json::from_slice(&fs::read(output.path().join("report.json")).unwrap()).unwrap();
+        assert_eq!(retained.diagnostics, report.diagnostics);
+        assert_eq!(retained.diagnostics.len(), 1);
+        assert!(retained.diagnostics[0].contains("capture.json"));
+        assert_eq!(retained.disposal, CandidateDisposal::NotLaunched);
+        assert_eq!(
+            fs::read_to_string(output.path().join("capture.json")).unwrap(),
+            "existing evidence"
         );
     }
 
