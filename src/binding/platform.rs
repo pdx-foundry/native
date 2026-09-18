@@ -18,9 +18,7 @@ pub(super) struct StrategyResolution {
 
 pub(super) fn resolve(strategy: StrategyId) -> StrategyResolution {
     let revision = match strategy {
-        StrategyId::MacSuspendedChildLoaderEntry => {
-            "mac-suspended-child-loader-entry/unimplemented-v1"
-        }
+        StrategyId::MacSuspendedChildLoaderEntry => "mac-suspended-child-loader-entry/candidate-v2",
     };
     StrategyResolution {
         revision,
@@ -30,3 +28,6 @@ pub(super) fn resolve(strategy: StrategyId) -> StrategyResolution {
 
 #[cfg(feature = "maintainer-tools")]
 pub(in crate::binding) use host::lifecycle;
+
+#[cfg(feature = "maintainer-tools")]
+pub(in crate::binding) use host::observation;

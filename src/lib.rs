@@ -34,3 +34,6 @@ pub use evidence::{
     Observation, ObservationFact, ReplayError, ReplayResult, ResultOrigin, SubjectHandle,
 };
 pub use session::EngineContext;
+
+#[cfg(feature = "maintainer-tools")]
+mod capture;

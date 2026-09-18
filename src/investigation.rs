@@ -28,7 +28,7 @@ pub struct CandidateRequest {
 /// Why the candidate attempt ended. This says nothing about disposal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CandidateOutcome {
-    /// The bounded suspended-lifetime check completed.
+    /// The candidate execution ended normally; consult replay for observation completion.
     Completed,
     /// The controller explicitly cancelled.
     Cancelled,
@@ -73,13 +73,16 @@ pub struct InvestigationReport {
     pub output: PathBuf,
     /// Failures retaining the report; disposal facts above remain independent.
     pub diagnostics: Vec<String>,
+    /// Hash-pinned descriptor beneath `output/evidence`, available after capture finalization.
+    #[serde(default)]
+    pub replay: Option<crate::ArtifactReference>,
 }
 
-/// Versioned candidate artifact, separate from supported replay evidence.
+/// Versioned candidate report, with an optional separate recorded-evidence descriptor.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateCapture {
-    /// Candidate format version; this is not the observation replay schema.
+    /// Candidate report version; this is not the observation replay schema.
     pub version: u32,
     /// Exact linked Native source/build identity.
     pub build: String,
@@ -92,6 +95,8 @@ pub struct CandidateCapture {
 pub(crate) struct PlanRequest {
     pub request: CandidateRequest,
     pub composition: String,
+    #[serde(default)]
+    pub observation: Option<ObservationSpec>,
 }
 #[derive(Serialize, Deserialize)]
 pub(crate) enum Control {
@@ -121,6 +126,7 @@ pub fn prepare(request: CandidateRequest) -> Result<CandidatePlan, SupervisorErr
         request: PlanRequest {
             composition: plan.composition,
             request,
+            observation: None,
         },
     })
 }
@@ -154,7 +160,7 @@ impl<R: Read, W: Write> CandidateJob<R, W> {
             Reply::Started { attempt, game } => Ok(Some((attempt, game))),
             Reply::Rejected(reason) => Err(SupervisorError(reason)),
             Reply::Finished(report) => {
-                self.finished = Some(report);
+                self.finished = Some(*report);
                 Ok(None)
             }
             _ => Err(SupervisorError("Expected startup report".into())),
@@ -176,7 +182,7 @@ impl<R: Read, W: Write> CandidateJob<R, W> {
         loop {
             match protocol::read(&mut self.input)? {
                 Reply::Started { .. } => continue,
-                Reply::Finished(report) => return Ok(report),
+                Reply::Finished(report) => return Ok(*report),
                 Reply::Rejected(reason) => return Err(SupervisorError(reason)),
                 _ => return Err(SupervisorError("Unexpected supervisor reply".into())),
             }
@@ -203,4 +209,90 @@ pub fn serve(
     output: impl Write + Send + 'static,
 ) -> Result<(), SupervisorError> {
     crate::execution::supervisor::serve(input, output)
+}
+
+/// A candidate capture of the retained category read-entry window.
+#[derive(Debug)]
+pub struct ObservationRequest {
+    /// Exact installation; no nearest-version fallback.
+    pub installation_hint: PathBuf,
+    /// New absolute directory for retained artifacts.
+    pub output: PathBuf,
+    /// Bytes of the retained two-field category fixture.
+    pub fixture: String,
+    /// Observation budget in seconds, from 1 through 180.
+    pub deadline_seconds: u64,
+}
+
+/// Maintainer controls; none of these grants live-operation admission.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ObservationControl {
+    /// Capture the normal bounded window.
+    #[default]
+    Normal,
+    /// Omit the field hook and refuse resume.
+    MissingHook,
+    /// Disable the field hook at the activation gate and refuse resume.
+    LateHook,
+    /// Omit one emitted field record without changing producer counts.
+    DroppedRecord,
+    /// Omit the observation terminal.
+    MissingTerminal,
+    /// Exercise a failed native memory read at the fixture boundary.
+    AccessFailure,
+    /// Kill LLDB while stopped after the registration window.
+    WorkerLoss,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ObservationSpec {
+    pub fixture: String,
+    pub deadline_seconds: u64,
+    pub control: ObservationControl,
+}
+
+/// Prepare the retained fixture for a candidate observation attempt.
+/// Start a consumer-owned supervisor and pass this plan to `connect`, as for lifecycle requests.
+pub fn prepare_observation(request: ObservationRequest) -> Result<CandidatePlan, SupervisorError> {
+    prepare_observation_control(request, ObservationControl::Normal)
+}
+
+/// Prepare a deliberate failure control for maintainer qualification work.
+#[doc(hidden)]
+pub fn prepare_observation_control(
+    request: ObservationRequest,
+    control: ObservationControl,
+) -> Result<CandidatePlan, SupervisorError> {
+    let spec = ObservationSpec {
+        fixture: request.fixture,
+        deadline_seconds: request.deadline_seconds,
+        control,
+    };
+    spec.validate()?;
+    let mut plan = prepare(CandidateRequest {
+        installation_hint: request.installation_hint,
+        output: request.output,
+        hold_ms: 1,
+    })?;
+    crate::binding::InvestigationPlan::open(&plan.request.request.installation_hint)?
+        .validate_observation_content()?;
+    crate::binding::probe_observer()?;
+    plan.request.observation = Some(spec);
+    Ok(plan)
+}
+
+impl ObservationSpec {
+    pub(crate) fn validate(&self) -> Result<(), SupervisorError> {
+        if self.fixture != crate::capture::FIXTURE_BODY
+            || !(1..=180).contains(&self.deadline_seconds)
+        {
+            return Err(SupervisorError(
+                "Expected the retained category fixture and a 1..=180 second deadline".into(),
+            ));
+        }
+        Ok(())
+    }
 }

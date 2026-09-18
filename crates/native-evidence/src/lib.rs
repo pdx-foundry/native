@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod recorded;
 mod records;
 pub mod replay;
 pub mod store;

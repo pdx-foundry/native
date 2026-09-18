@@ -9,3 +9,6 @@ pub(super) fn resolve(strategy: StrategyId) -> UnavailableReason {
 
 #[cfg(feature = "maintainer-tools")]
 pub(in crate::binding) mod lifecycle;
+
+#[cfg(feature = "maintainer-tools")]
+pub(in crate::binding) mod observation;

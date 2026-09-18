@@ -105,7 +105,7 @@ pub(crate) fn serve(
     let output = Reporter::new(output);
     let result = handshake(&input, &output).and_then(|plan| run(plan, &input, &output));
     match result {
-        Ok(report) => output.send(Reply::Finished(report))?,
+        Ok(report) => output.send(Reply::Finished(Box::new(report)))?,
         Err(error) => output.send(Reply::Rejected(error.to_string()))?,
     }
     output.finish()
@@ -121,6 +121,9 @@ fn handshake(input: &Receiver<Input>, output: &Reporter) -> Result<PlanRequest, 
         return Err(SupervisorError("Expected candidate request".into()));
     };
     investigation::validate_request(&plan.request)?;
+    if let Some(spec) = &plan.observation {
+        spec.validate()?;
+    }
     Ok(plan)
 }
 
@@ -163,9 +166,12 @@ fn run(
         reservation_resolved: false,
         output: retained,
         diagnostics: Vec::new(),
+        replay: None,
     };
     let started = Instant::now();
     let mut game = None;
+    let mut observer = None;
+    let mut capture = None;
     let mut owns_output = false;
     let operation = (|| -> Result<(), SupervisorError> {
         binding::private_directory(&report.output)?;
@@ -175,6 +181,12 @@ fn run(
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
         prepare_profile(&report.output)?;
+        if let Some(spec) = &request.observation {
+            prepare_fixture(&report.output, spec)?;
+            let (prepared, retained) = plan.observer(&report.output, &report.attempt, spec)?;
+            observer = Some(prepared);
+            capture = Some(retained);
+        }
         plan.integrity()?;
         match input.try_recv() {
             Ok(event) => {
@@ -191,7 +203,10 @@ fn run(
             report.outcome = CandidateOutcome::TimedOut;
             return Ok(());
         }
-        game = Some(plan.spawn(&report.output)?);
+        game = Some(match &observer {
+            Some(observer) => plan.spawn_observed(&report.output, observer)?,
+            None => plan.spawn(&report.output)?,
+        });
         let child = game.as_ref().unwrap();
         reservation.record_game(child.identity()?)?;
         if !child.suspended()? {
@@ -207,27 +222,84 @@ fn run(
             attempt: report.attempt.clone(),
             game: child.pid(),
         })?;
-        report.outcome = observe(
-            input,
-            child,
-            Instant::now(),
-            Duration::from_millis(request.request.hold_ms),
-        )?;
+        report.outcome = if let (Some(observer), Some(capture), Some(spec)) =
+            (&mut observer, &mut capture, &request.observation)
+        {
+            capture.record(evidence::recorded::OwnerEvent::GameOwnedSuspended {
+                pid: u64::from(child.pid()),
+                identity: serde_json::to_string(&child.identity()?)?,
+            })?;
+            observer.start(child.pid())?;
+            capture.record(evidence::recorded::OwnerEvent::WorkerStarted)?;
+            observe_worker(
+                input,
+                child,
+                observer,
+                Duration::from_secs(spec.deadline_seconds),
+            )?
+        } else {
+            observe(
+                input,
+                child,
+                Instant::now(),
+                Duration::from_millis(request.request.hold_ms),
+            )?
+        };
         Ok(())
     })();
     if let Err(error) = operation {
+        if let Some(capture) = &mut capture
+            && let Err(retention) =
+                capture.record(evidence::recorded::OwnerEvent::ObservationUnavailable {
+                    reason: error.to_string(),
+                })
+        {
+            report.diagnostics.push(retention.to_string());
+        }
         report.outcome = CandidateOutcome::Failed(error.to_string());
+    }
+    let mut worker_stopped = true;
+    if let Some(observer) = &mut observer {
+        if let Err(error) = observer.stop() {
+            worker_stopped = false;
+            report.diagnostics.push(error.to_string());
+        }
+        if let (Some(code), Some(capture)) = (observer.exited, &mut capture) {
+            if code != 0 && report.outcome == CandidateOutcome::Completed {
+                report.outcome = CandidateOutcome::WorkerLost;
+            }
+            if let Err(error) =
+                capture.record(evidence::recorded::OwnerEvent::WorkerExited { returncode: code })
+            {
+                report.diagnostics.push(error.to_string());
+            }
+        }
     }
     if let Some(mut child) = game {
         report.disposal = match child.dispose(DISPOSAL_BUDGET) {
             Ok(()) => CandidateDisposal::Reaped,
             Err(error) => CandidateDisposal::Unconfirmed(error.to_string()),
         };
+        if let Some(capture) = &mut capture {
+            let event = evidence::recorded::OwnerEvent::DisposalChecked {
+                confirmed: report.disposal == CandidateDisposal::Reaped,
+                reaped_pid: u64::from(child.pid()),
+                game_exit: child.exit_status(),
+                remaining_identity: if report.disposal == CandidateDisposal::Reaped {
+                    None
+                } else {
+                    Some(serde_json::to_string(&child.identity().ok())?)
+                },
+            };
+            if let Err(error) = capture.record(event) {
+                report.diagnostics.push(error.to_string());
+            }
+        }
     }
     if let Err(error) = plan.integrity() {
         report.outcome = CandidateOutcome::Failed(error.to_string());
     }
-    if !matches!(report.disposal, CandidateDisposal::Unconfirmed(_)) {
+    if worker_stopped && !matches!(report.disposal, CandidateDisposal::Unconfirmed(_)) {
         match reservation.disposed() {
             Ok(()) => report.reservation_resolved = true,
             Err(error) => {
@@ -236,10 +308,88 @@ fn run(
             }
         }
     }
+    if let Some(capture) = capture {
+        match capture.finish(&report.output) {
+            Ok(reference) => report.replay = Some(reference),
+            Err(error) => report
+                .diagnostics
+                .push(format!("Capture finalization failed: {error}")),
+        }
+    }
     if owns_output {
         retain_report(&reservation, &mut report);
     }
     Ok(report)
+}
+
+fn observe_worker(
+    input: &Receiver<Input>,
+    child: &binding::OwnedGame,
+    observer: &mut binding::Observer,
+    budget: Duration,
+) -> Result<CandidateOutcome, SupervisorError> {
+    let started = Instant::now();
+    loop {
+        if started.elapsed() >= budget {
+            return Ok(CandidateOutcome::TimedOut);
+        }
+        if binding::conflicting_game(Some(child.pid()))? {
+            return Err(SupervisorError(
+                "External game invalidated isolation".into(),
+            ));
+        }
+        if observer.poll()? {
+            return Ok(CandidateOutcome::Completed);
+        }
+        match input.recv_timeout(Duration::from_millis(50)) {
+            Ok(event) => return Ok(interruption(event)),
+            Err(RecvTimeoutError::Disconnected) => return Ok(CandidateOutcome::CallerLost),
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
+fn prepare_fixture(
+    output: &Path,
+    spec: &crate::investigation::ObservationSpec,
+) -> Result<(), SupervisorError> {
+    let profile = output.join("profile");
+    for relative in [
+        "mod",
+        "mod/atlas_early",
+        "mod/atlas_early/common",
+        "mod/atlas_early/common/tradition_categories",
+    ] {
+        binding::private_directory(&profile.join(relative))?;
+    }
+    fs::write(
+        profile
+            .join("mod/atlas_early")
+            .join(crate::capture::FIXTURE_FILE),
+        &spec.fixture,
+    )?;
+    let mod_path = profile.join("mod/atlas_early");
+    let mod_path = mod_path
+        .to_str()
+        .filter(|path| !path.contains(['"', '\n', '\r']))
+        .ok_or_else(|| {
+            SupervisorError("Profile path cannot be represented in mod descriptor".into())
+        })?;
+    fs::write(
+        profile.join("mod/atlas_early.mod"),
+        format!(
+            "name=\"Native candidate observation\"\npath=\"{mod_path}\"\nsupported_version=\"4.5.*\"\n"
+        ),
+    )?;
+    fs::write(
+        profile.join("dlc_load.json"),
+        r#"{"enabled_mods":["mod/atlas_early.mod"],"disabled_dlcs":[]}"#,
+    )?;
+    fs::write(
+        profile.join("settings.txt"),
+        "graphics={size={x=640 y=360} fullScreen=no borderless=no renderer=2}\nmaster_volume=0\nmusic_volume=0\n",
+    )?;
+    Ok(())
 }
 
 fn retain_report(reservation: &Reservation, report: &mut InvestigationReport) {
@@ -250,7 +400,7 @@ fn retain_report(reservation: &Reservation, report: &mut InvestigationReport) {
         report.diagnostics.push(format!("owner.json: {error}"));
     }
     let capture = investigation::CandidateCapture {
-        version: 1,
+        version: 2,
         build: env!("PDX_NATIVE_BUILD").into(),
         report: report.clone(),
     };
@@ -444,6 +594,7 @@ mod tests {
             reservation_resolved: true,
             output: output.path().into(),
             diagnostics: Vec::new(),
+            replay: None,
         };
         retain_report(&reservation, &mut report);
         let retained: InvestigationReport =

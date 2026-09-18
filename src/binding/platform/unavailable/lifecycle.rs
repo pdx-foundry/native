@@ -36,6 +36,9 @@ pub(crate) fn private_directory(_: &Path) -> Result<(), SupervisorError> {
 }
 pub(crate) struct OwnedGame;
 impl OwnedGame {
+    pub fn exit_status(&self) -> Option<i64> {
+        None
+    }
     pub fn pid(&self) -> u32 {
         unreachable!("unavailable hosts never construct a game")
     }
@@ -50,5 +53,14 @@ impl OwnedGame {
     }
 }
 pub(crate) fn spawn(_: &Path, _: &Path, _: &Path) -> Result<OwnedGame, SupervisorError> {
+    unavailable()
+}
+
+pub(crate) fn spawn_guarded(
+    _: &Path,
+    _: &Path,
+    _: &Path,
+    _: Option<&Path>,
+) -> Result<OwnedGame, SupervisorError> {
     unavailable()
 }

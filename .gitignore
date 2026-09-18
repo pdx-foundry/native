@@ -3,3 +3,6 @@
 .scratch
 # Private raw engine evidence and imported project records.
 /.local/
+
+# Python test and maintainer-tool bytecode.
+__pycache__/

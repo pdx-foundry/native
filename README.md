@@ -48,3 +48,7 @@ for limits and build checks.
 - [Native evidence and qualification records](docs/native-evidence.md)
 
 - [Consumer-hosted lifecycle and maintainer harness](docs/design/lifecycle.md)
+
+Maintainer-only [candidate observations](docs/design/candidate-observations.md) capture the retained
+registration/category window under an independent supervisor and emit replayable evidence.
+Public live operations remain unavailable pending separate qualification.

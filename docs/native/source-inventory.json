@@ -508,6 +508,29 @@
       "archiveBytes": 1052021,
       "fileManifest": ".local/evidence/bundles/sdk-516-lifecycle-review.manifest.json",
       "manifestSha256": "1285c9d0dc0645d65fb2244d3bef89cd9b520a7eafd8ce4162163466880b1abb"
+    },
+    {
+      "id": "sdk-517-observations",
+      "createdAt": "2026-09-18T20:58:50.899014+00:00",
+      "archive": "sdk-517-observations-fd1e2526e04399e1.tar.gz",
+      "sha256": "fd1e2526e04399e14d0f80ea3b0c6a11093430c736515d4912cd0c5e7f2dc560",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/sdk-517-observations",
+          "archivePath": "sdk-517-observations",
+          "gitHead": "f90aa5097cc324970fd12dcd2b1f3cd7ce58f631",
+          "note": "SDK-517 candidate capture implementation and fresh controls; executed working source and binaries retained per batch"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store"
+      ],
+      "files": 2464,
+      "archiveBytes": 11296608,
+      "fileManifest": ".local/evidence/bundles/sdk-517-observations.manifest.json",
+      "manifestSha256": "0eed566bf57a8251a2954affa3ccf5b33f327805bcd4c538eeac67580b35af52"
     }
   ]
 }

@@ -11,6 +11,8 @@ const CATEGORY_READER: &[(&str, u64)] = &[
     ("file-name-offset", 0x20),
     ("string-storage-tag-offset", 23),
     ("file-line-offset", 8),
+    ("tree-template-token", 16793),
+    ("traditions-token", 14263),
 ];
 
 pub(super) fn resolve(group: BindingGroupId) -> String {
@@ -27,4 +29,13 @@ pub(super) fn resolve(group: BindingGroupId) -> String {
         bytes.extend(value.to_le_bytes());
     }
     hash(&bytes)
+}
+
+#[cfg(feature = "maintainer-tools")]
+pub(super) fn observation() -> std::collections::BTreeMap<String, u64> {
+    REGISTRATION
+        .iter()
+        .chain(CATEGORY_READER)
+        .map(|(key, value)| ((*key).into(), *value))
+        .collect()
 }

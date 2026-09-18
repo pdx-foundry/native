@@ -2,7 +2,7 @@ use crate::supervisor::SupervisorError;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::io::{Read, Write};
 
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const MAX_MESSAGE: usize = 64 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -46,7 +46,7 @@ pub(crate) enum Reply {
         game: u32,
     },
     #[cfg(feature = "maintainer-tools")]
-    Finished(crate::investigation::InvestigationReport),
+    Finished(Box<crate::investigation::InvestigationReport>),
 }
 
 pub(crate) fn read<T: DeserializeOwned>(mut input: impl Read) -> Result<T, SupervisorError> {
@@ -119,3 +119,6 @@ mod tests {
         ));
     }
 }
+
+#[cfg(feature = "maintainer-tools")]
+pub(crate) mod observation;

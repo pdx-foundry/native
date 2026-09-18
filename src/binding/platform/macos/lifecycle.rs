@@ -206,8 +206,12 @@ pub(crate) fn private_directory(path: &Path) -> Result<(), SupervisorError> {
 pub(crate) struct OwnedGame {
     pid: i32,
     reaped: bool,
+    exit: Option<i64>,
 }
 impl OwnedGame {
+    pub fn exit_status(&self) -> Option<i64> {
+        self.exit
+    }
     pub fn pid(&self) -> u32 {
         self.pid as u32
     }
@@ -236,6 +240,7 @@ impl OwnedGame {
             let reaped = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
             if reaped == self.pid {
                 self.reaped = true;
+                self.exit = Some(i64::from(status));
                 return Ok(());
             }
             if reaped < 0 {
@@ -355,24 +360,48 @@ pub(crate) fn spawn(
     root: &Path,
     output: &Path,
 ) -> Result<OwnedGame, SupervisorError> {
+    spawn_guarded(executable, root, output, None)
+}
+
+pub(crate) fn spawn_guarded(
+    executable: &Path,
+    root: &Path,
+    output: &Path,
+    guard: Option<&Path>,
+) -> Result<OwnedGame, SupervisorError> {
     let settings = settings(root, output)?;
     let executable = cpath(executable)?;
     let profile = output.join("profile");
     let mut userdir = b"-userdir=".to_vec();
     userdir.extend(profile.as_os_str().as_bytes());
-    let arguments = [
+    let mut arguments = vec![
         executable.clone(),
         CString::new("-gdpr-compliant").unwrap(),
         CString::new(userdir).map_err(|_| SupervisorError("Invalid profile path".into()))?,
     ];
+    if guard.is_some() {
+        arguments.push(CString::new("-debug_mode").unwrap());
+    }
     let mut argv: Vec<_> = arguments.iter().map(|v| v.as_ptr() as *mut _).collect();
     argv.push(ptr::null_mut());
     let home = cpath(&profile)?;
-    let env = [
+    let mut env = vec![
         CString::new([b"HOME=".as_slice(), home.as_bytes()].concat()).unwrap(),
         CString::new("PATH=/usr/bin:/bin").unwrap(),
         CString::new("SDL_MAC_BACKGROUND_APP=1").unwrap(),
     ];
+    if let Some(guard) = guard {
+        env.push(
+            CString::new(
+                [
+                    b"DYLD_INSERT_LIBRARIES=".as_slice(),
+                    cpath(guard)?.as_bytes(),
+                ]
+                .concat(),
+            )
+            .unwrap(),
+        );
+    }
     let mut envp: Vec<_> = env.iter().map(|v| v.as_ptr() as *mut _).collect();
     envp.push(ptr::null_mut());
     let mut pid = 0;
@@ -387,7 +416,11 @@ pub(crate) fn spawn(
             envp.as_ptr(),
         )
     })?;
-    Ok(OwnedGame { pid, reaped: false })
+    Ok(OwnedGame {
+        pid,
+        reaped: false,
+        exit: None,
+    })
 }
 
 #[cfg(test)]

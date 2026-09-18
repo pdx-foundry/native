@@ -1,0 +1,4 @@
+atlas_early_category = {
+ tree_template = "atlas_early_template"
+ traditions = { }
+}

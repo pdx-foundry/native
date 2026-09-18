@@ -705,3 +705,50 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     files.sort();
     files
 }
+
+#[test]
+fn fresh_thread_witnesses_must_join_entry_registration_fields_and_return() {
+    for broken in [false, true] {
+        let mut fixture = Fixture::new();
+        fixture.trace(|trace| {
+            for record in trace.iter_mut() {
+                record["thread"] = json!(42);
+            }
+            if broken {
+                let field = trace
+                    .iter_mut()
+                    .find(|record| record["kind"] == "field-observed")
+                    .unwrap();
+                field["thread"] = json!(43);
+            }
+        });
+        let result = fixture.replay().unwrap();
+        assert_eq!(
+            result.completion,
+            if broken {
+                Completion::Incomplete
+            } else {
+                Completion::Complete
+            }
+        );
+        assert_eq!(result.disposal, Disposal::Confirmed);
+    }
+}
+
+#[test]
+fn owner_recorded_access_failure_remains_unavailable_without_worker_records() {
+    let mut fixture = Fixture::new();
+    fixture.trace(Vec::clear);
+    fixture.json_artifact("owner", |owner| {
+        owner.as_array_mut().unwrap().insert(
+            1,
+            json!({"kind":"observation-unavailable", "reason":"worker handshake access failed"}),
+        );
+    });
+    let result = fixture.replay().unwrap();
+    assert_eq!(result.completion, Completion::Unavailable);
+    assert_eq!(result.disposal, Disposal::Confirmed);
+    assert!(result.gaps.contains(&Gap::Unavailable {
+        reason: "worker handshake access failed".into()
+    }));
+}

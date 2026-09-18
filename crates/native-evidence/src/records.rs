@@ -1,11 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt};
-
-pub(crate) const FORMAT: &str = "pdx-native/sdk-483-replay-v1";
-pub(crate) const CONTRACT: &str = "pdx-native/early-read-entries-v1";
+use std::fmt;
 
 /// Immutable artifact identity and portable storage location. Paths must be archive-relative.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactReference {
     /// Portable path beneath the supplied artifact root.
@@ -17,7 +14,7 @@ pub struct ArtifactReference {
 }
 
 /// What originally produced this retained attempt; this is never fresh qualification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum CaptureOrigin {
     /// Historical engine capture; replay does not re-establish its native guarantees.
@@ -27,7 +24,7 @@ pub enum CaptureOrigin {
 }
 
 /// How the returned observations were obtained.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ResultOrigin {
     /// Derived from verified historical bytes, without a new game run.
@@ -35,7 +32,7 @@ pub enum ResultOrigin {
 }
 
 /// Reference to verified evidence, optionally locating a trace sequence or journal row.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EvidenceReference {
     /// Exact artifact supporting the fact.
     pub artifact: ArtifactReference,
@@ -260,161 +257,3 @@ impl fmt::Display for ReplayError {
 }
 
 impl std::error::Error for ReplayError {}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Descriptor {
-    pub format: String,
-    pub contract: String,
-    pub attempt: String,
-    pub origin: CaptureOrigin,
-    pub manifest: ArtifactReference,
-    pub request: ArtifactReference,
-    pub trace: ArtifactReference,
-    pub owner: ArtifactReference,
-    pub supporting: Vec<ArtifactReference>,
-}
-
-// These DTOs describe the fixed retained prototype format. Native-only diagnostic fields remain
-// in the verified artifacts, rather than becoming consumer-facing native control inputs.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Manifest {
-    pub probe_hashes: BTreeMap<String, String>,
-    pub fixture_hashes: BTreeMap<String, String>,
-    pub producer_content_manifest_sha256: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct RecordedRequest {
-    pub observations: Vec<String>,
-    pub fixtures: BTreeMap<String, String>,
-    pub deadline_seconds: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct TraceRecord {
-    pub seq: u64,
-    pub run: String,
-    #[serde(flatten)]
-    pub event: TraceEvent,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct Hook {
-    pub enabled: bool,
-    pub locations: u64,
-    pub resolved: u64,
-    pub hits: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct Frame {
-    pub function: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub(crate) enum TraceEvent {
-    HooksRequested,
-    LaunchStopped {
-        error: String,
-        pid: u64,
-        triple: String,
-        frames: Vec<Frame>,
-    },
-    HooksActiveBeforeResume {
-        hooks: BTreeMap<String, Hook>,
-    },
-    Resume {
-        error: String,
-    },
-    PhaseReached {
-        phase: String,
-        #[serde(default)]
-        file: Option<String>,
-        #[serde(default)]
-        stack: Vec<String>,
-    },
-    RegistrationObserved {
-        ordinal: u64,
-        #[serde(rename = "engineToken")]
-        engine_token: u64,
-    },
-    RegistrationWindowComplete {
-        observed: u64,
-    },
-    FieldObserved {
-        file: String,
-        line: u64,
-        field: String,
-        owner: String,
-        ordinal: u64,
-    },
-    PhaseComplete {
-        phase: String,
-        file: String,
-        #[serde(rename = "producerFieldCount")]
-        producer_field_count: u64,
-    },
-    StreamEnd {
-        #[serde(rename = "producerLastSequence")]
-        producer_last_sequence: u64,
-        #[serde(rename = "producerFieldCount")]
-        producer_field_count: u64,
-        registrations: u64,
-    },
-    CapabilityUnavailable {
-        reason: String,
-    },
-    EarlyActivationUnavailable {
-        reason: String,
-    },
-    CallbackError {
-        #[serde(default)]
-        error: String,
-    },
-    NativeException {
-        #[serde(default)]
-        reason: String,
-    },
-    WorkerLossReady,
-    WorkerFinished,
-    WorkerDispose,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub(crate) enum OwnerEvent {
-    GameOwnedSuspended {
-        pid: u64,
-        identity: String,
-    },
-    WorkerStarted,
-    WorkerExited {
-        returncode: i64,
-    },
-    WorkerLossInjected,
-    WorkerStopRequested,
-    OwnerDisposeRequested,
-    DisposalChecked {
-        confirmed: bool,
-        #[serde(rename = "reapedPid")]
-        reaped_pid: u64,
-        #[serde(rename = "gameExit")]
-        game_exit: Option<i64>,
-        #[serde(
-            rename = "remainingIdentity",
-            deserialize_with = "required_nullable_identity"
-        )]
-        remaining_identity: Option<String>,
-    },
-}
-
-// A missing witness must not deserialize as the explicit null that confirms process absence.
-fn required_nullable_identity<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<String>, D::Error> {
-    Option::<String>::deserialize(deserializer)
-}
