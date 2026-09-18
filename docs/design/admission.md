@@ -18,10 +18,9 @@ M45-observe currently has an exact catalogue entry. Other architectures/formats 
 unregistered identities are unknown. Malformed images and access failures remain separate errors.
 
 The host-neutral M45-observe record refers to one typed recipe. The composer resolves shared
-binding declarations and machine/strategy revisions once. The compiled macOS ARM64 resolver
-reports implementation-unavailable. Windows, Linux, and Intel macOS report host-unavailable for
-that strategy. No concrete live implementation is included. Module privacy prevents shared
-operations from importing target records, recipes, or concrete platform/machine leaves.
+binding declarations and machine/strategy revisions once. The compiled macOS ARM64 resolver supplies the implemented strategy and its actual worker package.
+Other hosts refuse it. Composition carries the selected machine, bindings, content prerequisites,
+and executable/slice identities into shared execution. See [live observations](live-observations.md).
 
 ## Admission authority
 
@@ -35,14 +34,13 @@ unknown, or excessive requests are outside support.
 Qualification requires a bundled, unwithdrawn acceptance matching the complete composition,
 relevant content, and the whole requested scope. Partial acceptances are not combined to invent a
 larger qualified window. Composition identity includes executable and slice hashes, recipe,
-method, machine and strategy revisions, and hashes of shared binding declarations. The source
+method, machine and strategy revisions, and hashes of shared binding declarations. The exact debugger identity must also match acceptance. The source
 records and withdrawals are the authority; records supplied by a caller or capture are not loaded.
 
 The production acceptance list is empty. The verified SDK-483 experiment establishes provenance
 for candidate declarations, not qualification of this Rust implementation. A recipe alone always
 remains incomplete. Qualification and availability are independent: synthetic tests demonstrate
-qualified requests blocked by present prerequisites. Current real strategies always report their
-host or implementation gap in addition to missing qualification.
+qualified requests blocked by present prerequisites. Current real strategies report missing qualification and any unresolved host/tool prerequisite.
 
 Relevant content is snapshotted from `launcher-settings.json` and the complete `.txt` inventories
 under `common/tradition_categories` and `common/traditions`. These are the retained prototype's

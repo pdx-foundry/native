@@ -41,11 +41,15 @@ fn catalogue_order_cannot_break_a_duplicate_match() {
 }
 
 #[test]
-fn real_candidate_composition_has_no_production_acceptance() {
-    let inputs = crate::binding::compose::compose(&identity(), Ok(Default::default())).unwrap();
+fn a_recipe_cannot_supply_its_own_acceptance() {
+    let (inputs, _) =
+        crate::binding::compose::compose(&identity(), Ok(Default::default())).unwrap();
     let report = crate::qualification::evaluate(
         &inputs,
-        &crate::qualification::Authority::bundled(),
+        &crate::qualification::Authority {
+            accepted: vec![],
+            withdrawn: vec![],
+        },
         &crate::CapabilityRequest::default(),
         crate::ContextOrigin::Installation,
         None,

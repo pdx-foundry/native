@@ -37,3 +37,7 @@ tempfile = "3"
 [[example]]
 name = "observe"
 required-features = ["maintainer-tools"]
+
+[[example]]
+name = "live"
+required-features = ["production"]

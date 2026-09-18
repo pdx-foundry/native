@@ -13,9 +13,9 @@ use crate::qualification::{AdmissionInputs, Authority};
 use crate::{ContextIdentity, ContextOrigin, OpenError, OpenRequest, UnavailableReason};
 
 /// The only session-facing binding value. Raw target and platform descriptors stay below here.
-#[derive(Debug)]
 pub(crate) struct Binding {
     inputs: AdmissionInputs,
+    operation: Option<compose::ResolvedObservation>,
     source: Source,
     authority: Authority,
 }
@@ -31,9 +31,10 @@ impl Binding {
     pub(crate) fn open(request: OpenRequest) -> Result<Self, OpenError> {
         let (installation, bytes) = installation::Installation::open(&request.installation_hint)?;
         let image = binary::identify(&bytes)?;
-        let inputs = compose::compose(&image, installation.content.clone())?;
+        let (inputs, operation) = compose::compose(&image, installation.content.clone())?;
         Ok(Self {
             inputs,
+            operation: Some(operation),
             source: Source::Installation(installation),
             authority: Authority::bundled(),
         })
@@ -59,10 +60,14 @@ impl Binding {
         }
     }
 
-    pub(crate) fn inputs(&self) -> &AdmissionInputs {
-        &self.inputs
+    pub(crate) fn current_inputs(&self) -> AdmissionInputs {
+        let mut inputs = self.inputs.clone();
+        if let Some(operation) = &self.operation {
+            inputs.toolchain =
+                (operation.strategy.probe)().map_err(|_| UnavailableReason::PrerequisiteMissing);
+        }
+        inputs
     }
-
     pub(crate) fn authority(&self) -> &Authority {
         &self.authority
     }
@@ -74,62 +79,122 @@ mod synthetic;
 #[cfg(feature = "test-support")]
 pub(crate) use synthetic::synthetic;
 
-#[cfg(feature = "maintainer-tools")]
-pub(crate) struct InvestigationPlan {
-    pub composition: String,
-    installation: installation::Installation,
+pub(crate) struct ExecutionPlan {
+    binding: Binding,
+    admitted_tool: Option<String>,
 }
 
-#[cfg(feature = "maintainer-tools")]
-impl InvestigationPlan {
+impl ExecutionPlan {
     pub fn open(hint: &std::path::Path) -> Result<Self, crate::supervisor::SupervisorError> {
         platform::lifecycle::available()?;
-        let (installation, bytes) = installation::Installation::open(hint)
-            .map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?;
-        let image = binary::identify(&bytes)
-            .map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?;
-        let inputs = compose::compose(&image, installation.content.clone())
-            .map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?;
-        if let Some(reason) = installation.integrity() {
-            return Err(crate::supervisor::SupervisorError(format!(
-                "Candidate inputs unavailable: {reason:?}"
-            )));
-        }
-        Ok(Self {
-            composition: inputs.composition,
-            installation,
+        let binding = Binding::open(OpenRequest {
+            installation_hint: hint.into(),
         })
+        .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
+        let plan = Self {
+            binding,
+            admitted_tool: None,
+        };
+        plan.integrity()?;
+        Ok(plan)
     }
-
+    pub fn composition(&self) -> &str {
+        &self.binding.inputs.composition
+    }
+    fn installation(&self) -> &installation::Installation {
+        match &self.binding.source {
+            Source::Installation(installation) => installation,
+            #[cfg(feature = "test-support")]
+            Source::Synthetic(_) => unreachable!("execution cannot use synthetic inputs"),
+        }
+    }
+    fn operation(&self) -> &compose::ResolvedObservation {
+        self.binding
+            .operation
+            .as_ref()
+            .expect("installed operation")
+    }
     pub fn integrity(&self) -> Result<(), crate::supervisor::SupervisorError> {
-        match self.installation.integrity() {
+        match self.binding.integrity() {
             None => Ok(()),
             Some(reason) => Err(crate::supervisor::SupervisorError(format!(
-                "Candidate inputs changed: {reason:?}"
+                "Inputs changed: {reason:?}"
             ))),
         }
     }
-
+    pub fn admit(&mut self) -> Result<(), crate::supervisor::SupervisorError> {
+        let inputs = self.binding.current_inputs();
+        let report = crate::qualification::evaluate(
+            &inputs,
+            self.binding.authority(),
+            &crate::CapabilityRequest::default(),
+            self.binding.origin(),
+            self.binding.integrity(),
+        );
+        if report.availability != crate::Availability::Available {
+            return Err(crate::supervisor::SupervisorError(format!(
+                "Live admission refused: {:?}",
+                report.reasons
+            )));
+        }
+        self.validate_observation_content()?;
+        self.admitted_tool = inputs.toolchain.ok();
+        Ok(())
+    }
+    #[cfg(feature = "maintainer-tools")]
+    pub fn probe(&self) -> Result<(), crate::supervisor::SupervisorError> {
+        (self.operation().strategy.probe)().map(|_| ())
+    }
     pub fn spawn(
         &self,
         output: &std::path::Path,
     ) -> Result<OwnedGame, crate::supervisor::SupervisorError> {
         self.integrity()?;
         platform::lifecycle::spawn(
-            self.installation.executable(),
-            self.installation.root(),
+            self.installation().executable(),
+            self.installation().root(),
             output,
+            self.operation().machine.spawn_preference,
         )
     }
 }
 
-#[cfg(feature = "maintainer-tools")]
+impl Binding {
+    pub(crate) fn installation_hint(
+        &self,
+    ) -> Result<std::path::PathBuf, crate::supervisor::SupervisorError> {
+        match &self.source {
+            Source::Installation(installation) => Ok(installation.locator().into()),
+            #[cfg(feature = "test-support")]
+            Source::Synthetic(_) => Err(crate::supervisor::SupervisorError(
+                "Synthetic contexts cannot launch".into(),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Machine {
+    pub revision: String,
+    pub architecture: String,
+    pub spawn_preference: i32,
+    pub registers: std::collections::BTreeMap<String, String>,
+}
+
+impl std::fmt::Debug for Binding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Binding")
+            .field("inputs", &self.inputs)
+            .finish_non_exhaustive()
+    }
+}
+
 pub(crate) use platform::lifecycle::{
     HostReservation, OwnedGame, acquire_reservation, conflicting_game, open_record, prepare_owner,
     private_directory, process_identity,
 };
 
-#[cfg(feature = "maintainer-tools")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ProcessIdentity {
@@ -138,24 +203,14 @@ pub(crate) struct ProcessIdentity {
     pub started_microseconds: u64,
 }
 
-#[cfg(all(
-    test,
-    feature = "maintainer-tools",
-    target_os = "macos",
-    target_arch = "aarch64"
-))]
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 pub(crate) fn test_reservation(
     root: &std::path::Path,
 ) -> Result<HostReservation, crate::supervisor::SupervisorError> {
     platform::lifecycle::acquire_at(root)
 }
 
-#[cfg(all(
-    test,
-    feature = "maintainer-tools",
-    target_os = "macos",
-    target_arch = "aarch64"
-))]
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 pub(crate) fn test_child(
     output: &std::path::Path,
 ) -> Result<OwnedGame, crate::supervisor::SupervisorError> {
@@ -163,53 +218,54 @@ pub(crate) fn test_child(
         std::path::Path::new("/bin/sleep"),
         std::path::Path::new("/"),
         output,
+        machine::resolve(object::Architecture::Aarch64)
+            .unwrap()
+            .spawn_preference,
     )
 }
 
-#[cfg(all(
-    test,
-    feature = "maintainer-tools",
-    target_os = "macos",
-    target_arch = "aarch64"
-))]
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 pub(crate) static LIFECYCLE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-#[cfg(feature = "maintainer-tools")]
-pub(crate) use platform::observation::{Observer, probe_observer};
+pub(crate) use platform::observation::Observer;
 
-#[cfg(feature = "maintainer-tools")]
-impl InvestigationPlan {
+impl ExecutionPlan {
     pub(crate) fn observer(
         &self,
         output: &std::path::Path,
         attempt: &str,
-        spec: &crate::investigation::ObservationSpec,
+        spec: &crate::operation::ObservationSpec,
+        origin: &str,
     ) -> Result<(Observer, crate::capture::Capture), crate::supervisor::SupervisorError> {
-        let (_, bytes) = installation::Installation::open(self.installation.executable())
-            .map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?;
-        let image = binary::identify(&bytes)
-            .map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?;
-        let identity = serde_json::json!({
-            "origin": "unqualified-candidate", "attempt": attempt, "composition": self.composition,
-            "target": image.executable, "slice": image.slice, "architecture": "arm64",
-            "build": env!("PDX_NATIVE_BUILD"), "method": compose::METHOD,
-            "strategy": platform::resolve(targets::lookup(&image).map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?.strategy).revision, "control": spec.control,
-        });
-        let content = self
-            .installation
-            .content
-            .as_ref()
-            .map_err(|_| crate::supervisor::SupervisorError("Content unavailable".into()))?;
+        self.integrity()?;
         self.validate_observation_content()?;
-        Observer::prepare(
+        let operation = self.operation();
+        let identity = serde_json::json!({
+            "origin": origin, "attempt": attempt, "composition": self.composition(),
+            "target": operation.image.executable, "slice": operation.image.slice,
+            "machine": operation.machine, "architecture": operation.machine.architecture,
+            "build": env!("PDX_NATIVE_BUILD"), "implementation": env!("PDX_NATIVE_OPERATION"),
+            "compiler": env!("PDX_NATIVE_COMPILER"), "profile": env!("PDX_NATIVE_PROFILE"),
+            "method": operation.method, "strategy": operation.strategy.revision, "control": spec.control,
+            "bindings": operation.bindings,
+        });
+        (operation.strategy.prepare)(platform::ObservationSetup {
             output,
             attempt,
             spec,
-            self.installation.executable(),
+            executable: self.installation().executable(),
             identity,
-            content,
-            groups::observation(),
-        )
+            content: self
+                .binding
+                .inputs
+                .content
+                .as_ref()
+                .map_err(|_| crate::supervisor::SupervisorError("Content unavailable".into()))?,
+            expected_tool: self.admitted_tool.as_deref(),
+            bindings: &operation.bindings,
+            machine: &operation.machine,
+            package: &operation.strategy.package,
+        })
     }
     pub(crate) fn spawn_observed(
         &self,
@@ -218,24 +274,19 @@ impl InvestigationPlan {
     ) -> Result<OwnedGame, crate::supervisor::SupervisorError> {
         self.integrity()?;
         platform::lifecycle::spawn_guarded(
-            self.installation.executable(),
-            self.installation.root(),
+            self.installation().executable(),
+            self.installation().root(),
             output,
+            self.operation().machine.spawn_preference,
             Some(&observer.guard()),
         )
     }
-}
-
-#[cfg(feature = "maintainer-tools")]
-impl InvestigationPlan {
     pub(crate) fn validate_observation_content(
         &self,
     ) -> Result<(), crate::supervisor::SupervisorError> {
-        let expected: std::collections::BTreeMap<String, String> =
-            serde_json::from_str(include_str!("binding/targets/m45-observation-content.json"))?;
-        if self.installation.content.as_ref().ok() != Some(&expected) {
+        if self.binding.inputs.content.as_ref().ok() != Some(&self.operation().content) {
             return Err(crate::supervisor::SupervisorError(
-                "Candidate observation requires the retained 68-file content boundary".into(),
+                "Observation content does not match the selected recipe".into(),
             ));
         }
         Ok(())

@@ -293,7 +293,11 @@ fn cpath(path: &Path) -> Result<CString, SupervisorError> {
     CString::new(path.as_os_str().as_bytes())
         .map_err(|_| SupervisorError("Path contains NUL".into()))
 }
-fn settings(root: &Path, output: &Path) -> Result<SpawnSettings, SupervisorError> {
+fn settings(
+    root: &Path,
+    output: &Path,
+    spawn_preference: i32,
+) -> Result<SpawnSettings, SupervisorError> {
     // SAFETY: initialized opaque objects are retained until spawn; CStrings outlive each API
     // call, whose documented file actions copy their path arguments.
     unsafe {
@@ -312,8 +316,7 @@ fn settings(root: &Path, output: &Path) -> Result<SpawnSettings, SupervisorError
             &mut settings.attributes,
             (libc::POSIX_SPAWN_START_SUSPENDED | libc::POSIX_SPAWN_CLOEXEC_DEFAULT) as i16,
         ))?;
-        // mach/machine.h: CPU_TYPE_ARM | CPU_ARCH_ABI64.
-        let mut arch: libc::cpu_type_t = 12 | 0x0100_0000;
+        let mut arch: libc::cpu_type_t = spawn_preference;
         let mut count = 0;
         checked(libc::posix_spawnattr_setbinpref_np(
             &mut settings.attributes,
@@ -359,17 +362,19 @@ pub(crate) fn spawn(
     executable: &Path,
     root: &Path,
     output: &Path,
+    spawn_preference: i32,
 ) -> Result<OwnedGame, SupervisorError> {
-    spawn_guarded(executable, root, output, None)
+    spawn_guarded(executable, root, output, spawn_preference, None)
 }
 
 pub(crate) fn spawn_guarded(
     executable: &Path,
     root: &Path,
     output: &Path,
+    spawn_preference: i32,
     guard: Option<&Path>,
 ) -> Result<OwnedGame, SupervisorError> {
-    let settings = settings(root, output)?;
+    let settings = settings(root, output, spawn_preference)?;
     let executable = cpath(executable)?;
     let profile = output.join("profile");
     let mut userdir = b"-userdir=".to_vec();

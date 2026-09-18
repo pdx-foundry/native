@@ -4,7 +4,7 @@ use crate::{
 };
 use std::cell::RefCell;
 
-/// A fixed installation or synthetic context. It cannot be rebound or used to launch a game.
+/// A fixed installation or synthetic context. It cannot be rebound; live requests require ordinary admission.
 #[derive(Debug)]
 pub struct EngineContext {
     binding: Binding,
@@ -41,11 +41,54 @@ impl EngineContext {
             *invalidated = self.binding.integrity();
         }
         qualification::evaluate(
-            self.binding.inputs(),
+            &self.binding.current_inputs(),
             self.binding.authority(),
             request,
             self.origin(),
             invalidated.clone(),
         )
+    }
+}
+
+impl EngineContext {
+    /// Prepare the complete bounded observation window for a consumer-hosted supervisor.
+    /// No game is launched. The owner rechecks admission and input integrity before launch.
+    pub fn prepare_observation(
+        &self,
+        request: crate::ObservationRequest,
+        capture: crate::CaptureOptions,
+    ) -> Result<crate::ObservationPlan, crate::supervisor::SupervisorError> {
+        use crate::operation::{
+            AttemptRequest, Authorization, ObservationControl, ObservationSpec, PlanRequest,
+            PreparedPlan,
+        };
+        use crate::supervisor::SupervisorError;
+        let spec = ObservationSpec {
+            fixture: request.fixture,
+            deadline_seconds: request.deadline_seconds,
+            control: ObservationControl::Normal,
+        };
+        spec.validate()?;
+        let request = AttemptRequest {
+            installation_hint: self.binding.installation_hint()?,
+            output: capture.output,
+            hold_ms: 1,
+        };
+        crate::operation::validate_request(&request)?;
+        let report = self.capability(&crate::CapabilityRequest::default());
+        if report.availability != crate::Availability::Available {
+            return Err(SupervisorError(format!(
+                "Live admission refused: {:?}",
+                report.reasons
+            )));
+        }
+        Ok(crate::ObservationPlan(PreparedPlan {
+            request: PlanRequest {
+                request,
+                composition: self.identity().0,
+                authorization: Authorization::Admitted,
+                observation: Some(spec),
+            },
+        }))
     }
 }

@@ -24,7 +24,7 @@ def cargo(directory, arguments, expected=None):
 
 def main():
     # Build the ordinary release and inspect its resolved features before testing forbidden sets.
-    cargo(ROOT, ["build", "--locked", "--release", "--features", "production"])
+    cargo(ROOT, ["build", "--locked", "--release", "--examples", "--features", "production"])
     metadata = json.loads(subprocess.check_output(
         ["cargo", "metadata", "--locked", "--offline", "--format-version", "1", "--features", "production"], cwd=ROOT,
     ))
@@ -76,12 +76,16 @@ def main():
         cargo(consumer, ["check"], "no `test_support` in the root")
         main_rs.write_text("fn main() { let _ = pdx_native::EngineContext {}; }\n")
         cargo(consumer, ["check"], "private fields")
+        main_rs.write_text("fn main() { let _ = pdx_native::ObservationPlan {}; }\n")
+        cargo(consumer, ["check"], "private fields")
+        main_rs.write_text("fn main() { let _ = pdx_native::ObservationRequest { fixture: String::new(), deadline_seconds: 1, control: () }; }\n")
+        cargo(consumer, ["check"], "has no field named `control`")
         # A gated candidate report cannot be converted into a supported replay result.
         manifest = consumer / "Cargo.toml"
         manifest.write_text(manifest.read_text().replace(' }', ', features = ["maintainer-tools"] }'))
         main_rs.write_text("fn promote(value: pdx_native::investigation::InvestigationReport) -> pdx_native::ReplayResult { value.into() }\nfn main() {}\n")
         cargo(consumer, ["check"], "is not satisfied")
-        main_rs.write_text("use pdx_native::binding::InvestigationPlan;\nfn main() {}\n")
+        main_rs.write_text("use pdx_native::binding::ExecutionPlan;\nfn main() {}\n")
         cargo(consumer, ["check"], "is private")
     print("Admission boundary verified: production features, release exclusion, private leaves, and opaque context construction")
 

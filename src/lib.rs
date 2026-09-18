@@ -1,4 +1,4 @@
-//! Exact-target admission and retained observations, with optional maintainer lifecycle experiments.
+//! Exact-target admission, bounded live observations, and retained replay.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
@@ -35,5 +35,12 @@ pub use evidence::{
 };
 pub use session::EngineContext;
 
-#[cfg(feature = "maintainer-tools")]
 mod capture;
+mod observation;
+mod operation;
+
+pub use evidence::ObservationResult;
+pub use observation::{
+    CaptureOptions, ObservationJob, ObservationPlan, ObservationReport, ObservationRequest,
+};
+pub use operation::{OperationDisposal, OperationOutcome};

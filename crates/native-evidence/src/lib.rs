@@ -10,5 +10,6 @@ mod stream;
 
 pub use records::{
     Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, EvidenceReference, Gap,
-    Observation, ObservationFact, ReplayError, ReplayResult, ResultOrigin, SubjectHandle,
+    Observation, ObservationFact, ObservationResult, ReplayError, ReplayResult, ResultOrigin,
+    SubjectHandle,
 };

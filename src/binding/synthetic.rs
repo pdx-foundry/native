@@ -20,9 +20,11 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
         bounds: bounds.clone(),
         content: Ok(content.clone()),
         prerequisites: Vec::new(),
+        toolchain: Ok("synthetic-toolchain".into()),
     };
     let mut record = AcceptedRecord {
         id: "synthetic-acceptance-v1".into(),
+        toolchain: "synthetic-toolchain".into(),
         composition: inputs.composition.clone(),
         bounds,
         content,
@@ -50,6 +52,10 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
                 super::binary::hash(b"old content"),
             );
         }
+        SyntheticCase::HelperMismatch => inputs.toolchain = Ok("changed-toolchain".into()),
+        SyntheticCase::HelperUnavailable => {
+            inputs.toolchain = Err(UnavailableReason::PrerequisiteMissing)
+        }
         SyntheticCase::ContentChanged => integrity = Some(UnavailableReason::ContentChanged),
         SyntheticCase::TargetChanged => integrity = Some(UnavailableReason::TargetChanged),
         SyntheticCase::InputUnavailable => integrity = Some(UnavailableReason::InputUnavailable),
@@ -60,9 +66,11 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
             .prerequisites
             .push(UnavailableReason::PrerequisiteMissing),
         SyntheticCase::NarrowQualification => record.bounds.registration_entries = 1,
-        SyntheticCase::RealStrategy => inputs
-            .prerequisites
-            .push(platform::resolve(StrategyId::MacSuspendedChildLoaderEntry).unavailable),
+        SyntheticCase::RealStrategy => inputs.prerequisites.extend(
+            platform::resolve(StrategyId::MacSuspendedChildLoaderEntry)
+                .unavailable
+                .or(Some(UnavailableReason::ImplementationUnavailable)),
+        ),
     }
     let accepted = match case {
         SyntheticCase::RecipeOnly => Vec::new(),
@@ -83,6 +91,7 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
     };
     Binding {
         inputs,
+        operation: None,
         source: Source::Synthetic(integrity),
         authority: Authority {
             accepted,

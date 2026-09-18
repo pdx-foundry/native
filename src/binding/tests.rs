@@ -25,9 +25,14 @@ fn installation() -> (TempDir, crate::EngineContext) {
             },
             content: installation.content.clone(),
             prerequisites: Vec::new(),
+            toolchain: Ok("test-toolchain".into()),
         },
+        operation: None,
         source: Source::Installation(installation),
-        authority: Authority::bundled(),
+        authority: Authority {
+            accepted: vec![],
+            withdrawn: vec![],
+        },
     };
     (
         directory,
@@ -127,5 +132,64 @@ fn content_parent_symlinks_are_unavailable() {
             .capability(&CapabilityRequest::default())
             .reasons
             .contains(&UnavailableReason::InputUnavailable)
+    );
+}
+
+#[test]
+fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
+    use super::{ExecutionPlan, compose, platform::ObservationSetup};
+    use crate::operation::{ObservationControl, ObservationSpec};
+    use crate::supervisor::SupervisorError;
+    fn inspect(
+        setup: ObservationSetup<'_>,
+    ) -> Result<(super::Observer, crate::capture::Capture), SupervisorError> {
+        assert_eq!(setup.bindings["registration-entry"], 0x1234);
+        assert_eq!(setup.machine.architecture, "synthetic-machine");
+        assert_eq!(setup.package["selected.txt"], b"selected package");
+        assert_eq!(setup.identity["architecture"], "synthetic-machine");
+        assert_eq!(setup.identity["bindings"]["registration-entry"], 0x1234);
+        assert_eq!(setup.identity["strategy"], "synthetic-strategy");
+        Err(SupervisorError("selected strategy reached".into()))
+    }
+    let (directory, _) = installation();
+    let (installed, _) = Installation::open(directory.path()).unwrap();
+    let content = installed.content.clone().unwrap();
+    let (inputs, mut operation) = compose::synthetic_variation(content.clone());
+    operation.content = content;
+    operation.machine.architecture = "synthetic-machine".into();
+    operation.strategy.revision = "synthetic-strategy";
+    operation.strategy.package = [("selected.txt".into(), b"selected package".to_vec())].into();
+    operation.strategy.prepare = inspect;
+    let plan = ExecutionPlan {
+        binding: Binding {
+            inputs,
+            operation: Some(operation),
+            source: Source::Installation(installed),
+            authority: Authority {
+                accepted: vec![],
+                withdrawn: vec![],
+            },
+        },
+        admitted_tool: None,
+    };
+    let spec = ObservationSpec {
+        fixture: crate::capture::FIXTURE_BODY.into(),
+        deadline_seconds: 1,
+        control: ObservationControl::Normal,
+    };
+    let error = plan
+        .observer(&directory.path().join("unused"), "test", &spec, "synthetic")
+        .err()
+        .unwrap();
+    assert_eq!(error.to_string(), "selected strategy reached");
+    assert!(!directory.path().join("unused").exists());
+    let mut plan = plan;
+    plan.binding.operation.as_mut().unwrap().content.clear();
+    assert!(
+        plan.observer(&directory.path().join("unused"), "test", &spec, "synthetic")
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("selected recipe")
     );
 }

@@ -57,7 +57,7 @@ snapshots of the pre-launch profile and replay artifacts. The game can rewrite i
 without changing the retained input bytes. Writes create new files and never replace prior captures.
 
 `InvestigationReport.replay`, when present, is a descriptor reference relative to `output/evidence`.
-The candidate report envelope is version 2; controller/supervisor wire version 2 rejects older peers.
+The candidate report envelope is version 3; controller/supervisor wire version 3 rejects older peers and distinguishes ordinary from candidate authorization.
 The existing replay format and observation contract are unchanged. To replay a fresh candidate:
 
 ```sh
@@ -98,3 +98,5 @@ SDK-483 replay. Unit tests cover generated wire constraints, handshake identity 
 cleanup, immutable writes, storage bounds, damaged tails, source snapshots, and thread joins.
 
 See the [fresh evidence record](../native/candidate-observations.md) for executed attempts and limits.
+
+SDK-518 shares this implementation with the [ordinary observation API](live-observations.md). Candidate reports remain unqualified.

@@ -13,6 +13,10 @@ pub enum SyntheticCase {
     RevisionMismatch,
     /// The acceptance requires different content bytes.
     ContentMismatch,
+    /// The accepted helper identity differs from the current helper.
+    HelperMismatch,
+    /// The selected helper cannot be inspected.
+    HelperUnavailable,
     /// The content changed after the context was bound.
     ContentChanged,
     /// The executable changed after the context was bound.

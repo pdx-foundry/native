@@ -6,18 +6,29 @@ use super::{
 use crate::qualification::{AdmissionInputs, ContentIdentity};
 use crate::{ObservationBounds, OpenError, UnavailableReason};
 
-pub(super) const METHOD: &str = "registration-category-read-entries/candidate-v1";
+pub(super) const METHOD: &str = "registration-category-read-entries/v2";
+
+pub(super) struct ResolvedObservation {
+    pub image: ImageIdentity,
+    pub machine: super::Machine,
+    pub strategy: platform::StrategyResolution,
+    pub bindings: std::collections::BTreeMap<String, u64>,
+    pub content: ContentIdentity,
+    pub method: &'static str,
+}
 
 pub(super) fn compose(
     image: &ImageIdentity,
     content: Result<ContentIdentity, UnavailableReason>,
-) -> Result<AdmissionInputs, OpenError> {
-    let recipe = targets::lookup(image)?;
-    let bindings: Vec<_> = recipe
-        .groups
-        .iter()
-        .map(|group| groups::resolve(*group))
-        .collect();
+) -> Result<(AdmissionInputs, ResolvedObservation), OpenError> {
+    assemble(image, content, targets::lookup(image)?)
+}
+
+fn assemble(
+    image: &ImageIdentity,
+    content: Result<ContentIdentity, UnavailableReason>,
+    recipe: &targets::Recipe,
+) -> Result<(AdmissionInputs, ResolvedObservation), OpenError> {
     let machine = machine::resolve(image.architecture)?;
     let strategy = platform::resolve(recipe.strategy);
     let (method, bounds) = match recipe.method {
@@ -29,33 +40,68 @@ pub(super) fn compose(
             },
         ),
     };
-    // Length-delimited parts prevent ambiguous concatenations. Include declarations as well as
-    // revisions so a binding edit cannot silently keep the former composition identity.
-    let parts = [
-        image.executable.as_str(),
-        image.slice.as_str(),
-        recipe.revision,
-        method,
-        machine,
-        strategy.revision,
-    ];
-    let mut bytes = Vec::new();
-    for part in parts.into_iter().chain(bindings.iter().map(String::as_str)) {
-        bytes.extend((part.len() as u64).to_le_bytes());
-        bytes.extend(part.as_bytes());
-    }
-    for source in [
-        include_bytes!("platform/macos/observation/worker.py").as_slice(),
-        include_bytes!("platform/macos/observation/protocol.py").as_slice(),
-        include_bytes!("platform/macos/observation/guard.m").as_slice(),
-    ] {
-        bytes.extend((source.len() as u64).to_le_bytes());
-        bytes.extend(source);
-    }
-    Ok(AdmissionInputs {
-        composition: hash(&bytes),
+    let bindings = groups::observation(recipe.groups);
+    let expected: ContentIdentity =
+        serde_json::from_str(recipe.content).expect("tracked content manifest");
+    let declarations: Vec<_> = recipe
+        .groups
+        .iter()
+        .map(|group| groups::resolve(*group))
+        .collect();
+    let packages: std::collections::BTreeMap<_, _> = strategy
+        .package
+        .iter()
+        .map(|(name, bytes)| (name, hash(bytes)))
+        .collect();
+    let identity = serde_json::json!({
+        "target": image.executable, "slice": image.slice, "recipe": recipe.revision,
+        "method": method, "machine": machine, "strategy": strategy.revision,
+        "bindings": bindings, "declarations": declarations, "package": packages,
+        "content": expected, "implementation": env!("PDX_NATIVE_OPERATION"),
+    });
+    let inputs = AdmissionInputs {
+        composition: hash(&serde_json::to_vec(&identity).expect("composition identity")),
         bounds,
         content,
-        prerequisites: vec![strategy.unavailable],
-    })
+        toolchain: Err(UnavailableReason::PrerequisiteMissing),
+        prerequisites: strategy.unavailable.clone().into_iter().collect(),
+    };
+    Ok((
+        inputs,
+        ResolvedObservation {
+            image: image.clone(),
+            machine,
+            strategy,
+            bindings,
+            content: expected,
+            method,
+        },
+    ))
+}
+
+#[cfg(test)]
+pub(super) fn synthetic_variation(
+    content: ContentIdentity,
+) -> (AdmissionInputs, ResolvedObservation) {
+    let recipe = targets::Recipe {
+        revision: "synthetic-recipe",
+        groups: &[
+            targets::BindingGroupId::SyntheticRegistration,
+            targets::BindingGroupId::CategoryReader,
+        ],
+        method: MethodId::BoundedRegistrationCategoryReads,
+        strategy: targets::StrategyId::MacSuspendedChildLoaderEntry,
+        content: "{}",
+    };
+    assemble(
+        &ImageIdentity {
+            executable: "synthetic-image".into(),
+            slice: "synthetic-slice".into(),
+            architecture: object::Architecture::Aarch64,
+            format: object::BinaryFormat::MachO,
+        },
+        Ok(content),
+        &recipe,
+    )
+    .unwrap()
 }

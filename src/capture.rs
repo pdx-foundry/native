@@ -1,5 +1,5 @@
-//! Candidate artifact writing. Evidence owns the recorded types and all replay conclusions.
-use crate::{investigation::ObservationSpec, supervisor::SupervisorError};
+//! Shared live artifact writing. Evidence owns the recorded types and all replay conclusions.
+use crate::{operation::ObservationSpec, supervisor::SupervisorError};
 use evidence::{
     ArtifactReference, CaptureOrigin,
     recorded::{self, Descriptor, Manifest, OwnerEvent, RecordedRequest, TraceEvent, TraceRecord},
@@ -130,7 +130,7 @@ impl Capture {
         manifest
             .as_object_mut()
             .unwrap()
-            .insert("candidateIdentity".into(), identity);
+            .insert("nativeIdentity".into(), identity);
         write_json(&root.join("manifest.json"), &manifest)?;
         write_json(
             &root.join("request.json"),
@@ -356,7 +356,7 @@ mod storage_tests {
         let spec = ObservationSpec {
             fixture: FIXTURE_BODY.into(),
             deadline_seconds: 180,
-            control: crate::investigation::ObservationControl::Normal,
+            control: crate::operation::ObservationControl::Normal,
         };
         let mut capture = Capture::prepare(
             root.path(),

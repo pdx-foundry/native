@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-candidate-observation/1";
+pub(crate) const VERSION: &str = "native-observation/2";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 
@@ -20,6 +20,7 @@ pub(crate) struct WorkerRequest {
     pub target: String,
     pub artifacts: BTreeMap<String, String>,
     pub bindings: BTreeMap<String, u64>,
+    pub machine: crate::binding::Machine,
     pub fixture: String,
     pub control: String,
     pub deadline_seconds: u64,

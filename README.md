@@ -3,7 +3,7 @@
 Rust bridge to Stellaris.
 
 The library identifies exact installations, reports capability admission, and replays the bounded
-historical registration/category-read window. No production live operation is qualified yet.
+historical registration/category-read window. The bounded live API is implemented; qualification promotion remains pending maintainer acceptance.
 The optional maintainer API runs suspended candidate lifecycle attempts inside a consumer-supplied
 supervisor process; Native distributes no runtime executable. An Atlas-style caller uses `Engine::replay` with a relocatable artifact
 root and a pinned descriptor reference.
@@ -51,4 +51,4 @@ for limits and build checks.
 
 Maintainer-only [candidate observations](docs/design/candidate-observations.md) capture the retained
 registration/category window under an independent supervisor and emit replayable evidence.
-Public live operations remain unavailable pending separate qualification.
+Public live operations remain unavailable pending reviewed qualification. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.

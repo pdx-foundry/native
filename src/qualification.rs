@@ -7,21 +7,24 @@ use std::collections::BTreeMap;
 pub(crate) use admission::evaluate;
 pub(crate) type ContentIdentity = BTreeMap<String, String>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct AdmissionInputs {
     pub composition: String,
     pub bounds: ObservationBounds,
     pub content: Result<ContentIdentity, UnavailableReason>,
     pub prerequisites: Vec<UnavailableReason>,
+    pub toolchain: Result<String, UnavailableReason>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct AcceptedRecord {
     pub id: String,
     pub composition: String,
     pub bounds: ObservationBounds,
     pub content: ContentIdentity,
     pub evidence: Vec<ArtifactReference>,
+    pub toolchain: String,
 }
 
 #[derive(Debug)]
@@ -33,7 +36,7 @@ pub(crate) struct Authority {
 impl Authority {
     pub(crate) fn bundled() -> Self {
         Self {
-            accepted: records::ACCEPTED.to_vec(),
+            accepted: records::accepted(),
             withdrawn: records::WITHDRAWN.iter().map(|id| (*id).into()).collect(),
         }
     }

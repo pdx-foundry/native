@@ -102,7 +102,7 @@ def callback(frame, loc, _):
             registration_count += 1
             if registration_count == 1:
                 emit('phase-reached', phase='effect-registration', stack=[f.GetFunctionName() or '' for f in frame.GetThread()][:8], thread=thread)
-            emit('registration-observed', ordinal=registration_count, engineToken=register(frame, 'w1'), thread=thread)
+            emit('registration-observed', ordinal=registration_count, engineToken=register(frame, request['machine']['registers']['registration-token']), thread=thread)
             if registration_count == 3:
                 breakpoints[name].SetEnabled(False)
                 emit('registration-window-complete', observed=3, thread=thread)
@@ -111,7 +111,7 @@ def callback(frame, loc, _):
                     (ROOT / 'worker-loss-ready').touch(exist_ok=False)
                     return True
         elif name == 'load-file':
-            file = string(process, register(frame, 'x1'))
+            file = string(process, register(frame, request['machine']['registers']['file']))
             if file != request['fixture']:
                 return False
             if active_file is not None or thread != entry_thread:
@@ -121,21 +121,21 @@ def callback(frame, loc, _):
             if control == 'access-failure':
                 uint(process, 0)
                 raise RuntimeError('access failure control unexpectedly read address zero')
-            return_hook = process.GetTarget().BreakpointCreateByAddress(register(frame, 'lr'))
+            return_hook = process.GetTarget().BreakpointCreateByAddress(register(frame, request['machine']['registers']['return']))
             return_hook.SetThreadID(thread)
             return_hook.SetOneShot(True)
             return_hook.SetScriptCallbackFunction('worker.callback')
         elif name == 'field':
-            where = location(process, register(frame, 'x1'))
+            where = location(process, register(frame, request['machine']['registers']['reader']))
             if where['file'] != request['fixture']:
                 return False
             if active_file != where['file'] or thread != active_thread:
                 raise RuntimeError('field lacks matching loader/thread witness')
-            owner = hex(register(frame, 'x0'))
+            owner = hex(register(frame, request['machine']['registers']['owner']))
             if owner == '0x0' or active_owner not in (None, owner):
                 raise RuntimeError('field owner changed or is null')
             active_owner = owner
-            token = register(frame, 'w2')
+            token = register(frame, request['machine']['registers']['field-token'])
             fields = {bindings['tree-template-token']: 'tree_template', bindings['traditions-token']: 'traditions'}
             if token not in fields or field_count >= 2:
                 raise RuntimeError('field outside bounded category window')
@@ -168,7 +168,7 @@ def run(debugger):
         game=request['game'], worker=os.getpid(), target=target_hash, artifacts=artifacts,
         python=sys.version, lldb=lldb.SBDebugger.GetVersionString(), module=lldb.__file__))
     debugger.SetAsync(True)
-    target = debugger.CreateTargetWithFileAndArch(request['executable'], 'arm64')
+    target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
     for name, role in [('registration', 'registration-entry'), ('load-file', 'category-load-entry'), ('field', 'category-field-read-entry')]:
         if name == 'field' and control == 'missing-hook':
             continue
@@ -188,7 +188,7 @@ def run(debugger):
     if error.Fail():
         emit('capability-unavailable', reason='debugger attach failed: ' + str(error))
         return
-    if process.GetState() != lldb.eStateStopped or entry_thread is None or not target.GetTriple().startswith('arm64-'):
+    if process.GetState() != lldb.eStateStopped or entry_thread is None or not target.GetTriple().startswith(request['machine']['architecture'] + '-'):
         emit('early-activation-unavailable', reason='ARM64 loader entry not established')
         return
     if set(state) != {'registration', 'load-file', 'field'} or not all(h['enabled'] and h['locations'] == 1 and h['resolved'] == 1 and h['hits'] == 0 for h in state.values()):

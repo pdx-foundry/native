@@ -30,6 +30,11 @@ pub(crate) fn evaluate(
     {
         report.reasons.push(reason.clone());
     }
+    if let Err(reason) = &inputs.toolchain
+        && !report.reasons.contains(reason)
+    {
+        report.reasons.push(reason.clone());
+    }
     if !covers(&inputs.bounds, request) {
         report.qualification = Qualification::OutsideSupport;
         report.reasons.push(UnavailableReason::OutsideBounds);
@@ -68,6 +73,17 @@ pub(crate) fn evaluate(
         .collect();
     if applicable.is_empty() {
         report.reasons.push(UnavailableReason::ContentMismatch);
+        return report;
+    }
+    let applicable: Vec<_> = match &inputs.toolchain {
+        Ok(toolchain) => applicable
+            .into_iter()
+            .filter(|record| record.toolchain == *toolchain)
+            .collect(),
+        Err(_) => return report,
+    };
+    if applicable.is_empty() {
+        report.reasons.push(UnavailableReason::HelperMismatch);
         return report;
     }
     // Qualification applies only to the bound inputs. A changed/unreadable installation cannot

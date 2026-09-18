@@ -26,7 +26,62 @@ fn main() {
             hash.update(bytes);
         }
     }
+    let mut operation = Sha256::new();
+    for path in [
+        "src/api.rs",
+        "src/session.rs",
+        "src/observation.rs",
+        "src/operation.rs",
+        "src/capture.rs",
+        "src/execution",
+        "src/protocol",
+        "src/protocol.rs",
+        "src/supervisor.rs",
+        "src/qualification/admission.rs",
+        "src/binding.rs",
+        "src/binding/compose.rs",
+        "src/binding/installation.rs",
+        "src/binding/platform.rs",
+        "crates/native-evidence/src",
+        "Cargo.lock",
+        "Cargo.toml",
+        "build.rs",
+    ] {
+        sources(std::path::Path::new(path), &mut operation);
+    }
+    let compiler = std::process::Command::new(std::env::var_os("RUSTC").expect("Cargo rustc"))
+        .arg("-vV")
+        .output()
+        .expect("Rust compiler identity");
+    assert!(
+        compiler.status.success(),
+        "Rust compiler identity unavailable"
+    );
+    operation.update(&compiler.stdout);
+    for name in [
+        "TARGET",
+        "PROFILE",
+        "OPT_LEVEL",
+        "DEBUG",
+        "CARGO_CFG_PANIC",
+        "CARGO_ENCODED_RUSTFLAGS",
+    ] {
+        println!("cargo:rerun-if-env-changed={name}");
+        operation.update(name.as_bytes());
+        operation.update(std::env::var(name).unwrap_or_default().as_bytes());
+    }
+    let implementation = operation.finalize();
+    println!("cargo:rustc-env=PDX_NATIVE_OPERATION={implementation:x}");
+    println!(
+        "cargo:rustc-env=PDX_NATIVE_COMPILER={:x}",
+        Sha256::digest(&compiler.stdout)
+    );
+    println!(
+        "cargo:rustc-env=PDX_NATIVE_PROFILE={}",
+        std::env::var("PROFILE").unwrap()
+    );
     let mut hash = Sha256::new();
+    hash.update(implementation);
     for path in [
         "src",
         "crates/native-evidence/src",
@@ -48,9 +103,7 @@ fn main() {
         hash.update(name.as_bytes());
         hash.update(std::env::var(name).unwrap_or_default().as_bytes());
     }
-    if std::env::var_os("CARGO_FEATURE_MAINTAINER_TOOLS").is_some()
-        && std::env::var("TARGET").as_deref() == Ok("aarch64-apple-darwin")
-    {
+    if std::env::var("TARGET").as_deref() == Ok("aarch64-apple-darwin") {
         let source = "src/binding/platform/macos/observation/guard.m";
         let output =
             std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("guard.dylib");
@@ -60,6 +113,8 @@ fn main() {
                 "-arch",
                 "arm64",
                 "-dynamiclib",
+                "-install_name",
+                "@rpath/pdx-native-observation-guard.dylib",
                 "-fobjc-arc",
                 "-framework",
                 "AppKit",
@@ -68,7 +123,7 @@ fn main() {
             .arg(&output)
             .arg(source)
             .status()
-            .expect("Xcode clang is required for the maintainer guard");
+            .expect("Xcode clang is required for the observation guard");
         assert!(status.success(), "presentation guard compilation failed");
         hash.update(std::fs::read(output).unwrap());
     }

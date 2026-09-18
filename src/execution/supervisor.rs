@@ -1,8 +1,9 @@
 use super::instances::Reservation;
 use crate::{
-    binding::{self, InvestigationPlan},
-    investigation::{
-        self, CandidateDisposal, CandidateOutcome, Control, InvestigationReport, PlanRequest,
+    binding::{self, ExecutionPlan},
+    operation::{
+        self, AttemptReport, Authorization, Control, OperationDisposal, OperationOutcome,
+        PlanRequest,
     },
     protocol::{self, Hello, Reply},
     supervisor::SupervisorError,
@@ -32,7 +33,7 @@ fn receive(input: &Receiver<Input>, budget: Duration) -> Result<Input, Superviso
         .recv_timeout(budget)
         .map_err(|_| SupervisorError("Controller disconnected or handshake timed out".into()))
 }
-fn reader(mut input: impl Read + Send + 'static) -> Receiver<Input> {
+fn reader(mut input: impl Read + Send + 'static, authorization: Authorization) -> Receiver<Input> {
     let (send, receive) = mpsc::sync_channel(1);
     thread::spawn(move || {
         let read = || -> Result<(), SupervisorError> {
@@ -43,7 +44,10 @@ fn reader(mut input: impl Read + Send + 'static) -> Receiver<Input> {
             send.send(Input::Plan(plan))
                 .map_err(|e| SupervisorError(e.to_string()))?;
             loop {
-                let control = protocol::read(&mut input)?;
+                let control: Control = protocol::read(&mut input)?;
+                if authorization == Authorization::Admitted && !matches!(control, Control::Cancel) {
+                    return Err(SupervisorError("Unsupported ordinary control".into()));
+                }
                 send.send(Input::Control(control))
                     .map_err(|e| SupervisorError(e.to_string()))?;
             }
@@ -100,30 +104,36 @@ impl Reporter {
 pub(crate) fn serve(
     input: impl Read + Send + 'static,
     output: impl Write + Send + 'static,
+    authorization: Authorization,
 ) -> Result<(), SupervisorError> {
-    let input = reader(input);
+    let input = reader(input, authorization);
     let output = Reporter::new(output);
-    let result = handshake(&input, &output).and_then(|plan| run(plan, &input, &output));
+    let result =
+        handshake(&input, &output, authorization).and_then(|plan| run(plan, &input, &output));
     match result {
         Ok(report) => output.send(Reply::Finished(Box::new(report)))?,
         Err(error) => output.send(Reply::Rejected(error.to_string()))?,
     }
     output.finish()
 }
-fn handshake(input: &Receiver<Input>, output: &Reporter) -> Result<PlanRequest, SupervisorError> {
+fn handshake(
+    input: &Receiver<Input>,
+    output: &Reporter,
+    authorization: Authorization,
+) -> Result<PlanRequest, SupervisorError> {
     let Input::Hello(hello) = receive(input, HANDSHAKE_BUDGET)? else {
         return Err(SupervisorError("Expected hello".into()));
     };
     hello.validate()?;
+    if hello.authorization != authorization {
+        return Err(SupervisorError("Supervisor authorization mismatch".into()));
+    }
     binding::prepare_owner(hello.controller)?;
     output.send(Reply::Ready)?;
     let Input::Plan(plan) = receive(input, HANDSHAKE_BUDGET)? else {
-        return Err(SupervisorError("Expected candidate request".into()));
+        return Err(SupervisorError("Expected operation request".into()));
     };
-    investigation::validate_request(&plan.request)?;
-    if let Some(spec) = &plan.observation {
-        spec.validate()?;
-    }
+    plan.validate(authorization)?;
     Ok(plan)
 }
 
@@ -131,10 +141,13 @@ fn run(
     request: PlanRequest,
     input: &Receiver<Input>,
     output: &Reporter,
-) -> Result<InvestigationReport, SupervisorError> {
-    let plan = InvestigationPlan::open(&request.request.installation_hint)?;
-    if plan.composition != request.composition {
-        return Err(SupervisorError("Candidate composition mismatch".into()));
+) -> Result<AttemptReport, SupervisorError> {
+    let mut plan = ExecutionPlan::open(&request.request.installation_hint)?;
+    if plan.composition() != request.composition {
+        return Err(SupervisorError("Composition mismatch".into()));
+    }
+    if request.authorization == Authorization::Admitted {
+        plan.admit()?;
     }
     let parent = request
         .request
@@ -157,12 +170,12 @@ fn run(
             .as_nanos()
     );
     let mut reservation = Reservation::acquire(attempt.clone(), retained.clone())?;
-    let mut report = InvestigationReport {
-        origin: "unqualified-candidate".into(),
+    let mut report = AttemptReport {
+        origin: request.authorization.origin().into(),
         attempt,
-        composition: plan.composition.clone(),
-        outcome: CandidateOutcome::Completed,
-        disposal: CandidateDisposal::NotLaunched,
+        composition: plan.composition().into(),
+        outcome: OperationOutcome::Completed,
+        disposal: OperationDisposal::NotLaunched,
         reservation_resolved: false,
         output: retained,
         diagnostics: Vec::new(),
@@ -183,7 +196,12 @@ fn run(
         prepare_profile(&report.output)?;
         if let Some(spec) = &request.observation {
             prepare_fixture(&report.output, spec)?;
-            let (prepared, retained) = plan.observer(&report.output, &report.attempt, spec)?;
+            let (prepared, retained) = plan.observer(
+                &report.output,
+                &report.attempt,
+                spec,
+                request.authorization.origin(),
+            )?;
             observer = Some(prepared);
             capture = Some(retained);
         }
@@ -194,13 +212,13 @@ fn run(
                 return Ok(());
             }
             Err(mpsc::TryRecvError::Disconnected) => {
-                report.outcome = CandidateOutcome::CallerLost;
+                report.outcome = OperationOutcome::CallerLost;
                 return Ok(());
             }
             Err(mpsc::TryRecvError::Empty) => {}
         }
         if started.elapsed() >= SETUP_BUDGET {
-            report.outcome = CandidateOutcome::TimedOut;
+            report.outcome = OperationOutcome::TimedOut;
             return Ok(());
         }
         game = Some(match &observer {
@@ -215,7 +233,7 @@ fn run(
             ));
         }
         if started.elapsed() >= SETUP_BUDGET {
-            report.outcome = CandidateOutcome::TimedOut;
+            report.outcome = OperationOutcome::TimedOut;
             return Ok(());
         }
         output.send(Reply::Started {
@@ -256,7 +274,7 @@ fn run(
         {
             report.diagnostics.push(retention.to_string());
         }
-        report.outcome = CandidateOutcome::Failed(error.to_string());
+        report.outcome = OperationOutcome::Failed(error.to_string());
     }
     let mut worker_stopped = true;
     if let Some(observer) = &mut observer {
@@ -265,8 +283,8 @@ fn run(
             report.diagnostics.push(error.to_string());
         }
         if let (Some(code), Some(capture)) = (observer.exited, &mut capture) {
-            if code != 0 && report.outcome == CandidateOutcome::Completed {
-                report.outcome = CandidateOutcome::WorkerLost;
+            if code != 0 && report.outcome == OperationOutcome::Completed {
+                report.outcome = OperationOutcome::WorkerLost;
             }
             if let Err(error) =
                 capture.record(evidence::recorded::OwnerEvent::WorkerExited { returncode: code })
@@ -277,15 +295,15 @@ fn run(
     }
     if let Some(mut child) = game {
         report.disposal = match child.dispose(DISPOSAL_BUDGET) {
-            Ok(()) => CandidateDisposal::Reaped,
-            Err(error) => CandidateDisposal::Unconfirmed(error.to_string()),
+            Ok(()) => OperationDisposal::Reaped,
+            Err(error) => OperationDisposal::Unconfirmed(error.to_string()),
         };
         if let Some(capture) = &mut capture {
             let event = evidence::recorded::OwnerEvent::DisposalChecked {
-                confirmed: report.disposal == CandidateDisposal::Reaped,
+                confirmed: report.disposal == OperationDisposal::Reaped,
                 reaped_pid: u64::from(child.pid()),
                 game_exit: child.exit_status(),
-                remaining_identity: if report.disposal == CandidateDisposal::Reaped {
+                remaining_identity: if report.disposal == OperationDisposal::Reaped {
                     None
                 } else {
                     Some(serde_json::to_string(&child.identity().ok())?)
@@ -297,14 +315,14 @@ fn run(
         }
     }
     if let Err(error) = plan.integrity() {
-        report.outcome = CandidateOutcome::Failed(error.to_string());
+        report.outcome = OperationOutcome::Failed(error.to_string());
     }
-    if worker_stopped && !matches!(report.disposal, CandidateDisposal::Unconfirmed(_)) {
+    if worker_stopped && !matches!(report.disposal, OperationDisposal::Unconfirmed(_)) {
         match reservation.disposed() {
             Ok(()) => report.reservation_resolved = true,
             Err(error) => {
                 report.outcome =
-                    CandidateOutcome::Failed(format!("Disposal journal commit failed: {error}"))
+                    OperationOutcome::Failed(format!("Disposal journal commit failed: {error}"))
             }
         }
     }
@@ -327,11 +345,11 @@ fn observe_worker(
     child: &binding::OwnedGame,
     observer: &mut binding::Observer,
     budget: Duration,
-) -> Result<CandidateOutcome, SupervisorError> {
+) -> Result<OperationOutcome, SupervisorError> {
     let started = Instant::now();
     loop {
         if started.elapsed() >= budget {
-            return Ok(CandidateOutcome::TimedOut);
+            return Ok(OperationOutcome::TimedOut);
         }
         if binding::conflicting_game(Some(child.pid()))? {
             return Err(SupervisorError(
@@ -339,11 +357,11 @@ fn observe_worker(
             ));
         }
         if observer.poll()? {
-            return Ok(CandidateOutcome::Completed);
+            return Ok(OperationOutcome::Completed);
         }
         match input.recv_timeout(Duration::from_millis(50)) {
             Ok(event) => return Ok(interruption(event)),
-            Err(RecvTimeoutError::Disconnected) => return Ok(CandidateOutcome::CallerLost),
+            Err(RecvTimeoutError::Disconnected) => return Ok(OperationOutcome::CallerLost),
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
@@ -351,7 +369,7 @@ fn observe_worker(
 
 fn prepare_fixture(
     output: &Path,
-    spec: &crate::investigation::ObservationSpec,
+    spec: &crate::operation::ObservationSpec,
 ) -> Result<(), SupervisorError> {
     let profile = output.join("profile");
     for relative in [
@@ -377,9 +395,7 @@ fn prepare_fixture(
         })?;
     fs::write(
         profile.join("mod/atlas_early.mod"),
-        format!(
-            "name=\"Native candidate observation\"\npath=\"{mod_path}\"\nsupported_version=\"4.5.*\"\n"
-        ),
+        format!("name=\"Native bounded observation\"\npath=\"{mod_path}\"\n"),
     )?;
     fs::write(
         profile.join("dlc_load.json"),
@@ -392,15 +408,15 @@ fn prepare_fixture(
     Ok(())
 }
 
-fn retain_report(reservation: &Reservation, report: &mut InvestigationReport) {
+fn retain_report(reservation: &Reservation, report: &mut AttemptReport) {
     let owner = reservation
         .snapshot()
         .and_then(|snapshot| write_new(&report.output.join("owner.json"), &snapshot));
     if let Err(error) = owner {
         report.diagnostics.push(format!("owner.json: {error}"));
     }
-    let capture = investigation::CandidateCapture {
-        version: 2,
+    let capture = operation::AttemptCapture {
+        version: 3,
         build: env!("PDX_NATIVE_BUILD").into(),
         report: report.clone(),
     };
@@ -413,14 +429,14 @@ fn retain_report(reservation: &Reservation, report: &mut InvestigationReport) {
     }
 }
 
-fn hold_outcome(hold: Duration, elapsed: Duration) -> Option<CandidateOutcome> {
+fn hold_outcome(hold: Duration, elapsed: Duration) -> Option<OperationOutcome> {
     if elapsed < hold {
         return None;
     }
     Some(if hold == HOLD_LIMIT {
-        CandidateOutcome::TimedOut
+        OperationOutcome::TimedOut
     } else {
-        CandidateOutcome::Completed
+        OperationOutcome::Completed
     })
 }
 
@@ -429,7 +445,7 @@ fn observe(
     child: &binding::OwnedGame,
     started: Instant,
     hold: Duration,
-) -> Result<CandidateOutcome, SupervisorError> {
+) -> Result<OperationOutcome, SupervisorError> {
     loop {
         if let Some(outcome) = hold_outcome(hold, started.elapsed()) {
             return Ok(outcome);
@@ -444,16 +460,17 @@ fn observe(
         }
         match input.recv_timeout(Duration::from_millis(100)) {
             Ok(event) => return Ok(interruption(event)),
-            Err(RecvTimeoutError::Disconnected) => return Ok(CandidateOutcome::CallerLost),
+            Err(RecvTimeoutError::Disconnected) => return Ok(OperationOutcome::CallerLost),
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
 }
-fn interruption(event: Input) -> CandidateOutcome {
+fn interruption(event: Input) -> OperationOutcome {
     match event {
-        Input::Control(Control::Cancel) => CandidateOutcome::Cancelled,
-        Input::Control(Control::WorkerLost) => CandidateOutcome::WorkerLost,
-        _ => CandidateOutcome::CallerLost,
+        Input::Control(Control::Cancel) => OperationOutcome::Cancelled,
+        #[cfg(any(test, feature = "maintainer-tools"))]
+        Input::Control(Control::WorkerLost) => OperationOutcome::WorkerLost,
+        _ => OperationOutcome::CallerLost,
     }
 }
 
@@ -504,11 +521,11 @@ mod tests {
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         for (index, expected) in [
-            CandidateOutcome::Completed,
-            CandidateOutcome::Cancelled,
-            CandidateOutcome::CallerLost,
-            CandidateOutcome::WorkerLost,
-            CandidateOutcome::TimedOut,
+            OperationOutcome::Completed,
+            OperationOutcome::Cancelled,
+            OperationOutcome::CallerLost,
+            OperationOutcome::WorkerLost,
+            OperationOutcome::TimedOut,
         ]
         .into_iter()
         .enumerate()
@@ -520,21 +537,21 @@ mod tests {
             reservation.record_game(child.identity().unwrap()).unwrap();
             assert!(child.suspended().unwrap());
             let (send, input) = mpsc::sync_channel(1);
-            let started = if expected == CandidateOutcome::TimedOut {
+            let started = if expected == OperationOutcome::TimedOut {
                 Instant::now() - HOLD_LIMIT
             } else {
                 Instant::now()
             };
             match expected {
-                CandidateOutcome::Cancelled => send.send(Input::Control(Control::Cancel)).unwrap(),
-                CandidateOutcome::WorkerLost => {
+                OperationOutcome::Cancelled => send.send(Input::Control(Control::Cancel)).unwrap(),
+                OperationOutcome::WorkerLost => {
                     // Real worker termination precedes notification; its handle never owns game/lock.
                     let mut worker = Command::new("/bin/sleep").arg("60").spawn().unwrap();
                     worker.kill().unwrap();
                     worker.wait().unwrap();
                     send.send(Input::Control(Control::WorkerLost)).unwrap();
                 }
-                CandidateOutcome::CallerLost => {
+                OperationOutcome::CallerLost => {
                     drop(send);
                 }
                 _ => {}
@@ -543,9 +560,9 @@ mod tests {
                 &input,
                 &child,
                 started,
-                if expected == CandidateOutcome::Completed {
+                if expected == OperationOutcome::Completed {
                     Duration::ZERO
-                } else if expected == CandidateOutcome::TimedOut {
+                } else if expected == OperationOutcome::TimedOut {
                     HOLD_LIMIT
                 } else {
                     Duration::from_secs(1)
@@ -585,24 +602,24 @@ mod tests {
         let mut reservation = reserve(root.path(), "capture-failure", output.path()).unwrap();
         reservation.disposed().unwrap();
         fs::write(output.path().join("capture.json"), "existing evidence").unwrap();
-        let mut report = InvestigationReport {
+        let mut report = AttemptReport {
             origin: "unqualified-candidate".into(),
             attempt: "capture-failure".into(),
             composition: "test".into(),
-            outcome: CandidateOutcome::Cancelled,
-            disposal: CandidateDisposal::NotLaunched,
+            outcome: OperationOutcome::Cancelled,
+            disposal: OperationDisposal::NotLaunched,
             reservation_resolved: true,
             output: output.path().into(),
             diagnostics: Vec::new(),
             replay: None,
         };
         retain_report(&reservation, &mut report);
-        let retained: InvestigationReport =
+        let retained: AttemptReport =
             serde_json::from_slice(&fs::read(output.path().join("report.json")).unwrap()).unwrap();
         assert_eq!(retained.diagnostics, report.diagnostics);
         assert_eq!(retained.diagnostics.len(), 1);
         assert!(retained.diagnostics[0].contains("capture.json"));
-        assert_eq!(retained.disposal, CandidateDisposal::NotLaunched);
+        assert_eq!(retained.disposal, OperationDisposal::NotLaunched);
         assert_eq!(
             fs::read_to_string(output.path().join("capture.json")).unwrap(),
             "existing evidence"
@@ -682,26 +699,39 @@ mod interruption_tests {
     fn valid_holds_complete_after_their_full_window_even_with_polling_delay() {
         let hold = Duration::from_millis(29_999);
         assert_eq!(hold_outcome(hold, hold - Duration::from_millis(1)), None);
-        assert_eq!(hold_outcome(hold, hold), Some(CandidateOutcome::Completed));
+        assert_eq!(hold_outcome(hold, hold), Some(OperationOutcome::Completed));
         assert_eq!(
             hold_outcome(hold, HOLD_LIMIT + Duration::from_millis(100)),
-            Some(CandidateOutcome::Completed)
+            Some(OperationOutcome::Completed)
         );
         assert_eq!(
             hold_outcome(HOLD_LIMIT, HOLD_LIMIT),
-            Some(CandidateOutcome::TimedOut)
+            Some(OperationOutcome::TimedOut)
         );
+    }
+    #[cfg(feature = "maintainer-tools")]
+    #[test]
+    fn candidate_handshake_cannot_enter_the_ordinary_owner() {
+        let (send, input) = mpsc::sync_channel(1);
+        let mut hello = Hello::current(Authorization::Candidate);
+        hello.controller = u32::MAX;
+        send.send(Input::Hello(hello)).unwrap();
+        let reporter = Reporter::new(std::io::sink());
+        let error = handshake(&input, &reporter, Authorization::Admitted)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("authorization mismatch"));
     }
     #[test]
     fn prelaunch_and_running_interruptions_keep_their_cause() {
         assert_eq!(
             interruption(Input::Control(Control::WorkerLost)),
-            CandidateOutcome::WorkerLost
+            OperationOutcome::WorkerLost
         );
         assert_eq!(
             interruption(Input::Control(Control::Cancel)),
-            CandidateOutcome::Cancelled
+            OperationOutcome::Cancelled
         );
-        assert_eq!(interruption(Input::Lost), CandidateOutcome::CallerLost);
+        assert_eq!(interruption(Input::Lost), OperationOutcome::CallerLost);
     }
 }

@@ -99,7 +99,8 @@ impl Default for CapabilityRequest {
 }
 
 /// Limits of the bounded registration/category-read operation, not a complete registry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ObservationBounds {
     /// Maximum number of initial registration entries.
     pub registration_entries: u32,
@@ -134,6 +135,8 @@ pub enum UnavailableReason {
     HostUnavailable,
     /// The selected live strategy has no implementation in this release.
     ImplementationUnavailable,
+    /// The selected debugger/tool identity differs from the accepted qualification.
+    HelperMismatch,
     /// Qualification for the exact operation composition is absent.
     QualificationMissing,
     /// An otherwise matching acceptance has been withdrawn.

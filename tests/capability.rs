@@ -26,6 +26,16 @@ fn accepted_admission_does_not_require_historical_evidence_bytes() {
 fn fixed_cases_report_independent_qualification_and_availability() {
     let cases = [
         (
+            SyntheticCase::HelperMismatch,
+            Qualification::Incomplete,
+            UnavailableReason::HelperMismatch,
+        ),
+        (
+            SyntheticCase::HelperUnavailable,
+            Qualification::Incomplete,
+            UnavailableReason::PrerequisiteMissing,
+        ),
+        (
             SyntheticCase::RecipeOnly,
             Qualification::Incomplete,
             UnavailableReason::QualificationMissing,
@@ -177,4 +187,24 @@ fn unreadable_content_is_not_a_demonstrated_mismatch() {
     assert_eq!(report.reasons, [UnavailableReason::InputUnavailable]);
     assert!(report.accepted_bounds.is_empty());
     assert!(report.qualification_records.is_empty());
+}
+
+#[test]
+fn accepted_synthetic_context_never_constructs_a_live_plan() {
+    let root = tempfile::tempdir().unwrap();
+    let output = root.path().join("must-not-exist");
+    let error = engine(SyntheticCase::Accepted)
+        .prepare_observation(
+            pdx_native::ObservationRequest {
+                fixture: include_str!("fixtures/candidate/category.txt").into(),
+                deadline_seconds: 180,
+            },
+            pdx_native::CaptureOptions {
+                output: output.clone(),
+            },
+        )
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("Synthetic"));
+    assert!(!output.exists());
 }

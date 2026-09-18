@@ -2,9 +2,9 @@ mod arm64;
 
 pub(super) fn resolve(
     architecture: object::Architecture,
-) -> Result<&'static str, crate::OpenError> {
+) -> Result<super::Machine, crate::OpenError> {
     match architecture {
-        object::Architecture::Aarch64 => Ok(arm64::READ_ENTRY_REVISION),
+        object::Architecture::Aarch64 => Ok(arm64::read_entries()),
         _ => Err(crate::OpenError::UnsupportedTarget),
     }
 }
