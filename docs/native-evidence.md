@@ -24,7 +24,8 @@ The [bounded replay implementation](design/replay.md) adds a game-free Rust cons
 retained SDK-483 window. Its tests govern retained derivation behavior, with explicit synthetic and
 historical origins. Public live admission remains unavailable. The maintainer-only
 [candidate capture path](design/candidate-observations.md) can now produce fresh recorded evidence
-for the same replay validator; capture success does not grant qualification. The capability pages below
+for the same replay validator; capture success does not grant qualification. SDK-518 adds the shared public implementation; its
+[fresh qualification report](native/live-observation-qualification.md) awaits maintainer acceptance. The capability pages below
 retain the historical experiments and their wider limits.
 
 Atlas retains authoring-rule conclusions and extraction fixtures/coverage. Its consumer pages remain at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`; the historical capsules copied here retain those fixtures to keep their native evidence replayable. This does not make Native the Atlas rule database.

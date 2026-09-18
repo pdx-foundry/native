@@ -34,7 +34,7 @@ fn inspect() -> Result<(), pdx_native::OpenError> {
 }
 ```
 
-`cargo run --example capabilities -- /path/to/Stellaris` prints the report as JSON. Supply an
+`cargo run --release --features production --example capabilities -- /path/to/Stellaris` prints the report as JSON. Supply an
 executable, `stellaris.app`, or installation directory; automatic installation discovery is not
 implemented. The initial catalogue identifies only the exact M45-observe ARM64 image. Unknown
 patches never inherit its recipe. Reports distinguish qualification from availability, and report
