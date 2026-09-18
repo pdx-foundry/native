@@ -27,9 +27,9 @@ pub enum SyntheticCase {
     ContentUnavailable,
     /// Qualification matches, but a current prerequisite is missing.
     MissingPrerequisite,
-    /// Acceptance covers fewer registration entries than the recipe's declared limit.
+    /// Acceptance covers only tradition categories, not traditions.
     NarrowQualification,
-    /// Separate acceptances each cover one field; they do not qualify their union.
+    /// Separate acceptances cover separate registries.
     SplitQualifications,
     /// A withdrawn old acceptance coexists with a new applicable acceptance.
     ReplacementAcceptance,

@@ -4,11 +4,12 @@ pub(in crate::binding) enum BindingGroupId {
     #[cfg(test)]
     SyntheticRegistration,
     CategoryReader,
+    Registries,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(in crate::binding) enum MethodId {
-    BoundedRegistrationCategoryReads,
+    TraditionRegistryKeys,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -25,9 +26,13 @@ pub(in crate::binding) struct Recipe {
 }
 
 pub(super) const M45_EARLY_READS: Recipe = Recipe {
-    revision: "m45-early-reads/candidate-v1",
-    groups: &[BindingGroupId::Registration, BindingGroupId::CategoryReader],
-    method: MethodId::BoundedRegistrationCategoryReads,
+    revision: "m45-tradition-registries/candidate-v1",
+    groups: &[
+        BindingGroupId::Registration,
+        BindingGroupId::CategoryReader,
+        BindingGroupId::Registries,
+    ],
+    method: MethodId::TraditionRegistryKeys,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     content: include_str!("m45-observation-content.json"),
 };

@@ -65,6 +65,31 @@ pub struct Frame {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum TraceEvent {
+    RegistryLoadStart {
+        name: String,
+        owner: String,
+        directory: String,
+    },
+    RegistrySnapshot {
+        name: String,
+        owner: String,
+        directory: String,
+        count: u64,
+    },
+    RegistryEntry {
+        name: String,
+        owner: String,
+        index: u64,
+        object: String,
+        key: String,
+    },
+    RegistryEnd {
+        name: String,
+        owner: String,
+        count: u64,
+        #[serde(rename = "producerLastSequence")]
+        producer_last_sequence: u64,
+    },
     HooksRequested,
     LaunchStopped {
         error: String,

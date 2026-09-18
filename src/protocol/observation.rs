@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/2";
+pub(crate) const VERSION: &str = "native-observation/3";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 
@@ -21,6 +21,7 @@ pub(crate) struct WorkerRequest {
     pub artifacts: BTreeMap<String, String>,
     pub bindings: BTreeMap<String, u64>,
     pub machine: crate::binding::Machine,
+    pub registry: Option<RegistryBinding>,
     pub fixture: String,
     pub control: String,
     pub deadline_seconds: u64,
@@ -76,4 +77,18 @@ mod tests {
         }
         assert_eq!(std::fs::read_to_string(path).unwrap(), generated);
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RegistryBinding {
+    pub name: String,
+    pub directory: String,
+    pub load_entry: u64,
+    pub directory_offset: u64,
+    pub data_offset: u64,
+    pub count_offset: u64,
+    pub key_offset: u64,
+    pub pointer_size: u64,
+    pub string_tag_offset: u64,
 }

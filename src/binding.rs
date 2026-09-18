@@ -122,12 +122,14 @@ impl ExecutionPlan {
             ))),
         }
     }
-    pub fn admit(&mut self) -> Result<(), crate::supervisor::SupervisorError> {
+    pub fn admit(&mut self, registry: &str) -> Result<(), crate::supervisor::SupervisorError> {
         let inputs = self.binding.current_inputs();
         let report = crate::qualification::evaluate(
             &inputs,
             self.binding.authority(),
-            &crate::CapabilityRequest::default(),
+            &crate::CapabilityRequest {
+                registry: registry.into(),
+            },
             self.binding.origin(),
             self.binding.integrity(),
         );
@@ -246,7 +248,7 @@ impl ExecutionPlan {
             "machine": operation.machine, "architecture": operation.machine.architecture,
             "build": env!("PDX_NATIVE_BUILD"), "implementation": env!("PDX_NATIVE_OPERATION"),
             "compiler": env!("PDX_NATIVE_COMPILER"), "profile": env!("PDX_NATIVE_PROFILE"),
-            "method": operation.method, "strategy": operation.strategy.revision, "control": spec.control,
+            "method": if spec.registry.is_some() { operation.method } else { operation.early_method }, "strategy": operation.strategy.revision, "control": spec.control,
             "bindings": operation.bindings,
         });
         (operation.strategy.prepare)(platform::ObservationSetup {
@@ -262,6 +264,15 @@ impl ExecutionPlan {
                 .as_ref()
                 .map_err(|_| crate::supervisor::SupervisorError("Content unavailable".into()))?,
             expected_tool: self.admitted_tool.as_deref(),
+            registry: spec
+                .registry
+                .as_ref()
+                .map(|name| {
+                    operation.registries.get(name).ok_or_else(|| {
+                        crate::supervisor::SupervisorError("Unsupported registry".into())
+                    })
+                })
+                .transpose()?,
             bindings: &operation.bindings,
             machine: &operation.machine,
             package: &operation.strategy.package,
@@ -281,6 +292,46 @@ impl ExecutionPlan {
             Some(&observer.guard()),
         )
     }
+    pub(crate) fn prepare_registry_profile(
+        &self,
+        output: &std::path::Path,
+    ) -> Result<(), crate::supervisor::SupervisorError> {
+        use crate::{capture, supervisor::SupervisorError};
+        self.integrity()?;
+        self.validate_observation_content()?;
+        let profile = output.join("profile");
+        platform::lifecycle::private_directory(&profile.join("mod"))?;
+        let mount = profile.join("mod/native_registry");
+        platform::lifecycle::private_directory(&mount)?;
+        for (relative, expected) in &self.operation().content {
+            if !relative.starts_with("common/") {
+                continue;
+            }
+            let source = self.installation().root().join(relative);
+            let bytes = capture::read_bounded(&source, 1024 * 1024)?;
+            if capture::hash(&bytes) != *expected {
+                return Err(SupervisorError(
+                    "Registry content changed while preparing the private profile".into(),
+                ));
+            }
+            let target = mount.join(relative);
+            std::fs::create_dir_all(target.parent().unwrap())?;
+            capture::write_new(&target, &bytes)?;
+        }
+        let mount = mount
+            .to_str()
+            .filter(|path| !path.contains(['"', '\n', '\r']))
+            .ok_or_else(|| {
+                SupervisorError("Profile path cannot be represented in mod descriptor".into())
+            })?;
+        capture::write_new(&profile.join("mod/native_registry.mod"), format!("name=\"Native pinned registries\"\npath=\"{mount}\"\nreplace_path=\"common/traditions\"\nreplace_path=\"common/tradition_categories\"\n").as_bytes())?;
+        std::fs::write(
+            profile.join("dlc_load.json"),
+            r#"{"enabled_mods":["mod/native_registry.mod"],"disabled_dlcs":[]}"#,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn validate_observation_content(
         &self,
     ) -> Result<(), crate::supervisor::SupervisorError> {

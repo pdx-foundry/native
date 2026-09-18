@@ -51,44 +51,68 @@ impl EngineContext {
 }
 
 impl EngineContext {
-    /// Prepare the complete bounded observation window for a consumer-hosted supervisor.
-    /// No game is launched. The owner rechecks admission and input integrity before launch.
-    pub fn prepare_observation(
+    /// Configure consumer-hosted supervision and retention once, then call `get_registry`.
+    /// The command must start a dedicated direct child that calls `supervisor::serve`.
+    pub fn with_supervisor(
+        self,
+        command: std::process::Command,
+        options: crate::RegistryOptions,
+    ) -> Result<crate::RegistryClient, crate::RegistryError> {
+        crate::registry::client(self, command, options)
+    }
+
+    pub(crate) fn prepare_registry(
         &self,
-        request: crate::ObservationRequest,
-        capture: crate::CaptureOptions,
-    ) -> Result<crate::ObservationPlan, crate::supervisor::SupervisorError> {
+        name: &str,
+        output: std::path::PathBuf,
+        deadline_seconds: u64,
+    ) -> Result<crate::operation::PreparedPlan, crate::RegistryError> {
         use crate::operation::{
             AttemptRequest, Authorization, ObservationControl, ObservationSpec, PlanRequest,
             PreparedPlan,
         };
-        use crate::supervisor::SupervisorError;
+        let report = self.capability(&CapabilityRequest {
+            registry: name.into(),
+        });
+        if !report
+            .bounds
+            .registries
+            .iter()
+            .any(|supported| supported == name)
+        {
+            return Err(crate::RegistryError::Unsupported {
+                registry: name.into(),
+            });
+        }
+        let installation_hint = self
+            .binding
+            .installation_hint()
+            .map_err(crate::RegistryError::from)?;
+        if report.availability != crate::Availability::Available {
+            return Err(crate::RegistryError::Unavailable {
+                reasons: report.reasons,
+            });
+        }
         let spec = ObservationSpec {
-            fixture: request.fixture,
-            deadline_seconds: request.deadline_seconds,
+            registry: Some(name.into()),
+            fixture: String::new(),
+            deadline_seconds,
             control: ObservationControl::Normal,
         };
         spec.validate()?;
         let request = AttemptRequest {
-            installation_hint: self.binding.installation_hint()?,
-            output: capture.output,
+            installation_hint,
+            output,
             hold_ms: 1,
         };
         crate::operation::validate_request(&request)?;
-        let report = self.capability(&crate::CapabilityRequest::default());
-        if report.availability != crate::Availability::Available {
-            return Err(SupervisorError(format!(
-                "Live admission refused: {:?}",
-                report.reasons
-            )));
-        }
-        Ok(crate::ObservationPlan(PreparedPlan {
+        Ok(PreparedPlan {
             request: PlanRequest {
                 request,
                 composition: self.identity().0,
                 authorization: Authorization::Admitted,
                 observation: Some(spec),
             },
-        }))
+        })
     }
 }

@@ -137,17 +137,34 @@ pub fn prepare(request: AttemptRequest) -> Result<PreparedPlan, SupervisorError>
 
 /// Connect a prepared request to a consumer-created supervisor using private pipes.
 /// Both processes must link the same Native build. This function does not start a process.
+#[cfg(feature = "maintainer-tools")]
 pub fn connect<R: Read, W: Write>(
     mut input: R,
     mut output: W,
     plan: PreparedPlan,
 ) -> Result<AttemptJob<R, W>, SupervisorError> {
-    protocol::write(&mut output, &Hello::current(plan.request.authorization))?;
-    match protocol::read(&mut input)? {
-        Reply::Ready => {}
-        Reply::Rejected(reason) => return Err(SupervisorError(reason)),
-        _ => return Err(SupervisorError("Expected supervisor handshake".into())),
+    handshake(&mut input, &mut output, plan.request.authorization)?;
+    begin(input, output, plan)
+}
+
+pub(crate) fn handshake(
+    input: &mut impl Read,
+    output: &mut impl Write,
+    authorization: Authorization,
+) -> Result<(), SupervisorError> {
+    protocol::write(output, &Hello::current(authorization))?;
+    match protocol::read(input)? {
+        Reply::Ready => Ok(()),
+        Reply::Rejected(reason) => Err(SupervisorError(reason)),
+        _ => Err(SupervisorError("Expected supervisor handshake".into())),
     }
+}
+
+pub(crate) fn begin<R: Read, W: Write>(
+    input: R,
+    mut output: W,
+    plan: PreparedPlan,
+) -> Result<AttemptJob<R, W>, SupervisorError> {
     protocol::write(&mut output, &plan.request)?;
     Ok(AttemptJob {
         input,
@@ -262,6 +279,8 @@ pub enum ObservationControl {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ObservationSpec {
+    #[serde(default)]
+    pub registry: Option<String>,
     pub fixture: String,
     pub deadline_seconds: u64,
     pub control: ObservationControl,
@@ -282,6 +301,7 @@ pub fn prepare_observation_control(
     control: ObservationControl,
 ) -> Result<PreparedPlan, SupervisorError> {
     let spec = ObservationSpec {
+        registry: None,
         fixture: request.fixture,
         deadline_seconds: request.deadline_seconds,
         control,
@@ -301,7 +321,8 @@ pub fn prepare_observation_control(
 
 impl ObservationSpec {
     pub(crate) fn validate(&self) -> Result<(), SupervisorError> {
-        if self.fixture != crate::capture::FIXTURE_BODY
+        if (self.registry.is_none() && self.fixture != crate::capture::FIXTURE_BODY)
+            || (self.registry.is_some() && !self.fixture.is_empty())
             || !(1..=180).contains(&self.deadline_seconds)
         {
             return Err(SupervisorError(
@@ -336,13 +357,12 @@ impl PlanRequest {
         }
         if authorization == Authorization::Admitted
             && (self.observation.is_none()
-                || self
-                    .observation
-                    .as_ref()
-                    .is_some_and(|spec| !matches!(spec.control, ObservationControl::Normal)))
+                || self.observation.as_ref().is_some_and(|spec| {
+                    spec.registry.is_none() || !matches!(spec.control, ObservationControl::Normal)
+                }))
         {
             return Err(SupervisorError(
-                "Ordinary requests require an unmodified observation window".into(),
+                "Ordinary requests require a registry query without investigation controls".into(),
             ));
         }
         validate_request(&self.request)?;
@@ -353,13 +373,27 @@ impl PlanRequest {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn reported_job(report: AttemptReport) -> AttemptJob<std::io::Empty, Vec<u8>> {
-    AttemptJob {
-        input: std::io::empty(),
-        output: Vec::new(),
-        finished: Some(report),
-    }
+/// Prepare an unqualified registry capture for maintainer controls.
+#[cfg(feature = "maintainer-tools")]
+pub fn prepare_registry(
+    request: AttemptRequest,
+    registry: String,
+    deadline_seconds: u64,
+    control: ObservationControl,
+) -> Result<PreparedPlan, SupervisorError> {
+    let mut plan = prepare(request)?;
+    let execution = crate::binding::ExecutionPlan::open(&plan.request.request.installation_hint)?;
+    execution.validate_observation_content()?;
+    execution.probe()?;
+    let spec = ObservationSpec {
+        registry: Some(registry),
+        fixture: String::new(),
+        deadline_seconds,
+        control,
+    };
+    spec.validate()?;
+    plan.request.observation = Some(spec);
+    Ok(plan)
 }
 
 #[cfg(test)]
@@ -375,14 +409,15 @@ mod tests {
             composition: "test".into(),
             authorization: Authorization::Admitted,
             observation: Some(ObservationSpec {
-                fixture: crate::capture::FIXTURE_BODY.into(),
+                registry: Some("traditions".into()),
+                fixture: String::new(),
                 deadline_seconds: 180,
                 control: ObservationControl::Normal,
             }),
         }
     }
     #[test]
-    fn ordinary_wire_requires_the_complete_bounded_request() {
+    fn ordinary_wire_requires_a_registry_and_valid_deadline() {
         assert!(plan().validate(Authorization::Admitted).is_ok());
         let mut request = plan();
         request.observation = None;

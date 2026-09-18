@@ -4,9 +4,9 @@ use super::{
     targets::{self, MethodId},
 };
 use crate::qualification::{AdmissionInputs, ContentIdentity};
-use crate::{ObservationBounds, OpenError, UnavailableReason};
+use crate::{OpenError, RegistryBounds, UnavailableReason};
 
-pub(super) const METHOD: &str = "registration-category-read-entries/v2";
+pub(super) const METHOD: &str = "tradition-registry-snapshot/v1";
 
 pub(super) struct ResolvedObservation {
     pub image: ImageIdentity,
@@ -15,6 +15,9 @@ pub(super) struct ResolvedObservation {
     pub bindings: std::collections::BTreeMap<String, u64>,
     pub content: ContentIdentity,
     pub method: &'static str,
+    pub early_method: &'static str,
+    pub registries:
+        std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
 }
 
 pub(super) fn compose(
@@ -31,16 +34,15 @@ fn assemble(
 ) -> Result<(AdmissionInputs, ResolvedObservation), OpenError> {
     let machine = machine::resolve(image.architecture)?;
     let strategy = platform::resolve(recipe.strategy);
-    let (method, bounds) = match recipe.method {
-        MethodId::BoundedRegistrationCategoryReads => (
-            METHOD,
-            ObservationBounds {
-                registration_entries: 3,
-                category_fields: vec!["tree_template".into(), "traditions".into()],
-            },
-        ),
+    let method = match recipe.method {
+        MethodId::TraditionRegistryKeys => METHOD,
     };
+    let early_method = "registration-category-read-entries/v2";
     let bindings = groups::observation(recipe.groups);
+    let registries = groups::registries(&bindings);
+    let bounds = RegistryBounds {
+        registries: registries.keys().cloned().collect(),
+    };
     let expected: ContentIdentity =
         serde_json::from_str(recipe.content).expect("tracked content manifest");
     let declarations: Vec<_> = recipe
@@ -55,8 +57,8 @@ fn assemble(
         .collect();
     let identity = serde_json::json!({
         "target": image.executable, "slice": image.slice, "recipe": recipe.revision,
-        "method": method, "machine": machine, "strategy": strategy.revision,
-        "bindings": bindings, "declarations": declarations, "package": packages,
+        "method": method, "earlyMethod": early_method, "machine": machine, "strategy": strategy.revision,
+        "bindings": bindings, "registries": registries, "declarations": declarations, "package": packages,
         "content": expected, "implementation": env!("PDX_NATIVE_OPERATION"),
     });
     let inputs = AdmissionInputs {
@@ -73,8 +75,10 @@ fn assemble(
             machine,
             strategy,
             bindings,
+            registries,
             content: expected,
             method,
+            early_method,
         },
     ))
 }
@@ -88,8 +92,9 @@ pub(super) fn synthetic_variation(
         groups: &[
             targets::BindingGroupId::SyntheticRegistration,
             targets::BindingGroupId::CategoryReader,
+            targets::BindingGroupId::Registries,
         ],
-        method: MethodId::BoundedRegistrationCategoryReads,
+        method: MethodId::TraditionRegistryKeys,
         strategy: targets::StrategyId::MacSuspendedChildLoaderEntry,
         content: "{}",
     };

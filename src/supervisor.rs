@@ -35,13 +35,3 @@ pub fn serve(
 ) -> Result<(), SupervisorError> {
     crate::execution::supervisor::serve(input, output, crate::operation::Authorization::Admitted)
 }
-
-/// Connect a prepared live observation to a consumer-created supervisor through private pipes.
-/// This function does not start a process. The supervisor must call `supervisor::serve`.
-pub fn connect<R: Read, W: Write>(
-    input: R,
-    output: W,
-    plan: crate::ObservationPlan,
-) -> Result<crate::ObservationJob<R, W>, SupervisorError> {
-    crate::operation::connect(input, output, plan.0).map(crate::ObservationJob)
-}

@@ -171,12 +171,10 @@ fn collect_content(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), Una
         }
         if kind.is_dir() {
             collect_content(&entry.path(), files)?;
-        } else if entry
-            .path()
-            .extension()
-            .is_some_and(|extension| extension == "txt")
-        {
+        } else if kind.is_file() {
             files.push(entry.path());
+        } else {
+            return Err(UnavailableReason::InputUnavailable);
         }
     }
     Ok(())

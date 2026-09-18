@@ -437,7 +437,7 @@ fn integrity(gaps: &mut Vec<Gap>, reason: &str) {
     });
 }
 
-fn disposal(owner: &[OwnerEvent]) -> Disposal {
+pub(crate) fn disposal(owner: &[OwnerEvent]) -> Disposal {
     let owned: Vec<_> = owner
         .iter()
         .filter_map(|event| match event {

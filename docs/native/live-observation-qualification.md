@@ -1,5 +1,9 @@
 # SDK-518 bounded observation qualification report
 
+**Superseded for promotion:** the consumer contract has changed to registry retrieval. These retained
+early-observation controls remain historical evidence; they do not qualify the revised implementation.
+Production acceptance remains empty.
+
 **Status: awaiting maintainer acceptance.** The public API and shared implementation are committed at
 `00a873bb43dbc199d9102e238be5af94be580aa1`. The tracked acceptance registry is still empty. This report requests
 acceptance of the exact bounded candidate qualification below before adding its reviewed source record.

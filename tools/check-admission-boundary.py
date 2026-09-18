@@ -76,9 +76,9 @@ def main():
         cargo(consumer, ["check"], "no `test_support` in the root")
         main_rs.write_text("fn main() { let _ = pdx_native::EngineContext {}; }\n")
         cargo(consumer, ["check"], "private fields")
-        main_rs.write_text("fn main() { let _ = pdx_native::ObservationPlan {}; }\n")
+        main_rs.write_text("fn main() { let _ = pdx_native::RegistryClient {}; }\n")
         cargo(consumer, ["check"], "private fields")
-        main_rs.write_text("fn main() { let _ = pdx_native::ObservationRequest { fixture: String::new(), deadline_seconds: 1, control: () }; }\n")
+        main_rs.write_text("fn main() { let _ = pdx_native::RegistryOptions { retention_directory: Default::default(), deadline_seconds: None, control: () }; }\n")
         cargo(consumer, ["check"], "has no field named `control`")
         # A gated candidate report cannot be converted into a supported replay result.
         manifest = consumer / "Cargo.toml"

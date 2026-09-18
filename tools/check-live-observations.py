@@ -26,7 +26,7 @@ def intervene(output, scenario, process):
         worker = output / 'worker-owned.json'
         if trace.exists() and worker.exists():
             rows = trace.read_bytes().splitlines(keepends=True)
-            if any(b'"registration-window-complete"' in row for row in rows):
+            if any(b'"registry-load-start"' in row for row in rows):
                 identity = json.loads(worker.read_text())
                 pid = identity['pid']
                 # Native owns and retains this unreaped worker identity until cleanup.
@@ -43,8 +43,8 @@ def intervene(output, scenario, process):
                             assert time.monotonic() < stop_deadline, 'worker did not stop for corruption control'
                             time.sleep(0.01)
                         rows = trace.read_bytes().splitlines(keepends=True)
-                        assert not any(b'"stream-end"' in row for row in rows), 'control arrived too late'
-                        index = next(i for i, row in enumerate(rows) if b'"registration-observed"' in row)
+                        assert not any(b'"registry-end"' in row for row in rows), 'control arrived too late'
+                        index = next(i for i, row in enumerate(rows) if b'"hooks-requested"' in row)
                         removed = rows.pop(index)
                         (output / 'external-dropped-record.json').write_bytes(removed)
                         trace.write_bytes(b''.join(rows))
@@ -60,6 +60,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('installation', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--registry', choices=['traditions', 'tradition_categories'], required=True)
     args = parser.parse_args()
     root = args.output.resolve()
     root.mkdir(mode=0o700, exist_ok=False)
@@ -71,45 +72,54 @@ def main():
     for name in ('Cargo.toml', 'Cargo.lock', 'build.rs'):
         shutil.copyfile(ROOT / name, root / 'source' / name)
     ordinary = Path.home() / 'Documents/Paradox Interactive/Stellaris'
-    fixture = ROOT / 'tests/fixtures/candidate/category.txt'
-    invalid_fixture = root / 'unsupported-fixture.txt'
-    invalid_fixture.write_text('unsupported fixture')
     sentinel = subprocess.Popen(['/bin/sleep', '3600'])
     try:
-        for scenario in ('normal', 'unavailable', 'incomplete', 'cancel', 'caller-loss', 'timeout', 'worker-loss'):
+        for scenario in ('normal', 'unsupported', 'incomplete', 'cancel', 'caller-loss', 'timeout', 'worker-loss'):
             before = lifecycle.snapshot(ordinary)
             (root / f'{scenario}.ordinary-before.json').write_text(json.dumps(before))
-            output = root / scenario
+            retention = root / scenario
+            retention.mkdir()
+            output = None
             mode = scenario if scenario in ('cancel', 'caller-loss', 'timeout') else 'normal'
-            selected_fixture = invalid_fixture if scenario == 'unavailable' else fixture
+            registry = 'technology' if scenario == 'unsupported' else args.registry
             started = time.monotonic()
             try:
                 with (root / f'{scenario}.stdout').open('w') as stdout, (root / f'{scenario}.stderr').open('w') as stderr:
-                    process = subprocess.Popen([str(binary), str(args.installation), str(output), str(selected_fixture), mode], stdout=stdout, stderr=stderr)
+                    process = subprocess.Popen([str(binary), str(args.installation), str(retention), registry, mode], stdout=stdout, stderr=stderr)
+                    if scenario != 'unsupported':
+                        deadline = time.monotonic() + 30
+                        while output is None:
+                            attempts = list(retention.glob('registry-*'))
+                            if attempts:
+                                assert len(attempts) == 1
+                                output = attempts[0]
+                                break
+                            assert process.poll() is None and time.monotonic() < deadline, 'consumer refused or allocation timed out'
+                            time.sleep(0.01)
                     if scenario in ('incomplete', 'worker-loss'):
                         intervene(output, scenario, process)
                     status = process.wait(timeout=240)
-                if scenario == 'unavailable':
-                    assert status != 0 and not output.exists()
-                    assert 'retained category fixture' in (root / f'{scenario}.stderr').read_text()
-                    print('unavailable: unsupported fixture refused before allocation', flush=True)
+                if scenario == 'unsupported':
+                    assert status != 0 and not list(retention.iterdir())
+                    assert 'Unsupported' in (root / f'{scenario}.stderr').read_text()
+                    print('unsupported: unknown registry refused before allocation', flush=True)
                     continue
                 assert status == 0, (root / f'{scenario}.stderr').read_text()
                 owner = lifecycle.wait_report(output / 'report.json')
                 assert owner['origin'] == 'qualified-live'
                 assert owner['disposal'] == 'Reaped' and owner['reservation_resolved'] and not owner['diagnostics'], owner
                 reference = output / 'evidence/descriptor.ref.json'
-                replay_process = subprocess.run(['cargo', 'run', '--quiet', '--example', 'replay', '--', str(output / 'evidence'), str(reference)], cwd=ROOT, check=True, text=True, capture_output=True)
+                replay_process = subprocess.run(['cargo', 'run', '--quiet', '--example', 'registry-replay', '--', str(output / 'evidence'), str(reference)], cwd=ROOT, check=True, text=True, capture_output=True)
                 replay = json.loads(replay_process.stdout)
                 (root / f'{scenario}.replay.json').write_text(replay_process.stdout)
                 assert replay['origin'] == 'replay' and replay['disposal'] == 'confirmed', replay
                 if scenario != 'caller-loss':
                     live = json.loads((root / f'{scenario}.stdout').read_text())
-                    assert live['evidence']['Ok']['origin'] == 'live', live
-                    normalized = dict(live['evidence']['Ok'], origin='replay')
+                    assert live['result']['Ok']['origin'] == 'live', live
+                    normalized = dict(live['result']['Ok'], origin='replay')
                     assert normalized == replay, 'live/replay observation contract differs'
                 if scenario == 'normal':
-                    assert replay['activation'] == 'demonstrated' and replay['completion'] == 'complete' and len(replay['observations']) == 5
+                    assert replay['activation'] == 'demonstrated' and replay['completion'] == 'complete' and len(replay['entries']) > 0
                 if scenario == 'incomplete':
                     assert replay['completion'] == 'incomplete', replay
                 if scenario == 'worker-loss':

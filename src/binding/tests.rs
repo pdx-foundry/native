@@ -19,9 +19,8 @@ fn installation() -> (TempDir, crate::EngineContext) {
     let binding = Binding {
         inputs: AdmissionInputs {
             composition: "private-io-control".into(),
-            bounds: crate::ObservationBounds {
-                registration_entries: request.registration_entries,
-                category_fields: request.category_fields,
+            bounds: crate::RegistryBounds {
+                registries: vec![request.registry],
             },
             content: installation.content.clone(),
             prerequisites: Vec::new(),
@@ -72,6 +71,9 @@ fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
         let original = directory.path().join("common/traditions/test.txt");
         match mutation {
             "add" => fs::write(directory.path().join("common/traditions/new.txt"), "new").unwrap(),
+            "binary-extension" => {
+                fs::write(directory.path().join("common/traditions/new.bin"), "new").unwrap()
+            }
             "delete" => fs::remove_file(original).unwrap(),
             _ => fs::write(original, "changed").unwrap(),
         }
@@ -145,6 +147,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     ) -> Result<(super::Observer, crate::capture::Capture), SupervisorError> {
         assert_eq!(setup.bindings["registration-entry"], 0x1234);
         assert_eq!(setup.machine.architecture, "synthetic-machine");
+        assert_eq!(setup.registry.unwrap().load_entry, 0x5678);
         assert_eq!(setup.package["selected.txt"], b"selected package");
         assert_eq!(setup.identity["architecture"], "synthetic-machine");
         assert_eq!(setup.identity["bindings"]["registration-entry"], 0x1234);
@@ -156,6 +159,11 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     let content = installed.content.clone().unwrap();
     let (inputs, mut operation) = compose::synthetic_variation(content.clone());
     operation.content = content;
+    operation
+        .registries
+        .get_mut("traditions")
+        .unwrap()
+        .load_entry = 0x5678;
     operation.machine.architecture = "synthetic-machine".into();
     operation.strategy.revision = "synthetic-strategy";
     operation.strategy.package = [("selected.txt".into(), b"selected package".to_vec())].into();
@@ -173,7 +181,8 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         admitted_tool: None,
     };
     let spec = ObservationSpec {
-        fixture: crate::capture::FIXTURE_BODY.into(),
+        registry: Some("traditions".into()),
+        fixture: String::new(),
         deadline_seconds: 1,
         control: ObservationControl::Normal,
     };

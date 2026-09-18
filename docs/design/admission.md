@@ -25,15 +25,13 @@ and executable/slice identities into shared execution. See [live observations](l
 ## Admission authority
 
 `capability(&CapabilityRequest)` reports qualification, availability, declared and accepted bounds, blocking
-reasons, accepted record identities, and immutable evidence references. The operation concerns
-initial registration entries and category field **read entries**, never successful registration
-returns, stored values, validation, gameplay, or a complete registry. The default scope is the
-first three registration entries and `tree_template`/`traditions` category fields. Empty, duplicate,
-unknown, or excessive requests are outside support.
+reasons, accepted record identities, and immutable evidence references. Requests name one registry.
+`traditions` and `tradition_categories` have declared methods; other names are outside support.
+The operation retrieves entry keys at initial loader return, before validation. It does not expose
+fixture selection, hook windows, field values, gameplay, or rule conclusions.
 
 Qualification requires a bundled, unwithdrawn acceptance matching the complete composition,
-relevant content, and the whole requested scope. Partial acceptances are not combined to invent a
-larger qualified window. Composition identity includes executable and slice hashes, recipe,
+relevant content, and the whole requested scope. An acceptance for one registry cannot grant support for another. Composition identity includes executable and slice hashes, recipe,
 method, machine and strategy revisions, and hashes of shared binding declarations. The exact debugger identity must also match acceptance. The source
 records and withdrawals are the authority; records supplied by a caller or capture are not loaded.
 

@@ -5,5 +5,5 @@ pub use crate::operation::{
     AttemptReport as InvestigationReport, AttemptRequest as CandidateRequest, ObservationControl,
     ObservationRequest, OperationDisposal as CandidateDisposal,
     OperationOutcome as CandidateOutcome, PreparedPlan as CandidatePlan, connect, prepare,
-    prepare_observation, prepare_observation_control, serve,
+    prepare_observation, prepare_observation_control, prepare_registry, serve,
 };

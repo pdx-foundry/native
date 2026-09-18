@@ -1,7 +1,7 @@
 use super::{AdmissionInputs, Authority};
 use crate::{
     Availability, CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin,
-    ObservationBounds, Qualification, UnavailableReason,
+    Qualification, RegistryBounds, UnavailableReason,
 };
 
 pub(crate) fn evaluate(
@@ -124,16 +124,6 @@ pub(crate) fn evaluate(
     report
 }
 
-fn covers(bounds: &ObservationBounds, request: &CapabilityRequest) -> bool {
-    request.registration_entries > 0
-        && request.registration_entries <= bounds.registration_entries
-        && !request.category_fields.is_empty()
-        && request
-            .category_fields
-            .iter()
-            .enumerate()
-            .all(|(index, field)| {
-                bounds.category_fields.contains(field)
-                    && !request.category_fields[..index].contains(field)
-            })
+fn covers(bounds: &RegistryBounds, request: &CapabilityRequest) -> bool {
+    bounds.registries.contains(&request.registry)
 }

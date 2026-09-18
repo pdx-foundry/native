@@ -30,7 +30,7 @@ fn main() {
     for path in [
         "src/api.rs",
         "src/session.rs",
-        "src/observation.rs",
+        "src/registry.rs",
         "src/operation.rs",
         "src/capture.rs",
         "src/execution",

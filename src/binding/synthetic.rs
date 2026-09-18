@@ -1,13 +1,12 @@
 use super::{Binding, Source, platform, targets::StrategyId};
 use crate::qualification::{AcceptedRecord, AdmissionInputs, Authority};
 use crate::test_support::SyntheticCase;
-use crate::{ArtifactReference, ObservationBounds, UnavailableReason};
+use crate::{ArtifactReference, RegistryBounds, UnavailableReason};
 use std::collections::BTreeMap;
 
 pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
-    let bounds = ObservationBounds {
-        registration_entries: 3,
-        category_fields: vec!["tree_template".into(), "traditions".into()],
+    let bounds = RegistryBounds {
+        registries: vec!["traditions".into(), "tradition_categories".into()],
     };
     let content = BTreeMap::from([(
         "synthetic/category.txt".into(),
@@ -65,7 +64,9 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
         SyntheticCase::MissingPrerequisite => inputs
             .prerequisites
             .push(UnavailableReason::PrerequisiteMissing),
-        SyntheticCase::NarrowQualification => record.bounds.registration_entries = 1,
+        SyntheticCase::NarrowQualification => {
+            record.bounds.registries = vec!["tradition_categories".into()]
+        }
         SyntheticCase::RealStrategy => inputs.prerequisites.extend(
             platform::resolve(StrategyId::MacSuspendedChildLoaderEntry)
                 .unavailable
@@ -77,8 +78,8 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
         SyntheticCase::SplitQualifications => {
             let mut second = record.clone();
             second.id = "synthetic-second-field".into();
-            second.bounds.category_fields = vec!["traditions".into()];
-            record.bounds.category_fields = vec!["tree_template".into()];
+            second.bounds.registries = vec!["tradition_categories".into()];
+            record.bounds.registries = vec!["traditions".into()];
             vec![record, second]
         }
         SyntheticCase::ReplacementAcceptance => {

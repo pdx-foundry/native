@@ -147,7 +147,13 @@ fn run(
         return Err(SupervisorError("Composition mismatch".into()));
     }
     if request.authorization == Authorization::Admitted {
-        plan.admit()?;
+        plan.admit(
+            request
+                .observation
+                .as_ref()
+                .and_then(|spec| spec.registry.as_deref())
+                .ok_or_else(|| SupervisorError("Ordinary requests require a registry".into()))?,
+        )?;
     }
     let parent = request
         .request
@@ -195,7 +201,11 @@ fn run(
         }
         prepare_profile(&report.output)?;
         if let Some(spec) = &request.observation {
-            prepare_fixture(&report.output, spec)?;
+            if spec.registry.is_none() {
+                prepare_fixture(&report.output, spec)?;
+            } else {
+                plan.prepare_registry_profile(&report.output)?;
+            }
             let (prepared, retained) = plan.observer(
                 &report.output,
                 &report.attempt,
@@ -401,10 +411,6 @@ fn prepare_fixture(
         profile.join("dlc_load.json"),
         r#"{"enabled_mods":["mod/atlas_early.mod"],"disabled_dlcs":[]}"#,
     )?;
-    fs::write(
-        profile.join("settings.txt"),
-        "graphics={size={x=640 y=360} fullScreen=no borderless=no renderer=2}\nmaster_volume=0\nmusic_volume=0\n",
-    )?;
     Ok(())
 }
 
@@ -478,7 +484,7 @@ fn prepare_profile(output: &Path) -> Result<(), SupervisorError> {
     binding::private_directory(&output.join("profile"))?;
     fs::write(
         output.join("profile/settings.txt"),
-        "graphics={size={x=640 y=360} fullScreen=no borderless=no}\nmaster_volume=0\n",
+        "graphics={size={x=640 y=360} fullScreen=no borderless=no renderer=2}\nmaster_volume=0\nmusic_volume=0\n",
     )?;
     fs::write(output.join("profile/pdx_settings.txt"), "")?;
     fs::write(

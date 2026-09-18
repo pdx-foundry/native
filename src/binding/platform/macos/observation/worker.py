@@ -20,6 +20,8 @@ active_owner = None
 entry_thread = None
 breakpoints = {}
 control = request['control']
+registry = request['registry']
+registry_owner = None
 
 
 def sha(path):
@@ -40,7 +42,7 @@ def emit(kind, **fields):
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
-    if control == 'dropped-record' and kind == 'field-observed' and field_count == 1:
+    if control == 'dropped-record' and ((kind == 'field-observed' and field_count == 1) or (kind == 'registry-entry' and fields['index'] == 0)):
         return
     path = ROOT / 'raw-trace.jsonl'
     if path.stat().st_size + len(encoded) > protocol.MAX_TRACE:
@@ -90,12 +92,87 @@ def hook_state():
             for name, bp in breakpoints.items()}
 
 
+def registry_begin(frame):
+    global registry_owner
+    process = frame.GetThread().GetProcess()
+    thread = frame.GetThread().GetThreadID()
+    if registry_owner is not None or thread != entry_thread:
+        raise RuntimeError('ambiguous registry loader entry')
+    registry_owner = register(frame, request['machine']['registers']['owner'])
+    if not registry_owner:
+        raise RuntimeError('registry loader receiver is null')
+    storage = registry_owner + registry['directory_offset']
+    address = uint(process, storage) if uint(process, storage + registry['string_tag_offset'], 1) & 128 else storage
+    directory = string(process, address)
+    if directory != registry['directory']:
+        raise RuntimeError('registry loader directory mismatch')
+    hook = process.GetTarget().BreakpointCreateByAddress(register(frame, request['machine']['registers']['return']))
+    hook.SetThreadID(thread)
+    hook.SetOneShot(True)
+    hook.SetScriptCallbackFunction('worker.callback')
+    if hook.GetNumResolvedLocations() != 1:
+        raise RuntimeError('registry return hook unresolved')
+    breakpoints['registry-return'] = hook
+    emit('registry-load-start', name=registry['name'], owner=hex(registry_owner), directory=directory, thread=thread)
+    return False
+
+
+def registry_snapshot(frame):
+    global finished
+    process = frame.GetThread().GetProcess()
+    thread = frame.GetThread().GetThreadID()
+    if thread != entry_thread:
+        raise RuntimeError('registry thread differs from activation witness')
+    owner = registry_owner
+    if not owner:
+        raise RuntimeError('registry receiver is null')
+    def cstring(address):
+        storage = uint(process, address) if uint(process, address + registry['string_tag_offset'], 1) & 128 else address
+        return string(process, storage)
+    directory = cstring(owner + registry['directory_offset'])
+    if directory != registry['directory']:
+        raise RuntimeError('registry receiver directory mismatch: ' + directory)
+    if control == 'access-failure':
+        uint(process, 0)
+        raise RuntimeError('access failure unexpectedly read zero')
+    count = uint(process, owner + registry['count_offset'], 4)
+    data = uint(process, owner + registry['data_offset'])
+    if count > 100000 or (count and (not data or data % registry['pointer_size'])):
+        raise RuntimeError('registry collection bounds invalid')
+    emit('registry-snapshot', name=registry['name'], owner=hex(owner), directory=directory, count=count, thread=thread)
+    keys, objects = set(), set()
+    for index in range(count):
+        obj = uint(process, data + registry['pointer_size'] * index)
+        if not obj or obj % registry['pointer_size'] or obj in objects:
+            raise RuntimeError('invalid or duplicate registry object')
+        key = cstring(obj + registry['key_offset'])
+        if not key or key in keys:
+            raise RuntimeError('empty or duplicate registry key')
+        keys.add(key)
+        objects.add(obj)
+        emit('registry-entry', name=registry['name'], owner=hex(owner), index=index, object=hex(obj), key=key, thread=thread)
+        if control == 'worker-loss' and index == 0:
+            emit('worker-loss-ready')
+            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+            return True
+    if count != uint(process, owner + registry['count_offset'], 4) or data != uint(process, owner + registry['data_offset']):
+        raise RuntimeError('registry changed during snapshot')
+    if control != 'missing-terminal':
+        emit('registry-end', name=registry['name'], owner=hex(owner), count=count, producerLastSequence=sequence + 1, thread=thread)
+    finished = True
+    return True
+
+
 def callback(frame, loc, _):
     global finished, active_file, active_thread, active_owner, registration_count, field_count
     try:
         process = frame.GetThread().GetProcess()
         thread = frame.GetThread().GetThreadID()
         name = next((key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID()), 'file-return')
+        if name == 'registry':
+            return registry_begin(frame)
+        if name == 'registry-return':
+            return registry_snapshot(frame)
         if name == 'registration':
             if thread != entry_thread:
                 raise RuntimeError('registration thread differs from loader-entry witness')
@@ -169,12 +246,14 @@ def run(debugger):
         python=sys.version, lldb=lldb.SBDebugger.GetVersionString(), module=lldb.__file__))
     debugger.SetAsync(True)
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
-    for name, role in [('registration', 'registration-entry'), ('load-file', 'category-load-entry'), ('field', 'category-field-read-entry')]:
-        if name == 'field' and control == 'missing-hook':
+    hooks = [('registry', registry['load_entry'])] if registry else [(name, bindings[role]) for name, role in [('registration', 'registration-entry'), ('load-file', 'category-load-entry'), ('field', 'category-field-read-entry')]]
+    controlled_hook = 'registry' if registry else 'field'
+    for name, address in hooks:
+        if name == controlled_hook and control == 'missing-hook':
             continue
-        hook = target.BreakpointCreateBySBAddress(target.ResolveFileAddress(bindings[role]))
+        hook = target.BreakpointCreateBySBAddress(target.ResolveFileAddress(address))
         hook.SetScriptCallbackFunction('worker.callback')
-        if name == 'field' and control == 'late-hook':
+        if name == controlled_hook and control == 'late-hook':
             hook.SetEnabled(False)
         breakpoints[name] = hook
     emit('hooks-requested')
@@ -191,7 +270,7 @@ def run(debugger):
     if process.GetState() != lldb.eStateStopped or entry_thread is None or not target.GetTriple().startswith(request['machine']['architecture'] + '-'):
         emit('early-activation-unavailable', reason='ARM64 loader entry not established')
         return
-    if set(state) != {'registration', 'load-file', 'field'} or not all(h['enabled'] and h['locations'] == 1 and h['resolved'] == 1 and h['hits'] == 0 for h in state.values()):
+    if set(state) != {name for name, _ in hooks} or not all(h['enabled'] and h['locations'] == 1 and h['resolved'] == 1 and h['hits'] == 0 for h in state.values()):
         emit('capability-unavailable', reason='required hook missing or late before resume')
         return
     emit('hooks-active-before-resume', hooks=state)

@@ -13,3 +13,5 @@ pub use records::{
     Observation, ObservationFact, ObservationResult, ReplayError, ReplayResult, ResultOrigin,
     SubjectHandle,
 };
+
+pub mod registry;

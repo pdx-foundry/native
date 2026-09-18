@@ -1,7 +1,7 @@
 mod admission;
 mod records;
 
-use crate::{ArtifactReference, ObservationBounds, UnavailableReason};
+use crate::{ArtifactReference, RegistryBounds, UnavailableReason};
 use std::collections::BTreeMap;
 
 pub(crate) use admission::evaluate;
@@ -10,7 +10,7 @@ pub(crate) type ContentIdentity = BTreeMap<String, String>;
 #[derive(Debug, Clone)]
 pub(crate) struct AdmissionInputs {
     pub composition: String,
-    pub bounds: ObservationBounds,
+    pub bounds: RegistryBounds,
     pub content: Result<ContentIdentity, UnavailableReason>,
     pub prerequisites: Vec<UnavailableReason>,
     pub toolchain: Result<String, UnavailableReason>,
@@ -21,7 +21,7 @@ pub(crate) struct AdmissionInputs {
 pub(crate) struct AcceptedRecord {
     pub id: String,
     pub composition: String,
-    pub bounds: ObservationBounds,
+    pub bounds: RegistryBounds,
     pub content: ContentIdentity,
     pub evidence: Vec<ArtifactReference>,
     pub toolchain: String,

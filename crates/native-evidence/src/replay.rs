@@ -31,6 +31,50 @@ pub fn replay(
     store: &ArtifactStore,
     reference: &ArtifactReference,
 ) -> Result<ReplayResult, ReplayError> {
+    let verified = load(store, reference, FORMAT, CONTRACT)?;
+    if verified.trace.iter().any(|record| {
+        matches!(
+            record.event,
+            crate::recorded::TraceEvent::RegistryLoadStart { .. }
+                | crate::recorded::TraceEvent::RegistrySnapshot { .. }
+                | crate::recorded::TraceEvent::RegistryEntry { .. }
+                | crate::recorded::TraceEvent::RegistryEnd { .. }
+        )
+    }) {
+        return Err(malformed(
+            &verified.descriptor.trace,
+            "Registry events require the registry replay contract",
+        ));
+    }
+    let fixture = validate_request(&verified.descriptor.request, &verified.request)?;
+    let mut result = crate::stream::derive(
+        &verified.descriptor,
+        reference,
+        &fixture,
+        &verified.request.fixtures[&fixture],
+        &verified.trace,
+        &verified.owner,
+    );
+    result.gaps.extend(verified.provenance_gaps);
+    result.evidence = verified.evidence;
+    Ok(result)
+}
+
+pub(crate) struct VerifiedAttempt {
+    pub descriptor: Descriptor,
+    pub request: RecordedRequest,
+    pub trace: Vec<TraceRecord>,
+    pub owner: Vec<OwnerEvent>,
+    pub provenance_gaps: Vec<Gap>,
+    pub evidence: Vec<EvidenceReference>,
+}
+
+pub(crate) fn load(
+    store: &ArtifactStore,
+    reference: &ArtifactReference,
+    format: &str,
+    contract: &str,
+) -> Result<VerifiedAttempt, ReplayError> {
     let bytes = store.read(reference)?;
     #[derive(serde::Deserialize)]
     struct Header {
@@ -38,12 +82,12 @@ pub fn replay(
         contract: String,
     }
     let header: Header = parse(reference, &bytes)?;
-    if header.format != FORMAT {
+    if header.format != format {
         return Err(ReplayError::UnsupportedFormat {
             found: header.format,
         });
     }
-    if header.contract != CONTRACT {
+    if header.contract != contract {
         return Err(ReplayError::UnsupportedContract {
             found: header.contract,
         });
@@ -83,7 +127,6 @@ pub fn replay(
     let manifest: Manifest = parse(&descriptor.manifest, &artifacts[&descriptor.manifest.path])?;
     let request: RecordedRequest =
         parse(&descriptor.request, &artifacts[&descriptor.request.path])?;
-    let fixture = validate_request(&descriptor.request, &request)?;
     let provenance_gaps =
         validate_provenance(&descriptor, &manifest, &request, &references, &artifacts)?;
     let owner: Vec<OwnerEvent> = parse(&descriptor.owner, &artifacts[&descriptor.owner.path])?;
@@ -97,24 +140,21 @@ pub fn replay(
             "foreign attempt identity or zero producer sequence",
         ));
     }
-    let fixture_body = &request.fixtures[&fixture];
-    let mut result = crate::stream::derive(
-        &descriptor,
-        reference,
-        &fixture,
-        fixture_body,
-        &trace,
-        &owner,
-    );
-    result.gaps.extend(provenance_gaps);
-    result.evidence = std::iter::once(reference)
+    let evidence = std::iter::once(reference)
         .chain(references)
         .map(|artifact| EvidenceReference {
             artifact: artifact.clone(),
             record: None,
         })
         .collect();
-    Ok(result)
+    Ok(VerifiedAttempt {
+        descriptor,
+        request,
+        trace,
+        owner,
+        provenance_gaps,
+        evidence,
+    })
 }
 
 fn parse_trace(

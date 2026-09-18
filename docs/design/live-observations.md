@@ -1,95 +1,91 @@
-# Bounded live observations
+# Registry queries
 
-The production API is implemented. Admission remains unavailable until a maintainer accepts fresh
-qualification and the reviewed source record is added. Candidate captures cannot grant admission.
-
-The first operation requests the complete window: three initial registration call entries followed
-by `tree_template` and `traditions` read entries in the retained category fixture. It does not prove
-successful registration returns, stored values, validation, a complete registry, or game rules.
-The fixture is `tests/fixtures/candidate/category.txt`; other fixture bytes are refused.
+Native's consumer interface answers a concrete question: **which entries are in this registry?**
+The first names are `traditions` and `tradition_categories`. Strings keep the interface open to future
+registry names. Native owns their mapping to engine classes, memory layouts, loading, and capture.
+This implementation is awaiting fresh qualification review. Production acceptance remains empty.
 
 ## Consumer flow
 
-`examples/live.rs` uses only supported production exports. Build it with:
+The consumer supplies its own executable's supervisor role once. Native creates a dedicated direct
+child for each query, connects its private pipes, and reaps it. No separate Native executable is
+shipped. `examples/live.rs` is a complete production-only consumer, including cancellation and replay.
 
-```sh
-cargo build --locked --release --features production --example live
+```rust,no_run
+use pdx_native::{Engine, OpenRequest, RegistryOptions};
+use std::process::Command;
+
+# fn query() -> Result<(), Box<dyn std::error::Error>> {
+let context = Engine::open(OpenRequest { installation_hint: "/path/to/Stellaris".into() })?;
+let mut host = Command::new(std::env::current_exe()?);
+host.arg("--native-supervisor");
+// In that executable role, call supervisor::serve(stdin(), stdout()), then exit.
+let mut native = context.with_supervisor(host, RegistryOptions {
+    retention_directory: "/existing/captures".into(),
+    deadline_seconds: None,
+})?;
+let support = native.capability("traditions");
+let report = native.get_registry("traditions")?;
+if let Ok(registry) = &report.result {
+    for entry in &registry.entries { println!("{}", entry.key); }
+    println!("{:?}", registry.completion);
+}
+if let Some(retained) = report.replay { let replay = Engine.replay_registry(retained)?; }
+# Ok(()) }
 ```
 
-1. `Engine::open` takes an installation hint and selects the exact target automatically.
-2. `context.capability(&CapabilityRequest::default())` reports qualification and current input/tool
-   availability. No private historical bundle is needed for admission.
-3. `context.prepare_observation(ObservationRequest { fixture, deadline_seconds }, CaptureOptions {
-   output })` validates the complete bounded request. The deadline is 1–180 seconds; output must
-   be a new absolute directory beneath an existing parent.
-4. Start a dedicated **direct child** of the controller using the consumer's own executable and
-   private stdin/stdout pipes. In that role call `supervisor::serve(stdin(), stdout())`.
-5. Pass the pipes and opaque plan to `supervisor::connect`. Call `started`, optionally `cancel`,
-   then `finish`. A false startup result still has a final report. The consumer never selects a
-   debugger, adapter, architecture, native hook, launch flag, or timing workaround.
-6. Retain the report's replay request. `Engine::replay` verifies its artifacts without an installed
-   game. Artifact roots may be relocated; descriptor hashes and relative paths remain unchanged.
+`get_registry` blocks until the answer and independent cleanup report arrive. `start_registry(name)`
+returns a job with `started`, `cancel`, and `finish` for consumers that need cancellation. Dropping a
+job closes control, requests independent cleanup, and arranges supervisor reaping; only a final owner
+report confirms game disposal. Caller loss is handled independently of the caller's process.
 
-Both processes must link the same Native build, target, profile, and feature set. Leave stdout
-exclusive to Native protocol and use stderr for logs. Keep the control pipe open; EOF requests
-cleanup. Let Native create its process session. Do not install another child reaper, pre-create a
-session/process group, close Native-owned descriptors, or terminate the supervisor before `serve`
-returns. Exit the dedicated process after return. Readers must expose peer EOF.
+Unknown names return `RegistryError::Unsupported` before process or capture allocation. Declared
+registries without current qualification or prerequisites return `Unavailable` with admission reasons.
+Deadlines are optional, default to 180 seconds, and must be 1–180 seconds; cleanup has separate budgets.
+The retention directory must exist. Native creates a unique immutable attempt beneath it.
 
-`ObservationReport` separates the owner termination reason, game disposal, durable reservation
-resolution, and normalized evidence. Within evidence, activation and completion are independent.
-Evidence retention/access failure returns an error in that field without discarding owner cleanup
-facts. A lost result channel proves neither success nor disposal. The retained owner report remains
-available for inspection. Live evidence has `ResultOrigin::Live`; later replay has `Replay` and does
-not re-establish present qualification. Both use the same recorded-data validator and observations.
+Consumers supply no fixtures, hooks, registration counts, field lists, or executable plans. The public
+API has no investigation controls or qualification overrides. Both processes must link the same Native
+build. The supplied command must start a dedicated direct child that calls `supervisor::serve` on its
+private stdin/stdout and exits after return. Leave stdout exclusive to that protocol; use stderr for logs.
+Do not create a process session/group or install a competing child reaper in that supervisor role.
 
-## Admission and operation ownership
+## Answer and content boundary
 
-The exact recipe and composer bind machine mechanisms, binding declarations, content prerequisites,
-and the host-resolved strategy once per context. Execution consumes these resolved values. The
-strategy supplies its actual source/package bytes. Worker requests and provenance come from that
-same binding. A synthetic recipe variation tests this boundary; it does not qualify another target.
+The answer contains engine collection keys and opaque, capture-scoped subject identities. Native
+captures the complete pointer-array collection on return from its initial loader, before later
+validation. `Complete` means every slot at that boundary was witnessed. An empty collection needs the
+same activation, loader, count, and terminal witnesses as a nonempty one. Missing records retain valid
+entries with incomplete status; unavailable access and worker loss remain explicit.
 
-Ordinary supervision rechecks the bundled acceptance, composition, current content and executable,
-and exact debugger identity before allocation. It also rechecks Native/worker protocol and package
-identities. Changed inputs, withdrawn acceptance, unknown revisions, unsupported hosts, missing tools,
-missing reservation prerequisites, and conflicting games refuse execution; there is no fallback.
-The selected debugger is pinned again between admission and preparation/start.
+Native copies the pinned installed files in `common/traditions` and `common/tradition_categories` into
+an isolated private mod, replacing those two virtual directories. The engine parses these copies.
+Registry keys are read from engine objects, never inferred from file names or a text parser. All file
+extensions are included in input integrity checks. Replay verifies the copied files against the
+retained input manifest. User mods, DLC additions to these directories, later reloads, field values,
+tradition-category relationships, parser schemas, and rule coverage are outside this first answer.
 
-The capability query can probe LLDB but does not launch or attach to a game. Reservation acquisition,
-current process conflicts, and debugger access to the suspended child are checked by the owner;
-a successful capability query is not a launch permit or an access guarantee.
+`RegistryReport` keeps termination, independent game disposal, reservation resolution, and the answer
+separate. Evidence-finalization failures stay explicit in `result` without losing disposal facts.
+`RegistryResult` contains completeness, activation, historical disposal, provenance, and limits.
+Live answers carry `Live`; retained derivation carries `Replay`. Candidate reports never produce an
+admitted live result. Historical `Engine::replay` and the SDK-483 exports/artifacts remain unchanged;
+registry artifacts use their own contract and `Engine::replay_registry`.
 
-The [host reservation prerequisites](lifecycle.md#platform-boundary-and-reservation) still apply.
-Native does not provision or clear that namespace. Unresolved ownership blocks new attempts. Setup,
-worker handshake, observation, worker shutdown, and game disposal have separate existing budgets.
-Cancellation or worker loss does not release resource ownership. OS termination is not graceful exit.
+## Authority and verification
 
-Public and maintainer entry points share observation, lifecycle, and capture code. Their protocol
-modes and report authority stay separate. Production cannot enable `maintainer-tools` or
-`test-support`; the public request has no control or qualification override.
+Composition selects the target, registry bindings, machine, strategy, package, and content once.
+The supervisor independently rechecks current inputs, composition, helpers, and bundled qualification
+before allocation. Serialized requests carry intent, not authority. Changed inputs invalidate the
+context; re-opening does not grant qualification for different content. Admission needs no historical
+bundle. Replay requires every referenced artifact and refuses absent or changed bytes.
 
-## Qualification and verification
+Maintainer controls use the same execution, capture, and replay implementation through a separate,
+feature-gated authority entry point. `tools/check-registry-observations.py --registry NAME` repeats the
+ten candidate controls. `tools/check-candidate-observations.py` preserves the early-observation controls.
+After maintainer acceptance, `tools/check-live-observations.py --registry NAME` exercises the ordinary
+production consumer with external process/stream controls. No investigation command writes acceptance.
 
-Acceptance is a reviewed change to `src/qualification/records/accepted.json`, after presentation of
-fresh evidence. Neither capture nor the investigation binary writes this authority. Composition
-includes selected package bytes, machine/binding/content declarations, and the shared operation
-source identity, Rust compiler identity, target, profile, and build flags. The complete linked-build identity remains separate, so an acceptance-only edit
-does not change the implementation under qualification. Debugger identity is an additional accepted
-prerequisite. Maintainer/production build differences are recorded and production controls rerun.
-
-The maintainer matrix is `tools/check-candidate-observations.py`. After acceptance, run:
-
-```sh
-python3 tools/check-live-observations.py "/path/to/Stellaris" "$PWD/.local/new-live-batch"
-```
-
-This launches real games through the production consumer. Its external harness drops one raw record
-or kills the attempt's recorded LLDB worker for negative controls. Those controls are not public API
-options. The matrix covers normal, unavailable fixture, incomplete stream, cancellation, caller loss,
-timeout, and worker loss; it compares live and replay results and verifies independent disposal,
-profile preservation, and an unrelated sentinel. Run it separately from process-isolation unit tests.
-
-Scope is exact M45-observe ARM64 macOS with the retained 68-file content boundary and fixture.
-Windows support, stable portability, complete tradition coverage, Atlas integration (SDK-519), and
-clean pinned-build reproduction (SDK-520) remain separate work.
+A relevant implementation change invalidates the previous qualification report. Review new evidence
+before adding a tracked acceptance. Windows, other targets/content, registry discovery, Atlas
+integration, and clean pinned-build reproduction remain outside this slice.
