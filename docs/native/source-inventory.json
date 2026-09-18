@@ -1,0 +1,427 @@
+{
+  "retrievedAt": "2026-09-18",
+  "localBundleRoot": ".local/evidence/bundles",
+  "secondLocalCopy": "/Users/jackson/Documents/PDX/evidence/native-2026-09-18",
+  "privateRemote": "not established",
+  "bundles": [
+    {
+      "id": "apple-silicon-baseline",
+      "createdAt": "2026-09-18T00:15:23Z",
+      "archive": "apple-silicon-baseline-c35d9d8077d94805.tar.gz",
+      "sha256": "c35d9d8077d94805d563a64c90d4298d7b5552d209aa2b39ef490a68487e53d0",
+      "sources": [
+        {
+          "path": "/Users/jackson/.codex/worktrees/7d2d/pdx-sdk/.scratch/sdk-447/apple-silicon-native-evidence.tar.gz",
+          "archivePath": "apple-silicon-native-evidence.tar.gz",
+          "gitHead": "59fd8ba463a8778f5ede8f6d67f4fb12cb89e81b"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 4,
+      "archiveBytes": 58145829,
+      "fileManifest": ".local/evidence/bundles/apple-silicon-baseline.manifest.json",
+      "manifestSha256": "a428be996d39bd65a3bc20ab49fed6776c76232a74073e256de393c4ff8b83ca"
+    },
+    {
+      "id": "atlas-command-grammar",
+      "createdAt": "2026-09-18T00:15:20Z",
+      "archive": "atlas-command-grammar-977e03c235286f9d.tar.gz",
+      "sha256": "977e03c235286f9d3fd8d808458205cb2858d541e3a6ef6f16c82110320c0a0b",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-atlas/.scratch/command-grammars/packages/sdk/prototype",
+          "archivePath": "prototype",
+          "gitHead": "f95017544f3c317b254a4a761be19d6fb1c26fcf"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 1130,
+      "archiveBytes": 50010422,
+      "fileManifest": ".local/evidence/bundles/atlas-command-grammar.manifest.json",
+      "manifestSha256": "d4cde2d0db37a3f767a0826fd6b48a76265e154f509fe2afbee2917315a83101"
+    },
+    {
+      "id": "atlas-discovery",
+      "createdAt": "2026-09-18T00:15:16Z",
+      "archive": "atlas-discovery-311d1e8ac3097863.tar.gz",
+      "sha256": "311d1e8ac3097863a27e9ae2c2b157b98fa3529117b58ef02d1b534a2ddf86b9",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-atlas/.scratch/engine-registry-discovery/packages/sdk/prototype",
+          "archivePath": "prototype",
+          "gitHead": "4f644841df32da151066a2382577b21bd6f24154"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 844,
+      "archiveBytes": 47378609,
+      "fileManifest": ".local/evidence/bundles/atlas-discovery.manifest.json",
+      "manifestSha256": "adee0a015ba51522e4460e5b8364941e9c2439e00dcfa73331d450655672a6c7"
+    },
+    {
+      "id": "atlas-numeric-grammar",
+      "createdAt": "2026-09-18T00:15:22Z",
+      "archive": "atlas-numeric-grammar-04d78606ebacd3b1.tar.gz",
+      "sha256": "04d78606ebacd3b12a6bd80df78b776241a0dfdea228441188a8f31b1fdb1fa1",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-atlas/.scratch/numeric-grammar/packages/sdk/prototype",
+          "archivePath": "prototype",
+          "gitHead": "b6625ae52b011bee55b2154fdb84fda33f82c0c7"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 1740,
+      "archiveBytes": 55484707,
+      "fileManifest": ".local/evidence/bundles/atlas-numeric-grammar.manifest.json",
+      "manifestSha256": "7790785ecf4a0cdc4f6c1da6a798e381ada228aa945c1b6e288a3de0f08a5286"
+    },
+    {
+      "id": "atlas-ownership",
+      "createdAt": "2026-09-18T00:15:18Z",
+      "archive": "atlas-ownership-64ed89ba74c1a0ba.tar.gz",
+      "sha256": "64ed89ba74c1a0bad20e0fd2e0dad177a1c96572250f922788250ab862a87198",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-atlas/.scratch/registry-ownership/packages/sdk/prototype",
+          "archivePath": "prototype",
+          "gitHead": "efba955e47897cf2b01773ade542ba3289151bd1"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 1072,
+      "archiveBytes": 53445825,
+      "fileManifest": ".local/evidence/bundles/atlas-ownership.manifest.json",
+      "manifestSha256": "e25250bd96482657b91aac518cca38568d2f8b63aee240edd0072ce36eb89d71"
+    },
+    {
+      "id": "external-research",
+      "createdAt": "2026-09-18T00:15:22Z",
+      "archive": "external-research-7e0bcd9a933d3bf0.tar.gz",
+      "sha256": "7e0bcd9a933d3bf005be3e8852a4bcedffa52d63194eb5ac9b4afd4f9e303f9e",
+      "sources": [
+        {
+          "path": "/Users/jackson/Documents/Codex/2026-09-15/stellaris-engine-rule-research",
+          "archivePath": "standalone-research",
+          "gitHead": null
+        },
+        {
+          "path": "/Users/jackson/.codex/worktrees/8b6b/pdx-sdk/docs/research/engine-derived-rules",
+          "archivePath": "worktree-research",
+          "gitHead": "63646b144fa82d82de8a090f30ed69580c6b0d0b"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-atlas/docs",
+          "archivePath": "atlas-docs",
+          "gitHead": null
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-atlas/CONTEXT.md",
+          "archivePath": "atlas-CONTEXT.md",
+          "gitHead": null
+        },
+        {
+          "path": "/var/folders/f8/kl_xk4y94nl5z0pzs7jhn9t00000gn/T/stellaris-config-information-extraction-spike-handoff.md",
+          "archivePath": "handoff.md",
+          "gitHead": null
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 94,
+      "archiveBytes": 5168984,
+      "fileManifest": ".local/evidence/bundles/external-research.manifest.json",
+      "manifestSha256": "044f77d402ab1d727d400f9116397b81d4950fcdac046423f0e57b6aac44237d"
+    },
+    {
+      "id": "linear-records",
+      "createdAt": "2026-09-18T00:16:47Z",
+      "archive": "linear-records-572016c0dde319fd.tar.gz",
+      "sha256": "572016c0dde319fd6cd5cd83d47166f4d8446c637c7dfa776bb88b46d4ea2092",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/linear",
+          "archivePath": "linear",
+          "gitHead": null
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/linear-assets",
+          "archivePath": "assets",
+          "gitHead": null
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 91,
+      "archiveBytes": 440184887,
+      "fileManifest": ".local/evidence/bundles/linear-records.manifest.json",
+      "manifestSha256": "260f65caf54ff97c17a5750c017a357da360f5fbe2aa2027ffa88f333e8c1198"
+    },
+    {
+      "id": "linear-supplement",
+      "createdAt": "2026-09-18T00:22:39Z",
+      "archive": "linear-supplement-bb3cd4b8356f6505.tar.gz",
+      "sha256": "bb3cd4b8356f65052aa77ff515468a140ad17d6afdc1d2e25867f61f098b5047",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/supplement/linear",
+          "archivePath": "linear",
+          "gitHead": null
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/supplement/assets",
+          "archivePath": "assets",
+          "gitHead": null
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 34,
+      "archiveBytes": 150483478,
+      "fileManifest": ".local/evidence/bundles/linear-supplement.manifest.json",
+      "manifestSha256": "809db2229ba016f2712995bda8df351ad368e72d0576757a2149fbe1691c7ceb"
+    },
+    {
+      "id": "sdk-testing",
+      "createdAt": "2026-09-18T00:15:12Z",
+      "archive": "sdk-testing-d1f9b1e1302a0448.tar.gz",
+      "sha256": "d1f9b1e1302a0448e2406b7d698a31fd36c9e87287c5ba23c92b76801eb07a2c",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/prototype",
+          "archivePath": "sdk-testing/prototype",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/.scratch/sdk-testing",
+          "archivePath": "sdk-testing/scratch",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 10098,
+      "archiveBytes": 373629682,
+      "fileManifest": ".local/evidence/bundles/sdk-testing.manifest.json",
+      "manifestSha256": "5ed23fbfaaee405becb7c638866f582c64f5d8dd17427f70e3a83aa6c3bf1d44"
+    },
+    {
+      "id": "source-git",
+      "createdAt": "2026-09-18T00:15:26Z",
+      "archive": "source-git-33b23d4f6974bb17.tar.gz",
+      "sha256": "33b23d4f6974bb17abfc0f48bef434ec30b69d0b4d22ad34519f6d789cbc33b1",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/git",
+          "archivePath": "git",
+          "gitHead": null
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 12,
+      "archiveBytes": 20680887,
+      "fileManifest": ".local/evidence/bundles/source-git.manifest.json",
+      "manifestSha256": "7bf44acf17c6124573630edb41d591f06679df16dcccf36ddf5a81e663789140"
+    },
+    {
+      "id": "typed-extraction",
+      "createdAt": "2026-09-18T00:15:15Z",
+      "archive": "typed-extraction-70fce0ce8dae5dbb.tar.gz",
+      "sha256": "70fce0ce8dae5dbb473937b08ef77e711218e34a1e2d6406519ad3b574dbfe79",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/typed-pdxscript-prototype/spikes/config-information-extraction",
+          "archivePath": "typed-extraction",
+          "gitHead": "2b8ef414f06b8b36bd2d29562c39002c6b6357a4"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/LICENSE",
+          "archivePath": "licenses/sdk-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/pdx-sdk/packages/sdk-testing/LICENSE",
+          "archivePath": "licenses/sdk-testing-LICENSE",
+          "gitHead": "400e92f00afb524371198bedd4f9cddfcab48f78"
+        },
+        {
+          "path": "/Users/jackson/Developer/cwtools-stellaris-config/LICENSE",
+          "archivePath": "licenses/cwt-LICENSE",
+          "gitHead": "76be5782683d09a9dbe304a512690eed6a2fa425"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "node_modules"
+      ],
+      "files": 1103,
+      "archiveBytes": 74344512,
+      "fileManifest": ".local/evidence/bundles/typed-extraction.manifest.json",
+      "manifestSha256": "b4a9fd547c594141286606ef00d17b44e8d313bdef01b3712eda64d05621cef4"
+    }
+  ]
+}

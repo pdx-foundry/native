@@ -1,0 +1,5 @@
+/target
+.idea
+.scratch
+# Private raw engine evidence and imported project records.
+/.local/

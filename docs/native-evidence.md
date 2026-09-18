@@ -1,0 +1,31 @@
+# Native knowledge and retained evidence
+
+PDX Native is the canonical home for reusable engine integration knowledge. This import consolidates retained SDK testing, Atlas, Typed PDXScript, and Linear material as of 2026-09-18 UTC. It preserves planning and experiments; it introduces no runtime implementation or new engine qualification.
+
+## Start here
+
+1. Choose a capability below. Read its prerequisites and limits before selecting a source.
+2. Match the **exact executable, architecture, content boundary, and method revision** in [targets](native/targets.md). Version labels and symbol names are insufficient.
+3. Read [retrieval and replay](native/retrieval.md). Verify and restore the cited private bundle. Offline replay and fresh capture are separate operations.
+4. Carry missing joins, unsupported targets, failed attempts, and missing evidence into the new work. Record new evidence under a new identity.
+
+| Capability | Local findings | Established boundary |
+| --- | --- | --- |
+| Open, isolate, close, supervise | [Lifecycle](native/lifecycle.md) | Private profiles, bounded background launch and process disposal; graceful in-game exit remains unproved |
+| Inject and observe before parsing | [Early observations](native/early-observations.md) | ARM64 loader-entry activation, bounded registration/field reads, independent parent disposal |
+| Call engine functions and locate live objects | [Engine calls and memory](native/engine-calls.md) | Exact-build main-thread calls, native predicates/effects/time/resource reads, qualified country/planet lifetimes |
+| Static analysis, references, registries | [Discovery methods](native/discovery.md) | Bounded compiler patterns, token paths, scheduler and owner joins; complete registry coverage remains unproved |
+| Adapt and qualify across targets | [Targets and qualification](native/targets.md) | Historical ready-world Mac/Windows scenario transfer; Atlas portability SDK-485 is open |
+| Locate imports, second copy, omissions | [Preservation](native/preservation.md), [inventory](native/source-inventory.json) | Private local bundles and verified local restore; remote preservation outstanding |
+
+## Ownership and status
+
+The later [first-slice implementation](design/implementation.md) adds an exact M45-observe Rust consumer flow and fresh Native qualification. Its operation bindings and tests govern that supported window. The capability pages below retain the historical experiments and their wider limits.
+
+Atlas retains authoring-rule conclusions and extraction fixtures/coverage. Its consumer pages remain at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`; the historical capsules copied here retain those fixtures to keep their native evidence replayable. This does not make Native the Atlas rule database.
+
+A **demonstrated** finding has the stated retained controls on its original target. An **accepted bounded result** records human acceptance of that experiment, not production support. A **candidate** lacks required joins or behavioral qualification. **Unknown**, **unavailable**, **incomplete**, and **worker lost** are distinct outcomes. An obsolete or failed method remains historical evidence, with its later correction identified. Unsupported or untested targets receive no inferred qualification.
+
+Linear is provenance, not a required reading service: descriptions, acceptance comments, relevant documents, and retrieved attachment bytes are in the `linear-records` bundle. Source IDs, retrieval metadata, and asset hashes survive locally. Frozen reviews can still say “pending”; the later accepted resolution supplies status. No Linear history or unrelated ticket status was changed.
+
+Raw captures, saves, logs, disassembly, binaries, copied content observations, and original mixed archives stay in gitignored `.local/evidence/`. Keep selected authored findings tracked. Refer to original adapter code for offsets and calling signatures instead of maintaining another offset table here.
