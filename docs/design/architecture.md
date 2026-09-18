@@ -2,7 +2,8 @@
 
 Status: implementation design supporting the [Native specification](../specs/native.md). The
 [bounded replay foundation](replay.md) is implemented through the public interface and an isolated
-evidence package. Live execution, target composition, and qualification remain proposed work.
+evidence package. [Capability admission](admission.md) now implements exact-target composition and
+qualification reporting. Live execution and production qualification remain unimplemented.
 The full layout below describes what to build; it does not qualify another target.
 
 ## Design position

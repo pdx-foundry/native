@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Compile negative controls for binding privacy, synthetic construction, and release features."""
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+TARGET = ROOT / "target/admission-boundary"
+
+
+def cargo(directory, arguments, expected=None):
+    result = subprocess.run(
+        ["cargo", *arguments, "--offline", "--target-dir", str(TARGET)],
+        cwd=directory, text=True, capture_output=True,
+    )
+    if expected is None:
+        if result.returncode:
+            raise SystemExit(result.stderr)
+    elif result.returncode == 0 or expected not in result.stderr:
+        raise SystemExit(f"Negative control did not fail for {expected!r}:\n{result.stderr}")
+
+
+def main():
+    # Build the ordinary release and inspect its resolved features before testing forbidden sets.
+    cargo(ROOT, ["build", "--locked", "--release", "--features", "production"])
+    metadata = json.loads(subprocess.check_output(
+        ["cargo", "metadata", "--locked", "--offline", "--format-version", "1", "--features", "production"], cwd=ROOT,
+    ))
+    native = next(package for package in metadata["packages"] if package["name"] == "pdx-native")
+    features = next(node["features"] for node in metadata["resolve"]["nodes"] if node["id"] == native["id"])
+    if set(features) != {"default", "production"}:
+        raise SystemExit(f"Unexpected production feature closure: {features}")
+    for features in ["production,test-support", "production,maintainer-tools"]:
+        cargo(ROOT, ["check", "--locked", "--features", features], "production cannot include")
+    cargo(ROOT, ["build", "--locked", "--release", "--features", "test-support"], "test-support is forbidden in release-profile builds")
+
+    with tempfile.TemporaryDirectory(prefix="native-admission-boundary-") as temporary:
+        package = Path(temporary) / "native"
+        package.mkdir()
+        for name in ["Cargo.toml", "Cargo.lock", "build.rs"]:
+            shutil.copyfile(ROOT / name, package / name)
+        for name in ["src", "crates"]:
+            shutil.copytree(ROOT / name, package / name)
+        library = package / "src/lib.rs"
+        library.write_text(library.read_text() + "\nmod prohibited_operation;\n")
+        probe = package / "src/prohibited_operation.rs"
+        probe.write_text("pub fn harmless() {}\n")
+        cargo(package, ["check", "--lib", "--locked"])
+        cfg = subprocess.check_output(["rustc", "--print", "cfg"], text=True)
+        leaf = "macos" if 'target_os="macos"' in cfg and 'target_arch="aarch64"' in cfg else "unavailable"
+        imports = [
+            "crate::binding::targets::records::CATALOGUE",
+            "crate::binding::targets::Recipe",
+            f"crate::binding::platform::{leaf}::resolve",
+            "crate::binding::machine::arm64::READ_ENTRY_REVISION",
+        ]
+        for path in imports:
+            probe.write_text(f"use {path};\n")
+            cargo(package, ["check", "--lib", "--locked"], "is private")
+
+        # Test the actual public dependency boundary rather than a same-crate import.
+        consumer = Path(temporary) / "consumer"
+        (consumer / "src").mkdir(parents=True)
+        (consumer / "Cargo.toml").write_text(
+            '[package]\nname = "admission-consumer"\nversion = "0.0.0"\nedition = "2024"\n'
+            f'[dependencies]\npdx-native = {{ path = {json.dumps(str(ROOT))} }}\n'
+        )
+        main_rs = consumer / "src/main.rs"
+        main_rs.write_text("fn main() { let _ = pdx_native::Engine; }\n")
+        cargo(consumer, ["check"])
+        main_rs.write_text("use pdx_native::test_support;\nfn main() {}\n")
+        cargo(consumer, ["check"], "no `test_support` in the root")
+        main_rs.write_text("fn main() { let _ = pdx_native::EngineContext {}; }\n")
+        cargo(consumer, ["check"], "private fields")
+    print("Admission boundary verified: production features, release exclusion, private leaves, and opaque context construction")
+
+
+if __name__ == "__main__":
+    main()

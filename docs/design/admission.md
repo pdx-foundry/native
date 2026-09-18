@@ -1,0 +1,74 @@
+# Exact-target capability admission
+
+`Engine::open(OpenRequest)` identifies the hinted executable and returns an opaque `EngineContext`.
+It does not launch a game, attach a debugger, or read private evidence. Existing `Engine.replay`
+remains independent of installation access.
+
+## Identification and scope
+
+Hints can name an executable, `stellaris.app`, or installation directory. Directory resolution
+checks only `stellaris.app/Contents/MacOS/stellaris`, `Contents/MacOS/stellaris`, `stellaris.exe`, and
+`stellaris`. Multiple candidates are ambiguous, even if one is known. There is no automatic Steam
+search, platform selector, version fallback, or adapter override.
+
+The `object` reader validates the selected executable. Native selects exactly one ARM64 slice from
+a universal Mach-O image, checks its architecture against the image header, and hashes both the
+complete image and selected slice. Thin Mach-O ARM64 and PE x64 identities can be inspected; only
+M45-observe currently has an exact catalogue entry. Other architectures/formats are unsupported;
+unregistered identities are unknown. Malformed images and access failures remain separate errors.
+
+The host-neutral M45-observe record refers to one typed recipe. The composer resolves shared
+binding declarations and machine/strategy revisions once. The compiled macOS ARM64 resolver
+reports implementation-unavailable. Windows, Linux, and Intel macOS report host-unavailable for
+that strategy. No concrete live implementation is included. Module privacy prevents shared
+operations from importing target records, recipes, or concrete platform/machine leaves.
+
+## Admission authority
+
+`capability(&CapabilityRequest)` reports qualification, availability, declared and accepted bounds, blocking
+reasons, accepted record identities, and immutable evidence references. The operation concerns
+initial registration entries and category field **read entries**, never successful registration
+returns, stored values, validation, gameplay, or a complete registry. The default scope is the
+first three registration entries and `tree_template`/`traditions` category fields. Empty, duplicate,
+unknown, or excessive requests are outside support.
+
+Qualification requires a bundled, unwithdrawn acceptance matching the complete composition,
+relevant content, and the whole requested scope. Partial acceptances are not combined to invent a
+larger qualified window. Composition identity includes executable and slice hashes, recipe,
+method, machine and strategy revisions, and hashes of shared binding declarations. The source
+records and withdrawals are the authority; records supplied by a caller or capture are not loaded.
+
+The production acceptance list is empty. The verified SDK-483 experiment establishes provenance
+for candidate declarations, not qualification of this Rust implementation. A recipe alone always
+remains incomplete. Qualification and availability are independent: synthetic tests demonstrate
+qualified requests blocked by present prerequisites. Current real strategies always report their
+host or implementation gap in addition to missing qualification.
+
+Relevant content is snapshotted from `launcher-settings.json` and the complete `.txt` inventories
+under `common/tradition_categories` and `common/traditions`. These are the retained prototype's
+content boundary, not a promise of complete game-content coverage. Missing or unreadable inputs
+are unavailable. Content symlinks are rejected. Each query rechecks the executable and content
+inventory, including additions/deletions. A failed integrity check permanently invalidates the
+context; restoring the old bytes requires opening a new context.
+
+Admission never opens historical evidence bytes. Accepted evidence references remain provenance
+even when their artifacts are absent. Replay and qualification review still need those bytes.
+Capability queries capture no new observations and issue no execution permit.
+
+## Synthetic contexts and release checks
+
+The non-default `test-support` feature exposes `test_support::engine(SyntheticCase)`. Named fixed
+scenarios feed the ordinary admission evaluator and return the ordinary context API. All inputs
+are in memory; results retain synthetic origin. No factory accepts paths, arbitrary records, or
+executable bytes. Context source is private, with no rebinding API or path to live execution.
+
+Official builds use `cargo build --release --features production`. Compile guards reject
+`production` with `test-support` or `maintainer-tools`, and the build script rejects release-profile
+`test-support`. The maintainer feature is reserved; no investigation executable is added here.
+`--all-features` is intentionally an invalid build combination.
+
+`tools/check-admission-boundary.py` builds production, checks its resolved feature set, and requires
+the forbidden builds to fail for their intended diagnostics. Temporary compilation probes prove
+that a shared-operation sibling cannot import private binding descendants, default consumers
+cannot import the factory, and callers cannot construct contexts. CI runs these checks plus both
+default and test-support suites on macOS, Windows, and Linux. No game or private bundle is needed.
