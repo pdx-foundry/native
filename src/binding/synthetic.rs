@@ -53,6 +53,9 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
         SyntheticCase::ContentChanged => integrity = Some(UnavailableReason::ContentChanged),
         SyntheticCase::TargetChanged => integrity = Some(UnavailableReason::TargetChanged),
         SyntheticCase::InputUnavailable => integrity = Some(UnavailableReason::InputUnavailable),
+        SyntheticCase::ContentUnavailable => {
+            inputs.content = Err(UnavailableReason::InputUnavailable)
+        }
         SyntheticCase::MissingPrerequisite => inputs
             .prerequisites
             .push(UnavailableReason::PrerequisiteMissing),

@@ -59,14 +59,12 @@ pub(crate) fn evaluate(
             .push(UnavailableReason::QualificationWithdrawn);
         return report;
     }
+    let Ok(content) = &inputs.content else {
+        return report;
+    };
     let applicable: Vec<_> = active
         .into_iter()
-        .filter(|record| {
-            inputs
-                .content
-                .as_ref()
-                .is_ok_and(|content| *content == record.content)
-        })
+        .filter(|record| *content == record.content)
         .collect();
     if applicable.is_empty() {
         report.reasons.push(UnavailableReason::ContentMismatch);

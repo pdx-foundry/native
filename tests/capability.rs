@@ -167,3 +167,14 @@ fn withdrawal_does_not_hide_a_separate_current_acceptance() {
     assert_eq!(report.qualification_records, ["synthetic-replacement"]);
     assert_eq!(report.availability, Availability::Available);
 }
+
+#[test]
+fn unreadable_content_is_not_a_demonstrated_mismatch() {
+    let report =
+        engine(SyntheticCase::ContentUnavailable).capability(&CapabilityRequest::default());
+    assert_eq!(report.qualification, Qualification::Incomplete);
+    assert_eq!(report.availability, Availability::Unavailable);
+    assert_eq!(report.reasons, [UnavailableReason::InputUnavailable]);
+    assert!(report.accepted_bounds.is_empty());
+    assert!(report.qualification_records.is_empty());
+}

@@ -19,6 +19,8 @@ pub enum SyntheticCase {
     TargetChanged,
     /// Inputs can no longer be checked.
     InputUnavailable,
+    /// Initial content identification failed, so content cannot be compared to the acceptance.
+    ContentUnavailable,
     /// Qualification matches, but a current prerequisite is missing.
     MissingPrerequisite,
     /// Acceptance covers fewer registration entries than the recipe's declared limit.
