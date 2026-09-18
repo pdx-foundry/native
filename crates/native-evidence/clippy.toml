@@ -1,0 +1,7 @@
+disallowed-methods = [
+    { path = "std::process::Command::new", reason = "Recorded-data replay cannot create processes" },
+    { path = "std::process::Command::spawn", reason = "Recorded-data replay cannot create processes" },
+    { path = "std::process::Command::status", reason = "Recorded-data replay cannot execute processes" },
+    { path = "std::process::Command::output", reason = "Recorded-data replay cannot execute processes" },
+    { path = "std::os::unix::process::CommandExt::exec", reason = "Recorded-data replay cannot execute processes" },
+]

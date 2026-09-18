@@ -1,0 +1,10 @@
+{"seq": 1, "run": "synthetic-worker-loss", "kind": "hooks-requested"}
+{"seq": 2, "run": "synthetic-worker-loss", "kind": "launch-stopped", "pid": 123, "error": "success", "triple": "arm64-synthetic", "frames": [{"function": "_dyld_start"}]}
+{"seq": 3, "run": "synthetic-worker-loss", "kind": "hooks-active-before-resume", "hooks": {"registration": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}, "load-file": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}, "field": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}}}
+{"seq": 4, "run": "synthetic-worker-loss", "kind": "resume", "error": "success"}
+{"seq": 5, "run": "synthetic-worker-loss", "kind": "phase-reached", "phase": "effect-registration", "stack": ["synthetic findAndRunAllInitializers witness"]}
+{"seq": 6, "run": "synthetic-worker-loss", "kind": "registration-observed", "ordinal": 1, "engineToken": 11}
+{"seq": 7, "run": "synthetic-worker-loss", "kind": "registration-observed", "ordinal": 2, "engineToken": 12}
+{"seq": 8, "run": "synthetic-worker-loss", "kind": "registration-observed", "ordinal": 3, "engineToken": 13}
+{"seq": 9, "run": "synthetic-worker-loss", "kind": "registration-window-complete", "observed": 3}
+{"seq": 10, "run": "synthetic-worker-loss", "kind": "worker-loss-ready"}

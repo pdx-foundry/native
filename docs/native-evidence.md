@@ -20,7 +20,10 @@ PDX Native is the canonical home for reusable engine integration knowledge. This
 
 ## Ownership and status
 
-The later [first-slice implementation](design/implementation.md) adds an exact M45-observe Rust consumer flow and fresh Native qualification. Its operation bindings and tests govern that supported window. The capability pages below retain the historical experiments and their wider limits.
+The [bounded replay implementation](design/replay.md) adds a game-free Rust consumer flow for the
+retained SDK-483 window. Its tests govern retained derivation behavior, with explicit synthetic and
+historical origins. It adds no live adapter or fresh native qualification. The capability pages below
+retain the historical experiments and their wider limits.
 
 Atlas retains authoring-rule conclusions and extraction fixtures/coverage. Its consumer pages remain at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`; the historical capsules copied here retain those fixtures to keep their native evidence replayable. This does not make Native the Atlas rule database.
 
