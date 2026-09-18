@@ -422,6 +422,29 @@
       "archiveBytes": 74344512,
       "fileManifest": ".local/evidence/bundles/typed-extraction.manifest.json",
       "manifestSha256": "b4a9fd547c594141286606ef00d17b44e8d313bdef01b3712eda64d05621cef4"
+    },
+    {
+      "id": "sdk-515-loader-entry",
+      "createdAt": "2026-09-18T17:58:30.330897+00:00",
+      "archive": "sdk-515-loader-entry-16fd79a9602733b9.tar.gz",
+      "sha256": "16fd79a9602733b97c2d52468efc5a14768e05473442b6e61434276675cc8ad0",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/sdk-515",
+          "archivePath": "sdk-515-loader-entry",
+          "gitHead": "f7554ce09bd480eba1f8017257bbd0d4cfa96733",
+          "note": "Candidate trial sources are pinned per file; not production qualification"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store"
+      ],
+      "files": 304,
+      "archiveBytes": 738447,
+      "fileManifest": ".local/evidence/bundles/sdk-515-loader-entry.manifest.json",
+      "manifestSha256": "e92815b0ab279c3c907f3c33bc8baf4181cfbb3225b5fa7e08ef61d1e687328a"
     }
   ]
 }

@@ -43,4 +43,5 @@ for limits and build checks.
 - [Native specification](docs/specs/native.md)
 - [Technical design and project layout](docs/design/architecture.md)
 - [Bounded replay design](docs/design/replay.md)
+- [Loader-entry worker decision and bounded trial](docs/design/debugger-worker.md)
 - [Native evidence and qualification records](docs/native-evidence.md)

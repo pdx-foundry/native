@@ -30,7 +30,6 @@ src/
   internal.rs                      doc-hidden binary entry points; investigation is gated
   bin/
     owner.rs                       minimal owner-process entry point
-    worker.rs                      provisional launcher; debugger decision remains open
     investigate.rs                 maintainer-tools feature; candidate captures only
   api/                             Engine, Job, semantic request/result types
   protocol/                        private owner/worker messages and handshake
@@ -58,7 +57,7 @@ src/
   execution/
     supervisor.rs                  independent process/resource ownership
     instances.rs                   host-wide live-job exclusion and durable reservations
-    worker.rs                      worker coordination; debugger backend remains open
+    worker.rs                      worker coordination; selected LLDB subprocess
   qualification/
     admission.rs                   matching tracked qualification authority to inputs
     records/                       accepted qualification and withdrawal records
@@ -86,7 +85,7 @@ tools/                            maintainer evidence/qualification commands
 .local/evidence/                   ignored raw captures and restored working material
 ```
 
-The main library contains the shared live implementation. Ordinary binary targets call `pdx_native::internal::owner_main` or `worker_main` through a `#[doc(hidden)] pub mod internal`. These entry points run the validated protocol and qualification path; they expose no raw-native operations, target overrides, or qualification bypass. The separate `investigate` binary has a feature-gated entry point described below. Other implementation modules stay private. `doc(hidden)` hides documentation, not access: these functions remain technically callable in builds that include them, and their input validation must account for that.
+The main library contains the shared live implementation. The owner binary calls `pdx_native::internal::owner_main` through a `#[doc(hidden)] pub mod internal`; the selected loader-entry strategy starts LLDB directly as its worker. Native helper entry points run the validated protocol and qualification path; they expose no raw-native operations, target overrides, or qualification bypass. The separate `investigate` binary has a feature-gated entry point described below. Other implementation modules stay private. `doc(hidden)` hides documentation, not access: these functions remain technically callable in builds that include them, and their input validation must account for that.
 
 The supported exports are the engine interface. Atlas must not call the hidden process entry points. The library and helpers come from one pinned workspace revision, and their handshake checks that identity. A future package release still needs to deliver helper executables or document their build step; installing a library does not install its binaries automatically. Initially the evidence package is a pinned workspace dependency. A registry release must also publish and version that dependency before publishing Native; this real packaging cost is accepted for replay isolation, not hidden behind an unpublished path dependency.
 
@@ -306,19 +305,23 @@ Activation, observation completion, and disposal each have one producer of truth
 
 Closing a job requests bounded cleanup from the supervisor. A Rust destructor may provide best-effort signaling, but it cannot stand in for awaited, confirmed disposal. A broken control channel produces an explicit uncertain result; it does not imply the game exited.
 
-## Open decision: debugger-worker integration
+## Debugger-worker integration decision
 
-The accepted early-observation mechanism is LLDB attaching to a suspended, independently owned child at the loader entry. It is not evidence that a Rust worker can replace LLDB's behavior. `execution::worker` currently names a responsibility, not a settled all-Rust implementation. Resolve the debugger integration inside the loader-entry strategy before implementing this worker or freezing its transport and packaging. The choice belongs to the strategy's implementation revision and is fixed when that revision ships; targets and callers cannot select a backend.
+SDK-515 selects an LLDB subprocess with embedded Python callbacks for the
+`MacSuspendedChildLoaderEntry` strategy. The independent owner remains the game's direct
+parent. The backend is fixed by the strategy implementation revision at release time;
+target recipes and Atlas requests gain no debugger selector.
 
-| Option to evaluate | Consequences |
-| --- | --- |
-| Rust launcher drives an LLDB subprocess with embedded Python callbacks | LLDB and its Python environment are producer prerequisites; ship/version callback scripts, structured event transport, stderr separation, and process-group cancellation |
-| Separate Python worker imports LLDB's Python API | Pin a compatible Python/LLDB installation and module search setup; generate/check Python message bindings from the protocol authority; handshake includes script/tool identities |
-| Rust uses an LLDB binding or replaces the debugger mechanism | Binding/library distribution and native linking become explicit constraints; a replacement must re-establish ordering, joins, access, and worker-loss behavior rather than inherit LLDB qualification |
+The [integration decision](debugger-worker.md) records the alternatives, process tree,
+file-journal transport, handshake, tool discovery, packaging, generated Python protocol
+binding requirement, cancellation limits and fresh four-control trial. Private `protocol`
+remains the authority for production wire meaning. The Rust owner can spawn LLDB directly;
+it must not duplicate Python breakpoint semantics in Rust.
 
-Prefer reuse of the retained mechanism as the starting experiment. The decision must identify the actual process tree, wire format, schema-generation needs, package contents, supported LLDB/Python versions, tool discovery, and cancellation/cleanup behavior. Include these artifacts in source pins and captures. Retain the existing normal, missing-hook, dropped-record, and worker-loss controls as its acceptance checks. The independent supervisor remains the game's owner in every option.
-
-The Rust binary may only be a launcher for the chosen worker; do not maintain parallel Rust and Python implementations of breakpoint semantics. Keep protocol meaning authoritative in `protocol`, deriving foreign message bindings only if that option is selected. This decision blocks the early-observation worker implementation, not the package layout, host-neutral catalogue, admission logic, or game-free contract tests. It is not resolved by this design revision.
+The trial reuses the retained Python parent to prove the external worker boundary. It does
+not qualify a Rust parent or production live adapter. Production supervision, generated
+bindings, packaging and qualification remain implementation work; the initial catalogue
+still admits no live operation.
 
 ## Evidence and generated knowledge
 

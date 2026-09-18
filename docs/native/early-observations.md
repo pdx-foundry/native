@@ -29,6 +29,11 @@ Initial `task_for_pid` failed. One human intervention enabled debugger access. A
 
 ## Reuse and limits
 
+SDK-515 now retains a [fresh debugger-worker integration trial](loader-entry-worker.md)
+and [backend decision](../design/debugger-worker.md). It selects an LLDB subprocess with
+embedded Python for the strategy and repeats the four controls with a pinned handshake.
+That candidate trial does not qualify the production port.
+
 Carry **activation**, **observation completion**, and **confirmed disposal** as separate facts. Empty output with an unresolved hook is unavailable; record loss prevents completion; worker loss does not erase already collected observations. Native owns target-specific addresses, argument conventions, source/owner joins and cleanup. Atlas supplies observation requests, fixtures and a deadline.
 
 Fresh capture requires the exact M45-observe installation/content, ARM64 host, Xcode/LLDB and debugger access. The original `replay.py --scenario all` **builds a guard and launches games**; its name does not mean offline replay. This consolidation did not run it. The offline migration check reads manifests, source hashes, traces and final ownership records, described in [retrieval](retrieval.md).
