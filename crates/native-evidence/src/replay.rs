@@ -19,7 +19,7 @@
 use serde::de::DeserializeOwned;
 use std::collections::BTreeMap;
 
-use crate::records::{
+use crate::recorded::{
     CONTRACT, Descriptor, FORMAT, Manifest, OwnerEvent, RecordedRequest, TraceRecord,
 };
 use crate::store::{ArtifactStore, is_sha256, sha256};

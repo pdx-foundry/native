@@ -173,3 +173,71 @@ pub(crate) fn test_child(
     target_arch = "aarch64"
 ))]
 pub(crate) static LIFECYCLE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(feature = "maintainer-tools")]
+pub(crate) use platform::observation::{Observer, probe_observer};
+
+#[cfg(feature = "maintainer-tools")]
+impl InvestigationPlan {
+    pub(crate) fn observer(
+        &self,
+        output: &std::path::Path,
+        attempt: &str,
+        spec: &crate::investigation::ObservationSpec,
+    ) -> Result<(Observer, crate::capture::Capture), crate::supervisor::SupervisorError> {
+        let (_, bytes) = installation::Installation::open(self.installation.executable())
+            .map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?;
+        let image = binary::identify(&bytes)
+            .map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?;
+        let identity = serde_json::json!({
+            "origin": "unqualified-candidate", "attempt": attempt, "composition": self.composition,
+            "target": image.executable, "slice": image.slice, "architecture": "arm64",
+            "build": env!("PDX_NATIVE_BUILD"), "method": compose::METHOD,
+            "strategy": platform::resolve(targets::lookup(&image).map_err(|e| crate::supervisor::SupervisorError(e.to_string()))?.strategy).revision, "control": spec.control,
+        });
+        let content = self
+            .installation
+            .content
+            .as_ref()
+            .map_err(|_| crate::supervisor::SupervisorError("Content unavailable".into()))?;
+        self.validate_observation_content()?;
+        Observer::prepare(
+            output,
+            attempt,
+            spec,
+            self.installation.executable(),
+            identity,
+            content,
+            groups::observation(),
+        )
+    }
+    pub(crate) fn spawn_observed(
+        &self,
+        output: &std::path::Path,
+        observer: &Observer,
+    ) -> Result<OwnedGame, crate::supervisor::SupervisorError> {
+        self.integrity()?;
+        platform::lifecycle::spawn_guarded(
+            self.installation.executable(),
+            self.installation.root(),
+            output,
+            Some(&observer.guard()),
+        )
+    }
+}
+
+#[cfg(feature = "maintainer-tools")]
+impl InvestigationPlan {
+    pub(crate) fn validate_observation_content(
+        &self,
+    ) -> Result<(), crate::supervisor::SupervisorError> {
+        let expected: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(include_str!("binding/targets/m45-observation-content.json"))?;
+        if self.installation.content.as_ref().ok() != Some(&expected) {
+            return Err(crate::supervisor::SupervisorError(
+                "Candidate observation requires the retained 68-file content boundary".into(),
+            ));
+        }
+        Ok(())
+    }
+}

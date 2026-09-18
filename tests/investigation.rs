@@ -32,3 +32,26 @@ fn unsupported_hosts_refuse_before_touching_the_installation_or_output() {
     assert!(error.to_string().contains("HostUnavailable"));
     assert!(!output.exists());
 }
+
+#[test]
+fn observation_request_rejects_unretained_fixture_and_unbounded_deadline() {
+    use investigation::ObservationRequest;
+    let root = tempfile::tempdir().unwrap();
+    for (fixture, deadline) in [
+        ("different fixture", 180),
+        (include_str!("fixtures/candidate/category.txt"), 0),
+        (include_str!("fixtures/candidate/category.txt"), 181),
+    ] {
+        let output = root.path().join("must-not-exist");
+        let error = investigation::prepare_observation(ObservationRequest {
+            installation_hint: root.path().join("not-an-installation"),
+            output: output.clone(),
+            fixture: fixture.into(),
+            deadline_seconds: deadline,
+        })
+        .err()
+        .unwrap();
+        assert!(error.to_string().contains("retained category fixture"));
+        assert!(!output.exists());
+    }
+}

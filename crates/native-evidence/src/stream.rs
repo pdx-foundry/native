@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::records::{Descriptor, OwnerEvent, TraceEvent, TraceRecord};
+use crate::recorded::{Descriptor, OwnerEvent, TraceEvent, TraceRecord};
 use crate::store::sha256;
 use crate::{
     Activation, ArtifactReference, Completion, Disposal, EvidenceReference, Gap, Observation,
@@ -27,6 +27,17 @@ pub(crate) fn derive(
         gaps.push(Gap::ActivationNotEstablished);
     }
     gaps.extend(availability_gaps(window));
+    gaps.extend(owner.iter().filter_map(|event| match event {
+        OwnerEvent::ObservationUnavailable { reason } => Some(Gap::Unavailable {
+            reason: reason.clone(),
+        }),
+        _ => None,
+    }));
+    if !thread_joins(trace) {
+        gaps.push(Gap::WindowIntegrity {
+            reason: "Worker thread witnesses disagree".into(),
+        });
+    }
     gaps.extend(source_gaps(trace, fixture, fixture_body));
     validate_window(trace, fixture, &mut gaps);
     let worker_lost = owner
@@ -213,7 +224,7 @@ fn single(trace: &[TraceRecord], predicate: impl Fn(&TraceEvent) -> bool) -> Opt
 }
 
 fn activation(trace: &[TraceRecord], owner: &[OwnerEvent], fixture: &str) -> Activation {
-    if activation_witnesses(trace, owner, fixture).is_some() {
+    if activation_witnesses(trace, owner, fixture).is_some() && thread_joins(trace) {
         Activation::Demonstrated
     } else {
         Activation::NotEstablished
@@ -444,4 +455,34 @@ fn disposal(owner: &[OwnerEvent]) -> Disposal {
         return Disposal::Confirmed;
     }
     Disposal::Unconfirmed
+}
+
+// Historical SDK-483 records did not carry thread IDs. Fresh captures preserve and check them.
+fn thread_joins(trace: &[TraceRecord]) -> bool {
+    if trace.iter().all(|record| record.thread.is_none()) {
+        return true;
+    }
+    let Some(thread) = trace
+        .iter()
+        .find_map(|record| match record.event {
+            TraceEvent::LaunchStopped { .. } => record.thread,
+            _ => None,
+        })
+        .filter(|thread| *thread != 0)
+    else {
+        return false;
+    };
+    trace
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.event,
+                TraceEvent::RegistrationObserved { .. }
+                    | TraceEvent::PhaseReached { .. }
+                    | TraceEvent::FieldObserved { .. }
+                    | TraceEvent::PhaseComplete { .. }
+                    | TraceEvent::StreamEnd { .. }
+            )
+        })
+        .all(|record| record.thread == Some(thread))
 }

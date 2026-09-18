@@ -10,8 +10,9 @@ There is no installed Native owner executable or helper search path.
 The ordinary `supervisor::serve` entry point currently refuses every live request: no live operation
 is qualified. `investigation::{connect, serve}` is a separate `maintainer-tools` surface producing
 only `InvestigationReport` and `CandidateCapture`. It cannot construct a supported replay result or
-change qualification authority. Candidate captures have their own versioned format; they are not
-inputs to the supported observation replay API.
+change qualification authority. Lifecycle-only captures have their own versioned report format. The separate
+[candidate observation path](candidate-observations.md) additionally emits evidence descriptors
+that the public replay API can read; this does not admit a public live operation.
 
 The consumer first calls `investigation::prepare` to validate and pin the request, then starts a **direct child** running its own supervisor role with piped stdin/stdout.
 That child calls `investigation::serve`; the controller calls `investigation::connect` with those
@@ -24,7 +25,8 @@ The caller retains `CandidateJob`, awaits `started`, and then awaits `finish`. `
 `None` means a report is already available from `finish`, including disposal for failed startup.
 Cancellation and worker-loss notifications request owner cleanup. A broken result channel is not
 proof of disposal; inspect the retained report. The consumer is responsible for detecting its
-observation worker's exit and notifying the owner. This slice starts no observation worker.
+observation worker's exit and notifying the owner. The lifecycle-only request starts no observation worker. Observation requests use the selected
+strategy under the same owner, which directly monitors its worker.
 
 Use a dedicated process, not a thread inside the main application. Native creates a new macOS
 session to separate terminal lifetime. Let Native establish the session; do not pre-create a process group/session. Do not install another SIGCHLD reaper, ignore SIGCHLD, close

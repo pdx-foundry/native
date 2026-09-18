@@ -14,7 +14,8 @@ ALLOWED = {
     "pdx-native-evidence", "serde", "serde_core", "serde_derive", "serde_json", "sha2",
     "proc-macro2", "quote", "syn", "unicode-ident", "itoa", "memchr", "zmij", "digest",
     "block-buffer", "crypto-common", "generic-array", "typenum", "version_check", "cfg-if",
-    "cpufeatures", "libc",
+    "cpufeatures", "libc", "schemars", "schemars_derive", "dyn-clone",
+    "ref-cast", "ref-cast-impl", "serde_derive_internals",
 }
 
 
@@ -22,7 +23,7 @@ def check_graph(metadata):
     packages = {row["id"]: row for row in metadata["packages"]}
     nodes = {row["id"]: row for row in metadata["resolve"]["nodes"]}
     evidence = next(row for row in packages.values() if row["name"] == "pdx-native-evidence")
-    if {row["name"] for row in evidence["dependencies"]} != {"serde", "serde_json", "sha2"}:
+    if {row["name"] for row in evidence["dependencies"]} != {"serde", "serde_json", "sha2", "schemars"}:
         raise ValueError("evidence direct dependencies changed; review the replay boundary")
     if evidence["features"] or any(target["kind"] != ["lib"] for target in evidence["targets"]):
         raise ValueError("evidence must remain a recorded-data library without features or build/launch targets")

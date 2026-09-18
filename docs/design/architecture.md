@@ -3,7 +3,7 @@
 Status: implementation design supporting the [Native specification](../specs/native.md). The
 [bounded replay foundation](replay.md) is implemented through the public interface and an isolated
 evidence package. [Capability admission](admission.md) now implements exact-target composition and
-qualification reporting. Maintainer candidate lifecycle is implemented through a consumer-hosted supervisor; public live operations and production qualification remain unavailable.
+qualification reporting. Maintainer candidate lifecycle and bounded observation capture are implemented through a consumer-hosted supervisor; public live operations and production qualification remain unavailable.
 The full layout below describes what to build; it does not qualify another target.
 
 ## Design position
@@ -353,7 +353,8 @@ Expose candidate investigation through a `maintainer-tools`-gated library module
 
 The tool lives in `investigation` and requests an `InvestigationPlan` from the shared composer. This path resolves candidate bindings and strategies without treating them as qualified. It can perform bounded native experiments through the same independent supervisor, host reservation, identity checks, and disposal machinery. Qualification exemption does not exempt process ownership or integrity checks.
 
-The tool emits only `CandidateCapture` artifacts and an `InvestigationReport`, with explicit unqualified origin and limitations. It cannot construct `AdmittedOperation`, `Engine`, or supported public operation results from a candidate plan: their constructors remain private to the admission/session path, and there is no conversion from investigation types. Candidate requests use a distinct gated protocol mode; ordinary helpers reject that mode, and all participating processes must link the same Native build identity. Shared supervision does not merge the two result authorities.
+The tool emits only `CandidateCapture` artifacts and an `InvestigationReport`, with explicit unqualified origin and limitations. It emits recorded observation artifacts for public offline replay, while preserving their unqualified origin.
+It cannot construct `AdmittedOperation`, `Engine`, or supported public live operation results from a candidate plan: their constructors remain private to the admission/session path, and there is no conversion from investigation types. Candidate requests use a distinct gated protocol mode; ordinary helpers reject that mode, and all participating processes must link the same Native build identity. Shared supervision does not merge the two result authorities.
 
 Promotion is a separate reviewed change to tracked qualification records after verifying the evidence bytes. The investigation API cannot update the bundled authority, mint an acceptance record, or return a supported capability merely because an experiment succeeded. This explicitly places the unqualified investigation path without opening it to Atlas or weakening normal admission.
 
