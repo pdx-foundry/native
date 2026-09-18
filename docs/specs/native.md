@@ -140,7 +140,7 @@ Live jobs establish three independent results:
 2. **Observation completion:** the requested window ended, sequence and totals agree, required source/owner joins are present, and the terminal witness exists. Each completeness claim names its window.
 3. **Disposal:** the independent supervisor confirms that the owned process exited and its platform ownership resources were released; child reaping is included where applicable.
 
-The supervisor owns the game independently of the observation worker. Worker failure must not remove the ability to dispose of the game. Cancellation, timeout, failed activation, process crash, and partial launch retain their evidence and end with a bounded disposal attempt. Unconfirmed disposal is reported and prevents reuse of the affected isolation context.
+Native is a library; the consumer supplies a dedicated supervisor executable/process and invokes Native inside it. Native owns the reservation, process resources, deadlines, and disposal policy; the consumer owns startup, scheduling, and presentation. The supervisor owns the game independently of the observation worker. Worker failure must not remove the ability to dispose of the game. Cancellation, timeout, failed activation, process crash, and partial launch retain their evidence and end with a bounded disposal attempt. Unconfirmed disposal is reported and prevents reuse of the affected isolation context.
 
 Do not replay an operation whose completion is uncertain. A new attempt uses a fresh identity and isolated resources after prior ownership is resolved. No blind retry of a potentially mutating engine operation is permitted. Retain failed attempts even when a later attempt succeeds.
 

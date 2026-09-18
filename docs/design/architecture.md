@@ -3,7 +3,7 @@
 Status: implementation design supporting the [Native specification](../specs/native.md). The
 [bounded replay foundation](replay.md) is implemented through the public interface and an isolated
 evidence package. [Capability admission](admission.md) now implements exact-target composition and
-qualification reporting. Live execution and production qualification remain unimplemented.
+qualification reporting. Maintainer candidate lifecycle is implemented through a consumer-hosted supervisor; public live operations and production qualification remain unavailable.
 The full layout below describes what to build; it does not qualify another target.
 
 ## Design position
@@ -21,16 +21,13 @@ The public interface remains the primary test seam, as agreed for the specificat
 
 ## Proposed project layout
 
-Keep the live runtime in one Cargo package, with one library target and small binary targets under `src/bin/`. Add one evidence-only package for the concrete dependency constraint that replay must not depend on any live-launch code. This is not the former runtime-package split for binary entry points. Other knowledge ownership remains in Rust modules; further splits require an actual build, loading, dependency, or distribution constraint.
+Keep the live runtime in one Cargo package as a library. Consumers supply supervisor executables; maintainer Cargo examples demonstrate integration. Add one evidence-only package for the concrete dependency constraint that replay must not depend on any live-launch code. This is not the former runtime-package split for binary entry points. Other knowledge ownership remains in Rust modules; further splits require an actual build, loading, dependency, or distribution constraint.
 
 ```text
 Cargo.toml                         pdx-native package and workspace membership
 src/
   lib.rs                           explicit exports of the supported interface
-  internal.rs                      doc-hidden binary entry points; investigation is gated
-  bin/
-    owner.rs                       minimal owner-process entry point
-    investigate.rs                 maintainer-tools feature; candidate captures only
+  supervisor.rs                    public consumer-hosted supervisor entry point
   api/                             Engine, Job, semantic request/result types
   protocol/                        private owner/worker messages and handshake
   session/                         context binding, operation admission, job coordination
@@ -85,9 +82,16 @@ tools/                            maintainer evidence/qualification commands
 .local/evidence/                   ignored raw captures and restored working material
 ```
 
-The main library contains the shared live implementation. The owner binary calls `pdx_native::internal::owner_main` through a `#[doc(hidden)] pub mod internal`; the selected loader-entry strategy starts LLDB directly as its worker. Native helper entry points run the validated protocol and qualification path; they expose no raw-native operations, target overrides, or qualification bypass. The separate `investigate` binary has a feature-gated entry point described below. Other implementation modules stay private. `doc(hidden)` hides documentation, not access: these functions remain technically callable in builds that include them, and their input validation must account for that.
+The main library contains the shared live implementation. Consumers such as Atlas start their
+own dedicated supervisor process and call Native's documented entry point inside it. Native owns
+the protocol, reservation, target checks, resource lifetime, and disposal. The consumer owns
+process startup, scheduling, and presentation. The maintainer Cargo example demonstrates both
+roles; it is not a distributed Native runtime executable. See [candidate lifecycle](lifecycle.md)
+for the implemented integration and lifetime contract.
 
-The supported exports are the engine interface. Atlas must not call the hidden process entry points. The library and helpers come from one pinned workspace revision, and their handshake checks that identity. A future package release still needs to deliver helper executables or document their build step; installing a library does not install its binaries automatically. Initially the evidence package is a pinned workspace dependency. A registry release must also publish and version that dependency before publishing Native; this real packaging cost is accepted for replay isolation, not hidden behind an unpublished path dependency.
+The connection checks the linked Native build identity, not a Native helper executable path.
+The evidence package remains a pinned workspace dependency and must also be published/versioned
+before any registry release of Native.
 
 Use `feature.rs` as each module's entry file and `feature/` for its internal modules. Apply this convention throughout; the tree omits some entry files for brevity.
 
@@ -117,7 +121,7 @@ Only the composition/admission path combines target identity, recipe identity, o
 
 **Replay cannot depend on live execution.** The evidence package owns `evidence::replay` (Native's dependency alias), stream validation, and the recorded-data types shared with capture. It has no dependency on Native, `execution`, `binding`, platform leaves, debugger libraries, or the owner/worker protocol. Its interface accepts retained bytes/records or its concrete read-only artifact store, never an `Engine`, executable plan, or caller-supplied code callback. Native's replay entry delegates to this recorded-data interface; it must not open a live context first. Retained-data derivations used by both paths live in the evidence package rather than calling back into the live engine implementation.
 
-Private modules alone cannot enforce that rule inside the main crate: replay could still call the crate's public `Engine` interface or hidden binary entry points. The separate dependency graph makes imports of Native execution code from replay fail compilation. This is an architecture constraint, not an OS sandbox: forbid process/debugger launch code and unreviewed live-capable dependencies in the evidence package as well. Public-interface isolation tests still check that Native's replay adapter does not introduce launch behavior outside that package.
+Private modules alone cannot enforce that rule inside the main crate: replay could still call the crate's public `Engine` interface or supervisor entry points. The separate dependency graph makes imports of Native execution code from replay fail compilation. This is an architecture constraint, not an OS sandbox: forbid process/debugger launch code and unreviewed live-capable dependencies in the evidence package as well. Public-interface isolation tests still check that Native's replay adapter does not introduce launch behavior outside that package.
 
 Keep internal interfaces narrow and specific. An operation that needs a bound reader and an observation channel should receive those, not a universal object exposing platform, version, addresses, and every engine service. The latter would make repeated selection convenient again.
 
@@ -345,13 +349,13 @@ Official release builds enable a `production` feature. A compile-time guard reje
 
 ### Maintainer investigation entry point
 
-Place the investigation tool in `src/bin/investigate.rs`, declared with Cargo `required-features = ["maintainer-tools"]`. It calls only the correspondingly gated `internal::investigate_main` entry point. Ordinary owner/worker entry points retain their admission requirements and gain no bypass switch. The maintainer binary is absent from default and production artifacts; a release build with `production` refuses its feature.
+Expose candidate investigation through a `maintainer-tools`-gated library module. A Cargo example demonstrates the consumer-supplied controller and supervisor roles. Ordinary supervisor entry points retain admission requirements and gain no bypass switch. Default and production artifacts omit candidate investigation; production refuses its feature.
 
 The tool lives in `investigation` and requests an `InvestigationPlan` from the shared composer. This path resolves candidate bindings and strategies without treating them as qualified. It can perform bounded native experiments through the same independent supervisor, host reservation, identity checks, and disposal machinery. Qualification exemption does not exempt process ownership or integrity checks.
 
-The tool emits only `CandidateCapture` artifacts and an `InvestigationReport`, with explicit unqualified origin and limitations. It cannot construct `AdmittedOperation`, `Engine`, or supported public operation results from a candidate plan: their constructors remain private to the admission/session path, and there is no conversion from investigation types. Candidate requests use a distinct gated protocol mode; ordinary helpers reject that mode, and all participating maintainer helpers must match the tool's build identity. Shared supervision does not merge the two result authorities.
+The tool emits only `CandidateCapture` artifacts and an `InvestigationReport`, with explicit unqualified origin and limitations. It cannot construct `AdmittedOperation`, `Engine`, or supported public operation results from a candidate plan: their constructors remain private to the admission/session path, and there is no conversion from investigation types. Candidate requests use a distinct gated protocol mode; ordinary helpers reject that mode, and all participating processes must link the same Native build identity. Shared supervision does not merge the two result authorities.
 
-Promotion is a separate reviewed change to tracked qualification records after verifying the evidence bytes. The binary cannot update the bundled authority, mint an acceptance record, or return a supported capability merely because an experiment succeeded. This explicitly places the unqualified investigation path without opening it to Atlas or weakening normal admission.
+Promotion is a separate reviewed change to tracked qualification records after verifying the evidence bytes. The investigation API cannot update the bundled authority, mint an acceptance record, or return a supported capability merely because an experiment succeeded. This explicitly places the unqualified investigation path without opening it to Atlas or weakening normal admission.
 
 Generate or serialize secondary representations from their authority:
 
@@ -388,18 +392,18 @@ Add these architecture checks as implementation arrives:
 2. **Qualification derivation:** qualification outside the exact method/target/content bounds produces no admitted operation. An unqualified operation stays unavailable even when a candidate recipe exists. With test-only accepted records, removing private evidence leaves admission-policy tests unchanged but causes retained replay to report evidence-unavailable. Withdrawal removes affected admission while preserving historical captures.
 3. **Caller independence:** the same Atlas request flow exercises two real target compositions when available. A replay or synthetic provider establishes dispatch behavior only, not native portability.
 4. **Change locality:** add a synthetic target that reuses existing methods. Shared operation source must remain unchanged. Test a binding variation and demonstrate that all users obtain it from the one binding authority.
-5. **Dependency checks:** shared engine operations cannot import `binding::targets::records` or concrete platform/machine leaves. Private modules and `pub(super)`/`pub(in crate::binding)` enforce this within the main crate. Compile-fail controls attempt those imports from `engine::operations`; normal use of bound interfaces must compile. In the evidence package, compile-fail controls attempt imports of Native's `Engine`, `execution`, hidden launch entry points, and platform leaves from replay. Enforce a dependency allowlist with no path back to live code, and reject process/debugger launching code there. The public replay adapter also retains a no-launch behavioral check. Package checks enforce the separate evidence dependency graph, not module visibility inside Native. Separately check that Atlas uses only supported exports, excluding hidden binary/test entry points. A text search alone cannot prove knowledge ownership.
+5. **Dependency checks:** shared engine operations cannot import `binding::targets::records` or concrete platform/machine leaves. Private modules and `pub(super)`/`pub(in crate::binding)` enforce this within the main crate. Compile-fail controls attempt those imports from `engine::operations`; normal use of bound interfaces must compile. In the evidence package, compile-fail controls attempt imports of Native's `Engine`, `execution`, supervisor entry points, and platform leaves from replay. Enforce a dependency allowlist with no path back to live code, and reject process/debugger launching code there. The public replay adapter also retains a no-launch behavioral check. Package checks enforce the separate evidence dependency graph, not module visibility inside Native. Separately check that Atlas uses only supported exports, excluding maintainer/test entry points. A text search alone cannot prove knowledge ownership.
 6. **Protocol consistency:** shared types serialize and round-trip with contract identity intact. Reject a mismatched helper artifact or protocol revision. If foreign bindings exist, verify generation leaves no diff.
 7. **Authority under failure:** dropped records cannot produce completion; worker death cannot erase resource ownership; missing evidence cannot produce a supported empty result. Retain the existing activation/completion/disposal controls.
 8. **Host-wide exclusion:** two owner processes launched from different contexts/checkouts contend for the same reservation. Caller death does not release it; supervisor death leaves an unresolved journal that blocks new launch even when the OS lock becomes available. Older readers reject newer journal versions, unknown states, corrupt/truncated records, and permission failures without overwriting them or launching. Conflicting ordinary game instances are rejected without being terminated. Include ambiguous process identity as an unavailable-isolation case.
-9. **Build-mode separation:** integration tests reach synthetic admission only through the gated factory. Default builds cannot import it; production/test-support and production/maintainer-tools combinations fail to compile; release-profile test-support builds fail. Synthetic engines cannot reach live strategies. The maintainer binary produces only candidate artifacts, cannot convert a candidate into an admitted operation/public live result, and ordinary helpers reject its protocol mode.
+9. **Build-mode separation:** integration tests reach synthetic admission only through the gated factory. Default builds cannot import it; production/test-support and production/maintainer-tools combinations fail to compile; release-profile test-support builds fail. Synthetic engines cannot reach live strategies. The maintainer library API produces only candidate artifacts, cannot convert a candidate into an admitted operation/public live result, and ordinary helpers reject its protocol mode.
 
 Do not assert private call sequences in consumer tests. Assert observations, limits, side effects, admitted/unavailable behavior, and retained evidence. A refactor that preserves those results should not require rewriting Atlas tests.
 
 ## Implementation order
 
-1. Add a library and minimal `src/bin/` entry points to the existing package, with the small public interface required by the first consumer path. Establish shared recorded-data types and pure replay in the isolated evidence package. Add the test-support factory and release feature guards; replace the scaffold entry point without creating a general plugin framework.
-2. Implement exact-target identification, one explicit composition, qualification admission, and unavailable outcomes. Place bounded unqualified investigation in the separate gated binary and candidate-type path. Keep catalogue registration and candidate capture distinct from support.
+1. Add the library and consumer-hosted supervisor entry points to the existing package, with the small public interface required by the first consumer path. Establish shared recorded-data types and pure replay in the isolated evidence package. Add the test-support factory and release feature guards; replace the scaffold entry point without creating a general plugin framework.
+2. Implement exact-target identification, one explicit composition, qualification admission, and unavailable outcomes. Place bounded unqualified investigation in the separate gated library module and candidate-type path. Keep catalogue registration and candidate capture distinct from support.
 3. Resolve the debugger-worker integration decision. Implement the independent supervisor, host-wide reservation, and bounded early-observation path for the first qualified target. Bind platform, machine, engine definitions, and the chosen debugger strategy through composition; qualify the resulting implementation before promotion.
 4. Add verified capture/replay and Atlas's bounded tradition request flow through the same public interface. Preserve partial results and refusal of unsupported completeness claims.
 5. Introduce the second concrete target/strategy from the portability work. Share only proven common knowledge; use that implementation to assess whether private interfaces hide the actual differences.
@@ -415,6 +419,6 @@ Implement only the first required variants initially. The retained experiments e
 - **A declarative language for arbitrary native behavior:** moves branching into a second programming language. Keep selection data declarative and nontrivial behavior in typed Rust implementations.
 - **Runtime plugin discovery and automatic nearest-version fallback:** unnecessary for the initial source-built product and incompatible with exact-target qualification. Use explicit registration and fail closed on unknown combinations.
 - **One crate per platform, method, or operation:** adds package coordination without necessarily adding information hiding. Start with modules; split a crate when a build, loading, dependency, or distribution constraint requires it.
-- **A second runtime package solely for binary entry points:** a doc-hidden entry module in the live package suffices. The evidence package is a different, concrete dependency constraint: replay cannot import the public or private live runtime. Its packaging cost is explicit.
+- **A distributed Native supervisor executable:** consumers supply the process and call the library entry point. The evidence package is a different, concrete dependency constraint: replay cannot import the public or private live runtime. Its packaging cost is explicit.
 
 The specification remains authoritative for product scope, supported-target policy, Atlas ownership, and release gates. This design owns the proposed source layout and placement of implementation decisions. Concrete method and qualification records will own executable support; neither document is an alternate offset table or support registry.

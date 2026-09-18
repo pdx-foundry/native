@@ -64,7 +64,7 @@ executable bytes. Context source is private, with no rebinding API or path to li
 
 Official builds use `cargo build --release --features production`. Compile guards reject
 `production` with `test-support` or `maintainer-tools`, and the build script rejects release-profile
-`test-support`. The maintainer feature is reserved; no investigation executable is added here.
+`test-support`. The maintainer feature now exposes a separate candidate lifecycle library API; see [consumer-hosted lifecycle](lifecycle.md). Native distributes no supervisor executable.
 `--all-features` is intentionally an invalid build combination.
 
 `tools/check-admission-boundary.py` builds production, checks its resolved feature set, and requires

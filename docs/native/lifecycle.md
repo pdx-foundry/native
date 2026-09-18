@@ -29,3 +29,7 @@ The game's command-line parser split at hyphens inside `-userdir`; a hyphenated 
 Prerequisites: the recorded unlocked single-user graphical session, exact installation, compatible game-produced fixture, recorded DLC/content, Python Windows APIs, Node and the recorded toolchain. The adapter refuses a different executable or an already-running instance. These results do not establish concurrency, cross-user ownership, owner-loss recovery or a universal invisible launch.
 
 Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibility-harness/apple-silicon/lifecycle.ts`, `windows/host.py`, `windows-446/host.py`; corresponding README files provide fresh-run commands. Raw Windows files are in the retained Linear assets named in [targets](targets.md). Historical helpers still carry original machine paths; [preservation](preservation.md) lists fresh-run limits.
+
+## Rust library candidate lifecycle
+
+SDK-516 adds the [consumer-hosted supervisor](../design/lifecycle.md), with [fresh candidate controls](candidate-lifecycle.md). Native supplies lifecycle policy and platform services; consumers supply the executable. The games remain suspended; public live qualification is unchanged.

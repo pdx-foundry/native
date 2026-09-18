@@ -3,8 +3,9 @@
 Rust bridge to Stellaris.
 
 The library identifies exact installations, reports capability admission, and replays the bounded
-historical registration/category-read window. It does not launch games. No production live
-operation is qualified yet. An Atlas-style caller uses `Engine::replay` with a relocatable artifact
+historical registration/category-read window. No production live operation is qualified yet.
+The optional maintainer API runs suspended candidate lifecycle attempts inside a consumer-supplied
+supervisor process; Native distributes no runtime executable. An Atlas-style caller uses `Engine::replay` with a relocatable artifact
 root and a pinned descriptor reference.
 
 ```sh
@@ -45,3 +46,5 @@ for limits and build checks.
 - [Bounded replay design](docs/design/replay.md)
 - [Loader-entry worker decision and bounded trial](docs/design/debugger-worker.md)
 - [Native evidence and qualification records](docs/native-evidence.md)
+
+- [Consumer-hosted lifecycle and maintainer harness](docs/design/lifecycle.md)

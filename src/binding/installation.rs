@@ -181,3 +181,13 @@ fn collect_content(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), Una
     }
     Ok(())
 }
+
+#[cfg(feature = "maintainer-tools")]
+impl Installation {
+    pub(super) fn executable(&self) -> &Path {
+        &self.executable
+    }
+    pub(super) fn root(&self) -> &Path {
+        &self.root
+    }
+}

@@ -27,3 +27,6 @@ pub(super) fn resolve(strategy: StrategyId) -> StrategyResolution {
         unavailable: host::resolve(strategy),
     }
 }
+
+#[cfg(feature = "maintainer-tools")]
+pub(in crate::binding) use host::lifecycle;
