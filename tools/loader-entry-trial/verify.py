@@ -7,6 +7,7 @@ import sys
 from protocol import sha, validate_hello, write
 
 OUTCOMES = {"none": "complete", "missing": "unavailable", "incomplete": "incomplete", "worker-loss": "worker-lost"}
+FIXTURE = "common/tradition_categories/atlas_early_fixture.txt"
 
 
 def read(path):
@@ -18,12 +19,17 @@ def check_trace(trace, fault):
     start = next(row for row in trace if row["kind"] == "launch-stopped")
     assert start["frames"][0]["function"] == "_dyld_start"
     assert start["triple"].startswith("arm64-")
+    assert start["thread"]
     assert not set(kinds) & {"callback-error", "native-exception", "early-activation-unavailable"}
     sequences = [row["seq"] for row in trace]
     assert sequences == sorted(set(sequences))
     contiguous = sequences == list(range(1, len(trace) + 1))
     if fault == "missing":
-        assert "capability-unavailable" in kinds
+        failure = next(row for row in trace if row["kind"] == "capability-unavailable")
+        assert failure["capability"] == "tradition-category-field-reads"
+        assert failure["reason"] == "required hook missing before resume"
+        hooks = next(row for row in trace if row["kind"] == "hooks-requested")["hooks"]
+        assert set(hooks) == {"registration", "load-file"}
         assert not set(kinds) & {"resume", "field-observed", "stream-end", "hooks-active-before-resume"}
         assert contiguous
         return
@@ -34,7 +40,7 @@ def check_trace(trace, fault):
     assert all(hook["enabled"] and hook["resolved"] == 1 and hook["hits"] == 0 for hook in active["hooks"].values())
     registrations = [row for row in trace if row["kind"] == "registration-observed"]
     assert len(registrations) == 3
-    assert all(row["seq"] > active["seq"] and row["thread"] for row in registrations)
+    assert all(row["seq"] > resume["seq"] and row["thread"] == start["thread"] for row in registrations)
     if fault == "worker-loss":
         assert "worker-loss-ready" in kinds and "stream-end" not in kinds
         assert contiguous
@@ -44,8 +50,9 @@ def check_trace(trace, fault):
     end = next(row for row in trace if row["kind"] == "stream-end")
     fields = [row for row in trace if row["kind"] == "field-observed"]
     assert all(row["seq"] < entry["seq"] for row in registrations)
-    assert entry["seq"] < returned["seq"] < end["seq"]
-    assert entry["file"] == returned["file"] and entry["thread"] == returned["thread"]
+    assert resume["seq"] < entry["seq"] < returned["seq"] < end["seq"]
+    assert entry["file"] == returned["file"] == FIXTURE
+    assert entry["thread"] == returned["thread"] == start["thread"]
     assert all(entry["seq"] < row["seq"] < returned["seq"] and
                row["file"] == entry["file"] and row["thread"] == entry["thread"] for row in fields)
     assert end["producerLastSequence"] == end["seq"]
@@ -58,6 +65,13 @@ def check_trace(trace, fault):
         assert contiguous and len(fields) == 2
         assert [(row["field"], row["line"]) for row in fields] == [("tree_template", 2), ("traditions", 3)]
         assert len({row["owner"] for row in fields}) == 1
+
+
+def check_preservation(record, preflight, manifest):
+    expected = {"target": preflight["target"], "content": preflight["content"],
+                "protected": manifest["protectedBefore"]}
+    assert record["before"] == expected
+    assert record["after"] == expected
 
 
 def verify(root):
@@ -74,10 +88,11 @@ def verify(root):
         fault = manifest["fault"]
         assert result["status"] == OUTCOMES[fault]
         assert result["targetUnchanged"] and result["producerContentUnchanged"] and result["protectedUnchanged"]
+        check_preservation(read(run / "preservation.json"), preflight, manifest)
         assert result["disposal"]["confirmed"]
         assert read(run / "producer-content.json") == preflight["content"]
         assert sha(run / "producer-content.json") == manifest["producerContentManifestSha256"]
-        fixture = "mod/atlas_early/common/tradition_categories/atlas_early_fixture.txt"
+        fixture = "mod/atlas_early/" + FIXTURE
         assert sha(run / "profile" / fixture) == manifest["fixtureHashes"][fixture]
         for name, digest in manifest["probeHashes"].items():
             assert expected["artifacts"][name] == digest

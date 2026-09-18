@@ -50,7 +50,7 @@ The selected local transport is a private per-attempt directory, with:
   requires loader entry, ARM64, and enabled, resolved, zero-hit hooks before continuing.
 - `trace.jsonl`: append-only UTF-8 JSON records, flushed and fsynced by one producer. Each record
   has attempt identity and a producer sequence. The terminal includes last sequence and field
-  count. Thread IDs join loader entry, field reads and loader return; field reads also share an
+  count. Thread IDs join `_dyld_start`, registration, category loader entry, field reads and loader return; field reads also share an
   owner and source file/line. Registration is bounded to three call entries.
 - `owner.json`: independent parent journal, including child ownership, accepted handshake,
   worker exit, disposal and exact child reaping. Its clock is never compared with worker time.
@@ -70,7 +70,7 @@ parent then disposes of the suspended child. This behavior is checked from raw r
 
 `tools/loader-entry-trial/protocol.py` owns the experiment's `sdk-515-trial/1` handshake;
 both Python processes import that one module. The sealed SDK-483 callback owns the retained
-event vocabulary. The trial adds only callback thread correlation and the fail-closed hook gate.
+event vocabulary. The trial adds startup/callback thread correlation, raw before/after preservation hashes and the fail-closed hook gate.
 `verify.py` checks evidence; producer status labels do not establish success.
 
 For the implementation, **Native's private `src/protocol` is the single owner of wire meaning**.
@@ -122,14 +122,16 @@ The exact universal executable and ARM64 slice match [M45-observe](../native/tar
 Preflight checks the complete filename set and bytes of the retained 68-file producer content
 boundary (launcher settings, tradition categories and traditions). Fixture bytes match the
 retained two-field category. The parent records private-profile hashes and checks the executable,
-content files and four protected ordinary-profile files after each attempt. This is not a full
+content files and four protected ordinary-profile files after each attempt. The verifier compares
+raw before/after hashes in `preservation.json` with the pinned target/content and initial protected
+file identities; producer booleans cannot establish preservation. This is not a full
 DLC/installation equivalence claim. No world or save is loaded.
 
 From the repository root, **the following launches real games**:
 
 ```sh
 python3 tools/evidence.py typed-extraction --restore # only if not already restored
-python3 tools/loader-entry-trial/run.py .local/evidence/sdk-515/new-trial
+python3 tools/loader-entry-trial/run.py .local/evidence/sdk-515-review/new-trial
 ```
 
 The output directory must not exist. Missing installations, mismatched content/source, another
@@ -140,7 +142,7 @@ sources into `trial-source/` and snapshots executed producer scripts per run.
 Offline verification and game-free tests:
 
 ```sh
-python3 tools/loader-entry-trial/verify.py .local/evidence/sdk-515/trial-02
+python3 tools/loader-entry-trial/verify.py .local/evidence/sdk-515-review/trial-03
 python3 -m unittest discover -s tools/loader-entry-trial -p 'test_*.py'
 ```
 

@@ -64,7 +64,8 @@ checkout with `cargo test --workspace`. Their results remain synthetic.
 
 ## Fresh capture prerequisites
 
-SDK-515's new `sdk-515-loader-entry` bundle retains the candidate debugger-worker trial.
+SDK-515's `sdk-515-loader-entry-review` bundle retains the final candidate debugger-worker
+trial. Its initial batches remain in `sdk-515-loader-entry`.
 Use its [result and restore instructions](loader-entry-worker.md) for offline verification.
 The separate `tools/loader-entry-trial/run.py` command **launches games** and requires the
 exact retained installation. It is not a public live adapter or production qualification.

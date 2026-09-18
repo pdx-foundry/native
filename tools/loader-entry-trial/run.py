@@ -60,6 +60,14 @@ def prepare_sources(retained, output, lldb):
                          "        raise KeyboardInterrupt('trial cancelled')\n"
                          "    signal.signal(signal.SIGTERM, cancelled)\n"
                          "    game_pid=spawn_suspended(out,game_env)")
+    owner = replace_once(owner, "    write(out/'manifest.json',manifest)",
+                         "    preservation_before=dict(target=sha(BIN), content=content, protected=before)\n"
+                         "    write(out/'manifest.json',manifest)")
+    owner = replace_once(owner, "    write(out/'result.json',result)",
+                         "    after_files=[GAME/'launcher-settings.json', *sorted((GAME/'common/tradition_categories').rglob('*.txt')), *sorted((GAME/'common/traditions').rglob('*.txt'))]\n"
+                         "    preservation_after=dict(target=sha(BIN), content={str(p.relative_to(GAME)):sha(p) for p in after_files}, protected={str(p):sha(p) if p.exists() else None for p in protected})\n"
+                         "    write(out/'preservation.json', dict(before=preservation_before, after=preservation_after))\n"
+                         "    write(out/'result.json',result)")
     (output / "pdx_native.py").write_text(owner)
 
     worker = (output / "debugger_attempt.py").read_text()
@@ -70,6 +78,11 @@ def prepare_sources(retained, output, lldb):
     worker = replace_once(worker, "        p=frame.GetThread().GetProcess(); target=p.GetTarget()",
                           "        callback_thread=frame.GetThread().GetThreadID()\n"
                           "        p=frame.GetThread().GetProcess(); target=p.GetTarget()")
+    worker = replace_once(worker, "def run(debugger):\n    import lldb",
+                          "def run(debugger):\n    global callback_thread\n    import lldb")
+    worker = replace_once(worker, "    emit('launch-stopped',",
+                          "    callback_thread=next((t.GetThreadID() for t in p if t.GetFrameAtIndex(0).GetFunctionName()=='_dyld_start'), None)\n"
+                          "    emit('launch-stopped',")
     # The retained missing-hook control resumed without the field hook. Fail closed here.
     worker = replace_once(worker, "    installed=all(",
                           "    if set(state) != {'registration','load-file','field'}:\n"
