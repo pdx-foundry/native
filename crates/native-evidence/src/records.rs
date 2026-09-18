@@ -117,8 +117,6 @@ pub enum Disposal {
     Confirmed,
     /// Confirmation is missing or inconsistent.
     Unconfirmed,
-    /// Journal records no owned child.
-    NotApplicable,
 }
 
 /// An explicit limit on what readable retained records establish.

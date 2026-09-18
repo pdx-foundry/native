@@ -318,6 +318,16 @@ fn process_absence_requires_an_explicit_witness() {
 }
 
 #[test]
+fn missing_owner_records_cannot_establish_that_disposal_was_unnecessary() {
+    let mut fixture = Fixture::new();
+    fixture.json_artifact("owner", |journal| journal.as_array_mut().unwrap().clear());
+    let result = fixture.replay().unwrap();
+    assert_eq!(result.disposal, Disposal::Unconfirmed);
+    assert!(result.gaps.contains(&Gap::DisposalUnconfirmed));
+    assert_eq!(result.observations.len(), 5);
+}
+
+#[test]
 fn ordering_and_required_hooks_are_checked_instead_of_trusting_labels() {
     for case in [
         "late-hook",

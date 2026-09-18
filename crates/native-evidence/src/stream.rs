@@ -359,16 +359,6 @@ fn disposal(owner: &[OwnerEvent]) -> Disposal {
             _ => None,
         })
         .collect();
-    if owned.is_empty() {
-        return if owner
-            .iter()
-            .any(|event| matches!(event, OwnerEvent::DisposalChecked { .. }))
-        {
-            Disposal::Unconfirmed
-        } else {
-            Disposal::NotApplicable
-        };
-    }
     if owned.len() == 1
         && owned[0].0 != 0
         && !owned[0].1.is_empty()
