@@ -153,7 +153,16 @@ pub enum Gap {
     },
     /// An owner/source join cannot be established.
     OwnerJoin,
-    /// Observation worker died before completion.
+    /// A reported field location does not match the retained fixture's unquoted field key.
+    SourceJoin {
+        /// Reported fixture-relative file.
+        file: String,
+        /// Reported one-based line.
+        line: u64,
+        /// Reported field key.
+        field: String,
+    },
+    /// Independent journal records an abnormal observation-worker exit.
     WorkerLost,
     /// Independent owner journal does not confirm disposal.
     DisposalUnconfirmed,

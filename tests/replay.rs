@@ -328,6 +328,102 @@ fn missing_owner_records_cannot_establish_that_disposal_was_unnecessary() {
 }
 
 #[test]
+fn requested_fixture_must_be_pinned_by_the_original_producer_manifest() {
+    let mut fixture = Fixture::new();
+    fixture.json_artifact("manifest", |manifest| {
+        manifest["fixtureHashes"].as_object_mut().unwrap().clear()
+    });
+    assert!(
+        matches!(fixture.replay(), Err(ReplayError::Malformed { reason, .. }) if reason.contains("not pinned by the producer manifest"))
+    );
+}
+
+#[test]
+fn reported_source_locations_must_match_the_verified_fixture() {
+    for line in [
+        " wrong_field = \"x\"",
+        " # tree_template = \"x\"",
+        " quoted = \"tree_template = x\"",
+        " tree_template_extra = \"x\"",
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.fixture_body(&format!(
+            "synthetic_category = {{\n{line}\n traditions = {{ }}\n}}\n"
+        ));
+        let result = fixture.replay().unwrap();
+        assert_eq!(result.completion, Completion::Incomplete, "{line}");
+        assert_eq!(result.observations.len(), 5);
+        assert_eq!(result.disposal, Disposal::Confirmed);
+        assert!(result.gaps.contains(&Gap::SourceJoin {
+            file: "common/tradition_categories/synthetic.txt".into(),
+            line: 2,
+            field: "tree_template".into()
+        }));
+    }
+}
+
+#[test]
+fn source_gaps_survive_missing_terminal_records() {
+    let mut fixture = Fixture::new();
+    fixture.fixture_body("synthetic_category = {\n wrong_field = 1\n traditions = { }\n}\n");
+    fixture.trace(|trace| trace.truncate(13));
+    let result = fixture.replay().unwrap();
+    assert!(result.gaps.contains(&Gap::MissingTerminal));
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|gap| matches!(gap, Gap::SourceJoin { .. }))
+    );
+    assert_eq!(result.observations.len(), 5);
+}
+
+#[test]
+fn field_labels_inside_multiline_strings_do_not_establish_source_joins() {
+    let mut fixture = Fixture::new();
+    fixture.fixture_body(
+        "synthetic_category = {\n tree_template = \"multiline\n traditions = { }\"\n}\n",
+    );
+    let result = fixture.replay().unwrap();
+    assert_eq!(result.completion, Completion::Incomplete);
+    assert!(result.gaps.contains(&Gap::SourceJoin {
+        file: "common/tradition_categories/synthetic.txt".into(),
+        line: 3,
+        field: "traditions".into()
+    }));
+}
+
+#[test]
+fn post_terminal_record_loss_keeps_bounded_observation_completion() {
+    let mut fixture = Fixture::new();
+    fixture.trace(|trace| {
+        trace.remove(14);
+    });
+    let result = fixture.replay().unwrap();
+    assert_eq!(result.activation, Activation::Demonstrated);
+    assert_eq!(result.completion, Completion::Complete);
+    assert_eq!(result.disposal, Disposal::Confirmed);
+    assert!(result.gaps.contains(&Gap::Sequence {
+        expected: 15,
+        found: 16
+    }));
+}
+
+#[test]
+fn post_window_failures_remain_visible_without_erasing_completed_observations() {
+    let mut fixture = Fixture::new();
+    fixture.trace(|trace| trace.push(json!({"kind":"callback-error", "seq":17, "run":"synthetic-normal", "error":"post-window diagnostic"})));
+    fixture.json_artifact("owner", |journal| journal[2]["returncode"] = json!(-9));
+    let result = fixture.replay().unwrap();
+    assert_eq!(result.completion, Completion::Complete);
+    assert_eq!(result.observations.len(), 5);
+    assert!(result.gaps.contains(&Gap::WorkerLost));
+    assert!(result.gaps.contains(&Gap::Unavailable {
+        reason: "post-window diagnostic".into()
+    }));
+}
+
+#[test]
 fn ordering_and_required_hooks_are_checked_instead_of_trusting_labels() {
     for case in [
         "late-hook",
@@ -549,6 +645,24 @@ impl Fixture {
             .map(|record| serde_json::to_string(record).unwrap() + "\n")
             .collect::<String>();
         self.bytes_artifact("trace", bytes.as_bytes());
+    }
+
+    fn fixture_body(&mut self, body: &str) {
+        let file = "common/tradition_categories/synthetic.txt";
+        let profile_path = format!("mod/atlas_early/{file}");
+        let path = format!("profile/{profile_path}");
+        let reference = self.seal(&path, body.as_bytes());
+        let index = self.descriptor["supporting"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|artifact| artifact["path"] == path)
+            .unwrap();
+        self.descriptor["supporting"][index] = serde_json::to_value(&reference).unwrap();
+        self.json_artifact("manifest", |manifest| {
+            manifest["fixtureHashes"][&profile_path] = json!(reference.sha256)
+        });
+        self.json_artifact("request", |request| request["fixtures"][file] = json!(body));
     }
 
     fn seal_descriptor(&self) -> ArtifactReference {

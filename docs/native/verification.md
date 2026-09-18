@@ -33,6 +33,8 @@ Full private logs and metadata are in `.local/evidence/verification/`: `bundle-v
 
 The Rust public-interface suite verifies authored synthetic normal, missing-hook, dropped-record,
 and worker-loss cases plus corrupt/missing input and invalid ordering/owner/disposal controls.
+Producer-manifest fixture omission and mismatched source locations prevent completion; post-terminal
+control record loss/failure remains visible without erasing verified bounded completion.
 Five compile-fail controls reject live Native imports from the evidence package. Dependency and
 semantic Clippy negative controls reject a transitive path back to Native and aliased process creation.
 

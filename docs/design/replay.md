@@ -26,8 +26,12 @@ Activation requires the loader-entry witness, resolved/enabled zero-hit required
 resume, registration entries before the fixture parse, and the bounded parse-end/terminal relation.
 Completion also requires continuous producer sequence, one registration-window marker, three
 registration entries, the two ordered fixture fields, a single owner, and matching terminal totals.
+The producer manifest must pin the requested fixture bytes. Reported field locations are checked
+against the retained fixture's unquoted field keys; a mismatch preserves facts with a source-join gap.
 The terminal covers observations; trailing worker-finished/dispose records are allowed, but further
-observations or another terminal are gaps. Worker-loss evidence comes from the independent journal.
+observations or another terminal prevent completion. Missing or failed trailing control records remain
+gaps without downgrading a verified completed window. An abnormal worker exit likewise remains visible;
+without a verified complete window it produces worker-lost. Worker-loss evidence comes from the independent journal.
 Disposal requires a final checked record that confirms reaping the same owned child with no remaining
 identity. Clocks from worker and owner are never compared.
 

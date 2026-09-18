@@ -97,7 +97,15 @@ pub fn replay(
             "foreign attempt identity or zero producer sequence",
         ));
     }
-    let mut result = crate::stream::derive(&descriptor, reference, &fixture, &trace, &owner);
+    let fixture_body = &request.fixtures[&fixture];
+    let mut result = crate::stream::derive(
+        &descriptor,
+        reference,
+        &fixture,
+        fixture_body,
+        &trace,
+        &owner,
+    );
     result.gaps.extend(provenance_gaps);
     result.evidence = std::iter::once(reference)
         .chain(references)
@@ -213,6 +221,13 @@ fn validate_provenance(
         }
     }
     for (file, body) in &request.fixtures {
+        let profile_path = format!("mod/atlas_early/{file}");
+        if manifest.fixture_hashes.get(&profile_path) != Some(&sha256(body.as_bytes())) {
+            return Err(malformed(
+                &descriptor.manifest,
+                "requested fixture is not pinned by the producer manifest",
+            ));
+        }
         let suffix = format!("profile/mod/atlas_early/{file}");
         let fixture = references
             .iter()

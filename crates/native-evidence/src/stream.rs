@@ -11,48 +11,48 @@ pub(crate) fn derive(
     descriptor: &Descriptor,
     reference: &ArtifactReference,
     fixture: &str,
+    fixture_body: &str,
     trace: &[TraceRecord],
     owner: &[OwnerEvent],
 ) -> ReplayResult {
-    let mut gaps = sequence_gaps(trace);
+    let window_end = trace
+        .iter()
+        .position(|record| matches!(record.event, TraceEvent::StreamEnd { .. }))
+        .map_or(trace.len(), |index| index + 1);
+    let window = &trace[..window_end];
+    let mut gaps = sequence_gaps(window, 1);
     let observations = observations(trace, &descriptor.trace, &reference.sha256);
     let activation = activation(trace, owner, fixture);
     if activation == Activation::NotEstablished {
         gaps.push(Gap::ActivationNotEstablished);
     }
-    for record in trace {
-        let reason = match &record.event {
-            TraceEvent::CapabilityUnavailable { reason }
-            | TraceEvent::EarlyActivationUnavailable { reason }
-            | TraceEvent::NativeException { reason } => Some(reason),
-            TraceEvent::CallbackError { error } => Some(error),
-            _ => None,
-        };
-        if let Some(reason) = reason {
-            gaps.push(Gap::Unavailable {
-                reason: reason.clone(),
-            });
-        }
-    }
+    gaps.extend(availability_gaps(window));
+    gaps.extend(source_gaps(trace, fixture, fixture_body));
     validate_window(trace, fixture, &mut gaps);
     let worker_lost = owner
         .iter()
         .any(|event| matches!(event, OwnerEvent::WorkerExited { returncode } if *returncode != 0));
-    if worker_lost {
-        gaps.push(Gap::WorkerLost);
-    }
-    let completion = if worker_lost {
+    let completion = if gaps.is_empty() {
+        Completion::Complete
+    } else if worker_lost {
         Completion::WorkerLost
     } else if gaps
         .iter()
         .any(|gap| matches!(gap, Gap::Unavailable { .. }))
     {
         Completion::Unavailable
-    } else if gaps.is_empty() {
-        Completion::Complete
     } else {
         Completion::Incomplete
     };
+    if worker_lost {
+        gaps.push(Gap::WorkerLost);
+    }
+    // The terminal closes observations, while later worker/control failures remain visible.
+    let next_sequence = window
+        .last()
+        .map_or(1, |record| record.seq.saturating_add(1));
+    gaps.extend(sequence_gaps(&trace[window_end..], next_sequence));
+    gaps.extend(availability_gaps(&trace[window_end..]));
     let disposal = disposal(owner);
     if disposal == Disposal::Unconfirmed {
         gaps.push(Gap::DisposalUnconfirmed);
@@ -68,8 +68,7 @@ pub(crate) fn derive(
     }
 }
 
-fn sequence_gaps(trace: &[TraceRecord]) -> Vec<Gap> {
-    let mut expected = 1;
+fn sequence_gaps(trace: &[TraceRecord], mut expected: u64) -> Vec<Gap> {
     let mut gaps = Vec::new();
     for record in trace {
         if record.seq != expected {
@@ -81,6 +80,82 @@ fn sequence_gaps(trace: &[TraceRecord]) -> Vec<Gap> {
         expected = record.seq.saturating_add(1);
     }
     gaps
+}
+
+fn availability_gaps(trace: &[TraceRecord]) -> Vec<Gap> {
+    trace
+        .iter()
+        .filter_map(|record| {
+            let reason = match &record.event {
+                TraceEvent::CapabilityUnavailable { reason }
+                | TraceEvent::EarlyActivationUnavailable { reason }
+                | TraceEvent::NativeException { reason } => reason,
+                TraceEvent::CallbackError { error } => error,
+                _ => return None,
+            };
+            Some(Gap::Unavailable {
+                reason: reason.clone(),
+            })
+        })
+        .collect()
+}
+
+fn source_gaps(trace: &[TraceRecord], fixture: &str, body: &str) -> Vec<Gap> {
+    let keys = unquoted_line_keys(body);
+    trace
+        .iter()
+        .filter_map(|record| {
+            let TraceEvent::FieldObserved {
+                file, line, field, ..
+            } = &record.event
+            else {
+                return None;
+            };
+            let source_key = line
+                .checked_sub(1)
+                .and_then(|index| usize::try_from(index).ok())
+                .and_then(|index| keys.get(index));
+            let key_matches = source_key.is_some_and(|key| *key == Some(field.as_str()));
+            if file == fixture && key_matches {
+                return None;
+            }
+            Some(Gap::SourceJoin {
+                file: file.clone(),
+                line: *line,
+                field: field.clone(),
+            })
+        })
+        .collect()
+}
+
+fn unquoted_line_keys(body: &str) -> Vec<Option<&str>> {
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut keys = Vec::new();
+    for source in body.lines() {
+        let key = if in_string {
+            None
+        } else {
+            source.split_once('=').map(|(key, _)| key.trim())
+        };
+        keys.push(key);
+        for character in source.chars() {
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if character == '\\' {
+                    escaped = true;
+                } else if character == '"' {
+                    in_string = false;
+                }
+            } else if character == '#' {
+                break;
+            } else if character == '"' {
+                in_string = true;
+            }
+        }
+    }
+    keys
 }
 
 fn observations(
