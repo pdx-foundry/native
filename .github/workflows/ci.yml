@@ -1,4 +1,4 @@
-name: Replay checks
+name: Native checks
 on:
   push:
   pull_request:
@@ -16,4 +16,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets --features test-support -- -D warnings
+      - run: cargo test --workspace --locked --features test-support
       - run: python tools/check-replay-boundary.py
+      - run: python tools/check-admission-boundary.py

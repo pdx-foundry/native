@@ -2,18 +2,43 @@
 
 Rust bridge to Stellaris.
 
-The current library replays the bounded historical registration/category-read window. It does not
-launch games or qualify a current installation. An Atlas-style caller uses `Engine::replay` with a
-relocatable artifact root and a pinned descriptor reference.
+The library identifies exact installations, reports capability admission, and replays the bounded
+historical registration/category-read window. It does not launch games. No production live
+operation is qualified yet. An Atlas-style caller uses `Engine::replay` with a relocatable artifact
+root and a pinned descriptor reference.
 
 ```sh
 cargo run --example replay -- tests/fixtures/synthetic tests/fixtures/synthetic/cases/normal.ref.json
 cargo test --workspace
 python3 tools/check-replay-boundary.py
+cargo test --workspace --features test-support
+python3 tools/check-admission-boundary.py
 ```
 
 Synthetic fixture results retain `synthetic` origin. Private retained replay needs the restored
 bundle described in [retrieval instructions](docs/native/retrieval.md).
+
+To inspect an installation without launching it:
+
+```rust
+use pdx_native::{CapabilityRequest, Engine, OpenRequest};
+
+fn inspect() -> Result<(), pdx_native::OpenError> {
+    let context = Engine::open(OpenRequest {
+        installation_hint: "/path/to/Stellaris".into(),
+    })?;
+    let report = context.capability(&CapabilityRequest::default());
+    println!("{:?}: {:?}", report.qualification, report.reasons);
+    Ok(())
+}
+```
+
+`cargo run --example capabilities -- /path/to/Stellaris` prints the report as JSON. Supply an
+executable, `stellaris.app`, or installation directory; automatic installation discovery is not
+implemented. The initial catalogue identifies only the exact M45-observe ARM64 image. Unknown
+patches never inherit its recipe. Reports distinguish qualification from availability, and report
+content/executable changes without rebinding. See [capability admission](docs/design/admission.md)
+for limits and build checks.
 
 - [Native specification](docs/specs/native.md)
 - [Technical design and project layout](docs/design/architecture.md)

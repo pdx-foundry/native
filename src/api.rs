@@ -13,11 +13,16 @@ pub struct ReplayRequest {
     pub descriptor: ArtifactReference,
 }
 
-/// Consumer interface for engine observations; this revision supports retained replay only.
+/// Consumer interface for retained replay and installation capability reporting.
 #[derive(Debug, Default)]
 pub struct Engine;
 
 impl Engine {
+    /// Bind an exact installation without launching a game. No version or adapter fallback is used.
+    pub fn open(request: OpenRequest) -> Result<crate::EngineContext, OpenError> {
+        crate::session::open(request)
+    }
+
     /// Verify and derive one historical attempt without installation discovery or live execution.
     /// Incomplete attempts return their retained observations and gaps. Inaccessible or incompatible
     /// evidence returns an error rather than an empty successful result.
@@ -27,4 +32,147 @@ impl Engine {
             &request.descriptor,
         )
     }
+}
+
+/// Location of an executable, application bundle, or installation directory to identify.
+#[derive(Debug, Clone)]
+pub struct OpenRequest {
+    /// Native searches only recognized executable locations beneath this hint.
+    pub installation_hint: PathBuf,
+}
+
+/// Why an installation could not be bound. No process has been created.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenError {
+    /// The hint or a recognized executable is absent.
+    Missing(PathBuf),
+    /// A required path cannot be read or resolved.
+    Unreadable(PathBuf),
+    /// The executable image is malformed or truncated.
+    MalformedExecutable,
+    /// More than one executable, eligible slice, or exact catalogue entry matched.
+    Ambiguous,
+    /// The format or architecture is outside Native's declared target scope.
+    UnsupportedTarget,
+    /// The image has a supported shape, but no exact registered identity.
+    UnknownTarget,
+}
+
+impl std::fmt::Display for OpenError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "installation identification failed: {self:?}")
+    }
+}
+
+impl std::error::Error for OpenError {}
+
+/// Whether a context describes installed inputs or a fixed synthetic test scenario.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ContextOrigin {
+    /// Read from an actual installation; does not imply a live capture or qualification.
+    Installation,
+    /// Authored test inputs; never evidence of native behavior.
+    Synthetic,
+}
+
+/// Opaque identity of the fixed target composition; retain or compare it without parsing it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ContextIdentity(pub(crate) String);
+
+/// Requested scope of registration entries followed by category field read entries.
+/// This query performs no observation and makes no claim about stored values or validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityRequest {
+    /// Number of initial registration entries requested; must be nonzero.
+    pub registration_entries: u32,
+    /// Nonempty, distinct category field names to observe within one fixture read window.
+    pub category_fields: Vec<String>,
+}
+
+impl Default for CapabilityRequest {
+    fn default() -> Self {
+        Self {
+            registration_entries: 3,
+            category_fields: vec!["tree_template".into(), "traditions".into()],
+        }
+    }
+}
+
+/// Limits of the bounded registration/category-read operation, not a complete registry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObservationBounds {
+    /// Maximum number of initial registration entries.
+    pub registration_entries: u32,
+    /// Category fields covered by this bound.
+    pub category_fields: Vec<String>,
+}
+
+/// Accepted support for this request, independent of present implementation availability.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum Qualification {
+    /// A bundled accepted record matches all identities, content dependencies, and bounds.
+    Qualified,
+    /// The request exceeds the declared or accepted scope.
+    OutsideSupport,
+    /// No applicable, unwithdrawn acceptance establishes the request.
+    Incomplete,
+}
+
+/// Whether this context can admit the request with current inputs and prerequisites.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum Availability {
+    /// Admission succeeds; a synthetic context still cannot perform live execution.
+    Available,
+    /// Admission failed for the independently reported reasons.
+    Unavailable,
+}
+
+/// A structured admission gap. Multiple independent gaps can occur together.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum UnavailableReason {
+    /// The compiled host cannot use the selected live strategy.
+    HostUnavailable,
+    /// The selected live strategy has no implementation in this release.
+    ImplementationUnavailable,
+    /// Qualification for the exact operation composition is absent.
+    QualificationMissing,
+    /// An otherwise matching acceptance has been withdrawn.
+    QualificationWithdrawn,
+    /// Accepted target, recipe, strategy, method, or binding revisions do not match.
+    RevisionMismatch,
+    /// Current content does not match the accepted dependency identities.
+    ContentMismatch,
+    /// The request is invalid or exceeds supported observation bounds.
+    OutsideBounds,
+    /// The executable changed after binding; this context must be reopened.
+    TargetChanged,
+    /// Relevant installed content changed after binding; this context must be reopened.
+    ContentChanged,
+    /// A current input cannot be checked.
+    InputUnavailable,
+    /// A required runtime prerequisite is not established.
+    PrerequisiteMissing,
+}
+
+/// Independent qualification and availability results for one bounded request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CapabilityReport {
+    /// Fixed composition identity, opaque to consumers.
+    pub context: ContextIdentity,
+    /// Source of this context's inputs.
+    pub origin: ContextOrigin,
+    /// Accepted support for the requested scope.
+    pub qualification: Qualification,
+    /// Whether this request currently passes admission.
+    pub availability: Availability,
+    /// Declared operation bounds; qualification is required separately.
+    pub bounds: ObservationBounds,
+    /// Bounds of applicable accepted records, kept separate so their union grants no support.
+    pub accepted_bounds: Vec<ObservationBounds>,
+    /// All established reasons that block admission.
+    pub reasons: Vec<UnavailableReason>,
+    /// Accepted qualification record identities supporting this result.
+    pub qualification_records: Vec<String>,
+    /// Immutable references reviewed for applicable accepted records; bytes are not loaded here.
+    pub evidence: Vec<ArtifactReference>,
 }
