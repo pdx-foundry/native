@@ -6,3 +6,6 @@ pub(super) fn resolve(strategy: StrategyId) -> UnavailableReason {
         StrategyId::MacSuspendedChildLoaderEntry => UnavailableReason::HostUnavailable,
     }
 }
+
+#[cfg(feature = "maintainer-tools")]
+pub(in crate::binding) mod lifecycle;

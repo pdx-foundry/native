@@ -18,6 +18,8 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --all-targets --features test-support -- -D warnings
       - run: cargo test --workspace --locked --features test-support
+      - run: cargo clippy --workspace --all-targets --features maintainer-tools -- -D warnings
+      - run: cargo test --workspace --locked --features maintainer-tools
       - run: python tools/check-replay-boundary.py
       - run: python tools/check-admission-boundary.py
       - run: python -m unittest discover -s tools/loader-entry-trial -p 'test_*.py'

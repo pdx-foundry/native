@@ -41,7 +41,7 @@ def main():
         package.mkdir()
         for name in ["Cargo.toml", "Cargo.lock", "build.rs"]:
             shutil.copyfile(ROOT / name, package / name)
-        for name in ["src", "crates"]:
+        for name in ["src", "crates", "examples"]:
             shutil.copytree(ROOT / name, package / name)
         library = package / "src/lib.rs"
         library.write_text(library.read_text() + "\nmod prohibited_operation;\n")
@@ -70,10 +70,19 @@ def main():
         main_rs = consumer / "src/main.rs"
         main_rs.write_text("fn main() { let _ = pdx_native::Engine; }\n")
         cargo(consumer, ["check"])
+        main_rs.write_text("use pdx_native::investigation;\nfn main() {}\n")
+        cargo(consumer, ["check"], "no `investigation` in the root")
         main_rs.write_text("use pdx_native::test_support;\nfn main() {}\n")
         cargo(consumer, ["check"], "no `test_support` in the root")
         main_rs.write_text("fn main() { let _ = pdx_native::EngineContext {}; }\n")
         cargo(consumer, ["check"], "private fields")
+        # A gated candidate report cannot be converted into a supported replay result.
+        manifest = consumer / "Cargo.toml"
+        manifest.write_text(manifest.read_text().replace(' }', ', features = ["maintainer-tools"] }'))
+        main_rs.write_text("fn promote(value: pdx_native::investigation::InvestigationReport) -> pdx_native::ReplayResult { value.into() }\nfn main() {}\n")
+        cargo(consumer, ["check"], "is not satisfied")
+        main_rs.write_text("use pdx_native::binding::InvestigationPlan;\nfn main() {}\n")
+        cargo(consumer, ["check"], "is private")
     print("Admission boundary verified: production features, release exclusion, private leaves, and opaque context construction")
 
 

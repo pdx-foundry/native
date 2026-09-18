@@ -1,11 +1,18 @@
-//! Exact-target capability reporting and retained Native observations. Neither launches a game.
-#![forbid(unsafe_code)]
+//! Exact-target admission and retained observations, with optional maintainer lifecycle experiments.
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 
 mod api;
 mod binding;
+mod execution;
+mod protocol;
 mod qualification;
 mod session;
+
+pub mod supervisor;
+
+#[cfg(feature = "maintainer-tools")]
+pub mod investigation;
 
 #[cfg(all(
     feature = "production",
