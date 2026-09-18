@@ -112,12 +112,14 @@ fn read_entries_retain_source_owner_and_exact_trace_witnesses() {
 fn relocating_artifacts_preserves_context_evidence_and_handles() {
     let original = Engine.replay(request(&fixtures(), "normal")).unwrap();
     let relocated = Fixture::new();
+    let before = snapshot(relocated.dir.path());
     let restored = Engine
         .replay(request(relocated.dir.path(), "normal"))
         .unwrap();
     assert_eq!(original.context, restored.context);
     assert_eq!(original.observations, restored.observations);
     assert_eq!(original.evidence, restored.evidence);
+    assert_eq!(before, snapshot(relocated.dir.path()));
 }
 
 #[test]
