@@ -1,0 +1,15 @@
+{"seq": 1, "run": "synthetic-incomplete-stream", "kind": "hooks-requested"}
+{"seq": 2, "run": "synthetic-incomplete-stream", "kind": "launch-stopped", "pid": 123, "error": "success", "triple": "arm64-synthetic", "frames": [{"function": "_dyld_start"}]}
+{"seq": 3, "run": "synthetic-incomplete-stream", "kind": "hooks-active-before-resume", "hooks": {"registration": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}, "load-file": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}, "field": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}}}
+{"seq": 4, "run": "synthetic-incomplete-stream", "kind": "resume", "error": "success"}
+{"seq": 5, "run": "synthetic-incomplete-stream", "kind": "phase-reached", "phase": "effect-registration", "stack": ["synthetic findAndRunAllInitializers witness"]}
+{"seq": 6, "run": "synthetic-incomplete-stream", "kind": "registration-observed", "ordinal": 1, "engineToken": 11}
+{"seq": 7, "run": "synthetic-incomplete-stream", "kind": "registration-observed", "ordinal": 2, "engineToken": 12}
+{"seq": 8, "run": "synthetic-incomplete-stream", "kind": "registration-observed", "ordinal": 3, "engineToken": 13}
+{"seq": 9, "run": "synthetic-incomplete-stream", "kind": "registration-window-complete", "observed": 3}
+{"seq": 10, "run": "synthetic-incomplete-stream", "kind": "phase-reached", "phase": "fixture-file-parse", "file": "common/tradition_categories/synthetic.txt"}
+{"seq": 12, "run": "synthetic-incomplete-stream", "kind": "field-observed", "file": "common/tradition_categories/synthetic.txt", "line": 3, "field": "traditions", "owner": "synthetic-owner", "ordinal": 2}
+{"seq": 13, "run": "synthetic-incomplete-stream", "kind": "phase-complete", "phase": "fixture-file-parse", "file": "common/tradition_categories/synthetic.txt", "producerFieldCount": 2}
+{"seq": 14, "run": "synthetic-incomplete-stream", "kind": "stream-end", "producerLastSequence": 14, "producerFieldCount": 2, "registrations": 3}
+{"seq": 15, "run": "synthetic-incomplete-stream", "kind": "worker-finished"}
+{"seq": 16, "run": "synthetic-incomplete-stream", "kind": "worker-dispose"}

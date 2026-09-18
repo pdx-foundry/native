@@ -42,6 +42,26 @@ These replay retained instructions, traces, joins, normalizations and synthetic 
 
 `source-git/git/sdk.bundle` and `typed.bundle` preserve selected original branch histories without rewriting source repositories. `git bundle verify <path>` works in an empty Git repository; use `git clone <bundle> <new-directory>` for a separate historical source checkout. Standalone `.tar` snapshots preserve the named Windows adapter and draft specification commits even where no retained branch points at them. Working-tree/untracked evidence is preserved in the other bundles, not assumed present in Git.
 
+## Public Native replay of SDK-483
+
+The Rust replay adapter reads recorded bytes only. It supports the accepted bounded window and
+keeps activation, completion, and historical disposal separate. It does not run the prototype's
+game-launching `replay.py`.
+
+Verify/restore `typed-extraction` first (omit `--restore` if its verified restore already exists), then
+prepare a **new** working root. The preparation command checks every pinned input before writing.
+
+```sh
+python3 tools/evidence.py typed-extraction --restore
+python3 tools/prepare-private-replay.py .local/evidence/restored/typed-extraction .local/evidence/replay-sdk-513
+PDX_NATIVE_PRIVATE_EVIDENCE="$PWD/.local/evidence/replay-sdk-513" cargo test --test private_replay -- --ignored
+cargo run --example replay -- .local/evidence/replay-sdk-513 tests/fixtures/private/normal.ref.json
+```
+
+Private tests are explicitly ignored without this prerequisite; configured missing evidence is an
+error, never a passing empty observation. Small tracked authored synthetic fixtures run on a clean
+checkout with `cargo test --workspace`. Their results remain synthetic.
+
 ## Fresh capture prerequisites
 
 Fresh captures require the **particular** target/architecture, compatible save or parser fixture, declared installed content and DLC, OS/toolchain/debugger access, and no conflicting live game. Native capture scripts retain original absolute installation/profile/helper paths. Retarget working copies and record the changes; preserve hash gates and qualification controls. Do not silently substitute another binary or mock source. Missing installations, old source saves, Mythos/dependency content and Windows host access limit fresh reproduction even when offline replay succeeds.

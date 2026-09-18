@@ -229,7 +229,13 @@ Prefer this single consumer seam over tests coupled to private functions or adap
 
 Reuse the retained reference-observation controls, early-observation normal/missing/incomplete/worker-loss scenarios, registry-discovery omission controls, registry-ownership replay, command/numeric reader controls, and the tradition-to-SDK experiment. These supply test cases and expected bounded outcomes, not a production test suite or transferable target certification.
 
-At writing, the tracked executable is a Rust scaffold and there is no implemented public engine library or project test suite. Existing evidence tools verify imported archives and selected retained observations. The evidence index contains a pointer to a first-slice implementation document absent from this checkout; that pointer is not proof of implementation. Future checks must be runnable from a clean Native checkout, with game-free contract/replay checks separated from explicitly configured live qualification.
+At specification writing, the tracked executable was a Rust scaffold. SDK-513 now adds the
+[bounded public replay foundation](../design/replay.md) and game-free contract tests in an isolated
+evidence package. Configured private replay checks the four accepted SDK-483 attempts; the default
+suite uses authored synthetic fixtures. No live adapter or current target qualification is implemented.
+Existing evidence tools also verify imported archives and selected retained observations. Checks must
+remain runnable from a clean checkout, with game-free contract/replay separated from explicitly
+configured live qualification.
 
 ## Out of Scope
 

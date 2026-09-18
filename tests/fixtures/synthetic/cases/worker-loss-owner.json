@@ -1,0 +1,21 @@
+[
+  {
+    "kind": "game-owned-suspended",
+    "pid": 123,
+    "identity": "synthetic child incarnation"
+  },
+  {
+    "kind": "worker-started"
+  },
+  {
+    "kind": "worker-exited",
+    "returncode": -9
+  },
+  {
+    "kind": "disposal-checked",
+    "confirmed": true,
+    "reapedPid": 123,
+    "gameExit": -9,
+    "remainingIdentity": null
+  }
+]

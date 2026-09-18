@@ -29,6 +29,25 @@ The registry consumer demo returns unknown for an absent family and refuses comp
 
 Full private logs and metadata are in `.local/evidence/verification/`: `bundle-verification-final.jsonl`, `offline-replays.json`, `second-copy.json`, `windows-original-manifests.json`, `mac-original-manifests.json`, nested restore records, and `current-target.json`. The installed M45-observe universal image hash was freshly read and matched; no installation was copied or modified. Archive/manifests themselves remain immutable read-only files; new evidence requires a new bundle identity.
 
+## Public bounded replay foundation (SDK-513)
+
+The Rust public-interface suite verifies authored synthetic normal, missing-hook, dropped-record,
+and worker-loss cases plus corrupt/missing input and invalid ordering/owner/disposal controls.
+Producer-manifest fixture omission and mismatched source locations prevent completion; post-terminal
+control record loss/failure remains visible without erasing verified bounded completion.
+Five compile-fail controls reject live Native imports from the evidence package. Dependency and
+semantic Clippy negative controls reject a transitive path back to Native and aliased process creation.
+
+Configured public-interface replay of all four accepted SDK-483 private attempts reproduces their
+bounded activation/completion and separate confirmed disposal. Every descriptor/core/supporting
+artifact matches its retained identity. Three completed runs have archived post-run settings that
+differ from their pre-launch manifest hash; results preserve the unavailable original settings bytes
+as a provenance gap. Immutable sources, fixture bytes, producer-content manifest, trace, and ownership
+journal verify. This establishes historical derivation, not profile restoration or fresh qualification.
+
+No game was launched. Restored originals and sealed bundles were not modified. The separate prepared
+working root is `.local/evidence/replay-sdk-513/`; tracked private descriptors contain references only.
+
 ## Remaining gaps
 
 Private remote preservation is not established. Historical complete installations/content and several original-path/runtime prerequisites remain external. Initial failed signed-URL requests are recorded with recovered alternate copies where available. SDK-485 portability/maintenance, SDK-509 registry coverage and SDK-510 mounted-file/duplicate questions remain open. [Preservation](preservation.md) gives the exact limits; the migration did not change their ticket status or declare production support.

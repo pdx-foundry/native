@@ -1,6 +1,9 @@
 # Native technical design: knowledge ownership and target composition
 
-Status: proposed implementation design supporting the [Native specification](../specs/native.md). The repository currently contains a Rust scaffold and retained evidence. The layout below describes what to build; it does not describe an existing implementation or qualify another target.
+Status: implementation design supporting the [Native specification](../specs/native.md). The
+[bounded replay foundation](replay.md) is implemented through the public interface and an isolated
+evidence package. Live execution, target composition, and qualification remain proposed work.
+The full layout below describes what to build; it does not qualify another target.
 
 ## Design position
 

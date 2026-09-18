@@ -1,0 +1,16 @@
+{"seq": 1, "run": "synthetic-normal", "kind": "hooks-requested"}
+{"seq": 2, "run": "synthetic-normal", "kind": "launch-stopped", "pid": 123, "error": "success", "triple": "arm64-synthetic", "frames": [{"function": "_dyld_start"}]}
+{"seq": 3, "run": "synthetic-normal", "kind": "hooks-active-before-resume", "hooks": {"registration": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}, "load-file": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}, "field": {"enabled": true, "locations": 1, "resolved": 1, "hits": 0}}}
+{"seq": 4, "run": "synthetic-normal", "kind": "resume", "error": "success"}
+{"seq": 5, "run": "synthetic-normal", "kind": "phase-reached", "phase": "effect-registration", "stack": ["synthetic findAndRunAllInitializers witness"]}
+{"seq": 6, "run": "synthetic-normal", "kind": "registration-observed", "ordinal": 1, "engineToken": 11}
+{"seq": 7, "run": "synthetic-normal", "kind": "registration-observed", "ordinal": 2, "engineToken": 12}
+{"seq": 8, "run": "synthetic-normal", "kind": "registration-observed", "ordinal": 3, "engineToken": 13}
+{"seq": 9, "run": "synthetic-normal", "kind": "registration-window-complete", "observed": 3}
+{"seq": 10, "run": "synthetic-normal", "kind": "phase-reached", "phase": "fixture-file-parse", "file": "common/tradition_categories/synthetic.txt"}
+{"seq": 11, "run": "synthetic-normal", "kind": "field-observed", "file": "common/tradition_categories/synthetic.txt", "line": 2, "field": "tree_template", "owner": "synthetic-owner", "ordinal": 1}
+{"seq": 12, "run": "synthetic-normal", "kind": "field-observed", "file": "common/tradition_categories/synthetic.txt", "line": 3, "field": "traditions", "owner": "synthetic-owner", "ordinal": 2}
+{"seq": 13, "run": "synthetic-normal", "kind": "phase-complete", "phase": "fixture-file-parse", "file": "common/tradition_categories/synthetic.txt", "producerFieldCount": 2}
+{"seq": 14, "run": "synthetic-normal", "kind": "stream-end", "producerLastSequence": 14, "producerFieldCount": 2, "registrations": 3}
+{"seq": 15, "run": "synthetic-normal", "kind": "worker-finished"}
+{"seq": 16, "run": "synthetic-normal", "kind": "worker-dispose"}

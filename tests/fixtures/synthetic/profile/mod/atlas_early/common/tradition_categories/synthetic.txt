@@ -1,0 +1,4 @@
+synthetic_category = {
+ tree_template = "synthetic_template"
+ traditions = { }
+}
