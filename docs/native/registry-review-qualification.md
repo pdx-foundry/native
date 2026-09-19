@@ -1,6 +1,6 @@
 # SDK-518 qualification after PR review
 
-**Status: awaiting renewed maintainer acceptance; tracked production acceptance is empty.**
+**Status: accepted by the maintainer; renewed ordinary production verification in progress.**
 
 PR review identified two gaps after the [previous qualification](registry-qualification.md) was
 accepted and its [ordinary production controls](registry-production.md) passed. The operation
@@ -155,8 +155,8 @@ python3 tools/evidence.py sdk-518-registry-review-qualification
 
 ## Maintainer decision
 
-Accept this exact bounded qualification before adding proposed record
-`sdk-518-m45-tradition-registries-v2` to `src/qualification/records/accepted.json`.
-After acceptance, repeat ordinary production verification and retain its evidence before making
-[PR #6](https://github.com/pdx-foundry/native/pull/6) ready. Relevant implementation changes or failed
+The maintainer explicitly accepted this replacement report in the SDK-518 task before source
+promotion. The reviewed record `sdk-518-m45-tradition-registries-v2` is now tracked in
+`src/qualification/records/accepted.json`. Renewed ordinary production verification is in progress
+and must pass before [PR #6](https://github.com/pdx-foundry/native/pull/6) becomes ready. Relevant implementation changes or failed
 controls require renewed evidence and review. No investigation command can promote itself.
