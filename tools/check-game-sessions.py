@@ -110,7 +110,9 @@ def main():
                     for name, captured in live['registries'].items():
                         if 'Ok' in captured:
                             assert dict(captured['Ok'], origin='replay') == replay[name]
-                expected_outcome = {'cancel':'Cancelled', 'caller-loss':'CallerLost', 'drop':'CallerLost', 'startup-drop':'CallerLost', 'runtime-shutdown':'CallerLost', 'timeout':'TimedOut', 'idle-timeout':'TimedOut', 'worker-loss':'WorkerLost', 'worker-loss-held':'WorkerLost', 'game-exit-held':'WorkerLost'}.get(scenario, 'Completed')
+                # SIGKILL against a Mach-stopped game can remain pending until orderly close.
+                # Close must flush debugger exit handling, then independently reap the game.
+                expected_outcome = {'cancel':'Cancelled', 'caller-loss':'CallerLost', 'drop':'CallerLost', 'startup-drop':'CallerLost', 'runtime-shutdown':'CallerLost', 'timeout':'TimedOut', 'idle-timeout':'TimedOut', 'worker-loss':'WorkerLost', 'worker-loss-held':'WorkerLost', 'game-exit-held':'Completed'}.get(scenario, 'Completed')
                 assert report['outcome'] == expected_outcome, report
                 if scenario in FAULTS and scenario != 'worker-loss':
                     other = next(name for name in NAMES if name != selected)

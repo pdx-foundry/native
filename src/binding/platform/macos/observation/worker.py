@@ -363,5 +363,10 @@ def run(debugger):
                     witness['generation'] = check['generation']
                     atomic('pause', 'session-paused.json', witness)
             time.sleep(.02)
+        # Complete pending exit handling before the debugger goes away. The independent
+        # owner still must waitpid its original child; this response proves no disposal.
+        error = process.Kill()
+        if error.Fail():
+            raise RuntimeError('debugger target termination failed: ' + str(error))
     emit('worker-finished')
     # The owner alone proves disposal. Leave the stopped game for its independent cleanup.

@@ -390,6 +390,17 @@ impl Observer {
 
     pub(crate) fn stop(&mut self) -> Result<(), SupervisorError> {
         let deadline = Instant::now() + Duration::from_secs(5);
+        if self.request.session.is_some()
+            && let Some(worker) = &self.worker
+            && capture::write_json(&self.output.join("session-release"), &true).is_ok()
+        {
+            // Let debugserver finish a pending target exit and return it to its real parent.
+            // Killing LLDB first can strand a SIGKILLed, Mach-suspended target under PID 1.
+            let graceful_deadline = Instant::now() + Duration::from_secs(2);
+            while !worker_exited(worker.id())? && Instant::now() < graceful_deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
         self.kill_group()?;
         let Some(worker) = &mut self.worker else {
             return Ok(());
@@ -550,6 +561,32 @@ mod tests {
         let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
         observer.stop().unwrap();
         assert_eq!(observer.exited, Some(-9));
+    }
+
+    #[test]
+    fn session_cleanup_allows_orderly_release_and_bounds_an_unresponsive_worker() {
+        for cooperative in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let mut command = Command::new("/bin/sh");
+            command.current_dir(root.path()).args([
+                "-c",
+                if cooperative {
+                    "while [ ! -f session-release ]; do sleep 0.01; done; exit 0"
+                } else {
+                    "exec sleep 30"
+                },
+            ]);
+            let mut observer = observer(root.path(), &mut command);
+            observer.request.session = Some(observation::SessionBindings {
+                registries: BTreeMap::new(),
+                unavailable: BTreeMap::new(),
+                control_registry: None,
+            });
+            let started = Instant::now();
+            observer.stop().unwrap();
+            assert!(started.elapsed() < Duration::from_secs(5));
+            assert_eq!(observer.exited, Some(if cooperative { 0 } else { -9 }));
+        }
     }
 
     #[test]

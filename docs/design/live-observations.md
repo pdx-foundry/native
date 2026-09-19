@@ -101,6 +101,9 @@ Cleanup has separate budgets. Native retains every attempt in a new directory.
 Async waiting uses Tokio channels. An independent Native thread owns and reaps the consumer
 supervisor, so process lifetime is not tied to an async task. The external supervisor owns and
 reaps Stellaris. Only its owner report establishes game disposal. Concurrent games remain excluded.
+On close, the supervisor gives the attached debugger a bounded chance to terminate its target and
+finish pending exit handling before forcing worker shutdown. The supervisor must still reap its
+original child. A debugger response or absent PID never substitutes for that disposal proof.
 
 ## Evidence and replay
 
@@ -137,6 +140,12 @@ results carry `Replay`. Maintainer sessions retain replay origin and cannot gran
 
 Atlas's consumer transition remains SDK-519. Save loading, explicit-empire resource reads, and UI
 operations remain future API sketches. There is no public `load_save` placeholder or gameplay method.
+
+The future interface may add `Native::load_save(save).await`, returning a Game only after a separately
+defined world-readiness boundary. A resource query must take an explicit empire identity, for example
+`Game::get_resource(empire, resource).await`; it must not infer the local player or an arbitrary empire.
+UI queries need their own readiness and availability contract. These are design sketches, not exported
+methods or promises that the current paused session can perform those operations.
 
 ## Qualification checks
 
