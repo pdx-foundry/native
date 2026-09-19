@@ -2,15 +2,13 @@
 //!
 //! Start a separate instance of your executable, pass its private input/output pipes to
 //! `connect`, and call `serve` in that instance. See the `investigate` Cargo example.
-use crate::{
-    protocol::{self, Hello, Reply},
-    supervisor::SupervisorError,
-};
+#[cfg(feature = "maintainer-tools")]
+use crate::protocol::{self, Hello, Reply};
+use crate::supervisor::SupervisorError;
 use serde::{Deserialize, Serialize};
-use std::{
-    io::{Read, Write},
-    path::PathBuf,
-};
+#[cfg(feature = "maintainer-tools")]
+use std::io::{Read, Write};
+use std::path::PathBuf;
 
 /// A bounded suspended-launch experiment, not an admitted operation.
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,6 +74,9 @@ pub struct AttemptReport {
     /// Hash-pinned descriptor beneath `output/evidence`, available after capture finalization.
     #[serde(default)]
     pub replay: Option<crate::ArtifactReference>,
+    /// Independent session registry descriptors, relative to the attempt directory.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub registries: std::collections::BTreeMap<String, crate::ArtifactReference>,
 }
 
 /// Versioned owner report, with an optional separate recorded-evidence descriptor.
@@ -102,11 +103,17 @@ pub(crate) struct PlanRequest {
 #[derive(Serialize, Deserialize)]
 pub(crate) enum Control {
     Cancel,
+    Close,
+    ReadRegistry {
+        name: String,
+        request: u64,
+    },
     #[cfg(any(test, feature = "maintainer-tools"))]
     WorkerLost,
 }
 
 /// Controller connection. Dropping its writer requests cleanup; it does not confirm disposal.
+#[cfg(feature = "maintainer-tools")]
 pub struct AttemptJob<R, W> {
     input: R,
     output: W,
@@ -147,6 +154,7 @@ pub fn connect<R: Read, W: Write>(
     begin(input, output, plan)
 }
 
+#[cfg(feature = "maintainer-tools")]
 pub(crate) fn handshake(
     input: &mut impl Read,
     output: &mut impl Write,
@@ -160,6 +168,7 @@ pub(crate) fn handshake(
     }
 }
 
+#[cfg(feature = "maintainer-tools")]
 pub(crate) fn begin<R: Read, W: Write>(
     input: R,
     mut output: W,
@@ -173,6 +182,7 @@ pub(crate) fn begin<R: Read, W: Write>(
     })
 }
 
+#[cfg(feature = "maintainer-tools")]
 impl<R: Read, W: Write> AttemptJob<R, W> {
     /// Wait for a recorded child; return its attempt identity and PID.
     /// `None` means the attempt ended before startup; `finish` still returns its disposal report.
@@ -284,6 +294,15 @@ pub(crate) struct ObservationSpec {
     pub fixture: String,
     pub deadline_seconds: u64,
     pub control: ObservationControl,
+    #[serde(default)]
+    pub session: Option<SessionSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionSpec {
+    pub idle_seconds: u64,
+    pub control_registry: Option<String>,
 }
 
 /// Prepare the retained fixture for a candidate observation attempt.
@@ -305,6 +324,7 @@ pub fn prepare_observation_control(
         fixture: request.fixture,
         deadline_seconds: request.deadline_seconds,
         control,
+        session: None,
     };
     spec.validate()?;
     let mut plan = prepare(AttemptRequest {
@@ -321,8 +341,13 @@ pub fn prepare_observation_control(
 
 impl ObservationSpec {
     pub(crate) fn validate(&self) -> Result<(), SupervisorError> {
-        if (self.registry.is_none() && self.fixture != crate::capture::FIXTURE_BODY)
-            || (self.registry.is_some() && !self.fixture.is_empty())
+        if (self.session.is_none()
+            && self.registry.is_none()
+            && self.fixture != crate::capture::FIXTURE_BODY)
+            || ((self.registry.is_some() || self.session.is_some()) && !self.fixture.is_empty())
+            || self.session.as_ref().is_some_and(|session| {
+                !(1..=180).contains(&session.idle_seconds) || self.registry.is_some()
+            })
             || !(1..=180).contains(&self.deadline_seconds)
         {
             return Err(SupervisorError(
@@ -358,11 +383,16 @@ impl PlanRequest {
         if authorization == Authorization::Admitted
             && (self.observation.is_none()
                 || self.observation.as_ref().is_some_and(|spec| {
-                    spec.registry.is_none() || !matches!(spec.control, ObservationControl::Normal)
+                    (spec.registry.is_some() || spec.session.is_none())
+                        || !matches!(spec.control, ObservationControl::Normal)
+                        || spec
+                            .session
+                            .as_ref()
+                            .is_some_and(|session| session.control_registry.is_some())
                 }))
         {
             return Err(SupervisorError(
-                "Ordinary requests require a registry query without investigation controls".into(),
+                "Ordinary requests require a Game session without investigation controls".into(),
             ));
         }
         validate_request(&self.request)?;
@@ -390,6 +420,7 @@ pub fn prepare_registry(
         fixture: String::new(),
         deadline_seconds,
         control,
+        session: None,
     };
     spec.validate()?;
     plan.request.observation = Some(spec);
@@ -409,15 +440,19 @@ mod tests {
             composition: "test".into(),
             authorization: Authorization::Admitted,
             observation: Some(ObservationSpec {
-                registry: Some("traditions".into()),
+                registry: None,
                 fixture: String::new(),
                 deadline_seconds: 180,
                 control: ObservationControl::Normal,
+                session: Some(SessionSpec {
+                    idle_seconds: 180,
+                    control_registry: None,
+                }),
             }),
         }
     }
     #[test]
-    fn ordinary_wire_requires_a_registry_and_valid_deadline() {
+    fn ordinary_wire_requires_a_session_and_valid_deadlines() {
         assert!(plan().validate(Authorization::Admitted).is_ok());
         let mut request = plan();
         request.observation = None;
@@ -425,6 +460,22 @@ mod tests {
         for deadline in [0, 181] {
             let mut request = plan();
             request.observation.as_mut().unwrap().deadline_seconds = deadline;
+            assert!(request.validate(Authorization::Admitted).is_err());
+        }
+        let mut legacy = plan();
+        legacy.observation.as_mut().unwrap().session = None;
+        legacy.observation.as_mut().unwrap().registry = Some("traditions".into());
+        assert!(legacy.validate(Authorization::Admitted).is_err());
+        for deadline in [0, 181] {
+            let mut request = plan();
+            request
+                .observation
+                .as_mut()
+                .unwrap()
+                .session
+                .as_mut()
+                .unwrap()
+                .idle_seconds = deadline;
             assert!(request.validate(Authorization::Admitted).is_err());
         }
         let mut request = plan();

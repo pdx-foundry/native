@@ -1,137 +1,162 @@
-# Registry queries
+# Installation queries and paused Game sessions
 
-Native's consumer interface answers a concrete question: **which entries are in this registry?**
-The first names are `traditions` and `tradition_categories`. Strings keep the interface open to future
-registry names. Native owns their mapping to engine classes, memory layouts, loading, and capture.
-The maintainer accepted the [replacement qualification report](../native/registry-review-qualification.md)
-after PR review tightened the qualification fingerprint and production feature boundary. The reviewed
-record is tracked, and [ordinary production verification](../native/registry-review-production.md)
-passed for both registry names. The earlier qualification and production reports remain historical.
+`Native` pins an installation. `get_registry(name)` returns its declared registry metadata without
+launching Stellaris, starting a supervisor, probing a debugger, or requiring the production feature.
+Reader and field discovery remain explicitly unknown. The description is not an item inventory or
+a complete schema. Unknown names return `Unsupported`; changed or unreadable pinned inputs
+permanently invalidate the context, even if the original bytes are restored.
+
+`Game` owns one supervised process. Its only current observation is `get_registry_items(name)`,
+for `traditions` and `tradition_categories`. Startup captures their initial-loader collections
+where independently available. Repeated reads return the same startup snapshots and never resume
+the game. Entries retain `registered_items` in Rust and `registeredItems` in JSON.
+
+SDK-518's accepted one-shot implementation is the historical baseline. The changed SDK-521 session
+implementation requires fresh qualification and a matching tracked record before ordinary admission.
+The earlier acceptance does not authorize this source revision.
+During rapid development, agents may verify and promote that record under the
+[standing development policy](../development-policy.md).
 
 ## Consumer flow
 
-The consumer supplies its own executable's supervisor role once. Native creates a dedicated direct
-child for each query, connects its private pipes, and reaps it. No separate Native executable is
-shipped. `examples/live.rs` is a complete production-only consumer, including cancellation and replay.
-
-Run that consumer with an installation and an existing absolute retention directory:
-
-```sh
-cargo run --release --features production --example live -- \
-  /path/to/Stellaris /existing/captures traditions
-```
-
-This calls `get_registry_items`, prints the full report as JSON, and verifies the retained replay.
-Admitted live execution requires the explicit `production` feature. Default, `test-support`, and
-`maintainer-tools` builds cannot use ordinary live admission; capability inspection and replay remain
-available. The maintainer capture entry point has separate authority. Production requests outside the
-reviewed qualification still refuse with `QualificationMissing`.
+Consumers supply an executable with a dedicated supervisor role. That role calls
+`supervisor::serve(stdin(), stdout())`, then exits. Native owns the private pipes, process identity,
+reservation, game, worker, and cleanup. No Native runtime executable is distributed.
 
 ```rust,no_run
-use pdx_native::{Engine, OpenRequest, RegistryOptions};
+use pdx_native::{GameOptions, Native, OpenRequest};
 use std::process::Command;
 
-# fn query() -> Result<(), Box<dyn std::error::Error>> {
-let context = Engine::open(OpenRequest { installation_hint: "/path/to/Stellaris".into() })?;
-let mut host = Command::new(std::env::current_exe()?);
-host.arg("--native-supervisor");
-// In that executable role, call supervisor::serve(stdin(), stdout()), then exit.
-let mut native = context.with_supervisor(host, RegistryOptions {
-    retention_directory: "/existing/captures".into(),
-    deadline_seconds: None,
+# async fn query() -> Result<(), Box<dyn std::error::Error>> {
+let native = Native::open(OpenRequest {
+    installation_hint: "/path/to/Stellaris".into(),
 })?;
-let support = native.capability("traditions");
-let report = native.get_registry_items("traditions")?;
-if let Ok(registry) = &report.result {
-    for item in &registry.registered_items { println!("{}", item.key); }
-    println!("{:?}", registry.completion);
+let description = native.get_registry("traditions")?;
+let mut host = Command::new(std::env::current_exe()?);
+host.arg("--supervisor");
+let native = native.with_supervisor(
+    host,
+    GameOptions::new("/existing/captures".into()),
+)?;
+let mut game = native.start_game().await?;
+println!("{:?}", game.readiness());
+for (name, availability) in game.registry_availability() {
+    println!("{name}: {availability:?}");
 }
-if let Some(retained) = report.replay { let replay = Engine.replay_registry(retained)?; }
+let answer = game.get_registry_items("traditions").await;
+// Always close, including when an individual query is unavailable.
+let report = game.close().await?;
+println!("{answer:?}; disposal: {:?}", report.disposal);
 # Ok(()) }
 ```
 
-`get_registry_items` blocks until the answer and independent cleanup report arrive. `start_registry_items(name)`
-returns a job with `started`, `cancel`, and `finish` for consumers that need cancellation. Dropping a
-job closes control, requests independent cleanup, and arranges supervisor reaping; only a final owner
-report confirms game disposal. Caller loss is handled independently of the caller's process.
-
-Unknown names return `RegistryError::Unsupported` before process or capture allocation. Declared
-registries without current qualification or prerequisites return `Unavailable` with admission reasons.
-Deadlines are optional, default to 180 seconds, and must be 1–180 seconds; cleanup has separate budgets.
-The retention directory must exist. Native creates a unique immutable attempt beneath it.
-
-Consumers supply no fixtures, hooks, registration counts, field lists, or executable plans. The public
-API has no investigation controls or qualification overrides. Both processes must link the same Native
-build. The supplied command must start a dedicated direct child that calls `supervisor::serve` on its
-private stdin/stdout and exits after return. Leave stdout exclusive to that protocol; use stderr for logs.
-Do not create a process session/group or install a competing child reaper in that supervisor role.
-
-## Answer and content boundary
-
-The answer contains engine collection keys and opaque, capture-scoped subject identities. Native
-captures the complete pointer-array collection on return from its initial loader, before later
-validation. `Complete` means every slot at that boundary was witnessed. An empty collection needs the
-same activation, loader, count, and terminal witnesses as a nonempty one. Missing records retain valid
-entries with incomplete status; unavailable access and worker loss remain explicit.
-
-Native copies the pinned installed files in `common/traditions` and `common/tradition_categories` into
-an isolated private mod, replacing those two virtual directories. The engine parses these copies.
-Registry keys are read from engine objects, never inferred from file names or a text parser. All file
-extensions are included in input integrity checks. Replay verifies the copied files against the
-retained input manifest. User mods, DLC additions to these directories, later reloads, field values,
-tradition-category relationships, parser schemas, and rule coverage are outside this first answer.
-
-`RegistryReport` keeps termination, independent game disposal, reservation resolution, and the answer
-separate. Evidence-finalization failures stay explicit in `result` without losing disposal facts.
-`RegistryResult` contains completeness, activation, historical disposal, provenance, and limits.
-Live answers carry `Live`; retained derivation carries `Replay`. Candidate reports never produce an
-admitted live result. Historical `Engine::replay` and the SDK-483 exports/artifacts remain unchanged;
-registry artifacts use their own contract and `Engine::replay_registry`.
-
-### Inspect a retained real-game answer
-
-Both candidate and ordinary production normal captures returned 234 tradition keys and 33 category keys. To inspect an
-available registry capture without launching Stellaris, pass its evidence directory and descriptor
-reference to the game-free example:
+`examples/live.rs` is the production consumer. Run it with an existing absolute retention directory:
 
 ```sh
-cargo run --quiet --example registry-replay -- \
-  /path/to/normal/evidence /path/to/normal/evidence/descriptor.ref.json
+cargo run --release --features production --example live -- \
+  /path/to/Stellaris /existing/captures normal
 ```
 
-It prints the complete `RegistryResult` as JSON. Each `registeredItems` member has a `key` and an opaque
-`subject`; the result also has completion, activation, disposal, origin, provenance, and limits.
-For the tradition capture, the first keys are `tr_adaptability_adopt`, `tr_adaptability_finish`, and
-`tr_adaptability_recycling`. Its completion is `complete`, activation is `demonstrated`, and disposal
-is `confirmed`. Replay has `origin: "replay"`; ordinary admitted capture has `origin: "live"`.
-The surrounding live `RegistryReport` additionally carries operation termination, reservation
-resolution, retained replay reference, and explicit evidence-finalization errors.
+The supervisor and caller must link the same Native build. Supervisor stdout is exclusive to the
+protocol; use stderr for logs. The supervisor must be a dedicated direct child, with no competing
+child reaper or separate process group/session installed by the consumer.
 
-### Field discovery is a separate question
+## What readiness means
 
-SDK-518 exposes `get_registry_items(name)` to return registered items. `get_registry(name)` is reserved
-for [SDK-521](https://linear.app/unnamed-system/issue/SDK-521/separate-installation-queries-from-live-game-sessions-in-native),
-which separates installation queries from live game sessions. Registry descriptions and reader fields
-require separate qualification; static queries will not silently launch Stellaris. The retained
-[discovery prototypes](../native/discovery.md#members-and-shared-readers) provide starting evidence;
-they do not establish complete field schemas for these registries. Native should own the engine
-method and qualified field facts. Atlas should consume those facts for authoring rules without
-managing addresses, hooks, or extraction fixtures.
+Neither readiness value implies a loaded world, a ready main menu, completed engine validation,
+or available gameplay operations. The process remains stopped at the witnessed initialization frame.
 
-## Authority and verification
+| Readiness | Established boundary |
+| --- | --- |
+| `PausedAfterRegistryInitialization` | Both declared initial registry loaders returned and the bound debugger freshly confirmed its unchanged stopped frame. |
+| `PausedDuringRegistryInitialization` | Only part of registry initialization was witnessed before a safe pause. Available registry snapshots remain usable. |
 
-Composition selects the target, registry bindings, machine, strategy, package, and content once.
-The supervisor independently rechecks current inputs, composition, helpers, and bundled qualification
-before allocation. Serialized requests carry intent, not authority. Changed inputs invalidate the
-context; re-opening does not grant qualification for different content. Admission needs no historical
-bundle. Replay requires every referenced artifact and refuses absent or changed bytes.
+Admission, hook activation, access, and collection completeness are evaluated per registry. A missing
+traditions hook can leave categories available. A failed item read can leave loader readiness
+established while that registry is unavailable. Missing entries produce an incomplete result for
+the affected registry, not a successful empty collection or a failure of the other collection.
+Unknown or unreadable shared transport evidence remains explicit where its affected scope cannot
+be established.
 
-Maintainer controls use the same execution, capture, and replay implementation through a separate,
-feature-gated authority entry point. `tools/check-registry-observations.py --registry NAME` repeats the
-ten candidate controls. `tools/check-candidate-observations.py` preserves the early-observation controls.
-`tools/check-live-observations.py --registry NAME` exercises the ordinary
-production consumer with external process/stream controls. No investigation command writes acceptance.
+Startup fails when Native cannot confirm a safe owned pause. `GameError::StartupFailed` preserves
+partial results and independent disposal facts. A connection failure is not disposal confirmation.
 
-A relevant implementation change invalidates the previous qualification report. Review new evidence
-before adding a tracked acceptance. Windows, other targets/content, registry discovery, Atlas
-integration, and clean pinned-build reproduction remain outside this slice.
+## Lifetime and cancellation
+
+`GameOptions::new` defaults startup and idle budgets to 180 seconds each. Both must be 1–180 seconds.
+Successful item reads reset the idle budget; metadata inspection and unavailable queries do not.
+Cleanup has separate budgets. Native retains every attempt in a new directory.
+
+| Event | Behavior |
+| --- | --- |
+| Startup future dropped | Close the control channel and independently clean up any allocation. |
+| Item-read future dropped | Keep the session alive; an already accepted read can complete. |
+| `cancel()` | Request cancellation; await `close()` for the final report. |
+| `close().await` | Request normal termination and await independent disposal; repeated calls return the same report. |
+| Close future dropped after polling | Cleanup continues; the handle can await close again. |
+| `Game` dropped | Request cleanup without claiming success. |
+| `Native` dropped | An existing Game retains its own pinned context and supervision. |
+| Caller or async runtime lost | Native's process-management thread and independent supervisor continue cleanup. |
+| Worker lost | End the session, retain established observations, and independently dispose the game. |
+| Supervisor lost | No disposal claim; an unresolved durable reservation blocks new launch. |
+
+Async waiting uses Tokio channels. An independent Native thread owns and reaps the consumer
+supervisor, so process lifetime is not tied to an async task. The external supervisor owns and
+reaps Stellaris. Only its owner report establishes game disposal. Concurrent games remain excluded.
+On close, the supervisor gives the attached debugger a bounded chance to terminate its target and
+finish pending exit handling before forcing worker shutdown. The supervisor must still reap its
+original child. A debugger response or absent PID never substitutes for that disposal proof.
+
+## Evidence and replay
+
+Item keys come from engine collections, not file names or a text parser. Native copies the pinned
+installed `common/traditions` and `common/tradition_categories` trees into an isolated private mod.
+All extensions participate in integrity checks. DLC additions, user mods, later reloads, field values,
+category relationships, and rule coverage remain outside this result.
+
+Session artifacts use `pdx-native/session-registry-snapshot-v1`. Each registry descriptor pins the
+shared event stream and its own requested name. Replay checks global sequence integrity and
+registry-specific loader, owner, thread, slot, and terminal joins.
+
+Startup snapshots live under `snapshots/<registry>` and retain unconfirmed disposal. Close writes
+new evidence under `final/<registry>`; it never changes a returned snapshot. A final `GameReport`
+separates termination, game disposal, durable reservation resolution, results, and retention failures.
+One registry's retention failure does not erase the other's evidence or the owner cleanup report.
+Opaque subject identities belong to their descriptor; do not equate identities across snapshots.
+
+`Engine::replay_registry` reads both the existing SDK-518 format and the new session format.
+`Engine::replay` and SDK-483 artifacts are unchanged. Replay requires no installation or live helper;
+missing or changed artifacts fail explicitly. Ordinary admitted results carry `Live`; retained
+results carry `Replay`. Maintainer sessions retain replay origin and cannot grant live admission.
+
+## Migration from SDK-518
+
+- Replace `Engine::open(...).with_supervisor(..., RegistryOptions)` with `Native::open(...)` and
+  `GameOptions`. `Engine::open` remains available for installation/capability callers.
+- Replace the old `RegistryClient::get_registry_items` or `RegistryJob` flow with
+  `start_game().await`, independent queries, and `close().await`.
+- Handle each registry separately. Inspect `Game::readiness()` rather than assuming a loaded world.
+- Retain startup references from `Game::replay_references()` and final references from `GameReport::replay`.
+- Read final results from `GameReport::registries`; the removed `RegistryReport` had one `result`.
+- The old live client/job/options/report exports are removed. No deprecated live wrappers remain.
+
+Atlas's consumer transition remains SDK-519. Save loading, explicit-empire resource reads, and UI
+operations remain future API sketches. There is no public `load_save` placeholder or gameplay method.
+
+The future interface may add `Native::load_save(save).await`, returning a Game only after a separately
+defined world-readiness boundary. A resource query must take an explicit empire identity, for example
+`Game::get_resource(empire, resource).await`; it must not infer the local player or an arbitrary empire.
+UI queries need their own readiness and availability contract. These are design sketches, not exported
+methods or promises that the current paused session can perform those operations.
+
+## Qualification checks
+
+```sh
+python3 tools/check-game-sessions.py /path/to/Stellaris /new/candidate-output
+python3 tools/check-game-sessions.py /path/to/Stellaris /new/production-output --production
+```
+
+The candidate controls exercise the shared session implementation. They cover full and partial
+readiness, each registry's unavailable/incomplete cases, cancellation, caller/runtime loss, worker
+loss, deadlines, repeated reads, and independent evidence-retention failures. Ordinary controls
+require reviewed admission. Neither command installs an acceptance record.

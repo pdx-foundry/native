@@ -188,12 +188,14 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
             },
         },
         admitted_tool: None,
+        session_unavailable: Default::default(),
     };
     let spec = ObservationSpec {
         registry: Some("traditions".into()),
         fixture: String::new(),
         deadline_seconds: 1,
         control: ObservationControl::Normal,
+        session: None,
     };
     let error = plan
         .observer(&directory.path().join("unused"), "test", &spec, "synthetic")
@@ -213,8 +215,8 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
 }
 
 #[cfg(not(feature = "production"))]
-#[test]
-fn matching_qualification_cannot_launch_without_the_production_feature() {
+#[tokio::test]
+async fn matching_qualification_cannot_launch_without_the_production_feature() {
     let (directory, mut binding) = installation();
     binding
         .authority
@@ -230,6 +232,7 @@ fn matching_qualification_cannot_launch_without_the_production_feature() {
     let mut plan = super::ExecutionPlan {
         binding,
         admitted_tool: None,
+        session_unavailable: Default::default(),
     };
     assert!(
         plan.admit("traditions")
@@ -244,18 +247,48 @@ fn matching_qualification_cannot_launch_without_the_production_feature() {
     assert_eq!(report.availability, crate::Availability::Unavailable);
     let captures = directory.path().join("captures");
     fs::create_dir(&captures).unwrap();
-    let mut client = context
+    let client = context
         .with_supervisor(
             std::process::Command::new("must-not-launch"),
-            crate::RegistryOptions {
-                retention_directory: captures.clone(),
-                deadline_seconds: None,
-            },
+            crate::GameOptions::new(captures.clone()),
         )
         .unwrap();
-    let error = client.get_registry_items("traditions").unwrap_err();
+    let error = client.start_game().await.unwrap_err();
     assert!(
-        matches!(error, crate::RegistryError::Unavailable { reasons } if reasons == [UnavailableReason::ProductionFeatureRequired])
+        matches!(error, crate::GameError::Unavailable { registries } if registries.values().all(|reasons| reasons == &[UnavailableReason::ProductionFeatureRequired]))
     );
     assert_eq!(fs::read_dir(captures).unwrap().count(), 0);
+}
+
+#[test]
+fn static_registry_descriptions_never_probe_live_helpers_and_keep_unknown_fields() {
+    let (directory, mut binding) = installation();
+    let (_, mut operation) =
+        super::compose::synthetic_variation(binding.inputs.content.clone().unwrap());
+    operation.strategy.probe = || panic!("static query must not probe live helpers");
+    binding.operation = Some(operation);
+    let native = crate::Native::from_binding(binding);
+    for name in ["traditions", "tradition_categories"] {
+        let description = native.get_registry(name).unwrap();
+        assert_eq!(description.content_directory, format!("common/{name}"));
+        assert!(matches!(
+            description.reader_discovery,
+            crate::DiscoveryStatus::Unknown { .. }
+        ));
+        assert!(matches!(
+            description.field_discovery,
+            crate::DiscoveryStatus::Unknown { .. }
+        ));
+    }
+    assert!(matches!(
+        native.get_registry("technology"),
+        Err(crate::RegistryError::Unsupported { .. })
+    ));
+    let path = directory.path().join("common/traditions/test.txt");
+    fs::write(&path, "changed").unwrap();
+    assert!(
+        matches!(native.get_registry("traditions"), Err(crate::RegistryError::Unavailable { reasons }) if reasons == [UnavailableReason::ContentChanged])
+    );
+    fs::write(path, "test").unwrap();
+    assert!(native.get_registry("traditions").is_err());
 }

@@ -238,7 +238,7 @@ impl OwnedGame {
             let mut status = 0;
             // SAFETY: valid output pointer; WNOHANG keeps cleanup bounded.
             let reaped = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
-            if reaped == self.pid {
+            if reaped == self.pid && (libc::WIFEXITED(status) || libc::WIFSIGNALED(status)) {
                 self.reaped = true;
                 self.exit = Some(i64::from(status));
                 return Ok(());

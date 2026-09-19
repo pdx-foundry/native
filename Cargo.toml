@@ -14,6 +14,7 @@ production = []
 maintainer-tools = []
 
 [dependencies]
+tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
 evidence = { package = "pdx-native-evidence", path = "crates/native-evidence", version = "0.1.0" }
 object = { version = "0.37.3", default-features = false, features = ["read", "std"] }
 serde = { version = "1", features = ["derive"] }
@@ -44,4 +45,8 @@ required-features = ["production"]
 
 [[example]]
 name = "registry-investigation"
+required-features = ["maintainer-tools"]
+
+[[example]]
+name = "session-investigation"
 required-features = ["maintainer-tools"]

@@ -45,7 +45,12 @@ fn reader(mut input: impl Read + Send + 'static, authorization: Authorization) -
                 .map_err(|e| SupervisorError(e.to_string()))?;
             loop {
                 let control: Control = protocol::read(&mut input)?;
-                if authorization == Authorization::Admitted && !matches!(control, Control::Cancel) {
+                if authorization == Authorization::Admitted
+                    && !matches!(
+                        control,
+                        Control::Cancel | Control::Close | Control::ReadRegistry { .. }
+                    )
+                {
                     return Err(SupervisorError("Unsupported ordinary control".into()));
                 }
                 send.send(Input::Control(control))
@@ -146,14 +151,24 @@ fn run(
     if plan.composition() != request.composition {
         return Err(SupervisorError("Composition mismatch".into()));
     }
+    let session = request
+        .observation
+        .as_ref()
+        .and_then(|spec| spec.session.as_ref());
     if request.authorization == Authorization::Admitted {
-        plan.admit(
-            request
-                .observation
-                .as_ref()
-                .and_then(|spec| spec.registry.as_deref())
-                .ok_or_else(|| SupervisorError("Ordinary requests require a registry".into()))?,
-        )?;
+        if session.is_some() {
+            plan.admit_session()?;
+        } else {
+            plan.admit(
+                request
+                    .observation
+                    .as_ref()
+                    .and_then(|spec| spec.registry.as_deref())
+                    .ok_or_else(|| {
+                        SupervisorError("Ordinary requests require a registry".into())
+                    })?,
+            )?;
+        }
     }
     let parent = request
         .request
@@ -186,6 +201,7 @@ fn run(
         output: retained,
         diagnostics: Vec::new(),
         replay: None,
+        registries: Default::default(),
     };
     let started = Instant::now();
     let mut game = None;
@@ -201,7 +217,7 @@ fn run(
         }
         prepare_profile(&report.output)?;
         if let Some(spec) = &request.observation {
-            if spec.registry.is_none() {
+            if spec.registry.is_none() && spec.session.is_none() {
                 prepare_fixture(&report.output, spec)?;
             } else {
                 plan.prepare_registry_profile(&report.output)?;
@@ -259,12 +275,25 @@ fn run(
             })?;
             observer.start(child.pid())?;
             capture.record(evidence::recorded::OwnerEvent::WorkerStarted)?;
-            observe_worker(
-                input,
-                child,
-                observer,
-                Duration::from_secs(spec.deadline_seconds),
-            )?
+            if let Some(session) = &spec.session {
+                observe_session(
+                    input,
+                    output,
+                    child,
+                    observer,
+                    capture,
+                    &report.output,
+                    spec.deadline_seconds,
+                    session.idle_seconds,
+                )?
+            } else {
+                observe_worker(
+                    input,
+                    child,
+                    observer,
+                    Duration::from_secs(spec.deadline_seconds),
+                )?
+            }
         } else {
             observe(
                 input,
@@ -288,12 +317,19 @@ fn run(
     }
     let mut worker_stopped = true;
     if let Some(observer) = &mut observer {
+        if session.is_some()
+            && report.outcome != OperationOutcome::WorkerLost
+            && let Some(capture) = &mut capture
+            && let Err(error) = capture.record(evidence::recorded::OwnerEvent::WorkerStopRequested)
+        {
+            report.diagnostics.push(error.to_string());
+        }
         if let Err(error) = observer.stop() {
             worker_stopped = false;
             report.diagnostics.push(error.to_string());
         }
         if let (Some(code), Some(capture)) = (observer.exited, &mut capture) {
-            if code != 0 && report.outcome == OperationOutcome::Completed {
+            if session.is_none() && code != 0 && report.outcome == OperationOutcome::Completed {
                 report.outcome = OperationOutcome::WorkerLost;
             }
             if let Err(error) =
@@ -337,17 +373,126 @@ fn run(
         }
     }
     if let Some(capture) = capture {
-        match capture.finish(&report.output) {
-            Ok(reference) => report.replay = Some(reference),
-            Err(error) => report
-                .diagnostics
-                .push(format!("Capture finalization failed: {error}")),
+        if session.is_some() {
+            let (registries, diagnostics) = capture.session_snapshot(&report.output, "final");
+            report.registries = registries;
+            report.diagnostics.extend(diagnostics);
+        } else {
+            match capture.finish(&report.output) {
+                Ok(reference) => report.replay = Some(reference),
+                Err(error) => report
+                    .diagnostics
+                    .push(format!("Capture finalization failed: {error}")),
+            }
         }
     }
     if owns_output {
         retain_report(&reservation, &mut report);
     }
     Ok(report)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn observe_session(
+    input: &Receiver<Input>,
+    output: &Reporter,
+    child: &binding::OwnedGame,
+    observer: &mut binding::Observer,
+    capture: &mut crate::capture::Capture,
+    retained: &Path,
+    startup_seconds: u64,
+    idle_seconds: u64,
+) -> Result<OperationOutcome, SupervisorError> {
+    let mut deadline = Instant::now() + Duration::from_secs(startup_seconds);
+    let mut snapshots = None;
+    loop {
+        if Instant::now() >= deadline {
+            return Ok(OperationOutcome::TimedOut);
+        }
+        if binding::conflicting_game(Some(child.pid()))? {
+            return Err(SupervisorError(
+                "External game invalidated isolation".into(),
+            ));
+        }
+        if observer.poll()? {
+            return Ok(OperationOutcome::WorkerLost);
+        }
+        if snapshots.is_none() {
+            if let Some(witness) = observer.pause_witness()? {
+                child.identity()?;
+                capture.record(evidence::recorded::OwnerEvent::GamePauseConfirmed {
+                    pid: u64::from(child.pid()),
+                    returned: witness.returned,
+                })?;
+                let readiness = capture.session_readiness(retained)?.ok_or_else(|| {
+                    SupervisorError(
+                        "Registry initialization readiness witnesses are missing or inconsistent"
+                            .into(),
+                    )
+                })?;
+                let (references, diagnostics) = capture.session_snapshot(retained, "snapshots");
+                if references.is_empty() {
+                    return Err(SupervisorError(format!(
+                        "Session evidence retention failed: {diagnostics:?}"
+                    )));
+                }
+                // Partial retention is explicit in per-registry replay; never revoke another answer.
+                crate::capture::write_json(
+                    &retained.join("snapshot-diagnostics.json"),
+                    &diagnostics,
+                )?;
+                output.send(Reply::Paused {
+                    readiness,
+                    output: retained.into(),
+                    registries: references.clone(),
+                })?;
+                snapshots = Some(references);
+                deadline = Instant::now() + Duration::from_secs(idle_seconds);
+            }
+        } else {
+            child.identity()?;
+            if observer.pause_witness()?.is_none() {
+                return Err(SupervisorError("Session pause witness lost".into()));
+            }
+        }
+        match input.recv_timeout(Duration::from_millis(50)) {
+            Ok(Input::Control(Control::ReadRegistry { name, request })) => {
+                let Some(reference) = snapshots
+                    .as_ref()
+                    .and_then(|references| references.get(&name))
+                else {
+                    return Err(SupervisorError(
+                        "Registry read before readiness or outside declared bounds".into(),
+                    ));
+                };
+                let mut descriptor = reference.clone();
+                let path = std::path::Path::new(&reference.path);
+                descriptor.path = path.file_name().unwrap().to_string_lossy().into();
+                let result = crate::Engine
+                    .replay_registry(crate::ReplayRequest {
+                        artifact_root: retained.join(path.parent().unwrap()),
+                        descriptor,
+                    })
+                    .map_err(|error| SupervisorError(error.to_string()))?;
+                if result.activation != crate::Activation::Demonstrated
+                    || !matches!(
+                        result.completion,
+                        crate::Completion::Complete | crate::Completion::Incomplete
+                    )
+                {
+                    return Err(SupervisorError(
+                        "Unavailable registry read cannot extend session lifetime".into(),
+                    ));
+                }
+                output.send(Reply::RegistryRead { request })?;
+                deadline = Instant::now() + Duration::from_secs(idle_seconds);
+            }
+            Ok(Input::Control(Control::Close)) => return Ok(OperationOutcome::Completed),
+            Ok(event) => return Ok(interruption(event)),
+            Err(RecvTimeoutError::Disconnected) => return Ok(OperationOutcome::CallerLost),
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+    }
 }
 
 fn observe_worker(
@@ -422,7 +567,7 @@ fn retain_report(reservation: &Reservation, report: &mut AttemptReport) {
         report.diagnostics.push(format!("owner.json: {error}"));
     }
     let capture = operation::AttemptCapture {
-        version: 3,
+        version: 4,
         build: env!("PDX_NATIVE_BUILD").into(),
         report: report.clone(),
     };
@@ -618,6 +763,7 @@ mod tests {
             output: output.path().into(),
             diagnostics: Vec::new(),
             replay: None,
+            registries: Default::default(),
         };
         retain_report(&reservation, &mut report);
         let retained: AttemptReport =

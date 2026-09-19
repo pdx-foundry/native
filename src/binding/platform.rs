@@ -37,6 +37,7 @@ pub(in crate::binding) struct ObservationSetup<'a> {
     pub expected_tool: Option<&'a str>,
     pub content: &'a crate::qualification::ContentIdentity,
     pub registry: Option<&'a crate::protocol::observation::RegistryBinding>,
+    pub session: Option<crate::protocol::observation::SessionBindings>,
     pub bindings: &'a std::collections::BTreeMap<String, u64>,
     pub machine: &'a super::Machine,
     pub package: &'a std::collections::BTreeMap<String, Vec<u8>>,

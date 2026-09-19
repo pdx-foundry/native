@@ -22,9 +22,13 @@ PDX Native is the canonical home for reusable engine integration knowledge. This
 
 The [bounded replay implementation](design/replay.md) adds a game-free Rust consumer flow for the
 retained SDK-483 window. Its tests govern retained derivation behavior, with explicit synthetic and
-historical origins. Public live admission uses the reviewed replacement registry qualification. The maintainer-only
+historical origins. Public live admission uses matching tracked qualification records. The maintainer-only
 [candidate capture path](design/candidate-observations.md) can now produce fresh recorded evidence
-for the same replay validator; capture success does not grant qualification. SDK-518 now exposes [registry questions](design/live-observations.md) over shared execution.
+for the same replay validator; capture success does not grant qualification. SDK-518 established bounded registry questions over shared execution. SDK-521 replaces the live consumer surface with [installation queries and paused Game sessions](design/live-observations.md); its changed implementation requires fresh verification and a matching record.
+The [Game session qualification status](native/game-session-qualification.md) retains the current
+checks, a failed game-exit control, its verified shutdown correction, and completed development recovery.
+All 27 candidate controls and 15 [ordinary production controls](native/game-session-production.md)
+passed under the [development policy](development-policy.md).
 The [earlier observation qualification report](native/live-observation-qualification.md) is superseded
 for promotion. The [fresh registry qualification report](native/registry-qualification.md) retains
 30 passing candidate controls and maintainer acceptance before source promotion. The

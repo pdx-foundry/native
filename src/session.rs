@@ -2,117 +2,175 @@ use crate::{
     CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin, OpenError, OpenRequest,
     UnavailableReason, binding::Binding, qualification,
 };
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
-/// A fixed installation or synthetic context. It cannot be rebound; live requests require ordinary admission.
+/// A pinned installation. Static queries never launch a game or probe a debugger.
+/// Configure a consumer supervisor before starting an independently owned Game.
 #[derive(Debug)]
-pub struct EngineContext {
-    binding: Binding,
-    invalidated: RefCell<Option<UnavailableReason>>,
+pub struct Native {
+    binding: Arc<Binding>,
+    invalidated: Arc<Mutex<Option<UnavailableReason>>>,
+    pub(crate) hosting: Option<crate::game::Hosting>,
 }
 
-pub(crate) fn open(request: OpenRequest) -> Result<EngineContext, OpenError> {
-    Ok(EngineContext::from_binding(Binding::open(request)?))
+/// Installation context retained for source compatibility with capability and replay callers.
+pub type EngineContext = Native;
+
+pub(crate) fn open(request: OpenRequest) -> Result<Native, OpenError> {
+    Native::open(request)
 }
 
-impl EngineContext {
+impl Native {
+    /// Pin an installation without starting a process.
+    pub fn open(request: OpenRequest) -> Result<Self, OpenError> {
+        Ok(Self::from_binding(Binding::open(request)?))
+    }
     pub(crate) fn from_binding(binding: Binding) -> Self {
         Self {
-            binding,
-            invalidated: RefCell::new(None),
+            binding: Arc::new(binding),
+            invalidated: Arc::new(Mutex::new(None)),
+            hosting: None,
         }
     }
-
-    /// Fixed composition identity. Equality does not establish current input integrity.
+    pub(crate) fn registry_names(&self) -> Vec<String> {
+        self.binding.registry_names()
+    }
+    pub(crate) fn detached_context(&self) -> Self {
+        Self {
+            binding: self.binding.clone(),
+            invalidated: self.invalidated.clone(),
+            hosting: None,
+        }
+    }
+    /// Opaque pinned composition identity. Equality does not establish current integrity.
     pub fn identity(&self) -> ContextIdentity {
         self.binding.identity()
     }
-
-    /// Whether the context comes from an installation or authored synthetic inputs.
+    /// Installation or authored synthetic input origin.
     pub fn origin(&self) -> ContextOrigin {
         self.binding.origin()
     }
-
-    /// Check the requested bounds, current inputs, prerequisites, and bundled qualifications.
-    /// Once an integrity check fails, reopen the context; restoring bytes does not revive it.
-    pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
-        let mut invalidated = self.invalidated.borrow_mut();
+    fn integrity(&self) -> Option<UnavailableReason> {
+        let mut invalidated = self.invalidated.lock().expect("context integrity lock");
         if invalidated.is_none() {
             *invalidated = self.binding.integrity();
         }
+        invalidated.clone()
+    }
+    /// Inspect live admission. This may probe live prerequisites, but never launches Stellaris.
+    pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
         qualification::evaluate(
             &self.binding.current_inputs(),
             self.binding.authority(),
             request,
             self.origin(),
-            invalidated.clone(),
+            self.integrity(),
         )
     }
-}
-
-impl EngineContext {
-    /// Configure consumer-hosted supervision and retention once, then call `get_registry_items`.
-    /// The command must start a dedicated direct child that calls `supervisor::serve`.
-    pub fn with_supervisor(
-        self,
-        command: std::process::Command,
-        options: crate::RegistryOptions,
-    ) -> Result<crate::RegistryClient, crate::RegistryError> {
-        crate::registry::client(self, command, options)
-    }
-
-    pub(crate) fn prepare_registry(
+    /// Describe a declared registry without live admission, debugger access, or a game process.
+    pub fn get_registry(
         &self,
         name: &str,
-        output: std::path::PathBuf,
-        deadline_seconds: u64,
-    ) -> Result<crate::operation::PreparedPlan, crate::RegistryError> {
-        use crate::operation::{
-            AttemptRequest, Authorization, ObservationControl, ObservationSpec, PlanRequest,
-            PreparedPlan,
-        };
-        let report = self.capability(&CapabilityRequest {
-            registry: name.into(),
-        });
-        if !report
-            .bounds
-            .registries
-            .iter()
-            .any(|supported| supported == name)
-        {
-            return Err(crate::RegistryError::Unsupported {
+    ) -> Result<crate::RegistryDescription, crate::RegistryError> {
+        let directory = self.binding.registry_directory(name).ok_or_else(|| {
+            crate::RegistryError::Unsupported {
                 registry: name.into(),
-            });
-        }
-        let installation_hint = self
-            .binding
-            .installation_hint()
-            .map_err(crate::RegistryError::from)?;
-        if report.availability != crate::Availability::Available {
+            }
+        })?;
+        if let Some(reason) = self.integrity() {
             return Err(crate::RegistryError::Unavailable {
-                reasons: report.reasons,
+                reasons: vec![reason],
             });
         }
-        let spec = ObservationSpec {
-            registry: Some(name.into()),
-            fixture: String::new(),
-            deadline_seconds,
-            control: ObservationControl::Normal,
-        };
-        spec.validate()?;
-        let request = AttemptRequest {
-            installation_hint,
-            output,
-            hold_ms: 1,
-        };
-        crate::operation::validate_request(&request)?;
-        Ok(PreparedPlan {
-            request: PlanRequest {
-                request,
-                composition: self.identity().0,
-                authorization: Authorization::Admitted,
-                observation: Some(spec),
-            },
+        Ok(crate::RegistryDescription {
+            name: name.into(), content_directory: directory, context: self.identity(), origin: self.origin(),
+            reader_discovery: crate::DiscoveryStatus::Unknown { reason: "Reader discovery has not been qualified".into() },
+            field_discovery: crate::DiscoveryStatus::Unknown { reason: "Field discovery has not been qualified".into() },
+            limits: vec!["Target-declared registry metadata; no complete reader, field schema, or registered items established".into()],
         })
+    }
+    /// Configure a dedicated direct child calling supervisor::serve on private stdin/stdout.
+    /// See examples/live.rs for the supervisor role and async session flow.
+    pub fn with_supervisor(
+        mut self,
+        command: std::process::Command,
+        options: crate::GameOptions,
+    ) -> Result<Self, crate::GameError> {
+        self.hosting = Some(crate::game::Hosting::new(command, options)?);
+        Ok(self)
+    }
+    /// Start a paused registry initialization session, never a loaded world.
+    /// Dropping this future requests independent cleanup. No async runtime owns the process.
+    pub async fn start_game(&self) -> Result<crate::Game, crate::GameError> {
+        crate::game::start(
+            self.detached_context(),
+            self.hosting
+                .clone()
+                .ok_or(crate::GameError::NotConfigured)?,
+            crate::operation::Authorization::Admitted,
+            None,
+        )
+        .await
+    }
+    pub(crate) fn prepare_session(
+        &self,
+        output: std::path::PathBuf,
+        options: &crate::GameOptions,
+        authorization: crate::operation::Authorization,
+        control: Option<(String, crate::operation::ObservationControl)>,
+    ) -> Result<crate::operation::PreparedPlan, crate::GameError> {
+        let names = self.binding.registry_names();
+        if authorization == crate::operation::Authorization::Admitted {
+            let reports: Vec<_> = names
+                .iter()
+                .map(|name| {
+                    (
+                        name.clone(),
+                        self.capability(&CapabilityRequest {
+                            registry: name.clone(),
+                        }),
+                    )
+                })
+                .collect();
+            if !reports
+                .iter()
+                .any(|(_, report)| report.availability == crate::Availability::Available)
+            {
+                return Err(crate::GameError::Unavailable {
+                    registries: reports
+                        .into_iter()
+                        .map(|(name, report)| (name, report.reasons))
+                        .collect(),
+                });
+            }
+        }
+        if let Some(reason) = self.integrity() {
+            return Err(crate::GameError::InputsChanged(reason));
+        }
+        let (control_registry, control) = match control {
+            Some((name, control)) => (Some(name), control),
+            None => (None, crate::operation::ObservationControl::Normal),
+        };
+        let plan = crate::operation::PlanRequest {
+            request: crate::operation::AttemptRequest {
+                installation_hint: self.binding.installation_hint()?,
+                output,
+                hold_ms: 1,
+            },
+            composition: self.identity().0,
+            authorization,
+            observation: Some(crate::operation::ObservationSpec {
+                registry: None,
+                fixture: String::new(),
+                deadline_seconds: options.startup_seconds,
+                control,
+                session: Some(crate::operation::SessionSpec {
+                    idle_seconds: options.idle_seconds,
+                    control_registry,
+                }),
+            }),
+        };
+        plan.validate(authorization)?;
+        Ok(crate::operation::PreparedPlan { request: plan })
     }
 }

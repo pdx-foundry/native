@@ -8,7 +8,7 @@ There is no installed Native owner executable or helper search path.
 ## Integration
 
 The ordinary `supervisor::serve` entry point now uses the shared owner after ordinary admission.
-The public registry client starts and reaps the consumer-supplied supervisor command and manages its private pipes. The replacement bounded registry qualification is accepted after PR review; see [registry queries](live-observations.md). `investigation::{connect, serve}` is a separate `maintainer-tools` surface producing
+Native starts and reaps the consumer-supplied supervisor command and manages its private pipes for each async Game; see [paused registry sessions](live-observations.md). `investigation::{connect, serve}` is a separate `maintainer-tools` surface producing
 only `InvestigationReport` and `CandidateCapture`. It cannot construct a supported replay result or
 change qualification authority. Lifecycle-only captures have their own versioned report format. The separate
 [candidate observation path](candidate-observations.md) additionally emits evidence descriptors
@@ -71,12 +71,14 @@ non-regular files, pending writes, and unresolved reservations block launch with
 prior evidence. Writes synchronize the file and namespace directory. A reservation is durable
 before profile allocation or spawn; child incarnation is added immediately after spawn.
 
-A free OS lock, absent PID, or elapsed time never clears a reservation. Owner death between spawn
+The runtime never clears a reservation from a free OS lock, absent PID, or elapsed time. Owner death between spawn
 and child-record persistence still leaves the pre-spawn reservation blocking. Disposal is marked
 only after direct-child reaping, or when no game was launched. Failed journal commits leave
 `reservation_resolved` false even when the game was reaped. Record-retention failures are returned
-in `diagnostics`, separately from disposal. Operator-assisted inspection/clearance is outside this
-API; do not delete a reservation to retry a failed attempt.
+in `diagnostics`, separately from disposal. Agent-operated development recovery is outside this API
+and follows the standing authorization in [development policy](../development-policy.md). Inspect
+ownership and current processes before clearing the affected record under the lock; clearance does
+not change the historical disposal result.
 
 The lock covers Native owners only. A bounded `/bin/ps` inventory checks ordinary Stellaris
 instances before launch and periodically during the hold. Inspection failure or a conflict ends

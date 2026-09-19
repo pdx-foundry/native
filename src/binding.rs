@@ -40,6 +40,18 @@ impl Binding {
         })
     }
 
+    pub(crate) fn registry_directory(&self, name: &str) -> Option<String> {
+        self.operation
+            .as_ref()?
+            .registries
+            .get(name)
+            .map(|registry| registry.directory.clone())
+    }
+
+    pub(crate) fn registry_names(&self) -> Vec<String> {
+        self.inputs.bounds.registries.clone()
+    }
+
     pub(crate) fn identity(&self) -> ContextIdentity {
         ContextIdentity(self.inputs.composition.clone())
     }
@@ -87,6 +99,7 @@ pub(crate) use synthetic::synthetic;
 pub(crate) struct ExecutionPlan {
     binding: Binding,
     admitted_tool: Option<String>,
+    session_unavailable: std::collections::BTreeMap<String, String>,
 }
 
 impl ExecutionPlan {
@@ -99,6 +112,7 @@ impl ExecutionPlan {
         let plan = Self {
             binding,
             admitted_tool: None,
+            session_unavailable: Default::default(),
         };
         plan.integrity()?;
         Ok(plan)
@@ -148,6 +162,25 @@ impl ExecutionPlan {
         self.admitted_tool = inputs.toolchain.ok();
         Ok(())
     }
+    pub fn admit_session(&mut self) -> Result<(), crate::supervisor::SupervisorError> {
+        let mut admitted = false;
+        for name in self.binding.registry_names() {
+            match self.admit(&name) {
+                Ok(()) => admitted = true,
+                Err(error) => {
+                    self.session_unavailable.insert(name, error.to_string());
+                }
+            }
+        }
+        if !admitted {
+            return Err(crate::supervisor::SupervisorError(format!(
+                "Session unavailable: {:?}",
+                self.session_unavailable
+            )));
+        }
+        Ok(())
+    }
+
     #[cfg(feature = "maintainer-tools")]
     pub fn probe(&self) -> Result<(), crate::supervisor::SupervisorError> {
         (self.operation().strategy.probe)().map(|_| ())
@@ -253,7 +286,8 @@ impl ExecutionPlan {
             "machine": operation.machine, "architecture": operation.machine.architecture,
             "build": env!("PDX_NATIVE_BUILD"), "implementation": env!("PDX_NATIVE_OPERATION"),
             "compiler": env!("PDX_NATIVE_COMPILER"), "profile": env!("PDX_NATIVE_PROFILE"),
-            "method": if spec.registry.is_some() { operation.method } else { operation.early_method }, "strategy": operation.strategy.revision, "control": spec.control,
+            "registries": operation.registries.keys().collect::<Vec<_>>(),
+            "method": if spec.session.is_some() { operation.session_method } else if spec.registry.is_some() { operation.method } else { operation.early_method }, "strategy": operation.strategy.revision, "control": spec.control,
             "bindings": operation.bindings,
         });
         (operation.strategy.prepare)(platform::ObservationSetup {
@@ -278,6 +312,18 @@ impl ExecutionPlan {
                     })
                 })
                 .transpose()?,
+            session: spec.session.as_ref().map(|session| {
+                crate::protocol::observation::SessionBindings {
+                    registries: operation
+                        .registries
+                        .iter()
+                        .filter(|(name, _)| !self.session_unavailable.contains_key(*name))
+                        .map(|(name, binding)| (name.clone(), binding.clone()))
+                        .collect(),
+                    unavailable: self.session_unavailable.clone(),
+                    control_registry: session.control_registry.clone(),
+                }
+            }),
             bindings: &operation.bindings,
             machine: &operation.machine,
             package: &operation.strategy.package,

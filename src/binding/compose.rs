@@ -15,6 +15,7 @@ pub(super) struct ResolvedObservation {
     pub bindings: std::collections::BTreeMap<String, u64>,
     pub content: ContentIdentity,
     pub method: &'static str,
+    pub session_method: &'static str,
     pub early_method: &'static str,
     pub registries:
         std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
@@ -37,6 +38,7 @@ fn assemble(
     let method = match recipe.method {
         MethodId::TraditionRegistryKeys => METHOD,
     };
+    let session_method = "tradition-registry-session/v1";
     let early_method = "registration-category-read-entries/v2";
     let bindings = groups::observation(recipe.groups);
     let registries = groups::registries(&bindings);
@@ -57,7 +59,7 @@ fn assemble(
         .collect();
     let identity = serde_json::json!({
         "target": image.executable, "slice": image.slice, "recipe": recipe.revision,
-        "method": method, "earlyMethod": early_method, "machine": machine, "strategy": strategy.revision,
+        "method": method, "sessionMethod": session_method, "earlyMethod": early_method, "machine": machine, "strategy": strategy.revision,
         "bindings": bindings, "registries": registries, "declarations": declarations, "package": packages,
         "content": expected, "implementation": env!("PDX_NATIVE_OPERATION"),
     });
@@ -78,6 +80,7 @@ fn assemble(
             registries,
             content: expected,
             method,
+            session_method,
             early_method,
         },
     ))

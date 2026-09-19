@@ -22,6 +22,11 @@ breakpoints = {}
 control = request['control']
 registry = request['registry']
 registry_owner = None
+session = request['session']
+session_owners = {}
+returned_registries = []
+session_active = set()
+safe_pause = False
 
 
 def sha(path):
@@ -112,7 +117,7 @@ def registry_begin(frame):
     hook.SetScriptCallbackFunction('worker.callback')
     if hook.GetNumResolvedLocations() != 1:
         raise RuntimeError('registry return hook unresolved')
-    breakpoints['registry-return'] = hook
+    breakpoints['registry-return:' + registry['name'] if session else 'registry-return'] = hook
     emit('registry-load-start', name=registry['name'], owner=hex(registry_owner), directory=directory, thread=thread)
     return False
 
@@ -132,6 +137,9 @@ def registry_snapshot(frame):
     directory = cstring(owner + registry['directory_offset'])
     if directory != registry['directory']:
         raise RuntimeError('registry receiver directory mismatch: ' + directory)
+    if session:
+        emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
+        returned_registries.append(registry['name'])
     if control == 'access-failure':
         uint(process, 0)
         raise RuntimeError('access failure unexpectedly read zero')
@@ -163,12 +171,43 @@ def registry_snapshot(frame):
     return True
 
 
+def session_callback(frame, name):
+    global registry, registry_owner, control, finished, safe_pause
+    is_return = name.startswith('registry-return:')
+    selected = name.split(':', 1)[1]
+    registry = session['registries'][selected]
+    registry_owner = session_owners.get(selected)
+    control = request['control'] if selected == session['control_registry'] else 'normal'
+    try:
+        if not is_return:
+            result = registry_begin(frame)
+            session_owners[selected] = registry_owner
+            breakpoints[name].SetEnabled(False)
+            return result
+        breakpoints[name].SetEnabled(False)
+        registry_snapshot(frame)
+    except Exception:
+        emit('registry-unavailable', name=selected, reason=traceback.format_exc(), thread=frame.GetThread().GetThreadID())
+        # Continue only after this callback proved its actual loader-return boundary.
+        if selected not in returned_registries:
+            finished = True
+            safe_pause = False
+            return True
+    if control == 'worker-loss':
+        return True
+    finished = session_active.issubset(set(returned_registries))
+    safe_pause = finished
+    return finished
+
+
 def callback(frame, loc, _):
     global finished, active_file, active_thread, active_owner, registration_count, field_count
     try:
         process = frame.GetThread().GetProcess()
         thread = frame.GetThread().GetThreadID()
         name = next((key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID()), 'file-return')
+        if session and (name.startswith('registry:') or name.startswith('registry-return:')):
+            return session_callback(frame, name)
         if name == 'registry':
             return registry_begin(frame)
         if name == 'registry-return':
@@ -234,7 +273,7 @@ def callback(frame, loc, _):
 
 
 def run(debugger):
-    global entry_thread
+    global entry_thread, session_active
     import lldb
     import sys
     artifacts = {name: sha(ROOT / 'source' / name) for name in request['artifacts']}
@@ -247,7 +286,11 @@ def run(debugger):
     debugger.SetAsync(True)
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
     hooks = [('registry', registry['load_entry'])] if registry else [(name, bindings[role]) for name, role in [('registration', 'registration-entry'), ('load-file', 'category-load-entry'), ('field', 'category-field-read-entry')]]
-    controlled_hook = 'registry' if registry else 'field'
+    if session:
+        hooks = [('registry:' + name, value['load_entry']) for name, value in session['registries'].items()]
+        for name, reason in session['unavailable'].items():
+            emit('registry-unavailable', name=name, reason=reason)
+    controlled_hook = ('registry:' + session['control_registry']) if session and session['control_registry'] else ('registry' if registry else 'field')
     for name, address in hooks:
         if name == controlled_hook and control == 'missing-hook':
             continue
@@ -270,7 +313,16 @@ def run(debugger):
     if process.GetState() != lldb.eStateStopped or entry_thread is None or not target.GetTriple().startswith(request['machine']['architecture'] + '-'):
         emit('early-activation-unavailable', reason='ARM64 loader entry not established')
         return
-    if set(state) != {name for name, _ in hooks} or not all(h['enabled'] and h['locations'] == 1 and h['resolved'] == 1 and h['hits'] == 0 for h in state.values()):
+    if session:
+        for name, _ in hooks:
+            hook = state.get(name)
+            if hook and hook['enabled'] and hook['locations'] == 1 and hook['resolved'] == 1 and hook['hits'] == 0:
+                session_active.add(name.split(':', 1)[1])
+            else:
+                emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')
+        if not session_active:
+            return
+    elif set(state) != {name for name, _ in hooks} or not all(h['enabled'] and h['locations'] == 1 and h['resolved'] == 1 and h['hits'] == 0 for h in state.values()):
         emit('capability-unavailable', reason='required hook missing or late before resume')
         return
     emit('hooks-active-before-resume', hooks=state)
@@ -292,5 +344,29 @@ def run(debugger):
             emit('native-exception', reason='native exception stopped the bounded observation')
             break
         time.sleep(.02)
+    if session and safe_pause and process.GetState() == lldb.eStateStopped:
+        emit('session-paused', returned=returned_registries, thread=entry_thread)
+        paused_thread = process.GetThreadByID(entry_thread)
+        paused_pc = paused_thread.GetFrameAtIndex(0).GetPC()
+        witness = dict(attempt=request['attempt'], game=request['game'], worker=os.getpid(),
+            thread=entry_thread, returned=returned_registries, generation=0)
+        atomic('pause', 'session-paused.json', witness)
+        while not (ROOT / 'session-release').exists():
+            if not process.IsValid() or process.GetState() != lldb.eStateStopped or paused_thread.GetFrameAtIndex(0).GetPC() != paused_pc:
+                raise RuntimeError('session no longer held at the witnessed paused frame')
+            check_path = ROOT / 'pause-check.json'
+            if check_path.exists():
+                check = protocol.decode('pause_check', check_path.read_bytes())
+                if check['attempt'] != request['attempt'] or check['game'] != request['game']:
+                    raise RuntimeError('foreign pause confirmation request')
+                if check['generation'] > witness['generation']:
+                    witness['generation'] = check['generation']
+                    atomic('pause', 'session-paused.json', witness)
+            time.sleep(.02)
+        # Complete pending exit handling before the debugger goes away. The independent
+        # owner still must waitpid its original child; this response proves no disposal.
+        error = process.Kill()
+        if error.Fail():
+            raise RuntimeError('debugger target termination failed: ' + str(error))
     emit('worker-finished')
     # The owner alone proves disposal. Leave the stopped game for its independent cleanup.

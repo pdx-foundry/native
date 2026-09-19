@@ -31,6 +31,8 @@ fn main() {
         "src/api.rs",
         "src/session.rs",
         "src/registry.rs",
+        "src/game.rs",
+        "src/game",
         "src/operation.rs",
         "src/capture.rs",
         "src/execution",
