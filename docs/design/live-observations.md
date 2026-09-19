@@ -3,10 +3,10 @@
 Native's consumer interface answers a concrete question: **which entries are in this registry?**
 The first names are `traditions` and `tradition_categories`. Strings keep the interface open to future
 registry names. Native owns their mapping to engine classes, memory layouts, loading, and capture.
-PR review tightened the qualification fingerprint and production feature boundary. The
-[replacement qualification report](../native/registry-review-qualification.md) presents fresh evidence
-for renewed maintainer acceptance before restoring the tracked record. The earlier qualification
-and production reports remain historical.
+The maintainer accepted the [replacement qualification report](../native/registry-review-qualification.md)
+after PR review tightened the qualification fingerprint and production feature boundary. The reviewed
+record is tracked, and [ordinary production verification](../native/registry-review-production.md)
+passed for both registry names. The earlier qualification and production reports remain historical.
 
 ## Consumer flow
 
@@ -24,8 +24,8 @@ cargo run --release --features production --example live -- \
 This calls `get_registry_items`, prints the full report as JSON, and verifies the retained replay.
 Admitted live execution requires the explicit `production` feature. Default, `test-support`, and
 `maintainer-tools` builds cannot use ordinary live admission; capability inspection and replay remain
-available. The maintainer capture entry point has separate authority. Until replacement qualification
-is accepted, production requests also refuse with `QualificationMissing`.
+available. The maintainer capture entry point has separate authority. Production requests outside the
+reviewed qualification still refuse with `QualificationMissing`.
 
 ```rust,no_run
 use pdx_native::{Engine, OpenRequest, RegistryOptions};

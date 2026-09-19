@@ -35,7 +35,7 @@ relevant content, and the whole requested scope. An acceptance for one registry 
 method, machine and strategy revisions, and hashes of shared binding declarations. The exact debugger identity must also match acceptance. The source
 records and withdrawals are the authority; records supplied by a caller or capture are not loaded.
 
-The production acceptance list is empty while the PR-review fixes are requalified. Ordinary
+The production acceptance list contains the reviewed replacement registry qualification. Ordinary
 installation-backed admission independently requires the `production` feature in both processes. The
 verified SDK-483 experiment alone does not qualify this Rust implementation. A recipe alone remains
 incomplete. Qualification and availability are independent: an accepted request can still be blocked

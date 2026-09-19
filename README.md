@@ -3,7 +3,7 @@
 Rust bridge to Stellaris.
 
 The library identifies exact installations, reports capability admission, and replays the bounded
-historical registration/category-read window. The live consumer API asks `get_registry_items("traditions")` or `get_registry_items("tradition_categories")`; the [replacement qualification report](docs/native/registry-review-qualification.md) awaits acceptance after PR review tightened identity and feature checks. Native owns supervision, private content, and capture; callers configure their supervisor command and retention directory once. See [registry queries](docs/design/live-observations.md).
+historical registration/category-read window. The live consumer API asks `get_registry_items("traditions")` or `get_registry_items("tradition_categories")`; the [replacement qualification report](docs/native/registry-review-qualification.md) is accepted for the exact retained target and content. Native owns supervision, private content, and capture; callers configure their supervisor command and retention directory once. See [registry queries](docs/design/live-observations.md).
 The optional maintainer API runs suspended candidate lifecycle attempts inside a consumer-supplied
 supervisor process; Native distributes no runtime executable. An Atlas-style caller uses `Engine::replay` with a relocatable artifact
 root and a pinned descriptor reference.
@@ -51,4 +51,4 @@ for limits and build checks.
 
 Maintainer-only [candidate observations](docs/design/candidate-observations.md) capture the retained
 registration/category window under an independent supervisor and emit replayable evidence.
-Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile; its acceptance record is currently withheld for renewal. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.
+Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile; its reviewed acceptance record is tracked. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.

@@ -1,6 +1,6 @@
 # SDK-518 qualification after PR review
 
-**Status: accepted by the maintainer; renewed ordinary production verification in progress.**
+**Status: accepted by the maintainer; renewed ordinary production verification passed.**
 
 PR review identified two gaps after the [previous qualification](registry-qualification.md) was
 accepted and its [ordinary production controls](registry-production.md) passed. The operation
@@ -116,7 +116,7 @@ remains distinct from complete linked-build identity and the acceptance record.
 
 ## Candidate-to-production differences
 
-| Difference | Evidence before acceptance | Required after acceptance |
+| Difference | Evidence before acceptance | Post-acceptance check (passed) |
 | --- | --- | --- |
 | Maintainer authority permits private controls; ordinary authority requires the production feature and reviewed acceptance | Direct caller/owner feature-refusal tests, qualification withdrawal/mismatch tests, target/content/helper checks, and production refusals | Admitted normal, unavailable, and incomplete production controls for both names |
 | Public client starts and reaps its configured consumer supervisor; candidate harness uses explicit pipes | Client/protocol boundary tests, helper deadlines, finalization-failure disposal preservation, and production consumer build | Ordinary completion, cancellation, caller loss, timeout, and externally induced worker loss |
@@ -124,9 +124,9 @@ remains distinct from complete linked-build identity and the acceptance record.
 
 Production requests expose no fault controls or qualification bypass. Serialized plans cannot grant
 authority. The owner independently checks admission, pinned composition, current inputs, and helper
-compatibility. After renewed acceptance, the ordinary production matrix and admission-without-history
-check must be repeated before the PR becomes ready. Earlier production evidence is retained as
-history; it does not substitute for those checks.
+compatibility. After renewed acceptance, the [ordinary production matrix and admission-without-history
+check](registry-review-production.md) passed. Earlier production evidence remains historical; the
+new production report establishes these checks for the promoted implementation.
 
 ## Retained evidence and earlier failures
 
@@ -157,6 +157,6 @@ python3 tools/evidence.py sdk-518-registry-review-qualification
 
 The maintainer explicitly accepted this replacement report in the SDK-518 task before source
 promotion. The reviewed record `sdk-518-m45-tradition-registries-v2` is now tracked in
-`src/qualification/records/accepted.json`. Renewed ordinary production verification is in progress
-and must pass before [PR #6](https://github.com/pdx-foundry/native/pull/6) becomes ready. Relevant implementation changes or failed
+`src/qualification/records/accepted.json`. The [renewed ordinary production verification](registry-review-production.md)
+passed before [PR #6](https://github.com/pdx-foundry/native/pull/6) was marked ready. Relevant implementation changes or failed
 controls require renewed evidence and review. No investigation command can promote itself.
