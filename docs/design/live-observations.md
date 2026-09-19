@@ -140,7 +140,7 @@ results carry `Replay`. Maintainer sessions retain replay origin and cannot gran
 - Read final results from `GameReport::registries`; the removed `RegistryReport` had one `result`.
 - The old live client/job/options/report exports are removed. No deprecated live wrappers remain.
 
-Atlas's consumer transition remains SDK-519. Save loading, explicit-empire resource reads, and UI
+Atlas's [frozen SDK-519 consumer](../native/atlas-consumer.md) exercises this flow and offline replay. Save loading, explicit-empire resource reads, and UI
 operations remain future API sketches. There is no public `load_save` placeholder or gameplay method.
 
 The future interface may add `Native::load_save(save).await`, returning a Game only after a separately
