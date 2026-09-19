@@ -3,8 +3,8 @@
 Native's consumer interface answers a concrete question: **which entries are in this registry?**
 The first names are `traditions` and `tradition_categories`. Strings keep the interface open to future
 registry names. Native owns their mapping to engine classes, memory layouts, loading, and capture.
-The [fresh qualification report](../native/registry-qualification.md) awaits maintainer acceptance.
-Production acceptance remains empty.
+The [qualification report](../native/registry-qualification.md) was accepted before source promotion.
+Ordinary admission requires its exact target, content, toolchain, implementation, and release profile.
 
 ## Consumer flow
 
@@ -19,9 +19,8 @@ cargo run --release --features production --example live -- \
   /path/to/Stellaris /existing/captures traditions
 ```
 
-Until the qualification record is accepted and added, this returns `QualificationMissing` before
-launch. Once admitted, it calls `get_registry_items`, prints the full report as JSON, and verifies
-the retained replay.
+This calls `get_registry_items`, prints the full report as JSON, and verifies the retained replay.
+Different builds, content, tools, or missing prerequisites are refused before launch.
 
 ```rust,no_run
 use pdx_native::{Engine, OpenRequest, RegistryOptions};
@@ -86,7 +85,7 @@ registry artifacts use their own contract and `Engine::replay_registry`.
 
 ### Inspect a retained real-game answer
 
-The final candidate normal capture returned 234 tradition keys and 33 category keys. To inspect an
+Both candidate and ordinary production normal captures returned 234 tradition keys and 33 category keys. To inspect an
 available registry capture without launching Stellaris, pass its evidence directory and descriptor
 reference to the game-free example:
 
@@ -106,8 +105,9 @@ resolution, retained replay reference, and explicit evidence-finalization errors
 ### Field discovery is a separate question
 
 SDK-518 exposes `get_registry_items(name)` to return registered items. `get_registry(name)` is reserved
-for a follow-up that describes the registry, including fields accepted by its reader. That work
-requires a separate operation and qualification effort. The retained
+for [SDK-521](https://linear.app/unnamed-system/issue/SDK-521/separate-installation-queries-from-live-game-sessions-in-native),
+which separates installation queries from live game sessions. Registry descriptions and reader fields
+require separate qualification; static queries will not silently launch Stellaris. The retained
 [discovery prototypes](../native/discovery.md#members-and-shared-readers) provide starting evidence;
 they do not establish complete field schemas for these registries. Native should own the engine
 method and qualified field facts. Atlas should consume those facts for authoring rules without
@@ -124,7 +124,7 @@ bundle. Replay requires every referenced artifact and refuses absent or changed 
 Maintainer controls use the same execution, capture, and replay implementation through a separate,
 feature-gated authority entry point. `tools/check-registry-observations.py --registry NAME` repeats the
 ten candidate controls. `tools/check-candidate-observations.py` preserves the early-observation controls.
-After maintainer acceptance, `tools/check-live-observations.py --registry NAME` exercises the ordinary
+`tools/check-live-observations.py --registry NAME` exercises the ordinary
 production consumer with external process/stream controls. No investigation command writes acceptance.
 
 A relevant implementation change invalidates the previous qualification report. Review new evidence

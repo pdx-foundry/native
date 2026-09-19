@@ -600,6 +600,29 @@
       "archiveBytes": 20425092,
       "fileManifest": ".local/evidence/bundles/sdk-518-registry-qualification.manifest.json",
       "manifestSha256": "714abba923efc7575c486665e81343dfd170139edb46116ad46dd90e71d76c5d"
+    },
+    {
+      "id": "sdk-518-registry-production",
+      "createdAt": "2026-09-19T00:34:21.252171+00:00",
+      "archive": "sdk-518-registry-production-98d97456d47bf45a.tar.gz",
+      "sha256": "98d97456d47bf45a9ff633b7e0eddec42f9325ab55298bbb7f06cb508f8274fb",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/sdk-518-registry-production",
+          "archivePath": "sdk-518-registry-production",
+          "gitHead": "759fdb7a05736b79a5a65453f725ce5779b152f0",
+          "note": "SDK-518 ordinary production controls after explicit maintainer acceptance"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store"
+      ],
+      "files": 2791,
+      "archiveBytes": 10666159,
+      "fileManifest": ".local/evidence/bundles/sdk-518-registry-production.manifest.json",
+      "manifestSha256": "e6d4e5d503bd2ca2053a29c69558017fa2781fdbf208bf5c9c4f0f8aaf2bcebc"
     }
   ]
 }

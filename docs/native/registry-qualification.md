@@ -1,6 +1,6 @@
 # SDK-518 registry qualification report
 
-**Status: awaiting maintainer acceptance; production acceptance is empty.** This report replaces the
+**Status: accepted by the maintainer; ordinary production controls passed.** This report replaces the
 [earlier observation proposal](live-observation-qualification.md). The implementation at commit
 `02f849a60261787400ebeffe74279f008ae0925d` changes the consumer question and the native method.
 The earlier proposal does not qualify this implementation. No investigation command can add an
@@ -19,7 +19,7 @@ opaque subject identity for each item. `get_registry(name)` is reserved for a fo
 the registry and its reader fields; it is not implemented by this ticket.
 
 These captures used the maintainer authorization entry point with the same shared execution method.
-Ordinary production queries currently refuse with `QualificationMissing`. The public replay example
+The maintainer accepted this report before its source record was added. The public replay example
 can show the retained answers without a game installation; see the
 [consumer guide](../design/live-observations.md).
 
@@ -30,7 +30,7 @@ actual engine objects on return from the initial collection loader, before later
 `Complete` means every collection slot at that boundary was witnessed. It does not mean later
 validation passed or that all traditions are available to an empire.
 
-This proposal covers `traditions` and `tradition_categories`, with an optional 1–180 second deadline.
+This acceptance covers `traditions` and `tradition_categories`, with an optional 1–180 second deadline.
 It does not establish fields or schemas, category relationships, gameplay rules, user mods, DLC
 additions, later reloads, other registries or targets, Windows support, or portability. Atlas
 integration remains SDK-519; clean pinned-build reproduction remains SDK-520.
@@ -171,9 +171,8 @@ Replaying a pre-rename real registry capture produces an identical result after 
 collection field from `entries` to `registeredItems`, including identical item identities and provenance.
 
 Production-only checks confirm both known names refuse with `QualificationMissing`, unknown names
-return `Unsupported`, and these refusals allocate no attempt directory. Production live execution
-remains untested until the maintainer accepts the concrete candidate report and its source record
-is added. It is required before PR publication.
+return `Unsupported`, and these refusals allocate no attempt directory. Those pre-promotion checks remain retained. The accepted record now enables ordinary admission;
+the [ordinary production controls](registry-production.md) passed before PR publication.
 
 Private bundle `sdk-518-registry-qualification` contains 6,057 files (20,425,092
 compressed bytes). It retains the final matrices, executed source and binaries, failed development
@@ -195,12 +194,12 @@ python3 tools/evidence.py sdk-518-registry-qualification --restore
 ```
 
 The machine-readable report and proposed source record are `sdk-518-registry-qualification/qualification-report.json`
-and `proposed-acceptance.json` within the archive. The proposal is review material and is not runtime
-authority. The tracked acceptance registry remains empty.
+and `proposed-acceptance.json` within the archive. The archived proposal remains immutable review material; the tracked record supplies runtime
+authority. The reviewed proposal is now tracked in the acceptance registry.
 
 ## Maintainer decision
 
-Accept this exact bounded candidate qualification for source promotion, subject to passing ordinary
-production controls before publication. Approval authorizes adding the proposed record to
-`src/qualification/records/accepted.json`. This is the review gate required by the SDK-518 plan.
+The maintainer explicitly accepted this report in the SDK-518 task before source promotion.
+The reviewed record was then added to `src/qualification/records/accepted.json`. The [ordinary production controls](registry-production.md) subsequently passed. The deferred installation-context/live-session API
+redesign is tracked in [SDK-521](https://linear.app/unnamed-system/issue/SDK-521/separate-installation-queries-from-live-game-sessions-in-native).
 Relevant implementation changes or failed controls require renewed evidence and review.
