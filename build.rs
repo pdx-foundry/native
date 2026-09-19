@@ -43,6 +43,7 @@ fn main() {
         "src/binding/installation.rs",
         "src/binding/platform.rs",
         "crates/native-evidence/src",
+        "crates/native-evidence/Cargo.toml",
         "Cargo.lock",
         "Cargo.toml",
         "build.rs",

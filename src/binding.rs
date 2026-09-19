@@ -62,6 +62,11 @@ impl Binding {
 
     pub(crate) fn current_inputs(&self) -> AdmissionInputs {
         let mut inputs = self.inputs.clone();
+        if self.origin() == ContextOrigin::Installation && !cfg!(feature = "production") {
+            inputs
+                .prerequisites
+                .push(UnavailableReason::ProductionFeatureRequired);
+        }
         if let Some(operation) = &self.operation {
             inputs.toolchain =
                 (operation.strategy.probe)().map_err(|_| UnavailableReason::PrerequisiteMissing);

@@ -35,10 +35,11 @@ relevant content, and the whole requested scope. An acceptance for one registry 
 method, machine and strategy revisions, and hashes of shared binding declarations. The exact debugger identity must also match acceptance. The source
 records and withdrawals are the authority; records supplied by a caller or capture are not loaded.
 
-The production acceptance list contains the maintainer-reviewed SDK-518 registry record. The
+The production acceptance list is empty while the PR-review fixes are requalified. Ordinary
+installation-backed admission independently requires the `production` feature in both processes. The
 verified SDK-483 experiment alone does not qualify this Rust implementation. A recipe alone remains
 incomplete. Qualification and availability are independent: an accepted request can still be blocked
-by current inputs or host/tool prerequisites. Other compositions do not inherit this acceptance.
+by current inputs or host/tool prerequisites. Other compositions do not inherit an acceptance.
 
 Relevant content is snapshotted from `launcher-settings.json` and the complete file inventories
 under `common/tradition_categories` and `common/traditions`. These are the retained prototype's

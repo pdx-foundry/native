@@ -3,7 +3,7 @@
 Status: implementation design supporting the [Native specification](../specs/native.md). The
 [bounded replay foundation](replay.md) is implemented through the public interface and an isolated
 evidence package. [Capability admission](admission.md) now implements exact-target composition and
-qualification reporting. The public registry-query interface and maintainer capture methods share consumer-hosted supervision. Production admission is limited to the exact accepted registry qualification.
+qualification reporting. The public registry-query interface and maintainer capture methods share consumer-hosted supervision. Production admission requires the production feature; replacement registry qualification is pending.
 The full layout below describes what to build; it does not qualify another target.
 
 ## Design position

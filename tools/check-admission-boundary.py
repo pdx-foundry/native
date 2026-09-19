@@ -20,6 +20,15 @@ def cargo(directory, arguments, expected=None):
             raise SystemExit(result.stderr)
     elif result.returncode == 0 or expected not in result.stderr:
         raise SystemExit(f"Negative control did not fail for {expected!r}:\n{result.stderr}")
+    return result
+
+
+def operation_fingerprint(build):
+    for row in map(json.loads, build.stdout.splitlines()):
+        environment = dict(row.get('env', []))
+        if 'PDX_NATIVE_OPERATION' in environment:
+            return environment['PDX_NATIVE_OPERATION']
+    raise SystemExit('Operation fingerprint missing from build metadata')
 
 
 def main():
@@ -47,7 +56,14 @@ def main():
         library.write_text(library.read_text() + "\nmod prohibited_operation;\n")
         probe = package / "src/prohibited_operation.rs"
         probe.write_text("pub fn harmless() {}\n")
-        cargo(package, ["check", "--lib", "--locked"])
+        original = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]))
+        evidence_manifest = package / 'crates/native-evidence/Cargo.toml'
+        manifest_text = evidence_manifest.read_text()
+        evidence_manifest.write_text(manifest_text + '\n# Fingerprint variation control.\n')
+        changed = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]))
+        if original == changed:
+            raise SystemExit('Evidence manifest change retained the qualified operation identity')
+        evidence_manifest.write_text(manifest_text)
         cfg = subprocess.check_output(["rustc", "--print", "cfg"], text=True)
         leaf = "macos" if 'target_os="macos"' in cfg and 'target_arch="aarch64"' in cfg else "unavailable"
         imports = [

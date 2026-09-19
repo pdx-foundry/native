@@ -1,6 +1,9 @@
 # SDK-518 registry qualification report
 
-**Status: accepted by the maintainer; ordinary production controls passed.** This report replaces the
+**Status: superseded after PR review; retained historical qualification.**
+The reviewed implementation below was accepted and passed production controls. Subsequent review
+fixed the missing evidence-manifest fingerprint and required the production feature for ordinary
+admission. The tracked acceptance has been removed pending fresh evidence and maintainer review. This report replaces the
 [earlier observation proposal](live-observation-qualification.md). The implementation at commit
 `02f849a60261787400ebeffe74279f008ae0925d` changes the consumer question and the native method.
 The earlier proposal does not qualify this implementation. No investigation command can add an

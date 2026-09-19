@@ -136,6 +136,8 @@ pub enum Availability {
 /// A structured admission gap. Multiple independent gaps can occur together.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum UnavailableReason {
+    /// Admitted live execution requires the explicit production Cargo feature.
+    ProductionFeatureRequired,
     /// The compiled host cannot use the selected live strategy.
     HostUnavailable,
     /// The selected live strategy has no implementation in this release.
