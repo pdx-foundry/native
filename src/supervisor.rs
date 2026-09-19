@@ -25,18 +25,13 @@ impl From<serde_json::Error> for SupervisorError {
     }
 }
 
-/// Serve the ordinary protocol in a consumer-created supervisor process.
-///
-/// No live operation is qualified yet. All requests are rejected before allocating resources;
-/// maintainer requests must use the separately gated investigation entry point.
-pub fn serve(input: impl Read, mut output: impl Write) -> Result<(), SupervisorError> {
-    let hello: crate::protocol::Hello = crate::protocol::read(input)?;
-    hello.validate()?;
-    crate::protocol::write(
-        &mut output,
-        &crate::protocol::Reply::Rejected(
-            "No admitted live operation; candidate requests require the maintainer entry point"
-                .into(),
-        ),
-    )
+/// Run ordinary Native supervision in a dedicated direct child of the controller.
+/// Both processes must link the same Native build. Use private pipes, keep control input open,
+/// and send logs to stderr. Do not pre-create a process group or install another child reaper.
+/// Let this function finish cleanup before exiting the supervisor process; input EOF cancels.
+pub fn serve(
+    input: impl Read + Send + 'static,
+    output: impl Write + Send + 'static,
+) -> Result<(), SupervisorError> {
+    crate::execution::supervisor::serve(input, output, crate::operation::Authorization::Admitted)
 }

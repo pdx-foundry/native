@@ -17,7 +17,7 @@ pub struct ArtifactReference {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum CaptureOrigin {
-    /// Historical engine capture; replay does not re-establish its native guarantees.
+    /// Engine capture; replay does not re-establish its native guarantees.
     Captured,
     /// Authored test data, with no claim of engine observation.
     Synthetic,
@@ -27,6 +27,8 @@ pub enum CaptureOrigin {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ResultOrigin {
+    /// Returned by a fresh admitted Native operation.
+    Live,
     /// Derived from verified historical bytes, without a new game run.
     Replay,
 }
@@ -165,9 +167,9 @@ pub enum Gap {
     DisposalUnconfirmed,
 }
 
-/// Retained derivation result, carrying original identities and precise bounds.
+/// Normalized observation result, carrying original identities and precise bounds.
 #[derive(Debug, Clone, Serialize)]
-pub struct ReplayResult {
+pub struct ObservationResult {
     /// Retained artifact format used for this derivation.
     pub evidence_format: String,
     /// Native observation-contract identity, distinct from a game version.
@@ -176,7 +178,7 @@ pub struct ReplayResult {
     pub attempt: String,
     /// Evidence context: immutable descriptor SHA-256, opaque to consumers.
     pub context: String,
-    /// Always replay for this operation.
+    /// Live capture or retained replay; neither field grants qualification.
     pub origin: ResultOrigin,
     /// Original captured or synthetic origin.
     pub capture_origin: CaptureOrigin,
@@ -257,3 +259,6 @@ impl fmt::Display for ReplayError {
 }
 
 impl std::error::Error for ReplayError {}
+
+/// Backward-compatible name for the recorded observation result returned by replay.
+pub type ReplayResult = ObservationResult;

@@ -18,33 +18,30 @@ M45-observe currently has an exact catalogue entry. Other architectures/formats 
 unregistered identities are unknown. Malformed images and access failures remain separate errors.
 
 The host-neutral M45-observe record refers to one typed recipe. The composer resolves shared
-binding declarations and machine/strategy revisions once. The compiled macOS ARM64 resolver
-reports implementation-unavailable. Windows, Linux, and Intel macOS report host-unavailable for
-that strategy. No concrete live implementation is included. Module privacy prevents shared
-operations from importing target records, recipes, or concrete platform/machine leaves.
+binding declarations and machine/strategy revisions once. The compiled macOS ARM64 resolver supplies the implemented strategy and its actual worker package.
+Other hosts refuse it. Composition carries the selected machine, bindings, content prerequisites,
+and executable/slice identities into shared execution. See [registry queries](live-observations.md).
 
 ## Admission authority
 
 `capability(&CapabilityRequest)` reports qualification, availability, declared and accepted bounds, blocking
-reasons, accepted record identities, and immutable evidence references. The operation concerns
-initial registration entries and category field **read entries**, never successful registration
-returns, stored values, validation, gameplay, or a complete registry. The default scope is the
-first three registration entries and `tree_template`/`traditions` category fields. Empty, duplicate,
-unknown, or excessive requests are outside support.
+reasons, accepted record identities, and immutable evidence references. Requests name one registry.
+`traditions` and `tradition_categories` have declared methods; other names are outside support.
+The operation retrieves entry keys at initial loader return, before validation. It does not expose
+fixture selection, hook windows, field values, gameplay, or rule conclusions.
 
 Qualification requires a bundled, unwithdrawn acceptance matching the complete composition,
-relevant content, and the whole requested scope. Partial acceptances are not combined to invent a
-larger qualified window. Composition identity includes executable and slice hashes, recipe,
-method, machine and strategy revisions, and hashes of shared binding declarations. The source
+relevant content, and the whole requested scope. An acceptance for one registry cannot grant support for another. Composition identity includes executable and slice hashes, recipe,
+method, machine and strategy revisions, and hashes of shared binding declarations. The exact debugger identity must also match acceptance. The source
 records and withdrawals are the authority; records supplied by a caller or capture are not loaded.
 
-The production acceptance list is empty. The verified SDK-483 experiment establishes provenance
-for candidate declarations, not qualification of this Rust implementation. A recipe alone always
-remains incomplete. Qualification and availability are independent: synthetic tests demonstrate
-qualified requests blocked by present prerequisites. Current real strategies always report their
-host or implementation gap in addition to missing qualification.
+The production acceptance list contains the reviewed replacement registry qualification. Ordinary
+installation-backed admission independently requires the `production` feature in both processes. The
+verified SDK-483 experiment alone does not qualify this Rust implementation. A recipe alone remains
+incomplete. Qualification and availability are independent: an accepted request can still be blocked
+by current inputs or host/tool prerequisites. Other compositions do not inherit an acceptance.
 
-Relevant content is snapshotted from `launcher-settings.json` and the complete `.txt` inventories
+Relevant content is snapshotted from `launcher-settings.json` and the complete file inventories
 under `common/tradition_categories` and `common/traditions`. These are the retained prototype's
 content boundary, not a promise of complete game-content coverage. Missing or unreadable inputs
 are unavailable. Content symlinks are rejected. Each query rechecks the executable and content

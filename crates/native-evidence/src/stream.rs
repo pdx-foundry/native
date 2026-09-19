@@ -75,7 +75,7 @@ pub(crate) fn derive(
         limits: vec!["First three registration call entries only; not the entire registry".into(),
             "Category read entries for tree_template at line 2 and traditions at line 3 in one fixture".into(),
             "No stored values, successful registration returns, validation, world state, or rule completeness established".into(),
-            "Historical retained derivation only; no current target qualification or fresh disposal".into()],
+            "Facts apply only to this attempt; current support requires Native admission".into()],
     }
 }
 
@@ -437,7 +437,7 @@ fn integrity(gaps: &mut Vec<Gap>, reason: &str) {
     });
 }
 
-fn disposal(owner: &[OwnerEvent]) -> Disposal {
+pub(crate) fn disposal(owner: &[OwnerEvent]) -> Disposal {
     let owned: Vec<_> = owner
         .iter()
         .filter_map(|event| match event {

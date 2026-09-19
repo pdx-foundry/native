@@ -1,7 +1,7 @@
 use super::{AdmissionInputs, Authority};
 use crate::{
     Availability, CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin,
-    ObservationBounds, Qualification, UnavailableReason,
+    Qualification, RegistryBounds, UnavailableReason,
 };
 
 pub(crate) fn evaluate(
@@ -26,6 +26,11 @@ pub(crate) fn evaluate(
         report.reasons.push(reason);
     }
     if let Err(reason) = &inputs.content
+        && !report.reasons.contains(reason)
+    {
+        report.reasons.push(reason.clone());
+    }
+    if let Err(reason) = &inputs.toolchain
         && !report.reasons.contains(reason)
     {
         report.reasons.push(reason.clone());
@@ -70,6 +75,17 @@ pub(crate) fn evaluate(
         report.reasons.push(UnavailableReason::ContentMismatch);
         return report;
     }
+    let applicable: Vec<_> = match &inputs.toolchain {
+        Ok(toolchain) => applicable
+            .into_iter()
+            .filter(|record| record.toolchain == *toolchain)
+            .collect(),
+        Err(_) => return report,
+    };
+    if applicable.is_empty() {
+        report.reasons.push(UnavailableReason::HelperMismatch);
+        return report;
+    }
     // Qualification applies only to the bound inputs. A changed/unreadable installation cannot
     // retain a current qualified claim, even if its old immutable snapshot matches an acceptance.
     if report.reasons.iter().any(|reason| {
@@ -108,16 +124,6 @@ pub(crate) fn evaluate(
     report
 }
 
-fn covers(bounds: &ObservationBounds, request: &CapabilityRequest) -> bool {
-    request.registration_entries > 0
-        && request.registration_entries <= bounds.registration_entries
-        && !request.category_fields.is_empty()
-        && request
-            .category_fields
-            .iter()
-            .enumerate()
-            .all(|(index, field)| {
-                bounds.category_fields.contains(field)
-                    && !request.category_fields[..index].contains(field)
-            })
+fn covers(bounds: &RegistryBounds, request: &CapabilityRequest) -> bool {
+    bounds.registries.contains(&request.registry)
 }

@@ -1,14 +1,17 @@
-use crate::UnavailableReason;
+use super::StrategyResolution;
 use crate::binding::targets::StrategyId;
 
-pub(super) fn resolve(strategy: StrategyId) -> UnavailableReason {
+pub(super) fn resolve(strategy: StrategyId) -> StrategyResolution {
     match strategy {
-        StrategyId::MacSuspendedChildLoaderEntry => UnavailableReason::ImplementationUnavailable,
+        StrategyId::MacSuspendedChildLoaderEntry => StrategyResolution {
+            revision: "mac-suspended-child-loader-entry/v3",
+            unavailable: None,
+            package: observation::package(),
+            probe: observation::probe_observer,
+            prepare: observation::Observer::prepare,
+        },
     }
 }
 
-#[cfg(feature = "maintainer-tools")]
 pub(in crate::binding) mod lifecycle;
-
-#[cfg(feature = "maintainer-tools")]
 pub(in crate::binding) mod observation;

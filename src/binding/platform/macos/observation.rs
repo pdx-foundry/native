@@ -2,7 +2,6 @@
 #![allow(unsafe_code)]
 use crate::{
     capture::{self, Capture},
-    investigation::{ObservationControl, ObservationSpec},
     protocol::observation::{self, ResumeGrant, WorkerHello, WorkerRequest},
     supervisor::SupervisorError,
 };
@@ -12,7 +11,7 @@ use std::{
     fs::{self, File},
     io::Read,
     os::unix::process::{CommandExt, ExitStatusExt},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
@@ -97,8 +96,9 @@ fn discover() -> Result<Tool, SupervisorError> {
     })
 }
 
-pub(crate) fn probe_observer() -> Result<(), SupervisorError> {
-    discover().map(|_| ())
+pub(crate) fn probe_observer() -> Result<String, SupervisorError> {
+    let tool = discover()?;
+    Ok(capture::hash(&serde_json::to_vec(&tool)?))
 }
 
 pub(crate) struct Observer {
@@ -112,35 +112,40 @@ pub(crate) struct Observer {
 }
 
 impl Observer {
-    pub(crate) fn prepare(
-        output: &Path,
-        attempt: &str,
-        spec: &ObservationSpec,
-        executable: &Path,
-        mut identity: serde_json::Value,
-        content: &BTreeMap<String, String>,
-        bindings: BTreeMap<String, u64>,
+    pub(in crate::binding) fn prepare(
+        setup: crate::binding::platform::ObservationSetup<'_>,
     ) -> Result<(Self, Capture), SupervisorError> {
+        let crate::binding::platform::ObservationSetup {
+            output,
+            attempt,
+            spec,
+            executable,
+            mut identity,
+            content,
+            expected_tool,
+            registry,
+            bindings,
+            machine,
+            package,
+        } = setup;
         let tool = discover()?;
+        if expected_tool.is_some_and(|expected| {
+            expected != capture::hash(&serde_json::to_vec(&tool).expect("tool identity"))
+        }) {
+            return Err(SupervisorError(
+                "HelperMismatch: debugger changed after admission".into(),
+            ));
+        }
         let source = output.join("source");
         super::lifecycle::private_directory(&source)?;
-        let generated = observation::python_bindings();
-        let assets: &[(&str, &[u8])] = &[
-            ("worker.py", include_bytes!("observation/worker.py")),
-            ("protocol.py", generated.as_bytes()),
-            ("guard.m", include_bytes!("observation/guard.m")),
-            (
-                "guard.dylib",
-                include_bytes!(concat!(env!("OUT_DIR"), "/guard.dylib")),
-            ),
-        ];
         let mut artifacts = BTreeMap::new();
-        for (name, bytes) in assets {
+        for (name, bytes) in package {
             capture::write_new(&source.join(name), bytes)?;
-            artifacts.insert((*name).into(), capture::hash(bytes));
+            artifacts.insert(name.clone(), capture::hash(bytes));
         }
         capture::write_new(&output.join("raw-trace.jsonl"), b"")?;
         capture::write_json(&output.join("tool.json"), &tool)?;
+        identity["toolIdentity"] = capture::hash(&serde_json::to_vec(&tool)?).into();
         identity["tool"] = serde_json::to_value(&tool)?;
         identity["package"] = serde_json::to_value(&artifacts)?;
         let capture = Capture::prepare(output, attempt, spec, identity, content, &artifacts)?;
@@ -154,7 +159,9 @@ impl Observer {
                 .into(),
             target: capture::hash(&fs::read(executable)?),
             artifacts,
-            bindings,
+            bindings: bindings.clone(),
+            machine: machine.clone(),
+            registry: registry.cloned(),
             fixture: capture::FIXTURE_FILE.into(),
             control: serde_json::to_value(spec.control)?.as_str().unwrap().into(),
             deadline_seconds: spec.deadline_seconds,
@@ -245,8 +252,9 @@ impl Observer {
                 return Err(SupervisorError("Worker hello deadline elapsed".into()));
             }
         }
+        #[cfg(feature = "maintainer-tools")]
         if self.request.control
-            == serde_json::to_value(ObservationControl::WorkerLoss)?
+            == serde_json::to_value(crate::operation::ObservationControl::WorkerLoss)?
                 .as_str()
                 .unwrap()
             && self.output.join("worker-loss-ready").try_exists()?
@@ -409,9 +417,34 @@ fn group_members(group: u32, budget: Duration) -> Result<Vec<u32>, SupervisorErr
     Ok(members)
 }
 
+pub(in crate::binding) fn package() -> BTreeMap<String, Vec<u8>> {
+    [
+        ("resolver.rs", include_bytes!("../macos.rs").as_slice()),
+        ("strategy.rs", include_bytes!("observation.rs").as_slice()),
+        ("lifecycle.rs", include_bytes!("lifecycle.rs").as_slice()),
+        (
+            "worker.py",
+            include_bytes!("observation/worker.py").as_slice(),
+        ),
+        ("guard.m", include_bytes!("observation/guard.m").as_slice()),
+        (
+            "guard.dylib",
+            include_bytes!(concat!(env!("OUT_DIR"), "/guard.dylib")).as_slice(),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, bytes)| (name.into(), bytes.to_vec()))
+    .chain(std::iter::once((
+        "protocol.py".into(),
+        observation::python_bindings().into_bytes(),
+    )))
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     fn observer(root: &Path, command: &mut Command) -> Observer {
         Observer {
             output: root.into(),
@@ -423,6 +456,8 @@ mod tests {
                 target: "target".into(),
                 artifacts: BTreeMap::new(),
                 bindings: BTreeMap::new(),
+                machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
+                registry: None,
                 fixture: "fixture".into(),
                 control: "normal".into(),
                 deadline_seconds: 1,

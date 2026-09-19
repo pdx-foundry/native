@@ -1,5 +1,5 @@
-//! Candidate artifact writing. Evidence owns the recorded types and all replay conclusions.
-use crate::{investigation::ObservationSpec, supervisor::SupervisorError};
+//! Shared live artifact writing. Evidence owns the recorded types and all replay conclusions.
+use crate::{operation::ObservationSpec, supervisor::SupervisorError};
 use evidence::{
     ArtifactReference, CaptureOrigin,
     recorded::{self, Descriptor, Manifest, OwnerEvent, RecordedRequest, TraceEvent, TraceRecord},
@@ -73,6 +73,7 @@ pub(crate) struct Capture {
     manifest: ArtifactReference,
     request: ArtifactReference,
     owner: Vec<OwnerEvent>,
+    registry: bool,
 }
 
 fn reference(root: &Path, path: &str) -> Result<ArtifactReference, SupervisorError> {
@@ -130,16 +131,23 @@ impl Capture {
         manifest
             .as_object_mut()
             .unwrap()
-            .insert("candidateIdentity".into(), identity);
+            .insert("nativeIdentity".into(), identity);
         write_json(&root.join("manifest.json"), &manifest)?;
         write_json(
             &root.join("request.json"),
             &RecordedRequest {
-                observations: vec![
-                    "effect-registration".into(),
-                    "tradition-category-field-reads".into(),
-                ],
-                fixtures: BTreeMap::from([(FIXTURE_FILE.into(), spec.fixture.clone())]),
+                observations: match &spec.registry {
+                    Some(name) => vec![format!("registry:{name}")],
+                    None => vec![
+                        "effect-registration".into(),
+                        "tradition-category-field-reads".into(),
+                    ],
+                },
+                fixtures: if spec.registry.is_some() {
+                    BTreeMap::new()
+                } else {
+                    BTreeMap::from([(FIXTURE_FILE.into(), spec.fixture.clone())])
+                },
                 deadline_seconds: spec.deadline_seconds,
             },
         )?;
@@ -151,6 +159,7 @@ impl Capture {
             attempt: attempt.into(),
             supporting,
             owner: Vec::new(),
+            registry: spec.registry.is_some(),
         })
     }
 
@@ -221,8 +230,18 @@ impl Capture {
         write_new(&self.root.join("trace.jsonl"), &normalized)?;
         write_json(&self.root.join("owner.json"), &self.owner)?;
         let descriptor = Descriptor {
-            format: recorded::FORMAT.into(),
-            contract: recorded::CONTRACT.into(),
+            format: if self.registry {
+                evidence::registry::FORMAT
+            } else {
+                recorded::FORMAT
+            }
+            .into(),
+            contract: if self.registry {
+                evidence::registry::CONTRACT
+            } else {
+                recorded::CONTRACT
+            }
+            .into(),
             attempt: self.attempt,
             origin: CaptureOrigin::Captured,
             manifest: self.manifest,
@@ -234,8 +253,17 @@ impl Capture {
         write_json(&self.root.join("descriptor.json"), &descriptor)?;
         let descriptor = reference(&self.root, "descriptor.json")?;
         let store = evidence::store::ArtifactStore::new(&self.root);
-        let replay = evidence::replay::replay(&store, &descriptor)
-            .map_err(|error| SupervisorError(error.to_string()))?;
+        let replay = if self.registry {
+            serde_json::to_value(
+                evidence::registry::replay(&store, &descriptor)
+                    .map_err(|error| SupervisorError(error.to_string()))?,
+            )?
+        } else {
+            serde_json::to_value(
+                evidence::replay::replay(&store, &descriptor)
+                    .map_err(|error| SupervisorError(error.to_string()))?,
+            )?
+        };
         write_json(&self.root.join("replay.json"), &replay)?;
         write_json(&self.root.join("descriptor.ref.json"), &descriptor)?;
         Ok(descriptor)
@@ -266,7 +294,7 @@ fn snapshot_profile(
             crate::binding::private_directory(&destination)?;
             snapshot_profile(&entry.path(), root, &name, hashes, supporting)?;
         } else {
-            let bytes = read_bounded(&entry.path(), 64 * 1024)?;
+            let bytes = read_bounded(&entry.path(), 1024 * 1024)?;
             write_new(&destination, &bytes)?;
             hashes.insert(portable.clone(), hash(&bytes));
             supporting.push(reference(root, &format!("profile/{portable}"))?);
@@ -296,7 +324,12 @@ fn normalize(raw: &[u8], attempt: &str) -> (Vec<TraceRecord>, Vec<String>) {
     }
     // Even corruption after a terminal must not turn a damaged fresh capture into success.
     if !diagnostics.is_empty() {
-        records.retain(|record| !matches!(record.event, TraceEvent::StreamEnd { .. }));
+        records.retain(|record| {
+            !matches!(
+                record.event,
+                TraceEvent::StreamEnd { .. } | TraceEvent::RegistryEnd { .. }
+            )
+        });
     }
     (records, diagnostics)
 }
@@ -354,9 +387,10 @@ mod storage_tests {
         fs::write(&fixture_path, FIXTURE_BODY).unwrap();
         fs::write(root.path().join("profile/settings.txt"), "before").unwrap();
         let spec = ObservationSpec {
+            registry: None,
             fixture: FIXTURE_BODY.into(),
             deadline_seconds: 180,
-            control: crate::investigation::ObservationControl::Normal,
+            control: crate::operation::ObservationControl::Normal,
         };
         let mut capture = Capture::prepare(
             root.path(),

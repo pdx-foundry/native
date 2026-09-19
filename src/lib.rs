@@ -1,4 +1,4 @@
-//! Exact-target admission and retained observations, with optional maintainer lifecycle experiments.
+//! Exact-target admission, bounded live observations, and retained replay.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
@@ -25,8 +25,8 @@ compile_error!("production cannot include test-support or maintainer-tools");
 pub mod test_support;
 
 pub use api::{
-    Availability, CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin,
-    ObservationBounds, OpenError, OpenRequest, Qualification, UnavailableReason,
+    Availability, CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin, OpenError,
+    OpenRequest, Qualification, RegistryBounds, UnavailableReason,
 };
 pub use api::{Engine, ReplayRequest};
 pub use evidence::{
@@ -35,5 +35,11 @@ pub use evidence::{
 };
 pub use session::EngineContext;
 
-#[cfg(feature = "maintainer-tools")]
 mod capture;
+mod operation;
+mod registry;
+
+pub use evidence::ObservationResult;
+pub use evidence::registry::{RegistryEntry, RegistryProvenance, RegistryResult};
+pub use operation::{OperationDisposal, OperationOutcome};
+pub use registry::{RegistryClient, RegistryError, RegistryJob, RegistryOptions, RegistryReport};

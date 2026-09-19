@@ -18,6 +18,17 @@ pub struct ReplayRequest {
 pub struct Engine;
 
 impl Engine {
+    /// Verify and replay a retained registry snapshot without an installed game.
+    pub fn replay_registry(
+        &self,
+        request: ReplayRequest,
+    ) -> Result<crate::RegistryResult, ReplayError> {
+        evidence::registry::replay(
+            &ArtifactStore::new(request.artifact_root),
+            &request.descriptor,
+        )
+    }
+
     /// Bind an exact installation without launching a game. No version or adapter fallback is used.
     pub fn open(request: OpenRequest) -> Result<crate::EngineContext, OpenError> {
         crate::session::open(request)
@@ -79,32 +90,27 @@ pub enum ContextOrigin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ContextIdentity(pub(crate) String);
 
-/// Requested scope of registration entries followed by category field read entries.
-/// This query performs no observation and makes no claim about stored values or validation.
+/// Name of the engine registry to retrieve. Unknown names receive explicit unsupported results.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityRequest {
-    /// Number of initial registration entries requested; must be nonzero.
-    pub registration_entries: u32,
-    /// Nonempty, distinct category field names to observe within one fixture read window.
-    pub category_fields: Vec<String>,
+    /// Stable Native registry name, currently `traditions` or `tradition_categories`.
+    pub registry: String,
 }
 
 impl Default for CapabilityRequest {
     fn default() -> Self {
         Self {
-            registration_entries: 3,
-            category_fields: vec!["tree_template".into(), "traditions".into()],
+            registry: "traditions".into(),
         }
     }
 }
 
-/// Limits of the bounded registration/category-read operation, not a complete registry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ObservationBounds {
-    /// Maximum number of initial registration entries.
-    pub registration_entries: u32,
-    /// Category fields covered by this bound.
-    pub category_fields: Vec<String>,
+/// Registry names declared by a method or covered by one acceptance record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegistryBounds {
+    /// Exact public names; declarations do not imply current admission.
+    pub registries: Vec<String>,
 }
 
 /// Accepted support for this request, independent of present implementation availability.
@@ -130,10 +136,14 @@ pub enum Availability {
 /// A structured admission gap. Multiple independent gaps can occur together.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum UnavailableReason {
+    /// Admitted live execution requires the explicit production Cargo feature.
+    ProductionFeatureRequired,
     /// The compiled host cannot use the selected live strategy.
     HostUnavailable,
     /// The selected live strategy has no implementation in this release.
     ImplementationUnavailable,
+    /// The selected debugger/tool identity differs from the accepted qualification.
+    HelperMismatch,
     /// Qualification for the exact operation composition is absent.
     QualificationMissing,
     /// An otherwise matching acceptance has been withdrawn.
@@ -142,7 +152,7 @@ pub enum UnavailableReason {
     RevisionMismatch,
     /// Current content does not match the accepted dependency identities.
     ContentMismatch,
-    /// The request is invalid or exceeds supported observation bounds.
+    /// The request is invalid or exceeds supported registry scope.
     OutsideBounds,
     /// The executable changed after binding; this context must be reopened.
     TargetChanged,
@@ -154,7 +164,7 @@ pub enum UnavailableReason {
     PrerequisiteMissing,
 }
 
-/// Independent qualification and availability results for one bounded request.
+/// Independent qualification and availability results for one registry request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CapabilityReport {
     /// Fixed composition identity, opaque to consumers.
@@ -166,9 +176,9 @@ pub struct CapabilityReport {
     /// Whether this request currently passes admission.
     pub availability: Availability,
     /// Declared operation bounds; qualification is required separately.
-    pub bounds: ObservationBounds,
+    pub bounds: RegistryBounds,
     /// Bounds of applicable accepted records, kept separate so their union grants no support.
-    pub accepted_bounds: Vec<ObservationBounds>,
+    pub accepted_bounds: Vec<RegistryBounds>,
     /// All established reasons that block admission.
     pub reasons: Vec<UnavailableReason>,
     /// Accepted qualification record identities supporting this result.

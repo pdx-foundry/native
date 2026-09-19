@@ -1,29 +1,19 @@
-use crate::{capture::Capture, investigation::ObservationSpec, supervisor::SupervisorError};
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use crate::{capture::Capture, supervisor::SupervisorError};
+use std::path::PathBuf;
 fn unavailable<T>() -> Result<T, SupervisorError> {
     Err(SupervisorError(
         "HostUnavailable: early observation requires Apple Silicon macOS".into(),
     ))
 }
-pub(crate) fn probe_observer() -> Result<(), SupervisorError> {
+pub(crate) fn probe_observer() -> Result<String, SupervisorError> {
     unavailable()
 }
 pub(crate) struct Observer {
     pub(crate) exited: Option<i64>,
 }
 impl Observer {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn prepare(
-        _: &Path,
-        _: &str,
-        _: &ObservationSpec,
-        _: &Path,
-        _: serde_json::Value,
-        _: &BTreeMap<String, String>,
-        _: BTreeMap<String, u64>,
+    pub(in crate::binding) fn prepare(
+        _: crate::binding::platform::ObservationSetup<'_>,
     ) -> Result<(Self, Capture), SupervisorError> {
         unavailable()
     }

@@ -22,9 +22,17 @@ PDX Native is the canonical home for reusable engine integration knowledge. This
 
 The [bounded replay implementation](design/replay.md) adds a game-free Rust consumer flow for the
 retained SDK-483 window. Its tests govern retained derivation behavior, with explicit synthetic and
-historical origins. Public live admission remains unavailable. The maintainer-only
+historical origins. Public live admission uses the reviewed replacement registry qualification. The maintainer-only
 [candidate capture path](design/candidate-observations.md) can now produce fresh recorded evidence
-for the same replay validator; capture success does not grant qualification. The capability pages below
+for the same replay validator; capture success does not grant qualification. SDK-518 now exposes [registry questions](design/live-observations.md) over shared execution.
+The [earlier observation qualification report](native/live-observation-qualification.md) is superseded
+for promotion. The [fresh registry qualification report](native/registry-qualification.md) retains
+30 passing candidate controls and maintainer acceptance before source promotion. The
+[ordinary production verification](native/registry-production.md) covers the earlier implementation.
+PR review subsequently added evidence-manifest identity and a required production feature. The
+[replacement qualification report](native/registry-review-qualification.md) retains 30 fresh passing
+controls and renewed maintainer acceptance. The [renewed ordinary production verification](native/registry-review-production.md)
+covers both supported registry names on that accepted implementation. The capability pages below
 retain the historical experiments and their wider limits.
 
 Atlas retains authoring-rule conclusions and extraction fixtures/coverage. Its consumer pages remain at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`; the historical capsules copied here retain those fixtures to keep their native evidence replayable. This does not make Native the Atlas rule database.

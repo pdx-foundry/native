@@ -20,11 +20,20 @@ def cargo(directory, arguments, expected=None):
             raise SystemExit(result.stderr)
     elif result.returncode == 0 or expected not in result.stderr:
         raise SystemExit(f"Negative control did not fail for {expected!r}:\n{result.stderr}")
+    return result
+
+
+def operation_fingerprint(build):
+    for row in map(json.loads, build.stdout.splitlines()):
+        environment = dict(row.get('env', []))
+        if 'PDX_NATIVE_OPERATION' in environment:
+            return environment['PDX_NATIVE_OPERATION']
+    raise SystemExit('Operation fingerprint missing from build metadata')
 
 
 def main():
     # Build the ordinary release and inspect its resolved features before testing forbidden sets.
-    cargo(ROOT, ["build", "--locked", "--release", "--features", "production"])
+    cargo(ROOT, ["build", "--locked", "--release", "--examples", "--features", "production"])
     metadata = json.loads(subprocess.check_output(
         ["cargo", "metadata", "--locked", "--offline", "--format-version", "1", "--features", "production"], cwd=ROOT,
     ))
@@ -47,7 +56,14 @@ def main():
         library.write_text(library.read_text() + "\nmod prohibited_operation;\n")
         probe = package / "src/prohibited_operation.rs"
         probe.write_text("pub fn harmless() {}\n")
-        cargo(package, ["check", "--lib", "--locked"])
+        original = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]))
+        evidence_manifest = package / 'crates/native-evidence/Cargo.toml'
+        manifest_text = evidence_manifest.read_text()
+        evidence_manifest.write_text(manifest_text + '\n# Fingerprint variation control.\n')
+        changed = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]))
+        if original == changed:
+            raise SystemExit('Evidence manifest change retained the qualified operation identity')
+        evidence_manifest.write_text(manifest_text)
         cfg = subprocess.check_output(["rustc", "--print", "cfg"], text=True)
         leaf = "macos" if 'target_os="macos"' in cfg and 'target_arch="aarch64"' in cfg else "unavailable"
         imports = [
@@ -76,12 +92,16 @@ def main():
         cargo(consumer, ["check"], "no `test_support` in the root")
         main_rs.write_text("fn main() { let _ = pdx_native::EngineContext {}; }\n")
         cargo(consumer, ["check"], "private fields")
+        main_rs.write_text("fn main() { let _ = pdx_native::RegistryClient {}; }\n")
+        cargo(consumer, ["check"], "private fields")
+        main_rs.write_text("fn main() { let _ = pdx_native::RegistryOptions { retention_directory: Default::default(), deadline_seconds: None, control: () }; }\n")
+        cargo(consumer, ["check"], "has no field named `control`")
         # A gated candidate report cannot be converted into a supported replay result.
         manifest = consumer / "Cargo.toml"
         manifest.write_text(manifest.read_text().replace(' }', ', features = ["maintainer-tools"] }'))
         main_rs.write_text("fn promote(value: pdx_native::investigation::InvestigationReport) -> pdx_native::ReplayResult { value.into() }\nfn main() {}\n")
         cargo(consumer, ["check"], "is not satisfied")
-        main_rs.write_text("use pdx_native::binding::InvestigationPlan;\nfn main() {}\n")
+        main_rs.write_text("use pdx_native::binding::ExecutionPlan;\nfn main() {}\n")
         cargo(consumer, ["check"], "is private")
     print("Admission boundary verified: production features, release exclusion, private leaves, and opaque context construction")
 

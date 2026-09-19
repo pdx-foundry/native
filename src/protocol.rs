@@ -2,7 +2,7 @@ use crate::supervisor::SupervisorError;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::io::{Read, Write};
 
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const MAX_MESSAGE: usize = 64 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -11,14 +11,15 @@ pub(crate) struct Hello {
     pub version: u32,
     pub build: String,
     pub controller: u32,
+    pub authorization: crate::operation::Authorization,
 }
 impl Hello {
-    #[cfg(feature = "maintainer-tools")]
-    pub fn current() -> Self {
+    pub fn current(authorization: crate::operation::Authorization) -> Self {
         Self {
             version: VERSION,
             build: env!("PDX_NATIVE_BUILD").into(),
             controller: std::process::id(),
+            authorization,
         }
     }
     pub fn validate(&self) -> Result<(), SupervisorError> {
@@ -38,15 +39,9 @@ impl Hello {
 #[serde(deny_unknown_fields)]
 pub(crate) enum Reply {
     Rejected(String),
-    #[cfg(feature = "maintainer-tools")]
     Ready,
-    #[cfg(feature = "maintainer-tools")]
-    Started {
-        attempt: String,
-        game: u32,
-    },
-    #[cfg(feature = "maintainer-tools")]
-    Finished(Box<crate::investigation::InvestigationReport>),
+    Started { attempt: String, game: u32 },
+    Finished(Box<crate::operation::AttemptReport>),
 }
 
 pub(crate) fn read<T: DeserializeOwned>(mut input: impl Read) -> Result<T, SupervisorError> {
@@ -84,8 +79,19 @@ mod tests {
             version: VERSION,
             build: env!("PDX_NATIVE_BUILD").into(),
             controller: u32::MAX,
+            authorization: crate::operation::Authorization::Admitted,
         };
         assert!(valid.validate().is_ok());
+        assert!(
+            Hello {
+                build: "different-linked-build".into(),
+                version: VERSION,
+                controller: u32::MAX,
+                authorization: crate::operation::Authorization::Admitted
+            }
+            .validate()
+            .is_err()
+        );
         assert!(
             Hello {
                 version: VERSION + 1,
@@ -103,22 +109,10 @@ mod tests {
         }
     }
     #[test]
-    fn ordinary_entry_never_admits_candidate_execution() {
-        let hello = Hello {
-            version: VERSION,
-            build: env!("PDX_NATIVE_BUILD").into(),
-            controller: u32::MAX,
-        };
-        let mut frame = Vec::new();
-        write(&mut frame, &hello).unwrap();
-        let mut output = Vec::new();
-        crate::supervisor::serve(frame.as_slice(), &mut output).unwrap();
-        assert!(matches!(
-            read::<Reply>(output.as_slice()).unwrap(),
-            Reply::Rejected(_)
-        ));
+    fn incompatible_mode_is_rejected_before_owner_setup() {
+        let json = serde_json::json!({"version": VERSION, "build": env!("PDX_NATIVE_BUILD"), "controller": u32::MAX, "authorization": "unrecognized"});
+        assert!(serde_json::from_value::<Hello>(json).is_err());
     }
 }
 
-#[cfg(feature = "maintainer-tools")]
 pub(crate) mod observation;

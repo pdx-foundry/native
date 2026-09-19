@@ -4,7 +4,7 @@ use crate::{
 };
 use std::cell::RefCell;
 
-/// A fixed installation or synthetic context. It cannot be rebound or used to launch a game.
+/// A fixed installation or synthetic context. It cannot be rebound; live requests require ordinary admission.
 #[derive(Debug)]
 pub struct EngineContext {
     binding: Binding,
@@ -41,11 +41,78 @@ impl EngineContext {
             *invalidated = self.binding.integrity();
         }
         qualification::evaluate(
-            self.binding.inputs(),
+            &self.binding.current_inputs(),
             self.binding.authority(),
             request,
             self.origin(),
             invalidated.clone(),
         )
+    }
+}
+
+impl EngineContext {
+    /// Configure consumer-hosted supervision and retention once, then call `get_registry_items`.
+    /// The command must start a dedicated direct child that calls `supervisor::serve`.
+    pub fn with_supervisor(
+        self,
+        command: std::process::Command,
+        options: crate::RegistryOptions,
+    ) -> Result<crate::RegistryClient, crate::RegistryError> {
+        crate::registry::client(self, command, options)
+    }
+
+    pub(crate) fn prepare_registry(
+        &self,
+        name: &str,
+        output: std::path::PathBuf,
+        deadline_seconds: u64,
+    ) -> Result<crate::operation::PreparedPlan, crate::RegistryError> {
+        use crate::operation::{
+            AttemptRequest, Authorization, ObservationControl, ObservationSpec, PlanRequest,
+            PreparedPlan,
+        };
+        let report = self.capability(&CapabilityRequest {
+            registry: name.into(),
+        });
+        if !report
+            .bounds
+            .registries
+            .iter()
+            .any(|supported| supported == name)
+        {
+            return Err(crate::RegistryError::Unsupported {
+                registry: name.into(),
+            });
+        }
+        let installation_hint = self
+            .binding
+            .installation_hint()
+            .map_err(crate::RegistryError::from)?;
+        if report.availability != crate::Availability::Available {
+            return Err(crate::RegistryError::Unavailable {
+                reasons: report.reasons,
+            });
+        }
+        let spec = ObservationSpec {
+            registry: Some(name.into()),
+            fixture: String::new(),
+            deadline_seconds,
+            control: ObservationControl::Normal,
+        };
+        spec.validate()?;
+        let request = AttemptRequest {
+            installation_hint,
+            output,
+            hold_ms: 1,
+        };
+        crate::operation::validate_request(&request)?;
+        Ok(PreparedPlan {
+            request: PlanRequest {
+                request,
+                composition: self.identity().0,
+                authorization: Authorization::Admitted,
+                observation: Some(spec),
+            },
+        })
     }
 }

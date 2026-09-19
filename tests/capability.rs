@@ -26,6 +26,16 @@ fn accepted_admission_does_not_require_historical_evidence_bytes() {
 fn fixed_cases_report_independent_qualification_and_availability() {
     let cases = [
         (
+            SyntheticCase::HelperMismatch,
+            Qualification::Incomplete,
+            UnavailableReason::HelperMismatch,
+        ),
+        (
+            SyntheticCase::HelperUnavailable,
+            Qualification::Incomplete,
+            UnavailableReason::PrerequisiteMissing,
+        ),
+        (
             SyntheticCase::RecipeOnly,
             Qualification::Incomplete,
             UnavailableReason::QualificationMissing,
@@ -87,43 +97,26 @@ fn fixed_cases_report_independent_qualification_and_availability() {
 #[test]
 fn requests_must_fit_both_declared_and_accepted_bounds() {
     let context = engine(SyntheticCase::Accepted);
-    let invalid = [
-        CapabilityRequest {
-            registration_entries: 0,
-            ..Default::default()
-        },
-        CapabilityRequest {
-            registration_entries: 4,
-            ..Default::default()
-        },
-        CapabilityRequest {
-            category_fields: vec![],
-            ..Default::default()
-        },
-        CapabilityRequest {
-            category_fields: vec!["unknown".into()],
-            ..Default::default()
-        },
-        CapabilityRequest {
-            category_fields: vec!["traditions".into(), "traditions".into()],
-            ..Default::default()
-        },
-    ];
-    for request in invalid {
-        let report = context.capability(&request);
+    for name in ["", "technology", "TRADITIONS", "tradition", "traditions "] {
+        let report = context.capability(&CapabilityRequest {
+            registry: name.into(),
+        });
         assert_eq!(report.qualification, Qualification::OutsideSupport);
         assert_eq!(report.availability, Availability::Unavailable);
     }
     let narrow = engine(SyntheticCase::NarrowQualification);
     let outside = narrow.capability(&CapabilityRequest::default());
-    assert_eq!(outside.bounds.registration_entries, 3);
-    assert_eq!(outside.accepted_bounds[0].registration_entries, 1);
-    let request = CapabilityRequest {
-        registration_entries: 1,
-        ..Default::default()
-    };
+    assert_eq!(outside.bounds.registries.len(), 2);
     assert_eq!(
-        narrow.capability(&request).availability,
+        outside.accepted_bounds[0].registries,
+        ["tradition_categories"]
+    );
+    assert_eq!(
+        narrow
+            .capability(&CapabilityRequest {
+                registry: "tradition_categories".into()
+            })
+            .availability,
         Availability::Available
     );
 }
@@ -142,21 +135,23 @@ fn real_strategy_resolution_never_becomes_available_in_a_synthetic_context() {
 }
 
 #[test]
-fn partial_acceptances_do_not_qualify_a_combined_window() {
+fn each_registry_requires_its_own_applicable_acceptance() {
     let context = engine(SyntheticCase::SplitQualifications);
-    let report = context.capability(&CapabilityRequest::default());
-    assert_eq!(report.qualification, Qualification::OutsideSupport);
-    assert_eq!(report.accepted_bounds.len(), 2);
-    for field in ["tree_template", "traditions"] {
-        let request = CapabilityRequest {
-            category_fields: vec![field.into()],
-            ..Default::default()
-        };
-        assert_eq!(
-            context.capability(&request).qualification,
-            Qualification::Qualified
-        );
+    for name in ["traditions", "tradition_categories"] {
+        let report = context.capability(&CapabilityRequest {
+            registry: name.into(),
+        });
+        assert_eq!(report.qualification, Qualification::Qualified);
+        assert_eq!(report.qualification_records.len(), 1);
     }
+    assert_eq!(
+        context
+            .capability(&CapabilityRequest {
+                registry: "technology".into()
+            })
+            .qualification,
+        Qualification::OutsideSupport
+    );
 }
 
 #[test]
@@ -177,4 +172,54 @@ fn unreadable_content_is_not_a_demonstrated_mismatch() {
     assert_eq!(report.reasons, [UnavailableReason::InputUnavailable]);
     assert!(report.accepted_bounds.is_empty());
     assert!(report.qualification_records.is_empty());
+}
+
+#[test]
+fn accepted_synthetic_context_never_starts_a_live_registry_query() {
+    let root = tempfile::tempdir().unwrap();
+    let mut native = engine(SyntheticCase::Accepted)
+        .with_supervisor(
+            std::process::Command::new("must-not-execute"),
+            pdx_native::RegistryOptions {
+                retention_directory: root.path().into(),
+                deadline_seconds: None,
+            },
+        )
+        .unwrap();
+    let error = native.get_registry_items("traditions").unwrap_err();
+    assert!(error.to_string().contains("Synthetic"));
+    assert!(matches!(
+        native.get_registry_items("technology"),
+        Err(pdx_native::RegistryError::Unsupported { .. })
+    ));
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn registry_options_refuse_invalid_deadlines_and_retention_locations() {
+    let root = tempfile::tempdir().unwrap();
+    for deadline in [0, 181] {
+        assert!(
+            engine(SyntheticCase::Accepted)
+                .with_supervisor(
+                    std::process::Command::new("must-not-execute"),
+                    pdx_native::RegistryOptions {
+                        retention_directory: root.path().into(),
+                        deadline_seconds: Some(deadline)
+                    }
+                )
+                .is_err()
+        );
+    }
+    assert!(
+        engine(SyntheticCase::Accepted)
+            .with_supervisor(
+                std::process::Command::new("must-not-execute"),
+                pdx_native::RegistryOptions {
+                    retention_directory: "relative".into(),
+                    deadline_seconds: None
+                }
+            )
+            .is_err()
+    );
 }
