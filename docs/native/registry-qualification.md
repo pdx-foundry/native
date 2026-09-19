@@ -3,7 +3,8 @@
 **Status: superseded after PR review; retained historical qualification.**
 The reviewed implementation below was accepted and passed production controls. Subsequent review
 fixed the missing evidence-manifest fingerprint and required the production feature for ordinary
-admission. The tracked acceptance has been removed pending fresh evidence and maintainer review. This report replaces the
+admission. The tracked acceptance has been removed. The [replacement report](registry-review-qualification.md)
+presents fresh evidence for renewed maintainer review. This report replaces the
 [earlier observation proposal](live-observation-qualification.md). The implementation at commit
 `02f849a60261787400ebeffe74279f008ae0925d` changes the consumer question and the native method.
 The earlier proposal does not qualify this implementation. No investigation command can add an
@@ -174,8 +175,9 @@ Replaying a pre-rename real registry capture produces an identical result after 
 collection field from `entries` to `registeredItems`, including identical item identities and provenance.
 
 Production-only checks confirm both known names refuse with `QualificationMissing`, unknown names
-return `Unsupported`, and these refusals allocate no attempt directory. Those pre-promotion checks remain retained. The accepted record now enables ordinary admission;
-the [ordinary production controls](registry-production.md) passed before PR publication.
+return `Unsupported`, and these refusals allocate no attempt directory. Those pre-promotion checks remain retained. The accepted record then enabled ordinary admission;
+the [ordinary production controls](registry-production.md) passed before the initial PR publication.
+That record has since been removed because review fixes changed the implementation.
 
 Private bundle `sdk-518-registry-qualification` contains 6,057 files (20,425,092
 compressed bytes). It retains the final matrices, executed source and binaries, failed development
@@ -198,7 +200,7 @@ python3 tools/evidence.py sdk-518-registry-qualification --restore
 
 The machine-readable report and proposed source record are `sdk-518-registry-qualification/qualification-report.json`
 and `proposed-acceptance.json` within the archive. The archived proposal remains immutable review material; the tracked record supplies runtime
-authority. The reviewed proposal is now tracked in the acceptance registry.
+authority. The reviewed proposal was tracked in the acceptance registry and has since been removed for renewal.
 
 ## Maintainer decision
 

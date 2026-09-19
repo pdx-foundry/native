@@ -1,7 +1,8 @@
 # SDK-518 ordinary production verification
 
 **Historical verification:** the PR-review fixes changed the qualification identity. These results
-remain retained; replacement evidence and acceptance are required for the revised implementation.
+remain retained; the [replacement qualification report](registry-review-qualification.md) covers
+the revised implementation and requires renewed acceptance.
 
 The maintainer accepted the [candidate qualification](registry-qualification.md) before its reviewed
 record was added to source. The ordinary production matrix then passed for both supported names.

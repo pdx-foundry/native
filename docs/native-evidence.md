@@ -29,8 +29,9 @@ The [earlier observation qualification report](native/live-observation-qualifica
 for promotion. The [fresh registry qualification report](native/registry-qualification.md) retains
 30 passing candidate controls and maintainer acceptance before source promotion. The
 [ordinary production verification](native/registry-production.md) covers the earlier implementation.
-PR review subsequently added evidence-manifest identity and a required production feature; these
-changes require replacement qualification. The capability pages below
+PR review subsequently added evidence-manifest identity and a required production feature. The
+[replacement qualification report](native/registry-review-qualification.md) presents fresh evidence
+for renewed acceptance; production admission remains withheld. The capability pages below
 retain the historical experiments and their wider limits.
 
 Atlas retains authoring-rule conclusions and extraction fixtures/coverage. Its consumer pages remain at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`; the historical capsules copied here retain those fixtures to keep their native evidence replayable. This does not make Native the Atlas rule database.

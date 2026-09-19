@@ -623,6 +623,29 @@
       "archiveBytes": 10666159,
       "fileManifest": ".local/evidence/bundles/sdk-518-registry-production.manifest.json",
       "manifestSha256": "e6d4e5d503bd2ca2053a29c69558017fa2781fdbf208bf5c9c4f0f8aaf2bcebc"
+    },
+    {
+      "id": "sdk-518-registry-review-qualification",
+      "createdAt": "2026-09-19T01:11:23.649412+00:00",
+      "archive": "sdk-518-registry-review-qualification-f19f7954f818e9ba.tar.gz",
+      "sha256": "f19f7954f818e9ba09a18d76cffa12481e624b23ba330c5b8dcfd29d205e1226",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/sdk-518-registry-review-qualification",
+          "archivePath": "sdk-518-registry-review-qualification",
+          "gitHead": "f1c9ae43148eb3a47bcd5a664693f0c2206e261d",
+          "note": "SDK-518 registry API and fresh frozen qualification; maintainer acceptance pending"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store"
+      ],
+      "files": 5216,
+      "archiveBytes": 16298843,
+      "fileManifest": ".local/evidence/bundles/sdk-518-registry-review-qualification.manifest.json",
+      "manifestSha256": "e24f6fd3e46d41de004fa57c64f1497a5e7a01f8e2a4b90fcd0f9d910e1055e4"
     }
   ]
 }
