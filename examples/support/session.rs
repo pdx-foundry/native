@@ -128,11 +128,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
         if mode == "read-cancel" {
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_millis(1),
-                game.get_registry_items("traditions"),
-            )
-            .await;
+            assert!(
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(1),
+                    game.get_registry_items("traditions"),
+                )
+                .await
+                .is_err()
+            );
         }
         if mode == "caller-loss" {
             std::process::exit(0);
@@ -152,8 +155,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 ["traditions", "tradition_categories"]
             };
-            for name in names {
-                match game.get_registry_items(name).await {
+            let mut observed = std::collections::BTreeMap::new();
+            // Every control exercises both query orders, including unavailable registries.
+            for name in names.into_iter().chain(names.into_iter().rev()) {
+                let answer = game.get_registry_items(name).await;
+                let value = match &answer {
+                    Ok(snapshot) => serde_json::to_value(snapshot)?,
+                    Err(error) => serde_json::Value::String(error.to_string()),
+                };
+                if let Some(previous) = observed.insert(name, value.clone()) {
+                    assert_eq!(previous, value);
+                }
+                match answer {
                     Ok(snapshot) => {
                         let again = game.get_registry_items(name).await?;
                         assert_eq!(
@@ -171,7 +184,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         if mode == "close-cancel" {
-            let _ = tokio::time::timeout(std::time::Duration::from_millis(1), game.close()).await;
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(1), game.close())
+                    .await
+                    .is_err()
+            );
         }
         let report = game.close().await?;
         assert_eq!(
