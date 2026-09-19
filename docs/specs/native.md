@@ -184,11 +184,13 @@ Atlas owns fixture meaning, including required content relationships. Native own
 
 Begin qualification with the pinned native Apple Silicon Stellaris 4.5 beta identified by retained evidence. Verify actual executable and content identities before use. These are accepted target-policy requirements, not an assertion about which game release is current.
 
-The first stable scope requires requalification on stable 4.5 for Apple Silicon and Windows x64, with Mac as the primary evidence-production environment. Linux and Intel Mac are outside the initial promise. Maintain one qualified stable release at a time; retain older evidence and original applicability. A new patch does not inherit support automatically.
+The first stable scope requires requalification on stable 4.5 for Apple Silicon, the only evidence-production environment. Windows x64, Linux, and Intel Mac are outside the initial promise. Maintain one qualified stable release at a time; retain older evidence and original applicability. A new patch does not inherit support automatically.
 
 Qualification is per exact target, operation, method revision, and relevant content dependencies. Native detects changed identities and refuses stale assumptions during ordinary extraction. Separate maintainer qualification work can investigate new targets. Requalification can use relevant reruns or demonstrated unchanged dependencies; unrelated passing checks and matching version labels are insufficient.
 
-Freeze Atlas extraction logic for the Mac/Windows comparison and a second distinct executable on one platform. Routine port work stays in Native. If a genuinely new engine concept requires a public-contract change, record it as an explicit amendment. Investigate semantic discrepancies before proposing platform-specific rules.
+**Amendment, 2026-09-19 (Jackson):** Windows x64 is deferred from the first stable scope. Atlas publishes platform-independent snapshots, so one evidence-production platform is sufficient for rule coverage. Windows support returns with the separate real-game testing framework, which must run where its users run. This amends the Mac/Windows scope accepted in SDK-476. Retained Windows evidence and target records are unchanged; they remain historical evidence and qualify nothing. The target-composition design still keeps platform knowledge in its own leaves, so the later Windows work adds a leaf and qualification, not a redesign.
+
+Freeze Atlas extraction logic for a second distinct executable on Apple Silicon. Routine port work stays in Native. If a genuinely new engine concept requires a public-contract change, record it as an explicit amendment. Investigate semantic discrepancies before proposing platform-specific rules.
 
 Measure initial tooling, routine updates, and exceptional repairs separately. Record shared-method work, target adaptation, fixture corrections, Atlas interpretation, human attention, agent effort, and unavailable measurements. Run duration and output counts are not maintenance-cost evidence. No numeric maintenance guarantee has been accepted.
 
@@ -222,7 +224,7 @@ Prefer this single consumer seam over tests coupled to private functions or adap
 6. **Replay:** verify bundle and artifact identities, reproduce bounded normalized observations, reject corrupt/missing evidence, and establish that replay does not launch the game. Failed capture evidence remains readable.
 7. **Shared-method transfer:** freeze a method and apply it to unfamiliar cases with positive and negative controls. Record modifications and failures instead of silently updating the frozen baseline.
 8. **Atlas integration:** carry an established tradition field through Native observations, Atlas claims/snapshot, and an offline experimental consumer. Include valid/invalid input, a conditional or shared-reader case, and absent evidence. Assert both supported behavior and refusal to claim whole-slice completeness.
-9. **Portability:** run the frozen Atlas extraction flow on corresponding Mac/Windows targets and a second distinct executable. Keep content/architecture changes visible. Compare observations, limits, and intervention records; do not substitute ready-world adapter tests for extraction qualification.
+9. **Update portability:** run the frozen Atlas extraction flow on a second distinct Apple Silicon executable. A Mac/Windows comparison is deferred with Windows support and is not a first-release gate. Keep content/architecture changes visible. Compare observations, limits, and intervention records; do not substitute ready-world adapter tests for extraction qualification.
 10. **Release evidence:** report Native capability qualification separately from Atlas coverage. Unresolved properties required by a promised guarantee block that guarantee. Durable retention and reproducible generation are required in addition to passing examples.
 
 ### Prior art and current state
@@ -243,7 +245,7 @@ configured live qualification.
 - Shipping game/mod catalogues or supplying config-derived fallback answers for missing observations.
 - A general decompiler, arbitrary native-code execution API, or a guarantee that every game property can be extracted automatically.
 - The separate author-facing real-game testing framework, its assertions, discovery, and reporting. Reuse its native evidence without depending on its unfinished implementation.
-- Full game-rule coverage or support for other games, Linux, and Intel Mac in the initial release.
+- Full game-rule coverage or support for other games, Windows, Linux, and Intel Mac in the initial release. Windows returns with the real-game testing framework (see the section 7 amendment).
 - Universal concurrent sessions, supervisor-loss recovery, guaranteed invisible launch on every target, or unqualified engine stages.
 - Atlas's later broad families, including audio, general interface/graphics formats, map/defines, descriptors, and broad callback/localisation inventories. Required tradition asset references and entry scopes remain first-release obligations.
 - Scope changes, loops, variables, scripted-effect/scripted-trigger calls, and unchanged import of complete vanilla flexible-tree event chains in the first supported Atlas authoring path.
