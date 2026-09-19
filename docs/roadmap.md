@@ -29,22 +29,38 @@ The config fork has 49,196 lines in 172 `.cwt` files.
 | ~13% | 2,042 defines, 385 on_actions, game rules | Inventories |
 | ~8% | Interface, graphics, sound, map, descriptors | Separate loaders, not yet investigated |
 
-### Documentation is mostly not handwritten
+### Documentation provenance measured in full
 
-Measured against the engine `script_docs` dump (v4.4.1) and the installed game files:
+SDK-525 measured every documentation claim against the installed base-game `common/**/*.txt`
+files and the config fork's `script-docs/v4.4.1` effects/triggers logs. Atlas owns the comment-to-key
+parser and the source-tagged ledger. Native's future declarations operation remains separate.
 
-| Config area | Doc entries | Same or near-same as source | Source |
-| --- | --- | --- | --- |
-| Effects | 1,050 | 99% | Engine description text |
-| Triggers | 1,079 | 98% | Engine description text |
-| Defines | 1,310 | 97% | Comments in `common/defines` |
-| On_actions | 340 | 91% | Comments in `common/on_actions` |
-| Game rules | 187 | 86% | Comments in `common/game_rules` |
-| Type schemas | ~1,700 lines | Samples match | Comments in vanilla files, mostly `00_example.txt` |
+| Config area | Doc entries | Exact copies | Rewritten candidates | Authored remainder |
+| --- | ---: | ---: | ---: | ---: |
+| Effects | 1,520 | 967 | 79 | 474 |
+| Triggers | 1,152 | 939 | 90 | 123 |
+| Defines | 1,329 | 1,286 | 7 | 36 |
+| On_actions | 342 | 269 | 38 | 35 |
+| Game rules | 195 | 152 | 13 | 30 |
+| Type schemas | 1,054 | 401 | 68 | 585 |
+| Other | 192 | 0 | 0 | 192 |
+| **Total** | **5,784** | **4,014** | **295** | **1,475** |
 
-Engine text comes through Native's declarations operation. Shipped comments are content; Atlas
-reads them with a comment-to-key parser. The remaining ~150 entries are authored and must be marked
-as authored, not as evidence.
+The type-schema row measures **all 1,703 documentation lines**, replacing the three-sample check.
+The full ledger contains 7,282 documentation lines. Entry counts include nested prose and repeated
+declarations, so they are not directly comparable with the earlier documented-command counts.
+Exact means equal after removing comment markers and folding whitespace. Rewritten candidates use
+an explicit similarity threshold and remain provisional.
+
+The 1,475 entries with no match are listed as authored and are not evidence. This is a bounded
+source search, not proof of historical authorship: version drift, source-parser limits, and content
+outside the examined corpus remain possible. The report retains 36 source parse diagnostics and
+the eight existing config diagnostics. Matching text grants no verified rule coverage.
+
+See Atlas's [complete measurement and reproduction instructions](https://github.com/pdx-foundry/atlas/blob/main/docs/coverage/documentation.md)
+and [pinned acceptance fixture](https://github.com/pdx-foundry/atlas/blob/main/tests/fixtures/documentation-baseline.json).
+The source manifest covers 2,062 files, with SHA-256
+`3d744becf7976e9ddd52e57f2d92cbaaf0b56f60b57af61852e45052519d3007`.
 
 Policy is not engine knowledge: severity (86), soft cardinality, subtypes (164) and alias factoring
 are cwtools modelling decisions. Subtypes have an engine-true counterpart in conditional field
