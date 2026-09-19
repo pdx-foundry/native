@@ -66,6 +66,14 @@ Policy is not engine knowledge: severity (86), soft cardinality, subtypes (164) 
 are cwtools modelling decisions. Subtypes have an engine-true counterpart in conditional field
 constraints (SDK-490).
 
+### Baseline
+
+The ledger exists (SDK-523, Atlas commit `be9cb3b`). With the retained registry capture as input,
+coverage is **0 of 56,551** Atlas-owned claims (53,465 engine-fact, 3,086 content-derived). The
+capture holds item names only, and item names answer no rule question. A further 2,637 claims are
+consumer policy and 192 are authored text; these are outside the headline figure. Atlas scores
+coverage by evidence, not by agreement with the config.
+
 ## Ordering principle
 
 Coverage grows with each **shared method**, not with each file. The known risk is method transfer:
@@ -96,8 +104,8 @@ Linear works milestones in order, so the order below is the work order.
 
 | # | Milestone | Work | Exit gate | Tickets |
 | --- | --- | --- | --- | --- |
-| 1 | Scoreboard | Preserve the beta installation. Claim ledger from the `.cwt` files with owner and documentation-provenance tags; `.cwt` comparison tool. The ledger work is done in the Atlas repository. | Every config line maps to a claim; a coverage percentage exists | SDK-522 to SDK-525 |
-| 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas | Rust results equal retained results (41/41 ownership controls, 10 agenda fields); tradition rules compared with the config | SDK-527 to SDK-534 |
+| 1 | Scoreboard | Preserve the beta installation. Claim ledger from the `.cwt` files with owner and documentation-provenance tags. The ledger work is done in the Atlas repository. | Every config line maps to a claim; a coverage percentage exists | SDK-522, SDK-523, SDK-525 |
+| 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas. In Atlas: the first rule snapshot, then the `.cwt` comparison tool that reads it. | Rust results equal retained results (41/41 ownership controls, 10 agenda fields); the tradition snapshot raises coverage above the baseline and is compared with the config | SDK-527 to SDK-534, SDK-558, SDK-524 |
 | 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | The five `script-docs` logs and the config name lists are replaced | SDK-535 to SDK-540 |
 | 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method is frozen, then tested on held-out cases. | Council agenda completeness passes; held-out rate recorded per method | SDK-541 to SDK-550 |
 | 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; frozen methods over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
@@ -109,7 +117,8 @@ that ticket is done. The blocking relations in Linear are the authority for what
 
 ## Not yet ticketed
 
-- Atlas-side rule work after the scoreboard: snapshot assembly per milestone, the policy overlay
+- Atlas-side rule work after the tradition snapshot (SDK-558): snapshot assembly for milestones 3
+  to 6, the run driver and rule composition of the registry sweep (SDK-553), the policy overlay
   (severity, subtype naming, alias factoring) keyed to rule identities, and the authored remainder
   of the documentation. These get the `Atlas` repository label.
 - Installation discovery without a location hint (specification user story 2). It does not block
