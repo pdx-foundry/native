@@ -57,8 +57,8 @@ source search, not proof of historical authorship: version drift, source-parser 
 outside the examined corpus remain possible. The report retains 36 source parse diagnostics and
 the eight existing config diagnostics. Matching text grants no verified rule coverage.
 
-See Atlas's [complete measurement and reproduction instructions](https://github.com/pdx-foundry/atlas/blob/main/docs/coverage/documentation.md)
-and [pinned acceptance fixture](https://github.com/pdx-foundry/atlas/blob/main/tests/fixtures/documentation-baseline.json).
+See Atlas's [complete measurement and reproduction instructions](https://github.com/pdx-foundry/atlas/blob/67003ade425a3a071cc90db11c352206e49854d6/docs/coverage/documentation.md)
+and [pinned acceptance fixture](https://github.com/pdx-foundry/atlas/blob/67003ade425a3a071cc90db11c352206e49854d6/tests/fixtures/documentation-baseline.json).
 The source manifest covers 2,062 files, with SHA-256
 `3d744becf7976e9ddd52e57f2d92cbaaf0b56f60b57af61852e45052519d3007`.
 
