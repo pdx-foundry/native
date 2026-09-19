@@ -12,8 +12,10 @@ where independently available. Repeated reads return the same startup snapshots 
 the game. Entries retain `registered_items` in Rust and `registeredItems` in JSON.
 
 SDK-518's accepted one-shot implementation is the historical baseline. The changed SDK-521 session
-implementation requires fresh qualification and maintainer acceptance before ordinary admission.
+implementation requires fresh qualification and a matching tracked record before ordinary admission.
 The earlier acceptance does not authorize this source revision.
+During rapid development, agents may verify and promote that record under the
+[standing development policy](../development-policy.md).
 
 ## Consumer flow
 

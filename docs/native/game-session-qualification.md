@@ -1,6 +1,6 @@
 # SDK-521 Game session qualification status
 
-**Status: implementation complete; fresh game qualification blocked by an unresolved reservation.**
+**Status: recovery verified; full fresh game qualification is running.**
 
 `Native` now provides static installation descriptions without a supervisor or debugger. Async `Game`
 sessions capture both registry collections in one launch, preserve each result independently, and
@@ -60,11 +60,12 @@ bounded evidence for this host and debugger.
 The supervisor now gives a session worker two seconds for orderly target termination before the
 existing forced shutdown fallback. Independent parent reaping remains required. Nonterminal wait
 statuses cannot establish disposal. Tests cover cooperative release and an unresponsive worker.
-Fresh Stellaris controls are still required to establish this correction on the exact game target.
+The fresh `game-exit-held` Stellaris control passed in 40.168 seconds: disposal was `Reaped`, the
+reservation was resolved, and both snapshots remained complete. The full matrix is being rerun.
 
-## Operator decision needed
+## Development recovery
 
-The blocking journal is:
+The cleared journal was:
 `/Library/Application Support/PDX Native/instances/13027-1789786975079797000.json`.
 
 Its original SHA-256 is `1a5eaf4897b543d9edadda7d89625f737482e5ac1603f733c4a3b0a6d14e7f0d`.
@@ -73,20 +74,16 @@ are absent, and the namespace lock is available. These facts do **not** confirm 
 harmless-fixture experiments also left defunct PIDs 13547 and 13596 under PID 1; they hold no Native
 reservation. No action against PID 1 or a system restart has been attempted.
 
-The proposed operator action is to preserve and remove **only this one blocking journal**, under
-the namespace lock and after verifying its unchanged identity. Keep the original report and journal
-as unconfirmed historical evidence, record the explicit approval and clearance, and do not mark the
-attempt disposed. No other reservation or process would change. This permits fresh qualification;
-it does not reap the defunct processes or grant live acceptance.
+The user approved clearance in the SDK-521 task. On 2026-09-19 UTC the agent verified the unchanged
+journal and current process state, retained its original bytes, and removed only that journal under
+the namespace lock. No other reservation or process changed. The original attempt still has
+unconfirmed disposal. The audit is in `.local/sdk-521-reservation-review/clearance-20260919T034943Z`.
 
-The [lifecycle contract](../design/lifecycle.md#platform-boundary-and-reservation) states: “A free OS lock, absent PID,
-or elapsed time never clears a reservation.” It also says: “Operator-assisted inspection/clearance is
-outside this API; do not delete a reservation to retry a failed attempt.” Explicit operator approval
-is required before this scoped clearance.
-
-After clearance, run the complete fresh candidate matrix, prepare a final qualification report,
-and request maintainer acceptance. Only then promote the exact implementation, run ordinary
-production controls, and publish the ready PR with `Closes SDK-521`.
+The user also replaced the earlier per-action approval rule with a
+[standing development policy](../development-policy.md): agents can recover disposable development
+state and promote verified changes while preserving unique prototype knowledge. Runtime disposal
+and admission checks remain enforced. Complete the fresh matrix, promote its matching record,
+run ordinary production controls, then publish the ready PR with `Closes SDK-521`.
 
 ## Retained evidence
 

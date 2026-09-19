@@ -1,5 +1,9 @@
 # Evidence preservation and migration limits
 
+The current [development policy](../development-policy.md) protects unique prototype and probe
+knowledge while permitting cleanup of disposable development artifacts. The migration history below
+records what was preserved; its older remote-preservation gate is not a routine cleanup approval gate.
+
 The canonical authored Native knowledge is in this repository's tracked `docs/`. Private identified bundles and full file manifests are in `.local/evidence/bundles/`. A retained second local copy is `/Users/jackson/Documents/PDX/evidence/native-2026-09-18/`, outside scratch/worktree/temp paths. Archive and manifest hashes were compared after copying; a representative owner capsule was restored from that second copy and its written files verified.
 
 The accepted SDK-479 policy calls for manifests and bulk release assets in a private evidence repository plus a second local copy. The connected GitHub account can see `pdx-foundry/native` and `pdx-foundry/atlas`, both public. No accessible `pdx-foundry/pdx-evidence` destination was established; organization listing returned only those two repositories. This migration creates no remote and publishes no mixed evidence. **Private remote preservation remains outstanding.** SDK-486 stays open; local success does not satisfy its remote completion gate.
@@ -42,4 +46,9 @@ Bundle creation excludes `.git` directory contents, `node_modules`, `__pycache__
 
 Native-only discovery pointers in Atlas and source-root forwarding documents now direct future agents here. Historical experiment sources, capsules, replay paths and Git evidence remain unchanged. Consumer-specific conclusions stay in Atlas. Frozen source/report files embedded in capsules remain historical authorities for the original run; changing them would break their hashes.
 
-No original raw evidence was deleted. Cleanup of scratch/worktree/temp sources supporting retained claims must wait for verified private remote preservation and dependency review. Keep superseded and failed evidence for retained qualifications/corrections. A future published capability must cite an admitted adapter/test and new qualification evidence, rather than treating migration or a candidate address as qualification.
+No original raw evidence was deleted during this migration. Before cleaning a historical source,
+verify that a usable copy preserves its unique knowledge and dependencies. A verified retained copy
+permits removal of redundant scratch/worktree/temp files under the development policy; remote
+preservation is not a prerequisite for routine development. Routine captures may be discarded once
+their useful findings are preserved. Published capability claims still need matching implementation
+and verification; migration or a candidate address alone does not establish support.
