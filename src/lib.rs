@@ -25,8 +25,8 @@ compile_error!("production cannot include test-support or maintainer-tools");
 pub mod test_support;
 
 pub use api::{
-    Availability, CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin, OpenError,
-    OpenRequest, Qualification, RegistryBounds, UnavailableReason,
+    Availability, CapabilityBounds, CapabilityReport, CapabilityRequest, ContextIdentity,
+    ContextOrigin, OpenError, OpenRequest, Qualification, RegistryBounds, UnavailableReason,
 };
 pub use api::{Engine, ReplayRequest};
 pub use evidence::{
@@ -46,3 +46,9 @@ pub use registry::{DiscoveryStatus, RegistryDescription, RegistryError};
 mod game;
 pub use evidence::registry::GameReadiness;
 pub use game::{Game, GameError, GameOptions, GameReport, RegistryAvailability};
+
+mod engine;
+pub use engine::analysis::{AnalysisContext, AnalysisError};
+pub use evidence::analysis::{
+    AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, AnalysisResult, Instruction,
+};

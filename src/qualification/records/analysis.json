@@ -1,0 +1,27 @@
+{
+  "accepted": [
+    {
+      "id": "sdk-527-m45-static-decode-v1",
+      "composition": "3b5b3f7f59963b19cf57decd6ab40a8894ed595eb794f846afcd9beaee71b4c5",
+      "evidence": [
+        {
+          "path": "sdk-527-qualification-01/qualified.json",
+          "bytes": 1623,
+          "sha256": "18b2c1e5cff6b4d0036587d5ca35f91b2dc2ceb4a0db68362beba328557c6079"
+        }
+      ]
+    },
+    {
+      "id": "sdk-527-m45-static-decode-v1-5d34e70c6a1d",
+      "composition": "5d34e70c6a1d7e86018a7b062e6fa244d0fcacd1b0a7aa93ed458b6e3608f301",
+      "evidence": [
+        {
+          "path": "sdk-527-qualification-02/qualified.json",
+          "bytes": 1623,
+          "sha256": "41ab037a570b7970f52dccbfa230219e1a50958076cf6e68f8b7da7f0b214cd5"
+        }
+      ]
+    }
+  ],
+  "withdrawn": []
+}

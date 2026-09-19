@@ -1,5 +1,7 @@
 use object::read::macho::{FatArch, MachOFatFile32, MachOFatFile64};
-use object::{Architecture, BinaryFormat, FileKind, Object, ObjectKind};
+use object::{
+    Architecture, BinaryFormat, FileKind, Object, ObjectKind, ObjectSection, SectionKind,
+};
 use sha2::{Digest, Sha256};
 
 use crate::OpenError;
@@ -17,19 +19,7 @@ pub(super) fn hash(bytes: &[u8]) -> String {
 }
 
 pub(super) fn identify(bytes: &[u8]) -> Result<ImageIdentity, OpenError> {
-    let kind = FileKind::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
-    let slice = match kind {
-        FileKind::MachOFat32 => {
-            let file = MachOFatFile32::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
-            select_arm64(file.arches(), bytes)?
-        }
-        FileKind::MachOFat64 => {
-            let file = MachOFatFile64::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
-            select_arm64(file.arches(), bytes)?
-        }
-        FileKind::MachO64 | FileKind::Pe64 => bytes,
-        _ => return Err(OpenError::UnsupportedTarget),
-    };
+    let slice = selected_slice(bytes)?;
     let file = object::File::parse(slice).map_err(|_| OpenError::MalformedExecutable)?;
     if file.kind() != ObjectKind::Executable {
         return Err(OpenError::UnsupportedTarget);
@@ -46,6 +36,60 @@ pub(super) fn identify(bytes: &[u8]) -> Result<ImageIdentity, OpenError> {
         architecture: file.architecture(),
         format: file.format(),
     })
+}
+
+pub(super) fn selected_slice(bytes: &[u8]) -> Result<&[u8], OpenError> {
+    let kind = FileKind::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
+    match kind {
+        FileKind::MachOFat32 => {
+            let file = MachOFatFile32::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
+            select_arm64(file.arches(), bytes)
+        }
+        FileKind::MachOFat64 => {
+            let file = MachOFatFile64::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
+            select_arm64(file.arches(), bytes)
+        }
+        FileKind::MachO64 | FileKind::Pe64 => Ok(bytes),
+        _ => Err(OpenError::UnsupportedTarget),
+    }
+}
+
+pub(super) fn code_range(
+    bytes: &[u8],
+    address: u64,
+    length: u64,
+) -> Result<Vec<u8>, crate::AnalysisError> {
+    use crate::AnalysisError;
+    if length == 0 || length > 4096 || !length.is_multiple_of(4) || !address.is_multiple_of(4) {
+        return Err(AnalysisError::InvalidRange);
+    }
+    let end = address
+        .checked_add(length)
+        .ok_or(AnalysisError::InvalidRange)?;
+    let slice = selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
+    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
+    let mut matched = None;
+    for section in file.sections() {
+        let section_end = section
+            .address()
+            .checked_add(section.size())
+            .ok_or(AnalysisError::InvalidRange)?;
+        if section.kind() != SectionKind::Text || address < section.address() || end > section_end {
+            continue;
+        }
+        if matched.is_some() {
+            return Err(AnalysisError::InvalidRange);
+        }
+        matched = Some(
+            section
+                .data_range(address, length)
+                .map_err(|_| AnalysisError::InvalidRange)?
+                .filter(|data| data.len() as u64 == length)
+                .ok_or(AnalysisError::InvalidRange)?
+                .to_vec(),
+        );
+    }
+    matched.ok_or(AnalysisError::InvalidRange)
 }
 
 fn select_arm64<'a, A: FatArch>(arches: &[A], bytes: &'a [u8]) -> Result<&'a [u8], OpenError> {

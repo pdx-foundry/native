@@ -8,3 +8,12 @@ pub(super) fn resolve(
         _ => Err(crate::OpenError::UnsupportedTarget),
     }
 }
+
+pub(super) fn decoder(
+    architecture: object::Architecture,
+) -> Result<super::Decoder, crate::OpenError> {
+    match architecture {
+        object::Architecture::Aarch64 => Ok(evidence::analysis::decode_arm64),
+        _ => Err(crate::OpenError::UnsupportedTarget),
+    }
+}

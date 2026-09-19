@@ -98,7 +98,7 @@ fn fixed_cases_report_independent_qualification_and_availability() {
 fn requests_must_fit_both_declared_and_accepted_bounds() {
     let context = engine(SyntheticCase::Accepted);
     for name in ["", "technology", "TRADITIONS", "tradition", "traditions "] {
-        let report = context.capability(&CapabilityRequest {
+        let report = context.capability(&CapabilityRequest::Registry {
             registry: name.into(),
         });
         assert_eq!(report.qualification, Qualification::OutsideSupport);
@@ -106,14 +106,15 @@ fn requests_must_fit_both_declared_and_accepted_bounds() {
     }
     let narrow = engine(SyntheticCase::NarrowQualification);
     let outside = narrow.capability(&CapabilityRequest::default());
-    assert_eq!(outside.bounds.registries.len(), 2);
-    assert_eq!(
-        outside.accepted_bounds[0].registries,
-        ["tradition_categories"]
+    assert!(
+        matches!(&outside.bounds, pdx_native::CapabilityBounds::Registry(bounds) if bounds.registries.len() == 2)
+    );
+    assert!(
+        matches!(&outside.accepted_bounds[0], pdx_native::CapabilityBounds::Registry(bounds) if bounds.registries == ["tradition_categories"])
     );
     assert_eq!(
         narrow
-            .capability(&CapabilityRequest {
+            .capability(&CapabilityRequest::Registry {
                 registry: "tradition_categories".into()
             })
             .availability,
@@ -138,7 +139,7 @@ fn real_strategy_resolution_never_becomes_available_in_a_synthetic_context() {
 fn each_registry_requires_its_own_applicable_acceptance() {
     let context = engine(SyntheticCase::SplitQualifications);
     for name in ["traditions", "tradition_categories"] {
-        let report = context.capability(&CapabilityRequest {
+        let report = context.capability(&CapabilityRequest::Registry {
             registry: name.into(),
         });
         assert_eq!(report.qualification, Qualification::Qualified);
@@ -146,7 +147,7 @@ fn each_registry_requires_its_own_applicable_acceptance() {
     }
     assert_eq!(
         context
-            .capability(&CapabilityRequest {
+            .capability(&CapabilityRequest::Registry {
                 registry: "technology".into()
             })
             .qualification,

@@ -20,6 +20,11 @@ PDX Native is the canonical home for reusable engine integration knowledge. This
 
 ## Ownership and status
 
+SDK-527 adds a [qualified static decode control](design/static-analysis.md) with retained-byte
+replay. Its shared build changes invalidate the preceding live-session composition; the live
+records below remain historical until a separate requalification. Static acceptance grants no
+live authority.
+
 The [bounded replay implementation](design/replay.md) adds a game-free Rust consumer flow for the
 retained SDK-483 window. Its tests govern retained derivation behavior, with explicit synthetic and
 historical origins. Public live admission uses matching tracked qualification records. The maintainer-only

@@ -16,6 +16,8 @@ ALLOWED = {
     "block-buffer", "crypto-common", "generic-array", "typenum", "version_check", "cfg-if",
     "cpufeatures", "libc", "schemars", "schemars_derive", "dyn-clone",
     "ref-cast", "ref-cast-impl", "serde_derive_internals",
+    # Recorded-byte disassembly only; cc/tool detection runs at build time, not during replay.
+    "capstone", "capstone-sys", "static_assertions", "cc", "find-msvc-tools", "shlex",
 }
 
 
@@ -23,7 +25,7 @@ def check_graph(metadata):
     packages = {row["id"]: row for row in metadata["packages"]}
     nodes = {row["id"]: row for row in metadata["resolve"]["nodes"]}
     evidence = next(row for row in packages.values() if row["name"] == "pdx-native-evidence")
-    if {row["name"] for row in evidence["dependencies"]} != {"serde", "serde_json", "sha2", "schemars"}:
+    if {row["name"] for row in evidence["dependencies"]} != {"serde", "serde_json", "sha2", "schemars", "capstone"}:
         raise ValueError("evidence direct dependencies changed; review the replay boundary")
     if evidence["features"] or any(target["kind"] != ["lib"] for target in evidence["targets"]):
         raise ValueError("evidence must remain a recorded-data library without features or build/launch targets")

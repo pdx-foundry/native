@@ -16,7 +16,7 @@ pub(crate) fn evaluate(
         origin,
         qualification: Qualification::Incomplete,
         availability: Availability::Unavailable,
-        bounds: inputs.bounds.clone(),
+        bounds: crate::CapabilityBounds::Registry(inputs.bounds.clone()),
         accepted_bounds: Vec::new(),
         reasons: inputs.prerequisites.clone(),
         qualification_records: Vec::new(),
@@ -100,7 +100,7 @@ pub(crate) fn evaluate(
     }
     report.accepted_bounds = applicable
         .iter()
-        .map(|record| record.bounds.clone())
+        .map(|record| crate::CapabilityBounds::Registry(record.bounds.clone()))
         .collect();
     // One accepted record must cover the whole request; combining partial records could invent
     // a composition or observation window that was never qualified.
@@ -125,5 +125,5 @@ pub(crate) fn evaluate(
 }
 
 fn covers(bounds: &RegistryBounds, request: &CapabilityRequest) -> bool {
-    bounds.registries.contains(&request.registry)
+    matches!(request, CapabilityRequest::Registry { registry } if bounds.registries.contains(registry))
 }

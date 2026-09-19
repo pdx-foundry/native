@@ -9,7 +9,7 @@ use crate::{OpenError, UnavailableReason};
 
 use crate::qualification::ContentIdentity;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct Installation {
     locator: PathBuf,
     executable: PathBuf,
@@ -46,19 +46,26 @@ impl Installation {
         ))
     }
 
-    pub fn integrity(&self) -> Option<UnavailableReason> {
+    pub fn executable_bytes(&self) -> Result<Vec<u8>, UnavailableReason> {
         match fs::canonicalize(&self.locator) {
             Ok(current) if current != self.executable => {
-                return Some(UnavailableReason::TargetChanged);
+                return Err(UnavailableReason::TargetChanged);
             }
-            Err(_) => return Some(UnavailableReason::InputUnavailable),
+            Err(_) => return Err(UnavailableReason::InputUnavailable),
             _ => {}
         }
         let Ok(bytes) = fs::read(&self.executable) else {
-            return Some(UnavailableReason::InputUnavailable);
+            return Err(UnavailableReason::InputUnavailable);
         };
         if hash(&bytes) != self.executable_hash {
-            return Some(UnavailableReason::TargetChanged);
+            return Err(UnavailableReason::TargetChanged);
+        }
+        Ok(bytes)
+    }
+
+    pub fn integrity(&self) -> Option<UnavailableReason> {
+        if let Err(reason) = self.executable_bytes() {
+            return Some(reason);
         }
         match (&self.content, content_snapshot(&self.root)) {
             (Ok(expected), Ok(current)) if *expected == current => None,

@@ -100,6 +100,9 @@ pub(super) fn synthetic_variation(
         method: MethodId::TraditionRegistryKeys,
         strategy: targets::StrategyId::MacSuspendedChildLoaderEntry,
         content: "{}",
+        analysis: targets::lookup(&super::targets::test_identity())
+            .unwrap()
+            .analysis,
     };
     assemble(
         &ImageIdentity {
@@ -112,4 +115,44 @@ pub(super) fn synthetic_variation(
         &recipe,
     )
     .unwrap()
+}
+
+pub(super) fn analysis(
+    image: &ImageIdentity,
+    installation: super::installation::Installation,
+) -> Result<super::BoundAnalysis, OpenError> {
+    let recipe = targets::lookup(image)?.analysis;
+    let decoder = machine::decoder(image.architecture)?;
+    let control = super::analysis::DecodeControl {
+        address: recipe.address,
+        length: recipe.length,
+        code: crate::ArtifactReference {
+            path: "sdk-527/planet-getter.bin".into(),
+            sha256: recipe.code_sha256.into(),
+            bytes: recipe.length,
+        },
+    };
+    let composition = hash(
+        &serde_json::to_vec(&serde_json::json!({
+            "operation": "static-decode", "executable": image.executable, "slice": image.slice,
+            "recipe": recipe.revision, "control": control,
+            "method": evidence::analysis::METHOD, "decoder": evidence::analysis::DECODER,
+            "implementation": env!("PDX_NATIVE_ANALYSIS"),
+        }))
+        .expect("static composition identity"),
+    );
+    let inputs = crate::qualification::analysis::AnalysisInputs {
+        composition,
+        executable: image.executable.clone(),
+        slice: image.slice.clone(),
+        method: evidence::analysis::METHOD,
+        decoder: evidence::analysis::DECODER,
+        implementation: env!("PDX_NATIVE_ANALYSIS").into(),
+    };
+    Ok(super::BoundAnalysis::new(
+        inputs,
+        control,
+        decoder,
+        installation,
+    ))
 }

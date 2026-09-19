@@ -1,0 +1,79 @@
+use std::sync::Mutex;
+
+use super::{binary, installation::Installation};
+use crate::{AnalysisError, UnavailableReason, qualification::analysis::AnalysisInputs};
+
+pub(crate) type Decoder =
+    fn(&[u8], u64) -> Result<Vec<evidence::analysis::Instruction>, evidence::analysis::DecodeError>;
+
+/// All data and behavior selected by composition for the one implemented analysis method.
+#[derive(Debug)]
+pub(crate) struct BoundAnalysis {
+    pub inputs: AnalysisInputs,
+    pub control: DecodeControl,
+    pub decoder: Decoder,
+    installation: Installation,
+    invalidated: Mutex<Option<UnavailableReason>>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct DecodeControl {
+    pub address: u64,
+    pub length: u64,
+    pub code: crate::ArtifactReference,
+}
+
+impl BoundAnalysis {
+    pub(super) fn new(
+        inputs: AnalysisInputs,
+        control: DecodeControl,
+        decoder: Decoder,
+        installation: Installation,
+    ) -> Self {
+        Self {
+            inputs,
+            control,
+            decoder,
+            installation,
+            invalidated: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn read(&self) -> Result<Vec<u8>, AnalysisError> {
+        let mut invalidated = self
+            .invalidated
+            .lock()
+            .expect("static executable integrity lock");
+        if let Some(reason) = &*invalidated {
+            return Err(AnalysisError::Unavailable {
+                reasons: vec![reason.clone()],
+            });
+        }
+        let bytes = self.installation.executable_bytes().and_then(|bytes| {
+            let image = binary::identify(&bytes).map_err(|_| UnavailableReason::TargetChanged)?;
+            if image.executable != self.inputs.executable || image.slice != self.inputs.slice {
+                return Err(UnavailableReason::TargetChanged);
+            }
+            Ok(bytes)
+        });
+        let bytes = match bytes {
+            Ok(bytes) => bytes,
+            Err(reason) => {
+                *invalidated = Some(reason.clone());
+                return Err(AnalysisError::Unavailable {
+                    reasons: vec![reason],
+                });
+            }
+        };
+        let code = binary::code_range(&bytes, self.control.address, self.control.length)?;
+        if binary::hash(&code) != self.control.code.sha256
+            || code.len() as u64 != self.control.code.bytes
+        {
+            return Err(AnalysisError::InvalidRange);
+        }
+        Ok(code)
+    }
+}
+
+#[cfg(test)]
+mod tests;
