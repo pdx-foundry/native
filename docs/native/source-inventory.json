@@ -669,6 +669,29 @@
       "archiveBytes": 11023558,
       "fileManifest": ".local/evidence/bundles/sdk-518-registry-review-production.manifest.json",
       "manifestSha256": "e2bbf7d73d1a6169783a32ea44cced83933de23a725192c19c9ad9ab3ea8577b"
+    },
+    {
+      "id": "sdk-521-session-development-v1",
+      "createdAt": "2026-09-19T03:14:34.023402+00:00",
+      "archive": "sdk-521-session-development-v1-daff56c710c45c4e.tar.gz",
+      "sha256": "daff56c710c45c4e086310120ef006192a18beb39454369a4d76e714ac3ec676",
+      "sources": [
+        {
+          "path": "/Users/jackson/Developer/pdx-native/.local/evidence/staging/sdk-521-session-development-v1",
+          "archivePath": "sdk-521-session-development-v1",
+          "gitHead": "f70dbd47f1d0ac2089d9b8f2d836eadf0478d04c",
+          "note": "SDK-521 incomplete qualification, unconfirmed game-exit disposal and scoped operator-clearance review; includes corrected shutdown source, full checks and harmless debugger controls"
+        }
+      ],
+      "missingSources": [],
+      "excluded": [
+        "__pycache__",
+        ".DS_Store"
+      ],
+      "files": 14619,
+      "archiveBytes": 25569240,
+      "fileManifest": ".local/evidence/bundles/sdk-521-session-development-v1.manifest.json",
+      "manifestSha256": "3a5cb89b0010fc557d4f4ad8a0e941afb98e2fa6faf7d885ab2c46ccd76bcb67"
     }
   ]
 }

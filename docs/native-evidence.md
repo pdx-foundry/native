@@ -25,6 +25,9 @@ retained SDK-483 window. Its tests govern retained derivation behavior, with exp
 historical origins. Public live admission uses the reviewed replacement registry qualification. The maintainer-only
 [candidate capture path](design/candidate-observations.md) can now produce fresh recorded evidence
 for the same replay validator; capture success does not grant qualification. SDK-518 established bounded registry questions over shared execution. SDK-521 replaces the live consumer surface with [installation queries and paused Game sessions](design/live-observations.md); its changed implementation requires separate acceptance.
+The [Game session qualification status](native/game-session-qualification.md) retains the current
+checks, a failed game-exit control, its shutdown correction, and the scoped operator-clearance decision
+needed before fresh game qualification can continue. No SDK-521 acceptance has been added.
 The [earlier observation qualification report](native/live-observation-qualification.md) is superseded
 for promotion. The [fresh registry qualification report](native/registry-qualification.md) retains
 30 passing candidate controls and maintainer acceptance before source promotion. The
