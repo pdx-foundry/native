@@ -19,6 +19,16 @@ COMMON = ('normal', 'reverse', 'cancel', 'caller-loss', 'timeout', 'idle-timeout
 FAULTS = ('missing-hook', 'late-hook', 'dropped-record', 'missing-terminal', 'access-failure', 'worker-loss')
 
 
+def verify_reads(stderr, scenario, selected):
+    query_controls = ('normal', 'reverse', 'read-cancel', 'close-cancel', 'final-retention-failure', 'snapshot-retention-failure', 'game-exit-held', 'missing-hook', 'late-hook', 'dropped-record', 'missing-terminal', 'access-failure')
+    if scenario not in query_controls:
+        return
+    assert 'readiness: ' in stderr, 'query control did not return a Game'
+    errors = {name for name in NAMES if any(line.startswith(name + ': ') for line in stderr.splitlines())}
+    expected = {selected} if scenario in ('missing-hook', 'late-hook', 'access-failure', 'snapshot-retention-failure') else set()
+    assert errors == expected, f'Unexpected query failures: {errors}; expected {expected}'
+
+
 def intervene(retention, scenario, process):
     until = time.monotonic() + 160
     while time.monotonic() < until:
@@ -32,7 +42,7 @@ def intervene(retention, scenario, process):
                     os.kill(pid, signal.SIGKILL)
                     (attempt / 'external-control.json').write_text(json.dumps(dict(scenario=scenario, pid=pid)))
                     return
-                phase = 'snapshots' if scenario == 'snapshot-retention-failure' else 'final' 
+                phase = 'snapshots' if scenario == 'snapshot-retention-failure' else 'final'
                 destination = attempt / phase / 'traditions'
                 destination.mkdir(parents=True, exist_ok=False)
                 (destination / 'descriptor.json').write_text('external evidence-retention failure control')
@@ -105,6 +115,7 @@ def main():
                     public = subprocess.run(['cargo', 'run', '--quiet', '--example', 'registry-replay', '--', str(attempt / 'final' / name), str(attempt / 'final' / name / 'descriptor.ref.json')], cwd=ROOT, check=True, text=True, capture_output=True)
                     assert json.loads(public.stdout) == replay[name]
                 stdout = (root / f'{case}.stdout').read_text()
+                verify_reads((root / f'{case}.stderr').read_text(), scenario, selected)
                 live = json.loads(stdout) if stdout.strip() else None
                 if live:
                     for name, captured in live['registries'].items():
