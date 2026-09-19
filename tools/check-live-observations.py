@@ -66,7 +66,7 @@ def main():
     root.mkdir(mode=0o700, exist_ok=False)
     subprocess.run(['cargo', 'build', '--locked', '--release', '--features', 'production', '--example', 'live'], cwd=ROOT, check=True)
     binary = root / 'live'
-    shutil.copyfile(ROOT / 'target/release/examples/live', binary)
+    shutil.copy2(ROOT / 'target/release/examples/live', binary)
     for name in ('src', 'crates', 'examples'):
         shutil.copytree(ROOT / name, root / 'source' / name, ignore=shutil.ignore_patterns('__pycache__', '.DS_Store'))
     for name in ('Cargo.toml', 'Cargo.lock', 'build.rs'):
@@ -74,7 +74,7 @@ def main():
     ordinary = Path.home() / 'Documents/Paradox Interactive/Stellaris'
     sentinel = subprocess.Popen(['/bin/sleep', '3600'])
     try:
-        for scenario in ('normal', 'unsupported', 'incomplete', 'cancel', 'caller-loss', 'timeout', 'worker-loss'):
+        for scenario in ('normal', 'unsupported', 'unavailable', 'incomplete', 'cancel', 'caller-loss', 'timeout', 'worker-loss'):
             before = lifecycle.snapshot(ordinary)
             (root / f'{scenario}.ordinary-before.json').write_text(json.dumps(before))
             retention = root / scenario
@@ -82,11 +82,14 @@ def main():
             output = None
             mode = scenario if scenario in ('cancel', 'caller-loss', 'timeout') else 'normal'
             registry = 'technology' if scenario == 'unsupported' else args.registry
+            environment = os.environ.copy()
+            if scenario == 'unavailable':
+                environment['DEVELOPER_DIR'] = str(root / 'absent-developer-directory')
             started = time.monotonic()
             try:
                 with (root / f'{scenario}.stdout').open('w') as stdout, (root / f'{scenario}.stderr').open('w') as stderr:
-                    process = subprocess.Popen([str(binary), str(args.installation), str(retention), registry, mode], stdout=stdout, stderr=stderr)
-                    if scenario != 'unsupported':
+                    process = subprocess.Popen([str(binary), str(args.installation), str(retention), registry, mode], stdout=stdout, stderr=stderr, env=environment)
+                    if scenario not in ('unsupported', 'unavailable'):
                         deadline = time.monotonic() + 30
                         while output is None:
                             attempts = list(retention.glob('registry-*'))
@@ -99,10 +102,11 @@ def main():
                     if scenario in ('incomplete', 'worker-loss'):
                         intervene(output, scenario, process)
                     status = process.wait(timeout=240)
-                if scenario == 'unsupported':
+                if scenario in ('unsupported', 'unavailable'):
                     assert status != 0 and not list(retention.iterdir())
-                    assert 'Unsupported' in (root / f'{scenario}.stderr').read_text()
-                    print('unsupported: unknown registry refused before allocation', flush=True)
+                    expected = 'Unsupported' if scenario == 'unsupported' else 'PrerequisiteMissing'
+                    assert expected in (root / f'{scenario}.stderr').read_text()
+                    print(f'{scenario}: refused before allocation', flush=True)
                     continue
                 assert status == 0, (root / f'{scenario}.stderr').read_text()
                 owner = lifecycle.wait_report(output / 'report.json')
