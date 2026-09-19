@@ -3,7 +3,7 @@
 Rust bridge to Stellaris.
 
 The library identifies exact installations, reports capability admission, and replays the bounded
-historical registration/category-read window. The live consumer API asks `get_registry("traditions")` or `get_registry("tradition_categories")`; fresh qualification and maintainer acceptance remain pending. Native owns supervision, private content, and capture; callers configure their supervisor command and retention directory once. See [registry queries](docs/design/live-observations.md).
+historical registration/category-read window. The live consumer API asks `get_registry_items("traditions")` or `get_registry_items("tradition_categories")`; the [fresh qualification report](docs/native/registry-qualification.md) awaits maintainer acceptance. Native owns supervision, private content, and capture; callers configure their supervisor command and retention directory once. See [registry queries](docs/design/live-observations.md).
 The optional maintainer API runs suspended candidate lifecycle attempts inside a consumer-supplied
 supervisor process; Native distributes no runtime executable. An Atlas-style caller uses `Engine::replay` with a relocatable artifact
 root and a pinned descriptor reference.

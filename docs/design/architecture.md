@@ -3,7 +3,7 @@
 Status: implementation design supporting the [Native specification](../specs/native.md). The
 [bounded replay foundation](replay.md) is implemented through the public interface and an isolated
 evidence package. [Capability admission](admission.md) now implements exact-target composition and
-qualification reporting. Maintainer candidate lifecycle and bounded observation capture are implemented through a consumer-hosted supervisor; public live operations and production qualification remain unavailable.
+qualification reporting. The public registry-query interface and maintainer capture methods share consumer-hosted supervision. Production admission remains unavailable pending fresh registry qualification and maintainer acceptance.
 The full layout below describes what to build; it does not qualify another target.
 
 ## Design position
@@ -28,6 +28,7 @@ Cargo.toml                         pdx-native package and workspace membership
 src/
   lib.rs                           explicit exports of the supported interface
   supervisor.rs                    public consumer-hosted supervisor entry point
+  registry.rs                      configured registry client, jobs, and results
   api/                             Engine, Job, semantic request/result types
   protocol/                        private owner/worker messages and handshake
   session/                         context binding, operation admission, job coordination
@@ -69,6 +70,7 @@ crates/
       records.rs                   shared evidence/observation types and format identity
       stream.rs                    pure sequence, ordering and terminal integrity rules
       replay.rs                    retained-data derivations; no live callbacks
+      registry.rs                  registry snapshot derivation and opaque provenance
       store.rs                     artifact reads, hashes, restore and locator mapping
 tests/
   contract.rs                      public request/result behavior
@@ -82,12 +84,13 @@ tools/                            maintainer evidence/qualification commands
 .local/evidence/                   ignored raw captures and restored working material
 ```
 
-The main library contains the shared live implementation. Consumers such as Atlas start their
-own dedicated supervisor process and call Native's documented entry point inside it. Native owns
-the protocol, reservation, target checks, resource lifetime, and disposal. The consumer owns
-process startup, scheduling, and presentation. The maintainer Cargo example demonstrates both
-roles; it is not a distributed Native runtime executable. See [candidate lifecycle](lifecycle.md)
-for the implemented integration and lifetime contract.
+The main library contains the shared live implementation. Consumers such as Atlas supply an
+executable command with a dedicated role that calls `supervisor::serve`. Native starts and reaps that
+consumer-owned executable for each query. Native also owns the protocol, reservation, target checks,
+resource lifetime, and disposal. The consumer owns application scheduling and presentation. The
+[registry consumer](live-observations.md) configures hosting once and asks `get_registry_items(name)`;
+maintainer examples retain explicit pipe-based integration for investigation. No Native runtime
+executable is distributed.
 
 The connection checks the linked Native build identity, not a Native helper executable path.
 The evidence package remains a pinned workspace dependency and must also be published/versioned

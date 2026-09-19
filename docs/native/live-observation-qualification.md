@@ -2,7 +2,7 @@
 
 **Superseded for promotion:** the consumer contract has changed to registry retrieval. These retained
 early-observation controls remain historical evidence; they do not qualify the revised implementation.
-Production acceptance remains empty.
+Production acceptance remains empty. See the current [registry qualification report](registry-qualification.md).
 
 **Status: awaiting maintainer acceptance.** The public API and shared implementation are committed at
 `00a873bb43dbc199d9102e238be5af94be580aa1`. The tracked acceptance registry is still empty. This report requests

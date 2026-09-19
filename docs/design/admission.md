@@ -20,7 +20,7 @@ unregistered identities are unknown. Malformed images and access failures remain
 The host-neutral M45-observe record refers to one typed recipe. The composer resolves shared
 binding declarations and machine/strategy revisions once. The compiled macOS ARM64 resolver supplies the implemented strategy and its actual worker package.
 Other hosts refuse it. Composition carries the selected machine, bindings, content prerequisites,
-and executable/slice identities into shared execution. See [live observations](live-observations.md).
+and executable/slice identities into shared execution. See [registry queries](live-observations.md).
 
 ## Admission authority
 

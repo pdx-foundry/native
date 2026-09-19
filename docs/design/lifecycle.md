@@ -8,7 +8,7 @@ There is no installed Native owner executable or helper search path.
 ## Integration
 
 The ordinary `supervisor::serve` entry point now uses the shared owner after ordinary admission.
-No acceptance is bundled yet; see [live observations](live-observations.md). `investigation::{connect, serve}` is a separate `maintainer-tools` surface producing
+The public registry client starts and reaps the consumer-supplied supervisor command and manages its private pipes. No acceptance is bundled yet; see [registry queries](live-observations.md). `investigation::{connect, serve}` is a separate `maintainer-tools` surface producing
 only `InvestigationReport` and `CandidateCapture`. It cannot construct a supported replay result or
 change qualification authority. Lifecycle-only captures have their own versioned report format. The separate
 [candidate observation path](candidate-observations.md) additionally emits evidence descriptors

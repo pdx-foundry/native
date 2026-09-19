@@ -26,7 +26,8 @@ historical origins. Public live admission remains unavailable. The maintainer-on
 [candidate capture path](design/candidate-observations.md) can now produce fresh recorded evidence
 for the same replay validator; capture success does not grant qualification. SDK-518 now exposes [registry questions](design/live-observations.md) over shared execution.
 The [earlier observation qualification report](native/live-observation-qualification.md) is superseded
-for promotion; the revised registry implementation requires fresh evidence and maintainer acceptance. The capability pages below
+for promotion. The [fresh registry qualification report](native/registry-qualification.md) retains
+30 passing candidate controls and awaits maintainer acceptance before source promotion. The capability pages below
 retain the historical experiments and their wider limits.
 
 Atlas retains authoring-rule conclusions and extraction fixtures/coverage. Its consumer pages remain at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`; the historical capsules copied here retain those fixtures to keep their native evidence replayable. This does not make Native the Atlas rule database.
