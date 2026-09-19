@@ -41,7 +41,7 @@ pub(crate) struct Hosting {
     options: GameOptions,
 }
 impl Hosting {
-    pub(crate) fn new(command: Command, options: GameOptions) -> Result<Self, GameError> {
+    pub(crate) fn new(command: Command, mut options: GameOptions) -> Result<Self, GameError> {
         if !options.retention_directory.is_absolute()
             || !options.retention_directory.is_dir()
             || !(1..=180).contains(&options.startup_seconds)
@@ -51,6 +51,10 @@ impl Hosting {
                 "Expected an existing absolute retention directory and 1–180 second budgets".into(),
             ));
         }
+        options.retention_directory = options
+            .retention_directory
+            .canonicalize()
+            .map_err(|error| GameError::InvalidOptions(error.to_string()))?;
         Ok(Self {
             command: Arc::new(Mutex::new(command)),
             options,
@@ -418,6 +422,22 @@ mod tests {
             state,
         )
     }
+    #[cfg(unix)]
+    #[test]
+    fn retention_alias_is_canonicalized_before_the_owner_report_join() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("captures");
+        std::fs::create_dir(&target).unwrap();
+        let alias = root.path().join("alias");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let hosting =
+            Hosting::new(Command::new("must-not-start"), GameOptions::new(alias)).unwrap();
+        assert_eq!(
+            hosting.options.retention_directory,
+            target.canonicalize().unwrap()
+        );
+    }
+
     #[tokio::test]
     async fn cancelled_close_keeps_cleanup_requested_and_close_is_idempotent() {
         let (mut game, commands, state) = game();
