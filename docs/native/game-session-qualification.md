@@ -1,6 +1,6 @@
 # SDK-521 Game session qualification
 
-**Status: candidate verification passed under the standing development policy; ordinary production controls pending.**
+**Status: candidate and ordinary production verification passed under the standing development policy.**
 
 `Native` provides installation-bound registry descriptions without launching a game or probing a
 debugger. Async `Game` captures both supported collections in one process and stays paused at a
@@ -107,7 +107,8 @@ The maintainer’s [standing development policy](../development-policy.md) autho
 and promote project changes without another approval. The matching record
 `sdk-521-m45-paused-registry-session-v1` cites the immutable tracked
 [verification summary](game-session-qualification.json). This is agent verification under that policy,
-not a claim of a new human qualification review. Ordinary production controls follow promotion.
+not a claim of a new human qualification review. All 15 [ordinary production controls](game-session-production.md)
+passed after promotion.
 
 The candidate and production consumers use the same owner thread, supervisor, worker, capture, replay,
 and cleanup paths. Production adds tracked admission and `Live` result origin; deliberate fault controls
