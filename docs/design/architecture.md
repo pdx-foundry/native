@@ -86,9 +86,9 @@ tools/                            maintainer evidence/qualification commands
 
 The main library contains the shared live implementation. Consumers such as Atlas supply an
 executable command with a dedicated role that calls `supervisor::serve`. Native starts and reaps that
-consumer-owned executable for each query. Native also owns the protocol, reservation, target checks,
+consumer-owned executable for each Game session. Native also owns the protocol, reservation, target checks,
 resource lifetime, and disposal. The consumer owns application scheduling and presentation. The
-[registry consumer](live-observations.md) configures hosting once and asks `get_registry_items(name)`;
+[registry consumer](live-observations.md) binds a `Native` installation, configures hosting once, and starts a paused `Game` to ask `get_registry_items(name)`;
 maintainer examples retain explicit pipe-based integration for investigation. No Native runtime
 executable is distributed.
 

@@ -107,6 +107,7 @@ pub(crate) struct Observer {
     tool: Tool,
     worker: Option<Child>,
     granted: bool,
+    pause_generation: u64,
     launched: Option<Instant>,
     pub(crate) exited: Option<i64>,
 }
@@ -124,6 +125,7 @@ impl Observer {
             content,
             expected_tool,
             registry,
+            session,
             bindings,
             machine,
             package,
@@ -162,6 +164,7 @@ impl Observer {
             bindings: bindings.clone(),
             machine: machine.clone(),
             registry: registry.cloned(),
+            session,
             fixture: capture::FIXTURE_FILE.into(),
             control: serde_json::to_value(spec.control)?.as_str().unwrap().into(),
             deadline_seconds: spec.deadline_seconds,
@@ -173,6 +176,7 @@ impl Observer {
                 tool,
                 worker: None,
                 granted: false,
+                pause_generation: 0,
                 launched: None,
                 exited: None,
             },
@@ -286,6 +290,55 @@ impl Observer {
             ));
         }
         Ok(exited)
+    }
+
+    pub(crate) fn pause_witness(
+        &mut self,
+    ) -> Result<Option<observation::PauseWitness>, SupervisorError> {
+        let path = self.output.join("session-paused.json");
+        if !path.try_exists()? {
+            return Ok(None);
+        }
+        self.pause_generation += 1;
+        let check = observation::PauseCheck {
+            attempt: self.request.attempt.clone(),
+            game: self.request.game,
+            generation: self.pause_generation,
+        };
+        let pending = self.output.join("pause-check.pending");
+        capture::write_json(&pending, &check)?;
+        fs::rename(&pending, self.output.join("pause-check.json"))?;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let witness: observation::PauseWitness =
+                serde_json::from_slice(&capture::read_bounded(&path, observation::MAX_RECORD)?)?;
+            if witness.attempt != self.request.attempt
+                || witness.game != self.request.game
+                || self.worker.as_ref().map(Child::id) != Some(witness.worker)
+                || witness.thread == 0
+                || witness.returned.is_empty()
+                || witness.returned.iter().any(|name| {
+                    !self
+                        .request
+                        .session
+                        .as_ref()
+                        .is_some_and(|session| session.registries.contains_key(name))
+                })
+            {
+                return Err(SupervisorError("Invalid session pause witness".into()));
+            }
+            // A fresh response proves the bound debugger still holds the same stopped frame.
+            // macOS Mach debugger suspension does not reliably report the signal-stop SSTOP state.
+            if witness.generation == self.pause_generation {
+                return Ok(Some(witness));
+            }
+            if Instant::now() >= deadline {
+                return Err(SupervisorError(
+                    "Debugger pause confirmation timed out".into(),
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     fn validate_hello(&self, hello: &WorkerHello, pid: u32) -> Result<(), SupervisorError> {
@@ -458,6 +511,7 @@ mod tests {
                 bindings: BTreeMap::new(),
                 machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
                 registry: None,
+                session: None,
                 fixture: "fixture".into(),
                 control: "normal".into(),
                 deadline_seconds: 1,
@@ -471,6 +525,7 @@ mod tests {
             },
             worker: Some(command.process_group(0).spawn().unwrap()),
             granted: false,
+            pause_generation: 0,
             launched: Some(Instant::now()),
             exited: None,
         }
@@ -495,6 +550,32 @@ mod tests {
         let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
         observer.stop().unwrap();
         assert_eq!(observer.exited, Some(-9));
+    }
+
+    #[test]
+    fn pause_confirmation_rejects_a_foreign_game_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
+        capture::write_json(
+            &root.path().join("session-paused.json"),
+            &observation::PauseWitness {
+                attempt: "unit".into(),
+                game: 999,
+                worker: observer.worker.as_ref().unwrap().id(),
+                thread: 7,
+                returned: vec!["traditions".into()],
+                generation: 0,
+            },
+        )
+        .unwrap();
+        assert!(
+            observer
+                .pause_witness()
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid session pause witness")
+        );
+        observer.stop().unwrap();
     }
 
     #[test]

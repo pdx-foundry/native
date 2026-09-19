@@ -174,22 +174,23 @@ fn unreadable_content_is_not_a_demonstrated_mismatch() {
     assert!(report.qualification_records.is_empty());
 }
 
-#[test]
-fn accepted_synthetic_context_never_starts_a_live_registry_query() {
+#[tokio::test]
+async fn accepted_synthetic_context_never_starts_a_live_registry_query() {
     let root = tempfile::tempdir().unwrap();
-    let mut native = engine(SyntheticCase::Accepted)
+    let native = engine(SyntheticCase::Accepted)
         .with_supervisor(
             std::process::Command::new("must-not-execute"),
-            pdx_native::RegistryOptions {
+            pdx_native::GameOptions {
                 retention_directory: root.path().into(),
-                deadline_seconds: None,
+                startup_seconds: 180,
+                idle_seconds: 180,
             },
         )
         .unwrap();
-    let error = native.get_registry_items("traditions").unwrap_err();
+    let error = native.start_game().await.unwrap_err();
     assert!(error.to_string().contains("Synthetic"));
     assert!(matches!(
-        native.get_registry_items("technology"),
+        native.get_registry("technology"),
         Err(pdx_native::RegistryError::Unsupported { .. })
     ));
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
@@ -203,9 +204,10 @@ fn registry_options_refuse_invalid_deadlines_and_retention_locations() {
             engine(SyntheticCase::Accepted)
                 .with_supervisor(
                     std::process::Command::new("must-not-execute"),
-                    pdx_native::RegistryOptions {
+                    pdx_native::GameOptions {
                         retention_directory: root.path().into(),
-                        deadline_seconds: Some(deadline)
+                        startup_seconds: deadline,
+                        idle_seconds: 180
                     }
                 )
                 .is_err()
@@ -215,9 +217,10 @@ fn registry_options_refuse_invalid_deadlines_and_retention_locations() {
         engine(SyntheticCase::Accepted)
             .with_supervisor(
                 std::process::Command::new("must-not-execute"),
-                pdx_native::RegistryOptions {
+                pdx_native::GameOptions {
                     retention_directory: "relative".into(),
-                    deadline_seconds: None
+                    startup_seconds: 180,
+                    idle_seconds: 180
                 }
             )
             .is_err()

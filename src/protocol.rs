@@ -2,7 +2,7 @@ use crate::supervisor::SupervisorError;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::io::{Read, Write};
 
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 const MAX_MESSAGE: usize = 64 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -40,7 +40,18 @@ impl Hello {
 pub(crate) enum Reply {
     Rejected(String),
     Ready,
-    Started { attempt: String, game: u32 },
+    Started {
+        attempt: String,
+        game: u32,
+    },
+    Paused {
+        readiness: crate::GameReadiness,
+        output: std::path::PathBuf,
+        registries: std::collections::BTreeMap<String, crate::ArtifactReference>,
+    },
+    RegistryRead {
+        request: u64,
+    },
     Finished(Box<crate::operation::AttemptReport>),
 }
 

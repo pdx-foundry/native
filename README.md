@@ -2,11 +2,15 @@
 
 Rust bridge to Stellaris.
 
-The library identifies exact installations, reports capability admission, and replays the bounded
-historical registration/category-read window. The live consumer API asks `get_registry_items("traditions")` or `get_registry_items("tradition_categories")`; the [replacement qualification report](docs/native/registry-review-qualification.md) is accepted for the exact retained target and content. Native owns supervision, private content, and capture; callers configure their supervisor command and retention directory once. See [registry queries](docs/design/live-observations.md).
-The optional maintainer API runs suspended candidate lifecycle attempts inside a consumer-supplied
-supervisor process; Native distributes no runtime executable. An Atlas-style caller uses `Engine::replay` with a relocatable artifact
-root and a pinned descriptor reference.
+`Native` pins an installation and answers `get_registry(name)` without launching a game.
+An async `Game` owns one supervised Stellaris process and returns independent startup snapshots
+for `traditions` and `tradition_categories`. The process stays paused at registry initialization;
+startup does not imply a loaded world or available gameplay operations.
+See [installation queries and Game sessions](docs/design/live-observations.md), including the
+SDK-518 migration and qualification boundary. Reader and field discovery remain explicitly unknown.
+
+The separate evidence library replays both historical and new registry artifacts without a game.
+Consumers supply their executable's supervisor role; Native distributes no runtime executable.
 
 ```sh
 cargo run --example replay -- tests/fixtures/synthetic tests/fixtures/synthetic/cases/normal.ref.json
@@ -22,14 +26,13 @@ bundle described in [retrieval instructions](docs/native/retrieval.md).
 To inspect an installation without launching it:
 
 ```rust
-use pdx_native::{CapabilityRequest, Engine, OpenRequest};
+use pdx_native::{Native, OpenRequest};
 
 fn inspect() -> Result<(), pdx_native::OpenError> {
-    let context = Engine::open(OpenRequest {
+    let native = Native::open(OpenRequest {
         installation_hint: "/path/to/Stellaris".into(),
     })?;
-    let report = context.capability(&CapabilityRequest::default());
-    println!("{:?}: {:?}", report.qualification, report.reasons);
+    println!("{:?}", native.get_registry("traditions"));
     Ok(())
 }
 ```
@@ -51,4 +54,4 @@ for limits and build checks.
 
 Maintainer-only [candidate observations](docs/design/candidate-observations.md) capture the retained
 registration/category window under an independent supervisor and emit replayable evidence.
-Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile; its reviewed acceptance record is tracked. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.
+Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile. The SDK-518 acceptance is historical; the changed SDK-521 session implementation requires new acceptance. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.

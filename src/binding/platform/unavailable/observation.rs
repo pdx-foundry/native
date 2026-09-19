@@ -26,6 +26,11 @@ impl Observer {
     pub(crate) fn poll(&mut self) -> Result<bool, SupervisorError> {
         unavailable()
     }
+    pub(crate) fn pause_witness(
+        &mut self,
+    ) -> Result<Option<crate::protocol::observation::PauseWitness>, SupervisorError> {
+        unavailable()
+    }
     pub(crate) fn stop(&mut self) -> Result<(), SupervisorError> {
         unavailable()
     }

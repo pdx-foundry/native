@@ -65,6 +65,17 @@ pub struct Frame {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum TraceEvent {
+    RegistryUnavailable {
+        name: String,
+        reason: String,
+    },
+    RegistryLoadReturned {
+        name: String,
+        owner: String,
+    },
+    SessionPaused {
+        returned: Vec<String>,
+    },
     RegistryLoadStart {
         name: String,
         owner: String,
@@ -160,6 +171,10 @@ pub enum TraceEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum OwnerEvent {
+    GamePauseConfirmed {
+        pid: u64,
+        returned: Vec<String>,
+    },
     ObservationUnavailable {
         reason: String,
     },

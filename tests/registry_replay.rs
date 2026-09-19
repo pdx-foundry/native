@@ -150,3 +150,70 @@ fn fully_rehashed_wrong_content_copy_still_fails_the_manifest_join() {
             .contains("Private registry content differs")
     );
 }
+
+#[test]
+fn session_replay_keeps_active_and_final_disposal_separate() {
+    let root = tempfile::tempdir().unwrap();
+    let original = fixture(root.path());
+    let mut descriptor: Value =
+        serde_json::from_slice(&std::fs::read(root.path().join("descriptor.json")).unwrap())
+            .unwrap();
+    descriptor["format"] = evidence::registry::SESSION_FORMAT.into();
+    let mut rows: Vec<Value> = std::fs::read_to_string(root.path().join("trace.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let hook = rows[2]["hooks"]["registry"].take();
+    rows[2]["hooks"] = json!({"registry:traditions":hook});
+    rows.insert(5, json!({"kind":"registry-load-returned","name":"traditions","owner":"0x1000","run":"synthetic","thread":7}));
+    let mut bytes = Vec::new();
+    for (index, row) in rows.iter_mut().enumerate() {
+        row["seq"] = json!(index + 1);
+        if row["kind"] == "registry-end" {
+            row["producerLastSequence"] = json!(index + 1);
+        }
+        serde_json::to_writer(&mut bytes, row).unwrap();
+        bytes.push(b'\n');
+    }
+    descriptor["trace"] =
+        serde_json::to_value(retain(root.path(), "session-trace.jsonl", &bytes)).unwrap();
+    descriptor["owner"] = serde_json::to_value(json_artifact(
+        root.path(),
+        "active-owner.json",
+        json!([{"kind":"game-owned-suspended","pid":10,"identity":"synthetic"}]),
+    ))
+    .unwrap();
+    let active = ReplayRequest {
+        artifact_root: root.path().into(),
+        descriptor: json_artifact(root.path(), "active.json", descriptor.clone()),
+    };
+    let before = Engine.replay_registry(active.clone()).unwrap();
+    assert_eq!(before.completion, Completion::Complete);
+    assert_eq!(before.disposal, pdx_native::Disposal::Unconfirmed);
+    let old: Value =
+        serde_json::from_slice(&std::fs::read(root.path().join("descriptor.json")).unwrap())
+            .unwrap();
+    descriptor["owner"] = old["owner"].clone();
+    let final_request = ReplayRequest {
+        artifact_root: root.path().into(),
+        descriptor: json_artifact(root.path(), "final.json", descriptor),
+    };
+    assert_eq!(
+        Engine
+            .replay_registry(final_request.clone())
+            .unwrap()
+            .disposal,
+        pdx_native::Disposal::Confirmed
+    );
+    assert_eq!(
+        serde_json::to_value(before).unwrap(),
+        serde_json::to_value(Engine.replay_registry(active).unwrap()).unwrap()
+    );
+    assert_eq!(
+        Engine.replay_registry(original).unwrap().completion,
+        Completion::Complete
+    );
+    std::fs::write(root.path().join("session-trace.jsonl"), b"changed").unwrap();
+    assert!(Engine.replay_registry(final_request).is_err());
+}

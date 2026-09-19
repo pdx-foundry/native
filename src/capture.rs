@@ -66,6 +66,7 @@ pub(crate) fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, Supervi
     Ok(bytes)
 }
 
+#[derive(Clone)]
 pub(crate) struct Capture {
     root: PathBuf,
     attempt: String,
@@ -74,6 +75,8 @@ pub(crate) struct Capture {
     request: ArtifactReference,
     owner: Vec<OwnerEvent>,
     registry: bool,
+    session: bool,
+    registries: Vec<String>,
 }
 
 fn reference(root: &Path, path: &str) -> Result<ArtifactReference, SupervisorError> {
@@ -98,6 +101,15 @@ impl Capture {
         content: &BTreeMap<String, String>,
         artifacts: &BTreeMap<String, String>,
     ) -> Result<Self, SupervisorError> {
+        let identity_registries = identity["registries"]
+            .as_array()
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(|name| name.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
         let root = output.join("evidence");
         crate::binding::private_directory(&root)?;
         crate::binding::private_directory(&root.join("source"))?;
@@ -143,7 +155,7 @@ impl Capture {
                         "tradition-category-field-reads".into(),
                     ],
                 },
-                fixtures: if spec.registry.is_some() {
+                fixtures: if spec.registry.is_some() || spec.session.is_some() {
                     BTreeMap::new()
                 } else {
                     BTreeMap::from([(FIXTURE_FILE.into(), spec.fixture.clone())])
@@ -159,7 +171,9 @@ impl Capture {
             attempt: attempt.into(),
             supporting,
             owner: Vec::new(),
-            registry: spec.registry.is_some(),
+            registry: spec.registry.is_some() || spec.session.is_some(),
+            session: spec.session.is_some(),
+            registries: identity_registries,
         })
     }
 
@@ -173,6 +187,55 @@ impl Capture {
         file.sync_all()?;
         self.owner.push(event);
         Ok(())
+    }
+
+    pub(crate) fn session_snapshot(
+        &self,
+        output: &Path,
+        phase: &str,
+    ) -> (BTreeMap<String, ArtifactReference>, Vec<String>) {
+        let mut references = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        for registry in &self.registries {
+            let snapshot = (|| -> Result<ArtifactReference, SupervisorError> {
+                let mut capture = self.clone();
+                capture.root = output.join(phase).join(registry);
+                copy_capture(&self.root, &capture.root)?;
+                let mut request: RecordedRequest =
+                    serde_json::from_slice(&read_bounded(&self.root.join("request.json"), 65536)?)?;
+                request.observations = vec![format!("registry:{registry}")];
+                // Each snapshot gets its own request; the original remains immutable.
+                fs::remove_file(capture.root.join("request.json"))?;
+                write_json(&capture.root.join("request.json"), &request)?;
+                capture.request = reference(&capture.root, "request.json")?;
+                let mut descriptor = capture.finish(output)?;
+                descriptor.path = format!("{phase}/{registry}/{}", descriptor.path);
+                Ok(descriptor)
+            })();
+            match snapshot {
+                Ok(reference) => {
+                    references.insert(registry.clone(), reference);
+                }
+                Err(error) => diagnostics.push(format!("{registry} snapshot: {error}")),
+            }
+        }
+        (references, diagnostics)
+    }
+
+    pub(crate) fn session_readiness(
+        &self,
+        output: &Path,
+    ) -> Result<Option<crate::GameReadiness>, SupervisorError> {
+        let raw = read_bounded(
+            &output.join("raw-trace.jsonl"),
+            crate::protocol::observation::MAX_TRACE,
+        )?;
+        let (trace, _) = normalize(&raw, &self.attempt);
+        Ok(evidence::registry::session_readiness(
+            &trace,
+            &self.owner,
+            &self.registries,
+        ))
     }
 
     pub(crate) fn finish(mut self, output: &Path) -> Result<ArtifactReference, SupervisorError> {
@@ -193,6 +256,8 @@ impl Capture {
             "resume-granted.json",
             "tool.json",
             "worker-owned.json",
+            "session-paused.json",
+            "pause-check.json",
         ] {
             let path = output.join(name);
             if path.try_exists()? {
@@ -230,7 +295,9 @@ impl Capture {
         write_new(&self.root.join("trace.jsonl"), &normalized)?;
         write_json(&self.root.join("owner.json"), &self.owner)?;
         let descriptor = Descriptor {
-            format: if self.registry {
+            format: if self.session {
+                evidence::registry::SESSION_FORMAT
+            } else if self.registry {
                 evidence::registry::FORMAT
             } else {
                 recorded::FORMAT
@@ -391,6 +458,7 @@ mod storage_tests {
             fixture: FIXTURE_BODY.into(),
             deadline_seconds: 180,
             control: crate::operation::ObservationControl::Normal,
+            session: None,
         };
         let mut capture = Capture::prepare(
             root.path(),
@@ -456,4 +524,24 @@ mod publication_tests {
             "first"
         );
     }
+}
+
+fn copy_capture(source: &Path, destination: &Path) -> Result<(), SupervisorError> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            return Err(SupervisorError("Capture contains a symlink".into()));
+        }
+        let target = destination.join(entry.file_name());
+        if kind.is_dir() {
+            copy_capture(&entry.path(), &target)?;
+        } else if kind.is_file() {
+            write_new(&target, &read_bounded(&entry.path(), 8 * 1024 * 1024)?)?;
+        } else {
+            return Err(SupervisorError("Capture contains a special file".into()));
+        }
+    }
+    Ok(())
 }

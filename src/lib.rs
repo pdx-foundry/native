@@ -33,7 +33,7 @@ pub use evidence::{
     Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, EvidenceReference, Gap,
     Observation, ObservationFact, ReplayError, ReplayResult, ResultOrigin, SubjectHandle,
 };
-pub use session::EngineContext;
+pub use session::{EngineContext, Native};
 
 mod capture;
 mod operation;
@@ -42,4 +42,7 @@ mod registry;
 pub use evidence::ObservationResult;
 pub use evidence::registry::{RegistryEntry, RegistryProvenance, RegistryResult};
 pub use operation::{OperationDisposal, OperationOutcome};
-pub use registry::{RegistryClient, RegistryError, RegistryJob, RegistryOptions, RegistryReport};
+pub use registry::{DiscoveryStatus, RegistryDescription, RegistryError};
+mod game;
+pub use evidence::registry::GameReadiness;
+pub use game::{Game, GameError, GameOptions, GameReport, RegistryAvailability};
