@@ -37,6 +37,8 @@ pub struct StaticInput {
     pub layout: SchedulerLayout,
     /// Resolved pointer locations and target-local values.
     pub pointers: BTreeMap<u64, u64>,
+    /// Imported or chained global locations and their exact demangled binding names.
+    pub global_bindings: BTreeMap<u64, String>,
     /// Literal strings keyed by their file addresses.
     pub strings: BTreeMap<u64, String>,
     /// Vtable address points with executable-derived owner adjustments and dispatch slots.

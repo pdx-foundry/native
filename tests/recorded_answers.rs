@@ -1,5 +1,7 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
-use pdx_native::{Basis, Completeness, Disposal, Error, GameOptions, GapKind, Native, Support};
+use pdx_native::{
+    Basis, Completeness, Disposal, Error, GameOptions, GapKind, Native, ReaderKind, Support,
+};
 use serde_json::json;
 use std::{fs, path::Path};
 
@@ -33,6 +35,21 @@ fn recorded() -> tempfile::TempDir {
     );
     write(
         root.path(),
+        "registry_fields/common/traditions.json",
+        json!({ "Ok": { "value": [
+            { "name": "boolean", "reader": { "id": "boolean", "kind": "Boolean" }, "conditional": false },
+            { "name": "integer", "reader": { "id": "integer", "kind": "Integer" }, "conditional": false },
+            { "name": "fixed", "reader": { "id": "fixed", "kind": "FixedPoint" }, "conditional": false },
+            { "name": "string", "reader": { "id": "string", "kind": "String" }, "conditional": false },
+            { "name": "reference", "reader": { "id": "reference", "kind": "Reference" }, "conditional": false },
+            { "name": "block", "reader": { "id": "block", "kind": "Block" }, "conditional": false },
+            { "name": "unknown", "reader": { "id": null, "kind": "Unknown" }, "conditional": true }
+        ], "completeness": "Partial",
+            "gaps": [{ "kind": "ReaderSemantics", "subject": "unknown", "detail": "Example." }],
+            "source": source() } }),
+    );
+    write(
+        root.path(),
         "registry_items/common/tradition_categories.json",
         json!({ "Err": { "Observation": { "operation": "RegistryItems",
             "reason": "the observation worker was lost" } } }),
@@ -55,6 +72,25 @@ fn static_questions_read_recorded_files_and_always_report_the_recorded_basis() {
     // The file says LiveObservation. A recorded answer never passes as an observation.
     assert_eq!(answer.source.basis, Basis::Recorded);
     assert_eq!(answer.source.build, native.build());
+
+    let fields = native.registry_fields("common/traditions").unwrap();
+    assert_eq!(
+        fields
+            .value
+            .iter()
+            .map(|field| field.reader.kind)
+            .collect::<Vec<_>>(),
+        [
+            ReaderKind::Boolean,
+            ReaderKind::Integer,
+            ReaderKind::FixedPoint,
+            ReaderKind::String,
+            ReaderKind::Reference,
+            ReaderKind::Block,
+            ReaderKind::Unknown,
+        ]
+    );
+    assert_eq!(fields.source.basis, Basis::Recorded);
 }
 
 #[test]

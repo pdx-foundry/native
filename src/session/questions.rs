@@ -7,7 +7,8 @@ use crate::answer::{
 use crate::binding::NamedCandidate;
 use crate::engine::analysis::{
     directories::{self, Directory},
-    fields::{self, PathOutcome, ReaderJoin, RegistryFieldResult},
+    fields::{self, PathOutcome, RegistryFieldResult},
+    readers,
 };
 use crate::{AnalysisError, UnavailableReason};
 use sha2::{Digest, Sha256};
@@ -167,6 +168,44 @@ impl Native {
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
         })
     }
+
+    pub(crate) fn reference_result(
+        &self,
+        owner: &str,
+    ) -> Result<crate::engine::analysis::references::ReferenceResult, Error> {
+        self.reference_results(&[owner])
+            .map(|mut results| results.remove(0))
+    }
+
+    pub(crate) fn reference_results(
+        &self,
+        owners: &[&str],
+    ) -> Result<Vec<crate::engine::analysis::references::ReferenceResult>, Error> {
+        if self.recorded().is_some() {
+            return Err(Error::Method(
+                "internal reference analysis requires a verified executable".into(),
+            ));
+        }
+        let operation = Operation::RegistryFields;
+        let analysis = self
+            .bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation,
+                reason: "this build has no static analysis recipe".into(),
+            })?;
+        let inputs = analysis
+            .reference_inputs(owners)
+            .map_err(|analysis_error| error(operation, analysis_error))?;
+        inputs
+            .iter()
+            .map(|input| {
+                crate::engine::analysis::references::analyze(input)
+                    .map_err(|analysis_error| error(operation, analysis_error.into()))
+            })
+            .collect()
+    }
 }
 
 fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
@@ -174,27 +213,16 @@ fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
         .fields
         .iter()
         .map(|field| {
-            let callees: BTreeSet<&str> = field
-                .readers
-                .iter()
-                .filter_map(|reader| match reader {
-                    ReaderJoin::Joined { callee, .. } => Some(callee.as_str()),
-                    ReaderJoin::Missing { .. } => None,
-                })
-                .collect();
-            let all_joined = field
-                .readers
-                .iter()
-                .all(|reader| matches!(reader, ReaderJoin::Joined { .. }));
-            let id = (all_joined && callees.len() == 1).then(|| {
-                let digest = Sha256::digest(callees.first().expect("one callee").as_bytes());
+            let classification = readers::classify(&field.readers);
+            let id = classification.callee.map(|callee| {
+                let digest = Sha256::digest(callee.as_bytes());
                 ReaderId(format!("{digest:x}")[..16].to_owned())
             });
             Field {
                 name: field.name.clone(),
                 reader: Reader {
                     id,
-                    kind: ReaderKind::Unknown,
+                    kind: classification.kind,
                 },
                 conditional: field.readers.len() > 1
                     || field
@@ -208,9 +236,9 @@ fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
 
 fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
     let mut gaps = vec![Gap {
-        kind: GapKind::ReaderSemantics,
+        kind: GapKind::OutsideMethod,
         subject: Some(registry.into()),
-        detail: "A reader identity establishes routing only, not the accepted values.".into(),
+        detail: "Nested grammar, accepted occurrences, and runtime behavior are outside this bounded reader classification.".into(),
     }];
     let field_of = |path: usize| {
         result
@@ -220,6 +248,28 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
             .map(|field| field.name.clone())
     };
     let mut seen = BTreeSet::new();
+    for field in &result.fields {
+        let classification = readers::classify(&field.readers);
+        let (kind, detail) = if classification.callee.is_none() {
+            (
+                GapKind::UnresolvedReader,
+                "The field's alternatives do not establish one shared reader.",
+            )
+        } else if classification.kind == ReaderKind::Unknown {
+            (
+                GapKind::ReaderSemantics,
+                "The shared reader is identified, but its broad value form is not established.",
+            )
+        } else {
+            continue;
+        };
+        seen.insert((kind as u8, Some(field.name.clone())));
+        gaps.push(Gap {
+            kind,
+            subject: Some(field.name.clone()),
+            detail: detail.into(),
+        });
+    }
     for gap in &result.gaps {
         let (kind, detail) = match gap.kind.as_str() {
             "input-boundary" | "token-table" => (

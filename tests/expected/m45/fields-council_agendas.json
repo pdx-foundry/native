@@ -3,7 +3,7 @@
   "name": "effect",
   "reader": {
    "id": "a430a4b92eb2c8f6",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  },
@@ -19,7 +19,7 @@
   "name": "agenda_cooldown",
   "reader": {
    "id": "d7a95ab8c8d44489",
-   "kind": "Unknown"
+   "kind": "Integer"
   },
   "conditional": true
  },
@@ -27,7 +27,7 @@
   "name": "agenda_finish_modifier_duration",
   "reader": {
    "id": "d7a95ab8c8d44489",
-   "kind": "Unknown"
+   "kind": "Integer"
   },
   "conditional": true
  },
@@ -35,7 +35,7 @@
   "name": "potential",
   "reader": {
    "id": "e044b50825a1841d",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  },
@@ -43,7 +43,7 @@
   "name": "allow",
   "reader": {
    "id": "e044b50825a1841d",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  },
@@ -51,7 +51,7 @@
   "name": "init_effect",
   "reader": {
    "id": "a430a4b92eb2c8f6",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  },
@@ -59,7 +59,7 @@
   "name": "ai_weight",
   "reader": {
    "id": "97942c9a3d3c9c1b",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  },
@@ -67,7 +67,7 @@
   "name": "finish_modifier",
   "reader": {
    "id": "ae2bd2a2d5591e04",
-   "kind": "Unknown"
+   "kind": "Reference"
   },
   "conditional": false
  },
@@ -75,7 +75,7 @@
   "name": "modifier",
   "reader": {
    "id": "97942c9a3d3c9c1b",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  }

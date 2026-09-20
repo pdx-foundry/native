@@ -1,5 +1,6 @@
 use super::{FieldInput, Function};
 use crate::engine::analysis::decode::{Instruction, decode_arm64};
+use crate::engine::analysis::discovery::Symbol;
 use std::collections::BTreeMap;
 
 pub(super) fn number(operand: &str) -> Option<i64> {
@@ -54,8 +55,11 @@ pub(super) fn function<'a>(input: &'a FieldInput, name: &str) -> Option<&'a Func
         .then_some(first)
 }
 pub(super) fn symbol_names(input: &FieldInput) -> BTreeMap<u64, Option<&str>> {
+    names_by_address(&input.symbols)
+}
+fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
     let mut names = BTreeMap::new();
-    for symbol in &input.symbols {
+    for symbol in symbols {
         names
             .entry(symbol.address)
             .and_modify(|name| {
@@ -74,16 +78,23 @@ pub(super) struct Token {
     pub ambiguous: bool,
 }
 pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>) {
-    let mut tokens = BTreeMap::<i64, Token>::new();
-    let mut gaps = Vec::new();
     let rows = match function(input, "GetTokenArray()")
         .ok_or("token constructor function missing or ambiguous".into())
         .and_then(decode)
     {
         Ok(rows) => rows,
-        Err(reason) => return (tokens, vec![reason]),
+        Err(reason) => return (BTreeMap::new(), vec![reason]),
     };
-    let reachable = match super::control_flow::reachable(&rows) {
+    recover_decoded(&rows, &input.symbols, &input.strings)
+}
+fn recover_decoded(
+    rows: &[Instruction],
+    symbols: &[Symbol],
+    strings: &BTreeMap<u64, String>,
+) -> (BTreeMap<i64, Token>, Vec<String>) {
+    let mut tokens = BTreeMap::<i64, Token>::new();
+    let mut gaps = Vec::new();
+    let reachable = match super::control_flow::reachable(rows) {
         Ok(reachable) => reachable,
         Err(reason) => return (tokens, vec![reason]),
     };
@@ -97,7 +108,7 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>)
         .filter_map(|row| row.operands.rsplit(',').next().and_then(number))
         .map(|address| address as u64)
         .collect();
-    let names = symbol_names(input);
+    let names = names_by_address(symbols);
     let constructors: std::collections::BTreeSet<_> = names
         .iter()
         .filter(|(_, name)| **name == Some("CToken::CToken(int, char const*)"))
@@ -163,10 +174,7 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>)
             .get("x1")
             .zip(values.get("x2"))
             .and_then(|(&token, &address)| {
-                input
-                    .strings
-                    .get(&(address as u64))
-                    .map(|name| (token, name))
+                strings.get(&(address as u64)).map(|name| (token, name))
             });
         let Some((token, name)) = pair else {
             gaps.push(format!(
@@ -195,4 +203,16 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>)
         gaps.push("no literal token constructor pairs recovered".into());
     }
     (tokens, gaps)
+}
+
+pub(crate) fn recover_names(
+    rows: &[Instruction],
+    symbols: &[Symbol],
+    strings: &BTreeMap<u64, String>,
+) -> BTreeMap<i64, String> {
+    recover_decoded(rows, symbols, strings)
+        .0
+        .into_iter()
+        .filter_map(|(token, recovered)| (!recovered.ambiguous).then_some((token, recovered.name)))
+        .collect()
 }

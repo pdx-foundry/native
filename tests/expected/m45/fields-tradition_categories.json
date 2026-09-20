@@ -11,7 +11,7 @@
   "name": "potential",
   "reader": {
    "id": "e044b50825a1841d",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  },
@@ -19,7 +19,7 @@
   "name": "ai_weight",
   "reader": {
    "id": "97942c9a3d3c9c1b",
-   "kind": "Unknown"
+   "kind": "Block"
   },
   "conditional": false
  },
@@ -51,7 +51,7 @@
   "name": "tree_template",
   "reader": {
    "id": "325efaa17499c32d",
-   "kind": "Unknown"
+   "kind": "String"
   },
   "conditional": false
  }

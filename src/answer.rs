@@ -246,10 +246,22 @@ pub struct Reader {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReaderId(pub(crate) String);
 
-/// Value form of a reader. Only `Unknown` exists until reader binding is implemented (SDK-531).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Broad value form accepted by a shared reader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum ReaderKind {
+    /// A boolean value.
+    Boolean,
+    /// A signed or unsigned integer value.
+    Integer,
+    /// A fixed-point numeric value.
+    FixedPoint,
+    /// A string value.
+    String,
+    /// A deferred reference key.
+    Reference,
+    /// A nested trigger, effect, persistent object, or other script block.
+    Block,
     /// The value form is not established.
     Unknown,
 }

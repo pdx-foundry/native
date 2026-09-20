@@ -3,6 +3,8 @@ pub mod decode;
 pub mod directories;
 pub mod discovery;
 pub mod fields;
+pub mod readers;
+pub mod references;
 
 use crate::UnavailableReason;
 
