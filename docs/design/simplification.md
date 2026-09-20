@@ -114,12 +114,20 @@ A registry is named by a string in every operation, static or live. A discovered
 no established name is a `Gap`, not a `Registry`. The name is the content directory key
 (`traditions` for `common/traditions`).
 
-**Open, found in step 2:** the directory is observed only in a live game. Static discovery cannot
-name its candidates, so `registry_fields(name)` needs a join from name to candidate. Options:
-(a) `registries()` becomes a `Game` question, and Native keeps the join for later static
-questions; (b) a new static method recovers the directory literal from the loader constructor;
-(c) the target record lists names for known candidates, which is a handwritten table. Decide
-before step 3.
+**Resolved by experiment, 2026-09-20:** the name is available statically. The constructor of each
+database class loads its content directory literal (an `adrp`/`add` pair). A scan of the M45
+executable names 163 of the 164 template candidates with exactly one directory each, in about one
+second. `CShipCategoryDatabase` has no literal in its constructor and stays a gap. The 163
+directories observed live in the retained run contain no directory that conflicts; the
+per-candidate comparison is a parity test for step 3.
+
+Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice_types`,
+`gfx/portraits/sprite_configurations`, `interface/resource_groups`, and others). 59 more
+`common/` literals belong to loaders outside the template method (`common/component_templates`,
+`common/agendas`, `common/static_modifiers`); they are inputs for SDK-551.
+
+Step 3 adds this as a static method in `engine/analysis`: constructor symbol, literal reference,
+directory. `registries()` and `registry_fields(name)` stay static questions.
 
 ## Tests
 
@@ -154,10 +162,8 @@ before step 3.
      inventory. They cannot be small tracked files. Parity tests read the executable itself
      (ignored by default; `STELLARIS_PATH`) and compare with small tracked expected output. The
      method logic keeps its small authored inputs.
-   - **A registry name is not available statically.** Static discovery gives template candidates
-     identified by an engine symbol. The content directory comes only from a live loader
-     observation (41 registries in the retained run; the live worker knows two). See "Registry
-     names" below.
+   - **The present discovery method gives no registry name.** A short experiment showed that the
+     name is available statically from each database constructor. See "Registry names".
 3. Add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.
