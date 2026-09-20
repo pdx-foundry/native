@@ -47,7 +47,8 @@ These replay retained instructions, traces, joins, normalizations and synthetic 
 SDK-515's `sdk-515-loader-entry-review` bundle retains the final candidate debugger-worker
 trial. Its initial batches remain in `sdk-515-loader-entry`.
 Use its [result and restore instructions](loader-entry-worker.md) for offline verification.
-The separate `tools/loader-entry-trial/run.py` command **launches games** and requires the
-exact retained installation.
+The historical `trial-03/trial-source/run.py` in the restored bundle **launches games**
+and requires the exact retained installation. The repository no longer ships the trial tools;
+use `tests/live.rs` for the current Native session API.
 
 Fresh captures require the **particular** target/architecture, compatible save or parser fixture, declared installed content and DLC, OS/toolchain/debugger access, and no conflicting live game. Native capture scripts retain original absolute installation/profile/helper paths. Retarget working copies and record the changes; preserve hash gates and qualification controls. Do not silently substitute another binary or mock source. Missing installations, old source saves, Mythos/dependency content and Windows host access limit fresh reproduction even when offline replay succeeds.

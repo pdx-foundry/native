@@ -140,8 +140,9 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
   output. Real method inputs are 47 to 56 MB and are not tracked.
 - **Live operations:** ignored by default; run with `STELLARIS_PATH` set. They cover the normal
   case and the failure controls (missing hook, worker loss, timeout, cancel).
-- **Supervisor without a game:** a fake worker drives the supervisor through worker loss, timeout,
-  cancel and cleanup. The present synthetic scenarios are kept for this purpose only.
+- **Supervisor without a game:** unit tests cover reservations, worker-process cleanup, pause
+  witnesses and caller cancellation. A full fake-worker session test remains to be added. The
+  live tests currently cover the end-to-end worker-loss, timeout, cancel and cleanup cases.
 - **Consumers (Atlas):** `Native::from_recorded_answers`, for static and live questions. This replaces
   replay and the synthetic test-support engine.
 - **Held-out method tests** (roadmap ordering principle) stay. They need the executable, not
@@ -291,8 +292,26 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
         changes. The caller and the supervisor compare the package version plus this stamp in
         their handshake, so two different states of the source do not talk to each other. The
         README has the new API and the live test command. The qualification records in
-        `docs/native` were removed in commit `955987c`.
-5. Clean `.local` (below).
+        `docs/native` were removed in commit `955987c`. The remaining tools are bundle retrieval
+        and worker-codec tests. Historical trial instructions now point to their preserved source;
+        current roadmap and test descriptions match the implementation.
+5. **Done, 2026-09-20.** Verified every prototype bundle and its external copy, then removed
+   duplicated restores, staging, verification trees and obsolete run outputs. `.local` fell from
+   7.2 GB to about 1.5 GB. Kept the bundles, a separate exact M45 ARM64 executable, and 1,780
+   additional source, note and small observation files that were not in the bundle manifests.
+   Those files also have a verified archive outside `.local`; see [preservation](../native/preservation.md).
+
+**Atlas caller migrated, 2026-09-20.** The local Atlas prototype uses the public answer API and
+recorded answers, with four game-free tests. The [migration guide](atlas-caller-migration.md)
+records the replacements and remaining fixture limits. The SDK-473 source-stamp amendment is
+recorded in the Atlas map (SDK-470).
+
+**Review of the four final implementation commits.** `e1f0e12`, `6a3d8dc`, `66fc181`
+and `c679617` were checked against this work order. The moved live reducer keeps its activation,
+sequence, loader/owner/thread, slot and terminal checks; static method logic and its bounds remain.
+The caller reads normalized answers from the supervisor and no longer opens capture files. The
+review follow-up repairs stale document/tool references and keeps failed live-case work directories
+when a later case passes. The full fake-worker supervisor test remains the known test gap above.
 
 The durable reservation journal is unchanged. Whether an operating-system lock alone is
 sufficient is a separate, later decision.

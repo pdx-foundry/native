@@ -62,7 +62,7 @@ Offline verification after restoring into a new directory:
 
 ```sh
 python3 tools/evidence.py sdk-515-loader-entry-review --restore
-python3 tools/loader-entry-trial/verify.py \
+python3 .local/evidence/restored/sdk-515-loader-entry-review/sdk-515-loader-entry-review/trial-03/trial-source/verify.py \
   .local/evidence/restored/sdk-515-loader-entry-review/sdk-515-loader-entry-review/trial-03
 ```
 

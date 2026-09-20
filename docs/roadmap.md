@@ -13,11 +13,13 @@ platform-independent JSON snapshots. Native supplies every engine observation th
 
 ## Starting point
 
-Native admits one production operation: item names for `traditions` and `tradition_categories` on
-one exact Mac ARM64 executable. Supervision and the Atlas caller are verified. Static analysis,
-registry candidates and root-field discovery exist in Rust (SDK-527, SDK-528, SDK-530), but inside
-the replay package, which the simplification removes. There is no `engine/analysis` module yet. The other analysis methods (reader binding, references, numeric grammar, command inventories)
-exist only as retained Python prototypes.
+Native exposes static `registries()` and `registry_fields(name)`, plus live item names for
+`common/traditions` and `common/tradition_categories` on one exact Mac ARM64 executable.
+Static analysis lives in `engine/analysis`; the live stream reducer lives in `engine/operations`.
+The API returns normalized answers with typed gaps and source stamps. The Atlas prototype caller
+uses the same questions for live and recorded answers; see the [migration](design/atlas-caller-migration.md).
+The remaining reader, reference, numeric-grammar and command-inventory methods exist as retained
+Python prototypes.
 
 ## The target, measured
 
@@ -103,10 +105,9 @@ shapes, not as handwritten answers.
 
 Linear works milestones in order, so the order below is the work order.
 
-**First: simplification.** Before more milestone 2 work, do the
-[simplification work order](design/simplification.md#work-order): move the analysis methods to
-`engine/analysis`, add the new public API, remove the replay and qualification parts, and clean
-`.local`. This work has no Linear tickets; the decision document tracks it.
+**Simplification completed, 2026-09-20.** The [work order](design/simplification.md#work-order)
+records the API migration, analysis and live reducer moves, removal of replay and qualification,
+and private-directory cleanup. This work has no Linear tickets.
 
 | # | Milestone | Work | Exit gate | Tickets |
 | --- | --- | --- | --- | --- |

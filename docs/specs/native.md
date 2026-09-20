@@ -226,13 +226,15 @@ supervision failures that the public API cannot cause safely.
    the declared error and execute nothing.
 3. **Answer integrity:** wrong owners, clobbered values, unresolved calls, and missing joins give
    typed gaps. No partial answer becomes complete.
-4. **Static methods:** small tracked test inputs (the bytes that each method reads) with tracked
-   expected output. Results equal the retained prototype results (41/41 ownership controls, 10
-   agenda fields).
+4. **Static methods:** small authored inputs test method logic. Ignored parity tests read the
+   exact executable and compare with small tracked expected answers (164 template registries and
+   ten agenda fields, plus traditions and categories). Large real method inputs are not tracked.
 5. **Live operations:** ignored by default; run with `STELLARIS_PATH`. Normal, missing-hook,
    dropped-record, worker-loss, timeout, and cancel cases. The ordinary profile and unrelated
    processes stay unchanged.
-6. **Supervisor without a game:** a fake worker drives worker loss, timeout, cancel, and cleanup.
+6. **Supervisor without a game:** unit tests cover reservation ownership, worker-process cleanup,
+   pause witnesses and caller cancellation. A full fake-worker session test remains to be added;
+   the current end-to-end failure checks require the live game.
 7. **Recorded answers:** a recorded run gives the same answers as the real run apart from `Basis`;
    a missing record gives `NotRecorded`; no process starts.
 8. **Shared-method transfer:** freeze a method, then apply it to unfamiliar cases with positive and

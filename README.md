@@ -95,18 +95,24 @@ unresolved reservations first. Native never creates, moves, or clears this direc
 ## Checks
 
 ```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test static_questions -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
+cargo doc --no-deps
 ```
 
-The first command needs no game. The second reads the executable of the exact supported build
-and starts no game. The third starts the real game 16 times, one case after the other, and takes
-about nine minutes; a word after `--ignored` selects the cases whose name contains it.
+The default tests need no game. The static parity tests read the executable of the exact supported
+build and start no game. The live test command starts the real game 16 times, one case after
+the other, and takes about nine minutes; a word after `--ignored` selects cases by name.
+Run the live suite separately from the default tests: lifecycle unit tests briefly create a
+harmless process named `stellaris` to check that Native refuses an ordinary game.
 
 ## Documents
 
 - [Specification](docs/specs/native.md): what Native does.
 - [Technical design](docs/design/architecture.md): project layout and target composition.
 - [Roadmap](docs/roadmap.md): order of work.
+- [Atlas caller migration](docs/design/atlas-caller-migration.md): API replacements and recorded tests.
 - [Engine knowledge index](docs/native-evidence.md): findings from prototypes and probes.
