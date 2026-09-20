@@ -1,9 +1,10 @@
-//! Selected LLDB strategy. No caller or recipe can substitute a debugger backend.
+//! The LLDB strategy: the supervisor's side of the debugger worker. No caller or recipe can
+//! substitute another debugger.
 #![allow(unsafe_code)]
 use crate::{
-    capture::{self, Capture},
     protocol::observation::{self, ResumeGrant, WorkerHello, WorkerRequest},
     supervisor::SupervisorError,
+    work_directory as files,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -88,7 +89,7 @@ fn discover() -> Result<Tool, SupervisorError> {
             .ok_or_else(|| SupervisorError("Incomplete LLDB Python probe".into()))
     };
     Ok(Tool {
-        sha256: capture::hash(&fs::read(&path)?),
+        sha256: files::sha256(&fs::read(&path)?),
         path,
         python: text("python")?,
         lldb: text("lldb")?,
@@ -96,9 +97,8 @@ fn discover() -> Result<Tool, SupervisorError> {
     })
 }
 
-pub(crate) fn probe_observer() -> Result<String, SupervisorError> {
-    let tool = discover()?;
-    Ok(capture::hash(&serde_json::to_vec(&tool)?))
+pub(crate) fn probe_observer() -> Result<(), SupervisorError> {
+    discover().map(|_| ())
 }
 
 pub(crate) struct Observer {
@@ -115,42 +115,27 @@ pub(crate) struct Observer {
 impl Observer {
     pub(in crate::binding) fn prepare(
         setup: crate::binding::platform::ObservationSetup<'_>,
-    ) -> Result<(Self, Capture), SupervisorError> {
+    ) -> Result<Self, SupervisorError> {
         let crate::binding::platform::ObservationSetup {
-            output,
+            work_directory,
             attempt,
-            spec,
             executable,
-            mut identity,
-            content,
-            expected_tool,
-            registry,
-            session,
-            bindings,
+            registries,
+            fault,
+            startup_seconds,
             machine,
             package,
         } = setup;
         let tool = discover()?;
-        if expected_tool.is_some_and(|expected| {
-            expected != capture::hash(&serde_json::to_vec(&tool).expect("tool identity"))
-        }) {
-            return Err(SupervisorError(
-                "HelperMismatch: debugger changed after admission".into(),
-            ));
-        }
-        let source = output.join("source");
+        let source = work_directory.join("source");
         super::lifecycle::private_directory(&source)?;
         let mut artifacts = BTreeMap::new();
         for (name, bytes) in package {
-            capture::write_new(&source.join(name), bytes)?;
-            artifacts.insert(name.clone(), capture::hash(bytes));
+            files::write_new(&source.join(name), bytes)?;
+            artifacts.insert(name.clone(), files::sha256(bytes));
         }
-        capture::write_new(&output.join("raw-trace.jsonl"), b"")?;
-        capture::write_json(&output.join("tool.json"), &tool)?;
-        identity["toolIdentity"] = capture::hash(&serde_json::to_vec(&tool)?).into();
-        identity["tool"] = serde_json::to_value(&tool)?;
-        identity["package"] = serde_json::to_value(&artifacts)?;
-        let capture = Capture::prepare(output, attempt, spec, identity, content, &artifacts)?;
+        files::write_new(&work_directory.join("raw-trace.jsonl"), b"")?;
+        files::write_json(&work_directory.join("tool.json"), &tool)?;
         let request = WorkerRequest {
             version: observation::VERSION.into(),
             attempt: attempt.into(),
@@ -159,29 +144,26 @@ impl Observer {
                 .to_str()
                 .ok_or_else(|| SupervisorError("Non-UTF8 executable path".into()))?
                 .into(),
-            target: capture::hash(&fs::read(executable)?),
+            target: files::sha256(&fs::read(executable)?),
             artifacts,
-            bindings: bindings.clone(),
             machine: machine.clone(),
-            registry: registry.cloned(),
-            session,
-            fixture: capture::FIXTURE_FILE.into(),
-            control: serde_json::to_value(spec.control)?.as_str().unwrap().into(),
-            deadline_seconds: spec.deadline_seconds,
+            registries: registries.clone(),
+            control_registry: fault.map(|fault| fault.registry.clone()),
+            control: fault
+                .map_or_else(Default::default, |fault| fault.control)
+                .wire_name(),
+            deadline_seconds: startup_seconds,
         };
-        Ok((
-            Self {
-                output: output.into(),
-                request,
-                tool,
-                worker: None,
-                granted: false,
-                pause_generation: 0,
-                launched: None,
-                exited: None,
-            },
-            capture,
-        ))
+        Ok(Self {
+            output: work_directory.into(),
+            request,
+            tool,
+            worker: None,
+            granted: false,
+            pause_generation: 0,
+            launched: None,
+            exited: None,
+        })
     }
 
     pub(crate) fn guard(&self) -> PathBuf {
@@ -189,11 +171,11 @@ impl Observer {
     }
 
     pub(crate) fn start(&mut self, game: u32) -> Result<(), SupervisorError> {
-        if capture::hash(&fs::read(&self.tool.path)?) != self.tool.sha256 {
+        if files::sha256(&fs::read(&self.tool.path)?) != self.tool.sha256 {
             return Err(SupervisorError("Selected LLDB changed".into()));
         }
         self.request.game = game;
-        capture::write_json(&self.output.join("worker-request.json"), &self.request)?;
+        files::write_json(&self.output.join("worker-request.json"), &self.request)?;
         let import = format!(
             "command script import {}",
             serde_json::to_string(&self.output.join("source/worker.py"))?
@@ -219,7 +201,7 @@ impl Observer {
             .stderr(File::create(self.output.join("worker.stderr"))?)
             .process_group(0);
         self.worker = Some(command.spawn()?);
-        capture::write_json(
+        files::write_json(
             &self.output.join("worker-owned.json"),
             &super::lifecycle::process_identity(self.worker.as_ref().unwrap().id())?,
         )?;
@@ -237,12 +219,10 @@ impl Observer {
         if !self.granted {
             let hello = self.output.join("hello.json");
             if hello.try_exists()? {
-                let hello: WorkerHello = serde_json::from_slice(&capture::read_bounded(
-                    &hello,
-                    observation::MAX_RECORD,
-                )?)?;
+                let hello: WorkerHello =
+                    serde_json::from_slice(&files::read_bounded(&hello, observation::MAX_RECORD)?)?;
                 self.validate_hello(&hello, pid)?;
-                capture::publish_json(
+                files::publish_json(
                     &self.output.join("resume-granted.json"),
                     &ResumeGrant {
                         version: observation::VERSION.into(),
@@ -256,11 +236,8 @@ impl Observer {
                 return Err(SupervisorError("Worker hello deadline elapsed".into()));
             }
         }
-        #[cfg(feature = "maintainer-tools")]
         if self.request.control
-            == serde_json::to_value(crate::operation::ObservationControl::WorkerLoss)?
-                .as_str()
-                .unwrap()
+            == crate::protocol::session::ObservationControl::WorkerLoss.wire_name()
             && self.output.join("worker-loss-ready").try_exists()?
         {
             self.kill_group()?;
@@ -306,24 +283,21 @@ impl Observer {
             generation: self.pause_generation,
         };
         let pending = self.output.join("pause-check.pending");
-        capture::write_json(&pending, &check)?;
+        files::write_json(&pending, &check)?;
         fs::rename(&pending, self.output.join("pause-check.json"))?;
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             let witness: observation::PauseWitness =
-                serde_json::from_slice(&capture::read_bounded(&path, observation::MAX_RECORD)?)?;
+                serde_json::from_slice(&files::read_bounded(&path, observation::MAX_RECORD)?)?;
             if witness.attempt != self.request.attempt
                 || witness.game != self.request.game
                 || self.worker.as_ref().map(Child::id) != Some(witness.worker)
                 || witness.thread == 0
                 || witness.returned.is_empty()
-                || witness.returned.iter().any(|name| {
-                    !self
-                        .request
-                        .session
-                        .as_ref()
-                        .is_some_and(|session| session.registries.contains_key(name))
-                })
+                || witness
+                    .returned
+                    .iter()
+                    .any(|name| !self.request.registries.contains_key(name))
             {
                 return Err(SupervisorError("Invalid session pause witness".into()));
             }
@@ -381,7 +355,12 @@ impl Observer {
                     return Ok(());
                 }
                 if error.raw_os_error() != Some(libc::ESRCH) {
-                    return Err(error.into());
+                    return Err(SupervisorError(format!(
+                        "Stopping worker group {}: {error}; exited: {:?}; live members: {:?}",
+                        worker.id(),
+                        worker_exited(worker.id()),
+                        group_members(worker.id(), Duration::from_secs(1)),
+                    )));
                 }
             }
         }
@@ -390,9 +369,8 @@ impl Observer {
 
     pub(crate) fn stop(&mut self) -> Result<(), SupervisorError> {
         let deadline = Instant::now() + Duration::from_secs(5);
-        if self.request.session.is_some()
-            && let Some(worker) = &self.worker
-            && capture::write_json(&self.output.join("session-release"), &true).is_ok()
+        if let Some(worker) = &self.worker
+            && files::write_json(&self.output.join("session-release"), &true).is_ok()
         {
             // Let debugserver finish a pending target exit and return it to its real parent.
             // Killing LLDB first can strand a SIGKILLed, Mach-suspended target under PID 1.
@@ -483,14 +461,10 @@ fn group_members(group: u32, budget: Duration) -> Result<Vec<u32>, SupervisorErr
 
 pub(in crate::binding) fn package() -> BTreeMap<String, Vec<u8>> {
     [
-        ("resolver.rs", include_bytes!("../macos.rs").as_slice()),
-        ("strategy.rs", include_bytes!("observation.rs").as_slice()),
-        ("lifecycle.rs", include_bytes!("lifecycle.rs").as_slice()),
         (
             "worker.py",
             include_bytes!("observation/worker.py").as_slice(),
         ),
-        ("guard.m", include_bytes!("observation/guard.m").as_slice()),
         (
             "guard.dylib",
             include_bytes!(concat!(env!("OUT_DIR"), "/guard.dylib")).as_slice(),
@@ -519,11 +493,9 @@ mod tests {
                 executable: "/not-used".into(),
                 target: "target".into(),
                 artifacts: BTreeMap::new(),
-                bindings: BTreeMap::new(),
                 machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
-                registry: None,
-                session: None,
-                fixture: "fixture".into(),
+                registries: BTreeMap::new(),
+                control_registry: None,
                 control: "normal".into(),
                 deadline_seconds: 1,
             },
@@ -577,11 +549,6 @@ mod tests {
                 },
             ]);
             let mut observer = observer(root.path(), &mut command);
-            observer.request.session = Some(observation::SessionBindings {
-                registries: BTreeMap::new(),
-                unavailable: BTreeMap::new(),
-                control_registry: None,
-            });
             let started = Instant::now();
             observer.stop().unwrap();
             assert!(started.elapsed() < Duration::from_secs(5));
@@ -593,7 +560,7 @@ mod tests {
     fn pause_confirmation_rejects_a_foreign_game_identity() {
         let root = tempfile::tempdir().unwrap();
         let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
-        capture::write_json(
+        files::write_json(
             &root.path().join("session-paused.json"),
             &observation::PauseWitness {
                 attempt: "unit".into(),

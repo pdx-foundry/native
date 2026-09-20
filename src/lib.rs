@@ -1,65 +1,40 @@
-//! Exact-target admission, bounded live observations, and retained replay.
+//! A standard API to ask Stellaris questions, the same on each platform and game build.
+//!
+//! [`Native`] pins an installation and answers static questions from the executable.
+//! [`Game`] is a supervised game session that answers live questions. Every answer is an
+//! [`Answer`] with a completeness statement, typed gaps and a source stamp.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+mod answer;
 mod api;
 mod binding;
+mod engine;
 mod execution;
+mod game;
 mod protocol;
-mod qualification;
+mod recorded;
 mod session;
+mod work_directory;
 
 pub mod supervisor;
 
-#[cfg(feature = "maintainer-tools")]
-pub mod investigation;
+pub use answer::{
+    Answer, Basis, BuildId, Completeness, Disposal, Error, Field, Gap, GapKind, Operation, Reader,
+    ReaderId, ReaderKind, Registry, Source, Support,
+};
+pub use api::OpenError;
+pub use engine::operations::registry_items::GameReadiness;
+pub use game::{Game, GameOptions};
+pub use session::Native;
 
-#[cfg(all(
-    feature = "production",
-    any(feature = "test-support", feature = "maintainer-tools")
-))]
-compile_error!("production cannot include test-support or maintainer-tools");
+pub(crate) use api::UnavailableReason;
+pub(crate) use engine::analysis::AnalysisError;
 
-#[cfg(feature = "test-support")]
+/// Static method internals and the live fault controls, for Native's own integration tests.
+/// Not a consumer API.
 #[doc(hidden)]
-pub mod test_support;
-
-pub use api::{
-    Availability, CapabilityBounds, CapabilityReport, CapabilityRequest, ContextIdentity,
-    ContextOrigin, OpenError, OpenRequest, Qualification, RegistryBounds, UnavailableReason,
-};
-pub use api::{Engine, ReplayRequest};
-pub use evidence::{
-    Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, EvidenceReference, Gap,
-    Observation, ObservationFact, ReplayError, ReplayResult, ResultOrigin, SubjectHandle,
-};
-pub use session::{EngineContext, Native};
-
-mod capture;
-mod operation;
-mod registry;
-
-pub use evidence::ObservationResult;
-pub use evidence::registry::{RegistryEntry, RegistryProvenance, RegistryResult};
-pub use operation::{OperationDisposal, OperationOutcome};
-pub use registry::{DiscoveryStatus, RegistryDescription, RegistryError};
-mod game;
-pub use evidence::registry::GameReadiness;
-pub use game::{Game, GameError, GameOptions, GameReport, RegistryAvailability};
-
-mod engine;
-pub use engine::analysis::{AnalysisContext, AnalysisError};
-pub use evidence::analysis::{
-    AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, AnalysisResult, Instruction,
-};
-
-pub use evidence::discovery::{
-    DiscoveryBasis, DiscoveryDescriptor, DiscoveryGap, DiscoveryGapKind, DiscoveryRun,
-    ForeignRegistrySubject, RegistryCandidate, RegistryDiscoveryResult, RegistryRelationship,
-    RegistrySubject, SchedulingWitness,
-};
-
-pub use evidence::fields::{
-    Condition as FieldCondition, FieldDescriptor, FieldGap, PathOutcome, ReaderContractGap,
-    ReaderJoin, RegistryFieldResult, RootField, TokenPath, Value as FieldValue,
-};
+pub mod internals {
+    pub use crate::engine::analysis::{decode, discovery, fields};
+    pub use crate::protocol::session::ObservationControl;
+}

@@ -4,16 +4,15 @@ pub(super) fn resolve(
     architecture: object::Architecture,
 ) -> Result<super::Machine, crate::OpenError> {
     match architecture {
-        object::Architecture::Aarch64 => Ok(arm64::read_entries()),
+        object::Architecture::Aarch64 => Ok(arm64::loader_entry()),
         _ => Err(crate::OpenError::UnsupportedTarget),
     }
 }
 
-pub(super) fn decoder(
-    architecture: object::Architecture,
-) -> Result<super::Decoder, crate::OpenError> {
+/// Whether the static methods can decode this architecture.
+pub(super) fn static_methods(architecture: object::Architecture) -> Result<(), crate::OpenError> {
     match architecture {
-        object::Architecture::Aarch64 => Ok(evidence::analysis::decode_arm64),
+        object::Architecture::Aarch64 => Ok(()),
         _ => Err(crate::OpenError::UnsupportedTarget),
     }
 }

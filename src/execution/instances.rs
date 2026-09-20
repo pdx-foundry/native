@@ -1,3 +1,16 @@
+//! Host-wide launch exclusion: one Native-owned Stellaris game per host.
+//!
+//! The supervisor takes an OS lock, then requires every journal entry to be a recognized,
+//! disposed record. Unknown versions or states, extra fields, unreadable or truncated records,
+//! symlinks, pending writes, and unresolved reservations block a launch and are never rewritten.
+//! A reservation is durable before profile allocation or spawn; the child incarnation is added
+//! immediately after spawn. Disposal is marked only after direct-child reaping, or when no game
+//! was launched.
+//!
+//! The runtime never clears a reservation from a free lock, an absent PID, or elapsed time.
+//! The lock covers Native owners only: a bounded process inventory checks for ordinary Stellaris
+//! instances before launch and during the job, and Native signals only its own direct child.
+//! The README gives the one-time namespace setup commands.
 use crate::{
     binding::{self, HostReservation, ProcessIdentity},
     supervisor::SupervisorError,

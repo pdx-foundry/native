@@ -1,69 +1,121 @@
 # PDX Native
 
-Rust bridge to Stellaris.
+A standard Rust API to ask Stellaris questions, the same on each platform and game build.
+Native identifies the exact build, answers from the executable or from a supervised game, and
+says how complete each answer is. Atlas is its first consumer.
 
-`Native` pins an installation and answers `get_registry(name)` without launching a game.
-An async `Game` owns one supervised Stellaris process and returns independent startup snapshots
-for `traditions` and `tradition_categories`. The process stays paused at registry initialization;
-startup does not imply a loaded world or available gameplay operations.
-See [installation queries and Game sessions](docs/design/live-observations.md), including the
-SDK-518 migration and qualification boundary. Reader semantics remain explicitly unknown; root-field routing has a separate static operation.
+Native is one Cargo package with no optional features. The
+[simplification decision](docs/design/simplification.md) records how it got there.
 
-`Native::analysis()` decodes one qualified M45-observe function without a game, content files,
-or a debugger. [Static analysis and replay](docs/design/static-analysis.md) describes the public
-interface and its bounded qualification.
+## Static questions
 
-`AnalysisContext::analyze_subject(&discovery, &subject)` discovers root fields from executable
-bytes and returns reader joins or explicit gaps. [Root-field discovery and replay](docs/design/registry-fields.md)
-describes the SDK-487 port and its retained failed-completeness result.
-
-`Native::analysis()?.discover_registries()` discovers template candidates and startup scheduling
-links without config seeds. [Registry discovery and replay](docs/design/registry-discovery.md)
-keeps static candidates, historical ownership and unresolved paths separate.
-
-The separate evidence library replays both historical and new registry artifacts without a game.
-Consumers supply their executable's supervisor role; Native distributes no runtime executable.
-
-```sh
-cargo run --example replay -- tests/fixtures/synthetic tests/fixtures/synthetic/cases/normal.ref.json
-cargo test --workspace
-python3 tools/check-replay-boundary.py
-cargo test --workspace --features test-support
-python3 tools/check-admission-boundary.py
-```
-
-Synthetic fixture results retain `synthetic` origin. Private retained replay needs the restored
-bundle described in [retrieval instructions](docs/native/retrieval.md).
-
-To inspect an installation without launching it:
+No game starts. A registry is named by its content directory. See `examples/registries.rs`.
 
 ```rust
-use pdx_native::{Native, OpenRequest};
+use pdx_native::Native;
 
-fn inspect() -> Result<(), pdx_native::OpenError> {
-    let native = Native::open(OpenRequest {
-        installation_hint: "/path/to/Stellaris".into(),
-    })?;
-    println!("{:?}", native.get_registry("traditions"));
-    Ok(())
-}
+let native = Native::open("/path/to/Stellaris")?;
+let registries = native.registries()?;                      // Answer<Vec<Registry>>
+let fields = native.registry_fields("common/traditions")?;  // Answer<Vec<Field>>
 ```
 
-`cargo run --release --features production --example capabilities -- /path/to/Stellaris` prints the report as JSON. Supply an
-executable, `stellaris.app`, or installation directory; automatic installation discovery is not
-implemented. The initial catalogue identifies only the exact M45-observe ARM64 image. Unknown
-patches never inherit its recipe. Reports distinguish qualification from availability, and report
-content/executable changes without rebinding. See [capability admission](docs/design/admission.md)
-for limits and build checks.
+## Live questions
 
-- [Native specification](docs/specs/native.md)
-- [Technical design and project layout](docs/design/architecture.md)
-- [Bounded replay design](docs/design/replay.md)
-- [Loader-entry worker decision and bounded trial](docs/design/debugger-worker.md)
-- [Native evidence and qualification records](docs/native-evidence.md)
+The consumer decides when a game runs. Native starts it, pauses it after its registries load,
+and removes it. The consumer supplies the supervisor process: its own executable, started in a
+dedicated role that calls `supervisor::serve`. See `examples/registry-items.rs`.
 
-- [Consumer-hosted lifecycle and maintainer harness](docs/design/lifecycle.md)
+```rust
+use pdx_native::{GameOptions, Native};
+use std::process::Command;
 
-Maintainer-only [candidate observations](docs/design/candidate-observations.md) capture the retained
-registration/category window under an independent supervisor and emit replayable evidence.
-Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile. SDK-527 and SDK-528 change the shared implementation identity; live admission remains unavailable until a separate requalification. The SDK-518 acceptance is historical; the changed SDK-521 session implementation requires new acceptance. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.
+// In `main`, before anything else: the supervisor role.
+if std::env::args().nth(1).as_deref() == Some("--supervisor") {
+    pdx_native::supervisor::serve(std::io::stdin(), std::io::stdout())?;
+    return Ok(());
+}
+
+let mut supervisor = Command::new(std::env::current_exe()?);
+supervisor.arg("--supervisor");
+
+let native = Native::open("/path/to/Stellaris")?;
+let mut game = native.start_game(GameOptions::new(supervisor)).await?;
+let items = game.registry_items("common/traditions").await?;  // Answer<Vec<String>>
+let disposal = game.close().await?;                           // Disposal::Confirmed
+```
+
+Always call `close`, also after a question fails. `native.supports(operation)` says if a
+question can run here, and starts nothing.
+
+## Answers
+
+Each question returns `Answer<T>`:
+
+- `value`: what was established. A partial answer keeps each established part.
+- `completeness`: `Complete` or `Partial`. `Complete` with an empty value means that nothing was found.
+- `gaps`: what is missing, each with a typed `GapKind`. Empty when the answer is complete.
+- `source`: the build, the Native version, the method, and the basis (such as `StaticAnalysis`).
+
+A question that could not be answered returns `Error`, never an empty answer. To check an answer,
+ask the question again.
+
+## Recorded answers for tests
+
+`native.record_answers_to(dir)` writes each answer as JSON during a real run.
+`Native::from_recorded_answers(dir)?` reads those files and starts no process; consumer code stays
+the same. Each file holds one `Result<Answer<T>, Error>`, so you can write a failure case by hand.
+A recorded answer always has `Basis::Recorded`. A question with no file gives `Error::NotRecorded`.
+`build.json` holds the original serialized `BuildId`, including for error-only recordings.
+`native.build()` returns that identity; answers from another build return `Error::Recorded`.
+
+```text
+build.json
+registries.json
+registry_fields/common/traditions.json
+registry_items/common/traditions.json
+```
+
+## Supported build
+
+The target catalogue has one build: the exact M45-observe ARM64 executable (Stellaris 4.5 beta,
+Apple Silicon). An unknown build is refused; it never inherits the recipe of a different build.
+
+## One-time setup for live games (Apple Silicon macOS)
+
+Native permits one Native-owned game per host. Its reservation directory must exist before the
+first live game. Run these commands from the account that runs Native:
+
+```sh
+sudo install -d -o root -g wheel -m 755 "/Library/Application Support/PDX Native"
+sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 700 "/Library/Application Support/PDX Native/instances"
+```
+
+The parent directory must be owned by root and not writable by group or others. The `instances`
+directory must belong to the running account with no group or other access. Do not run these
+commands to take over a directory that another account owns; inspect its ownership and its
+unresolved reservations first. Native never creates, moves, or clears this directory itself.
+
+## Checks
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+STELLARIS_PATH=/path/to/Stellaris cargo test --release --test static_questions -- --ignored
+STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
+cargo doc --no-deps
+```
+
+The default tests need no game. The static parity tests read the executable of the exact supported
+build and start no game. The live test command starts the real game 16 times, one case after
+the other, and takes about nine minutes; a word after `--ignored` selects cases by name.
+Run the live suite separately from the default tests: lifecycle unit tests briefly create a
+harmless process named `stellaris` to check that Native refuses an ordinary game.
+
+## Documents
+
+- [Specification](docs/specs/native.md): what Native does.
+- [Technical design](docs/design/architecture.md): project layout and target composition.
+- [Roadmap](docs/roadmap.md): order of work.
+- [Atlas caller migration](docs/design/atlas-caller-migration.md): API replacements and recorded tests.
+- [Engine knowledge index](docs/native-evidence.md): findings from prototypes and probes.

@@ -182,27 +182,16 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "pdx-native"
 version = "0.1.0"
 dependencies = [
+ "capstone",
  "cpp_demangle",
  "libc",
  "object",
- "pdx-native-evidence",
  "schemars",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "pdx-native-evidence"
-version = "0.1.0"
-dependencies = [
- "capstone",
- "schemars",
- "serde",
- "serde_json",
- "sha2",
 ]
 
 [[package]]

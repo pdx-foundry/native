@@ -30,6 +30,10 @@ Prerequisites: the recorded unlocked single-user graphical session, exact instal
 
 Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibility-harness/apple-silicon/lifecycle.ts`, `windows/host.py`, `windows-446/host.py`; corresponding README files provide fresh-run commands. Raw Windows files are in the retained Linear assets named in [targets](targets.md). Historical helpers still carry original machine paths; [preservation](preservation.md) lists fresh-run limits.
 
-## Rust library candidate lifecycle
+## Findings from the Rust supervisor (M45-observe, macOS)
 
-SDK-516 adds the [consumer-hosted supervisor](../design/lifecycle.md), with [fresh candidate controls](candidate-lifecycle.md). Native supplies lifecycle policy and platform services; consumers supply the executable. The games remain suspended; public live qualification is unchanged.
+- **Debugger shutdown.** A forced debugger shutdown while the game is stopped under the debugger leaves the game defunct. The parent's `waitpid` then returns `ECHILD`, and disposal cannot be confirmed. A retry does not help, and LLDB cannot detach and keep the game stopped. When the debugger ends the game in an orderly way first, the original parent can reap it. The supervisor gives that path two seconds, then forces the worker to stop.
+- **Exited process groups.** macOS refuses a signal to a process group whose members have all exited. Check that the group is not empty before you signal it, and keep the direct child identity until it is reaped.
+- **Harmless test processes.** macOS kills a copied Apple system binary before a test can inspect it. A test that needs a harmless process named `stellaris` must compile its own.
+- **Ordinary game conflict.** Any process named `stellaris` makes a live start refuse, and makes a running game report lost isolation. Run the live tests apart from the process tests that start such a process.
+- **Process inventory.** The one-second process inventory deadline expired one time after activation. Twenty later runs of the same command took 0.03 seconds each. The cause is not known; the deadline was not relaxed.

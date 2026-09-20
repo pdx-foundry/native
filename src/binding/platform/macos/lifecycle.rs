@@ -358,6 +358,8 @@ fn settings(
     }
 }
 
+/// A suspended child with no guard library, for tests of ownership and disposal.
+#[cfg(test)]
 pub(crate) fn spawn(
     executable: &Path,
     root: &Path,

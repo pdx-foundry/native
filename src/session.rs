@@ -1,217 +1,157 @@
-use crate::{
-    CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin, OpenError, OpenRequest,
-    UnavailableReason, binding::Binding, qualification,
-};
-use std::sync::{Arc, Mutex};
+//! `Native`: one pinned installation, or one directory of recorded answers.
+use crate::{OpenError, UnavailableReason, binding::Binding};
+use std::sync::{Arc, Mutex, OnceLock};
 
-/// A pinned installation. Static queries never launch a game or probe a debugger.
-/// Configure a consumer supervisor before starting an independently owned Game.
+mod questions;
+
+/// A pinned installation. Static questions never start a game. `start_game` starts a game that
+/// an independent supervisor process owns.
 #[derive(Debug)]
 pub struct Native {
-    binding: Arc<Binding>,
+    /// `None` only for recorded answers.
+    binding: Option<Arc<Binding>>,
+    /// Read every answer from this directory, and start no process.
+    recorded: Option<Arc<crate::recorded::Answers>>,
+    /// Write every answer to this directory as it is returned.
+    recorder: Option<Arc<std::path::PathBuf>>,
+    /// The first change of the executable or the pinned content that this `Native` saw. It
+    /// stays, even when the original bytes come back.
     invalidated: Arc<Mutex<Option<UnavailableReason>>>,
-    pub(crate) hosting: Option<crate::game::Hosting>,
-}
-
-/// Installation context retained for source compatibility with capability and replay callers.
-pub type EngineContext = Native;
-
-pub(crate) fn open(request: OpenRequest) -> Result<Native, OpenError> {
-    Native::open(request)
+    candidates: Arc<OnceLock<Result<Vec<crate::binding::NamedCandidate>, crate::AnalysisError>>>,
 }
 
 impl Native {
-    /// Pin an installation without starting a process.
-    pub fn open(request: OpenRequest) -> Result<Self, OpenError> {
-        Ok(Self::from_binding(Binding::open(request)?))
+    /// Pin the installation at this location: an executable, an application bundle, or an
+    /// installation directory. No process starts. A build that is not in the target catalogue is
+    /// refused; there is no nearest-version fallback.
+    pub fn open(installation: impl Into<std::path::PathBuf>) -> Result<Self, OpenError> {
+        Ok(Self::from_binding(Binding::open(&installation.into())?))
+    }
+    /// Read every answer from recorded files. No installation is opened and no process starts.
+    ///
+    /// Static and live questions work the same as with a real game: `start_game` returns a
+    /// `Game` that reads recorded answers. A question with no file returns `Error::NotRecorded`,
+    /// and every answer carries `Basis::Recorded`. `build.json` must contain the original
+    /// serialized `BuildId`; missing or invalid metadata returns `Error::Recorded`.
+    pub fn from_recorded_answers(
+        directory: impl Into<std::path::PathBuf>,
+    ) -> Result<Self, crate::Error> {
+        Ok(Self {
+            binding: None,
+            recorded: Some(Arc::new(crate::recorded::Answers::open(directory.into())?)),
+            recorder: None,
+            invalidated: Arc::new(Mutex::new(None)),
+            candidates: Arc::new(OnceLock::new()),
+        })
+    }
+    /// Write every answer, and every error, to this directory as it is returned. A later
+    /// `from_recorded_answers` on the same directory then gives the same answers without a game.
+    pub fn record_answers_to(mut self, directory: impl Into<std::path::PathBuf>) -> Self {
+        self.recorder = Some(Arc::new(directory.into()));
+        self
     }
     pub(crate) fn from_binding(binding: Binding) -> Self {
         Self {
-            binding: Arc::new(binding),
+            binding: Some(Arc::new(binding)),
+            recorded: None,
+            recorder: None,
             invalidated: Arc::new(Mutex::new(None)),
-            hosting: None,
+            candidates: Arc::new(OnceLock::new()),
         }
     }
-    pub(crate) fn registry_names(&self) -> Vec<String> {
-        self.binding.registry_names()
+    /// The installation binding. Recorded answers have none; every public method answers from
+    /// the recorded files before it reaches this.
+    pub(crate) fn bound(&self) -> &Arc<Binding> {
+        self.binding
+            .as_ref()
+            .expect("recorded answers have no installation binding")
     }
-    pub(crate) fn detached_context(&self) -> Self {
-        Self {
-            binding: self.binding.clone(),
-            invalidated: self.invalidated.clone(),
-            hosting: None,
-        }
+    pub(crate) fn recorded(&self) -> Option<&crate::recorded::Answers> {
+        self.recorded.as_deref()
     }
-    /// Opaque pinned composition identity. Equality does not establish current integrity.
-    pub fn identity(&self) -> ContextIdentity {
-        self.binding.identity()
+    pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
+        self.recorder.as_deref().map(|path| path.as_path())
     }
-    /// Installation or authored synthetic input origin.
-    pub fn origin(&self) -> ContextOrigin {
-        self.binding.origin()
+    /// Content directory of each registry that a game session observes, with its internal name.
+    pub(crate) fn registry_directories(&self) -> std::collections::BTreeMap<String, String> {
+        self.bound()
+            .registry_names()
+            .into_iter()
+            .filter_map(|name| Some((self.bound().registry_directory(&name)?, name)))
+            .collect()
     }
     fn integrity(&self) -> Option<UnavailableReason> {
         let mut invalidated = self.invalidated.lock().expect("context integrity lock");
         if invalidated.is_none() {
-            *invalidated = self.binding.integrity();
+            *invalidated = self.bound().integrity();
         }
         invalidated.clone()
     }
-    /// Inspect one operation. Registry admission may probe live prerequisites; static decoding
-    /// checks only executable inputs. Neither request launches Stellaris.
-    pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
-        if matches!(request, CapabilityRequest::RegistryFields) {
-            return self.binding.analysis.as_ref().map_or_else(
-                || {
-                    let mut report =
-                        qualification::analysis::unavailable(self.identity(), self.origin());
-                    report.bounds = crate::CapabilityBounds::RegistryFields;
-                    report
-                },
-                |binding| crate::engine::analysis::fields_capability(binding),
-            );
-        }
-        if matches!(request, CapabilityRequest::RegistryDiscovery) {
-            return self.binding.analysis.as_ref().map_or_else(
-                || {
-                    let mut report =
-                        qualification::analysis::unavailable(self.identity(), self.origin());
-                    report.bounds = crate::CapabilityBounds::RegistryDiscovery;
-                    report
-                },
-                |binding| crate::engine::analysis::discovery_capability(binding),
-            );
-        }
-        if matches!(request, CapabilityRequest::StaticDecode) {
-            return self.binding.analysis.as_ref().map_or_else(
-                || qualification::analysis::unavailable(self.identity(), self.origin()),
-                |binding| crate::engine::analysis::capability(binding),
-            );
-        }
-        qualification::evaluate(
-            &self.binding.current_inputs(),
-            self.binding.authority(),
-            request,
-            self.origin(),
-            self.integrity(),
-        )
+    /// Every reason why a game session cannot start now. This may start the host's debugger
+    /// tools to check them; it never starts the game.
+    pub(crate) fn blocking_reasons(&self) -> Vec<UnavailableReason> {
+        self.bound().blocking_reasons(self.integrity())
     }
-    /// Open a static context when at least one analysis method is admitted, without a game process.
-    /// The returned context refuses changed executable bytes on every operation.
-    pub fn analysis(&self) -> Result<crate::AnalysisContext, crate::AnalysisError> {
-        let binding =
-            self.binding
-                .analysis
-                .clone()
-                .ok_or_else(|| crate::AnalysisError::Unavailable {
-                    reasons: vec![UnavailableReason::ImplementationUnavailable],
-                })?;
-        crate::AnalysisContext::open(binding)
-    }
-    /// Describe a declared registry without live admission, debugger access, or a game process.
-    pub fn get_registry(
+    /// Start a supervised game and wait until it is paused after its registries load. The game
+    /// never loads a world. With recorded answers, no process starts and the options are ignored.
+    ///
+    /// Dropping this future requests cleanup. No async runtime owns the process: an independent
+    /// thread and the supervisor do, so cleanup continues if the caller is lost.
+    pub async fn start_game(
         &self,
-        name: &str,
-    ) -> Result<crate::RegistryDescription, crate::RegistryError> {
-        let directory = self.binding.registry_directory(name).ok_or_else(|| {
-            crate::RegistryError::Unsupported {
-                registry: name.into(),
-            }
-        })?;
-        if let Some(reason) = self.integrity() {
-            return Err(crate::RegistryError::Unavailable {
-                reasons: vec![reason],
+        options: crate::GameOptions,
+    ) -> Result<crate::Game, crate::Error> {
+        use crate::{Disposal, Error, Operation};
+        if let Some(directory) = &self.recorded {
+            return Ok(crate::Game::recorded(directory.clone()));
+        }
+        let reasons = self.blocking_reasons();
+        if reasons.contains(&UnavailableReason::TargetChanged) {
+            return Err(Error::BuildChanged);
+        }
+        if !reasons.is_empty() {
+            return Err(Error::Unsupported {
+                operation: Operation::RegistryItems,
+                reason: format!("{reasons:?}"),
             });
         }
-        Ok(crate::RegistryDescription {
-            name: name.into(), content_directory: directory, context: self.identity(), origin: self.origin(),
-            reader_discovery: crate::DiscoveryStatus::Unknown { reason: "Reader discovery has not been qualified".into() },
-            field_discovery: crate::DiscoveryStatus::Unknown { reason: "Field discovery has not been qualified".into() },
-            limits: vec!["Target-declared registry metadata; no complete reader, field schema, or registered items established".into()],
-        })
-    }
-    /// Configure a dedicated direct child calling supervisor::serve on private stdin/stdout.
-    /// See examples/live.rs for the supervisor role and async session flow.
-    pub fn with_supervisor(
-        mut self,
-        command: std::process::Command,
-        options: crate::GameOptions,
-    ) -> Result<Self, crate::GameError> {
-        self.hosting = Some(crate::game::Hosting::new(command, options)?);
-        Ok(self)
-    }
-    /// Start a paused registry initialization session, never a loaded world.
-    /// Dropping this future requests independent cleanup. No async runtime owns the process.
-    pub async fn start_game(&self) -> Result<crate::Game, crate::GameError> {
-        crate::game::start(
-            self.detached_context(),
-            self.hosting
-                .clone()
-                .ok_or(crate::GameError::NotConfigured)?,
-            crate::operation::Authorization::Admitted,
-            None,
-        )
-        .await
-    }
-    pub(crate) fn prepare_session(
-        &self,
-        output: std::path::PathBuf,
-        options: &crate::GameOptions,
-        authorization: crate::operation::Authorization,
-        control: Option<(String, crate::operation::ObservationControl)>,
-    ) -> Result<crate::operation::PreparedPlan, crate::GameError> {
-        let names = self.binding.registry_names();
-        if authorization == crate::operation::Authorization::Admitted {
-            let reports: Vec<_> = names
-                .iter()
-                .map(|name| {
-                    (
-                        name.clone(),
-                        self.capability(&CapabilityRequest::Registry {
-                            registry: name.clone(),
-                        }),
-                    )
-                })
-                .collect();
-            if !reports
-                .iter()
-                .any(|(_, report)| report.availability == crate::Availability::Available)
-            {
-                return Err(crate::GameError::Unavailable {
-                    registries: reports
-                        .into_iter()
-                        .map(|(name, report)| (name, report.reasons))
-                        .collect(),
-                });
+        // The supervisor knows a registry by its internal name.
+        let directories = self.registry_directories();
+        let fault = match options.fault {
+            Some((directory, control)) => {
+                let registry = directories.get(&directory).cloned();
+                let registry = registry.ok_or(Error::UnknownRegistry { name: directory })?;
+                Some(crate::protocol::session::Fault { registry, control })
             }
-        }
-        if let Some(reason) = self.integrity() {
-            return Err(crate::GameError::InputsChanged(reason));
-        }
-        let (control_registry, control) = match control {
-            Some((name, control)) => (Some(name), control),
-            None => (None, crate::operation::ObservationControl::Normal),
+            None => None,
         };
-        let plan = crate::operation::PlanRequest {
-            request: crate::operation::AttemptRequest {
-                installation_hint: self.binding.installation_hint()?,
-                output,
-                hold_ms: 1,
-            },
-            composition: self.identity().0,
-            authorization,
-            observation: Some(crate::operation::ObservationSpec {
-                registry: None,
-                fixture: String::new(),
-                deadline_seconds: options.startup_seconds,
-                control,
-                session: Some(crate::operation::SessionSpec {
-                    idle_seconds: options.idle_seconds,
-                    control_registry,
-                }),
-            }),
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        let work = std::env::temp_dir().join(format!("pdx-native-{}-{id}", std::process::id()));
+        let request = crate::protocol::session::SessionRequest {
+            installation: self.bound().installation_location(),
+            build: self.bound().build().into(),
+            // The supervisor creates this directory; `work` holds nothing else.
+            work_directory: work.join("session"),
+            startup_seconds: options.startup_seconds,
+            idle_seconds: options.idle_seconds,
+            fault,
         };
-        plan.validate(authorization)?;
-        Ok(crate::operation::PreparedPlan { request: plan })
+        request.validate().map_err(|error| Error::Startup {
+            reason: error.to_string(),
+            disposal: Disposal::NotApplicable,
+        })?;
+        std::fs::create_dir_all(&work).map_err(|error| Error::Startup {
+            reason: format!("work directory: {error}"),
+            disposal: Disposal::NotApplicable,
+        })?;
+        let session = crate::game::Session {
+            directories,
+            build: self.build(),
+            recorder: self.recorder.clone(),
+            work,
+        };
+        crate::game::start(options.supervisor, request, session).await
     }
 }

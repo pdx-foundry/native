@@ -1,14 +1,11 @@
 mod support;
 
-use pdx_native::{Engine, OpenError, OpenRequest};
+use pdx_native::{Native, OpenError};
 use std::fs;
 use tempfile::tempdir;
 
 fn open(path: &std::path::Path) -> OpenError {
-    Engine::open(OpenRequest {
-        installation_hint: path.into(),
-    })
-    .unwrap_err()
+    Native::open(path).unwrap_err()
 }
 
 #[test]

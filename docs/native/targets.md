@@ -25,6 +25,11 @@ W45 uses a game-produced fixture hash `919df894628dcd1e21f636eb97eb8f20d9bb40b59
 
 ## Support and remaining gates
 
+Current support follows the target catalogue and Cargo tests, as specified by the
+[simplification decision](../design/simplification.md). Only M45-observe is catalogued. Windows
+work is deferred under the [roadmap](../roadmap.md); the decisions below describe the historical
+experiments and do not admit another build or platform.
+
 Accepted SDK-476 starts qualification with a pinned Apple Silicon 4.5 beta. Stable support requires requalification against stable 4.5 and the agreed Mac/Windows targets. Linux and Intel Mac are outside the initial support promise. One qualified stable release is actively maintained; a patch is not admitted automatically.
 
 SDK-445 is marked Done in Linear, but its text and result documents retain an open overall maintenance comparison. Do not derive economical maintenance from its status. SDK-485 remains Backlog: unchanged Atlas extraction across Mac ARM64/Windows x64 and a second distinct executable is still required. A second ARM64 target was not established in the retained records. Partial wall intervals and run counts are not active human/agent labor measurements.

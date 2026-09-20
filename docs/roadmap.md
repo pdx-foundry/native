@@ -1,6 +1,7 @@
 # Roadmap: from two registries to full config coverage
 
-Status: proposed plan, 2026-09-19. The [Native specification](specs/native.md) and
+Status: proposed plan, 2026-09-19; amended 2026-09-20 for the
+[simplification decision](design/simplification.md). The [Native specification](specs/native.md) and
 [technical design](design/architecture.md) remain the authority for behavior and layout. The
 [Atlas map](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database)
 remains the authority for decisions and open extraction questions. This document only orders the work.
@@ -12,10 +13,12 @@ platform-independent JSON snapshots. Native supplies every engine observation th
 
 ## Starting point
 
-Native admits one production operation: item names for `traditions` and `tradition_categories` on
-one exact Mac ARM64 executable. Supervision, admission, capture, replay and the frozen Atlas caller
-are verified. There is no `engine/analysis` module. All analysis methods (registry ownership, field
-discovery, reader binding, references, numeric grammar, command inventories) exist only as retained
+Native exposes static `registries()` and `registry_fields(name)`, plus live item names for
+`common/traditions` and `common/tradition_categories` on one exact Mac ARM64 executable.
+Static analysis lives in `engine/analysis`; the live stream reducer lives in `engine/operations`.
+The API returns normalized answers with typed gaps and source stamps. The Atlas prototype caller
+uses the same questions for live and recorded answers; see the [migration](design/atlas-caller-migration.md).
+The remaining reader, reference, numeric-grammar and command-inventory methods exist as retained
 Python prototypes.
 
 ## The target, measured
@@ -94,23 +97,27 @@ shapes, not as handwritten answers.
   The rehearsal blocks no earlier milestone, and it measures most when the full method set exists,
   so it is the final milestone (rescoped SDK-485).
 - **The beta installation is preserved first.** Stellaris 4.5 leaves beta in the week of 2026-09-21.
-  The only accepted qualification is pinned to the exact beta executable and 68 content files. A
-  verified copy of that installation must exist before Steam updates it (SDK-522), or live work
-  stops until a forced requalification.
+  The only supported target record is the exact beta executable. A verified copy of that
+  installation must exist before Steam updates it (SDK-522), or live work stops until a new
+  target record exists and its tests pass.
 
 ## Milestones
 
 Linear works milestones in order, so the order below is the work order.
 
+**Simplification completed, 2026-09-20.** The [work order](design/simplification.md#work-order)
+records the API migration, analysis and live reducer moves, removal of replay and qualification,
+and private-directory cleanup. This work has no Linear tickets.
+
 | # | Milestone | Work | Exit gate | Tickets |
 | --- | --- | --- | --- | --- |
 | 1 | Scoreboard | Preserve the beta installation. Claim ledger from the `.cwt` files with owner and documentation-provenance tags. The ledger work is done in the Atlas repository. | Every config line maps to a claim; a coverage percentage exists | SDK-522, SDK-523, SDK-525 |
-| 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas. In Atlas: the first rule snapshot, then the `.cwt` comparison tool that reads it. | Rust results equal retained results (41/41 ownership controls, 10 agenda fields); the tradition snapshot raises coverage above the baseline and is compared with the config | SDK-527 to SDK-534, SDK-558, SDK-524 |
+| 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas. In Atlas: the first rule snapshot, then the `.cwt` comparison tool that reads it. | Rust results equal retained results (164 named template registries that agree with every live-observed directory; 10 agenda fields); the tradition snapshot raises coverage above the baseline and is compared with the config | SDK-527 to SDK-534, SDK-558, SDK-524 |
 | 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | The five `script-docs` logs and the config name lists are replaced | SDK-535 to SDK-540 |
 | 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method is frozen, then tested on held-out cases. | Council agenda completeness passes; held-out rate recorded per method | SDK-541 to SDK-550 |
 | 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; frozen methods over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
-| 7 | Update rehearsal | Requalify the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
+| 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
 
 Milestone 3 needs only the static context (SDK-527), so its first tickets are unblocked as soon as
 that ticket is done. The blocking relations in Linear are the authority for what can start.
@@ -123,12 +130,14 @@ that ticket is done. The blocking relations in Linear are the authority for what
   of the documentation. These get the `Atlas` repository label.
 - Installation discovery without a location hint (specification user story 2). It does not block
   config coverage.
-- Private remote evidence preservation is already tracked as SDK-486.
+- Private remote preservation of the prototype sources is tracked as SDK-486. Retained captures
+  are no longer preserved.
 
 ## Tracking
 
 Tickets are in the Linear **Atlas** project, one milestone per row above. The `Repo` label group
 (`Native` or `Atlas`) says in which repository the work of a ticket is done. Each ticket is a
-vertical slice: it ends at the public interface, with replayable evidence and a qualification
-record, checked through the frozen Atlas caller. Open extraction questions stay with their Atlas
+vertical slice: it ends at the public API, with tests on small tracked inputs and recorded
+answers, checked through the Atlas caller. Acceptance criteria in tickets that name replay,
+retained captures or qualification records are superseded by the simplification decision. Open extraction questions stay with their Atlas
 map tickets; each Native ticket links to the question it implements and reports its result there.

@@ -4,7 +4,7 @@ mod records;
 use super::binary::ImageIdentity;
 use crate::OpenError;
 
-pub(super) use recipes::{BindingGroupId, MethodId, Recipe, StrategyId};
+pub(super) use recipes::{BindingGroupId, Recipe, StrategyId};
 
 pub(super) struct TargetRecord {
     pub executable: &'static str,

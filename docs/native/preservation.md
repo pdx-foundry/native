@@ -26,7 +26,7 @@ The accepted SDK-479 policy calls for manifests and bulk release assets in a pri
 | linear-records | Native project metadata/issue listing, Atlas map, accepted native decisions, testing maps/documents/comments, downloaded review and native archive assets |
 | linear-supplement | Additional lifecycle, recursive event, locator, scripts/stockpiles/shared-suite/harness resolutions and archives; duplicate assets point to linear-records |
 | sdk-515-loader-entry | Initial Native debugger-worker candidate: two retained four-control batches and source/tool identities |
-| sdk-517-observations | Rust-owned candidate observations: five retained batches, generated worker protocol, failure controls and replay artifacts; see [result](candidate-observations.md) |
+| sdk-517-observations | Rust-owned candidate observations: five retained batches, generated worker protocol, failure controls and replay artifacts |
 | sdk-515-loader-entry-review | Final candidate rerun after PR review: strengthened joins and raw preservation hashes; see [result](loader-entry-worker.md) |
 
 No `sdk-atlas` directory exists in the supplied Developer directory; the verified source is `pdx-atlas`. Its local planning/glossary and consumer conclusions stay Atlas-owned. Full mixed historical capsules are privately retained here to keep native provenance and replay intact, not promoted into a Native rule database.
@@ -52,3 +52,24 @@ permits removal of redundant scratch/worktree/temp files under the development p
 preservation is not a prerequisite for routine development. Routine captures may be discarded once
 their useful findings are preserved. Published capability claims still need matching implementation
 and verification; migration or a candidate address alone does not establish support.
+
+## Simplification cleanup, 2026-09-20
+
+Every bundle passed `tools/evidence.py`, and each archive and manifest has a byte-identical copy
+in `~/Documents/PDX/evidence/native-2026-09-18/`. Duplicate restores, staging and verification
+copies and obsolete SDK run outputs were then removed. Generated large method inputs and routine
+private profiles are disposable; static parity tests now derive their input from the executable.
+
+Additional source, notes and small observations absent from those manifests remain under
+`.local/preserved-development/`, with their former `.local` paths. These 1,780 files have a verified
+second copy in `native-2026-09-18/simplification-development-notes.tar.gz`. The preserved sources
+include the reservation investigation and bundle-import helpers. Existing bundles retain the
+historical prototype dependencies and raw findings.
+
+The exact 85,044,680-byte M45-observe ARM64 executable is also available without restoring a bundle
+at `.local/executables/stellaris-m45-observe-arm64`; its SHA-256 is the slice identity in
+[targets](targets.md). This is still only an executable, not the installation backup of SDK-522.
+
+The Atlas caller before migration, including its old freeze and synthetic files, is preserved in
+`native-2026-09-18/atlas-native-consumer-before-simplification.tar.gz`. The migrated caller stays
+local in Atlas's ignored `prototypes/native-registry` directory.

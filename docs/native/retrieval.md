@@ -1,4 +1,4 @@
-# Local retrieval and offline replay
+# Local retrieval of the prototype bundles
 
 Run these commands from `/Users/jackson/Developer/pdx-native`. Python 3 standard library is enough for bundle verification and the selected Atlas replays. No game launch is needed.
 
@@ -36,52 +36,19 @@ For Linear material, restore `linear-records`. `linear/SDK-483-comments.json`, f
 
 These replay retained instructions, traces, joins, normalizations and synthetic missing-evidence controls. They do not reproduce game execution. Sibling native helper directories are included to preserve original relative imports.
 
-`typed-extraction` contains the full mixed extraction spike for historical reference. Reference `run.py` needs the exact game installation/Xcode even though it does not launch the game. Early-observation **`replay.py` launches games**. For an offline check, use `tools/check-observation-evidence.py` against the restored spike; it checks retained source/content manifest hashes, trace sequence, fields, terminal markers and parent reaping records, not fresh hook behavior.
+`typed-extraction` contains the full mixed extraction spike for historical reference. Reference `run.py` needs the exact game installation/Xcode even though it does not launch the game. Early-observation **`replay.py` launches games**. Do not run it for an offline check; read the retained manifests, traces and parent reaping records in the restored spike.
 
-`apple-silicon-baseline` includes the original `apple-silicon-native-evidence.tar.gz`. Linear asset files retain UUID filenames; inspect format with `file`, then list/extract in a new private working directory. W45 asset is `3abce4f4-ee3d-4a66-bb4f-5ef058a2fb66`; W446 asset is `c7ff3152-650d-4148-bb86-a2b7ac72e306`. Their source documents give archive hashes and original layouts. Selected migration restore results are in [verification](verification.md).
+`apple-silicon-baseline` includes the original `apple-silicon-native-evidence.tar.gz`. Linear asset files retain UUID filenames; inspect format with `file`, then list/extract in a new private working directory. W45 asset is `3abce4f4-ee3d-4a66-bb4f-5ef058a2fb66`; W446 asset is `c7ff3152-650d-4148-bb86-a2b7ac72e306`. Their source documents give archive hashes and original layouts.
 
 `source-git/git/sdk.bundle` and `typed.bundle` preserve selected original branch histories without rewriting source repositories. `git bundle verify <path>` works in an empty Git repository; use `git clone <bundle> <new-directory>` for a separate historical source checkout. Standalone `.tar` snapshots preserve the named Windows adapter and draft specification commits even where no retained branch points at them. Working-tree/untracked evidence is preserved in the other bundles, not assumed present in Git.
-
-## Public Native replay of SDK-483
-
-The Rust replay adapter reads recorded bytes only. It supports the accepted bounded window and
-keeps activation, completion, and historical disposal separate. It does not run the prototype's
-game-launching `replay.py`.
-
-Verify/restore `typed-extraction` first (omit `--restore` if its verified restore already exists), then
-prepare a **new** working root. The preparation command checks every pinned input before writing.
-
-```sh
-python3 tools/evidence.py typed-extraction --restore
-python3 tools/prepare-private-replay.py .local/evidence/restored/typed-extraction .local/evidence/replay-sdk-513
-PDX_NATIVE_PRIVATE_EVIDENCE="$PWD/.local/evidence/replay-sdk-513" cargo test --test private_replay -- --ignored
-cargo run --example replay -- .local/evidence/replay-sdk-513 tests/fixtures/private/normal.ref.json
-```
-
-Private tests are explicitly ignored without this prerequisite; configured missing evidence is an
-error, never a passing empty observation. Small tracked authored synthetic fixtures run on a clean
-checkout with `cargo test --workspace`. Their results remain synthetic.
 
 ## Fresh capture prerequisites
 
 SDK-515's `sdk-515-loader-entry-review` bundle retains the final candidate debugger-worker
 trial. Its initial batches remain in `sdk-515-loader-entry`.
 Use its [result and restore instructions](loader-entry-worker.md) for offline verification.
-The separate `tools/loader-entry-trial/run.py` command **launches games** and requires the
-exact retained installation. It is not a public live adapter or production qualification.
+The historical `trial-03/trial-source/run.py` in the restored bundle **launches games**
+and requires the exact retained installation. The repository no longer ships the trial tools;
+use `tests/live.rs` for the current Native session API.
 
 Fresh captures require the **particular** target/architecture, compatible save or parser fixture, declared installed content and DLC, OS/toolchain/debugger access, and no conflicting live game. Native capture scripts retain original absolute installation/profile/helper paths. Retarget working copies and record the changes; preserve hash gates and qualification controls. Do not silently substitute another binary or mock source. Missing installations, old source saves, Mythos/dependency content and Windows host access limit fresh reproduction even when offline replay succeeds.
-
-## Registry discovery replay
-
-The SDK-528 [registry-discovery contract](../design/registry-discovery.md) describes static capture,
-verified SDK-489 preparation and the installation-free `replay-discovery` example. Preparation copies
-only into a new working capture; it preserves the retained capsule. Historical manifests retain the
-original content boundaries and independent disposal records.
-
-## Registry root-field replay
-
-The [SDK-530 contract](../design/registry-fields.md) documents executable-only capture and
-`replay-fields`. `tools/prepare-registry-fields.py` verifies SDK-487 comparison bytes only after
-new Rust results have been frozen. It writes to a new comparison directory and never modifies
-the retained prototype. Complete registry semantics remain unqualified after successful replay.

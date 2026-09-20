@@ -1,153 +1,95 @@
-//! Async consumer sessions; independent threads and the external supervisor own process lifetime.
+//! `Game`: one supervised game session, or its stand-in over recorded answers.
+//!
+//! An independent thread (`driver`) talks to the supervisor process, so no async runtime owns
+//! the game. The supervisor sends the answers once, when the game is paused; every
+//! `registry_items` call returns from them.
 use crate::{
-    ArtifactReference, GameReadiness, RegistryError, RegistryResult, ReplayRequest, operation,
+    Disposal, Error, GameReadiness,
+    engine::operations::registry_items::{Observed, RegistryItems},
+    protocol::session::{ObservationControl, SessionOutcome, SessionRequest},
 };
-use serde::Serialize;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
     process::Command,
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, mpsc},
 };
 use tokio::sync::{oneshot, watch};
 
 mod driver;
 
-/// Session retention and deadlines. Cleanup has its own independent bounded budget.
-#[derive(Debug, Clone)]
+/// How to start a game. The consumer supplies the supervisor process; Native supplies the rest.
+#[derive(Debug)]
 pub struct GameOptions {
-    /// Existing absolute directory for new immutable attempts.
-    pub retention_directory: PathBuf,
-    /// Initialization budget in seconds, 1–180; the constructor defaults to 180.
+    pub(crate) supervisor: Command,
+    /// Seconds allowed for the game to reach its pause, 1 to 180. The default is 180.
     pub startup_seconds: u64,
-    /// Idle budget in seconds, 1–180, reset by successful registry reads.
+    /// Seconds that a paused game may stay idle, 1 to 180. Each answer restarts it. The default
+    /// is 180.
     pub idle_seconds: u64,
+    /// A deliberate fault and the content directory of the registry that receives it.
+    pub(crate) fault: Option<(String, ObservationControl)>,
 }
 impl GameOptions {
-    /// Use 180-second startup and idle budgets.
-    pub fn new(retention_directory: PathBuf) -> Self {
+    /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
+    /// input and output, then exits. It must link the same Native build as the caller.
+    pub fn new(supervisor: Command) -> Self {
         Self {
-            retention_directory,
+            supervisor,
             startup_seconds: 180,
             idle_seconds: 180,
+            fault: None,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Hosting {
-    command: Arc<Mutex<Command>>,
-    options: GameOptions,
-}
-impl Hosting {
-    pub(crate) fn new(command: Command, mut options: GameOptions) -> Result<Self, GameError> {
-        if !options.retention_directory.is_absolute()
-            || !options.retention_directory.is_dir()
-            || !(1..=180).contains(&options.startup_seconds)
-            || !(1..=180).contains(&options.idle_seconds)
-        {
-            return Err(GameError::InvalidOptions(
-                "Expected an existing absolute retention directory and 1–180 second budgets".into(),
-            ));
-        }
-        options.retention_directory = options
-            .retention_directory
-            .canonicalize()
-            .map_err(|error| GameError::InvalidOptions(error.to_string()))?;
-        Ok(Self {
-            command: Arc::new(Mutex::new(command)),
-            options,
-        })
+    /// Inject a deliberate fault into the observation of one registry, named by its content
+    /// directory. Only Native's live tests use this; see `tests/live.rs`.
+    #[doc(hidden)]
+    pub fn fault(mut self, registry: &str, control: ObservationControl) -> Self {
+        self.fault = Some((registry.trim_end_matches('/').into(), control));
+        self
     }
 }
 
-/// Session startup or transport failure. Only a retained owner report can confirm disposal.
-#[derive(Debug, Clone, Serialize)]
-pub enum GameError {
-    /// No consumer supervisor has been configured.
-    NotConfigured,
-    /// Retention or deadline configuration is invalid.
-    InvalidOptions(String),
-    /// None of the declared registries is currently admitted.
-    Unavailable {
-        /// Per-registry admission failures.
-        registries: BTreeMap<String, Vec<crate::UnavailableReason>>,
-    },
-    /// The pinned installation changed or became unreadable.
-    InputsChanged(crate::UnavailableReason),
-    /// Startup ended without a safe usable pause. Partial results and cleanup remain available.
-    StartupFailed(Box<GameReport>),
-    /// Supervisor transport failed; cleanup confirmation is unavailable.
-    Supervisor(String),
-}
-impl std::fmt::Display for GameError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Game session failed: {self:?}")
-    }
-}
-impl std::error::Error for GameError {}
-impl From<crate::supervisor::SupervisorError> for GameError {
-    fn from(error: crate::supervisor::SupervisorError) -> Self {
-        Self::Supervisor(error.to_string())
-    }
+/// What `start` needs besides the request: the caller's names and where answers go.
+pub(crate) struct Session {
+    /// Content directory of each observed registry, with its internal name.
+    pub directories: BTreeMap<String, String>,
+    pub build: crate::BuildId,
+    /// Write every answer to this directory as it is returned.
+    pub recorder: Option<Arc<PathBuf>>,
+    /// Temporary directory that Native made for this session.
+    pub work: PathBuf,
 }
 
-/// Availability of one registry, independent of the other registries in a session.
-#[derive(Debug, Clone, Serialize)]
-pub enum RegistryAvailability {
-    /// A readable snapshot exists; its completeness is reported separately.
-    Available {
-        /// Complete or partial collection evidence.
-        completion: crate::Completion,
-    },
-    /// Admission, activation, access, or evidence retention did not establish this answer.
-    Unavailable {
-        /// Specific observation or retention gaps.
-        diagnostics: Vec<String>,
-    },
-}
-
-/// Final session results and independently established process disposal.
-#[derive(Debug, Clone, Serialize)]
-pub struct GameReport {
-    /// Pinned composition identity.
-    pub context: crate::ContextIdentity,
-    /// Unique supervised attempt.
-    pub attempt: String,
-    /// Last established initialization readiness, if any.
-    pub readiness: Option<GameReadiness>,
-    /// Why the session ended; independent of item completeness.
-    pub outcome: crate::OperationOutcome,
-    /// Independent owner disposal confirmation.
-    pub disposal: crate::OperationDisposal,
-    /// Whether the durable host reservation was resolved.
-    pub reservation_resolved: bool,
-    /// Each registry's retained observations or evidence-finalization failure.
-    pub registries: BTreeMap<String, Result<RegistryResult, String>>,
-    /// Final immutable per-registry replay references.
-    pub replay: BTreeMap<String, ReplayRequest>,
-    /// Retained attempt directory, including the owner report.
-    pub retained: PathBuf,
-    /// Additional retention and supervisor failures.
-    pub diagnostics: Vec<String>,
-}
-
+/// What the supervisor established when the game paused.
 #[derive(Debug, Clone)]
 struct Paused {
     readiness: GameReadiness,
-    registries: BTreeMap<String, Result<RegistryResult, String>>,
-    replay: BTreeMap<String, ReplayRequest>,
+    /// By internal registry name.
+    registries: BTreeMap<String, RegistryItems>,
 }
+
+/// How a session ended, from the supervisor's final report.
+#[derive(Debug, Clone)]
+struct Finished {
+    outcome: SessionOutcome,
+    disposal: Disposal,
+    reservation_resolved: bool,
+    diagnostics: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct State {
     paused: Option<Paused>,
-    finished: Option<Result<GameReport, GameError>>,
+    /// `Err` when the connection to the supervisor failed; disposal is then not established.
+    finished: Option<Result<Finished, Error>>,
 }
 enum DriverCommand {
+    /// The caller answered a question about this registry; the idle time starts again.
     Read {
         name: String,
-        reply: oneshot::Sender<Result<(), RegistryError>>,
+        reply: oneshot::Sender<Result<(), Error>>,
     },
 }
 
@@ -160,67 +102,152 @@ pub struct Game {
     state: watch::Receiver<State>,
     paused: Paused,
     closing: bool,
+    /// Content directory of each observed registry, with its internal name.
+    directories: BTreeMap<String, String>,
+    build: crate::BuildId,
+    /// Read every answer from this directory; no process exists.
+    recorded: Option<Arc<crate::recorded::Answers>>,
+    /// Write every answer to this directory as it is returned.
+    recorder: Option<Arc<PathBuf>>,
+    /// Temporary work directory that Native made. Removed after a clean close.
+    work: Option<PathBuf>,
 }
 impl Game {
+    /// A session over recorded answers. No supervisor or game process is started.
+    pub(crate) fn recorded(directory: Arc<crate::recorded::Answers>) -> Self {
+        let paused = Paused {
+            readiness: GameReadiness::PausedAfterRegistryInitialization,
+            registries: BTreeMap::new(),
+        };
+        let (_, state) = watch::channel(State::default());
+        Self {
+            commands: None,
+            stop: Arc::new(AtomicU8::new(0)),
+            state,
+            paused,
+            closing: false,
+            directories: BTreeMap::new(),
+            build: directory.build.clone(),
+            recorded: Some(directory),
+            recorder: None,
+            work: None,
+        }
+    }
+
+    /// List the item names of one registry, as the engine holds them after its initial load.
+    ///
+    /// The registry is named by its content directory, such as `common/traditions`. Every call
+    /// returns the same startup observation; the game is never resumed. Cancelling this future
+    /// leaves the session alive.
+    pub async fn registry_items(
+        &mut self,
+        registry: &str,
+    ) -> Result<crate::Answer<Vec<String>>, crate::Error> {
+        use crate::Error;
+        if let Some(directory) = &self.recorded {
+            if self.closing {
+                return Err(Error::Closed);
+            }
+            return directory.read("registry_items", Some(registry));
+        }
+        let answer = self.registry_items_from_game(registry).await;
+        if let Some(directory) = &self.recorder {
+            crate::recorded::write(
+                directory,
+                &self.build,
+                "registry_items",
+                Some(registry),
+                &answer,
+            )?;
+        }
+        answer
+    }
+
+    async fn registry_items_from_game(
+        &mut self,
+        registry: &str,
+    ) -> Result<crate::Answer<Vec<String>>, Error> {
+        use crate::{Answer, Basis, Completeness, Gap, GapKind, Operation, Source};
+        let operation = Operation::RegistryItems;
+        let directory = registry.trim_end_matches('/');
+        // Item observation covers only the registries that the build's live recipe binds. Another
+        // name can be a real registry, so this is not `UnknownRegistry`.
+        let Some(name) = self.directories.get(directory).cloned() else {
+            let covered: Vec<_> = self.directories.keys().cloned().collect();
+            return Err(Error::Unsupported {
+                operation,
+                reason: format!("item observation covers only: {}", covered.join(", ")),
+            });
+        };
+        if self.closing || self.state.borrow().finished.is_some() {
+            return Err(Error::Closed);
+        }
+        let observed = self
+            .paused
+            .registries
+            .get(&name)
+            .filter(|items| items.observed != Observed::Unavailable)
+            .cloned();
+        let Some(observed) = observed else {
+            let diagnostics = self.paused.registries.get(&name);
+            return Err(Error::Observation {
+                operation,
+                reason: diagnostics.map_or_else(
+                    || "The supervisor sent no observation of this registry".into(),
+                    |items| items.diagnostics.join("; "),
+                ),
+            });
+        };
+        self.restart_idle_time(name).await?;
+        let complete = observed.observed == Observed::Complete;
+        Ok(Answer {
+            value: observed.items,
+            completeness: if complete {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            },
+            gaps: if complete {
+                Vec::new()
+            } else {
+                vec![Gap {
+                    kind: GapKind::IncompleteObservation,
+                    subject: Some(directory.into()),
+                    detail: "The engine collection was not read to its end.".into(),
+                }]
+            },
+            source: Source::new(
+                self.build.clone(),
+                "registry-items/v1",
+                Basis::LiveObservation,
+            ),
+        })
+    }
+
+    /// Tell the supervisor that the caller got an answer, and wait for its acknowledgement. The
+    /// supervisor ends a session that stays idle.
+    async fn restart_idle_time(&mut self, name: String) -> Result<(), Error> {
+        let (reply, receive) = oneshot::channel();
+        self.commands
+            .as_ref()
+            .ok_or(Error::Closed)?
+            .try_send(DriverCommand::Read { name, reply })
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => {
+                    Error::Supervisor("Too many pending registry reads".into())
+                }
+                mpsc::TrySendError::Disconnected(_) => Error::Closed,
+            })?;
+        receive
+            .await
+            .map_err(|_| Error::Supervisor("Registry read acknowledgement lost".into()))?
+    }
+
     /// The witnessed initialization pause. This does not advertise gameplay readiness.
     pub fn readiness(&self) -> GameReadiness {
         self.paused.readiness
     }
-    /// Inspect every declared registry independently, without extending the idle deadline.
-    pub fn registry_availability(&self) -> BTreeMap<String, RegistryAvailability> {
-        self.paused
-            .registries
-            .iter()
-            .map(|(name, result)| (name.clone(), availability(result)))
-            .collect()
-    }
-    /// Immutable startup replay references. Replaying these does not confirm later cleanup.
-    pub fn replay_references(&self) -> &BTreeMap<String, ReplayRequest> {
-        &self.paused.replay
-    }
-    /// Read the same initial-loader snapshot on every call. No game execution is resumed.
-    /// Cancelling this future leaves the session alive.
-    pub async fn get_registry_items(
-        &mut self,
-        name: &str,
-    ) -> Result<RegistryResult, RegistryError> {
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(RegistryError::Closed);
-        }
-        let result =
-            self.paused
-                .registries
-                .get(name)
-                .ok_or_else(|| RegistryError::Unsupported {
-                    registry: name.into(),
-                })?;
-        if let RegistryAvailability::Unavailable { diagnostics } = availability(result) {
-            return Err(RegistryError::ObservationUnavailable {
-                registry: name.into(),
-                diagnostics,
-            });
-        }
-        let result = result.as_ref().expect("available snapshot").clone();
-        let (reply, receive) = oneshot::channel();
-        self.commands
-            .as_ref()
-            .ok_or(RegistryError::Closed)?
-            .try_send(DriverCommand::Read {
-                name: name.into(),
-                reply,
-            })
-            .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => {
-                    RegistryError::Supervisor("Too many pending registry reads".into())
-                }
-                mpsc::TrySendError::Disconnected(_) => RegistryError::Closed,
-            })?;
-        receive.await.map_err(|_| {
-            RegistryError::Supervisor("Registry read acknowledgement lost".into())
-        })??;
-        Ok(result)
-    }
-    /// Request cancellation. Close still returns the independent final cleanup report.
+    /// Request cancellation. `close` still waits for the supervisor and returns the disposal.
     pub fn cancel(&mut self) {
         if !self.closing {
             self.closing = true;
@@ -229,24 +256,50 @@ impl Game {
                 .compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
         }
     }
-    /// Close the session and await independent disposal. Repeated calls return the same report.
-    /// Cleanup continues if this future is cancelled after it has been polled.
-    pub async fn close(&mut self) -> Result<GameReport, GameError> {
+    /// Close the session and wait until the supervisor reports whether the game is gone.
+    ///
+    /// Repeated calls give the same result. Cleanup continues if this future is dropped after it
+    /// was polled. Failed session cleanup returns `Error::Cleanup`, with the witnessed disposal.
+    /// The temporary work directory is removed only after a clean, confirmed disposal.
+    pub async fn close(&mut self) -> Result<Disposal, Error> {
+        if self.recorded.is_some() {
+            self.closing = true;
+            return Ok(Disposal::NotApplicable);
+        }
         if !self.closing {
             self.closing = true;
             let _ = self
                 .stop
                 .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst);
         }
-        loop {
+        let finished = loop {
             if let Some(result) = self.state.borrow().finished.clone() {
-                return result;
+                break result?;
             }
             self.state
                 .changed()
                 .await
-                .map_err(|_| GameError::Supervisor("Session owner thread lost".into()))?;
+                .map_err(|_| Error::Supervisor("Session owner thread lost".into()))?;
+        };
+        if matches!(finished.outcome, SessionOutcome::Failed(_))
+            || !finished.reservation_resolved
+            || !finished.diagnostics.is_empty()
+        {
+            return Err(Error::Cleanup {
+                reason: format!(
+                    "{:?}; {}",
+                    finished.outcome,
+                    finished.diagnostics.join("; ")
+                ),
+                disposal: finished.disposal,
+            });
         }
+        if finished.disposal == Disposal::Confirmed
+            && let Some(work) = self.work.take()
+        {
+            let _ = std::fs::remove_dir_all(work);
+        }
+        Ok(finished.disposal)
     }
 }
 impl Drop for Game {
@@ -254,34 +307,18 @@ impl Drop for Game {
         self.commands.take();
     }
 }
-fn availability(result: &Result<RegistryResult, String>) -> RegistryAvailability {
-    match result {
-        Ok(result)
-            if result.activation == crate::Activation::Demonstrated
-                && matches!(
-                    result.completion,
-                    crate::Completion::Complete | crate::Completion::Incomplete
-                ) =>
-        {
-            RegistryAvailability::Available {
-                completion: result.completion,
-            }
-        }
-        Ok(result) => RegistryAvailability::Unavailable {
-            diagnostics: result.diagnostics.clone(),
-        },
-        Err(reason) => RegistryAvailability::Unavailable {
-            diagnostics: vec![reason.clone()],
-        },
-    }
-}
 
+/// Start the driver thread and wait for the pause. A session that ends before its pause is a
+/// failed start, whatever its outcome.
 pub(crate) async fn start(
-    context: crate::Native,
-    hosting: Hosting,
-    authorization: operation::Authorization,
-    control: Option<(String, operation::ObservationControl)>,
-) -> Result<Game, GameError> {
+    supervisor: Command,
+    request: SessionRequest,
+    session: Session,
+) -> Result<Game, Error> {
+    let timing = driver::Timing {
+        startup_seconds: request.startup_seconds,
+        idle_seconds: request.idle_seconds,
+    };
     let (commands, receive) = mpsc::sync_channel(16);
     let stop = Arc::new(AtomicU8::new(0));
     let owner_stop = stop.clone();
@@ -289,25 +326,22 @@ pub(crate) async fn start(
     std::thread::Builder::new()
         .name("native-game-owner".into())
         .spawn(move || {
-            driver::run(
-                context,
-                hosting,
-                authorization,
-                control,
-                receive,
-                owner_stop,
-                state,
-            );
+            driver::run(supervisor, request, timing, receive, owner_stop, state);
         })
-        .map_err(|error| GameError::Supervisor(error.to_string()))?;
+        .map_err(|error| Error::Supervisor(error.to_string()))?;
     // The only command sender stays in this future until ownership moves into Game.
     loop {
         let current = changes.borrow().clone();
         if let Some(finished) = current.finished {
-            return match finished {
-                Ok(report) => Err(GameError::StartupFailed(Box::new(report))),
-                Err(error) => Err(error),
-            };
+            let finished = finished?;
+            return Err(Error::Startup {
+                reason: format!(
+                    "{:?}; {}",
+                    finished.outcome,
+                    finished.diagnostics.join("; ")
+                ),
+                disposal: finished.disposal,
+            });
         }
         if let Some(paused) = current.paused {
             return Ok(Game {
@@ -316,86 +350,28 @@ pub(crate) async fn start(
                 state: changes,
                 paused,
                 closing: false,
+                directories: session.directories,
+                build: session.build,
+                recorded: None,
+                recorder: session.recorder,
+                work: Some(session.work),
             });
         }
         changes
             .changed()
             .await
-            .map_err(|_| GameError::Supervisor("Session owner thread lost".into()))?;
+            .map_err(|_| Error::Supervisor("Session owner thread lost".into()))?;
     }
-}
-
-fn replay_requests(
-    output: &std::path::Path,
-    references: &BTreeMap<String, ArtifactReference>,
-) -> Result<BTreeMap<String, ReplayRequest>, GameError> {
-    references
-        .iter()
-        .map(|(name, reference)| {
-            let path = std::path::Path::new(&reference.path);
-            if path.is_absolute()
-                || path
-                    .components()
-                    .any(|part| !matches!(part, std::path::Component::Normal(_)))
-            {
-                return Err(GameError::Supervisor(
-                    "Invalid session evidence path".into(),
-                ));
-            }
-            let mut descriptor = reference.clone();
-            descriptor.path = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .ok_or_else(|| GameError::Supervisor("Missing descriptor filename".into()))?
-                .into();
-            Ok((
-                name.clone(),
-                ReplayRequest {
-                    artifact_root: output.join(path.parent().unwrap()),
-                    descriptor,
-                },
-            ))
-        })
-        .collect()
-}
-fn replay_results(
-    requests: &BTreeMap<String, ReplayRequest>,
-    admitted: bool,
-) -> BTreeMap<String, Result<RegistryResult, String>> {
-    requests
-        .iter()
-        .map(|(name, request)| {
-            let result = crate::Engine
-                .replay_registry(request.clone())
-                .map_err(|error| error.to_string())
-                .and_then(|mut result| {
-                    if result.registry != *name {
-                        return Err("Registry descriptor does not match the requested name".into());
-                    }
-                    if admitted {
-                        result.origin = crate::ResultOrigin::Live;
-                    }
-                    Ok(result)
-                });
-            (name.clone(), result)
-        })
-        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn report() -> GameReport {
-        GameReport {
-            context: crate::ContextIdentity("test".into()),
-            attempt: "test".into(),
-            readiness: Some(GameReadiness::PausedDuringRegistryInitialization),
-            outcome: crate::OperationOutcome::Completed,
-            disposal: crate::OperationDisposal::Reaped,
+    fn finished() -> Finished {
+        Finished {
+            outcome: SessionOutcome::Completed,
+            disposal: Disposal::Confirmed,
             reservation_resolved: true,
-            registries: BTreeMap::new(),
-            replay: BTreeMap::new(),
-            retained: std::env::temp_dir(),
             diagnostics: Vec::new(),
         }
     }
@@ -403,7 +379,6 @@ mod tests {
         let paused = Paused {
             readiness: GameReadiness::PausedDuringRegistryInitialization,
             registries: BTreeMap::new(),
-            replay: BTreeMap::new(),
         };
         let (commands, receive) = mpsc::sync_channel(16);
         let (state, changes) = watch::channel(State {
@@ -417,25 +392,63 @@ mod tests {
                 state: changes,
                 paused,
                 closing: false,
+                directories: BTreeMap::from([("common/traditions".into(), "traditions".into())]),
+                build: crate::BuildId("test".into()),
+                recorded: None,
+                recorder: None,
+                work: None,
             },
             receive,
             state,
         )
     }
-    #[cfg(unix)]
-    #[test]
-    fn retention_alias_is_canonicalized_before_the_owner_report_join() {
+
+    #[tokio::test]
+    async fn failed_cleanup_keeps_diagnostics_even_when_the_game_is_gone() {
+        for failure in ["reservation", "outcome", "diagnostics"] {
+            let (mut game, _commands, state) = game();
+            let root = tempfile::tempdir().unwrap();
+            let work = root.path().join("session");
+            std::fs::create_dir(&work).unwrap();
+            let log = work.join("report.json");
+            std::fs::write(&log, "cleanup diagnostics").unwrap();
+            game.work = Some(work.clone());
+            let mut report = finished();
+            match failure {
+                "reservation" => report.reservation_resolved = false,
+                "outcome" => {
+                    report.outcome = SessionOutcome::Failed("Disposal journal commit failed".into())
+                }
+                _ => report.diagnostics.push("worker stop failed".into()),
+            }
+            state.send_modify(|state| state.finished = Some(Ok(report.clone())));
+            let error = game.close().await.unwrap_err();
+            assert!(matches!(
+                error,
+                Error::Cleanup {
+                    disposal: Disposal::Confirmed,
+                    ..
+                }
+            ));
+            assert_eq!(game.close().await.unwrap_err(), error);
+            assert_eq!(
+                std::fs::read_to_string(&log).unwrap(),
+                "cleanup diagnostics"
+            );
+            assert_eq!(game.work.as_ref(), Some(&work));
+        }
+    }
+
+    #[tokio::test]
+    async fn clean_close_removes_its_temporary_directory() {
+        let (mut game, _commands, state) = game();
         let root = tempfile::tempdir().unwrap();
-        let target = root.path().join("captures");
-        std::fs::create_dir(&target).unwrap();
-        let alias = root.path().join("alias");
-        std::os::unix::fs::symlink(&target, &alias).unwrap();
-        let hosting =
-            Hosting::new(Command::new("must-not-start"), GameOptions::new(alias)).unwrap();
-        assert_eq!(
-            hosting.options.retention_directory,
-            target.canonicalize().unwrap()
-        );
+        let work = root.path().join("session");
+        std::fs::create_dir(&work).unwrap();
+        game.work = Some(work.clone());
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
+        assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
+        assert!(!work.exists());
     }
 
     #[tokio::test]
@@ -448,16 +461,14 @@ mod tests {
         );
         assert_eq!(game.stop.load(Ordering::SeqCst), 1);
         assert!(matches!(
-            game.get_registry_items("traditions").await,
-            Err(RegistryError::Closed)
+            game.registry_items("common/traditions").await,
+            Err(Error::Closed)
         ));
-        state.send_modify(|state| state.finished = Some(Ok(report())));
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
         let first = game.close().await.unwrap();
         let second = game.close().await.unwrap();
-        assert_eq!(
-            serde_json::to_value(first).unwrap(),
-            serde_json::to_value(second).unwrap()
-        );
+        assert_eq!(first, Disposal::Confirmed);
+        assert_eq!(first, second);
         assert!(commands.try_recv().is_err());
     }
     #[tokio::test]
@@ -473,20 +484,59 @@ mod tests {
         ));
     }
     #[tokio::test]
-    async fn unknown_names_do_not_send_reads_or_extend_idle_lifetime() {
-        let (mut game, commands, _) = game();
+    async fn a_lost_supervisor_connection_is_an_error_and_never_a_disposal() {
+        let (mut game, _commands, state) = game();
+        state.send_modify(|state| {
+            state.finished = Some(Err(Error::Supervisor("connection lost".into())))
+        });
+        assert!(matches!(game.close().await, Err(Error::Supervisor(_))));
+    }
+    #[tokio::test]
+    async fn a_registry_without_an_observation_gives_an_error_and_sends_no_read() {
+        let (mut game, commands, _state) = game();
         assert!(matches!(
-            game.get_registry_items("unknown").await,
-            Err(RegistryError::Unsupported { .. })
+            game.registry_items("common/traditions").await,
+            Err(Error::Observation { .. })
+        ));
+        game.paused.registries.insert(
+            "traditions".into(),
+            RegistryItems {
+                items: vec!["kept".into()],
+                observed: Observed::Unavailable,
+                diagnostics: vec!["access failed".into()],
+            },
+        );
+        assert!(matches!(
+            game.registry_items("common/traditions").await,
+            Err(Error::Observation { reason, .. }) if reason == "access failed"
         ));
         assert!(matches!(
             commands.try_recv(),
             Err(mpsc::TryRecvError::Empty)
         ));
     }
+    #[tokio::test]
+    async fn registry_items_names_registries_by_directory_and_sends_no_read_for_other_names() {
+        let (mut game, commands, _state) = game();
+        for unknown in ["traditions", "common/nothing"] {
+            assert!(matches!(
+                game.registry_items(unknown).await,
+                Err(Error::Unsupported { .. })
+            ));
+        }
+        assert!(matches!(
+            commands.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        game.cancel();
+        assert!(matches!(
+            game.registry_items("common/traditions").await,
+            Err(Error::Closed)
+        ));
+    }
     #[test]
     fn runtime_shutdown_drops_the_lease_without_requiring_async_cleanup() {
-        let (game, commands, _) = game();
+        let (game, commands, _state) = game();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();

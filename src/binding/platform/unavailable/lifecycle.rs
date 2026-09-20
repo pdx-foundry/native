@@ -52,10 +52,6 @@ impl OwnedGame {
         unavailable()
     }
 }
-pub(crate) fn spawn(_: &Path, _: &Path, _: &Path, _: i32) -> Result<OwnedGame, SupervisorError> {
-    unavailable()
-}
-
 pub(crate) fn spawn_guarded(
     _: &Path,
     _: &Path,

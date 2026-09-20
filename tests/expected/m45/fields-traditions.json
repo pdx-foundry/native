@@ -1,0 +1,90 @@
+[
+ {
+  "name": "custom_tooltip",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "custom_tooltip_with_modifiers",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "potential",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "possible",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_enabled",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_disabled",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "triggered_modifier",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "ai_weight",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "unlocks_agenda",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tradition_swap",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "modifier",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ }
+]

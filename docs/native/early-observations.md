@@ -29,15 +29,19 @@ Initial `task_for_pid` failed. One human intervention enabled debugger access. A
 
 ## Reuse and limits
 
-SDK-515 now retains a [fresh debugger-worker integration trial](loader-entry-worker.md)
-and [backend decision](../design/debugger-worker.md). It selects an LLDB subprocess with
-embedded Python for the strategy and repeats the four controls with a pinned handshake.
-That candidate trial does not qualify the production port. SDK-517 adds the
-[candidate capture implementation](../design/candidate-observations.md) under the independent
-Rust owner; public live qualification remains separate.
+SDK-515 repeated the four controls with an LLDB subprocess and embedded Python, with a pinned
+handshake. See the [loader-entry worker trial](loader-entry-worker.md). The Rust supervisor uses the
+same worker.
 
 Carry **activation**, **observation completion**, and **confirmed disposal** as separate facts. Empty output with an unresolved hook is unavailable; record loss prevents completion; worker loss does not erase already collected observations. Native owns target-specific addresses, argument conventions, source/owner joins and cleanup. Atlas supplies observation requests, fixtures and a deadline.
 
 Fresh capture requires the exact M45-observe installation/content, ARM64 host, Xcode/LLDB and debugger access. The original `replay.py --scenario all` **builds a guard and launches games**; its name does not mean offline replay. This consolidation did not run it. The offline migration check reads manifests, source hashes, traces and final ownership records, described in [retrieval](retrieval.md).
 
 No production adapter, Windows timing, database-constructor order, late/hot reload, arbitrary parser stage, owner-loss recovery or low maintenance cost is established. Atlas's accepted consumer clarification is retained at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/early-observation.md`. Local Linear acceptance is `linear-records/linear/SDK-483-comments.json`; the review summary's earlier pending label remains historical.
+
+## Registry items (Rust supervisor, M45-observe)
+
+- **Where to read the items.** The worker reads item keys from the engine objects when the initial collection loader returns. The collection is full at that point, and later validation has not run. A first attempt waited for entry to the later post-read phase; the game did not reach it in 180 seconds.
+- **Inputs.** The engine reads private copies of the registry directories. On M45-observe the result is 234 traditions and 33 tradition categories, from one paused process, in about 35 to 45 seconds.
+- **Launch flag.** The launch uses `-debug_mode`, as the prototype did. One early batch omitted the flag and still reached the fixture, so the flag is not known to be necessary.
+- **Missing debugger.** To test a missing debugger without a change to the host, set `DEVELOPER_DIR` to a directory that does not exist.

@@ -1,9 +1,10 @@
-use super::{Binding, Source, installation::Installation};
-use crate::qualification::{AdmissionInputs, Authority};
-use crate::{CapabilityRequest, ContextOrigin, Qualification, UnavailableReason};
+use super::{Binding, installation::Installation};
+use crate::UnavailableReason;
 use std::fs;
 use tempfile::{TempDir, tempdir};
 
+/// An authored installation. Its executable is in no catalogue, so the binding has no operation;
+/// these tests concern only the integrity of the pinned inputs.
 fn installation() -> (TempDir, Binding) {
     let directory = tempdir().unwrap();
     for relative in ["common/tradition_categories", "common/traditions"] {
@@ -13,25 +14,10 @@ fn installation() -> (TempDir, Binding) {
     fs::write(directory.path().join("stellaris"), "authored test bytes").unwrap();
     fs::write(directory.path().join("common/traditions/test.txt"), "test").unwrap();
     let (installation, _) = Installation::open(directory.path()).unwrap();
-    // Private I/O control, never a catalogue entry or accepted qualification. Public contexts
-    // cannot supply these bytes to the composer, and the test factory cannot accept this path.
     let binding = Binding {
-        inputs: AdmissionInputs {
-            composition: "private-io-control".into(),
-            bounds: crate::RegistryBounds {
-                registries: vec!["traditions".into()],
-            },
-            content: installation.content.clone(),
-            prerequisites: Vec::new(),
-            toolchain: Ok("test-toolchain".into()),
-        },
         operation: None,
         analysis: None,
-        source: Source::Installation(installation),
-        authority: Authority {
-            accepted: vec![],
-            withdrawn: vec![],
-        },
+        installation,
     };
     (directory, binding)
 }
@@ -39,33 +25,18 @@ fn installation() -> (TempDir, Binding) {
 #[test]
 fn executable_replacement_permanently_invalidates_the_context() {
     let (directory, binding) = installation();
-    let context = crate::session::EngineContext::from_binding(binding);
-    let request = CapabilityRequest::default();
-    assert_eq!(context.origin(), ContextOrigin::Installation);
-    let report = context.capability(&request);
-    assert!(
-        report
-            .reasons
-            .contains(&UnavailableReason::QualificationMissing)
-    );
-    assert_eq!(
-        report
-            .reasons
-            .contains(&UnavailableReason::ProductionFeatureRequired),
-        !cfg!(feature = "production")
-    );
+    let context = crate::Native::from_binding(binding);
+    assert_eq!(context.blocking_reasons(), []);
     fs::write(directory.path().join("stellaris"), "changed executable").unwrap();
     assert!(
         context
-            .capability(&request)
-            .reasons
+            .blocking_reasons()
             .contains(&UnavailableReason::TargetChanged)
     );
     fs::write(directory.path().join("stellaris"), "authored test bytes").unwrap();
     assert!(
         context
-            .capability(&request)
-            .reasons
+            .blocking_reasons()
             .contains(&UnavailableReason::TargetChanged)
     );
 }
@@ -74,7 +45,7 @@ fn executable_replacement_permanently_invalidates_the_context() {
 fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
     for mutation in ["add", "binary-extension", "delete", "edit"] {
         let (directory, binding) = installation();
-        let context = crate::session::EngineContext::from_binding(binding);
+        let context = crate::Native::from_binding(binding);
         let original = directory.path().join("common/traditions/test.txt");
         match mutation {
             "add" => fs::write(directory.path().join("common/traditions/new.txt"), "new").unwrap(),
@@ -84,10 +55,10 @@ fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
             "delete" => fs::remove_file(original).unwrap(),
             _ => fs::write(original, "changed").unwrap(),
         }
-        let report = context.capability(&CapabilityRequest::default());
-        assert_eq!(report.qualification, Qualification::Incomplete);
         assert!(
-            report.reasons.contains(&UnavailableReason::ContentChanged),
+            context
+                .blocking_reasons()
+                .contains(&UnavailableReason::ContentChanged),
             "{mutation}"
         );
     }
@@ -96,14 +67,53 @@ fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
 #[test]
 fn missing_inputs_never_become_empty_success() {
     let (directory, binding) = installation();
-    let context = crate::session::EngineContext::from_binding(binding);
+    let context = crate::Native::from_binding(binding);
     fs::remove_file(directory.path().join("stellaris")).unwrap();
-    let report = context.capability(&CapabilityRequest::default());
     assert!(
-        report
-            .reasons
+        context
+            .blocking_reasons()
             .contains(&UnavailableReason::InputUnavailable)
     );
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edits() {
+    let (root, _) = installation();
+    let modified = "common/traditions/test.txt";
+    let added = "common/traditions/nested/added.txt";
+    fs::write(root.path().join(modified), "edited before open").unwrap();
+    fs::create_dir(root.path().join("common/traditions/nested")).unwrap();
+    fs::write(root.path().join(added), "added before open").unwrap();
+    let (installation, _) = Installation::open(root.path()).unwrap();
+    let plan = super::ExecutionPlan {
+        binding: Binding {
+            installation,
+            operation: Some(super::compose::synthetic_variation()),
+            analysis: None,
+        },
+    };
+    let work = tempdir().unwrap();
+    fs::create_dir(work.path().join("profile")).unwrap();
+    plan.prepare_registry_profile(work.path()).unwrap();
+    let mount = work.path().join("profile/mod/native_registry");
+    for relative in [modified, added] {
+        assert_eq!(
+            fs::read(mount.join(relative)).unwrap(),
+            fs::read(root.path().join(relative)).unwrap()
+        );
+    }
+    assert!(mount.join("common/tradition_categories").is_dir());
+    assert!(!mount.join("launcher-settings.json").exists());
+    let descriptor =
+        fs::read_to_string(work.path().join("profile/mod/native_registry.mod")).unwrap();
+    assert!(descriptor.contains("replace_path=\"common/traditions\""));
+    assert!(descriptor.contains("replace_path=\"common/tradition_categories\""));
+
+    fs::write(root.path().join(added), "changed after open").unwrap();
+    let next = tempdir().unwrap();
+    assert!(plan.prepare_registry_profile(next.path()).is_err());
+    assert!(!next.path().join("profile").exists());
 }
 
 #[cfg(unix)]
@@ -127,7 +137,7 @@ fn retargeting_the_original_executable_hint_is_detected() {
 fn content_parent_symlinks_are_unavailable() {
     use std::os::unix::fs::symlink;
     let (directory, binding) = installation();
-    let context = crate::session::EngineContext::from_binding(binding);
+    let context = crate::Native::from_binding(binding);
     fs::rename(
         directory.path().join("common"),
         directory.path().join("moved-common"),
@@ -140,8 +150,7 @@ fn content_parent_symlinks_are_unavailable() {
     .unwrap();
     assert!(
         context
-            .capability(&CapabilityRequest::default())
-            .reasons
+            .blocking_reasons()
             .contains(&UnavailableReason::InputUnavailable)
     );
 }
@@ -149,147 +158,56 @@ fn content_parent_symlinks_are_unavailable() {
 #[test]
 fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     use super::{ExecutionPlan, compose, platform::ObservationSetup};
-    use crate::operation::{ObservationControl, ObservationSpec};
+    use crate::protocol::session::{Fault, ObservationControl, SessionRequest};
     use crate::supervisor::SupervisorError;
-    fn inspect(
-        setup: ObservationSetup<'_>,
-    ) -> Result<(super::Observer, crate::capture::Capture), SupervisorError> {
-        assert_eq!(setup.bindings["registration-entry"], 0x1234);
+    fn inspect(setup: ObservationSetup<'_>) -> Result<super::Observer, SupervisorError> {
         assert_eq!(setup.machine.architecture, "synthetic-machine");
-        assert_eq!(setup.registry.unwrap().load_entry, 0x5678);
+        assert_eq!(setup.registries["traditions"].load_entry, 0x5678);
         assert_eq!(setup.package["selected.txt"], b"selected package");
-        assert_eq!(setup.identity["architecture"], "synthetic-machine");
-        assert_eq!(setup.identity["bindings"]["registration-entry"], 0x1234);
-        assert_eq!(setup.identity["strategy"], "synthetic-strategy");
+        assert_eq!(setup.fault.unwrap().registry, "traditions");
+        assert_eq!(setup.startup_seconds, 7);
         Err(SupervisorError("selected strategy reached".into()))
     }
     let (directory, _) = installation();
     let (installed, _) = Installation::open(directory.path()).unwrap();
-    let content = installed.content.clone().unwrap();
-    let (inputs, mut operation) = compose::synthetic_variation(content.clone());
-    operation.content = content;
+    let mut operation = compose::synthetic_variation();
     operation
         .registries
         .get_mut("traditions")
         .unwrap()
         .load_entry = 0x5678;
     operation.machine.architecture = "synthetic-machine".into();
-    operation.strategy.revision = "synthetic-strategy";
     operation.strategy.package = [("selected.txt".into(), b"selected package".to_vec())].into();
     operation.strategy.prepare = inspect;
     let plan = ExecutionPlan {
         binding: Binding {
-            inputs,
             operation: Some(operation),
             analysis: None,
-            source: Source::Installation(installed),
-            authority: Authority {
-                accepted: vec![],
-                withdrawn: vec![],
-            },
+            installation: installed,
         },
-        admitted_tool: None,
-        session_unavailable: Default::default(),
     };
-    let spec = ObservationSpec {
-        registry: Some("traditions".into()),
-        fixture: String::new(),
-        deadline_seconds: 1,
-        control: ObservationControl::Normal,
-        session: None,
+    let mut request = SessionRequest {
+        installation: directory.path().into(),
+        build: "unused".into(),
+        work_directory: directory.path().join("unused"),
+        startup_seconds: 7,
+        idle_seconds: 1,
+        fault: Some(Fault {
+            registry: "traditions".into(),
+            control: ObservationControl::MissingHook,
+        }),
     };
     let error = plan
-        .observer(&directory.path().join("unused"), "test", &spec, "synthetic")
+        .observer(&request.work_directory, "test", &request)
         .err()
         .unwrap();
     assert_eq!(error.to_string(), "selected strategy reached");
     assert!(!directory.path().join("unused").exists());
-    let mut plan = plan;
-    plan.binding.operation.as_mut().unwrap().content.clear();
-    assert!(
-        plan.observer(&directory.path().join("unused"), "test", &spec, "synthetic")
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("selected recipe")
-    );
-}
-
-#[cfg(not(feature = "production"))]
-#[tokio::test]
-async fn matching_qualification_cannot_launch_without_the_production_feature() {
-    let (directory, mut binding) = installation();
-    binding
-        .authority
-        .accepted
-        .push(crate::qualification::AcceptedRecord {
-            id: "private-admission-control".into(),
-            composition: binding.inputs.composition.clone(),
-            bounds: binding.inputs.bounds.clone(),
-            content: binding.inputs.content.clone().unwrap(),
-            toolchain: binding.inputs.toolchain.clone().unwrap(),
-            evidence: vec![],
-        });
-    let mut plan = super::ExecutionPlan {
-        binding,
-        admitted_tool: None,
-        session_unavailable: Default::default(),
-    };
-    assert!(
-        plan.admit("traditions")
-            .unwrap_err()
-            .to_string()
-            .contains("ProductionFeatureRequired")
-    );
-    assert!(plan.admitted_tool.is_none());
-    let context = crate::session::EngineContext::from_binding(plan.binding);
-    let report = context.capability(&CapabilityRequest::default());
-    assert_eq!(report.qualification, Qualification::Qualified);
-    assert_eq!(report.availability, crate::Availability::Unavailable);
-    let captures = directory.path().join("captures");
-    fs::create_dir(&captures).unwrap();
-    let client = context
-        .with_supervisor(
-            std::process::Command::new("must-not-launch"),
-            crate::GameOptions::new(captures.clone()),
-        )
+    // A fault for a registry that the session does not observe never reaches the strategy.
+    request.fault.as_mut().unwrap().registry = "unknown".into();
+    let error = plan
+        .observer(&request.work_directory, "test", &request)
+        .err()
         .unwrap();
-    let error = client.start_game().await.unwrap_err();
-    assert!(
-        matches!(error, crate::GameError::Unavailable { registries } if registries.values().all(|reasons| reasons == &[UnavailableReason::ProductionFeatureRequired]))
-    );
-    assert_eq!(fs::read_dir(captures).unwrap().count(), 0);
-}
-
-#[test]
-fn static_registry_descriptions_never_probe_live_helpers_and_keep_unknown_fields() {
-    let (directory, mut binding) = installation();
-    let (_, mut operation) =
-        super::compose::synthetic_variation(binding.inputs.content.clone().unwrap());
-    operation.strategy.probe = || panic!("static query must not probe live helpers");
-    binding.operation = Some(operation);
-    let native = crate::Native::from_binding(binding);
-    for name in ["traditions", "tradition_categories"] {
-        let description = native.get_registry(name).unwrap();
-        assert_eq!(description.content_directory, format!("common/{name}"));
-        assert!(matches!(
-            description.reader_discovery,
-            crate::DiscoveryStatus::Unknown { .. }
-        ));
-        assert!(matches!(
-            description.field_discovery,
-            crate::DiscoveryStatus::Unknown { .. }
-        ));
-    }
-    assert!(matches!(
-        native.get_registry("technology"),
-        Err(crate::RegistryError::Unsupported { .. })
-    ));
-    let path = directory.path().join("common/traditions/test.txt");
-    fs::write(&path, "changed").unwrap();
-    assert!(
-        matches!(native.get_registry("traditions"), Err(crate::RegistryError::Unavailable { reasons }) if reasons == [UnavailableReason::ContentChanged])
-    );
-    fs::write(path, "test").unwrap();
-    assert!(native.get_registry("traditions").is_err());
+    assert_ne!(error.to_string(), "selected strategy reached");
 }

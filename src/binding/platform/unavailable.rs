@@ -4,7 +4,6 @@ use crate::{UnavailableReason, binding::targets::StrategyId};
 pub(super) fn resolve(strategy: StrategyId) -> StrategyResolution {
     match strategy {
         StrategyId::MacSuspendedChildLoaderEntry => StrategyResolution {
-            revision: "unavailable-host/v1",
             unavailable: Some(UnavailableReason::HostUnavailable),
             package: Default::default(),
             probe: observation::probe_observer,
