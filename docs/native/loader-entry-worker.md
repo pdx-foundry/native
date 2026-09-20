@@ -1,9 +1,8 @@
 # SDK-515 loader-entry worker candidate
 
 On 2026-09-18, Native repeated the accepted SDK-483 mechanism with an explicit worker
-handshake and transport/package identities. The decision (design page removed 2026-09-20; see Git history)
-selects an LLDB subprocess with embedded Python for the loader-entry strategy. This result
-is **candidate evidence**, not production support or acceptance of a Rust port.
+handshake and transport/package identities. The trial selected an LLDB subprocess with embedded
+Python for the loader-entry strategy. The Rust supervisor now uses that worker.
 
 The retained bundle and its four historical controls were verified first. The installed
 M45-observe universal executable, ARM64 slice and all 68 files in the declared producer
@@ -67,19 +66,13 @@ python3 tools/loader-entry-trial/verify.py \
   .local/evidence/restored/sdk-515-loader-entry-review/sdk-515-loader-entry-review/trial-03
 ```
 
-This restore and offline verification passed. The normal/default and test-support Rust
-suites, restored private replay, formatting, both Clippy configurations, replay/admission
-boundary checks and eight game-free Python rejection tests also passed. Tests reject altered
-handshake identities, absent/ambiguous source edits, dropped records, changed thread/owner
-joins, invalid terminal counts, disabled hooks, unrelated files/failure causes, pre-resume observations
-and changed preservation hashes.
+This restore and offline verification passed. The Python tests reject altered handshake
+identities, dropped records, changed thread or owner joins, invalid terminal counts, disabled
+hooks, observations before resume, and changed preservation hashes.
 
 ## Limits carried forward
 
 These observations remain call/read entries, not successful registration returns, stored
 values, complete registries, validation results or gameplay. Content identity is bounded to
-the declared files; the full installation and DLC closure are not qualified. The selected
-worker is concrete, but the production Rust parent, generated wire bindings, package
-distribution, concurrency lock, controller/owner-loss recovery and broader target/tool
-qualification remain work for later implementation. The public library still launches no
-game and admits no live operation.
+the declared files. Windows timing, concurrency, and recovery after loss of the owner are not
+established.
