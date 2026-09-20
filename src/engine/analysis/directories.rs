@@ -98,8 +98,8 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
     let mut objects: Vec<(Value, u64)> = Vec::new();
     let mut built = Vec::new();
     let mut passed = Vec::new();
-    for (index, word) in function.code.chunks_exact(4).enumerate() {
-        let word = u32::from_le_bytes(word.try_into().expect("four bytes"));
+    for (index, word) in function.code.as_chunks::<4>().0.iter().enumerate() {
+        let word = u32::from_le_bytes(*word);
         let address = function.address + index as u64 * 4;
         let (rd, rn) = ((word & 31) as usize, ((word >> 5) & 31) as usize);
         if word & 0x9f00_0000 == 0x9000_0000 {
