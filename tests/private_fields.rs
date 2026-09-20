@@ -235,8 +235,8 @@ fn captured_omission_clobber_and_unknown_shape_controls() {
         .unwrap();
     // Replace every move of the original reader into x0 with a clobber. Static token labels survive,
     // but those paths must no longer claim their old joins.
-    for word in root.code.chunks_exact_mut(4) {
-        if u32::from_le_bytes(word.try_into().unwrap()) == 0xaa0103e0 {
+    for word in root.code.as_chunks_mut::<4>().0 {
+        if u32::from_le_bytes(*word) == 0xaa0103e0 {
             word.copy_from_slice(&0xaa1f03e0u32.to_le_bytes());
         }
     }
