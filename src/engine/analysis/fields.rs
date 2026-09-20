@@ -42,7 +42,7 @@ pub use records::*;
 use super::InputError;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v1";
+pub const METHOD: &str = "registry-fields/v2";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {

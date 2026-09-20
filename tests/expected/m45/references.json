@@ -1,0 +1,106 @@
+[
+  {
+    "owner": "CCreateShipEffect",
+    "status": "Partial",
+    "candidates": [
+      {
+        "input_offset": 1536,
+        "output_offset": 288,
+        "reference_class": "CShipSize",
+        "database": "TGameDatabase<CShipSizeDatabase>",
+        "mechanism": "typed-map-call",
+        "reference_class_basis": "typed call and same-type missing object",
+        "authored_field": "random_existing_design",
+        "alternatives": [
+          { "when": "stored-string-empty", "action": "destination-not-written" },
+          { "when": "returned-iterator-is-sentinel", "action": "store-typed-null-object" },
+          { "when": "returned-iterator-is-not-sentinel", "action": "store-returned-entry-value" }
+        ]
+      }
+    ],
+    "gaps": [
+      "The typed map callee internals are not established; only its signature and caller selection are established.",
+      "Registration, definition loading, validation, and runtime outcomes are not established."
+    ],
+    "unresolved_conditional": false
+  },
+  {
+    "owner": "CAddDistrictEffect",
+    "status": "Partial",
+    "candidates": [
+      {
+        "input_offset": 168,
+        "output_offset": 208,
+        "reference_class": "CDistrictType",
+        "database": "TGameDatabase<CDistrictTypeDatabase>",
+        "mechanism": "linear-key-comparison",
+        "reference_class_basis": "typed missing object; collection element type remains unestablished",
+        "authored_field": "district_type",
+        "alternatives": [
+          { "when": "first-equal-length-and-equal-bytes-item", "action": "store-collection-item" },
+          { "when": "empty-collection-or-no-matching-item", "action": "store-typed-null-object" }
+        ]
+      }
+    ],
+    "gaps": [
+      "The collection element type and database content loader are not established.",
+      "Registration, validation, and runtime outcomes are not established."
+    ],
+    "unresolved_conditional": false
+  },
+  {
+    "owner": "CChangePlanetClassEffect",
+    "status": "Partial",
+    "candidates": [
+      {
+        "input_offset": 568,
+        "output_offset": 608,
+        "reference_class": "CPlanetClass",
+        "database": "CPlanetClassDatabase",
+        "mechanism": "qualified-wrapper-around-typed-call",
+        "reference_class_basis": "typed call and same-type missing object",
+        "authored_field": null,
+        "alternatives": [
+          { "when": "hash-call-returns-null", "action": "store-typed-null-object" },
+          { "when": "hash-call-returns-non-null", "action": "store-call-return" }
+        ]
+      }
+    ],
+    "gaps": [
+      "The hash-table callee internals are not established; only the checked wrapper is established.",
+      "Registration, definition loading, validation, and runtime outcomes are not established."
+    ],
+    "unresolved_conditional": false
+  },
+  {
+    "owner": "CCreateArmyEffect",
+    "status": "Unknown",
+    "candidates": [],
+    "gaps": ["No qualified reference shape and provenance join matched the complete function."],
+    "unresolved_conditional": true
+  },
+  {
+    "owner": "CAddRelicEffect",
+    "status": "Partial",
+    "candidates": [
+      {
+        "input_offset": 168,
+        "output_offset": 208,
+        "reference_class": "CRelic",
+        "database": "TGameDatabase<CRelicsDatabase>",
+        "mechanism": "linear-key-comparison",
+        "reference_class_basis": "typed missing object; collection element type remains unestablished",
+        "authored_field": null,
+        "alternatives": [
+          { "when": "first-equal-length-and-equal-bytes-item", "action": "store-collection-item" },
+          { "when": "empty-collection-or-no-matching-item", "action": "store-typed-null-object" }
+        ]
+      }
+    ],
+    "gaps": [
+      "The collection element type and database content loader are not established.",
+      "Registration, validation, and runtime outcomes are not established."
+    ],
+    "unresolved_conditional": false
+  }
+]

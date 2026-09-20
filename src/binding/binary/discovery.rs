@@ -1,7 +1,7 @@
 use crate::AnalysisError;
 use crate::engine::analysis::discovery::{SchedulerLayout, StaticInput, Symbol, VtableWitness};
 use object::read::macho::{MachHeader, MachOFile64};
-use object::{Object, ObjectSection, ObjectSegment, ObjectSymbol};
+use object::{Object, ObjectSection, ObjectSegment, ObjectSymbol, SymbolIndex};
 use std::collections::BTreeMap;
 
 fn bad() -> AnalysisError {
@@ -44,11 +44,24 @@ fn data_at<'a>(
 
 // The M45 image uses DYLD_CHAINED_IMPORT_ADDEND64 and DYLD_CHAINED_PTR_64_OFFSET.
 // These are the fixup forms of this target, not a general Mach-O dynamic loader.
+fn display_name(raw: &str) -> String {
+    let mangled = raw.strip_prefix('_').unwrap_or(raw);
+    cpp_demangle::Symbol::new(mangled)
+        .ok()
+        .and_then(|symbol| symbol.demangle().ok())
+        .unwrap_or_else(|| raw.into())
+}
+
+struct Fixups {
+    pointers: BTreeMap<u64, u64>,
+    bindings: BTreeMap<u64, String>,
+}
+
 fn fixups(
     bytes: &[u8],
     file: &object::File<'_>,
     raw_symbols: &BTreeMap<String, u64>,
-) -> Result<BTreeMap<u64, u64>, AnalysisError> {
+) -> Result<Fixups, AnalysisError> {
     let macho = MachOFile64::<object::Endianness>::parse(bytes).map_err(|_| bad())?;
     let endian = macho.endian();
     let mut commands = macho
@@ -89,6 +102,7 @@ fn fixups(
         .min()
         .ok_or_else(bad)?;
     let mut pointers = BTreeMap::new();
+    let mut bindings = BTreeMap::new();
     for (i, segment) in segments.iter().enumerate() {
         let offset = u32_at(payload, starts + 4 + 4 * i)? as usize;
         if offset == 0 {
@@ -144,6 +158,7 @@ fn fixups(
                     let addend = u64_at(payload, imports + ordinal * 16 + 8)? as i64;
                     let library = (import & 0xffff) as u16 as i16;
                     let name = cstring(payload, names + (import >> 32) as usize)?;
+                    bindings.insert(address, display_name(name));
                     // Only same-image weak coalescing has an established local resolution.
                     if library == -3
                         && addend == 0
@@ -165,7 +180,81 @@ fn fixups(
             }
         }
     }
-    Ok(pointers)
+    Ok(Fixups { pointers, bindings })
+}
+
+fn indirect_stubs(
+    bytes: &[u8],
+    file: &object::File<'_>,
+) -> Result<BTreeMap<u64, String>, AnalysisError> {
+    let macho = MachOFile64::<object::Endianness>::parse(bytes).map_err(|_| bad())?;
+    let endian = macho.endian();
+    let mut commands = macho
+        .macho_header()
+        .load_commands(endian, bytes, 0)
+        .map_err(|_| bad())?;
+    let mut indirect = None;
+    let mut stub_sections = Vec::new();
+    while let Some(command) = commands.next().map_err(|_| bad())? {
+        let data = command.raw_data();
+        if command.cmd() == object::macho::LC_DYSYMTAB {
+            let offset = u32_at(data, 56)? as usize;
+            let count = u32_at(data, 60)? as usize;
+            if count > 1_000_000 || indirect.replace((offset, count)).is_some() {
+                return Err(bad());
+            }
+        }
+        if command.cmd() != object::macho::LC_SEGMENT_64 {
+            continue;
+        }
+        let section_count = u32_at(data, 64)? as usize;
+        if section_count > 10_000 || data.len() < 72 + section_count * 80 {
+            return Err(bad());
+        }
+        for index in 0..section_count {
+            let section = &data[72 + index * 80..72 + (index + 1) * 80];
+            if u32_at(section, 64)? & 0xff != object::macho::S_SYMBOL_STUBS {
+                continue;
+            }
+            let address = u64_at(section, 32)?;
+            let size = u64_at(section, 40)?;
+            let first = u32_at(section, 68)? as usize;
+            let stride = u32_at(section, 72)? as u64;
+            if stride == 0 || !size.is_multiple_of(stride) || size / stride > 100_000 {
+                return Err(bad());
+            }
+            stub_sections.push((address, size / stride, first, stride));
+        }
+    }
+    let (offset, count) = indirect.ok_or_else(bad)?;
+    let end = offset
+        .checked_add(count.checked_mul(4).ok_or_else(bad)?)
+        .ok_or_else(bad)?;
+    let table = bytes.get(offset..end).ok_or_else(bad)?;
+    let mut stubs = BTreeMap::new();
+    for (address, entries, first, stride) in stub_sections {
+        if first
+            .checked_add(entries as usize)
+            .is_none_or(|end| end > count)
+        {
+            return Err(bad());
+        }
+        for index in 0..entries as usize {
+            let symbol_index = u32_at(table, (first + index) * 4)?;
+            if symbol_index
+                & (object::macho::INDIRECT_SYMBOL_LOCAL | object::macho::INDIRECT_SYMBOL_ABS)
+                != 0
+            {
+                continue;
+            }
+            let symbol = file
+                .symbol_by_index(SymbolIndex(symbol_index as usize))
+                .map_err(|_| bad())?;
+            let raw = symbol.name().map_err(|_| bad())?;
+            stubs.insert(address + index as u64 * stride, display_name(raw));
+        }
+    }
+    Ok(stubs)
 }
 
 pub(in crate::binding) fn read(
@@ -184,11 +273,7 @@ pub(in crate::binding) fn read(
             continue;
         };
         raw_symbols.insert(raw.into(), symbol.address());
-        let mangled = raw.strip_prefix('_').unwrap_or(raw);
-        let name = cpp_demangle::Symbol::new(mangled)
-            .ok()
-            .and_then(|s| s.demangle().ok())
-            .unwrap_or_else(|| raw.into());
+        let name = display_name(raw);
         let name = name
             .strip_prefix("{vtable(")
             .and_then(|s| s.strip_suffix(")}"))
@@ -199,8 +284,11 @@ pub(in crate::binding) fn read(
             address: symbol.address(),
         });
     }
+    for (address, name) in indirect_stubs(slice, &file)? {
+        symbols.push(Symbol { name, address });
+    }
     symbols.sort_by(|a, b| a.address.cmp(&b.address).then(a.name.cmp(&b.name)));
-    let pointers = fixups(slice, &file, &raw_symbols)?;
+    let fixups = fixups(slice, &file, &raw_symbols)?;
     let mut strings = BTreeMap::new();
     for section in file.sections() {
         if section.kind() != object::SectionKind::ReadOnlyString {
@@ -243,10 +331,10 @@ pub(in crate::binding) fn read(
                 continue;
             };
             let offset = u64_at(raw, 0)? as i64;
-            if !(-4096..=0).contains(&offset) || !pointers.contains_key(&(address + 8)) {
+            if !(-4096..=0).contains(&offset) || !fixups.pointers.contains_key(&(address + 8)) {
                 continue;
             }
-            if let Some(member) = pointers.get(&(address + 56)) {
+            if let Some(member) = fixups.pointers.get(&(address + 56)) {
                 vtables.insert(
                     address + 16,
                     VtableWitness {
@@ -266,7 +354,8 @@ pub(in crate::binding) fn read(
         symbols,
         code,
         layout: layout.clone(),
-        pointers,
+        pointers: fixups.pointers,
+        global_bindings: fixups.bindings,
         strings,
         vtables,
     })

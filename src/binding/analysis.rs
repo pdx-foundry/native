@@ -78,6 +78,18 @@ impl BoundAnalysis {
         }
         binary::fields::read(&bytes, input, selection)
     }
+
+    pub(crate) fn reference_inputs(
+        &self,
+        owners: &[&str],
+    ) -> Result<Vec<crate::engine::analysis::references::ReferenceInput>, AnalysisError> {
+        let bytes = self.executable()?;
+        let input = binary::discovery::read(&bytes, &self.layout)?;
+        owners
+            .iter()
+            .map(|owner| binary::references::read(&bytes, &input, owner))
+            .collect()
+    }
 }
 
 /// One template candidate and the content directory that its constructors establish.

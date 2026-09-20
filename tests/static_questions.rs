@@ -1,6 +1,6 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
-use pdx_native::{Basis, Completeness, Error, Field, GapKind, Native};
+use pdx_native::{Basis, Completeness, Error, Field, GapKind, Native, ReaderKind};
 
 fn native() -> Native {
     Native::open(
@@ -49,6 +49,25 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
         let answer = native.registry_fields(registry).unwrap();
         assert_eq!(answer.value, expected::<Vec<Field>>(file), "{registry}");
         assert_eq!(answer.completeness, Completeness::Partial);
+        for field in &answer.value {
+            let expected_gap = if field.reader.id.is_none() {
+                Some(GapKind::UnresolvedReader)
+            } else if field.reader.kind == ReaderKind::Unknown {
+                Some(GapKind::ReaderSemantics)
+            } else {
+                None
+            };
+            if let Some(kind) = expected_gap {
+                assert!(
+                    answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.kind == kind && gap.subject.as_deref() == Some(&field.name)),
+                    "{registry}: {}",
+                    field.name
+                );
+            }
+        }
         potential.extend(
             answer
                 .value
@@ -88,4 +107,22 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
         recorded.registry_fields("common/armies"),
         Err(Error::NotRecorded { .. })
     ));
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn reference_initializers_match_the_retained_sdk_482_cases() {
+    let native = native();
+    let owners = [
+        "CCreateShipEffect",
+        "CAddDistrictEffect",
+        "CChangePlanetClassEffect",
+        "CCreateArmyEffect",
+        "CAddRelicEffect",
+    ];
+    let results = pdx_native::internals::reference_results(&native, &owners).unwrap();
+    assert_eq!(
+        results,
+        expected::<Vec<pdx_native::internals::references::ReferenceResult>>("references.json")
+    );
 }
