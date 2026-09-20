@@ -33,5 +33,5 @@ pub fn serve(
     input: impl Read + Send + 'static,
     output: impl Write + Send + 'static,
 ) -> Result<(), SupervisorError> {
-    crate::execution::supervisor::serve(input, output, crate::operation::Authorization::Admitted)
+    crate::execution::supervisor::serve(input, output)
 }

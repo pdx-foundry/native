@@ -159,14 +159,17 @@ impl Native {
         let mut retention = crate::game::RetentionOptions::new(work.clone());
         retention.startup_seconds = options.startup_seconds;
         retention.idle_seconds = options.idle_seconds;
+        // The supervisor knows a registry by its internal name.
+        let fault = match options.fault {
+            Some((directory, control)) => {
+                let name = self.registry_directories().remove(&directory);
+                let name = name.ok_or(crate::Error::UnknownRegistry { name: directory })?;
+                Some((name, control))
+            }
+            None => None,
+        };
         let hosting = crate::game::Hosting::new(options.supervisor, retention)?;
-        let mut game = crate::game::start(
-            self.detached_context(),
-            hosting,
-            crate::operation::Authorization::Admitted,
-            None,
-        )
-        .await?;
+        let mut game = crate::game::start(self.detached_context(), hosting, fault).await?;
         game.work = Some(work);
         Ok(game)
     }
@@ -178,7 +181,6 @@ impl Native {
             self.hosting
                 .clone()
                 .ok_or(crate::GameError::NotConfigured)?,
-            crate::operation::Authorization::Admitted,
             None,
         )
         .await
@@ -187,38 +189,35 @@ impl Native {
         &self,
         output: std::path::PathBuf,
         options: &crate::game::RetentionOptions,
-        authorization: crate::operation::Authorization,
-        control: Option<(String, crate::operation::ObservationControl)>,
+        fault: Option<(String, crate::operation::ObservationControl)>,
     ) -> Result<crate::operation::PreparedPlan, crate::GameError> {
         let names = self.bound().registry_names();
-        if authorization == crate::operation::Authorization::Admitted {
-            let reports: Vec<_> = names
-                .iter()
-                .map(|name| {
-                    (
-                        name.clone(),
-                        self.capability(&CapabilityRequest::Registry {
-                            registry: name.clone(),
-                        }),
-                    )
-                })
-                .collect();
-            if !reports
-                .iter()
-                .any(|(_, report)| report.availability == crate::Availability::Available)
-            {
-                return Err(crate::GameError::Unavailable {
-                    registries: reports
-                        .into_iter()
-                        .map(|(name, report)| (name, report.reasons))
-                        .collect(),
-                });
-            }
+        let reports: Vec<_> = names
+            .iter()
+            .map(|name| {
+                (
+                    name.clone(),
+                    self.capability(&CapabilityRequest::Registry {
+                        registry: name.clone(),
+                    }),
+                )
+            })
+            .collect();
+        if !reports
+            .iter()
+            .any(|(_, report)| report.availability == crate::Availability::Available)
+        {
+            return Err(crate::GameError::Unavailable {
+                registries: reports
+                    .into_iter()
+                    .map(|(name, report)| (name, report.reasons))
+                    .collect(),
+            });
         }
         if let Some(reason) = self.integrity() {
             return Err(crate::GameError::InputsChanged(reason));
         }
-        let (control_registry, control) = match control {
+        let (control_registry, control) = match fault {
             Some((name, control)) => (Some(name), control),
             None => (None, crate::operation::ObservationControl::Normal),
         };
@@ -229,7 +228,6 @@ impl Native {
                 hold_ms: 1,
             },
             composition: self.identity().0,
-            authorization,
             observation: Some(crate::operation::ObservationSpec {
                 registry: None,
                 fixture: String::new(),
@@ -241,7 +239,7 @@ impl Native {
                 }),
             }),
         };
-        plan.validate(authorization)?;
+        plan.validate()?;
         Ok(crate::operation::PreparedPlan { request: plan })
     }
 }

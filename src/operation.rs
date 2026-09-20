@@ -1,14 +1,15 @@
-//! Shared bounded operation transport and lifecycle records.
+//! The request that a caller sends to its supervisor, the controls that follow it, and the
+//! supervisor's final report.
 //!
-//! Start a separate instance of your executable, pass its private input/output pipes to
-//! `connect`, and call `serve` in that instance. See the `investigate` Cargo example.
-#[cfg(feature = "maintainer-tools")]
-use crate::protocol::{self, Hello, Reply};
+//! [`ObservationControl`] holds the deliberate faults that Native's live tests inject. A request
+//! carries a fault only when the caller names the registry that receives it; every other request
+//! is `Normal`.
 use crate::supervisor::SupervisorError;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "maintainer-tools")]
-use std::io::{Read, Write};
 use std::path::PathBuf;
+
+/// The origin label on every owner report and live capture.
+pub(crate) const ORIGIN: &str = "qualified-live";
 
 /// A bounded suspended-launch experiment, not an admitted operation.
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,11 +52,11 @@ pub enum OperationDisposal {
     Unconfirmed(String),
 }
 
-/// Internal owner report. Only the admitted client can return a public live result.
+/// The supervisor's final report on one attempt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttemptReport {
-    /// Authorization origin established by the supervisor entry point.
+    /// Always [`ORIGIN`]; the caller checks it.
     pub origin: String,
     /// Unique attempt identity, including failed attempts.
     pub attempt: String,
@@ -96,7 +97,6 @@ pub struct AttemptCapture {
 pub(crate) struct PlanRequest {
     pub request: AttemptRequest,
     pub composition: String,
-    pub authorization: Authorization,
     #[serde(default)]
     pub observation: Option<ObservationSpec>,
 }
@@ -108,118 +108,15 @@ pub(crate) enum Control {
         name: String,
         request: u64,
     },
-    #[cfg(any(test, feature = "maintainer-tools"))]
+    /// Only the supervisor's own tests send this; a release build cannot decode it.
+    #[cfg(test)]
     WorkerLost,
 }
 
-/// Controller connection. Dropping its writer requests cleanup; it does not confirm disposal.
-#[cfg(feature = "maintainer-tools")]
-pub struct AttemptJob<R, W> {
-    input: R,
-    output: W,
-    finished: Option<AttemptReport>,
-}
-
 /// Private prepared request, pinned before starting the supervisor.
-/// This is not an execution permit; the owner validates authorization independently.
+/// This is not an execution permit; the supervisor validates the request again.
 pub struct PreparedPlan {
     pub(crate) request: PlanRequest,
-}
-
-/// Validate and pin candidate inputs before starting the consumer's supervisor process.
-/// The owner repeats these checks before allocation; preparation grants no launch permission.
-#[cfg(feature = "maintainer-tools")]
-pub fn prepare(request: AttemptRequest) -> Result<PreparedPlan, SupervisorError> {
-    validate_request(&request)?;
-    let plan = crate::binding::ExecutionPlan::open(&request.installation_hint)?;
-    Ok(PreparedPlan {
-        request: PlanRequest {
-            composition: plan.composition().into(),
-            authorization: Authorization::Candidate,
-            request,
-            observation: None,
-        },
-    })
-}
-
-/// Connect a prepared request to a consumer-created supervisor using private pipes.
-/// Both processes must link the same Native build. This function does not start a process.
-#[cfg(feature = "maintainer-tools")]
-pub fn connect<R: Read, W: Write>(
-    mut input: R,
-    mut output: W,
-    plan: PreparedPlan,
-) -> Result<AttemptJob<R, W>, SupervisorError> {
-    handshake(&mut input, &mut output, plan.request.authorization)?;
-    begin(input, output, plan)
-}
-
-#[cfg(feature = "maintainer-tools")]
-pub(crate) fn handshake(
-    input: &mut impl Read,
-    output: &mut impl Write,
-    authorization: Authorization,
-) -> Result<(), SupervisorError> {
-    protocol::write(output, &Hello::current(authorization))?;
-    match protocol::read(input)? {
-        Reply::Ready => Ok(()),
-        Reply::Rejected(reason) => Err(SupervisorError(reason)),
-        _ => Err(SupervisorError("Expected supervisor handshake".into())),
-    }
-}
-
-#[cfg(feature = "maintainer-tools")]
-pub(crate) fn begin<R: Read, W: Write>(
-    input: R,
-    mut output: W,
-    plan: PreparedPlan,
-) -> Result<AttemptJob<R, W>, SupervisorError> {
-    protocol::write(&mut output, &plan.request)?;
-    Ok(AttemptJob {
-        input,
-        output,
-        finished: None,
-    })
-}
-
-#[cfg(feature = "maintainer-tools")]
-impl<R: Read, W: Write> AttemptJob<R, W> {
-    /// Wait for a recorded child; return its attempt identity and PID.
-    /// `None` means the attempt ended before startup; `finish` still returns its disposal report.
-    pub fn started(&mut self) -> Result<Option<(String, u32)>, SupervisorError> {
-        match protocol::read(&mut self.input)? {
-            Reply::Started { attempt, game } => Ok(Some((attempt, game))),
-            Reply::Rejected(reason) => Err(SupervisorError(reason)),
-            Reply::Finished(report) => {
-                self.finished = Some(*report);
-                Ok(None)
-            }
-            _ => Err(SupervisorError("Expected startup report".into())),
-        }
-    }
-    /// Request bounded cleanup. Await `finish` for disposal confirmation.
-    pub fn cancel(&mut self) -> Result<(), SupervisorError> {
-        protocol::write(&mut self.output, &Control::Cancel)
-    }
-    /// Notify the owner that the consumer's observation worker exited unexpectedly.
-    #[cfg(feature = "maintainer-tools")]
-    pub fn worker_lost(&mut self) -> Result<(), SupervisorError> {
-        protocol::write(&mut self.output, &Control::WorkerLost)
-    }
-    /// Await the independent owner report. Channel failure never implies disposal.
-    pub fn finish(mut self) -> Result<AttemptReport, SupervisorError> {
-        if let Some(report) = self.finished.take() {
-            return Ok(report);
-        }
-        loop {
-            match protocol::read(&mut self.input)? {
-                Reply::Started { .. } => continue,
-                Reply::Finished(report) => return Ok(*report),
-                Reply::Rejected(reason) => return Err(SupervisorError(reason)),
-                _ => return Err(SupervisorError("Unexpected supervisor reply".into())),
-            }
-        }
-    }
 }
 
 pub(crate) fn validate_request(request: &AttemptRequest) -> Result<(), SupervisorError> {
@@ -231,58 +128,28 @@ pub(crate) fn validate_request(request: &AttemptRequest) -> Result<(), Superviso
     Ok(())
 }
 
-/// Run the candidate owner in a dedicated consumer process.
+/// A deliberate fault in the observation of one registry, for Native's live tests.
 ///
-/// The input reader must return EOF when the controller dies. The process must remain alive
-/// until this function returns. After it returns, exit the dedicated process; its reader thread
-/// can still be waiting for EOF. No observation worker is started by this lifecycle-only API.
-#[cfg(feature = "maintainer-tools")]
-pub fn serve(
-    input: impl Read + Send + 'static,
-    output: impl Write + Send + 'static,
-) -> Result<(), SupervisorError> {
-    crate::execution::supervisor::serve(input, output, Authorization::Candidate)
-}
-
-/// A candidate capture of the retained category read-entry window.
-#[derive(Debug)]
-#[cfg(feature = "maintainer-tools")]
-pub struct ObservationRequest {
-    /// Exact installation; no nearest-version fallback.
-    pub installation_hint: PathBuf,
-    /// New absolute directory for retained artifacts.
-    pub output: PathBuf,
-    /// Bytes of the retained two-field category fixture.
-    pub fixture: String,
-    /// Observation budget in seconds, from 1 through 180.
-    pub deadline_seconds: u64,
-}
-
-/// Maintainer controls; none of these grants live-operation admission.
+/// Reach it through `GameOptions::fault`. The supervisor applies a fault only to the registry
+/// that the request names; the other registries are observed as usual.
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ObservationControl {
     /// Capture the normal bounded window.
     #[default]
     Normal,
     /// Omit the field hook and refuse resume.
-    #[cfg(feature = "maintainer-tools")]
     MissingHook,
     /// Disable the field hook at the activation gate and refuse resume.
-    #[cfg(feature = "maintainer-tools")]
     LateHook,
     /// Omit one emitted field record without changing producer counts.
-    #[cfg(feature = "maintainer-tools")]
     DroppedRecord,
     /// Omit the observation terminal.
-    #[cfg(feature = "maintainer-tools")]
     MissingTerminal,
     /// Exercise a failed native memory read at the fixture boundary.
-    #[cfg(feature = "maintainer-tools")]
     AccessFailure,
     /// Kill LLDB while stopped after the registration window.
-    #[cfg(feature = "maintainer-tools")]
     WorkerLoss,
 }
 
@@ -305,40 +172,6 @@ pub(crate) struct SessionSpec {
     pub control_registry: Option<String>,
 }
 
-/// Prepare the retained fixture for a candidate observation attempt.
-/// Start a consumer-owned supervisor and pass this plan to `connect`, as for lifecycle requests.
-#[cfg(feature = "maintainer-tools")]
-pub fn prepare_observation(request: ObservationRequest) -> Result<PreparedPlan, SupervisorError> {
-    prepare_observation_control(request, ObservationControl::Normal)
-}
-
-/// Prepare a deliberate failure control for maintainer qualification work.
-#[doc(hidden)]
-#[cfg(feature = "maintainer-tools")]
-pub fn prepare_observation_control(
-    request: ObservationRequest,
-    control: ObservationControl,
-) -> Result<PreparedPlan, SupervisorError> {
-    let spec = ObservationSpec {
-        registry: None,
-        fixture: request.fixture,
-        deadline_seconds: request.deadline_seconds,
-        control,
-        session: None,
-    };
-    spec.validate()?;
-    let mut plan = prepare(AttemptRequest {
-        installation_hint: request.installation_hint,
-        output: request.output,
-        hold_ms: 1,
-    })?;
-    crate::binding::ExecutionPlan::open(&plan.request.request.installation_hint)?
-        .validate_observation_content()?;
-    crate::binding::ExecutionPlan::open(&plan.request.request.installation_hint)?.probe()?;
-    plan.request.observation = Some(spec);
-    Ok(plan)
-}
-
 impl ObservationSpec {
     pub(crate) fn validate(&self) -> Result<(), SupervisorError> {
         if (self.session.is_none()
@@ -358,73 +191,24 @@ impl ObservationSpec {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum Authorization {
-    Admitted,
-    #[cfg(feature = "maintainer-tools")]
-    Candidate,
-}
-impl Authorization {
-    pub(crate) fn origin(self) -> &'static str {
-        match self {
-            Self::Admitted => "qualified-live",
-            #[cfg(feature = "maintainer-tools")]
-            Self::Candidate => "unqualified-candidate",
-        }
-    }
-}
-
 impl PlanRequest {
-    pub(crate) fn validate(&self, authorization: Authorization) -> Result<(), SupervisorError> {
-        if self.authorization != authorization {
-            return Err(SupervisorError("Plan authorization mismatch".into()));
-        }
-        if authorization == Authorization::Admitted
-            && (self.observation.is_none()
-                || self.observation.as_ref().is_some_and(|spec| {
-                    (spec.registry.is_some() || spec.session.is_none())
-                        || !matches!(spec.control, ObservationControl::Normal)
-                        || spec
-                            .session
-                            .as_ref()
-                            .is_some_and(|session| session.control_registry.is_some())
-                }))
-        {
+    /// Every request is a game session. A fault and the registry that receives it come together
+    /// or not at all.
+    pub(crate) fn validate(&self) -> Result<(), SupervisorError> {
+        let Some(spec) = &self.observation else {
+            return Err(SupervisorError("Expected a game session request".into()));
+        };
+        let Some(session) = &spec.session else {
+            return Err(SupervisorError("Expected a game session request".into()));
+        };
+        if (spec.control == ObservationControl::Normal) != session.control_registry.is_none() {
             return Err(SupervisorError(
-                "Ordinary requests require a Game session without investigation controls".into(),
+                "Expected a fault together with the registry that receives it".into(),
             ));
         }
         validate_request(&self.request)?;
-        if let Some(spec) = &self.observation {
-            spec.validate()?;
-        }
-        Ok(())
+        spec.validate()
     }
-}
-
-/// Prepare an unqualified registry capture for maintainer controls.
-#[cfg(feature = "maintainer-tools")]
-pub fn prepare_registry(
-    request: AttemptRequest,
-    registry: String,
-    deadline_seconds: u64,
-    control: ObservationControl,
-) -> Result<PreparedPlan, SupervisorError> {
-    let mut plan = prepare(request)?;
-    let execution = crate::binding::ExecutionPlan::open(&plan.request.request.installation_hint)?;
-    execution.validate_observation_content()?;
-    execution.probe()?;
-    let spec = ObservationSpec {
-        registry: Some(registry),
-        fixture: String::new(),
-        deadline_seconds,
-        control,
-        session: None,
-    };
-    spec.validate()?;
-    plan.request.observation = Some(spec);
-    Ok(plan)
 }
 
 #[cfg(test)]
@@ -438,7 +222,6 @@ mod tests {
                 hold_ms: 1,
             },
             composition: "test".into(),
-            authorization: Authorization::Admitted,
             observation: Some(ObservationSpec {
                 registry: None,
                 fixture: String::new(),
@@ -453,19 +236,19 @@ mod tests {
     }
     #[test]
     fn ordinary_wire_requires_a_session_and_valid_deadlines() {
-        assert!(plan().validate(Authorization::Admitted).is_ok());
+        assert!(plan().validate().is_ok());
         let mut request = plan();
         request.observation = None;
-        assert!(request.validate(Authorization::Admitted).is_err());
+        assert!(request.validate().is_err());
         for deadline in [0, 181] {
             let mut request = plan();
             request.observation.as_mut().unwrap().deadline_seconds = deadline;
-            assert!(request.validate(Authorization::Admitted).is_err());
+            assert!(request.validate().is_err());
         }
         let mut legacy = plan();
         legacy.observation.as_mut().unwrap().session = None;
         legacy.observation.as_mut().unwrap().registry = Some("traditions".into());
-        assert!(legacy.validate(Authorization::Admitted).is_err());
+        assert!(legacy.validate().is_err());
         for deadline in [0, 181] {
             let mut request = plan();
             request
@@ -476,18 +259,21 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .idle_seconds = deadline;
-            assert!(request.validate(Authorization::Admitted).is_err());
+            assert!(request.validate().is_err());
         }
         let mut request = plan();
         request.observation.as_mut().unwrap().fixture = "other".into();
-        assert!(request.validate(Authorization::Admitted).is_err());
+        assert!(request.validate().is_err());
     }
-    #[cfg(feature = "maintainer-tools")]
     #[test]
-    fn ordinary_wire_rejects_candidate_authority_and_fault_controls() {
-        let mut request = plan();
-        request.authorization = Authorization::Candidate;
-        assert!(request.validate(Authorization::Admitted).is_err());
+    fn a_fault_and_its_registry_come_together_or_not_at_all() {
+        let mut unnamed = plan();
+        unnamed.observation.as_mut().unwrap().control = ObservationControl::MissingHook;
+        assert!(unnamed.validate().is_err());
+        let mut no_fault = plan();
+        let session = no_fault.observation.as_mut().unwrap().session.as_mut();
+        session.unwrap().control_registry = Some("traditions".into());
+        assert!(no_fault.validate().is_err());
         for control in [
             ObservationControl::MissingHook,
             ObservationControl::LateHook,
@@ -497,8 +283,10 @@ mod tests {
             ObservationControl::WorkerLoss,
         ] {
             let mut request = plan();
-            request.observation.as_mut().unwrap().control = control;
-            assert!(request.validate(Authorization::Admitted).is_err());
+            let spec = request.observation.as_mut().unwrap();
+            spec.control = control;
+            spec.session.as_mut().unwrap().control_registry = Some("traditions".into());
+            assert!(request.validate().is_ok());
         }
     }
 }

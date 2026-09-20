@@ -164,10 +164,6 @@ impl ExecutionPlan {
         Ok(())
     }
 
-    #[cfg(feature = "maintainer-tools")]
-    pub fn probe(&self) -> Result<(), crate::supervisor::SupervisorError> {
-        (self.operation().strategy.probe)().map(|_| ())
-    }
     pub fn spawn(
         &self,
         output: &std::path::Path,

@@ -7,11 +7,6 @@ edition = "2024"
 members = ["crates/native-evidence"]
 resolver = "3"
 
-[features]
-default = []
-production = []
-maintainer-tools = []
-
 [dependencies]
 tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
 evidence = { package = "pdx-native-evidence", path = "crates/native-evidence", version = "0.1.0" }
@@ -29,25 +24,11 @@ libc = "0.2"
 [build-dependencies]
 sha2 = "0.10"
 
-[[example]]
-name = "investigate"
-required-features = ["maintainer-tools"]
-
 [dev-dependencies]
 tempfile = "3"
 
-[[example]]
-name = "observe"
-required-features = ["maintainer-tools"]
-
-[[example]]
+# The live tests start the real game. This binary is also their supervisor process, so it has
+# its own `main` in place of the standard test harness.
+[[test]]
 name = "live"
-required-features = ["production"]
-
-[[example]]
-name = "registry-investigation"
-required-features = ["maintainer-tools"]
-
-[[example]]
-name = "session-investigation"
-required-features = ["maintainer-tools"]
+harness = false

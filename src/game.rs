@@ -23,6 +23,8 @@ pub struct GameOptions {
     /// Seconds that a paused game may stay idle, 1 to 180. Each answer restarts it. The default
     /// is 180.
     pub idle_seconds: u64,
+    /// A deliberate fault and the content directory of the registry that receives it.
+    pub(crate) fault: Option<(String, operation::ObservationControl)>,
 }
 impl GameOptions {
     /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
@@ -32,7 +34,15 @@ impl GameOptions {
             supervisor,
             startup_seconds: 180,
             idle_seconds: 180,
+            fault: None,
         }
+    }
+    /// Inject a deliberate fault into the observation of one registry, named by its content
+    /// directory. Only Native's live tests use this; see `tests/live.rs`.
+    #[doc(hidden)]
+    pub fn fault(mut self, registry: &str, control: operation::ObservationControl) -> Self {
+        self.fault = Some((registry.trim_end_matches('/').into(), control));
+        self
     }
 }
 
@@ -483,8 +493,7 @@ fn availability(result: &Result<RegistryResult, String>) -> RegistryAvailability
 pub(crate) async fn start(
     context: crate::Native,
     hosting: Hosting,
-    authorization: operation::Authorization,
-    control: Option<(String, operation::ObservationControl)>,
+    fault: Option<(String, operation::ObservationControl)>,
 ) -> Result<Game, GameError> {
     let directories = context.registry_directories();
     let build = context.build();
@@ -496,15 +505,7 @@ pub(crate) async fn start(
     std::thread::Builder::new()
         .name("native-game-owner".into())
         .spawn(move || {
-            driver::run(
-                context,
-                hosting,
-                authorization,
-                control,
-                receive,
-                owner_stop,
-                state,
-            );
+            driver::run(context, hosting, fault, receive, owner_stop, state);
         })
         .map_err(|error| GameError::Supervisor(error.to_string()))?;
     // The only command sender stays in this future until ownership moves into Game.
@@ -572,7 +573,6 @@ fn replay_requests(
 }
 fn replay_results(
     requests: &BTreeMap<String, ReplayRequest>,
-    admitted: bool,
 ) -> BTreeMap<String, Result<RegistryResult, String>> {
     requests
         .iter()
@@ -584,9 +584,7 @@ fn replay_results(
                     if result.registry != *name {
                         return Err("Registry descriptor does not match the requested name".into());
                     }
-                    if admitted {
-                        result.origin = crate::ResultOrigin::Live;
-                    }
+                    result.origin = crate::ResultOrigin::Live;
                     Ok(result)
                 });
             (name.clone(), result)

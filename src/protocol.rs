@@ -11,15 +11,13 @@ pub(crate) struct Hello {
     pub version: u32,
     pub build: String,
     pub controller: u32,
-    pub authorization: crate::operation::Authorization,
 }
 impl Hello {
-    pub fn current(authorization: crate::operation::Authorization) -> Self {
+    pub fn current() -> Self {
         Self {
             version: VERSION,
             build: env!("PDX_NATIVE_BUILD").into(),
             controller: std::process::id(),
-            authorization,
         }
     }
     pub fn validate(&self) -> Result<(), SupervisorError> {
@@ -90,7 +88,6 @@ mod tests {
             version: VERSION,
             build: env!("PDX_NATIVE_BUILD").into(),
             controller: u32::MAX,
-            authorization: crate::operation::Authorization::Admitted,
         };
         assert!(valid.validate().is_ok());
         assert!(
@@ -98,7 +95,6 @@ mod tests {
                 build: "different-linked-build".into(),
                 version: VERSION,
                 controller: u32::MAX,
-                authorization: crate::operation::Authorization::Admitted
             }
             .validate()
             .is_err()
@@ -118,11 +114,6 @@ mod tests {
         for length in 0..4 {
             assert!(read::<Hello>(&[0; 4][..length]).is_err());
         }
-    }
-    #[test]
-    fn incompatible_mode_is_rejected_before_owner_setup() {
-        let json = serde_json::json!({"version": VERSION, "build": env!("PDX_NATIVE_BUILD"), "controller": u32::MAX, "authorization": "unrecognized"});
-        assert!(serde_json::from_value::<Hello>(json).is_err());
     }
 }
 

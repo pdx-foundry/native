@@ -228,13 +228,24 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
      descriptor, artifact-hash and provenance types, `Engine`, `ReplayRequest`, and
      `internals::legacy`.
    - **To do, in order:**
-     1. Replace the `maintainer-tools` harness (`examples/support/session.rs`, `investigation`,
-        `tools/check-game-sessions.py`) with `tests/live.rs`, ignored by default, which needs
-        `STELLARIS_PATH`. It keeps the failure controls: missing hook, late hook, dropped record,
-        missing terminal, access failure, worker loss, timeout, cancel, caller loss. The controls
-        need a hidden test entry, because `supervisor::serve` refuses them at present
-        (`Authorization::Admitted`). Then remove `investigation`, `Authorization::Candidate`, and
-        the `production` and `maintainer-tools` features.
+     1. **Done, 2026-09-20.** `tests/live.rs` replaces the `maintainer-tools` harness. Its cases
+        are ignored by default; run them with `STELLARIS_PATH` set and `--ignored`. The test
+        executable is also its own supervisor (`--supervisor`), so the target has
+        `harness = false` and runs the cases one at a time. It uses only the public API and one
+        hidden entry, `GameOptions::fault(registry, control)`. Cases: normal, startup timeout,
+        cancel, drop without close, and the six faults (missing hook, late hook, dropped record,
+        missing terminal, access failure, worker loss) on each of the two registries. After each
+        case it checks that no game or supervisor process of that case remains.
+
+        There are no Cargo features. `Authorization` is removed: every request is a game
+        session, and the supervisor accepts a fault only together with the registry that
+        receives it. Removed: the `investigation` module, the five maintainer examples, the
+        lifecycle-only and single-capture client functions, `tests/investigation.rs`, and six
+        check tools (`check-game-sessions`, `check-live-observations`,
+        `check-candidate-lifecycle`, `check-candidate-observations`,
+        `check-registry-observations`, `check-admission-boundary`). The supervisor still holds
+        the code paths for a request with no session; no request can reach them, and item 2
+        removes them with the capture code.
      2. Move the live reducer as described above; remove `capture.rs` parts that only write
         descriptors, startup and final snapshot copies, and replay references; remove
         `GameReport`, `GameError`, the hidden earlier methods and `internals::legacy`.

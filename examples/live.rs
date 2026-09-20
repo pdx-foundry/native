@@ -1,6 +1,0 @@
-//! Production consumer of installation descriptions and independently owned async Game sessions.
-#[path = "support/session.rs"]
-mod session;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    session::run()
-}

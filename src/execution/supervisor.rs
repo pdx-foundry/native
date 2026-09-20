@@ -1,10 +1,7 @@
 use super::instances::Reservation;
 use crate::{
     binding::{self, ExecutionPlan},
-    operation::{
-        self, AttemptReport, Authorization, Control, OperationDisposal, OperationOutcome,
-        PlanRequest,
-    },
+    operation::{self, AttemptReport, Control, OperationDisposal, OperationOutcome, PlanRequest},
     protocol::{self, Hello, Reply},
     supervisor::SupervisorError,
 };
@@ -33,7 +30,7 @@ fn receive(input: &Receiver<Input>, budget: Duration) -> Result<Input, Superviso
         .recv_timeout(budget)
         .map_err(|_| SupervisorError("Controller disconnected or handshake timed out".into()))
 }
-fn reader(mut input: impl Read + Send + 'static, authorization: Authorization) -> Receiver<Input> {
+fn reader(mut input: impl Read + Send + 'static) -> Receiver<Input> {
     let (send, receive) = mpsc::sync_channel(1);
     thread::spawn(move || {
         let read = || -> Result<(), SupervisorError> {
@@ -45,14 +42,6 @@ fn reader(mut input: impl Read + Send + 'static, authorization: Authorization) -
                 .map_err(|e| SupervisorError(e.to_string()))?;
             loop {
                 let control: Control = protocol::read(&mut input)?;
-                if authorization == Authorization::Admitted
-                    && !matches!(
-                        control,
-                        Control::Cancel | Control::Close | Control::ReadRegistry { .. }
-                    )
-                {
-                    return Err(SupervisorError("Unsupported ordinary control".into()));
-                }
                 send.send(Input::Control(control))
                     .map_err(|e| SupervisorError(e.to_string()))?;
             }
@@ -109,36 +98,27 @@ impl Reporter {
 pub(crate) fn serve(
     input: impl Read + Send + 'static,
     output: impl Write + Send + 'static,
-    authorization: Authorization,
 ) -> Result<(), SupervisorError> {
-    let input = reader(input, authorization);
+    let input = reader(input);
     let output = Reporter::new(output);
-    let result =
-        handshake(&input, &output, authorization).and_then(|plan| run(plan, &input, &output));
+    let result = handshake(&input, &output).and_then(|plan| run(plan, &input, &output));
     match result {
         Ok(report) => output.send(Reply::Finished(Box::new(report)))?,
         Err(error) => output.send(Reply::Rejected(error.to_string()))?,
     }
     output.finish()
 }
-fn handshake(
-    input: &Receiver<Input>,
-    output: &Reporter,
-    authorization: Authorization,
-) -> Result<PlanRequest, SupervisorError> {
+fn handshake(input: &Receiver<Input>, output: &Reporter) -> Result<PlanRequest, SupervisorError> {
     let Input::Hello(hello) = receive(input, HANDSHAKE_BUDGET)? else {
         return Err(SupervisorError("Expected hello".into()));
     };
     hello.validate()?;
-    if hello.authorization != authorization {
-        return Err(SupervisorError("Supervisor authorization mismatch".into()));
-    }
     binding::prepare_owner(hello.controller)?;
     output.send(Reply::Ready)?;
     let Input::Plan(plan) = receive(input, HANDSHAKE_BUDGET)? else {
         return Err(SupervisorError("Expected operation request".into()));
     };
-    plan.validate(authorization)?;
+    plan.validate()?;
     Ok(plan)
 }
 
@@ -155,21 +135,7 @@ fn run(
         .observation
         .as_ref()
         .and_then(|spec| spec.session.as_ref());
-    if request.authorization == Authorization::Admitted {
-        if session.is_some() {
-            plan.admit_session()?;
-        } else {
-            plan.admit(
-                request
-                    .observation
-                    .as_ref()
-                    .and_then(|spec| spec.registry.as_deref())
-                    .ok_or_else(|| {
-                        SupervisorError("Ordinary requests require a registry".into())
-                    })?,
-            )?;
-        }
-    }
+    plan.admit_session()?;
     let parent = request
         .request
         .output
@@ -192,7 +158,7 @@ fn run(
     );
     let mut reservation = Reservation::acquire(attempt.clone(), retained.clone())?;
     let mut report = AttemptReport {
-        origin: request.authorization.origin().into(),
+        origin: operation::ORIGIN.into(),
         attempt,
         composition: plan.composition().into(),
         outcome: OperationOutcome::Completed,
@@ -222,12 +188,8 @@ fn run(
             } else {
                 plan.prepare_registry_profile(&report.output)?;
             }
-            let (prepared, retained) = plan.observer(
-                &report.output,
-                &report.attempt,
-                spec,
-                request.authorization.origin(),
-            )?;
+            let (prepared, retained) =
+                plan.observer(&report.output, &report.attempt, spec, operation::ORIGIN)?;
             observer = Some(prepared);
             capture = Some(retained);
         }
@@ -619,7 +581,7 @@ fn observe(
 fn interruption(event: Input) -> OperationOutcome {
     match event {
         Input::Control(Control::Cancel) => OperationOutcome::Cancelled,
-        #[cfg(any(test, feature = "maintainer-tools"))]
+        #[cfg(test)]
         Input::Control(Control::WorkerLost) => OperationOutcome::WorkerLost,
         _ => OperationOutcome::CallerLost,
     }
@@ -754,7 +716,7 @@ mod tests {
         reservation.disposed().unwrap();
         fs::write(output.path().join("capture.json"), "existing evidence").unwrap();
         let mut report = AttemptReport {
-            origin: "unqualified-candidate".into(),
+            origin: operation::ORIGIN.into(),
             attempt: "capture-failure".into(),
             composition: "test".into(),
             outcome: OperationOutcome::Cancelled,
@@ -860,19 +822,6 @@ mod interruption_tests {
             hold_outcome(HOLD_LIMIT, HOLD_LIMIT),
             Some(OperationOutcome::TimedOut)
         );
-    }
-    #[cfg(feature = "maintainer-tools")]
-    #[test]
-    fn candidate_handshake_cannot_enter_the_ordinary_owner() {
-        let (send, input) = mpsc::sync_channel(1);
-        let mut hello = Hello::current(Authorization::Candidate);
-        hello.controller = u32::MAX;
-        send.send(Input::Hello(hello)).unwrap();
-        let reporter = Reporter::new(std::io::sink());
-        let error = handshake(&input, &reporter, Authorization::Admitted)
-            .err()
-            .unwrap();
-        assert!(error.to_string().contains("authorization mismatch"));
     }
     #[test]
     fn prelaunch_and_running_interruptions_keep_their_cause() {

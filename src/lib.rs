@@ -20,12 +20,6 @@ mod session;
 
 pub mod supervisor;
 
-#[cfg(feature = "maintainer-tools")]
-pub mod investigation;
-
-#[cfg(all(feature = "production", feature = "maintainer-tools"))]
-compile_error!("production cannot include maintainer-tools");
-
 pub use answer::{
     Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,
     ReaderKind, Registry, Source,
@@ -49,10 +43,12 @@ mod engine;
 #[allow(unused_imports)]
 pub(crate) use internals::legacy::*;
 
-/// Static method internals for Native's own integration tests. Not a consumer API.
+/// Static method internals and the live fault controls, for Native's own integration tests.
+/// Not a consumer API.
 #[doc(hidden)]
 pub mod internals {
     pub use crate::engine::analysis::{decode, discovery, fields};
+    pub use crate::operation::ObservationControl;
 
     /// The earlier capability, replay and result types. Native's own live harness and replay
     /// tests still use them; the simplification work order removes them with the evidence package.

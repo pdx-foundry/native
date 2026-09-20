@@ -8,21 +8,12 @@ use std::{
 pub(super) fn run(
     context: crate::Native,
     hosting: Hosting,
-    authorization: operation::Authorization,
-    control: Option<(String, operation::ObservationControl)>,
+    fault: Option<(String, operation::ObservationControl)>,
     commands: mpsc::Receiver<DriverCommand>,
     stop: Arc<AtomicU8>,
     state: watch::Sender<State>,
 ) {
-    let result = connect(
-        context,
-        hosting,
-        authorization,
-        control,
-        commands,
-        stop,
-        &state,
-    );
+    let result = connect(context, hosting, fault, commands, stop, &state);
     state.send_modify(|state| state.finished = Some(result));
 }
 
@@ -41,8 +32,7 @@ impl Drop for SupervisorChild {
 fn connect(
     context: crate::Native,
     hosting: Hosting,
-    authorization: operation::Authorization,
-    control: Option<(String, operation::ObservationControl)>,
+    fault: Option<(String, operation::ObservationControl)>,
     commands: mpsc::Receiver<DriverCommand>,
     stop: Arc<AtomicU8>,
     state: &watch::Sender<State>,
@@ -55,7 +45,7 @@ fn connect(
         .options
         .retention_directory
         .join(format!("game-{}-{id}", std::process::id()));
-    let plan = context.prepare_session(output.clone(), &hosting.options, authorization, control)?;
+    let plan = context.prepare_session(output.clone(), &hosting.options, fault)?;
     if matches!(commands.try_recv(), Err(mpsc::TryRecvError::Disconnected)) {
         return Err(GameError::Supervisor(
             "Startup cancelled before allocation".into(),
@@ -84,10 +74,7 @@ fn connect(
             }
         }
     });
-    protocol::write(
-        output_pipe.as_mut().unwrap(),
-        &protocol::Hello::current(authorization),
-    )?;
+    protocol::write(output_pipe.as_mut().unwrap(), &protocol::Hello::current())?;
     let handshake = replies.recv_timeout(Duration::from_secs(15));
     if !matches!(handshake, Ok(Ok(Reply::Ready))) {
         drop(output_pipe.take());
@@ -175,8 +162,7 @@ fn connect(
                     return Err(GameError::Supervisor("Unexpected session pause".into()));
                 }
                 let replay = replay_requests(&output, &registries)?;
-                let mut snapshots =
-                    replay_results(&replay, authorization == operation::Authorization::Admitted);
+                let mut snapshots = replay_results(&replay);
                 for name in context.registry_names() {
                     snapshots.entry(name).or_insert_with(|| {
                         Err("Startup evidence retention failed for this registry".into())
@@ -207,7 +193,7 @@ fn connect(
                 }
             }
             Reply::Finished(report) => {
-                if report.origin != authorization.origin()
+                if report.origin != operation::ORIGIN
                     || report.composition != context.identity().0
                     || report.output != output
                 {
@@ -216,8 +202,7 @@ fn connect(
                     ));
                 }
                 let replay = replay_requests(&output, &report.registries)?;
-                let mut registries =
-                    replay_results(&replay, authorization == operation::Authorization::Admitted);
+                let mut registries = replay_results(&replay);
                 for name in context.registry_names() {
                     registries.entry(name).or_insert_with(|| {
                         Err("Final evidence retention failed for this registry".into())

@@ -95,12 +95,7 @@ fn main() {
     ] {
         sources(std::path::Path::new(path), &mut hash);
     }
-    for name in [
-        "TARGET",
-        "PROFILE",
-        "CARGO_FEATURE_MAINTAINER_TOOLS",
-        "CARGO_FEATURE_PRODUCTION",
-    ] {
+    for name in ["TARGET", "PROFILE"] {
         println!("cargo:rerun-if-env-changed={name}");
         hash.update(name.as_bytes());
         hash.update(std::env::var(name).unwrap_or_default().as_bytes());

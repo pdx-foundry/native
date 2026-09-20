@@ -256,7 +256,6 @@ impl Observer {
                 return Err(SupervisorError("Worker hello deadline elapsed".into()));
             }
         }
-        #[cfg(feature = "maintainer-tools")]
         if self.request.control
             == serde_json::to_value(crate::operation::ObservationControl::WorkerLoss)?
                 .as_str()
