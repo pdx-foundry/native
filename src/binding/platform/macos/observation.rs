@@ -355,7 +355,12 @@ impl Observer {
                     return Ok(());
                 }
                 if error.raw_os_error() != Some(libc::ESRCH) {
-                    return Err(error.into());
+                    return Err(SupervisorError(format!(
+                        "Stopping worker group {}: {error}; exited: {:?}; live members: {:?}",
+                        worker.id(),
+                        worker_exited(worker.id()),
+                        group_members(worker.id(), Duration::from_secs(1)),
+                    )));
                 }
             }
         }

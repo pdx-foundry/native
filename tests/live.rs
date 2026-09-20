@@ -93,11 +93,12 @@ fn main() {
             failed.push(name);
             break;
         }
+        let earlier_work = work_directories().expect("work directory inventory");
         let started = Instant::now();
         let result = runtime
             .block_on(run(&native, &case))
             .and_then(|()| processes_are_gone(&before))
-            .and_then(|()| remove_work_directories());
+            .and_then(|()| remove_work_directories(&earlier_work));
         let seconds = started.elapsed().as_secs();
         match result {
             Ok(()) => println!("test {name} ... ok ({seconds} s)"),
@@ -386,14 +387,25 @@ fn processes_are_gone(before: &BTreeSet<u32>) -> Outcome {
 
 /// Native removes its work directory after a confirmed `close`, and keeps it after a failed
 /// start or a drop. A case that passed needs no inspection, so remove what it left.
-fn remove_work_directories() -> Outcome {
-    let prefix = format!("pdx-native-{}-", std::process::id());
-    for entry in std::fs::read_dir(std::env::temp_dir())?.flatten() {
-        if entry.file_name().to_string_lossy().starts_with(&prefix) {
-            std::fs::remove_dir_all(entry.path())?;
-        }
+fn remove_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Outcome {
+    for path in work_directories()?.difference(earlier) {
+        std::fs::remove_dir_all(path)?;
     }
     Ok(())
+}
+
+/// Keep a failed case's diagnostics when a later case succeeds.
+fn work_directories() -> std::io::Result<BTreeSet<std::path::PathBuf>> {
+    let prefix = format!("pdx-native-{}-", std::process::id());
+    std::fs::read_dir(std::env::temp_dir())?
+        .filter_map(|entry| match entry {
+            Ok(entry) if entry.file_name().to_string_lossy().starts_with(&prefix) => {
+                Some(Ok(entry.path()))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect()
 }
 
 /// Every process on the host with `(pid, parent pid, executable path)`.
