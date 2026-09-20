@@ -109,7 +109,7 @@ pub struct Game {
     /// Write every answer to this directory as it is returned.
     recorder: Option<Arc<PathBuf>>,
     /// Temporary work directory that Native made. Removed after a clean close.
-    pub(crate) work: Option<PathBuf>,
+    work: Option<PathBuf>,
 }
 impl Game {
     /// A session over recorded answers. No supervisor or game process is started.

@@ -126,6 +126,10 @@ pub enum ObservationControl {
 
 impl ObservationControl {
     /// The name that the worker knows this fault by.
+    #[cfg_attr(
+        not(all(target_os = "macos", target_arch = "aarch64")),
+        allow(dead_code)
+    )]
     pub(crate) fn wire_name(self) -> String {
         serde_json::to_value(self)
             .ok()

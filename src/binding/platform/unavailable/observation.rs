@@ -2,7 +2,7 @@ use crate::supervisor::SupervisorError;
 use std::path::PathBuf;
 fn unavailable<T>() -> Result<T, SupervisorError> {
     Err(SupervisorError(
-        "HostUnavailable: early observation requires Apple Silicon macOS".into(),
+        "HostUnavailable: live observation requires Apple Silicon macOS".into(),
     ))
 }
 pub(crate) fn probe_observer() -> Result<(), SupervisorError> {
