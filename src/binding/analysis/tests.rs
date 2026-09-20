@@ -1,5 +1,4 @@
 use super::*;
-use crate::binding::{Binding, compose};
 use std::fs;
 
 #[path = "../../../tests/analysis_support/mod.rs"]
@@ -19,34 +18,22 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
         method: crate::engine::analysis::decode::METHOD,
         decoder: crate::engine::analysis::decode::DECODER,
     };
-    let control = DecodeControl {
-        address: 0x1000,
-        length: 44,
-        code: support::reference("code.bin", &support::code()),
-    };
-    (
-        root,
-        BoundAnalysis::new(
-            inputs,
-            control,
-            crate::engine::analysis::decode::decode_arm64,
-            installation,
-        ),
-    )
+    (root, BoundAnalysis::new(inputs, installation))
 }
 
 #[test]
 fn reader_uses_verified_slice_bytes_without_content_or_live_tools() {
     let (root, binding) = fixture();
     assert!(!root.path().join("common").exists());
-    assert_eq!(binding.read().unwrap(), support::code());
+    let image = support::macho(&support::code());
+    assert_eq!(binding.executable().unwrap(), image);
     fs::create_dir(root.path().join("common")).unwrap();
     fs::write(root.path().join("common/arbitrary.txt"), "content changed").unwrap();
-    assert_eq!(binding.read().unwrap(), support::code());
+    assert_eq!(binding.executable().unwrap(), image);
     let mut binding = binding;
     binding.inputs.slice = "e".repeat(64);
     assert!(
-        matches!(binding.read(), Err(AnalysisError::Unavailable { reasons }) if reasons == [UnavailableReason::TargetChanged])
+        matches!(binding.executable(), Err(AnalysisError::Unavailable { reasons }) if reasons == [UnavailableReason::TargetChanged])
     );
 }
 
@@ -61,7 +48,7 @@ fn a_changed_or_missing_executable_permanently_invalidates_static_reads() {
         } else {
             fs::remove_file(&path).unwrap();
         }
-        let error = binding.read().unwrap_err();
+        let error = binding.executable().unwrap_err();
         let expected = if mutation == "changed" {
             UnavailableReason::TargetChanged
         } else {
@@ -74,7 +61,7 @@ fn a_changed_or_missing_executable_permanently_invalidates_static_reads() {
             }
         );
         fs::write(path, original).unwrap();
-        assert_eq!(binding.read().unwrap_err(), error);
+        assert_eq!(binding.executable().unwrap_err(), error);
     }
 }
 
@@ -115,35 +102,6 @@ fn range_reader_refuses_unmapped_truncated_misaligned_and_overlapping_sections()
         binary::code_range(&overlap, 0x1000, 44),
         Err(AnalysisError::InvalidRange)
     );
-}
-
-#[test]
-fn shared_static_composition_never_probes_the_live_strategy() {
-    let (root, analysis) = fixture();
-    let image = super::super::targets::test_identity();
-    let (inputs, mut operation) =
-        compose::compose(&image, Err(UnavailableReason::InputUnavailable)).unwrap();
-    operation.strategy.probe = || panic!("static admission called live strategy");
-    let (installation, _) = Installation::open(&root.path().join("image")).unwrap();
-    let binding = Binding {
-        inputs,
-        operation: Some(operation),
-        analysis: Some(std::sync::Arc::new(analysis)),
-        source: super::super::Source::Installation(installation),
-        authority: crate::qualification::Authority {
-            accepted: vec![],
-            withdrawn: vec![],
-        },
-    };
-    let native = crate::Native::from_binding(binding);
-    let report = native.capability(&crate::CapabilityRequest::StaticDecode);
-    assert!(!report.reasons.iter().any(|reason| matches!(
-        reason,
-        UnavailableReason::ProductionFeatureRequired
-            | UnavailableReason::HostUnavailable
-            | UnavailableReason::InputUnavailable
-            | UnavailableReason::PrerequisiteMissing
-    )));
 }
 
 #[test]

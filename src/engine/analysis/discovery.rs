@@ -10,13 +10,12 @@
 //! and clobbered or missing table owners become explicit gaps. Candidates, scheduling witnesses
 //! and relationships are separate, and each states its basis. Counts from this method never
 //! establish that all registries were found.
-mod ownership;
 mod records;
 mod replay;
 mod scheduler;
 
 pub use records::*;
-pub use replay::{derive, replay};
+pub use replay::derive;
 pub use scheduler::{candidates, scheduler};
 
 /// Discovery derivation revision, independent of live registry enumeration.

@@ -103,9 +103,6 @@ pub(super) fn synthetic_variation(
         discovery: targets::lookup(&super::targets::test_identity())
             .unwrap()
             .discovery,
-        analysis: targets::lookup(&super::targets::test_identity())
-            .unwrap()
-            .analysis,
     };
     assemble(
         &ImageIdentity {
@@ -124,22 +121,11 @@ pub(super) fn analysis(
     image: &ImageIdentity,
     installation: super::installation::Installation,
 ) -> Result<super::BoundAnalysis, OpenError> {
-    let recipe = targets::lookup(image)?.analysis;
-    let decoder = machine::decoder(image.architecture)?;
-    let control = super::analysis::DecodeControl {
-        address: recipe.address,
-        length: recipe.length,
-        code: crate::ArtifactReference {
-            path: "sdk-527/planet-getter.bin".into(),
-            sha256: recipe.code_sha256.into(),
-            bytes: recipe.length,
-        },
-    };
+    machine::static_methods(image.architecture)?;
     let composition = hash(
         &serde_json::to_vec(&serde_json::json!({
-            "operation": "static-decode", "executable": image.executable, "slice": image.slice,
-            "recipe": recipe.revision, "control": control,
-            "method": crate::engine::analysis::decode::METHOD, "decoder": crate::engine::analysis::decode::DECODER,
+            "operation": "static-methods", "executable": image.executable, "slice": image.slice,
+            "decoder": crate::engine::analysis::decode::DECODER,
             "implementation": env!("CARGO_PKG_VERSION"),
         }))
         .expect("static composition identity"),
@@ -171,7 +157,7 @@ pub(super) fn analysis(
         }))
         .expect("discovery composition"),
     );
-    let mut bound = super::BoundAnalysis::new(inputs, control, decoder, installation);
+    let mut bound = super::BoundAnalysis::new(inputs, installation);
     bound.discovery = Some(super::analysis::BoundDiscovery {
         inputs: discovery_inputs,
         layout,

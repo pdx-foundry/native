@@ -3,44 +3,20 @@ use std::sync::Mutex;
 use super::{binary, installation::Installation};
 use crate::{AnalysisError, UnavailableReason, qualification::analysis::AnalysisInputs};
 
-pub(crate) type Decoder = fn(
-    &[u8],
-    u64,
-) -> Result<
-    Vec<crate::engine::analysis::decode::Instruction>,
-    crate::engine::analysis::decode::DecodeError,
->;
-
 /// Bound static methods share one executable integrity state and independent admission.
 #[derive(Debug)]
 pub(crate) struct BoundAnalysis {
     pub inputs: AnalysisInputs,
-    pub control: DecodeControl,
-    pub decoder: Decoder,
     pub discovery: Option<BoundDiscovery>,
     pub fields: Option<AnalysisInputs>,
     installation: Installation,
     invalidated: Mutex<Option<UnavailableReason>>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub(crate) struct DecodeControl {
-    pub address: u64,
-    pub length: u64,
-    pub code: crate::ArtifactReference,
-}
-
 impl BoundAnalysis {
-    pub(super) fn new(
-        inputs: AnalysisInputs,
-        control: DecodeControl,
-        decoder: Decoder,
-        installation: Installation,
-    ) -> Self {
+    pub(super) fn new(inputs: AnalysisInputs, installation: Installation) -> Self {
         Self {
             inputs,
-            control,
-            decoder,
             discovery: None,
             fields: None,
             installation,
@@ -76,17 +52,6 @@ impl BoundAnalysis {
         };
         Ok(bytes)
     }
-
-    pub(crate) fn read(&self) -> Result<Vec<u8>, AnalysisError> {
-        let bytes = self.executable()?;
-        let code = binary::code_range(&bytes, self.control.address, self.control.length)?;
-        if binary::hash(&code) != self.control.code.sha256
-            || code.len() as u64 != self.control.code.bytes
-        {
-            return Err(AnalysisError::InvalidRange);
-        }
-        Ok(code)
-    }
 }
 
 #[cfg(test)]
@@ -97,21 +62,6 @@ pub(crate) struct BoundDiscovery {
     pub inputs: AnalysisInputs,
     pub layout: crate::engine::analysis::discovery::SchedulerLayout,
 }
-impl BoundAnalysis {
-    pub(crate) fn discovery_input(
-        &self,
-    ) -> Result<crate::engine::analysis::discovery::StaticInput, AnalysisError> {
-        let bytes = self.executable()?;
-        let discovery = self
-            .discovery
-            .as_ref()
-            .ok_or_else(|| AnalysisError::Unavailable {
-                reasons: vec![UnavailableReason::ImplementationUnavailable],
-            })?;
-        binary::discovery::read(&bytes, &discovery.layout)
-    }
-}
-
 impl BoundAnalysis {
     pub(crate) fn field_input(
         &self,

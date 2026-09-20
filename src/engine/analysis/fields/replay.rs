@@ -1,8 +1,6 @@
 use super::*;
-use crate::{
-    ArtifactReference, EvidenceReference, ReplayError, engine::analysis::decode::AnalysisOrigin,
-};
-use evidence::store::{ArtifactStore, is_sha256, sha256};
+use crate::{EvidenceReference, ReplayError, engine::analysis::decode::AnalysisOrigin};
+use evidence::store::{is_sha256, sha256};
 fn malformed(path: &str, reason: impl ToString) -> ReplayError {
     ReplayError::Malformed {
         path: path.into(),
@@ -42,20 +40,6 @@ fn validate(descriptor: &FieldDescriptor) -> Result<(), ReplayError> {
         ));
     }
     Ok(())
-}
-/// Verify retained artifacts and rerun root dispatch; no installation or launch is required.
-pub fn replay(
-    store: &ArtifactStore,
-    reference: &ArtifactReference,
-) -> Result<RegistryFieldResult, ReplayError> {
-    if reference.bytes > 1024 * 1024 {
-        return Err(malformed(&reference.path, "field descriptor exceeds 1 MiB"));
-    }
-    let descriptor: FieldDescriptor = serde_json::from_slice(&store.read(reference)?)
-        .map_err(|e| malformed(&reference.path, e))?;
-    validate(&descriptor)?;
-    let bytes = store.read(&descriptor.input)?;
-    derive(descriptor, &bytes, AnalysisOrigin::Replay)
 }
 /// Recompute root fields from hashed executable inputs. Completeness is derived, never supplied.
 pub fn derive(

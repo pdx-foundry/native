@@ -62,37 +62,9 @@ impl Native {
         }
         invalidated.clone()
     }
-    /// Inspect one operation. Registry admission may probe live prerequisites; static decoding
-    /// checks only executable inputs. Neither request launches Stellaris.
+    /// Inspect one live operation. Admission may probe live prerequisites; it never launches
+    /// Stellaris. Static questions need no admission.
     pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
-        if matches!(request, CapabilityRequest::RegistryFields) {
-            return self.binding.analysis.as_ref().map_or_else(
-                || {
-                    let mut report =
-                        qualification::analysis::unavailable(self.identity(), self.origin());
-                    report.bounds = crate::CapabilityBounds::RegistryFields;
-                    report
-                },
-                |binding| crate::engine::analysis::fields_capability(binding),
-            );
-        }
-        if matches!(request, CapabilityRequest::RegistryDiscovery) {
-            return self.binding.analysis.as_ref().map_or_else(
-                || {
-                    let mut report =
-                        qualification::analysis::unavailable(self.identity(), self.origin());
-                    report.bounds = crate::CapabilityBounds::RegistryDiscovery;
-                    report
-                },
-                |binding| crate::engine::analysis::discovery_capability(binding),
-            );
-        }
-        if matches!(request, CapabilityRequest::StaticDecode) {
-            return self.binding.analysis.as_ref().map_or_else(
-                || qualification::analysis::unavailable(self.identity(), self.origin()),
-                |binding| crate::engine::analysis::capability(binding),
-            );
-        }
         qualification::evaluate(
             &self.binding.current_inputs(),
             self.binding.authority(),
@@ -100,18 +72,6 @@ impl Native {
             self.origin(),
             self.integrity(),
         )
-    }
-    /// Open a static context when at least one analysis method is admitted, without a game process.
-    /// The returned context refuses changed executable bytes on every operation.
-    pub fn analysis(&self) -> Result<crate::AnalysisContext, crate::AnalysisError> {
-        let binding =
-            self.binding
-                .analysis
-                .clone()
-                .ok_or_else(|| crate::AnalysisError::Unavailable {
-                    reasons: vec![UnavailableReason::ImplementationUnavailable],
-                })?;
-        crate::AnalysisContext::open(binding)
     }
     /// Describe a declared registry without live admission, debugger access, or a game process.
     pub fn get_registry(

@@ -9,11 +9,10 @@ pub(super) fn resolve(
     }
 }
 
-pub(super) fn decoder(
-    architecture: object::Architecture,
-) -> Result<super::Decoder, crate::OpenError> {
+/// Whether the static methods can decode this architecture.
+pub(super) fn static_methods(architecture: object::Architecture) -> Result<(), crate::OpenError> {
     match architecture {
-        object::Architecture::Aarch64 => Ok(crate::engine::analysis::decode::decode_arm64),
+        object::Architecture::Aarch64 => Ok(()),
         _ => Err(crate::OpenError::UnsupportedTarget),
     }
 }

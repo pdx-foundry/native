@@ -35,7 +35,7 @@ mod replay;
 mod tokens;
 pub use records::*;
 pub(crate) use replay::analyze;
-pub use replay::{derive, replay};
+pub use replay::derive;
 
 /// Bounded root-token and reader-routing method revision.
 pub const METHOD: &str = "registry-fields/v1";

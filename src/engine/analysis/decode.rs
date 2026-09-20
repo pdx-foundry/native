@@ -3,8 +3,7 @@
 use capstone::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{ArtifactReference, CaptureOrigin, ReplayError};
-use evidence::store::ArtifactStore;
+use crate::{ArtifactReference, CaptureOrigin};
 
 /// Exact algorithm used by the initial bounded decode control.
 pub const METHOD: &str = "static-decode-control/v1";
@@ -150,46 +149,4 @@ pub fn decode_arm64(bytes: &[u8], address: u64) -> Result<Vec<Instruction>, Deco
             })
         })
         .collect()
-}
-
-/// Verify a retained descriptor and raw range, then reproduce instructions without an installation.
-/// Qualification references describe the original capture and are never promoted by replay.
-pub fn replay(
-    store: &ArtifactStore,
-    reference: &ArtifactReference,
-) -> Result<AnalysisResult, ReplayError> {
-    let malformed = |reason: String| ReplayError::Malformed {
-        path: reference.path.clone(),
-        reason,
-    };
-    let descriptor: AnalysisDescriptor = serde_json::from_slice(&store.read(reference)?)
-        .map_err(|error| malformed(error.to_string()))?;
-    if descriptor.format != FORMAT
-        || descriptor.provenance.method != METHOD
-        || descriptor.provenance.decoder != DECODER
-    {
-        return Err(malformed(
-            "Unsupported analysis format, method, or decoder revision".into(),
-        ));
-    }
-    for identity in [
-        &descriptor.provenance.executable,
-        &descriptor.provenance.slice,
-        &descriptor.provenance.composition,
-    ] {
-        if !evidence::store::is_sha256(identity) {
-            return Err(malformed("Invalid analysis identity".into()));
-        }
-    }
-    if descriptor.code.bytes == 0 || descriptor.code.bytes > 4096 {
-        return Err(malformed("Invalid bounded analysis artifact size".into()));
-    }
-    let bytes = store.read(&descriptor.code)?;
-    let instructions =
-        decode_arm64(&bytes, descriptor.address).map_err(|error| malformed(error.to_string()))?;
-    Ok(AnalysisResult {
-        origin: AnalysisOrigin::Replay,
-        descriptor,
-        instructions,
-    })
 }

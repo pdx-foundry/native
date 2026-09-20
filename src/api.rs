@@ -18,39 +18,6 @@ pub struct ReplayRequest {
 pub struct Engine;
 
 impl Engine {
-    /// Recompute root fields and reader joins from verified executable evidence.
-    pub fn replay_registry_fields(
-        &self,
-        request: ReplayRequest,
-    ) -> Result<crate::RegistryFieldResult, ReplayError> {
-        crate::engine::analysis::fields::replay(
-            &ArtifactStore::new(request.artifact_root),
-            &request.descriptor,
-        )
-    }
-
-    /// Recompute registry candidates and historical ownership from verified retained artifacts.
-    pub fn replay_registry_discovery(
-        &self,
-        request: ReplayRequest,
-    ) -> Result<crate::RegistryDiscoveryResult, ReplayError> {
-        crate::engine::analysis::discovery::replay(
-            &ArtifactStore::new(request.artifact_root),
-            &request.descriptor,
-        )
-    }
-
-    /// Verify and decode retained instructions without opening an installation or launching a game.
-    pub fn replay_analysis(
-        &self,
-        request: ReplayRequest,
-    ) -> Result<crate::AnalysisResult, ReplayError> {
-        crate::engine::analysis::decode::replay(
-            &ArtifactStore::new(request.artifact_root),
-            &request.descriptor,
-        )
-    }
-
     /// Verify and replay a retained registry snapshot without an installed game.
     pub fn replay_registry(
         &self,
@@ -131,12 +98,6 @@ pub enum CapabilityRequest {
         /// Stable Native registry name, currently `traditions` or `tradition_categories`.
         registry: String,
     },
-    /// The single qualified, game-free instruction decode control.
-    StaticDecode,
-    /// Bounded static registry candidates and startup scheduling links.
-    RegistryDiscovery,
-    /// Root-token dispatch and reader joins without config seeds.
-    RegistryFields,
 }
 
 impl Default for CapabilityRequest {
@@ -152,12 +113,6 @@ impl Default for CapabilityRequest {
 pub enum CapabilityBounds {
     /// Named registry observations.
     Registry(RegistryBounds),
-    /// Exactly the recipe's bounded decode control, not arbitrary executable ranges.
-    StaticDecode,
-    /// Bounded static registry candidates and startup scheduling links.
-    RegistryDiscovery,
-    /// Root-token dispatch and reader joins without config seeds.
-    RegistryFields,
 }
 
 /// Registry names declared by a method or covered by one acceptance record.

@@ -57,21 +57,7 @@ pub use evidence::registry::GameReadiness;
 pub use game::{Game, GameError, GameOptions, GameReport, RegistryAvailability};
 
 mod engine;
-pub use crate::engine::analysis::decode::{
-    AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, AnalysisResult, Instruction,
-};
-pub use engine::analysis::{AnalysisContext, AnalysisError};
-
-pub use crate::engine::analysis::discovery::{
-    DiscoveryBasis, DiscoveryDescriptor, DiscoveryGap, DiscoveryGapKind, DiscoveryRun,
-    ForeignRegistrySubject, RegistryCandidate, RegistryDiscoveryResult, RegistryRelationship,
-    RegistrySubject, SchedulingWitness,
-};
-
-pub use crate::engine::analysis::fields::{
-    Condition as FieldCondition, FieldDescriptor, FieldGap, PathOutcome, ReaderContractGap,
-    ReaderJoin, RegistryFieldResult, RootField, TokenPath, Value as FieldValue,
-};
+pub use engine::analysis::AnalysisError;
 
 /// Static method internals for Native's own integration tests. Not a consumer API.
 #[doc(hidden)]

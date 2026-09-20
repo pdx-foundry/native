@@ -173,9 +173,14 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
    (`engine/analysis/directories.rs`) names all 164 template registries on M45; every
    live-observed directory is in the result, with no conflict. Parity tests compare with 8 KB of
    tracked expected output (`tests/expected/m45`). Two fields in different registries already
-   report one reader identity. Still to do in this step: remove the earlier static API
-   (`Native::analysis`, the raw result exports, the static replay methods and examples), then the
-   live side below.
+   report one reader identity. The earlier static API is removed: `Native::analysis`,
+   `AnalysisContext`, the raw result exports, the three static replay methods, the static
+   capability variants, the decode control, and six examples. The historical ownership replay
+   (`discovery/ownership.rs`, 386 lines) is removed with them: it reduced traces in the format of
+   a Python prototype, and static analysis now gives the owner class and the directory of each
+   template registry. Its last run passed 41/41 controls; the code is in Git at `3eef4f5`. The
+   method internals still carry replay descriptors; step 4 removes those. Still to do in this
+   step: the live side below.
    Add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.
