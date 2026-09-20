@@ -43,6 +43,28 @@
           "sha256": "9c890366d9a1dfb7f2ba3ad6432bf21a7e77e5f5b3632e06b597d67ef600a72f"
         }
       ]
+    },
+    {
+      "id": "sdk-528-m45-registry-discovery-d982241bd346",
+      "composition": "d982241bd346d0b3d619dc25dd4c1177d1f9cd4b1865ed0b34604eb01097d08b",
+      "evidence": [
+        {
+          "path": "sdk-528-review-qualification-20260920/verified.json",
+          "bytes": 1809,
+          "sha256": "ea5795a0cc181b9abb12bb18212c68de8729884fd28a38ce64bd2d50c73f0eeb"
+        }
+      ]
+    },
+    {
+      "id": "sdk-527-m45-static-decode-v1-ff1ee5cdaece",
+      "composition": "ff1ee5cdaece53ace0092eccbe431c4b65c9d5eb10cf4ce38b0fb25aa87d4176",
+      "evidence": [
+        {
+          "path": "sdk-528-review-decode-20260920/qualified.json",
+          "bytes": 1629,
+          "sha256": "8ff7dd316c80bf659f02bf4ea728965d34d3c0b08492d91d39af0660263655c5"
+        }
+      ]
     }
   ],
   "withdrawn": []

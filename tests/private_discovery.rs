@@ -537,3 +537,25 @@ fn public_discovery_admission_and_replay() {
     );
     assert!(context.decode_control().is_err());
 }
+
+#[test]
+#[ignore = "requires verified SDK-489 capture identities"]
+fn captured_replay_rejects_cross_run_artifact_substitution() {
+    let root = root();
+    let mut descriptor: pdx_native::DiscoveryDescriptor =
+        serde_json::from_value(read(root.join("historical-descriptor.json"))).unwrap();
+    let foreign = descriptor.runs[1].result.clone();
+    descriptor.runs.truncate(1);
+    descriptor.runs[0].result = foreign;
+    let raw = serde_json::to_vec(&descriptor).unwrap();
+    fs::write(root.join("cross-run-descriptor.json"), &raw).unwrap();
+    let error = Engine
+        .replay_registry_discovery(ReplayRequest {
+            artifact_root: root,
+            descriptor: support::reference("cross-run-descriptor.json", &raw),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(error,pdx_native::ReplayError::Malformed{reason,..} if reason.contains("does not belong to the declared capture"))
+    );
+}

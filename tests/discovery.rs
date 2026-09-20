@@ -139,16 +139,26 @@ fn historical_fixture(
         fs::write(root.join(name), &bytes).unwrap();
         support::reference(name, &bytes)
     };
+    let mut events = events.to_vec();
+    for event in &mut events {
+        event["run"] = json!("synthetic-run");
+    }
     let trace = events
         .iter()
         .map(|r| serde_json::to_string(r).unwrap())
         .collect::<Vec<_>>()
         .join("\n");
     let trace = record("trace.jsonl", trace.into_bytes());
-    let table=record("table.json",serde_json::to_vec(&json!([{"index":0,"name":"example","slots":[{"address":"0x3000"},null,null,null,null]}])).unwrap());
-    let result=record("run.json",serde_json::to_vec(&json!({"completed":true,"sequenceContiguous":true,"binaryUnchanged":true,"contentUnchanged":true})).unwrap());
-    let manifest=record("manifest.json",serde_json::to_vec(&json!({"target":{"executableSha256":descriptor.provenance.executable,"sliceSha256":descriptor.provenance.slice}})).unwrap());
+    let table=record("table.json",serde_json::to_vec(&json!([{"run":"synthetic-run","index":0,"name":"example","slots":[{"address":"0x3000"},null,null,null,null]}])).unwrap());
+    let result=record("run.json",serde_json::to_vec(&json!({"run":"synthetic-run","completed":true,"sequenceContiguous":true,"binaryUnchanged":true,"contentUnchanged":true})).unwrap());
+    let manifest=record("manifest.json",serde_json::to_vec(&json!({"run":"synthetic-run","target":{"executableSha256":descriptor.provenance.executable,"sliceSha256":descriptor.provenance.slice}})).unwrap());
+    let capsule=record("capsule.json",serde_json::to_vec(&json!({"identity":"synthetic-run","files":{
+        "synthetic-run/trace.jsonl":trace.sha256,"synthetic-run/startup-table.json":table.sha256,
+        "synthetic-run/result.json":result.sha256,"synthetic-run/manifest.json":manifest.sha256
+    }})).unwrap());
     descriptor.runs = vec![pdx_native::DiscoveryRun {
+        identity: "synthetic-run".into(),
+        capsule,
         trace,
         table,
         result,
@@ -281,5 +291,154 @@ fn removed_scheduler_receiver_is_not_an_empty_success() {
             .0
             .iter()
             .all(|r| r.status == "gap")
+    );
+}
+
+fn replay_fixture(
+    root: &std::path::Path,
+    descriptor: &DiscoveryDescriptor,
+) -> Result<pdx_native::RegistryDiscoveryResult, pdx_native::ReplayError> {
+    let bytes = serde_json::to_vec(descriptor).unwrap();
+    fs::write(root.join("descriptor.json"), &bytes).unwrap();
+    Engine.replay_registry_discovery(ReplayRequest {
+        artifact_root: root.into(),
+        descriptor: support::reference("descriptor.json", &bytes),
+    })
+}
+#[test]
+fn historical_terminal_closes_the_observation_window() {
+    let root = tempfile::tempdir().unwrap();
+    let mut events = historical_events();
+    events.insert(1, serde_json::json!({"kind":"stream-end"}));
+    for (i, event) in events.iter_mut().enumerate() {
+        event["seq"] = serde_json::json!(i + 1);
+    }
+    let descriptor = historical_fixture(root.path(), &events, &input());
+    let result = replay_fixture(root.path(), &descriptor).unwrap();
+    assert!(result.relationships.is_empty());
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == DiscoveryGapKind::HistoricalIntegrity
+                && g.reason.contains("after the terminal"))
+    );
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == DiscoveryGapKind::UnobservedCandidate)
+    );
+    let mut events = historical_events();
+    events.push(serde_json::json!({"seq":7,"kind":"worker-ended"}));
+    events.push(serde_json::json!({"seq":8,"kind":"worker-kill"}));
+    let descriptor = historical_fixture(root.path(), &events, &input());
+    let result = replay_fixture(root.path(), &descriptor).unwrap();
+    assert!(
+        result
+            .gaps
+            .iter()
+            .all(|g| g.kind != DiscoveryGapKind::HistoricalIntegrity)
+    );
+}
+#[test]
+fn aggregate_budget_is_validated_before_reading_replay_inputs() {
+    let root = tempfile::tempdir().unwrap();
+    let base = historical_fixture(root.path(), &historical_events(), &input());
+    fs::remove_file(root.path().join("input.json")).unwrap();
+    for (case, reason) in [
+        ("many", "at most two"),
+        ("repeated", "duplicate or empty"),
+        ("bytes", "aggregate"),
+        ("overflow", "aggregate"),
+    ] {
+        let mut descriptor = base.clone();
+        match case {
+            "many" => descriptor.runs = vec![descriptor.runs[0].clone(); 3],
+            "repeated" => descriptor.runs.push(descriptor.runs[0].clone()),
+            "bytes" => {
+                descriptor.input.bytes = 40 * 1024 * 1024;
+                descriptor.runs[0].trace.bytes = 40 * 1024 * 1024;
+            }
+            "overflow" => descriptor.runs[0].trace.bytes = u64::MAX,
+            _ => unreachable!(),
+        }
+        let error = replay_fixture(root.path(), &descriptor).unwrap_err();
+        assert!(
+            matches!(error,pdx_native::ReplayError::Malformed{reason:message,..} if message.contains(reason)),
+            "{case}"
+        );
+    }
+}
+#[test]
+fn historical_artifacts_must_share_the_capture_identity_and_seal() {
+    let root = tempfile::tempdir().unwrap();
+    for name in ["trace.jsonl", "table.json", "run.json", "manifest.json"] {
+        let mut descriptor = historical_fixture(root.path(), &historical_events(), &input());
+        let path = root.path().join(name);
+        let bytes = if name == "trace.jsonl" {
+            let mut rows: Vec<serde_json::Value> = fs::read_to_string(&path)
+                .unwrap()
+                .lines()
+                .map(|s| serde_json::from_str(s).unwrap())
+                .collect();
+            rows[0]["run"] = serde_json::json!("foreign");
+            rows.iter()
+                .map(|r| serde_json::to_string(r).unwrap())
+                .collect::<Vec<_>>()
+                .join("\n")
+                .into_bytes()
+        } else {
+            let mut value: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            if name == "table.json" {
+                value[0]["run"] = serde_json::json!("foreign");
+            } else {
+                value["run"] = serde_json::json!("foreign");
+            }
+            serde_json::to_vec(&value).unwrap()
+        };
+        fs::write(&path, &bytes).unwrap();
+        let reference = support::reference(name, &bytes);
+        let run = &mut descriptor.runs[0];
+        let member = match name {
+            "trace.jsonl" => {
+                run.trace = reference.clone();
+                "trace.jsonl"
+            }
+            "table.json" => {
+                run.table = reference.clone();
+                "startup-table.json"
+            }
+            "run.json" => {
+                run.result = reference.clone();
+                "result.json"
+            }
+            _ => {
+                run.manifest = reference.clone();
+                "manifest.json"
+            }
+        };
+        let error = replay_fixture(root.path(), &descriptor).unwrap_err();
+        assert!(
+            matches!(error,pdx_native::ReplayError::Malformed{reason,..} if reason.contains("does not belong"))
+        );
+        // Even resealing synthetic bytes cannot conceal an embedded foreign capture identity.
+        let mut capsule: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.path().join("capsule.json")).unwrap()).unwrap();
+        capsule["files"][format!("synthetic-run/{member}")] = serde_json::json!(reference.sha256);
+        let bytes = serde_json::to_vec(&capsule).unwrap();
+        fs::write(root.path().join("capsule.json"), &bytes).unwrap();
+        descriptor.runs[0].capsule = support::reference("capsule.json", &bytes);
+        let error = replay_fixture(root.path(), &descriptor).unwrap_err();
+        assert!(
+            matches!(error,pdx_native::ReplayError::Malformed{reason,..} if reason.contains("conflicting capture identities"))
+        );
+    }
+    let mut descriptor = historical_fixture(root.path(), &historical_events(), &input());
+    descriptor.capture_origin = CaptureOrigin::Captured;
+    let error = replay_fixture(root.path(), &descriptor).unwrap_err();
+    assert!(
+        matches!(error,pdx_native::ReplayError::Malformed{reason,..} if reason.contains("accepted SDK-489"))
     );
 }

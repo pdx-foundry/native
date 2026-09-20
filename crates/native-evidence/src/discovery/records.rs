@@ -50,6 +50,10 @@ pub struct StaticInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DiscoveryRun {
+    /// Original capture namespace within the sealed capsule.
+    pub identity: String,
+    /// Sealed capture manifest that binds this run's four artifacts together.
+    pub capsule: ArtifactReference,
     /// Startup event stream.
     pub trace: ArtifactReference,
     /// Independently observed scheduling table.

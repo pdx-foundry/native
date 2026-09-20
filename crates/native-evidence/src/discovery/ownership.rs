@@ -80,7 +80,8 @@ pub(super) fn append(
             .iter()
             .enumerate()
             .all(|(i, r)| r["seq"].as_u64() == Some(i as u64 + 1));
-        let complete = run.trace.iter().any(|r| r["kind"] == "stream-end")
+        let terminal = run.trace.iter().position(|r| r["kind"] == "stream-end");
+        let complete = terminal.is_some()
             && [
                 "completed",
                 "sequenceContiguous",
@@ -128,6 +129,19 @@ pub(super) fn append(
                 "retained startup table differs from static scheduling records",
             );
         }
+        let terminal = terminal.expect("validated historical terminal");
+        for event in &run.trace[terminal + 1..] {
+            if !matches!(text(event, "kind"), "worker-ended" | "worker-kill") {
+                gap(
+                    result,
+                    run,
+                    event,
+                    None,
+                    DiscoveryGapKind::HistoricalIntegrity,
+                    "observation after the terminal is outside the retained window",
+                );
+            }
+        }
         let mut objects = BTreeMap::new();
         let mut loaders: BTreeMap<String, (&Value, EvidenceReference)> = BTreeMap::new();
         let mut roots: BTreeMap<String, &Value> = BTreeMap::new();
@@ -137,7 +151,7 @@ pub(super) fn append(
         let mut custom_file: Option<&Value> = None;
         let mut custom_start: Option<&Value> = None;
         let mut custom_key_end: Option<&Value> = None;
-        for event in &run.trace {
+        for event in &run.trace[..terminal] {
             let db = text(event, "database");
             let candidate = by_db.get(db).copied();
             let subject = candidate.map(|i| result.candidates[i].subject.clone());

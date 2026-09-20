@@ -1,13 +1,13 @@
 {
   "candidates": 164,
-  "composition": "6e2ee7e0cb19660bf62a1a7db8af985ba71d8ee383812f3a5ca7b766db1d1ccb",
+  "composition": "d982241bd346d0b3d619dc25dd4c1177d1f9cd4b1865ed0b34604eb01097d08b",
   "descriptor": {
     "bytes": 778,
     "path": "descriptor.json",
-    "sha256": "515602c6343670e02331ed56783d7111f67213546ef9e0f25b9fa3a707463fd6"
+    "sha256": "619a74696c08b2124d0c43a65fcf8ba88f032421b9d4d4ed45aa2cb1c8fc6d31"
   },
   "game_launches": 0,
-  "implementation": "9a13286fcd8c0fc7591da2163878b6e4136121f0a21ec688ca84f203bdcf0a85",
+  "implementation": "1ad54dca3ced66aac2ac477e008e2237ab1ce167c076e19a014fec43fc9c69f6",
   "outside_template": 35,
   "scheduling": 198,
   "unknown_instructions": [
@@ -18,19 +18,19 @@
   ],
   "status": "verified-static-discovery-and-historical-replay",
   "controls": {
-    "path": "sdk-528-qualification-20260920-2/rust-controls.json",
+    "path": "sdk-528-review-qualification-20260920/rust-controls.json",
     "bytes": 1759,
     "sha256": "697c98b59956d019ef23f0f1a48f93ea9413260e85590e2528d20d8b92ca7210"
   },
   "historical_descriptor": {
-    "path": "sdk-528-qualification-20260920-2/historical-descriptor.json",
-    "bytes": 2325,
-    "sha256": "e0828133613a3619eb1667c10d98d5d0e2f65e5c320deb45766dfef6332a165e"
+    "path": "sdk-528-review-qualification-20260920/historical-descriptor.json",
+    "bytes": 2763,
+    "sha256": "930301ad3b614dd41b4f4505015054dff80d2be38d1a006ae5808bf6e1fb7a74"
   },
   "historical_result": {
-    "path": "sdk-528-qualification-20260920-2/historical-result.json",
-    "bytes": 631961,
-    "sha256": "e0b180e8edde367e5fc2d63cd8a92230bf6ebbe65a9067bf8dd759d4ce77dad5"
+    "path": "sdk-528-review-qualification-20260920/historical-result.json",
+    "bytes": 632423,
+    "sha256": "4d78bbefd2e4770b111c4e4cd10e8895725e21a8104bbb28b7eee2d4a11f62cc"
   },
   "basis": "Exact executable-derived candidates and scheduler slots match SDK-489; 41 retained controls and historical root-owner joins pass in Rust.",
   "limits": [

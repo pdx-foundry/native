@@ -36,6 +36,9 @@ The static result exposes `input_bytes()` for retaining its input artifact at th
 archive-relative path. Descriptors contain input references, not extracted answers. The separate
 evidence crate verifies each artifact and runs the same bounded reducer without an installation.
 Unsupported contracts, damaged bytes, missing artifacts and unsafe paths fail explicitly.
+Replay admits at most two historical runs, a 1 MiB descriptor, and 64 MiB of aggregate input bytes;
+it checks these limits before loading referenced artifacts. Duplicate capture IDs and repeated
+historical artifact locators are rejected.
 
 The accepted SDK-489 capsule can supply historical ownership evidence. The preparation tool verifies
 the archive and restored capsule before copying the two retained traces, tables, result records and
@@ -50,7 +53,14 @@ Historical replay preserves the original exact target and content boundary. It v
 sequence and completion, compares static and observed scheduler slots, and joins root keys with
 loader files, receiver directories, direct enumeration callers, concrete vtables, offset-to-top and
 member-dispatch pointers. The accepted custom static-modifier observations retain their two-phase
-boundary. Incidental reader occurrences and incomplete joins remain gaps.
+boundary. Incidental reader occurrences and incomplete joins remain gaps. Observation processing stops at
+`stream-end`; only worker lifecycle records may follow without a gap.
+
+The legacy SDK-489 traces predate embedded capture IDs. Captured replay therefore requires their
+accepted, hash-pinned capsule and verifies all four artifact hashes under the same original run
+namespace. A successful result from another run cannot substitute for the trace's own result.
+Synthetic captures use sealed artifact associations plus matching embedded run IDs in every
+trace/table row, result and manifest. Synthetic provenance cannot be promoted by changing an origin flag.
 
 The retained result has 162 observed template candidates and two unobserved candidates. Six
 AI economic-plan roots are established among 249 reader occurrences. Replay never upgrades these

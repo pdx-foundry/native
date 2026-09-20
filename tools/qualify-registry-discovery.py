@@ -27,6 +27,7 @@ def main():
     subprocess.run(['cargo', 'test', '--locked', '--release', '--lib', 'qualify_registry_discovery', '--', '--ignored'], cwd=ROOT, env=env, check=True)
     prepare.prepare(output)
     subprocess.run(['cargo', 'test', '--locked', '--release', '--test', 'private_discovery', 'retained_discovery_parity_and_41_controls', '--', '--ignored'], cwd=ROOT, env=env, check=True)
+    subprocess.run(['cargo', 'test', '--locked', '--release', '--test', 'private_discovery', 'captured_replay_rejects_cross_run_artifact_substitution', '--', '--ignored'], cwd=ROOT, env=env, check=True)
     report = json.loads((output / 'qualification.json').read_text())
     report.update(status='verified-static-discovery-and-historical-replay',
         controls=prepare.reference(output / 'rust-controls.json', str((output / 'rust-controls.json').relative_to(ROOT / '.local/evidence'))),

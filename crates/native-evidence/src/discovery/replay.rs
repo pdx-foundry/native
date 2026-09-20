@@ -22,23 +22,33 @@ pub fn replay(
     store: &ArtifactStore,
     reference: &ArtifactReference,
 ) -> Result<RegistryDiscoveryResult, ReplayError> {
+    if reference.bytes > 1024 * 1024 {
+        return Err(malformed(
+            &reference.path,
+            "discovery descriptor exceeds 1 MiB",
+        ));
+    }
     let descriptor: DiscoveryDescriptor = json(&store.read(reference)?, &reference.path)?;
+    validate_budget(&descriptor, reference)?;
     let bytes = store.read(&descriptor.input)?;
     let mut runs = Vec::new();
     for run in &descriptor.runs {
+        validate_capture(store, &descriptor, run)?;
         let trace = store.read(&run.trace)?;
         let trace = std::str::from_utf8(&trace)
             .map_err(|e| malformed(&run.trace.path, e))?
             .lines()
             .map(|line| json(line.as_bytes(), &run.trace.path))
             .collect::<Result<Vec<Value>, _>>()?;
-        runs.push(HistoricalRun {
+        let historical = HistoricalRun {
             reference: run.clone(),
             trace,
             table: json(&store.read(&run.table)?, &run.table.path)?,
             result: json(&store.read(&run.result)?, &run.result.path)?,
             manifest: json(&store.read(&run.manifest)?, &run.manifest.path)?,
-        });
+        };
+        validate_run_identity(&historical, descriptor.capture_origin)?;
+        runs.push(historical);
     }
     let mut result = derive(descriptor, &bytes, AnalysisOrigin::Replay)?;
     let input: StaticInput = json(&bytes, &result.descriptor.input.path)?;
@@ -214,4 +224,120 @@ fn database_names(name: &str) -> Vec<&str> {
     name.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
         .filter(|s| s.starts_with('C') && (s.ends_with("Database") || s.ends_with("Manager")))
         .collect()
+}
+
+// The only captured legacy adapter is the independently verified SDK-489 capsule. Its
+// trace/table formats predate embedded run IDs, so this immutable manifest is their join.
+const SDK489_CAPSULE: &str = "66b82504c596a0921a08a0ebc445f3f66668769f564ffe89d6279ff5c80bae6e";
+
+fn validate_budget(
+    descriptor: &DiscoveryDescriptor,
+    reference: &ArtifactReference,
+) -> Result<(), ReplayError> {
+    if descriptor.runs.len() > 2 {
+        return Err(malformed(
+            &reference.path,
+            "discovery replay permits at most two historical runs",
+        ));
+    }
+    let mut references = vec![reference, &descriptor.input];
+    let mut identities = std::collections::BTreeSet::new();
+    let mut paths =
+        std::collections::BTreeSet::from([reference.path.as_str(), descriptor.input.path.as_str()]);
+    for run in &descriptor.runs {
+        if run.identity.is_empty() || !identities.insert(run.identity.as_str()) {
+            return Err(malformed(
+                &reference.path,
+                "duplicate or empty capture identity",
+            ));
+        }
+        for artifact in [&run.trace, &run.table, &run.result, &run.manifest] {
+            if !paths.insert(&artifact.path) {
+                return Err(malformed(
+                    &reference.path,
+                    "duplicate historical artifact locator",
+                ));
+            }
+            references.push(artifact);
+        }
+        references.push(&run.capsule);
+    }
+    let total = references
+        .into_iter()
+        .try_fold(0u64, |sum, r| sum.checked_add(r.bytes));
+    if !total.is_some_and(|bytes| bytes <= 64 * 1024 * 1024) {
+        return Err(malformed(
+            &reference.path,
+            "discovery replay exceeds the 64 MiB aggregate input limit",
+        ));
+    }
+    Ok(())
+}
+fn validate_capture(
+    store: &ArtifactStore,
+    descriptor: &DiscoveryDescriptor,
+    run: &DiscoveryRun,
+) -> Result<(), ReplayError> {
+    if descriptor.capture_origin == crate::CaptureOrigin::Captured
+        && run.capsule.sha256 != SDK489_CAPSULE
+    {
+        return Err(malformed(
+            &run.capsule.path,
+            "captured ownership requires the accepted SDK-489 capture capsule",
+        ));
+    }
+    let capsule: Value = json(&store.read(&run.capsule)?, &run.capsule.path)?;
+    for (name, reference) in [
+        ("trace.jsonl", &run.trace),
+        ("startup-table.json", &run.table),
+        ("result.json", &run.result),
+        ("manifest.json", &run.manifest),
+    ] {
+        let key = format!("{}/{name}", run.identity);
+        if capsule["files"][&key].as_str() != Some(&reference.sha256) {
+            return Err(malformed(
+                &run.capsule.path,
+                "artifact does not belong to the declared capture",
+            ));
+        }
+    }
+    if descriptor.capture_origin == crate::CaptureOrigin::Synthetic
+        && capsule["identity"].as_str() != Some(&run.identity)
+    {
+        return Err(malformed(
+            &run.capsule.path,
+            "synthetic capture identity mismatch",
+        ));
+    }
+    Ok(())
+}
+fn validate_run_identity(
+    run: &HistoricalRun,
+    origin: crate::CaptureOrigin,
+) -> Result<(), ReplayError> {
+    let identity = &run.reference.identity;
+    if origin == crate::CaptureOrigin::Captured {
+        if !run.result["archive"]
+            .as_str()
+            .is_some_and(|path| path.ends_with(&format!("/{identity}")))
+        {
+            return Err(malformed(
+                &run.reference.result.path,
+                "historical result belongs to another capture",
+            ));
+        }
+    } else if run.result["run"].as_str() != Some(identity)
+        || run.manifest["run"].as_str() != Some(identity)
+        || run
+            .trace
+            .iter()
+            .chain(&run.table)
+            .any(|row| row["run"].as_str() != Some(identity))
+    {
+        return Err(malformed(
+            &run.reference.trace.path,
+            "historical artifacts have conflicting capture identities",
+        ));
+    }
+    Ok(())
 }

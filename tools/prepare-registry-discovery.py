@@ -25,8 +25,9 @@ def prepare(output):
     subprocess.run(['python3', str(RETAINED / 'replay.py')], cwd=ROOT, check=True)
     descriptor = json.loads((output / 'descriptor.json').read_text())
     descriptor['runs'] = []
+    shutil.copyfile(RETAINED / 'capsule.json', output / 'sdk-489-capsule.json')
     for run in RUNS:
-        record = {}
+        record = dict(identity=run, capsule=reference(output / 'sdk-489-capsule.json', 'sdk-489-capsule.json'))
         for field, filename in [('trace', 'trace.jsonl'), ('table', 'startup-table.json'), ('result', 'result.json'), ('manifest', 'manifest.json')]:
             name = f'{run}/{filename}'
             destination = output / name
