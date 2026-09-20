@@ -360,3 +360,38 @@ fn public_fields_need_only_an_executable_and_reject_foreign_subjects() {
     ));
     fs::write(output.join("public-controls.json"),b"{\"isolated_executable\":true,\"foreign_context_rejected\":true,\"foreign_result_rejected\":true,\"exact_replay\":true,\"target_change_rejected\":true,\"game_launches\":0}\n").unwrap();
 }
+
+#[test]
+#[ignore = "requires final promoted field authority and its private evidence"]
+fn accepted_evidence_binds_public_controls() {
+    let executable = PathBuf::from(
+        std::env::var_os("PDX_NATIVE_ANALYSIS_EXECUTABLE").expect("exact executable"),
+    );
+    let native = Native::open(OpenRequest {
+        installation_hint: executable,
+    })
+    .unwrap();
+    let capability = native.capability(&CapabilityRequest::RegistryFields);
+    assert_eq!(capability.availability, Availability::Available);
+    let evidence_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".local/evidence");
+    let store = ArtifactStore::new(evidence_root);
+    assert!(!capability.evidence.is_empty());
+    for reference in &capability.evidence {
+        let report: Json = serde_json::from_slice(&store.read(reference).unwrap()).unwrap();
+        assert_eq!(report["status"], "qualified-root-field-discovery");
+        let public_reference = serde_json::from_value(report["public_controls"].clone()).unwrap();
+        let controls: Json =
+            serde_json::from_slice(&store.read(&public_reference).unwrap()).unwrap();
+        assert_eq!(controls["isolated_executable"], true);
+        assert_eq!(controls["exact_replay"], true);
+        let tracked: Json = serde_json::from_slice(
+            &fs::read(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("docs/native/registry-fields-qualification.json"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(report, tracked);
+    }
+}

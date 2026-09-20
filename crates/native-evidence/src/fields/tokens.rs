@@ -53,14 +53,19 @@ pub(super) fn function<'a>(input: &'a FieldInput, name: &str) -> Option<&'a Func
     (symbol.address == first.address && symbols.all(|s| s.address == first.address))
         .then_some(first)
 }
-pub(super) fn callee(input: &FieldInput, address: u64) -> Option<&str> {
-    let mut names = input
-        .symbols
-        .iter()
-        .filter(|s| s.address == address)
-        .map(|s| s.name.as_str());
-    let name = names.next()?;
-    names.all(|other| other == name).then_some(name)
+pub(super) fn symbol_names(input: &FieldInput) -> BTreeMap<u64, Option<&str>> {
+    let mut names = BTreeMap::new();
+    for symbol in &input.symbols {
+        names
+            .entry(symbol.address)
+            .and_modify(|name| {
+                if *name != Some(symbol.name.as_str()) {
+                    *name = None;
+                }
+            })
+            .or_insert(Some(symbol.name.as_str()));
+    }
+    names
 }
 #[derive(Debug)]
 pub(super) struct Token {
@@ -78,15 +83,10 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>)
         Ok(rows) => rows,
         Err(reason) => return (tokens, vec![reason]),
     };
-    if rows
-        .iter()
-        .any(|row| matches!(row.operation.as_str(), "br" | "blr"))
-    {
-        return (
-            tokens,
-            vec!["indirect token-construction control flow is unqualified".into()],
-        );
-    }
+    let reachable = match super::control_flow::reachable(&rows) {
+        Ok(reachable) => reachable,
+        Err(reason) => return (tokens, vec![reason]),
+    };
     let branch_targets: std::collections::BTreeSet<_> = rows
         .iter()
         .filter(|row| {
@@ -97,15 +97,14 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>)
         .filter_map(|row| row.operands.rsplit(',').next().and_then(number))
         .map(|address| address as u64)
         .collect();
-    let constructors: std::collections::BTreeSet<_> = input
-        .symbols
+    let names = symbol_names(input);
+    let constructors: std::collections::BTreeSet<_> = names
         .iter()
-        .filter(|s| s.name == "CToken::CToken(int, char const*)")
-        .map(|s| s.address)
-        .filter(|address| callee(input, *address) == Some("CToken::CToken(int, char const*)"))
+        .filter(|(_, name)| **name == Some("CToken::CToken(int, char const*)"))
+        .map(|(address, _)| *address)
         .collect();
     for (index, row) in rows.iter().enumerate() {
-        if row.operation != "bl" {
+        if row.operation != "bl" || !reachable.contains(&row.address) {
             continue;
         }
         if !number(&row.operands).is_some_and(|a| constructors.contains(&(a as u64))) {
@@ -113,6 +112,10 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>)
         }
         let mut values = BTreeMap::<String, i64>::new();
         for prior in &rows[index.saturating_sub(8)..index] {
+            if !reachable.contains(&prior.address) {
+                values.clear();
+                continue;
+            }
             // A branch can bypass earlier argument definitions, including a branch outside
             // the lookback window. Only values re-established after its target survive.
             if branch_targets.contains(&prior.address) {

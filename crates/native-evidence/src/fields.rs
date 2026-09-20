@@ -1,4 +1,5 @@
 //! Root-token dispatch derivation from executable bytes, without content or config inputs.
+mod control_flow;
 mod dispatch;
 mod inventory;
 mod records;

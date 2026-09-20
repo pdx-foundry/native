@@ -335,3 +335,105 @@ fn a_branch_into_the_constructor_cannot_bypass_argument_provenance() {
     assert!(result.fields.is_empty());
     assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
 }
+
+#[test]
+fn unreachable_token_constructors_are_not_discovered() {
+    for skip in [branch(0x2000, 0x2014, false), 0xd65f03c0] {
+        let mut input = fixture();
+        input.functions[1].code = code(&[
+            skip,
+            0x528000e1,
+            0xd0000022,
+            0x91000042,
+            branch(0x2010, 0x3000, true),
+            0xd65f03c0,
+        ]);
+        let result = derive(input);
+        assert!(result.fields.is_empty());
+        assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
+    }
+}
+
+#[test]
+fn known_zero_tests_keep_only_feasible_reader_paths() {
+    for (constant, branch_op, has_field) in [
+        (0x52800003, 0x340000a3, false),
+        (0x52800023, 0x340000a3, true),
+        (0x52800003, 0x350000a3, true),
+        (0x52800023, 0x350000a3, false),
+    ] {
+        let mut input = fixture();
+        input.functions[0].code = code(&[
+            0x71001c5f,
+            0x54000060,
+            0x9100e000,
+            branch(0x100c, 0x5000, false),
+            constant,
+            branch_op,
+            0x91010008,
+            0xaa0103e0,
+            0xaa0803e1,
+            branch(0x1024, 0x4000, false),
+            0xd65f03c0,
+        ]);
+        let result = derive(input);
+        assert_eq!(!result.fields.is_empty(), has_field);
+        assert_eq!(result.paths.len(), 3, "constant alternatives must not fork");
+    }
+}
+
+#[test]
+fn constant_token_construction_branches_do_not_emit_dead_literals() {
+    let mut input = fixture();
+    input.functions[1].code = code(&[
+        0x52800003, // mov w3,#0
+        0x340000a3, // cbz w3,0x2018
+        0x528000e1,
+        0xd0000022,
+        0x91000042,
+        branch(0x2014, 0x3000, true),
+        0xd65f03c0,
+    ]);
+    assert!(derive(input).fields.is_empty());
+}
+
+#[test]
+fn duplicate_constructor_symbols_use_one_address_and_conflicts_remain_unknown() {
+    let mut input = fixture();
+    let constructor = input
+        .symbols
+        .iter()
+        .find(|s| s.address == 0x3000)
+        .unwrap()
+        .clone();
+    input
+        .symbols
+        .extend(std::iter::repeat_n(constructor, 10000));
+    assert_eq!(derive(input.clone()).fields.len(), 1);
+    input.symbols.push(Symbol {
+        name: "ambiguous_alias".into(),
+        address: 0x3000,
+    });
+    assert!(derive(input).fields.is_empty());
+}
+
+#[test]
+fn token_constructor_reachability_stops_at_external_tail_calls() {
+    let mut input = fixture();
+    input.functions[1].code = code(&[
+        0x91440268, // add x8,x19,#0x100,lsl #12
+        0x528000e1,
+        0xd0000022,
+        0x91000042,
+        branch(0x2010, 0x3000, true),
+        branch(0x2014, 0x9000, false),
+        0x52800101, // unreachable constructor for another token
+        0xd0000022,
+        0x91000042,
+        branch(0x2024, 0x3000, true),
+        0xd65f03c0,
+    ]);
+    let result = derive(input);
+    assert_eq!(result.fields.len(), 1);
+    assert_eq!(result.fields[0].token, 7);
+}

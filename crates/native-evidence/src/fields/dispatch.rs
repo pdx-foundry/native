@@ -1,4 +1,4 @@
-use super::tokens::{callee, decode, function, number, register};
+use super::tokens::{decode, function, number, register, symbol_names};
 use super::{Condition, FieldInput, PathOutcome, ReaderJoin, TokenPath, Value};
 use crate::{EvidenceReference, analysis::Instruction};
 use std::collections::BTreeMap;
@@ -113,7 +113,7 @@ fn memory(operand: &str) -> Option<(&str, i64)> {
     register(base)?;
     Some((base, number(amount)?))
 }
-fn rejection(input: &FieldInput) -> bool {
+fn rejection(input: &FieldInput, names: &BTreeMap<u64, Option<&str>>) -> bool {
     let Some(base) = function(input, "CPersistent::ReadMember(CReader&, int)") else {
         return false;
     };
@@ -124,7 +124,7 @@ fn rejection(input: &FieldInput) -> bool {
         && rows[0].operation == "mov"
         && rows[0].operands == "x0,x1"
         && rows[1].operation == "b"
-        && number(&rows[1].operands).and_then(|a| callee(input, a as u64))
+        && number(&rows[1].operands).and_then(|a| names.get(&(a as u64)).copied().flatten())
             == Some("CReader::ReportUnexpected()")
 }
 fn reader_join(name: Option<&str>, state: &State) -> ReaderJoin {
@@ -269,7 +269,8 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
         .enumerate()
         .map(|(i, r)| (r.address, i))
         .collect();
-    let rejects = rejection(input);
+    let names = symbol_names(input);
+    let rejects = rejection(input, &names);
     let mut pending = vec![initial];
     let mut leaves = Vec::new();
     let mut visited = 0;
@@ -318,7 +319,7 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                     state.pc = *index;
                     continue;
                 }
-                let name = target.and_then(|a| callee(input, a));
+                let name = target.and_then(|a| names.get(&a).copied().flatten());
                 let outcome = if name == Some("CPersistent::ReadMember(CReader&, int)")
                     && rejects
                     && matches!(state.registers.get("x0"), Some(Value::Owner(_)))
@@ -364,13 +365,20 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                     ));
                     break;
                 };
+                let value = state.value(args[0]);
                 for taken in [false, true] {
+                    let zero = taken == (row.operation == "cbz");
+                    if let Some(Value::Constant(value)) = &value
+                        && (*value == 0) != zero
+                    {
+                        continue;
+                    }
                     let mut next = state.clone();
                     next.pc = if taken { target } else { state.pc };
                     next.conditions.push(Condition {
                         at: row.address,
-                        value: state.value(args[0]),
-                        zero: taken == (row.operation == "cbz"),
+                        value: value.clone(),
+                        zero,
                     });
                     pending.push(next);
                 }

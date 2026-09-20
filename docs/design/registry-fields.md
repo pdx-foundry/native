@@ -22,8 +22,10 @@ handles remain opaque. The owner is linked through the exact template loader sym
 not establish current live ownership.
 
 The reducer reads raw instructions, the executable symbol inventory, and engine string literals.
-It recovers literal `CToken` constructor arguments and partitions signed 32-bit root-token
-branches. State branches retain both alternatives. Unknown instructions, unsupported addressing,
+It first finds reachable token-constructor calls, joining only equal constants across control-flow
+merges, then recovers their literal arguments and partitions signed 32-bit root-token branches.
+Known zero tests take only their feasible branch; unknown state tests retain both alternatives.
+Unknown instructions, unsupported addressing,
 missing symbols/names, conflicting token names, cycles and clobbered values become explicit gaps.
 A singleton reaching a delegate remains visible even when its reader join is missing. A bare
 comparison pivot or an unsupported path does not establish a field. A gap on another alternative
@@ -33,7 +35,10 @@ This revision stops at the first external delegate. Owner helpers, inherited rea
 verified base rejection, indirect calls, dynamic names and nested grammars remain explicit
 boundaries. It does not carry argument provenance through unknown calls or assume that a stack
 restore recovers provenance. Root traversal is limited to 500 instructions per path and 4,096
-states. Input descriptors are limited to 1 MiB; recorded inputs to 64 MiB, 128 functions and 4 MiB
+states. Token-construction reachability permits at most 40 visits per decoded instruction in
+aggregate; unknown control-flow shapes stop token recovery. Symbol aliases are indexed once by
+address, and conflicting names stay unresolved. Input descriptors are limited to 1 MiB; recorded
+inputs to 64 MiB, 128 functions and 4 MiB
 of aggregate code, with a 1 MiB per-function decode bound. Input ranges use the existing 4 KiB decoder.
 
 `partition_accounted` means the ledger accounts for the signed token intervals, including gaps;
@@ -80,7 +85,11 @@ Field qualification freezes executable-only Rust results before the preparation 
 verified SDK-487 comparison. It then checks exact parity, omission, clobber and unsupported-path
 controls. Promotion also requires ordinary public analysis and replay for all three registries
 from a temporary directory containing only the executable. Foreign-context/result handles and a
-changed executable are rejected. Failure restores the previous field authority.
+changed executable are rejected. After these controls pass, promotion stores a final immutable
+evidence report that binds their
+artifact hashes; temporary admission evidence remains retained separately. A further check reads
+the accepted evidence through the public capability and verifies the public-control references.
+Failure restores the previous field authority.
 
 The [qualification record](../native/registry-fields-qualification.json) records the exact checks
 and their private evidence. Run all workspace CI checks before publishing. Clean CI runs synthetic

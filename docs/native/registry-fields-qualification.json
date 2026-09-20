@@ -1,7 +1,7 @@
 {
-  "composition": "7f194e803e020698715872e185fde82e8542dead6ab558c8d4ccc449615babba",
+  "composition": "76deaa57f81a8f9a9d0abed3aab3f8a29e204bc1fd4b05931ed1ee5bf9c99b78",
   "game_launches": 0,
-  "implementation": "13864298fb3d2d31c694ed8972c9af9d5e5dcdfdc9369efb9a6ee7ed7941b960",
+  "implementation": "b6e1cde6119c30f44a774be72c1e79e9ad200591f4a36132892ed2747697f0f8",
   "registries": [
     {
       "complete_registry": false,
@@ -25,7 +25,7 @@
       "registry": "tradition_categories"
     }
   ],
-  "status": "verified-root-field-discovery",
+  "status": "qualified-root-field-discovery",
   "method": "registry-fields/v1",
   "basis": "Executable-only Rust derivation; exact SDK-487 agenda names, tokens, paths, conditions, reader arguments and raw-function parity. Tradition root fields retain explicit missing joins.",
   "comparison": {
@@ -67,12 +67,12 @@
   },
   "controls": [
     {
-      "path": "sdk-530-fields-1/parity.json",
+      "path": "sdk-530-review2-fields/parity.json",
       "bytes": 998,
       "sha256": "51ca93f46489fc86d0d71fe7bee5fe96f14fe4d4caf5d4bafbe434e147a38775"
     },
     {
-      "path": "sdk-530-fields-1/controls.json",
+      "path": "sdk-530-review2-fields/controls.json",
       "bytes": 129,
       "sha256": "7a39e58f7cb027c066f4d912d0f102484668a3f4da2936f29f65b8452f27754b"
     }
@@ -83,7 +83,7 @@
     "No game launch or live-session qualification."
   ],
   "public_controls": {
-    "path": "sdk-530-fields-1/public-controls.json",
+    "path": "sdk-530-review2-fields/public-controls.json",
     "bytes": 160,
     "sha256": "f927062b84456ac75067da15a720fc1cf48064e96ab1316831e40d86b57418ed"
   }

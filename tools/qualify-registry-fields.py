@@ -33,7 +33,7 @@ def main():
         comparison=comparison,
         controls=[prepare.reference(output / name, str((output / name).relative_to(ROOT / '.local/evidence'))) for name in ['parity.json', 'controls.json']],
         limits=['Complete registry remains false; five SDK-487 agenda shared-reader contracts remain unresolved.', 'Template ownership is static evidence; helper closure, full semantics and other builds remain unqualified.', 'No game launch or live-session qualification.'])
-    (output / 'verified.json').write_text(json.dumps(report, indent=2) + '\n')
+    (output / 'candidate-verified.json').write_text(json.dumps(report, indent=2) + '\n')
     if not args.promote:
         print(json.dumps(report, indent=2))
         return
@@ -42,14 +42,18 @@ def main():
     previous_authority = authority_path.read_bytes()
     previous_report = report_path.read_bytes() if report_path.exists() else None
     authority = json.loads(previous_authority)
-    record = dict(id='sdk-530-m45-registry-fields-' + report['composition'][:12], composition=report['composition'], evidence=[prepare.reference(output / 'verified.json', str((output / 'verified.json').relative_to(ROOT / '.local/evidence')))])
+    record = dict(id='sdk-530-m45-registry-fields-' + report['composition'][:12], composition=report['composition'], evidence=[prepare.reference(output / 'candidate-verified.json', str((output / 'candidate-verified.json').relative_to(ROOT / '.local/evidence')))])
     authority['accepted'] = [item for item in authority['accepted'] if item['composition'] != record['composition']] + [record]
     authority_path.write_text(json.dumps(authority, indent=2) + '\n')
-    report_path.write_text(json.dumps(report, indent=2) + '\n')
     try:
         subprocess.run(['cargo', 'test', '--locked', '--release', '--test', 'private_fields', 'public_fields_need_only_an_executable_and_reject_foreign_subjects', '--', '--ignored'], cwd=ROOT, env=env, check=True)
         report['public_controls'] = prepare.reference(output / 'public-controls.json', str((output / 'public-controls.json').relative_to(ROOT / '.local/evidence')))
+        report['status'] = 'qualified-root-field-discovery'
+        (output / 'verified.json').write_text(json.dumps(report, indent=2) + '\n')
         report_path.write_text(json.dumps(report, indent=2) + '\n')
+        record['evidence'] = [prepare.reference(output / 'verified.json', str((output / 'verified.json').relative_to(ROOT / '.local/evidence')))]
+        authority_path.write_text(json.dumps(authority, indent=2) + '\n')
+        subprocess.run(['cargo', 'test', '--locked', '--release', '--test', 'private_fields', 'accepted_evidence_binds_public_controls', '--', '--ignored'], cwd=ROOT, env=env, check=True)
     except BaseException:
         authority_path.write_bytes(previous_authority)
         if previous_report is None:
