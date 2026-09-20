@@ -1,6 +1,6 @@
 //! Bounded reachability of token construction, with constant branch controls.
 use super::tokens::number;
-use crate::analysis::Instruction;
+use crate::engine::analysis::decode::Instruction;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 #[derive(Clone, Copy, PartialEq, Eq)]

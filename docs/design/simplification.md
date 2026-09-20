@@ -108,14 +108,24 @@ real game and recorded answers.
 Recorded answers test the consumer's logic. They do not test Native's live path; the live tests and the
 fake-worker supervisor tests do that (see Tests).
 
+### Registry names
+
 A registry is named by a string in every operation, static or live. A discovered candidate with
 no established name is a `Gap`, not a `Registry`. The name is the content directory key
 (`traditions` for `common/traditions`).
 
+**Open, found in step 2:** the directory is observed only in a live game. Static discovery cannot
+name its candidates, so `registry_fields(name)` needs a join from name to candidate. Options:
+(a) `registries()` becomes a `Game` question, and Native keeps the join for later static
+questions; (b) a new static method recovers the directory literal from the loader constructor;
+(c) the target record lists names for known candidates, which is a handwritten table. Decide
+before step 3.
+
 ## Tests
 
-- **Static methods:** tracked test inputs: the bytes each method reads (function bytes,
-  symbol rows, strings), kilobytes each. Expected output is a tracked JSON file.
+- **Static methods:** small authored inputs test the method logic. Parity tests read the real
+  executable (ignored by default; `STELLARIS_PATH`) and compare with a small tracked expected
+  output. Real method inputs are 47 to 56 MB and are not tracked.
 - **Live operations:** ignored by default; run with `STELLARIS_PATH` set. They cover the normal
   case and the failure controls (missing hook, worker loss, timeout, cancel).
 - **Supervisor without a game:** a fake worker drives the supervisor through worker loss, timeout,
@@ -131,14 +141,23 @@ no established name is a `Gap`, not a `Registry`. The name is the content direct
    `AGENTS.md` and development policy. The Linear tickets are not edited: the roadmap "Tracking"
    paragraph states that criteria which name replay, retained captures or qualification records
    are superseded. This work order has no Linear tickets; this document tracks it.
-2. Move discovery, fields and decode methods from `crates/native-evidence` to `src/engine/analysis`.
-   First remove the source-hash pin: `build.rs` hashes the source files, and admission refuses a
-   method when the hash differs from a qualification record, so even a comment edit disables the
-   static methods. Then write the `//!` module comments for discovery and fields from the deleted
-   pages `docs/design/registry-discovery.md` and `docs/design/registry-fields.md` (Git commit
-   `62d696d`): how each method works, its limits, and its bounds.
-   Make the small test inputs from the present inputs. Results must equal the present results
-   (41/41 ownership controls, 10 agenda fields).
+2. **Done, 2026-09-20.** The decode, discovery and fields methods moved from
+   `crates/native-evidence` to `src/engine/analysis`. The source-hash pin and the static
+   qualification records are removed: a static method is available when the build is in the
+   catalogue and the executable is unchanged. The module comments hold the method descriptions
+   from the deleted design pages. The private parity tests pass on the installed M45 executable
+   (41/41 ownership controls; council agenda, traditions and tradition-category fields). The moved
+   code keeps its old result types and replay functions; step 3 replaces them.
+
+   Two findings change the plan:
+   - **Real method inputs are 47 to 56 MB**, because each holds the full symbol and string
+     inventory. They cannot be small tracked files. Parity tests read the executable itself
+     (ignored by default; `STELLARIS_PATH`) and compare with small tracked expected output. The
+     method logic keeps its small authored inputs.
+   - **A registry name is not available statically.** Static discovery gives template candidates
+     identified by an engine symbol. The content directory comes only from a live loader
+     observation (41 registries in the retained run; the live worker knows two). See "Registry
+     names" below.
 3. Add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.

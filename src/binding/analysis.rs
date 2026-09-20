@@ -3,8 +3,13 @@ use std::sync::Mutex;
 use super::{binary, installation::Installation};
 use crate::{AnalysisError, UnavailableReason, qualification::analysis::AnalysisInputs};
 
-pub(crate) type Decoder =
-    fn(&[u8], u64) -> Result<Vec<evidence::analysis::Instruction>, evidence::analysis::DecodeError>;
+pub(crate) type Decoder = fn(
+    &[u8],
+    u64,
+) -> Result<
+    Vec<crate::engine::analysis::decode::Instruction>,
+    crate::engine::analysis::decode::DecodeError,
+>;
 
 /// Bound static methods share one executable integrity state and independent admission.
 #[derive(Debug)]
@@ -90,12 +95,12 @@ mod tests;
 #[derive(Debug)]
 pub(crate) struct BoundDiscovery {
     pub inputs: AnalysisInputs,
-    pub layout: evidence::discovery::SchedulerLayout,
+    pub layout: crate::engine::analysis::discovery::SchedulerLayout,
 }
 impl BoundAnalysis {
     pub(crate) fn discovery_input(
         &self,
-    ) -> Result<evidence::discovery::StaticInput, AnalysisError> {
+    ) -> Result<crate::engine::analysis::discovery::StaticInput, AnalysisError> {
         let bytes = self.executable()?;
         let discovery = self
             .discovery
@@ -110,12 +115,12 @@ impl BoundAnalysis {
 impl BoundAnalysis {
     pub(crate) fn field_input(
         &self,
-        selection: evidence::discovery::CandidateRecord,
-    ) -> Result<evidence::fields::FieldInput, AnalysisError> {
+        selection: crate::engine::analysis::discovery::CandidateRecord,
+    ) -> Result<crate::engine::analysis::fields::FieldInput, AnalysisError> {
         let bytes = self.executable()?;
         let discovery = self.discovery.as_ref().ok_or(AnalysisError::InvalidRange)?;
         let input = binary::discovery::read(&bytes, &discovery.layout)?;
-        if !evidence::discovery::candidates(&input.symbols).contains(&selection) {
+        if !crate::engine::analysis::discovery::candidates(&input.symbols).contains(&selection) {
             return Err(AnalysisError::InvalidRange);
         }
         binary::fields::read(&bytes, input, selection)

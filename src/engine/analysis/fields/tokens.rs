@@ -1,5 +1,5 @@
 use super::{FieldInput, Function};
-use crate::analysis::{Instruction, decode_arm64};
+use crate::engine::analysis::decode::{Instruction, decode_arm64};
 use std::collections::BTreeMap;
 
 pub(super) fn number(operand: &str) -> Option<i64> {

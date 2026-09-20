@@ -1,9 +1,8 @@
 use super::*;
 use crate::{
-    ArtifactReference, EvidenceReference, ReplayError,
-    analysis::AnalysisOrigin,
-    store::{ArtifactStore, is_sha256, sha256},
+    ArtifactReference, EvidenceReference, ReplayError, engine::analysis::decode::AnalysisOrigin,
 };
+use evidence::store::{ArtifactStore, is_sha256, sha256};
 fn malformed(path: &str, reason: impl ToString) -> ReplayError {
     ReplayError::Malformed {
         path: path.into(),
@@ -17,7 +16,7 @@ fn validate(descriptor: &FieldDescriptor) -> Result<(), ReplayError> {
         });
     }
     if descriptor.provenance.method != METHOD
-        || descriptor.provenance.decoder != crate::analysis::DECODER
+        || descriptor.provenance.decoder != crate::engine::analysis::decode::DECODER
     {
         return Err(ReplayError::UnsupportedContract {
             found: descriptor.provenance.method.clone(),
@@ -27,7 +26,6 @@ fn validate(descriptor: &FieldDescriptor) -> Result<(), ReplayError> {
         &descriptor.provenance.executable,
         &descriptor.provenance.slice,
         &descriptor.provenance.composition,
-        &descriptor.provenance.implementation,
     ]
     .iter()
     .any(|s| !is_sha256(s))
@@ -102,7 +100,7 @@ pub fn derive(
             evidence: evidence.clone(),
         })
         .collect();
-    if !crate::discovery::candidates(&input.symbols).contains(&input.selection) {
+    if !crate::engine::analysis::discovery::candidates(&input.symbols).contains(&input.selection) {
         return Err(malformed(
             &descriptor.input.path,
             "selected loader is not an executable-derived candidate",

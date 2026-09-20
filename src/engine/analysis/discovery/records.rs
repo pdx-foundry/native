@@ -1,6 +1,6 @@
 use crate::{
     ArtifactReference, CaptureOrigin, EvidenceReference,
-    analysis::{AnalysisOrigin, AnalysisProvenance},
+    engine::analysis::decode::{AnalysisOrigin, AnalysisProvenance},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc};

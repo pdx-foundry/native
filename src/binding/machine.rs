@@ -13,7 +13,7 @@ pub(super) fn decoder(
     architecture: object::Architecture,
 ) -> Result<super::Decoder, crate::OpenError> {
     match architecture {
-        object::Architecture::Aarch64 => Ok(evidence::analysis::decode_arm64),
+        object::Architecture::Aarch64 => Ok(crate::engine::analysis::decode::decode_arm64),
         _ => Err(crate::OpenError::UnsupportedTarget),
     }
 }

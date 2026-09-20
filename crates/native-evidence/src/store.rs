@@ -70,11 +70,13 @@ impl ArtifactStore {
     }
 }
 
-pub(crate) fn sha256(bytes: &[u8]) -> String {
+/// Lowercase SHA-256 of the bytes.
+pub fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-pub(crate) fn is_sha256(value: &str) -> bool {
+/// Whether the text is a lowercase SHA-256.
+pub fn is_sha256(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()

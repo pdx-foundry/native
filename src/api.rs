@@ -23,7 +23,7 @@ impl Engine {
         &self,
         request: ReplayRequest,
     ) -> Result<crate::RegistryFieldResult, ReplayError> {
-        evidence::fields::replay(
+        crate::engine::analysis::fields::replay(
             &ArtifactStore::new(request.artifact_root),
             &request.descriptor,
         )
@@ -34,7 +34,7 @@ impl Engine {
         &self,
         request: ReplayRequest,
     ) -> Result<crate::RegistryDiscoveryResult, ReplayError> {
-        evidence::discovery::replay(
+        crate::engine::analysis::discovery::replay(
             &ArtifactStore::new(request.artifact_root),
             &request.descriptor,
         )
@@ -45,7 +45,7 @@ impl Engine {
         &self,
         request: ReplayRequest,
     ) -> Result<crate::AnalysisResult, ReplayError> {
-        evidence::analysis::replay(
+        crate::engine::analysis::decode::replay(
             &ArtifactStore::new(request.artifact_root),
             &request.descriptor,
         )

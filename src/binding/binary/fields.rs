@@ -1,5 +1,5 @@
 use crate::AnalysisError;
-use evidence::{
+use crate::engine::analysis::{
     discovery::{CandidateRecord, StaticInput},
     fields::{FieldInput, Function},
 };

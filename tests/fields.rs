@@ -1,6 +1,6 @@
-use evidence::{
-    CaptureOrigin,
-    analysis::{AnalysisOrigin, AnalysisProvenance, DECODER},
+use evidence::CaptureOrigin;
+use pdx_native::internals::{
+    decode::{AnalysisOrigin, AnalysisProvenance, DECODER},
     discovery::{Symbol, candidates},
     fields::{self, FieldDescriptor, FieldInput, Function, PathOutcome, ReaderJoin},
 };

@@ -3,7 +3,8 @@
 use capstone::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{ArtifactReference, CaptureOrigin, ReplayError, store::ArtifactStore};
+use crate::{ArtifactReference, CaptureOrigin, ReplayError};
+use evidence::store::ArtifactStore;
 
 /// Exact algorithm used by the initial bounded decode control.
 pub const METHOD: &str = "static-decode-control/v1";
@@ -175,9 +176,8 @@ pub fn replay(
         &descriptor.provenance.executable,
         &descriptor.provenance.slice,
         &descriptor.provenance.composition,
-        &descriptor.provenance.implementation,
     ] {
-        if !crate::store::is_sha256(identity) {
+        if !evidence::store::is_sha256(identity) {
             return Err(malformed("Invalid analysis identity".into()));
         }
     }

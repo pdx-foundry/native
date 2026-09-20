@@ -1,11 +1,16 @@
+pub mod decode;
+pub mod discovery;
+pub mod fields;
+
 use std::sync::Arc;
 
-use crate::{
-    Availability, CapabilityReport, ContextOrigin, UnavailableReason,
-    binding::BoundAnalysis,
-    qualification::analysis::{self, AnalysisAuthority},
+use crate::engine::analysis::decode::{
+    AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, AnalysisResult,
 };
-use evidence::analysis::{AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, AnalysisResult};
+use crate::{
+    Availability, CapabilityReport, ContextOrigin, UnavailableReason, binding::BoundAnalysis,
+    qualification::analysis,
+};
 
 /// An admitted static analysis context. Every decode checks the executable again.
 #[derive(Debug)]
@@ -39,12 +44,7 @@ impl std::error::Error for AnalysisError {}
 
 fn admit(binding: &BoundAnalysis) -> Result<(CapabilityReport, Vec<u8>), AnalysisError> {
     let bytes = binding.read()?;
-    let report = analysis::evaluate(
-        &binding.inputs,
-        &AnalysisAuthority::bundled(),
-        ContextOrigin::Installation,
-        None,
-    );
+    let report = analysis::evaluate(&binding.inputs, ContextOrigin::Installation, None);
     if report.availability != Availability::Available {
         return Err(AnalysisError::Unavailable {
             reasons: report.reasons,
@@ -59,12 +59,7 @@ pub(crate) fn capability(binding: &BoundAnalysis) -> CapabilityReport {
         Err(AnalysisError::Unavailable { reasons }) => reasons.into_iter().next(),
         Err(_) => Some(UnavailableReason::InputUnavailable),
     };
-    analysis::evaluate(
-        &binding.inputs,
-        &AnalysisAuthority::bundled(),
-        ContextOrigin::Installation,
-        integrity,
-    )
+    analysis::evaluate(&binding.inputs, ContextOrigin::Installation, integrity)
 }
 
 impl AnalysisContext {
@@ -97,7 +92,7 @@ impl AnalysisContext {
         Ok(AnalysisResult {
             origin: AnalysisOrigin::Executable,
             descriptor: AnalysisDescriptor {
-                format: evidence::analysis::FORMAT.into(),
+                format: crate::engine::analysis::decode::FORMAT.into(),
                 capture_origin: evidence::CaptureOrigin::Captured,
                 provenance: AnalysisProvenance {
                     executable: inputs.executable.clone(),
@@ -132,12 +127,7 @@ pub(crate) fn discovery_capability(binding: &BoundAnalysis) -> CapabilityReport 
         Err(AnalysisError::Unavailable { reasons }) => reasons.into_iter().next(),
         Err(_) => Some(UnavailableReason::InputUnavailable),
     };
-    analysis::evaluate(
-        &discovery.inputs,
-        &AnalysisAuthority::bundled(),
-        ContextOrigin::Installation,
-        integrity,
-    )
+    analysis::evaluate(&discovery.inputs, ContextOrigin::Installation, integrity)
 }
 impl AnalysisContext {
     /// Discover bounded registry candidates without config seeds or a game launch.
@@ -158,8 +148,8 @@ impl AnalysisContext {
             .inputs;
         let bytes = serde_json::to_vec(&input).expect("recorded discovery inputs");
         use sha2::{Digest, Sha256};
-        let descriptor = evidence::discovery::DiscoveryDescriptor {
-            format: evidence::discovery::FORMAT.into(),
+        let descriptor = crate::engine::analysis::discovery::DiscoveryDescriptor {
+            format: crate::engine::analysis::discovery::FORMAT.into(),
             capture_origin: evidence::CaptureOrigin::Captured,
             provenance: AnalysisProvenance {
                 executable: inputs.executable.clone(),
@@ -178,8 +168,12 @@ impl AnalysisContext {
             },
             runs: vec![],
         };
-        let result = evidence::discovery::derive(descriptor, &bytes, AnalysisOrigin::Executable)
-            .map_err(|e| AnalysisError::Decode(e.to_string()))?;
+        let result = crate::engine::analysis::discovery::derive(
+            descriptor,
+            &bytes,
+            AnalysisOrigin::Executable,
+        )
+        .map_err(|e| AnalysisError::Decode(e.to_string()))?;
         self.issued
             .lock()
             .expect("issued subject lock")
@@ -202,12 +196,7 @@ pub(crate) fn fields_capability(binding: &BoundAnalysis) -> CapabilityReport {
         Err(AnalysisError::Unavailable { reasons }) => reasons.into_iter().next(),
         Err(_) => Some(UnavailableReason::InputUnavailable),
     };
-    analysis::evaluate(
-        inputs,
-        &AnalysisAuthority::bundled(),
-        ContextOrigin::Installation,
-        integrity,
-    )
+    analysis::evaluate(inputs, ContextOrigin::Installation, integrity)
 }
 impl AnalysisContext {
     /// Analyze a candidate issued by this context's discovery operation. Foreign discovery results
@@ -225,7 +214,7 @@ impl AnalysisContext {
         {
             return Err(AnalysisError::ForeignSubject);
         }
-        let selection = evidence::fields::selection(discovery, subject)
+        let selection = crate::engine::analysis::fields::selection(discovery, subject)
             .map_err(|_| AnalysisError::ForeignSubject)?;
         let report = fields_capability(&self.binding);
         if report.availability != Availability::Available {
@@ -241,8 +230,8 @@ impl AnalysisContext {
             .as_ref()
             .expect("admitted fields binding");
         use sha2::{Digest, Sha256};
-        let descriptor = evidence::fields::FieldDescriptor {
-            format: evidence::fields::FORMAT.into(),
+        let descriptor = crate::engine::analysis::fields::FieldDescriptor {
+            format: crate::engine::analysis::fields::FORMAT.into(),
             capture_origin: evidence::CaptureOrigin::Captured,
             provenance: AnalysisProvenance {
                 executable: inputs.executable.clone(),
@@ -260,7 +249,7 @@ impl AnalysisContext {
                 bytes: bytes.len() as u64,
             },
         };
-        evidence::fields::derive(descriptor, &bytes, AnalysisOrigin::Executable)
+        crate::engine::analysis::fields::derive(descriptor, &bytes, AnalysisOrigin::Executable)
             .map_err(|e| AnalysisError::Decode(e.to_string()))
     }
 }

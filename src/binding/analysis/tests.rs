@@ -1,10 +1,5 @@
 use super::*;
 use crate::binding::{Binding, compose};
-use crate::qualification::analysis::{AnalysisAuthority, AnalysisRecord, evaluate};
-use crate::{
-    AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, Availability, CaptureOrigin,
-    ContextOrigin, OpenRequest, Qualification,
-};
 use std::fs;
 
 #[path = "../../../tests/analysis_support/mod.rs"]
@@ -21,8 +16,8 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
         executable: image.executable,
         slice: image.slice,
         implementation: "d".repeat(64),
-        method: evidence::analysis::METHOD,
-        decoder: evidence::analysis::DECODER,
+        method: crate::engine::analysis::decode::METHOD,
+        decoder: crate::engine::analysis::decode::DECODER,
     };
     let control = DecodeControl {
         address: 0x1000,
@@ -34,7 +29,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
         BoundAnalysis::new(
             inputs,
             control,
-            evidence::analysis::decode_arm64,
+            crate::engine::analysis::decode::decode_arm64,
             installation,
         ),
     )
@@ -123,54 +118,6 @@ fn range_reader_refuses_unmapped_truncated_misaligned_and_overlapping_sections()
 }
 
 #[test]
-fn static_qualification_is_separate_and_fails_closed() {
-    let (_, binding) = fixture();
-    for (case, reason) in [
-        ("missing", UnavailableReason::QualificationMissing),
-        ("revision", UnavailableReason::RevisionMismatch),
-        ("withdrawn", UnavailableReason::QualificationWithdrawn),
-        ("changed", UnavailableReason::TargetChanged),
-    ] {
-        let mut authority = AnalysisAuthority {
-            accepted: vec![AnalysisRecord {
-                id: "synthetic".into(),
-                composition: binding.inputs.composition.clone(),
-                evidence: vec![],
-            }],
-            withdrawn: vec![],
-        };
-        match case {
-            "missing" => authority.accepted.clear(),
-            "revision" => authority.accepted[0].composition = "changed".into(),
-            "withdrawn" => authority.withdrawn.push("synthetic".into()),
-            _ => {}
-        }
-        let integrity = (case == "changed").then_some(UnavailableReason::TargetChanged);
-        let report = evaluate(
-            &binding.inputs,
-            &authority,
-            ContextOrigin::Synthetic,
-            integrity,
-        );
-        assert_eq!(report.qualification, Qualification::Incomplete);
-        assert_eq!(report.availability, Availability::Unavailable);
-        assert_eq!(report.reasons, [reason]);
-    }
-    let authority = AnalysisAuthority {
-        accepted: vec![AnalysisRecord {
-            id: "synthetic".into(),
-            composition: binding.inputs.composition.clone(),
-            evidence: vec![],
-        }],
-        withdrawn: vec![],
-    };
-    assert_eq!(
-        evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None).availability,
-        Availability::Available
-    );
-}
-
-#[test]
 fn shared_static_composition_never_probes_the_live_strategy() {
     let (root, analysis) = fixture();
     let image = super::super::targets::test_identity();
@@ -197,101 +144,6 @@ fn shared_static_composition_never_probes_the_live_strategy() {
             | UnavailableReason::InputUnavailable
             | UnavailableReason::PrerequisiteMissing
     )));
-    assert!(native.analysis().is_err()); // Synthetic bytes cannot use production qualification.
-}
-
-#[test]
-#[ignore = "requires the pinned M45 executable and a new private output directory"]
-fn qualify_retained_decode() {
-    let path =
-        std::env::var_os("PDX_NATIVE_ANALYSIS_EXECUTABLE").expect("exact M45 executable required");
-    let output = std::path::PathBuf::from(
-        std::env::var_os("PDX_NATIVE_ANALYSIS_OUTPUT").expect("private candidate output required"),
-    );
-    fs::create_dir(&output).expect("use a new output directory");
-    let binding = Binding::open(OpenRequest {
-        installation_hint: path.into(),
-    })
-    .unwrap();
-    let analysis = binding.analysis.unwrap();
-    let raw = analysis.read().unwrap();
-    let instructions = (analysis.decoder)(&raw, analysis.control.address).unwrap();
-    let expected: Vec<[String; 2]> = serde_json::from_str(include_str!(
-        "../../../tests/fixtures/analysis/planet-getter.expected.json"
-    ))
-    .unwrap();
-    assert_eq!(instructions.len(), expected.len());
-    for (instruction, [operation, operands]) in instructions.iter().zip(expected) {
-        assert_eq!(instruction.operation, operation);
-        assert_eq!(instruction.operands, operands);
-    }
-    let inputs = &analysis.inputs;
-    let descriptor = AnalysisDescriptor {
-        format: evidence::analysis::FORMAT.into(),
-        capture_origin: CaptureOrigin::Captured,
-        address: analysis.control.address,
-        code: analysis.control.code.clone(),
-        provenance: AnalysisProvenance {
-            executable: inputs.executable.clone(),
-            slice: inputs.slice.clone(),
-            composition: inputs.composition.clone(),
-            implementation: inputs.implementation.clone(),
-            method: inputs.method.into(),
-            decoder: inputs.decoder.into(),
-            qualification_records: vec![],
-            evidence: vec![],
-        },
-    };
-    let code_path = output.join(&descriptor.code.path);
-    fs::create_dir_all(code_path.parent().unwrap()).unwrap();
-    fs::write(code_path, raw).unwrap();
-    let bytes = serde_json::to_vec_pretty(&descriptor).unwrap();
-    fs::write(output.join("descriptor.json"), &bytes).unwrap();
-    let reference = support::reference("descriptor.json", &bytes);
-    let replay = crate::Engine
-        .replay_analysis(crate::ReplayRequest {
-            artifact_root: output.clone(),
-            descriptor: reference.clone(),
-        })
-        .unwrap();
-    assert_eq!(replay.origin, AnalysisOrigin::Replay);
-    assert_eq!(replay.instructions, instructions);
-    let result_bytes = serde_json::to_vec_pretty(&replay).unwrap();
-    fs::write(output.join("result.json"), &result_bytes).unwrap();
-    let report = serde_json::json!({
-        "status": "candidate-verified", "composition": inputs.composition,
-        "implementation": inputs.implementation, "descriptor": reference,
-        "result": support::reference("result.json", &result_bytes),
-        "normalization_control": support::reference("tests/fixtures/analysis/planet-getter.expected.json", include_bytes!("../../../tests/fixtures/analysis/planet-getter.expected.json")),
-        "instruction_count": instructions.len(), "decode_matches_historical_control": true,
-        "replay_matches": true, "game_launches": 0,
-        "historical_bundle": "70fce0ce8dae5dbb473937b08ef77e711218e34a1e2d6406519ad3b574dbfe79",
-        "historical_control": "typed-extraction/reference-observation-prototype/evidence/planet-getter.txt",
-    });
-    fs::write(
-        output.join("qualification.json"),
-        serde_json::to_vec_pretty(&report).unwrap(),
-    )
-    .unwrap();
-}
-
-#[test]
-fn bundled_static_acceptance_matches_the_portable_composition() {
-    // Authored file supplies only a locator. This checks composition portability, not native bytes.
-    let (root, _) = fixture();
-    let (installation, _) = Installation::open(&root.path().join("image")).unwrap();
-    let bound = compose::analysis(&super::super::targets::test_identity(), installation).unwrap();
-    let report = evaluate(
-        &bound.inputs,
-        &AnalysisAuthority::bundled(),
-        ContextOrigin::Synthetic,
-        None,
-    );
-    assert_eq!(
-        report.availability,
-        Availability::Available,
-        "static sources changed: requalify the retained control before publishing: {report:?}"
-    );
 }
 
 #[test]
@@ -325,227 +177,4 @@ fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
     );
     fat[8..12].copy_from_slice(&0x0100000cu32.to_be_bytes());
     assert!(binary::code_range(&fat, 0x1000, 44).is_err());
-}
-
-#[test]
-#[ignore = "requires M45 executable and retained SDK-489 bundle"]
-fn qualify_registry_discovery() {
-    use evidence::discovery::{candidates, scheduler};
-    let path = std::env::var_os("PDX_NATIVE_ANALYSIS_EXECUTABLE").expect("exact M45 executable");
-    let output = std::path::PathBuf::from(
-        std::env::var_os("PDX_NATIVE_DISCOVERY_OUTPUT").expect("new private output"),
-    );
-    fs::create_dir(&output).expect("new output directory");
-    let retained = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(".local/evidence/restored/atlas-ownership/prototype/registry-ownership");
-    let binding = Binding::open(OpenRequest {
-        installation_hint: path.into(),
-    })
-    .unwrap();
-    let bound = binding.analysis.unwrap();
-    let input = bound.discovery_input().unwrap();
-    let bytes = serde_json::to_vec(&input).unwrap();
-    fs::create_dir(output.join("registry-discovery")).unwrap();
-    fs::write(output.join("registry-discovery/input.json"), &bytes).unwrap();
-    let found = candidates(&input.symbols);
-    let expected: Vec<evidence::discovery::CandidateRecord> =
-        serde_json::from_slice(&fs::read(retained.join("candidates.json")).unwrap()).unwrap();
-    assert_eq!(found, expected, "complete candidate parity");
-    let (rows, gaps) = scheduler(&input).unwrap();
-    let expected: Vec<serde_json::Value> =
-        serde_json::from_slice(&fs::read(retained.join("static-table.json")).unwrap()).unwrap();
-    assert_eq!(rows.len(), 198);
-    for (row, expected) in rows.iter().zip(expected) {
-        let mut expected = expected;
-        expected.as_object_mut().unwrap().remove("slots");
-        assert_eq!(
-            serde_json::to_value(row).unwrap(),
-            expected,
-            "scheduler row {}",
-            row.index
-        );
-    }
-    let inputs = &bound.discovery.as_ref().unwrap().inputs;
-    let descriptor = evidence::discovery::DiscoveryDescriptor {
-        format: evidence::discovery::FORMAT.into(),
-        capture_origin: CaptureOrigin::Captured,
-        provenance: AnalysisProvenance {
-            executable: inputs.executable.clone(),
-            slice: inputs.slice.clone(),
-            composition: inputs.composition.clone(),
-            implementation: inputs.implementation.clone(),
-            method: inputs.method.into(),
-            decoder: inputs.decoder.into(),
-            qualification_records: vec![],
-            evidence: vec![],
-        },
-        input: support::reference("registry-discovery/input.json", &bytes),
-        runs: vec![],
-    };
-    let result =
-        evidence::discovery::derive(descriptor.clone(), &bytes, AnalysisOrigin::Executable)
-            .unwrap();
-    assert_eq!(
-        result
-            .scheduling
-            .iter()
-            .filter(|r| r.candidates.is_empty())
-            .count(),
-        35
-    );
-    assert_eq!(result.candidates.len(), 164);
-    let raw = serde_json::to_vec_pretty(&descriptor).unwrap();
-    fs::write(output.join("descriptor.json"), &raw).unwrap();
-    let report = serde_json::json!({"composition":inputs.composition,"implementation":inputs.implementation,"candidates":found.len(),"scheduling":rows.len(),"outside_template":35,"unknown_instructions":gaps,"game_launches":0,"descriptor":support::reference("descriptor.json",&raw)});
-    fs::write(
-        output.join("qualification.json"),
-        serde_json::to_vec_pretty(&report).unwrap(),
-    )
-    .unwrap();
-}
-
-#[test]
-fn discovery_admission_uses_its_own_composition_and_bounds() {
-    let (_, mut binding) = fixture();
-    binding.inputs.method = evidence::discovery::METHOD;
-    binding.inputs.composition = "e".repeat(64);
-    let mut authority = AnalysisAuthority {
-        accepted: vec![AnalysisRecord {
-            id: "decode-only".into(),
-            composition: "c".repeat(64),
-            evidence: vec![],
-        }],
-        withdrawn: vec![],
-    };
-    let report = evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None);
-    assert_eq!(report.bounds, crate::CapabilityBounds::RegistryDiscovery);
-    assert_eq!(report.availability, Availability::Unavailable);
-    authority.accepted.push(AnalysisRecord {
-        id: "discovery".into(),
-        composition: binding.inputs.composition.clone(),
-        evidence: vec![],
-    });
-    let report = evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None);
-    assert_eq!(report.availability, Availability::Available);
-    assert_eq!(
-        report.accepted_bounds,
-        [crate::CapabilityBounds::RegistryDiscovery]
-    );
-    authority.withdrawn.push("discovery".into());
-    assert_eq!(
-        evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None).reasons,
-        [UnavailableReason::QualificationWithdrawn]
-    );
-}
-
-#[test]
-#[ignore = "requires exact M45 executable and verified SDK-487 bundle"]
-fn qualify_registry_fields() {
-    let path = std::env::var_os("PDX_NATIVE_ANALYSIS_EXECUTABLE").expect("exact executable");
-    let output =
-        std::path::PathBuf::from(std::env::var_os("PDX_NATIVE_FIELDS_OUTPUT").expect("new output"));
-    fs::create_dir(&output).expect("new output directory");
-    let binding = Binding::open(OpenRequest {
-        installation_hint: path.into(),
-    })
-    .unwrap();
-    let bound = binding.analysis.unwrap();
-    let discovery = bound.discovery_input().unwrap();
-    let inputs = bound.fields.as_ref().unwrap();
-    let mut summaries = Vec::new();
-    for (name, owner) in [
-        ("council_agenda", "CCouncilAgenda"),
-        ("traditions", "CTraditionType"),
-        ("tradition_categories", "CTraditionCategory"),
-    ] {
-        let selection = evidence::discovery::candidates(&discovery.symbols)
-            .into_iter()
-            .find(|c| c.owner_candidate == owner && c.database != "CAscensionPerkDatabase")
-            .unwrap();
-        let input = bound.field_input(selection).unwrap();
-        let bytes = serde_json::to_vec(&input).unwrap();
-        let directory = output.join(name);
-        fs::create_dir(&directory).unwrap();
-        fs::write(directory.join("input.json"), &bytes).unwrap();
-        let descriptor = evidence::fields::FieldDescriptor {
-            format: evidence::fields::FORMAT.into(),
-            capture_origin: CaptureOrigin::Captured,
-            provenance: AnalysisProvenance {
-                executable: inputs.executable.clone(),
-                slice: inputs.slice.clone(),
-                composition: inputs.composition.clone(),
-                implementation: inputs.implementation.clone(),
-                method: inputs.method.into(),
-                decoder: inputs.decoder.into(),
-                qualification_records: vec![],
-                evidence: vec![],
-            },
-            input: support::reference("input.json", &bytes),
-        };
-        let result =
-            evidence::fields::derive(descriptor.clone(), &bytes, AnalysisOrigin::Executable)
-                .unwrap();
-        fs::write(
-            directory.join("result.json"),
-            serde_json::to_vec_pretty(&result).unwrap(),
-        )
-        .unwrap();
-        let descriptor = serde_json::to_vec_pretty(&descriptor).unwrap();
-        fs::write(directory.join("descriptor.json"), &descriptor).unwrap();
-        fs::write(
-            directory.join("descriptor.ref.json"),
-            serde_json::to_vec_pretty(&support::reference("descriptor.json", &descriptor)).unwrap(),
-        )
-        .unwrap();
-        println!(
-            "{name}: {} fields, {} paths, {} gaps: {:?}",
-            result.fields.len(),
-            result.paths.len(),
-            result.gaps.len(),
-            result.fields.iter().map(|f| &f.name).collect::<Vec<_>>()
-        );
-        assert!(!result.complete_registry);
-        assert!(!result.fields.is_empty(), "{name}: {:?}", result.gaps);
-        assert!(result.partition_accounted);
-        assert!(
-            result
-                .fields
-                .iter()
-                .all(|f| !f.readers.is_empty() && f.paths.len() == f.readers.len())
-        );
-        summaries.push(serde_json::json!({"registry":name,"fields":result.fields.len(),"paths":result.paths.len(),"gaps":result.gaps.len(),"complete_registry":result.complete_registry}));
-    }
-    fs::write(output.join("qualification.json"),serde_json::to_vec_pretty(&serde_json::json!({"composition":inputs.composition,"implementation":inputs.implementation,"registries":summaries,"game_launches":0})).unwrap()).unwrap();
-}
-
-#[test]
-fn field_analysis_has_independent_revocable_admission() {
-    let (_, mut binding) = fixture();
-    binding.inputs.method = evidence::fields::METHOD;
-    binding.inputs.composition = "f".repeat(64);
-    let mut authority = AnalysisAuthority {
-        accepted: vec![AnalysisRecord {
-            id: "other-method".into(),
-            composition: "c".repeat(64),
-            evidence: vec![],
-        }],
-        withdrawn: vec![],
-    };
-    let report = evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None);
-    assert_eq!(report.bounds, crate::CapabilityBounds::RegistryFields);
-    assert_eq!(report.availability, Availability::Unavailable);
-    authority.accepted.push(AnalysisRecord {
-        id: "fields".into(),
-        composition: binding.inputs.composition.clone(),
-        evidence: vec![],
-    });
-    assert_eq!(
-        evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None).availability,
-        Availability::Available
-    );
-    authority.withdrawn.push("fields".into());
-    assert_eq!(
-        evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None).reasons,
-        [UnavailableReason::QualificationWithdrawn]
-    );
 }

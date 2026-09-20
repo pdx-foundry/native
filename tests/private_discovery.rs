@@ -1,4 +1,4 @@
-use evidence::discovery::{StaticInput, candidates, scheduler};
+use pdx_native::internals::discovery::{StaticInput, candidates, scheduler};
 use pdx_native::{
     DiscoveryBasis, DiscoveryGapKind, Engine, RegistryDiscoveryResult, ReplayRequest,
 };
@@ -133,7 +133,8 @@ fn retained_discovery_parity_and_41_controls() {
     d.input = support::reference("omission.json", &bytes);
     d.runs.clear();
     let omission =
-        evidence::discovery::derive(d, &bytes, pdx_native::AnalysisOrigin::Replay).unwrap();
+        pdx_native::internals::discovery::derive(d, &bytes, pdx_native::AnalysisOrigin::Replay)
+            .unwrap();
     checks.insert(
         "omissionWitnessFindsTechnology".into(),
         omission
@@ -154,7 +155,8 @@ fn retained_discovery_parity_and_41_controls() {
     d.input = support::reference("stripped.json", &bytes);
     d.runs.clear();
     let stripped =
-        evidence::discovery::derive(d, &bytes, pdx_native::AnalysisOrigin::Replay).unwrap();
+        pdx_native::internals::discovery::derive(d, &bytes, pdx_native::AnalysisOrigin::Replay)
+            .unwrap();
     checks.insert(
         "strippedNamesRetain198UnresolvedWitnesses".into(),
         stripped.candidates.is_empty()

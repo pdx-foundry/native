@@ -1,5 +1,5 @@
 use crate::AnalysisError;
-use evidence::discovery::{SchedulerLayout, StaticInput, Symbol, VtableWitness};
+use crate::engine::analysis::discovery::{SchedulerLayout, StaticInput, Symbol, VtableWitness};
 use object::read::macho::{MachHeader, MachOFile64};
 use object::{Object, ObjectSection, ObjectSegment, ObjectSymbol};
 use std::collections::BTreeMap;

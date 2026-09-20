@@ -139,8 +139,8 @@ pub(super) fn analysis(
         &serde_json::to_vec(&serde_json::json!({
             "operation": "static-decode", "executable": image.executable, "slice": image.slice,
             "recipe": recipe.revision, "control": control,
-            "method": evidence::analysis::METHOD, "decoder": evidence::analysis::DECODER,
-            "implementation": env!("PDX_NATIVE_ANALYSIS"),
+            "method": crate::engine::analysis::decode::METHOD, "decoder": crate::engine::analysis::decode::DECODER,
+            "implementation": env!("CARGO_PKG_VERSION"),
         }))
         .expect("static composition identity"),
     );
@@ -148,12 +148,12 @@ pub(super) fn analysis(
         composition,
         executable: image.executable.clone(),
         slice: image.slice.clone(),
-        method: evidence::analysis::METHOD,
-        decoder: evidence::analysis::DECODER,
-        implementation: env!("PDX_NATIVE_ANALYSIS").into(),
+        method: crate::engine::analysis::decode::METHOD,
+        decoder: crate::engine::analysis::decode::DECODER,
+        implementation: env!("CARGO_PKG_VERSION").into(),
     };
     let recipe = targets::lookup(image)?.discovery;
-    let layout = evidence::discovery::SchedulerLayout {
+    let layout = crate::engine::analysis::discovery::SchedulerLayout {
         start: recipe.start,
         end: recipe.end,
         offset: recipe.offset,
@@ -161,13 +161,13 @@ pub(super) fn analysis(
         count: recipe.count,
     };
     let mut discovery_inputs = inputs.clone();
-    discovery_inputs.method = evidence::discovery::METHOD;
+    discovery_inputs.method = crate::engine::analysis::discovery::METHOD;
     discovery_inputs.composition = hash(
         &serde_json::to_vec(&serde_json::json!({
             "operation": "registry-discovery", "executable": image.executable, "slice": image.slice,
-            "recipe": recipe.revision, "layout": layout, "method": evidence::discovery::METHOD,
-            "decoder": evidence::analysis::DECODER, "demangler": "cpp_demangle-0.5.1",
-            "implementation": env!("PDX_NATIVE_ANALYSIS"),
+            "recipe": recipe.revision, "layout": layout, "method": crate::engine::analysis::discovery::METHOD,
+            "decoder": crate::engine::analysis::decode::DECODER, "demangler": "cpp_demangle-0.5.1",
+            "implementation": env!("CARGO_PKG_VERSION"),
         }))
         .expect("discovery composition"),
     );
@@ -177,7 +177,7 @@ pub(super) fn analysis(
         layout,
     });
     let mut fields = bound.inputs.clone();
-    fields.method = evidence::fields::METHOD;
+    fields.method = crate::engine::analysis::fields::METHOD;
     fields.composition = hash(&serde_json::to_vec(&serde_json::json!({
         "operation": "registry-fields", "executable": image.executable, "slice": image.slice,
         "method": fields.method, "decoder": fields.decoder, "implementation": fields.implementation,

@@ -105,6 +105,6 @@ fn decoder_requires_a_complete_aligned_bounded_range() {
         (vec![0; 4100], 0),
         (vec![255; 4], 0),
     ] {
-        assert!(evidence::analysis::decode_arm64(&bytes, address).is_err());
+        assert!(pdx_native::internals::decode::decode_arm64(&bytes, address).is_err());
     }
 }

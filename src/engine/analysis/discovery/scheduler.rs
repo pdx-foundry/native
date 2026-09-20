@@ -1,5 +1,5 @@
 use super::{CandidateRecord, SchedulerRow, StaticInput, Symbol};
-use crate::analysis::{Instruction, decode_arm64};
+use crate::engine::analysis::decode::{Instruction, decode_arm64};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Enumerate exact template LoadFile candidates independently of named member readers.

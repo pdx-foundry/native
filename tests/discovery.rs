@@ -1,4 +1,6 @@
-use evidence::discovery::{SchedulerLayout, StaticInput, Symbol, candidates, scheduler};
+use pdx_native::internals::discovery::{
+    SchedulerLayout, StaticInput, Symbol, candidates, scheduler,
+};
 use pdx_native::{
     AnalysisOrigin, CaptureOrigin, DiscoveryDescriptor, DiscoveryGapKind, Engine, ReplayRequest,
 };
@@ -16,9 +18,9 @@ fn input() -> StaticInput {
 }
 fn descriptor(bytes: &[u8]) -> DiscoveryDescriptor {
     let mut provenance = support::descriptor().provenance;
-    provenance.method = evidence::discovery::METHOD.into();
+    provenance.method = pdx_native::internals::discovery::METHOD.into();
     DiscoveryDescriptor {
-        format: evidence::discovery::FORMAT.into(),
+        format: pdx_native::internals::discovery::FORMAT.into(),
         capture_origin: CaptureOrigin::Synthetic,
         provenance,
         input: support::reference("input.json", bytes),
@@ -30,9 +32,12 @@ fn static_discovery_and_replay_are_bounded_and_context_owned() {
     let input = input();
     let bytes = serde_json::to_vec(&input).unwrap();
     let descriptor = descriptor(&bytes);
-    let result =
-        evidence::discovery::derive(descriptor.clone(), &bytes, AnalysisOrigin::Executable)
-            .unwrap();
+    let result = pdx_native::internals::discovery::derive(
+        descriptor.clone(),
+        &bytes,
+        AnalysisOrigin::Executable,
+    )
+    .unwrap();
     assert_eq!(result.candidates.len(), 1);
     assert!(!result.candidates[0].has_named_member_reader);
     assert!(result.scheduling[0].recovered);
@@ -83,8 +88,12 @@ fn omissions_and_clobbers_preserve_obligations() {
     assert!(rows[0].values[0].is_none() && !gaps.is_empty());
     input = input_fixture_with_clobber(0x91002273); // add x19,x19,#8 changes table owner
     let bytes = serde_json::to_vec(&input).unwrap();
-    let result =
-        evidence::discovery::derive(descriptor(&bytes), &bytes, AnalysisOrigin::Replay).unwrap();
+    let result = pdx_native::internals::discovery::derive(
+        descriptor(&bytes),
+        &bytes,
+        AnalysisOrigin::Replay,
+    )
+    .unwrap();
     assert!(
         result
             .gaps
@@ -94,8 +103,12 @@ fn omissions_and_clobbers_preserve_obligations() {
     let mut input = self::input();
     input.symbols.clear();
     let bytes = serde_json::to_vec(&input).unwrap();
-    let result =
-        evidence::discovery::derive(descriptor(&bytes), &bytes, AnalysisOrigin::Replay).unwrap();
+    let result = pdx_native::internals::discovery::derive(
+        descriptor(&bytes),
+        &bytes,
+        AnalysisOrigin::Replay,
+    )
+    .unwrap();
     assert!(result.candidates.is_empty());
     assert_eq!(result.scheduling.len(), 1);
     assert!(
@@ -187,7 +200,7 @@ fn historical_owner_joins_require_each_independent_witness() {
     let mut input = input();
     input.vtables.insert(
         0x6000,
-        evidence::discovery::VtableWitness {
+        pdx_native::internals::discovery::VtableWitness {
             owner: "CExample".into(),
             offset_to_top: -16,
             member: 0x4000,

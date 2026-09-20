@@ -1,10 +1,9 @@
 use super::ownership::HistoricalRun;
 use super::*;
 use crate::{
-    ArtifactReference, EvidenceReference, ReplayError,
-    analysis::AnalysisOrigin,
-    store::{ArtifactStore, is_sha256, sha256},
+    ArtifactReference, EvidenceReference, ReplayError, engine::analysis::decode::AnalysisOrigin,
 };
+use evidence::store::{ArtifactStore, is_sha256, sha256};
 use serde_json::Value;
 use std::sync::Arc;
 fn malformed(path: &str, reason: impl ToString) -> ReplayError {
@@ -73,7 +72,7 @@ pub fn derive(
         });
     }
     if descriptor.provenance.method != METHOD
-        || descriptor.provenance.decoder != crate::analysis::DECODER
+        || descriptor.provenance.decoder != crate::engine::analysis::decode::DECODER
     {
         return Err(ReplayError::UnsupportedContract {
             found: descriptor.provenance.method,
@@ -83,7 +82,6 @@ pub fn derive(
         &descriptor.provenance.executable,
         &descriptor.provenance.slice,
         &descriptor.provenance.composition,
-        &descriptor.provenance.implementation,
     ]
     .iter()
     .any(|s| !is_sha256(s))

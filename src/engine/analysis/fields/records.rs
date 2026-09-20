@@ -1,7 +1,7 @@
 use crate::{
     ArtifactReference, CaptureOrigin, EvidenceReference,
-    analysis::{AnalysisOrigin, AnalysisProvenance},
-    discovery::{CandidateRecord, Symbol},
+    engine::analysis::decode::{AnalysisOrigin, AnalysisProvenance},
+    engine::analysis::discovery::{CandidateRecord, Symbol},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

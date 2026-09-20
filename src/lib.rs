@@ -2,6 +2,9 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+// Shared test support names this crate as `pdx_native` from unit and integration tests.
+extern crate self as pdx_native;
+
 mod api;
 mod binding;
 mod execution;
@@ -48,18 +51,24 @@ pub use evidence::registry::GameReadiness;
 pub use game::{Game, GameError, GameOptions, GameReport, RegistryAvailability};
 
 mod engine;
-pub use engine::analysis::{AnalysisContext, AnalysisError};
-pub use evidence::analysis::{
+pub use crate::engine::analysis::decode::{
     AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, AnalysisResult, Instruction,
 };
+pub use engine::analysis::{AnalysisContext, AnalysisError};
 
-pub use evidence::discovery::{
+pub use crate::engine::analysis::discovery::{
     DiscoveryBasis, DiscoveryDescriptor, DiscoveryGap, DiscoveryGapKind, DiscoveryRun,
     ForeignRegistrySubject, RegistryCandidate, RegistryDiscoveryResult, RegistryRelationship,
     RegistrySubject, SchedulingWitness,
 };
 
-pub use evidence::fields::{
+pub use crate::engine::analysis::fields::{
     Condition as FieldCondition, FieldDescriptor, FieldGap, PathOutcome, ReaderContractGap,
     ReaderJoin, RegistryFieldResult, RootField, TokenPath, Value as FieldValue,
 };
+
+/// Static method internals for Native's own integration tests. Not a consumer API.
+#[doc(hidden)]
+pub mod internals {
+    pub use crate::engine::analysis::{decode, discovery, fields};
+}

@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
-use evidence::{
-    ArtifactReference, CaptureOrigin,
-    analysis::{AnalysisDescriptor, AnalysisProvenance},
-};
+use evidence::{ArtifactReference, CaptureOrigin};
+use pdx_native::internals::decode::{AnalysisDescriptor, AnalysisProvenance};
 use sha2::{Digest, Sha256};
 
 // Independently authored ARM64 sequence at 0x1000. This is not the retained getter:
@@ -53,7 +51,7 @@ pub fn reference(path: &str, bytes: &[u8]) -> ArtifactReference {
 
 pub fn descriptor() -> AnalysisDescriptor {
     AnalysisDescriptor {
-        format: evidence::analysis::FORMAT.into(),
+        format: pdx_native::internals::decode::FORMAT.into(),
         capture_origin: CaptureOrigin::Synthetic,
         address: 0x1000,
         code: reference("control.bin", &code()),
@@ -62,8 +60,8 @@ pub fn descriptor() -> AnalysisDescriptor {
             slice: "b".repeat(64),
             composition: "c".repeat(64),
             implementation: "d".repeat(64),
-            method: evidence::analysis::METHOD.into(),
-            decoder: evidence::analysis::DECODER.into(),
+            method: pdx_native::internals::decode::METHOD.into(),
+            decoder: pdx_native::internals::decode::DECODER.into(),
             qualification_records: vec![],
             evidence: vec![],
         },

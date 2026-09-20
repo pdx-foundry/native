@@ -65,24 +65,6 @@ def main():
         if original == changed:
             raise SystemExit('Evidence manifest change retained the qualified operation identity')
         evidence_manifest.write_bytes(manifest_bytes)
-        # Preserve exact bytes: text-mode writes on Windows would turn unrelated restored
-        # sources into CRLF files and make the record-only control report a false change.
-        # Every static implementation seam must affect its portable identity. Acceptance
-        # records must not: otherwise promotion would invalidate its own implementation.
-        baseline = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]), "PDX_NATIVE_ANALYSIS")
-        for relative in ["src/binding/binary.rs", "src/engine/analysis.rs", "src/binding/machine/arm64.rs", "src/binding/targets/recipes.rs", "src/qualification/analysis.rs", "crates/native-evidence/src/analysis.rs", "crates/native-evidence/Cargo.toml"]:
-            source = package / relative
-            original_bytes = source.read_bytes()
-            source.write_bytes(original_bytes + (b"\n# Identity control.\n" if relative.endswith('.toml') else b"\n// Identity control.\n"))
-            changed = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]), "PDX_NATIVE_ANALYSIS")
-            if baseline == changed:
-                raise SystemExit(f'Static fingerprint omitted {relative}')
-            source.write_bytes(original_bytes)
-        record = package / 'src/qualification/records/analysis.json'
-        record.write_bytes(record.read_bytes() + b'\n')
-        unchanged = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]), "PDX_NATIVE_ANALYSIS")
-        if baseline != unchanged:
-            raise SystemExit('Static qualification record changed its own implementation identity')
         cfg = subprocess.check_output(["rustc", "--print", "cfg"], text=True)
         leaf = "macos" if 'target_os="macos"' in cfg and 'target_arch="aarch64"' in cfg else "unavailable"
         imports = [
