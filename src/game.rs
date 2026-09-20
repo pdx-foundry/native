@@ -160,8 +160,79 @@ pub struct Game {
     state: watch::Receiver<State>,
     paused: Paused,
     closing: bool,
+    /// Content directory of each observed registry, with its internal name.
+    directories: BTreeMap<String, String>,
+    build: crate::BuildId,
 }
 impl Game {
+    /// List the item names of one registry, as the engine holds them after its initial load.
+    ///
+    /// The registry is named by its content directory, such as `common/traditions`. Every call
+    /// returns the same startup observation; the game is never resumed. Cancelling this future
+    /// leaves the session alive.
+    pub async fn registry_items(
+        &mut self,
+        registry: &str,
+    ) -> Result<crate::Answer<Vec<String>>, crate::Error> {
+        use crate::{Answer, Basis, Completeness, Error, Gap, GapKind, Operation, Source};
+        let operation = Operation::RegistryItems;
+        let directory = registry.trim_end_matches('/');
+        // Item observation covers only the registries that the build's live recipe binds. Another
+        // name can be a real registry, so this is not `UnknownRegistry`.
+        let Some(name) = self.directories.get(directory).cloned() else {
+            let covered: Vec<_> = self.directories.keys().cloned().collect();
+            return Err(Error::Unsupported {
+                operation,
+                reason: format!("item observation covers only: {}", covered.join(", ")),
+            });
+        };
+        let result = self
+            .get_registry_items(&name)
+            .await
+            .map_err(|error| match error {
+                RegistryError::Closed => Error::Closed,
+                RegistryError::Supervisor(reason) => Error::Supervisor(reason),
+                RegistryError::Unsupported { .. } => Error::UnknownRegistry {
+                    name: registry.into(),
+                },
+                RegistryError::Unavailable { reasons } => Error::Observation {
+                    operation,
+                    reason: format!("{reasons:?}"),
+                },
+                RegistryError::ObservationUnavailable { diagnostics, .. } => Error::Observation {
+                    operation,
+                    reason: diagnostics.join("; "),
+                },
+            })?;
+        let complete = result.completion == crate::Completion::Complete;
+        Ok(Answer {
+            value: result
+                .registered_items
+                .into_iter()
+                .map(|item| item.key)
+                .collect(),
+            completeness: if complete {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            },
+            gaps: if complete {
+                Vec::new()
+            } else {
+                vec![Gap {
+                    kind: GapKind::IncompleteObservation,
+                    subject: Some(directory.into()),
+                    detail: "The engine collection was not read to its end.".into(),
+                }]
+            },
+            source: Source::new(
+                self.build.clone(),
+                "registry-items/v1",
+                Basis::LiveObservation,
+            ),
+        })
+    }
+
     /// The witnessed initialization pause. This does not advertise gameplay readiness.
     pub fn readiness(&self) -> GameReadiness {
         self.paused.readiness
@@ -282,6 +353,8 @@ pub(crate) async fn start(
     authorization: operation::Authorization,
     control: Option<(String, operation::ObservationControl)>,
 ) -> Result<Game, GameError> {
+    let directories = context.registry_directories();
+    let build = context.build();
     let (commands, receive) = mpsc::sync_channel(16);
     let stop = Arc::new(AtomicU8::new(0));
     let owner_stop = stop.clone();
@@ -316,6 +389,8 @@ pub(crate) async fn start(
                 state: changes,
                 paused,
                 closing: false,
+                directories,
+                build,
             });
         }
         changes
@@ -417,6 +492,8 @@ mod tests {
                 state: changes,
                 paused,
                 closing: false,
+                directories: BTreeMap::from([("common/traditions".into(), "traditions".into())]),
+                build: crate::BuildId("test".into()),
             },
             receive,
             state,
@@ -482,6 +559,25 @@ mod tests {
         assert!(matches!(
             commands.try_recv(),
             Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+    #[tokio::test]
+    async fn registry_items_names_registries_by_directory_and_sends_no_read_for_other_names() {
+        let (mut game, commands, _) = game();
+        for unknown in ["traditions", "common/nothing"] {
+            assert!(matches!(
+                game.registry_items(unknown).await,
+                Err(crate::Error::Unsupported { .. })
+            ));
+        }
+        assert!(matches!(
+            commands.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        game.cancel();
+        assert!(matches!(
+            game.registry_items("common/traditions").await,
+            Err(crate::Error::Closed)
         ));
     }
     #[test]

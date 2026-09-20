@@ -51,6 +51,8 @@ pub enum GapKind {
     UnresolvedReader,
     /// The reader is identified, but its accepted values and behavior are not established.
     ReaderSemantics,
+    /// A live observation window did not complete; the established part is kept.
+    IncompleteObservation,
 }
 
 /// How an answer was obtained.
@@ -124,6 +126,17 @@ pub enum Error {
     },
     /// The method failed on an input that it should handle.
     Method(String),
+    /// The game session did not establish this observation. Other observations may be available.
+    Observation {
+        /// The operation asked for.
+        operation: Operation,
+        /// What was not established.
+        reason: String,
+    },
+    /// The game session is closing or closed.
+    Closed,
+    /// The connection to the supervisor failed. Disposal of the game is not established.
+    Supervisor(String),
 }
 
 impl std::fmt::Display for Error {
@@ -135,6 +148,11 @@ impl std::fmt::Display for Error {
             Self::BuildChanged => f.write_str("the executable changed after it was opened"),
             Self::UnknownRegistry { name } => write!(f, "no registry is named {name}"),
             Self::Method(reason) => write!(f, "the method failed: {reason}"),
+            Self::Observation { operation, reason } => {
+                write!(f, "{operation:?} was not observed: {reason}")
+            }
+            Self::Closed => f.write_str("the game session is closed"),
+            Self::Supervisor(reason) => write!(f, "the supervisor connection failed: {reason}"),
         }
     }
 }

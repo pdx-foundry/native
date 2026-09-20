@@ -39,6 +39,14 @@ impl Native {
     pub(crate) fn registry_names(&self) -> Vec<String> {
         self.binding.registry_names()
     }
+    /// Content directory of each live registry, with its internal name.
+    pub(crate) fn registry_directories(&self) -> std::collections::BTreeMap<String, String> {
+        self.binding
+            .registry_names()
+            .into_iter()
+            .filter_map(|name| Some((self.binding.registry_directory(&name)?, name)))
+            .collect()
+    }
     pub(crate) fn detached_context(&self) -> Self {
         Self {
             binding: self.binding.clone(),

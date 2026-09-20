@@ -179,8 +179,17 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
    (`discovery/ownership.rs`, 386 lines) is removed with them: it reduced traces in the format of
    a Python prototype, and static analysis now gives the owner class and the directory of each
    template registry. Its last run passed 41/41 controls; the code is in Git at `3eef4f5`. The
-   method internals still carry replay descriptors; step 4 removes those. Still to do in this
-   step: the live side below.
+   method internals still carry replay descriptors; step 4 removes those.
+
+   **Live side, in progress.** Live admission needs no acceptance record, content match, or
+   exact toolchain match (decided 2026-09-20): a live operation is available when the build
+   composed and the present inputs and tools can be read. The synthetic test engine and the
+   `test-support` feature are removed. `Game::registry_items("common/traditions")` returns
+   `Answer<Vec<String>>`; on M45 it gives 234 traditions and 33 categories, complete, with the
+   game reaped, in about 34 seconds (`examples/registry-items.rs`, no Cargo feature). A registry
+   outside the build's live recipe gives `Unsupported` with the covered names, not
+   `UnknownRegistry`. Still to do: remove `Engine`, the replay API, `get_registry`, the earlier
+   item query and the capability types; add recorded answers.
    Add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.
