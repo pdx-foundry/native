@@ -24,13 +24,13 @@ fn registries_are_named_by_their_content_directory() {
     assert_eq!(names, expected::<Vec<String>>("registries.json"));
     assert_eq!(answer.completeness, Completeness::Partial);
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
-    // One template registry has no directory literal in its constructor. It stays a gap.
-    assert!(!names.contains(&"common/ship_categories".to_owned()));
+    // `common/ship_categories` passes a global CString; its static initializer names it.
+    assert!(names.contains(&"common/ship_categories".to_owned()));
     assert!(
         answer
             .gaps
             .iter()
-            .any(|gap| gap.kind == GapKind::UnnamedRegistries)
+            .all(|gap| gap.kind != GapKind::UnnamedRegistries)
     );
 }
 
@@ -60,7 +60,7 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
     }
     assert!(potential.len() >= 2 && potential.windows(2).all(|pair| pair[0] == pair[1]));
     assert!(matches!(
-        native.registry_fields("common/ship_categories"),
+        native.registry_fields("common/no_such_registry"),
         Err(Error::UnknownRegistry { .. })
     ));
 }

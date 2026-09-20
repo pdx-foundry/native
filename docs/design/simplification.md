@@ -114,20 +114,24 @@ A registry is named by a string in every operation, static or live. A discovered
 no established name is a `Gap`, not a `Registry`. The name is the full content directory
 (`common/traditions`, `map/galaxy`), because seven template registries load from outside `common/`.
 
-**Resolved by experiment, 2026-09-20:** the name is available statically. The constructor of each
-database class loads its content directory literal (an `adrp`/`add` pair). A scan of the M45
-executable names 163 of the 164 template candidates with exactly one directory each, in about one
-second. `CShipCategoryDatabase` has no literal in its constructor and stays a gap. The 163
-directories observed live in the retained run contain no directory that conflicts; the
-per-candidate comparison is a parity test for step 3.
+**Resolved, 2026-09-20:** the name is available statically. Every template database constructor
+passes its content directory, as a `CString`, to one shared base constructor. The method
+(`engine/analysis/directories.rs`) finds that call and establishes its argument. It names all 164
+template registries on M45 in about two seconds. All 162 directories that the retained live run
+observed for template registries are in the static result, with no conflict.
+
+Two compiled shapes exist. 163 constructors build a temporary `CString` from a literal.
+`common/ship_categories` passes a global `CString` that the static initializer of its source file
+builds, because that file uses the path twice and declares it as a named constant. A first
+version of the method looked for any directory-shaped literal in the constructor. It missed the
+global shape, and it had no tie to the meaning of the literal; the call anchor replaced it.
 
 Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice_types`,
 `gfx/portraits/sprite_configurations`, `interface/resource_groups`, and others). 59 more
 `common/` literals belong to loaders outside the template method (`common/component_templates`,
 `common/agendas`, `common/static_modifiers`); they are inputs for SDK-551.
 
-Step 3 adds this as a static method in `engine/analysis`: constructor symbol, literal reference,
-directory. `registries()` and `registry_fields(name)` stay static questions.
+`registries()` and `registry_fields(name)` are static questions.
 
 ## Tests
 
@@ -166,8 +170,8 @@ directory. `registries()` and `registry_fields(name)` stay static questions.
      name is available statically from each database constructor. See "Registry names".
 3. **Static part done, 2026-09-20.** `Answer<T>`, `Error`, the normalized value types,
    `Native::build`, `Native::registries` and `Native::registry_fields` exist. The directory method
-   (`engine/analysis/directories.rs`) names 163 of 164 template registries on M45; every name
-   agrees with the live-observed directory, with no conflict. Parity tests compare with 8 KB of
+   (`engine/analysis/directories.rs`) names all 164 template registries on M45; every
+   live-observed directory is in the result, with no conflict. Parity tests compare with 8 KB of
    tracked expected output (`tests/expected/m45`). Two fields in different registries already
    report one reader identity. Still to do in this step: remove the earlier static API
    (`Native::analysis`, the raw result exports, the static replay methods and examples), then the

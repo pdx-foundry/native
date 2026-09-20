@@ -149,15 +149,34 @@ impl BoundAnalysis {
         let input = binary::discovery::read(&bytes, layout)?;
         let records = discovery::candidates(&input.symbols);
         let constructors = binary::constructors::read(&bytes, &input, &records)?;
+        let anchors = binary::constructors::anchors(&input);
+        let arguments: Vec<Vec<directories::Argument>> = records
+            .iter()
+            .map(|record| {
+                constructors
+                    .get(&record.database)
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|body| directories::arguments(body, &anchors, &input.strings))
+                    .collect()
+            })
+            .collect();
+        // Static initializers are read only when a constructor passes a global.
+        let needs_globals = arguments
+            .iter()
+            .flatten()
+            .any(|a| matches!(a, directories::Argument::Global(_)));
+        let globals = if needs_globals {
+            let initializers = binary::constructors::initializers(&bytes, &input)?;
+            directories::globals(&initializers, &anchors, &input.strings)
+        } else {
+            Default::default()
+        };
         Ok(records
             .into_iter()
-            .map(|record| NamedCandidate {
-                directory: directories::directory(
-                    constructors
-                        .get(&record.database)
-                        .map_or(&[][..], Vec::as_slice),
-                    &input.strings,
-                ),
+            .zip(arguments)
+            .map(|(record, arguments)| NamedCandidate {
+                directory: directories::directory(&arguments, &globals),
                 record,
             })
             .collect())

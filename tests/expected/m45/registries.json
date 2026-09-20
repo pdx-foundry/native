@@ -116,6 +116,7 @@
  "common/scripted_modifiers",
  "common/scripted_triggers",
  "common/sector_types",
+ "common/ship_categories",
  "common/ship_sets",
  "common/ship_sizes",
  "common/situation_log/categories",
