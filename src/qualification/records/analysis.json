@@ -65,6 +65,50 @@
           "sha256": "8ff7dd316c80bf659f02bf4ea728965d34d3c0b08492d91d39af0660263655c5"
         }
       ]
+    },
+    {
+      "id": "sdk-528-m45-registry-discovery-cf339a9dbbd4",
+      "composition": "cf339a9dbbd41cd78e58617521781ffe59b7a63340ed66963e6e14003b4b5d66",
+      "evidence": [
+        {
+          "path": "sdk-530-discovery-1/verified.json",
+          "bytes": 1755,
+          "sha256": "be088fce44802ca62656252bdba310d59f352d7256343cf610f4832348c96761"
+        }
+      ]
+    },
+    {
+      "id": "sdk-528-m45-registry-discovery-3d00ba1c9ed2",
+      "composition": "3d00ba1c9ed2cc46b250286390c65d2cb1f5bef846b85acc73973d88eac61ac9",
+      "evidence": [
+        {
+          "path": "sdk-530-discovery-2/verified.json",
+          "bytes": 1755,
+          "sha256": "714db91ce058bba6e8bac6189c466377c82ee140a656848b65a92eb672c1a080"
+        }
+      ]
+    },
+    {
+      "id": "sdk-530-m45-registry-fields-7f194e803e02",
+      "composition": "7f194e803e020698715872e185fde82e8542dead6ab558c8d4ccc449615babba",
+      "evidence": [
+        {
+          "path": "sdk-530-fields-1/verified.json",
+          "bytes": 2787,
+          "sha256": "ebe54bc30b802d284d5e6aafb69f888d989dac77225e7b204a90b5b420c883da"
+        }
+      ]
+    },
+    {
+      "id": "sdk-527-m45-static-decode-v1-dae4d273e68f",
+      "composition": "dae4d273e68fa0118e43096431b9e2416930fa695976493f67773f8b8d3dcf4d",
+      "evidence": [
+        {
+          "path": "sdk-530-decode-1/qualified.json",
+          "bytes": 1615,
+          "sha256": "586f4c8001bdcacb659fc1932ccb0aaf2f341f4ee06d985cb8ab383ab98ea271"
+        }
+      ]
     }
   ],
   "withdrawn": []

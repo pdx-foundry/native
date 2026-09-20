@@ -83,7 +83,7 @@ pub struct DiscoveryDescriptor {
 pub struct RegistrySubject {
     #[serde(skip)]
     pub(super) scope: Arc<()>,
-    pub(super) ordinal: usize,
+    pub(crate) ordinal: usize,
 }
 impl PartialEq for RegistrySubject {
     fn eq(&self, other: &Self) -> bool {

@@ -58,3 +58,8 @@ pub use evidence::discovery::{
     ForeignRegistrySubject, RegistryCandidate, RegistryDiscoveryResult, RegistryRelationship,
     RegistrySubject, SchedulingWitness,
 };
+
+pub use evidence::fields::{
+    Condition as FieldCondition, FieldDescriptor, FieldGap, PathOutcome, ReaderContractGap,
+    ReaderJoin, RegistryFieldResult, RootField, TokenPath, Value as FieldValue,
+};

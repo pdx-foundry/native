@@ -60,6 +60,17 @@ impl Native {
     /// Inspect one operation. Registry admission may probe live prerequisites; static decoding
     /// checks only executable inputs. Neither request launches Stellaris.
     pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
+        if matches!(request, CapabilityRequest::RegistryFields) {
+            return self.binding.analysis.as_ref().map_or_else(
+                || {
+                    let mut report =
+                        qualification::analysis::unavailable(self.identity(), self.origin());
+                    report.bounds = crate::CapabilityBounds::RegistryFields;
+                    report
+                },
+                |binding| crate::engine::analysis::fields_capability(binding),
+            );
+        }
         if matches!(request, CapabilityRequest::RegistryDiscovery) {
             return self.binding.analysis.as_ref().map_or_else(
                 || {

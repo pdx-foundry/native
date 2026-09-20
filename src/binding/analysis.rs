@@ -13,6 +13,7 @@ pub(crate) struct BoundAnalysis {
     pub control: DecodeControl,
     pub decoder: Decoder,
     pub discovery: Option<BoundDiscovery>,
+    pub fields: Option<AnalysisInputs>,
     installation: Installation,
     invalidated: Mutex<Option<UnavailableReason>>,
 }
@@ -36,6 +37,7 @@ impl BoundAnalysis {
             control,
             decoder,
             discovery: None,
+            fields: None,
             installation,
             invalidated: Mutex::new(None),
         }
@@ -102,5 +104,20 @@ impl BoundAnalysis {
                 reasons: vec![UnavailableReason::ImplementationUnavailable],
             })?;
         binary::discovery::read(&bytes, &discovery.layout)
+    }
+}
+
+impl BoundAnalysis {
+    pub(crate) fn field_input(
+        &self,
+        selection: evidence::discovery::CandidateRecord,
+    ) -> Result<evidence::fields::FieldInput, AnalysisError> {
+        let bytes = self.executable()?;
+        let discovery = self.discovery.as_ref().ok_or(AnalysisError::InvalidRange)?;
+        let input = binary::discovery::read(&bytes, &discovery.layout)?;
+        if !evidence::discovery::candidates(&input.symbols).contains(&selection) {
+            return Err(AnalysisError::InvalidRange);
+        }
+        binary::fields::read(&bytes, input, selection)
     }
 }
