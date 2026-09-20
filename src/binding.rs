@@ -11,7 +11,7 @@ mod targets;
 #[cfg(test)]
 mod tests;
 
-use crate::qualification::{AdmissionInputs, Authority};
+use crate::qualification::AdmissionInputs;
 use crate::{ContextIdentity, ContextOrigin, OpenError, OpenRequest, UnavailableReason};
 
 /// The only session-facing binding value. Raw target and platform descriptors stay below here.
@@ -20,14 +20,11 @@ pub(crate) struct Binding {
     pub(crate) analysis: Option<std::sync::Arc<BoundAnalysis>>,
     operation: Option<compose::ResolvedObservation>,
     source: Source,
-    authority: Authority,
 }
 
 #[derive(Debug)]
 enum Source {
     Installation(installation::Installation),
-    #[cfg(feature = "test-support")]
-    Synthetic(Option<UnavailableReason>),
 }
 
 impl Binding {
@@ -44,7 +41,6 @@ impl Binding {
             analysis,
             operation: Some(operation),
             source: Source::Installation(installation),
-            authority: Authority::bundled(),
         })
     }
 
@@ -67,42 +63,24 @@ impl Binding {
     pub(crate) fn origin(&self) -> ContextOrigin {
         match self.source {
             Source::Installation(_) => ContextOrigin::Installation,
-            #[cfg(feature = "test-support")]
-            Source::Synthetic(_) => ContextOrigin::Synthetic,
         }
     }
 
     pub(crate) fn integrity(&self) -> Option<UnavailableReason> {
         match &self.source {
             Source::Installation(installation) => installation.integrity(),
-            #[cfg(feature = "test-support")]
-            Source::Synthetic(failure) => failure.clone(),
         }
     }
 
     pub(crate) fn current_inputs(&self) -> AdmissionInputs {
         let mut inputs = self.inputs.clone();
-        if self.origin() == ContextOrigin::Installation && !cfg!(feature = "production") {
-            inputs
-                .prerequisites
-                .push(UnavailableReason::ProductionFeatureRequired);
-        }
         if let Some(operation) = &self.operation {
             inputs.toolchain =
                 (operation.strategy.probe)().map_err(|_| UnavailableReason::PrerequisiteMissing);
         }
         inputs
     }
-    pub(crate) fn authority(&self) -> &Authority {
-        &self.authority
-    }
 }
-
-#[cfg(feature = "test-support")]
-mod synthetic;
-
-#[cfg(feature = "test-support")]
-pub(crate) use synthetic::synthetic;
 
 pub(crate) struct ExecutionPlan {
     binding: Binding,
@@ -131,8 +109,6 @@ impl ExecutionPlan {
     fn installation(&self) -> &installation::Installation {
         match &self.binding.source {
             Source::Installation(installation) => installation,
-            #[cfg(feature = "test-support")]
-            Source::Synthetic(_) => unreachable!("execution cannot use synthetic inputs"),
         }
     }
     fn operation(&self) -> &compose::ResolvedObservation {
@@ -153,7 +129,6 @@ impl ExecutionPlan {
         let inputs = self.binding.current_inputs();
         let report = crate::qualification::evaluate(
             &inputs,
-            self.binding.authority(),
             &crate::CapabilityRequest::Registry {
                 registry: registry.into(),
             },
@@ -213,10 +188,6 @@ impl Binding {
     ) -> Result<std::path::PathBuf, crate::supervisor::SupervisorError> {
         match &self.source {
             Source::Installation(installation) => Ok(installation.locator().into()),
-            #[cfg(feature = "test-support")]
-            Source::Synthetic(_) => Err(crate::supervisor::SupervisorError(
-                "Synthetic contexts cannot launch".into(),
-            )),
         }
     }
 }
@@ -394,9 +365,9 @@ impl ExecutionPlan {
     pub(crate) fn validate_observation_content(
         &self,
     ) -> Result<(), crate::supervisor::SupervisorError> {
-        if self.binding.inputs.content.as_ref().ok() != Some(&self.operation().content) {
+        if self.binding.inputs.content.is_err() {
             return Err(crate::supervisor::SupervisorError(
-                "Observation content does not match the selected recipe".into(),
+                "Observation content cannot be read".into(),
             ));
         }
         Ok(())

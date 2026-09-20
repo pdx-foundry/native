@@ -39,26 +39,3 @@ fn catalogue_order_cannot_break_a_duplicate_match() {
         Err(OpenError::Ambiguous)
     ));
 }
-
-#[test]
-fn a_recipe_cannot_supply_its_own_acceptance() {
-    let (inputs, _) =
-        crate::binding::compose::compose(&identity(), Ok(Default::default())).unwrap();
-    let report = crate::qualification::evaluate(
-        &inputs,
-        &crate::qualification::Authority {
-            accepted: vec![],
-            withdrawn: vec![],
-        },
-        &crate::CapabilityRequest::default(),
-        crate::ContextOrigin::Installation,
-        None,
-    );
-    assert_eq!(report.qualification, crate::Qualification::Incomplete);
-    assert_eq!(report.availability, crate::Availability::Unavailable);
-    assert!(
-        report
-            .reasons
-            .contains(&crate::UnavailableReason::QualificationMissing)
-    );
-}

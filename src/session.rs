@@ -67,7 +67,6 @@ impl Native {
     pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
         qualification::evaluate(
             &self.binding.current_inputs(),
-            self.binding.authority(),
             request,
             self.origin(),
             self.integrity(),

@@ -41,9 +41,8 @@ def main():
     features = next(node["features"] for node in metadata["resolve"]["nodes"] if node["id"] == native["id"])
     if set(features) != {"default", "production"}:
         raise SystemExit(f"Unexpected production feature closure: {features}")
-    for features in ["production,test-support", "production,maintainer-tools"]:
+    for features in ["production,maintainer-tools"]:
         cargo(ROOT, ["check", "--locked", "--features", features], "production cannot include")
-    cargo(ROOT, ["build", "--locked", "--release", "--features", "test-support"], "test-support is forbidden in release-profile builds")
 
     with tempfile.TemporaryDirectory(prefix="native-admission-boundary-") as temporary:
         package = Path(temporary) / "native"
@@ -89,8 +88,6 @@ def main():
         cargo(consumer, ["check"])
         main_rs.write_text("use pdx_native::investigation;\nfn main() {}\n")
         cargo(consumer, ["check"], "no `investigation` in the root")
-        main_rs.write_text("use pdx_native::test_support;\nfn main() {}\n")
-        cargo(consumer, ["check"], "no `test_support` in the root")
         main_rs.write_text("fn main() { let _ = pdx_native::EngineContext {}; }\n")
         cargo(consumer, ["check"], "private fields")
         main_rs.write_text("fn main() { let _ = pdx_native::Game {}; }\n")

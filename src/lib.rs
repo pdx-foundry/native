@@ -18,15 +18,8 @@ pub mod supervisor;
 #[cfg(feature = "maintainer-tools")]
 pub mod investigation;
 
-#[cfg(all(
-    feature = "production",
-    any(feature = "test-support", feature = "maintainer-tools")
-))]
-compile_error!("production cannot include test-support or maintainer-tools");
-
-#[cfg(feature = "test-support")]
-#[doc(hidden)]
-pub mod test_support;
+#[cfg(all(feature = "production", feature = "maintainer-tools"))]
+compile_error!("production cannot include maintainer-tools");
 
 pub use answer::{
     Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,

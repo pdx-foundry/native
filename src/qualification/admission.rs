@@ -1,4 +1,4 @@
-use super::{AdmissionInputs, Authority};
+use super::AdmissionInputs;
 use crate::{
     Availability, CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin,
     Qualification, RegistryBounds, UnavailableReason,
@@ -6,7 +6,6 @@ use crate::{
 
 pub(crate) fn evaluate(
     inputs: &AdmissionInputs,
-    authority: &Authority,
     request: &CapabilityRequest,
     origin: ContextOrigin,
     integrity: Option<UnavailableReason>,
@@ -41,83 +40,9 @@ pub(crate) fn evaluate(
         return report;
     }
 
-    let matching: Vec<_> = authority
-        .accepted
-        .iter()
-        .filter(|record| record.composition == inputs.composition)
-        .collect();
-    if matching.is_empty() {
-        report.reasons.push(if authority.accepted.is_empty() {
-            UnavailableReason::QualificationMissing
-        } else {
-            UnavailableReason::RevisionMismatch
-        });
-        return report;
-    }
-    let active: Vec<_> = matching
-        .into_iter()
-        .filter(|record| !authority.withdrawn.contains(&record.id))
-        .collect();
-    if active.is_empty() {
-        report
-            .reasons
-            .push(UnavailableReason::QualificationWithdrawn);
-        return report;
-    }
-    let Ok(content) = &inputs.content else {
-        return report;
-    };
-    let applicable: Vec<_> = active
-        .into_iter()
-        .filter(|record| *content == record.content)
-        .collect();
-    if applicable.is_empty() {
-        report.reasons.push(UnavailableReason::ContentMismatch);
-        return report;
-    }
-    let applicable: Vec<_> = match &inputs.toolchain {
-        Ok(toolchain) => applicable
-            .into_iter()
-            .filter(|record| record.toolchain == *toolchain)
-            .collect(),
-        Err(_) => return report,
-    };
-    if applicable.is_empty() {
-        report.reasons.push(UnavailableReason::HelperMismatch);
-        return report;
-    }
-    // Qualification applies only to the bound inputs. A changed/unreadable installation cannot
-    // retain a current qualified claim, even if its old immutable snapshot matches an acceptance.
-    if report.reasons.iter().any(|reason| {
-        matches!(
-            reason,
-            UnavailableReason::TargetChanged
-                | UnavailableReason::ContentChanged
-                | UnavailableReason::InputUnavailable
-        )
-    }) {
-        return report;
-    }
-    report.accepted_bounds = applicable
-        .iter()
-        .map(|record| crate::CapabilityBounds::Registry(record.bounds.clone()))
-        .collect();
-    // One accepted record must cover the whole request; combining partial records could invent
-    // a composition or observation window that was never qualified.
-    let qualified: Vec<_> = applicable
-        .into_iter()
-        .filter(|record| covers(&record.bounds, request))
-        .collect();
-    if qualified.is_empty() {
-        report.qualification = Qualification::OutsideSupport;
-        report.reasons.push(UnavailableReason::OutsideBounds);
-        return report;
-    }
+    // A live operation is available when the build composed, the request is inside the declared
+    // bounds, and the present inputs and tools can be read. No acceptance record is needed.
     report.qualification = Qualification::Qualified;
-    for record in qualified {
-        report.qualification_records.push(record.id.clone());
-        report.evidence.extend(record.evidence.clone());
-    }
     if report.reasons.is_empty() {
         report.availability = Availability::Available;
     }

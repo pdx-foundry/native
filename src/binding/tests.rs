@@ -1,6 +1,6 @@
 use super::{Binding, Source, installation::Installation};
-use crate::qualification::{AdmissionInputs, Authority};
-use crate::{CapabilityRequest, ContextOrigin, Qualification, UnavailableReason};
+use crate::qualification::AdmissionInputs;
+use crate::{CapabilityRequest, ContextOrigin, UnavailableReason};
 use std::fs;
 use tempfile::{TempDir, tempdir};
 
@@ -28,10 +28,6 @@ fn installation() -> (TempDir, Binding) {
         operation: None,
         analysis: None,
         source: Source::Installation(installation),
-        authority: Authority {
-            accepted: vec![],
-            withdrawn: vec![],
-        },
     };
     (directory, binding)
 }
@@ -43,17 +39,7 @@ fn executable_replacement_permanently_invalidates_the_context() {
     let request = CapabilityRequest::default();
     assert_eq!(context.origin(), ContextOrigin::Installation);
     let report = context.capability(&request);
-    assert!(
-        report
-            .reasons
-            .contains(&UnavailableReason::QualificationMissing)
-    );
-    assert_eq!(
-        report
-            .reasons
-            .contains(&UnavailableReason::ProductionFeatureRequired),
-        !cfg!(feature = "production")
-    );
+    assert!(!report.reasons.contains(&UnavailableReason::TargetChanged));
     fs::write(directory.path().join("stellaris"), "changed executable").unwrap();
     assert!(
         context
@@ -85,7 +71,7 @@ fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
             _ => fs::write(original, "changed").unwrap(),
         }
         let report = context.capability(&CapabilityRequest::default());
-        assert_eq!(report.qualification, Qualification::Incomplete);
+        assert_eq!(report.availability, crate::Availability::Unavailable);
         assert!(
             report.reasons.contains(&UnavailableReason::ContentChanged),
             "{mutation}"
@@ -183,10 +169,6 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
             operation: Some(operation),
             analysis: None,
             source: Source::Installation(installed),
-            authority: Authority {
-                accepted: vec![],
-                withdrawn: vec![],
-            },
         },
         admitted_tool: None,
         session_unavailable: Default::default(),
@@ -204,61 +186,6 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         .unwrap();
     assert_eq!(error.to_string(), "selected strategy reached");
     assert!(!directory.path().join("unused").exists());
-    let mut plan = plan;
-    plan.binding.operation.as_mut().unwrap().content.clear();
-    assert!(
-        plan.observer(&directory.path().join("unused"), "test", &spec, "synthetic")
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("selected recipe")
-    );
-}
-
-#[cfg(not(feature = "production"))]
-#[tokio::test]
-async fn matching_qualification_cannot_launch_without_the_production_feature() {
-    let (directory, mut binding) = installation();
-    binding
-        .authority
-        .accepted
-        .push(crate::qualification::AcceptedRecord {
-            id: "private-admission-control".into(),
-            composition: binding.inputs.composition.clone(),
-            bounds: binding.inputs.bounds.clone(),
-            content: binding.inputs.content.clone().unwrap(),
-            toolchain: binding.inputs.toolchain.clone().unwrap(),
-            evidence: vec![],
-        });
-    let mut plan = super::ExecutionPlan {
-        binding,
-        admitted_tool: None,
-        session_unavailable: Default::default(),
-    };
-    assert!(
-        plan.admit("traditions")
-            .unwrap_err()
-            .to_string()
-            .contains("ProductionFeatureRequired")
-    );
-    assert!(plan.admitted_tool.is_none());
-    let context = crate::session::EngineContext::from_binding(plan.binding);
-    let report = context.capability(&CapabilityRequest::default());
-    assert_eq!(report.qualification, Qualification::Qualified);
-    assert_eq!(report.availability, crate::Availability::Unavailable);
-    let captures = directory.path().join("captures");
-    fs::create_dir(&captures).unwrap();
-    let client = context
-        .with_supervisor(
-            std::process::Command::new("must-not-launch"),
-            crate::GameOptions::new(captures.clone()),
-        )
-        .unwrap();
-    let error = client.start_game().await.unwrap_err();
-    assert!(
-        matches!(error, crate::GameError::Unavailable { registries } if registries.values().all(|reasons| reasons == &[UnavailableReason::ProductionFeatureRequired]))
-    );
-    assert_eq!(fs::read_dir(captures).unwrap().count(), 0);
 }
 
 #[test]

@@ -99,7 +99,6 @@ fn main() {
         "TARGET",
         "PROFILE",
         "CARGO_FEATURE_MAINTAINER_TOOLS",
-        "CARGO_FEATURE_TEST_SUPPORT",
         "CARGO_FEATURE_PRODUCTION",
     ] {
         println!("cargo:rerun-if-env-changed={name}");
@@ -132,10 +131,4 @@ fn main() {
     }
     println!("cargo:rustc-env=PDX_NATIVE_BUILD={:x}", hash.finalize());
     println!("cargo:rerun-if-env-changed=PROFILE");
-    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_TEST_SUPPORT");
-    if std::env::var_os("CARGO_FEATURE_TEST_SUPPORT").is_some()
-        && std::env::var("PROFILE").as_deref() == Ok("release")
-    {
-        panic!("test-support is forbidden in release-profile builds");
-    }
 }
