@@ -71,3 +71,10 @@ The separate `tools/loader-entry-trial/run.py` command **launches games** and re
 exact retained installation. It is not a public live adapter or production qualification.
 
 Fresh captures require the **particular** target/architecture, compatible save or parser fixture, declared installed content and DLC, OS/toolchain/debugger access, and no conflicting live game. Native capture scripts retain original absolute installation/profile/helper paths. Retarget working copies and record the changes; preserve hash gates and qualification controls. Do not silently substitute another binary or mock source. Missing installations, old source saves, Mythos/dependency content and Windows host access limit fresh reproduction even when offline replay succeeds.
+
+## Registry discovery replay
+
+The SDK-528 [registry-discovery contract](../design/registry-discovery.md) describes static capture,
+verified SDK-489 preparation and the installation-free `replay-discovery` example. Preparation copies
+only into a new working capture; it preserves the retained capsule. Historical manifests retain the
+original content boundaries and independent disposal records.

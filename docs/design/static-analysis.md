@@ -83,3 +83,7 @@ three hosts; full executable qualification is a local private control.
 This ticket changes shared build inputs and therefore invalidates older live-session qualification.
 Those records remain historical. Live admission must fail until a separate live requalification;
 static acceptance cannot grant live authority.
+
+SDK-528 adds a separately admitted [registry discovery operation](registry-discovery.md) to the
+same static context. Opening the context requires at least one admitted method; each operation
+checks its own qualification and the shared executable integrity state.

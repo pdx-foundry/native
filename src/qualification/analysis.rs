@@ -43,6 +43,9 @@ pub(crate) fn evaluate(
     integrity: Option<UnavailableReason>,
 ) -> CapabilityReport {
     let mut report = unavailable(ContextIdentity(inputs.composition.clone()), origin);
+    if inputs.method == evidence::discovery::METHOD {
+        report.bounds = CapabilityBounds::RegistryDiscovery;
+    }
     report.reasons.clear();
     if let Some(reason) = integrity {
         report.reasons.push(reason);
@@ -75,7 +78,7 @@ pub(crate) fn evaluate(
     }
     report.qualification = Qualification::Qualified;
     report.availability = Availability::Available;
-    report.accepted_bounds.push(CapabilityBounds::StaticDecode);
+    report.accepted_bounds.push(report.bounds.clone());
     report
 }
 

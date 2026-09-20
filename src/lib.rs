@@ -52,3 +52,9 @@ pub use engine::analysis::{AnalysisContext, AnalysisError};
 pub use evidence::analysis::{
     AnalysisDescriptor, AnalysisOrigin, AnalysisProvenance, AnalysisResult, Instruction,
 };
+
+pub use evidence::discovery::{
+    DiscoveryBasis, DiscoveryDescriptor, DiscoveryGap, DiscoveryGapKind, DiscoveryRun,
+    ForeignRegistrySubject, RegistryCandidate, RegistryDiscoveryResult, RegistryRelationship,
+    RegistrySubject, SchedulingWitness,
+};

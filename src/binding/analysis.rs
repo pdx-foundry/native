@@ -6,12 +6,13 @@ use crate::{AnalysisError, UnavailableReason, qualification::analysis::AnalysisI
 pub(crate) type Decoder =
     fn(&[u8], u64) -> Result<Vec<evidence::analysis::Instruction>, evidence::analysis::DecodeError>;
 
-/// All data and behavior selected by composition for the one implemented analysis method.
+/// Bound static methods share one executable integrity state and independent admission.
 #[derive(Debug)]
 pub(crate) struct BoundAnalysis {
     pub inputs: AnalysisInputs,
     pub control: DecodeControl,
     pub decoder: Decoder,
+    pub discovery: Option<BoundDiscovery>,
     installation: Installation,
     invalidated: Mutex<Option<UnavailableReason>>,
 }
@@ -34,12 +35,13 @@ impl BoundAnalysis {
             inputs,
             control,
             decoder,
+            discovery: None,
             installation,
             invalidated: Mutex::new(None),
         }
     }
 
-    pub(crate) fn read(&self) -> Result<Vec<u8>, AnalysisError> {
+    pub(crate) fn executable(&self) -> Result<Vec<u8>, AnalysisError> {
         let mut invalidated = self
             .invalidated
             .lock()
@@ -65,6 +67,11 @@ impl BoundAnalysis {
                 });
             }
         };
+        Ok(bytes)
+    }
+
+    pub(crate) fn read(&self) -> Result<Vec<u8>, AnalysisError> {
+        let bytes = self.executable()?;
         let code = binary::code_range(&bytes, self.control.address, self.control.length)?;
         if binary::hash(&code) != self.control.code.sha256
             || code.len() as u64 != self.control.code.bytes
@@ -77,3 +84,23 @@ impl BoundAnalysis {
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Debug)]
+pub(crate) struct BoundDiscovery {
+    pub inputs: AnalysisInputs,
+    pub layout: evidence::discovery::SchedulerLayout,
+}
+impl BoundAnalysis {
+    pub(crate) fn discovery_input(
+        &self,
+    ) -> Result<evidence::discovery::StaticInput, AnalysisError> {
+        let bytes = self.executable()?;
+        let discovery = self
+            .discovery
+            .as_ref()
+            .ok_or_else(|| AnalysisError::Unavailable {
+                reasons: vec![UnavailableReason::ImplementationUnavailable],
+            })?;
+        binary::discovery::read(&bytes, &discovery.layout)
+    }
+}

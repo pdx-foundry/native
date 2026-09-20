@@ -16,6 +16,7 @@ maintainer-tools = []
 [dependencies]
 tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
 evidence = { package = "pdx-native-evidence", path = "crates/native-evidence", version = "0.1.0" }
+cpp_demangle = "=0.5.1"
 object = { version = "=0.37.3", default-features = false, features = ["read", "std"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"

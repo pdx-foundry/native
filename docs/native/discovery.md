@@ -41,3 +41,10 @@ SDK-488 accepted the bounded engine-produced inventory: 1,096 triggers, 1,074 ef
 Modifier categories are intended-use tags, not demonstrated application contexts. Real object application and propagation through containers remain unqualified. The native documentation facility supplies observations; Atlas decides which rule claims the evidence supports.
 
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
+
+## Implemented registry discovery
+
+SDK-528 ports bounded template discovery, static scheduler reconstruction and historical ownership
+replay into Rust. See [the public operation and replay contract](../design/registry-discovery.md).
+The implementation and its tests govern this port; the retained SDK-489 capture remains historical.
+No fresh game run or complete registry inventory is implied.

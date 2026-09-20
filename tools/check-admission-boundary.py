@@ -113,6 +113,8 @@ def main():
         cargo(consumer, ["check"], "private fields")
         main_rs.write_text("fn main() { let _ = pdx_native::AnalysisContext {}; }\n")
         cargo(consumer, ["check"], "private fields")
+        main_rs.write_text("fn main() { let _ = pdx_native::RegistrySubject {}; }\n")
+        cargo(consumer, ["check"], "private fields")
         main_rs.write_text("fn main() { let _ = pdx_native::Game {}; }\n")
         cargo(consumer, ["check"], "private fields")
         main_rs.write_text("fn main() { let _ = pdx_native::GameOptions { retention_directory: Default::default(), startup_seconds: 180, idle_seconds: 180, control: () }; }\n")

@@ -13,6 +13,10 @@ SDK-518 migration and qualification boundary. Reader and field discovery remain 
 or a debugger. [Static analysis and replay](docs/design/static-analysis.md) describes the public
 interface and its bounded qualification.
 
+`Native::analysis()?.discover_registries()` discovers template candidates and startup scheduling
+links without config seeds. [Registry discovery and replay](docs/design/registry-discovery.md)
+keeps static candidates, historical ownership and unresolved paths separate.
+
 The separate evidence library replays both historical and new registry artifacts without a game.
 Consumers supply their executable's supervisor role; Native distributes no runtime executable.
 
@@ -58,4 +62,4 @@ for limits and build checks.
 
 Maintainer-only [candidate observations](docs/design/candidate-observations.md) capture the retained
 registration/category window under an independent supervisor and emit replayable evidence.
-Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile. SDK-527 changes the shared implementation identity; live admission remains unavailable until a separate requalification. The SDK-518 acceptance is historical; the changed SDK-521 session implementation requires new acceptance. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.
+Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile. SDK-527 and SDK-528 change the shared implementation identity; live admission remains unavailable until a separate requalification. The SDK-518 acceptance is historical; the changed SDK-521 session implementation requires new acceptance. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.

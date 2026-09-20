@@ -113,3 +113,5 @@ fn select_arm64<'a, A: FatArch>(arches: &[A], bytes: &'a [u8]) -> Result<&'a [u8
     }
     selected.ok_or(OpenError::UnsupportedTarget)
 }
+
+pub(in crate::binding) mod discovery;

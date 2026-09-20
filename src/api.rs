@@ -18,6 +18,17 @@ pub struct ReplayRequest {
 pub struct Engine;
 
 impl Engine {
+    /// Recompute registry candidates and historical ownership from verified retained artifacts.
+    pub fn replay_registry_discovery(
+        &self,
+        request: ReplayRequest,
+    ) -> Result<crate::RegistryDiscoveryResult, ReplayError> {
+        evidence::discovery::replay(
+            &ArtifactStore::new(request.artifact_root),
+            &request.descriptor,
+        )
+    }
+
     /// Verify and decode retained instructions without opening an installation or launching a game.
     pub fn replay_analysis(
         &self,
@@ -111,6 +122,8 @@ pub enum CapabilityRequest {
     },
     /// The single qualified, game-free instruction decode control.
     StaticDecode,
+    /// Bounded static registry candidates and startup scheduling links.
+    RegistryDiscovery,
 }
 
 impl Default for CapabilityRequest {
@@ -128,6 +141,8 @@ pub enum CapabilityBounds {
     Registry(RegistryBounds),
     /// Exactly the recipe's bounded decode control, not arbitrary executable ranges.
     StaticDecode,
+    /// Bounded static registry candidates and startup scheduling links.
+    RegistryDiscovery,
 }
 
 /// Registry names declared by a method or covered by one acceptance record.

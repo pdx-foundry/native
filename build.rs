@@ -38,6 +38,7 @@ fn main() {
         "src/binding.rs",
         "src/binding/analysis.rs",
         "src/binding/binary.rs",
+        "src/binding/binary",
         "src/binding/installation.rs",
         "src/binding/compose.rs",
         "src/binding/machine.rs",

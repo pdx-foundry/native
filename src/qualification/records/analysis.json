@@ -21,6 +21,28 @@
           "sha256": "41ab037a570b7970f52dccbfa230219e1a50958076cf6e68f8b7da7f0b214cd5"
         }
       ]
+    },
+    {
+      "id": "sdk-528-m45-registry-discovery-6e2ee7e0cb19",
+      "composition": "6e2ee7e0cb19660bf62a1a7db8af985ba71d8ee383812f3a5ca7b766db1d1ccb",
+      "evidence": [
+        {
+          "path": "sdk-528-qualification-20260920-2/verified.json",
+          "bytes": 1794,
+          "sha256": "b6d00e2bf4b553f35c16804c09d2bc19249637eb49d336f23dbad738f5a1afa9"
+        }
+      ]
+    },
+    {
+      "id": "sdk-527-m45-static-decode-v1-36ec7a78a7f3",
+      "composition": "36ec7a78a7f31c851f00d068ca765d0ab6eb6ffce0c94dbaa89b22a2041f95c8",
+      "evidence": [
+        {
+          "path": "sdk-528-decode-requalification-20260920/qualified.json",
+          "bytes": 1638,
+          "sha256": "9c890366d9a1dfb7f2ba3ad6432bf21a7e77e5f5b3632e06b597d67ef600a72f"
+        }
+      ]
     }
   ],
   "withdrawn": []

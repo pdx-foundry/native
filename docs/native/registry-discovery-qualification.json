@@ -1,0 +1,42 @@
+{
+  "candidates": 164,
+  "composition": "6e2ee7e0cb19660bf62a1a7db8af985ba71d8ee383812f3a5ca7b766db1d1ccb",
+  "descriptor": {
+    "bytes": 778,
+    "path": "descriptor.json",
+    "sha256": "515602c6343670e02331ed56783d7111f67213546ef9e0f25b9fa3a707463fd6"
+  },
+  "game_launches": 0,
+  "implementation": "9a13286fcd8c0fc7591da2163878b6e4136121f0a21ec688ca84f203bdcf0a85",
+  "outside_template": 35,
+  "scheduling": 198,
+  "unknown_instructions": [
+    [
+      4301169904,
+      "unknown call; volatile values discarded and helper effects unresolved"
+    ]
+  ],
+  "status": "verified-static-discovery-and-historical-replay",
+  "controls": {
+    "path": "sdk-528-qualification-20260920-2/rust-controls.json",
+    "bytes": 1759,
+    "sha256": "697c98b59956d019ef23f0f1a48f93ea9413260e85590e2528d20d8b92ca7210"
+  },
+  "historical_descriptor": {
+    "path": "sdk-528-qualification-20260920-2/historical-descriptor.json",
+    "bytes": 2325,
+    "sha256": "e0828133613a3619eb1667c10d98d5d0e2f65e5c320deb45766dfef6332a165e"
+  },
+  "historical_result": {
+    "path": "sdk-528-qualification-20260920-2/historical-result.json",
+    "bytes": 631961,
+    "sha256": "e0b180e8edde367e5fc2d63cd8a92230bf6ebbe65a9067bf8dd759d4ce77dad5"
+  },
+  "basis": "Exact executable-derived candidates and scheduler slots match SDK-489; 41 retained controls and historical root-owner joins pass in Rust.",
+  "limits": [
+    "164 candidates and 198 scheduling rows are not a complete registry inventory.",
+    "162 observed candidates and six economic-plan roots are historical startup evidence, not fresh live ownership.",
+    "No game launch, new custom/nested/late discovery, item enumeration or field schemas.",
+    "Portable synthetic tests run on all three CI hosts; the private M45 executable is checked locally."
+  ]
+}
