@@ -7,7 +7,8 @@ use std::{
 use super::binary::hash;
 use crate::{OpenError, UnavailableReason};
 
-use crate::qualification::ContentIdentity;
+/// SHA-256 of each content file, by its path relative to the installation root.
+pub(crate) type ContentIdentity = BTreeMap<String, String>;
 
 #[derive(Debug, Clone)]
 pub(super) struct Installation {
@@ -188,6 +189,10 @@ fn collect_content(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), Una
 }
 
 impl Installation {
+    /// SHA-256 of the executable file as it was at `open`.
+    pub(super) fn executable_hash(&self) -> &str {
+        &self.executable_hash
+    }
     pub(super) fn locator(&self) -> &Path {
         &self.locator
     }

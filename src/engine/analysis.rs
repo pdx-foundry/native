@@ -16,10 +16,6 @@ pub enum AnalysisError {
     },
     /// The selected range is ambiguous, unmapped, truncated, or differs from the control.
     InvalidRange,
-    /// The discovery result or subject was not issued by this analysis context.
-    ForeignSubject,
-    /// The decoder could not account for every input byte.
-    Decode(String),
 }
 
 impl std::fmt::Display for AnalysisError {

@@ -1,19 +1,34 @@
+//! The thread that talks to the supervisor process for one session.
+//!
+//! It sends the handshake and the request, passes the caller's controls on, and publishes what
+//! the supervisor replies. A failure of the connection is an `Error::Supervisor`: it never says
+//! that the game is gone.
 use super::*;
-use crate::protocol::{self, Reply};
+use crate::protocol::{self, Reply, session::Control};
 use std::{
     process::{Child, Stdio},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
+/// The supervisor's own budgets, which bound how long the driver waits for a reply.
+pub(super) struct Timing {
+    pub startup_seconds: u64,
+    pub idle_seconds: u64,
+}
+
+/// Time that the supervisor may need, beyond its budget, to clean up and report.
+const CLEANUP_SECONDS: u64 = 90;
+
 pub(super) fn run(
-    context: crate::Native,
-    hosting: Hosting,
-    fault: Option<(String, operation::ObservationControl)>,
+    supervisor: Command,
+    request: SessionRequest,
+    timing: Timing,
     commands: mpsc::Receiver<DriverCommand>,
     stop: Arc<AtomicU8>,
     state: watch::Sender<State>,
 ) {
-    let result = connect(context, hosting, fault, commands, stop, &state);
+    let result = connect(supervisor, request, timing, commands, stop, &state)
+        .map_err(|error| Error::Supervisor(error.to_string()));
     state.send_modify(|state| state.finished = Some(result));
 }
 
@@ -30,35 +45,23 @@ impl Drop for SupervisorChild {
 }
 
 fn connect(
-    context: crate::Native,
-    hosting: Hosting,
-    fault: Option<(String, operation::ObservationControl)>,
+    mut supervisor: Command,
+    request: SessionRequest,
+    timing: Timing,
     commands: mpsc::Receiver<DriverCommand>,
     stop: Arc<AtomicU8>,
     state: &watch::Sender<State>,
-) -> Result<GameReport, GameError> {
-    let id = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| GameError::InvalidOptions(error.to_string()))?
-        .as_nanos();
-    let output = hosting
-        .options
-        .retention_directory
-        .join(format!("game-{}-{id}", std::process::id()));
-    let plan = context.prepare_session(output.clone(), &hosting.options, fault)?;
+) -> Result<Finished, crate::supervisor::SupervisorError> {
+    use crate::supervisor::SupervisorError;
     if matches!(commands.try_recv(), Err(mpsc::TryRecvError::Disconnected)) {
-        return Err(GameError::Supervisor(
-            "Startup cancelled before allocation".into(),
+        return Err(SupervisorError(
+            "Startup cancelled before the supervisor started".into(),
         ));
     }
-    let mut child = hosting
-        .command
-        .lock()
-        .map_err(|_| GameError::Supervisor("Supervisor command lock poisoned".into()))?
+    let mut child = supervisor
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|error| GameError::Supervisor(error.to_string()))?;
+        .spawn()?;
     let mut input = child.stdout.take().expect("piped output");
     let mut output_pipe = Some(child.stdin.take().expect("piped control"));
     let mut owner = SupervisorChild(Some(child));
@@ -78,17 +81,19 @@ fn connect(
     let handshake = replies.recv_timeout(Duration::from_secs(15));
     if !matches!(handshake, Ok(Ok(Reply::Ready))) {
         drop(output_pipe.take());
-        // No plan was transmitted; this helper cannot own a game.
+        // No request was sent, so this supervisor cannot own a game.
         let child = owner.0.as_mut().unwrap();
         let _ = child.kill();
         let _ = child.wait();
         owner.0.take();
-        return Err(GameError::Supervisor(
-            "Supervisor handshake failed or timed out".into(),
-        ));
+        return Err(SupervisorError(match handshake {
+            Ok(Ok(Reply::Rejected(reason))) => reason,
+            _ => "Supervisor handshake failed or timed out".into(),
+        }));
     }
-    protocol::write(output_pipe.as_mut().unwrap(), &plan.request)?;
-    let mut deadline = Instant::now() + Duration::from_secs(hosting.options.startup_seconds + 90);
+    protocol::write(output_pipe.as_mut().unwrap(), &request)?;
+    let mut deadline =
+        Instant::now() + Duration::from_secs(timing.startup_seconds + CLEANUP_SECONDS);
     let mut pending = BTreeMap::new();
     let mut sequence = 0_u64;
     let mut ending = false;
@@ -96,17 +101,17 @@ fn connect(
         if !ending && stop.load(Ordering::SeqCst) != 0 {
             ending = true;
             let control = if stop.load(Ordering::SeqCst) == 2 {
-                operation::Control::Cancel
+                Control::Cancel
             } else {
-                operation::Control::Close
+                Control::Close
             };
             protocol::write(
                 output_pipe
                     .as_mut()
-                    .ok_or_else(|| GameError::Supervisor("Control closed".into()))?,
+                    .ok_or_else(|| SupervisorError("Control closed".into()))?,
                 &control,
             )?;
-            deadline = Instant::now() + Duration::from_secs(90);
+            deadline = Instant::now() + Duration::from_secs(CLEANUP_SECONDS);
         }
         match commands.try_recv() {
             Ok(DriverCommand::Read { name, reply }) if !ending && pending.len() < 16 => {
@@ -115,8 +120,8 @@ fn connect(
                 protocol::write(
                     output_pipe
                         .as_mut()
-                        .ok_or_else(|| GameError::Supervisor("Control closed".into()))?,
-                    &operation::Control::ReadRegistry {
+                        .ok_or_else(|| SupervisorError("Control closed".into()))?,
+                    &Control::ReadRegistry {
                         name,
                         request: sequence,
                     },
@@ -124,21 +129,21 @@ fn connect(
             }
             Ok(DriverCommand::Read { reply, .. }) => {
                 let _ = reply.send(Err(if ending {
-                    RegistryError::Closed
+                    Error::Closed
                 } else {
-                    RegistryError::Supervisor("Too many pending registry reads".into())
+                    Error::Supervisor("Too many pending registry reads".into())
                 }));
             }
             Err(mpsc::TryRecvError::Empty) => {}
             Err(mpsc::TryRecvError::Disconnected) => {
                 if output_pipe.take().is_some() {
                     ending = true;
-                    deadline = Instant::now() + Duration::from_secs(90);
+                    deadline = Instant::now() + Duration::from_secs(CLEANUP_SECONDS);
                 }
             }
         }
         if Instant::now() >= deadline {
-            return Err(GameError::Supervisor(
+            return Err(SupervisorError(
                 "Supervisor response deadline elapsed; disposal remains unconfirmed".into(),
             ));
         }
@@ -146,96 +151,59 @@ fn connect(
             Ok(reply) => reply?,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                return Err(GameError::Supervisor(
+                return Err(SupervisorError(
                     "Supervisor channel closed without a final report".into(),
                 ));
             }
         };
         match reply {
-            Reply::Started { .. } => {}
             Reply::Paused {
                 readiness,
-                output: retained,
                 registries,
             } => {
-                if retained != output || state.borrow().paused.is_some() {
-                    return Err(GameError::Supervisor("Unexpected session pause".into()));
-                }
-                let replay = replay_requests(&output, &registries)?;
-                let mut snapshots = replay_results(&replay);
-                for name in context.registry_names() {
-                    snapshots.entry(name).or_insert_with(|| {
-                        Err("Startup evidence retention failed for this registry".into())
-                    });
+                if state.borrow().paused.is_some() {
+                    return Err(SupervisorError("Unexpected second pause".into()));
                 }
                 state.send_modify(|state| {
                     state.paused = Some(Paused {
                         readiness,
-                        registries: snapshots,
-                        replay,
+                        registries,
                     })
                 });
                 if !ending {
                     deadline =
-                        Instant::now() + Duration::from_secs(hosting.options.idle_seconds + 90);
+                        Instant::now() + Duration::from_secs(timing.idle_seconds + CLEANUP_SECONDS);
                 }
             }
             Reply::RegistryRead { request } => {
                 let Some(reply) = pending.remove(&request) else {
-                    return Err(GameError::Supervisor(
-                        "Unexpected read acknowledgement".into(),
-                    ));
+                    return Err(SupervisorError("Unexpected read acknowledgement".into()));
                 };
                 let _ = reply.send(Ok(()));
                 if !ending {
                     deadline =
-                        Instant::now() + Duration::from_secs(hosting.options.idle_seconds + 90);
+                        Instant::now() + Duration::from_secs(timing.idle_seconds + CLEANUP_SECONDS);
                 }
             }
             Reply::Finished(report) => {
-                if report.origin != operation::ORIGIN
-                    || report.composition != context.identity().0
-                    || report.output != output
-                {
-                    return Err(GameError::Supervisor(
-                        "Session report identity mismatch".into(),
-                    ));
-                }
-                let replay = replay_requests(&output, &report.registries)?;
-                let mut registries = replay_results(&replay);
-                for name in context.registry_names() {
-                    registries.entry(name).or_insert_with(|| {
-                        Err("Final evidence retention failed for this registry".into())
-                    });
-                }
-                if let Some(paused) = &state.borrow().paused {
-                    for name in paused.registries.keys() {
-                        registries.entry(name.clone()).or_insert_with(|| Err("Final evidence retention failed; startup evidence remains separately available".into()));
-                    }
-                }
-                let mut result = GameReport {
-                    context: context.identity(),
-                    attempt: report.attempt,
-                    readiness: state
-                        .borrow()
-                        .paused
-                        .as_ref()
-                        .map(|paused| paused.readiness),
+                let mut finished = Finished {
                     outcome: report.outcome,
                     disposal: report.disposal,
-                    reservation_resolved: report.reservation_resolved,
-                    registries,
-                    replay,
-                    retained: output,
                     diagnostics: report.diagnostics,
                 };
+                if !report.reservation_resolved {
+                    finished
+                        .diagnostics
+                        .push("The host reservation is not resolved".into());
+                }
                 drop(output_pipe.take());
+                // Give the supervisor a moment to exit, so that the caller leaves no child.
                 let until = Instant::now() + Duration::from_secs(2);
                 loop {
                     match owner.0.as_mut().unwrap().try_wait() {
                         Ok(Some(status)) => {
                             if !status.success() {
-                                result
+                                finished
                                     .diagnostics
                                     .push(format!("Supervisor exit: {status}"));
                             }
@@ -246,17 +214,17 @@ fn connect(
                             std::thread::sleep(Duration::from_millis(10))
                         }
                         other => {
-                            result
+                            finished
                                 .diagnostics
                                 .push(format!("Supervisor exit not yet confirmed: {other:?}"));
                             break;
                         }
                     }
                 }
-                return Ok(result);
+                return Ok(finished);
             }
-            Reply::Rejected(reason) => return Err(GameError::Supervisor(reason)),
-            Reply::Ready => return Err(GameError::Supervisor("Repeated handshake".into())),
+            Reply::Rejected(reason) => return Err(SupervisorError(reason)),
+            Reply::Ready => return Err(SupervisorError("Repeated handshake".into())),
         }
     }
 }

@@ -1,15 +1,8 @@
+//! Recipes: which binding groups, live strategy and static layout make up one build's
+//! operations. A recipe is host-neutral data.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::binding) enum BindingGroupId {
-    Registration,
-    #[cfg(test)]
-    SyntheticRegistration,
-    CategoryReader,
-    Registries,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(in crate::binding) enum MethodId {
-    TraditionRegistryKeys,
+    M45TraditionRegistries,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -18,30 +11,23 @@ pub(in crate::binding) enum StrategyId {
 }
 
 pub(in crate::binding) struct Recipe {
-    pub revision: &'static str,
     pub groups: &'static [BindingGroupId],
-    pub method: MethodId,
     pub strategy: StrategyId,
+    /// SHA-256 of each installed content file that the private game profile pins, as JSON.
     pub content: &'static str,
     pub discovery: &'static DiscoveryRecipe,
 }
 
-pub(super) const M45_EARLY_READS: Recipe = Recipe {
-    revision: "m45-tradition-registries/candidate-v1",
-    groups: &[
-        BindingGroupId::Registration,
-        BindingGroupId::CategoryReader,
-        BindingGroupId::Registries,
-    ],
-    method: MethodId::TraditionRegistryKeys,
+pub(super) const M45_OBSERVE: Recipe = Recipe {
+    groups: &[BindingGroupId::M45TraditionRegistries],
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     content: include_str!("m45-observation-content.json"),
     discovery: &M45_DISCOVERY,
 };
 
-/// SDK-489 literal scheduling initialization, ending before scheduling begins.
+/// The literal initialization of the startup scheduling table (SDK-489). It ends before
+/// scheduling begins.
 pub(in crate::binding) struct DiscoveryRecipe {
-    pub revision: &'static str,
     pub start: u64,
     pub end: u64,
     pub offset: u64,
@@ -49,7 +35,6 @@ pub(in crate::binding) struct DiscoveryRecipe {
     pub count: usize,
 }
 const M45_DISCOVERY: DiscoveryRecipe = DiscoveryRecipe {
-    revision: "m45-registry-discovery/v1",
     start: 0x1005ea4c8,
     end: 0x1005ed980,
     offset: 96,

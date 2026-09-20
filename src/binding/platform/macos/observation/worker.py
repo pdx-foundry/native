@@ -1,4 +1,9 @@
-"""Bounded ARM64 read-entry strategy; engine locations arrive from Native binding groups."""
+"""The debugger worker of one game session. It runs inside LLDB.
+
+It sets one hook at each registry's loader before the game runs. When a loader returns, it reads
+the registry's collection and writes what it sees to raw-trace.jsonl. When every observed
+registry has returned, it holds the game at that point until the supervisor releases it. Engine
+locations arrive in the request, from Native's binding groups."""
 import hashlib
 import json
 import os
@@ -9,21 +14,14 @@ import protocol
 
 ROOT = Path(__file__).resolve().parent.parent
 request = protocol.decode('request', (ROOT / 'worker-request.json').read_bytes())
-bindings = request['bindings']
 sequence = 0
-field_count = 0
-registration_count = 0
 finished = False
-active_file = None
-active_thread = None
-active_owner = None
 entry_thread = None
 breakpoints = {}
-control = request['control']
-registry = request['registry']
+control = 'normal'
+registry = None
 registry_owner = None
-session = request['session']
-session_owners = {}
+registry_owners = {}
 returned_registries = []
 session_active = set()
 safe_pause = False
@@ -47,7 +45,7 @@ def emit(kind, **fields):
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
-    if control == 'dropped-record' and ((kind == 'field-observed' and field_count == 1) or (kind == 'registry-entry' and fields['index'] == 0)):
+    if control == 'dropped-record' and kind == 'registry-entry' and fields['index'] == 0:
         return
     path = ROOT / 'raw-trace.jsonl'
     if path.stat().st_size + len(encoded) > protocol.MAX_TRACE:
@@ -83,14 +81,6 @@ def string(process, address):
     return value
 
 
-def location(process, reader):
-    lexer = uint(process, reader + bindings['reader-lexer-offset'])
-    file = uint(process, lexer + bindings['lexer-file-offset'])
-    storage = file + bindings['file-name-offset']
-    address = uint(process, storage) if uint(process, storage + bindings['string-storage-tag-offset'], 1) & 128 else storage
-    return dict(file=string(process, address), line=uint(process, file + bindings['file-line-offset'], 4))
-
-
 def hook_state():
     return {name: dict(enabled=bp.IsEnabled(), locations=bp.GetNumLocations(),
                        resolved=bp.GetNumResolvedLocations(), hits=bp.GetHitCount())
@@ -117,7 +107,7 @@ def registry_begin(frame):
     hook.SetScriptCallbackFunction('worker.callback')
     if hook.GetNumResolvedLocations() != 1:
         raise RuntimeError('registry return hook unresolved')
-    breakpoints['registry-return:' + registry['name'] if session else 'registry-return'] = hook
+    breakpoints['registry-return:' + registry['name']] = hook
     emit('registry-load-start', name=registry['name'], owner=hex(registry_owner), directory=directory, thread=thread)
     return False
 
@@ -137,9 +127,8 @@ def registry_snapshot(frame):
     directory = cstring(owner + registry['directory_offset'])
     if directory != registry['directory']:
         raise RuntimeError('registry receiver directory mismatch: ' + directory)
-    if session:
-        emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
-        returned_registries.append(registry['name'])
+    emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
+    returned_registries.append(registry['name'])
     if control == 'access-failure':
         uint(process, 0)
         raise RuntimeError('access failure unexpectedly read zero')
@@ -171,17 +160,17 @@ def registry_snapshot(frame):
     return True
 
 
-def session_callback(frame, name):
+def registry_callback(frame, name):
     global registry, registry_owner, control, finished, safe_pause
     is_return = name.startswith('registry-return:')
     selected = name.split(':', 1)[1]
-    registry = session['registries'][selected]
-    registry_owner = session_owners.get(selected)
-    control = request['control'] if selected == session['control_registry'] else 'normal'
+    registry = request['registries'][selected]
+    registry_owner = registry_owners.get(selected)
+    control = request['control'] if selected == request['control_registry'] else 'normal'
     try:
         if not is_return:
             result = registry_begin(frame)
-            session_owners[selected] = registry_owner
+            registry_owners[selected] = registry_owner
             breakpoints[name].SetEnabled(False)
             return result
         breakpoints[name].SetEnabled(False)
@@ -201,75 +190,14 @@ def session_callback(frame, name):
 
 
 def callback(frame, loc, _):
-    global finished, active_file, active_thread, active_owner, registration_count, field_count
+    global finished
     try:
-        process = frame.GetThread().GetProcess()
-        thread = frame.GetThread().GetThreadID()
-        name = next((key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID()), 'file-return')
-        if session and (name.startswith('registry:') or name.startswith('registry-return:')):
-            return session_callback(frame, name)
-        if name == 'registry':
-            return registry_begin(frame)
-        if name == 'registry-return':
-            return registry_snapshot(frame)
-        if name == 'registration':
-            if thread != entry_thread:
-                raise RuntimeError('registration thread differs from loader-entry witness')
-            registration_count += 1
-            if registration_count == 1:
-                emit('phase-reached', phase='effect-registration', stack=[f.GetFunctionName() or '' for f in frame.GetThread()][:8], thread=thread)
-            emit('registration-observed', ordinal=registration_count, engineToken=register(frame, request['machine']['registers']['registration-token']), thread=thread)
-            if registration_count == 3:
-                breakpoints[name].SetEnabled(False)
-                emit('registration-window-complete', observed=3, thread=thread)
-                if control == 'worker-loss':
-                    emit('worker-loss-ready')
-                    (ROOT / 'worker-loss-ready').touch(exist_ok=False)
-                    return True
-        elif name == 'load-file':
-            file = string(process, register(frame, request['machine']['registers']['file']))
-            if file != request['fixture']:
-                return False
-            if active_file is not None or thread != entry_thread:
-                raise RuntimeError('ambiguous fixture entry or thread')
-            active_file, active_thread = file, thread
-            emit('phase-reached', phase='fixture-file-parse', file=file, thread=thread)
-            if control == 'access-failure':
-                uint(process, 0)
-                raise RuntimeError('access failure control unexpectedly read address zero')
-            return_hook = process.GetTarget().BreakpointCreateByAddress(register(frame, request['machine']['registers']['return']))
-            return_hook.SetThreadID(thread)
-            return_hook.SetOneShot(True)
-            return_hook.SetScriptCallbackFunction('worker.callback')
-        elif name == 'field':
-            where = location(process, register(frame, request['machine']['registers']['reader']))
-            if where['file'] != request['fixture']:
-                return False
-            if active_file != where['file'] or thread != active_thread:
-                raise RuntimeError('field lacks matching loader/thread witness')
-            owner = hex(register(frame, request['machine']['registers']['owner']))
-            if owner == '0x0' or active_owner not in (None, owner):
-                raise RuntimeError('field owner changed or is null')
-            active_owner = owner
-            token = register(frame, request['machine']['registers']['field-token'])
-            fields = {bindings['tree-template-token']: 'tree_template', bindings['traditions-token']: 'traditions'}
-            if token not in fields or field_count >= 2:
-                raise RuntimeError('field outside bounded category window')
-            field_count += 1
-            emit('field-observed', **where, field=fields[token], owner=owner, ordinal=field_count, thread=thread)
-        else:
-            if thread != active_thread or active_file is None:
-                raise RuntimeError('loader return lacks matching entry')
-            emit('phase-complete', phase='fixture-file-parse', file=active_file, producerFieldCount=field_count, thread=thread)
-            if control != 'missing-terminal':
-                emit('stream-end', producerLastSequence=sequence + 1, producerFieldCount=field_count, registrations=registration_count, thread=thread)
-            finished = True
-            return True
+        name = next(key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID())
+        return registry_callback(frame, name)
     except Exception:
         emit('callback-error', error=traceback.format_exc())
         finished = True
         return True
-    return False
 
 
 def run(debugger):
@@ -285,18 +213,14 @@ def run(debugger):
         python=sys.version, lldb=lldb.SBDebugger.GetVersionString(), module=lldb.__file__))
     debugger.SetAsync(True)
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
-    hooks = [('registry', registry['load_entry'])] if registry else [(name, bindings[role]) for name, role in [('registration', 'registration-entry'), ('load-file', 'category-load-entry'), ('field', 'category-field-read-entry')]]
-    if session:
-        hooks = [('registry:' + name, value['load_entry']) for name, value in session['registries'].items()]
-        for name, reason in session['unavailable'].items():
-            emit('registry-unavailable', name=name, reason=reason)
-    controlled_hook = ('registry:' + session['control_registry']) if session and session['control_registry'] else ('registry' if registry else 'field')
+    hooks = [('registry:' + name, value['load_entry']) for name, value in request['registries'].items()]
+    controlled_hook = 'registry:' + request['control_registry'] if request['control_registry'] else None
     for name, address in hooks:
-        if name == controlled_hook and control == 'missing-hook':
+        if name == controlled_hook and request['control'] == 'missing-hook':
             continue
         hook = target.BreakpointCreateBySBAddress(target.ResolveFileAddress(address))
         hook.SetScriptCallbackFunction('worker.callback')
-        if name == controlled_hook and control == 'late-hook':
+        if name == controlled_hook and request['control'] == 'late-hook':
             hook.SetEnabled(False)
         breakpoints[name] = hook
     emit('hooks-requested')
@@ -313,17 +237,13 @@ def run(debugger):
     if process.GetState() != lldb.eStateStopped or entry_thread is None or not target.GetTriple().startswith(request['machine']['architecture'] + '-'):
         emit('early-activation-unavailable', reason='ARM64 loader entry not established')
         return
-    if session:
-        for name, _ in hooks:
-            hook = state.get(name)
-            if hook and hook['enabled'] and hook['locations'] == 1 and hook['resolved'] == 1 and hook['hits'] == 0:
-                session_active.add(name.split(':', 1)[1])
-            else:
-                emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')
-        if not session_active:
-            return
-    elif set(state) != {name for name, _ in hooks} or not all(h['enabled'] and h['locations'] == 1 and h['resolved'] == 1 and h['hits'] == 0 for h in state.values()):
-        emit('capability-unavailable', reason='required hook missing or late before resume')
+    for name, _ in hooks:
+        hook = state.get(name)
+        if hook and hook['enabled'] and hook['locations'] == 1 and hook['resolved'] == 1 and hook['hits'] == 0:
+            session_active.add(name.split(':', 1)[1])
+        else:
+            emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')
+    if not session_active:
         return
     emit('hooks-active-before-resume', hooks=state)
     deadline = time.monotonic() + 15
@@ -344,7 +264,7 @@ def run(debugger):
             emit('native-exception', reason='native exception stopped the bounded observation')
             break
         time.sleep(.02)
-    if session and safe_pause and process.GetState() == lldb.eStateStopped:
+    if safe_pause and process.GetState() == lldb.eStateStopped:
         emit('session-paused', returned=returned_registries, thread=entry_thread)
         paused_thread = process.GetThreadByID(entry_thread)
         paused_pc = paused_thread.GetFrameAtIndex(0).GetPC()

@@ -1,106 +1,22 @@
+//! Compiles the presentation guard and stamps the build.
+//!
+//! The stamp lets a caller and its supervisor process check that they link the same Native
+//! build. It is the time at which Cargo ran this script. Cargo runs the script again when a file
+//! in `src`, the manifest, or this script changes, so two different states of the source do not
+//! share a stamp. Two builds of the same source, for example with different profiles, also get
+//! different stamps; the check then refuses them, which is the safe direction.
 fn main() {
-    use sha2::{Digest, Sha256};
-    fn sources(path: &std::path::Path, hash: &mut Sha256) {
-        // Python cache bytes are host-generated artifacts, not package source identities.
-        if path
-            .file_name()
-            .is_some_and(|name| name == "__pycache__" || name == ".DS_Store")
-        {
-            return;
-        }
-        println!("cargo:rerun-if-changed={}", path.display());
-        if path.is_dir() {
-            let mut entries: Vec<_> = std::fs::read_dir(path)
-                .unwrap()
-                .map(|e| e.unwrap().path())
-                .collect();
-            entries.sort();
-            for entry in entries {
-                sources(&entry, hash);
-            }
-        } else {
-            println!("cargo:rerun-if-changed={}", path.display());
-            let bytes = std::fs::read(path).unwrap();
-            hash.update(path.to_string_lossy().replace('\\', "/").as_bytes());
-            hash.update((bytes.len() as u64).to_le_bytes());
-            hash.update(bytes);
-        }
+    for path in ["src", "Cargo.toml", "build.rs"] {
+        println!("cargo:rerun-if-changed={path}");
     }
-    let mut operation = Sha256::new();
-    for path in [
-        "src/api.rs",
-        "src/session.rs",
-        "src/registry.rs",
-        "src/game.rs",
-        "src/game",
-        "src/operation.rs",
-        "src/capture.rs",
-        "src/execution",
-        "src/protocol",
-        "src/protocol.rs",
-        "src/supervisor.rs",
-        "src/qualification/admission.rs",
-        "src/binding.rs",
-        "src/binding/compose.rs",
-        "src/binding/installation.rs",
-        "src/binding/platform.rs",
-        "crates/native-evidence/src",
-        "crates/native-evidence/Cargo.toml",
-        "Cargo.lock",
-        "Cargo.toml",
-        "build.rs",
-    ] {
-        sources(std::path::Path::new(path), &mut operation);
-    }
-    let compiler = std::process::Command::new(std::env::var_os("RUSTC").expect("Cargo rustc"))
-        .arg("-vV")
-        .output()
-        .expect("Rust compiler identity");
-    assert!(
-        compiler.status.success(),
-        "Rust compiler identity unavailable"
-    );
-    operation.update(&compiler.stdout);
-    for name in [
-        "TARGET",
-        "PROFILE",
-        "OPT_LEVEL",
-        "DEBUG",
-        "CARGO_CFG_PANIC",
-        "CARGO_ENCODED_RUSTFLAGS",
-    ] {
-        println!("cargo:rerun-if-env-changed={name}");
-        operation.update(name.as_bytes());
-        operation.update(std::env::var(name).unwrap_or_default().as_bytes());
-    }
-    let implementation = operation.finalize();
-    println!("cargo:rustc-env=PDX_NATIVE_OPERATION={implementation:x}");
-    println!(
-        "cargo:rustc-env=PDX_NATIVE_COMPILER={:x}",
-        Sha256::digest(&compiler.stdout)
-    );
-    println!(
-        "cargo:rustc-env=PDX_NATIVE_PROFILE={}",
-        std::env::var("PROFILE").unwrap()
-    );
-    let mut hash = Sha256::new();
-    hash.update(implementation);
-    for path in [
-        "src",
-        "crates/native-evidence/src",
-        "crates/native-evidence/Cargo.toml",
-        "Cargo.toml",
-        "Cargo.lock",
-        "build.rs",
-    ] {
-        sources(std::path::Path::new(path), &mut hash);
-    }
-    for name in ["TARGET", "PROFILE"] {
-        println!("cargo:rerun-if-env-changed={name}");
-        hash.update(name.as_bytes());
-        hash.update(std::env::var(name).unwrap_or_default().as_bytes());
-    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the clock is after 1970")
+        .as_nanos();
+    println!("cargo:rustc-env=PDX_NATIVE_BUILD_STAMP={stamp}");
+
     if std::env::var("TARGET").as_deref() == Ok("aarch64-apple-darwin") {
+        // A small library that the game loads, so that it shows no window and takes no focus.
         let source = "src/binding/platform/macos/observation/guard.m";
         let output =
             std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("guard.dylib");
@@ -122,8 +38,5 @@ fn main() {
             .status()
             .expect("Xcode clang is required for the observation guard");
         assert!(status.success(), "presentation guard compilation failed");
-        hash.update(std::fs::read(output).unwrap());
     }
-    println!("cargo:rustc-env=PDX_NATIVE_BUILD={:x}", hash.finalize());
-    println!("cargo:rerun-if-env-changed=PROFILE");
 }

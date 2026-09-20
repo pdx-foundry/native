@@ -11,17 +11,17 @@ mod unavailable;
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 use unavailable as host;
 
+/// The implementation of one live strategy on the compiled host.
 pub(super) struct StrategyResolution {
-    pub revision: &'static str,
+    /// Why this host cannot run the strategy, when it cannot.
     pub unavailable: Option<UnavailableReason>,
+    /// The files of the worker package, by file name.
     pub package: std::collections::BTreeMap<String, Vec<u8>>,
-    pub probe: fn() -> Result<String, crate::supervisor::SupervisorError>,
+    /// Check that the host's debugger tools can be found and started.
+    pub probe: fn() -> Result<(), crate::supervisor::SupervisorError>,
     pub prepare: fn(
         ObservationSetup<'_>,
-    ) -> Result<
-        (observation::Observer, crate::capture::Capture),
-        crate::supervisor::SupervisorError,
-    >,
+    ) -> Result<observation::Observer, crate::supervisor::SupervisorError>,
 }
 
 #[cfg_attr(
@@ -29,16 +29,13 @@ pub(super) struct StrategyResolution {
     allow(dead_code)
 )]
 pub(in crate::binding) struct ObservationSetup<'a> {
-    pub output: &'a std::path::Path,
+    pub work_directory: &'a std::path::Path,
     pub attempt: &'a str,
-    pub spec: &'a crate::operation::ObservationSpec,
     pub executable: &'a std::path::Path,
-    pub identity: serde_json::Value,
-    pub expected_tool: Option<&'a str>,
-    pub content: &'a crate::qualification::ContentIdentity,
-    pub registry: Option<&'a crate::protocol::observation::RegistryBinding>,
-    pub session: Option<crate::protocol::observation::SessionBindings>,
-    pub bindings: &'a std::collections::BTreeMap<String, u64>,
+    pub registries:
+        &'a std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
+    pub fault: Option<&'a crate::protocol::session::Fault>,
+    pub startup_seconds: u64,
     pub machine: &'a super::Machine,
     pub package: &'a std::collections::BTreeMap<String, Vec<u8>>,
 }

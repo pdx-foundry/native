@@ -12,60 +12,32 @@ extern crate self as pdx_native;
 mod answer;
 mod api;
 mod binding;
+mod engine;
 mod execution;
+mod game;
 mod protocol;
-mod qualification;
 mod recorded;
 mod session;
+mod work_directory;
 
 pub mod supervisor;
 
 pub use answer::{
-    Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,
-    ReaderKind, Registry, Source,
+    Answer, Basis, BuildId, Completeness, Disposal, Error, Field, Gap, GapKind, Operation, Reader,
+    ReaderId, ReaderKind, Registry, Source, Support,
 };
-pub use answer::{Disposal, Support};
 pub use api::OpenError;
+pub use engine::operations::registry_items::GameReadiness;
+pub use game::{Game, GameOptions};
 pub use session::Native;
 
-mod capture;
-mod operation;
-mod registry;
-
-pub use evidence::registry::GameReadiness;
-pub use operation::{OperationDisposal, OperationOutcome};
-mod game;
-pub use game::{Game, GameError, GameOptions, GameReport};
-
-mod engine;
-
-// Crate-internal names for the earlier types, until the work order removes them.
-#[allow(unused_imports)]
-pub(crate) use internals::legacy::*;
+pub(crate) use api::UnavailableReason;
+pub(crate) use engine::analysis::AnalysisError;
 
 /// Static method internals and the live fault controls, for Native's own integration tests.
 /// Not a consumer API.
 #[doc(hidden)]
 pub mod internals {
     pub use crate::engine::analysis::{decode, discovery, fields};
-    pub use crate::operation::ObservationControl;
-
-    /// The earlier capability, replay and result types. Native's own live harness and replay
-    /// tests still use them; the simplification work order removes them with the evidence package.
-    pub mod legacy {
-        pub use crate::api::{
-            Availability, CapabilityBounds, CapabilityReport, CapabilityRequest, ContextIdentity,
-            ContextOrigin, Engine, OpenRequest, Qualification, RegistryBounds, ReplayRequest,
-            UnavailableReason,
-        };
-        pub use crate::engine::analysis::AnalysisError;
-        pub use crate::game::{RegistryAvailability, RetentionOptions};
-        pub use crate::registry::RegistryError;
-        pub use evidence::registry::{RegistryEntry, RegistryProvenance, RegistryResult};
-        pub use evidence::{
-            Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, EvidenceReference,
-            Gap as ObservationGap, Observation, ObservationFact, ObservationResult, ReplayError,
-            ReplayResult, ResultOrigin, SubjectHandle,
-        };
-    }
+    pub use crate::protocol::session::ObservationControl;
 }

@@ -3,7 +3,7 @@
 use capstone::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{ArtifactReference, CaptureOrigin};
+use evidence::{ArtifactReference, CaptureOrigin};
 
 /// Exact algorithm used by the initial bounded decode control.
 pub const METHOD: &str = "static-decode-control/v1";

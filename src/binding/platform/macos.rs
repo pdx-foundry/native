@@ -4,7 +4,6 @@ use crate::binding::targets::StrategyId;
 pub(super) fn resolve(strategy: StrategyId) -> StrategyResolution {
     match strategy {
         StrategyId::MacSuspendedChildLoaderEntry => StrategyResolution {
-            revision: "mac-suspended-child-loader-entry/v3",
             unavailable: None,
             package: observation::package(),
             probe: observation::probe_observer,

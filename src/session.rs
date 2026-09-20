@@ -1,13 +1,11 @@
-use crate::{
-    CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin, OpenError, OpenRequest,
-    UnavailableReason, binding::Binding, qualification,
-};
+//! `Native`: one pinned installation, or one directory of recorded answers.
+use crate::{OpenError, UnavailableReason, binding::Binding};
 use std::sync::{Arc, Mutex, OnceLock};
 
 mod questions;
 
-/// A pinned installation. Static queries never launch a game or probe a debugger.
-/// Configure a consumer supervisor before starting an independently owned Game.
+/// A pinned installation. Static questions never start a game. `start_game` starts a game that
+/// an independent supervisor process owns.
 #[derive(Debug)]
 pub struct Native {
     /// `None` only for recorded answers.
@@ -16,8 +14,9 @@ pub struct Native {
     recorded: Option<Arc<std::path::PathBuf>>,
     /// Write every answer to this directory as it is returned.
     recorder: Option<Arc<std::path::PathBuf>>,
+    /// The first change of the executable or the pinned content that this `Native` saw. It
+    /// stays, even when the original bytes come back.
     invalidated: Arc<Mutex<Option<UnavailableReason>>>,
-    pub(crate) hosting: Option<crate::game::Hosting>,
     candidates: Arc<OnceLock<Result<Vec<crate::binding::NamedCandidate>, crate::AnalysisError>>>,
 }
 
@@ -26,9 +25,7 @@ impl Native {
     /// installation directory. No process starts. A build that is not in the target catalogue is
     /// refused; there is no nearest-version fallback.
     pub fn open(installation: impl Into<std::path::PathBuf>) -> Result<Self, OpenError> {
-        Ok(Self::from_binding(Binding::open(OpenRequest {
-            installation_hint: installation.into(),
-        })?))
+        Ok(Self::from_binding(Binding::open(&installation.into())?))
     }
     /// Read every answer from recorded files. No installation is opened and no process starts.
     ///
@@ -41,7 +38,6 @@ impl Native {
             recorded: Some(Arc::new(directory.into())),
             recorder: None,
             invalidated: Arc::new(Mutex::new(None)),
-            hosting: None,
             candidates: Arc::new(OnceLock::new()),
         }
     }
@@ -57,12 +53,11 @@ impl Native {
             recorded: None,
             recorder: None,
             invalidated: Arc::new(Mutex::new(None)),
-            hosting: None,
             candidates: Arc::new(OnceLock::new()),
         }
     }
-    /// The installation binding. Recorded answers have none; only the earlier hidden methods
-    /// reach this without a check, and they are never used on recorded answers.
+    /// The installation binding. Recorded answers have none; every public method answers from
+    /// the recorded files before it reaches this.
     pub(crate) fn bound(&self) -> &Arc<Binding> {
         self.binding
             .as_ref()
@@ -74,36 +69,13 @@ impl Native {
     pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
         self.recorder.as_deref().map(|path| path.as_path())
     }
-    pub(crate) fn registry_names(&self) -> Vec<String> {
-        self.bound().registry_names()
-    }
-    /// Content directory of each live registry, with its internal name.
+    /// Content directory of each registry that a game session observes, with its internal name.
     pub(crate) fn registry_directories(&self) -> std::collections::BTreeMap<String, String> {
         self.bound()
             .registry_names()
             .into_iter()
             .filter_map(|name| Some((self.bound().registry_directory(&name)?, name)))
             .collect()
-    }
-    pub(crate) fn detached_context(&self) -> Self {
-        Self {
-            binding: self.binding.clone(),
-            recorded: self.recorded.clone(),
-            recorder: self.recorder.clone(),
-            invalidated: self.invalidated.clone(),
-            hosting: None,
-            candidates: self.candidates.clone(),
-        }
-    }
-    #[doc(hidden)]
-    /// Opaque pinned composition identity. Equality does not establish current integrity.
-    pub fn identity(&self) -> ContextIdentity {
-        self.bound().identity()
-    }
-    #[doc(hidden)]
-    /// Installation input origin.
-    pub fn origin(&self) -> ContextOrigin {
-        self.bound().origin()
     }
     fn integrity(&self) -> Option<UnavailableReason> {
         let mut invalidated = self.invalidated.lock().expect("context integrity lock");
@@ -112,29 +84,10 @@ impl Native {
         }
         invalidated.clone()
     }
-    #[doc(hidden)]
-    /// Inspect one live operation. Admission may probe live prerequisites; it never launches
-    /// Stellaris. Static questions need no admission.
-    pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
-        qualification::evaluate(
-            &self.bound().current_inputs(),
-            request,
-            self.origin(),
-            self.integrity(),
-        )
-    }
-    /// The earlier configuration, with a retention directory that the caller supplies.
-    #[doc(hidden)]
-    pub fn with_supervisor(
-        mut self,
-        command: std::process::Command,
-        options: crate::game::RetentionOptions,
-    ) -> Result<Self, crate::GameError> {
-        // Recorded answers start no process, so the supervisor is not needed.
-        if self.recorded.is_none() {
-            self.hosting = Some(crate::game::Hosting::new(command, options)?);
-        }
-        Ok(self)
+    /// Every reason why a game session cannot start now. This may start the host's debugger
+    /// tools to check them; it never starts the game.
+    pub(crate) fn blocking_reasons(&self) -> Vec<UnavailableReason> {
+        self.bound().blocking_reasons(self.integrity())
     }
     /// Start a supervised game and wait until it is paused after its registries load. The game
     /// never loads a world. With recorded answers, no process starts and the options are ignored.
@@ -145,101 +98,57 @@ impl Native {
         &self,
         options: crate::GameOptions,
     ) -> Result<crate::Game, crate::Error> {
+        use crate::{Disposal, Error, Operation};
         if let Some(directory) = &self.recorded {
             return Ok(crate::Game::recorded(directory.clone()));
         }
+        let reasons = self.blocking_reasons();
+        if reasons.contains(&UnavailableReason::TargetChanged) {
+            return Err(Error::BuildChanged);
+        }
+        if !reasons.is_empty() {
+            return Err(Error::Unsupported {
+                operation: Operation::RegistryItems,
+                reason: format!("{reasons:?}"),
+            });
+        }
+        // The supervisor knows a registry by its internal name.
+        let directories = self.registry_directories();
+        let fault = match options.fault {
+            Some((directory, control)) => {
+                let registry = directories.get(&directory).cloned();
+                let registry = registry.ok_or(Error::UnknownRegistry { name: directory })?;
+                Some(crate::protocol::session::Fault { registry, control })
+            }
+            None => None,
+        };
         let id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_nanos());
         let work = std::env::temp_dir().join(format!("pdx-native-{}-{id}", std::process::id()));
-        std::fs::create_dir_all(&work).map_err(|error| crate::Error::Startup {
-            reason: format!("work directory: {error}"),
-            disposal: crate::Disposal::NotApplicable,
+        let request = crate::protocol::session::SessionRequest {
+            installation: self.bound().installation_location(),
+            build: self.bound().build().into(),
+            // The supervisor creates this directory; `work` holds nothing else.
+            work_directory: work.join("session"),
+            startup_seconds: options.startup_seconds,
+            idle_seconds: options.idle_seconds,
+            fault,
+        };
+        request.validate().map_err(|error| Error::Startup {
+            reason: error.to_string(),
+            disposal: Disposal::NotApplicable,
         })?;
-        let mut retention = crate::game::RetentionOptions::new(work.clone());
-        retention.startup_seconds = options.startup_seconds;
-        retention.idle_seconds = options.idle_seconds;
-        // The supervisor knows a registry by its internal name.
-        let fault = match options.fault {
-            Some((directory, control)) => {
-                let name = self.registry_directories().remove(&directory);
-                let name = name.ok_or(crate::Error::UnknownRegistry { name: directory })?;
-                Some((name, control))
-            }
-            None => None,
+        std::fs::create_dir_all(&work).map_err(|error| Error::Startup {
+            reason: format!("work directory: {error}"),
+            disposal: Disposal::NotApplicable,
+        })?;
+        let session = crate::game::Session {
+            directories,
+            build: self.build(),
+            recorder: self.recorder.clone(),
+            work,
         };
-        let hosting = crate::game::Hosting::new(options.supervisor, retention)?;
-        let mut game = crate::game::start(self.detached_context(), hosting, fault).await?;
-        game.work = Some(work);
-        Ok(game)
-    }
-    /// The earlier start, configured by `with_supervisor`.
-    #[doc(hidden)]
-    pub async fn start_game_with_report(&self) -> Result<crate::Game, crate::GameError> {
-        crate::game::start(
-            self.detached_context(),
-            self.hosting
-                .clone()
-                .ok_or(crate::GameError::NotConfigured)?,
-            None,
-        )
-        .await
-    }
-    pub(crate) fn prepare_session(
-        &self,
-        output: std::path::PathBuf,
-        options: &crate::game::RetentionOptions,
-        fault: Option<(String, crate::operation::ObservationControl)>,
-    ) -> Result<crate::operation::PreparedPlan, crate::GameError> {
-        let names = self.bound().registry_names();
-        let reports: Vec<_> = names
-            .iter()
-            .map(|name| {
-                (
-                    name.clone(),
-                    self.capability(&CapabilityRequest::Registry {
-                        registry: name.clone(),
-                    }),
-                )
-            })
-            .collect();
-        if !reports
-            .iter()
-            .any(|(_, report)| report.availability == crate::Availability::Available)
-        {
-            return Err(crate::GameError::Unavailable {
-                registries: reports
-                    .into_iter()
-                    .map(|(name, report)| (name, report.reasons))
-                    .collect(),
-            });
-        }
-        if let Some(reason) = self.integrity() {
-            return Err(crate::GameError::InputsChanged(reason));
-        }
-        let (control_registry, control) = match fault {
-            Some((name, control)) => (Some(name), control),
-            None => (None, crate::operation::ObservationControl::Normal),
-        };
-        let plan = crate::operation::PlanRequest {
-            request: crate::operation::AttemptRequest {
-                installation_hint: self.bound().installation_hint()?,
-                output,
-                hold_ms: 1,
-            },
-            composition: self.identity().0,
-            observation: Some(crate::operation::ObservationSpec {
-                registry: None,
-                fixture: String::new(),
-                deadline_seconds: options.startup_seconds,
-                control,
-                session: Some(crate::operation::SessionSpec {
-                    idle_seconds: options.idle_seconds,
-                    control_registry,
-                }),
-            }),
-        };
-        plan.validate()?;
-        Ok(crate::operation::PreparedPlan { request: plan })
+        crate::game::start(options.supervisor, request, session).await
     }
 }

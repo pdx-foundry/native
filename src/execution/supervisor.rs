@@ -1,12 +1,26 @@
-use super::instances::Reservation;
+//! The supervisor process: it owns the game, the debugger worker and the host reservation of one
+//! session, and it reduces the worker's event stream to answers when the game is paused.
+//!
+//! The order of a session: handshake, request, admission, reservation, private profile, worker
+//! package, suspended game, worker, pause, answers, controls, then cleanup. Cleanup always runs:
+//! stop the worker, reap the game, commit the disposal to the reservation journal, and report.
+use super::{instances::Reservation, owner_events::OwnerEvents};
 use crate::{
+    answer::Disposal,
     binding::{self, ExecutionPlan},
-    operation::{self, AttemptReport, Control, OperationDisposal, OperationOutcome, PlanRequest},
-    protocol::{self, Hello, Reply},
+    engine::operations::{
+        event_stream::{self, OwnerEvent},
+        registry_items::{self, Observed},
+    },
+    protocol::{
+        self, Hello, Reply,
+        session::{Control, SessionOutcome, SessionReport, SessionRequest},
+    },
     supervisor::SupervisorError,
+    work_directory as files,
 };
 use std::{
-    fs::{self, File, OpenOptions},
+    fs,
     io::{Read, Write},
     path::Path,
     sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender},
@@ -16,12 +30,11 @@ use std::{
 
 const HANDSHAKE_BUDGET: Duration = Duration::from_secs(15);
 const SETUP_BUDGET: Duration = Duration::from_secs(30);
-const HOLD_LIMIT: Duration = Duration::from_secs(30);
 const DISPOSAL_BUDGET: Duration = Duration::from_secs(10);
 
 enum Input {
     Hello(Hello),
-    Plan(PlanRequest),
+    Request(SessionRequest),
     Control(Control),
     Lost,
 }
@@ -37,8 +50,8 @@ fn reader(mut input: impl Read + Send + 'static) -> Receiver<Input> {
             let hello = protocol::read(&mut input)?;
             send.send(Input::Hello(hello))
                 .map_err(|e| SupervisorError(e.to_string()))?;
-            let plan = protocol::read(&mut input)?;
-            send.send(Input::Plan(plan))
+            let request = protocol::read(&mut input)?;
+            send.send(Input::Request(request))
                 .map_err(|e| SupervisorError(e.to_string()))?;
             loop {
                 let control: Control = protocol::read(&mut input)?;
@@ -89,7 +102,7 @@ impl Reporter {
             .recv_timeout(Duration::from_secs(1))
             .map_err(|_| {
                 SupervisorError(
-                    "Controller did not receive final report; inspect retained report".into(),
+                    "Controller did not receive the final report; see report.json".into(),
                 )
             })?
     }
@@ -101,53 +114,52 @@ pub(crate) fn serve(
 ) -> Result<(), SupervisorError> {
     let input = reader(input);
     let output = Reporter::new(output);
-    let result = handshake(&input, &output).and_then(|plan| run(plan, &input, &output));
+    let result = handshake(&input, &output).and_then(|request| run(request, &input, &output));
     match result {
         Ok(report) => output.send(Reply::Finished(Box::new(report)))?,
         Err(error) => output.send(Reply::Rejected(error.to_string()))?,
     }
     output.finish()
 }
-fn handshake(input: &Receiver<Input>, output: &Reporter) -> Result<PlanRequest, SupervisorError> {
+fn handshake(
+    input: &Receiver<Input>,
+    output: &Reporter,
+) -> Result<SessionRequest, SupervisorError> {
     let Input::Hello(hello) = receive(input, HANDSHAKE_BUDGET)? else {
         return Err(SupervisorError("Expected hello".into()));
     };
     hello.validate()?;
     binding::prepare_owner(hello.controller)?;
     output.send(Reply::Ready)?;
-    let Input::Plan(plan) = receive(input, HANDSHAKE_BUDGET)? else {
-        return Err(SupervisorError("Expected operation request".into()));
+    let Input::Request(request) = receive(input, HANDSHAKE_BUDGET)? else {
+        return Err(SupervisorError("Expected a session request".into()));
     };
-    plan.validate()?;
-    Ok(plan)
+    request.validate()?;
+    Ok(request)
 }
 
 fn run(
-    request: PlanRequest,
+    request: SessionRequest,
     input: &Receiver<Input>,
     output: &Reporter,
-) -> Result<AttemptReport, SupervisorError> {
-    let mut plan = ExecutionPlan::open(&request.request.installation_hint)?;
-    if plan.composition() != request.composition {
-        return Err(SupervisorError("Composition mismatch".into()));
+) -> Result<SessionReport, SupervisorError> {
+    let plan = ExecutionPlan::open(&request.installation)?;
+    if plan.build() != request.build {
+        return Err(SupervisorError(
+            "The supervisor found another game build than the caller".into(),
+        ));
     }
-    let session = request
-        .observation
-        .as_ref()
-        .and_then(|spec| spec.session.as_ref());
-    plan.admit_session()?;
+    plan.admit()?;
     let parent = request
-        .request
-        .output
+        .work_directory
         .parent()
-        .ok_or_else(|| SupervisorError("Output needs a parent directory".into()))?
+        .ok_or_else(|| SupervisorError("The work directory needs a parent directory".into()))?
         .canonicalize()?;
     let name = request
-        .request
-        .output
+        .work_directory
         .file_name()
-        .ok_or_else(|| SupervisorError("Invalid output directory".into()))?;
-    let retained = parent.join(name);
+        .ok_or_else(|| SupervisorError("Invalid work directory".into()))?;
+    let work = parent.join(name);
     let attempt = format!(
         "{}-{}",
         std::process::id(),
@@ -156,64 +168,39 @@ fn run(
             .map_err(|e| SupervisorError(e.to_string()))?
             .as_nanos()
     );
-    let mut reservation = Reservation::acquire(attempt.clone(), retained.clone())?;
-    let mut report = AttemptReport {
-        origin: operation::ORIGIN.into(),
+    let mut reservation = Reservation::acquire(attempt.clone(), work.clone())?;
+    let mut report = SessionReport {
         attempt,
-        composition: plan.composition().into(),
-        outcome: OperationOutcome::Completed,
-        disposal: OperationDisposal::NotLaunched,
+        outcome: SessionOutcome::Completed,
+        disposal: Disposal::NotApplicable,
         reservation_resolved: false,
-        output: retained,
         diagnostics: Vec::new(),
-        replay: None,
-        registries: Default::default(),
     };
     let started = Instant::now();
     let mut game = None;
     let mut observer = None;
-    let mut capture = None;
-    let mut owns_output = false;
-    let operation = (|| -> Result<(), SupervisorError> {
-        binding::private_directory(&report.output)?;
-        owns_output = true;
-        write_new(&report.output.join("request.json"), &request)?;
+    let mut events = OwnerEvents::new(&work);
+    let mut owns_work_directory = false;
+    let session = (|| -> Result<SessionOutcome, SupervisorError> {
+        binding::private_directory(&work)?;
+        owns_work_directory = true;
+        files::write_json(&work.join("request.json"), &request)?;
         if binding::conflicting_game(None)? {
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
-        prepare_profile(&report.output)?;
-        if let Some(spec) = &request.observation {
-            if spec.registry.is_none() && spec.session.is_none() {
-                prepare_fixture(&report.output, spec)?;
-            } else {
-                plan.prepare_registry_profile(&report.output)?;
-            }
-            let (prepared, retained) =
-                plan.observer(&report.output, &report.attempt, spec, operation::ORIGIN)?;
-            observer = Some(prepared);
-            capture = Some(retained);
-        }
+        prepare_profile(&work)?;
+        plan.prepare_registry_profile(&work)?;
+        let observer = observer.insert(plan.observer(&work, &report.attempt, &request)?);
         plan.integrity()?;
         match input.try_recv() {
-            Ok(event) => {
-                report.outcome = interruption(event);
-                return Ok(());
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                report.outcome = OperationOutcome::CallerLost;
-                return Ok(());
-            }
+            Ok(event) => return Ok(interruption(event)),
+            Err(mpsc::TryRecvError::Disconnected) => return Ok(SessionOutcome::CallerLost),
             Err(mpsc::TryRecvError::Empty) => {}
         }
         if started.elapsed() >= SETUP_BUDGET {
-            report.outcome = OperationOutcome::TimedOut;
-            return Ok(());
+            return Ok(SessionOutcome::TimedOut);
         }
-        game = Some(match &observer {
-            Some(observer) => plan.spawn_observed(&report.output, observer)?,
-            None => plan.spawn(&report.output)?,
-        });
-        let child = game.as_ref().unwrap();
+        let child = game.insert(plan.spawn_observed(&work, observer)?);
         reservation.record_game(child.identity()?)?;
         if !child.suspended()? {
             return Err(SupervisorError(
@@ -221,155 +208,117 @@ fn run(
             ));
         }
         if started.elapsed() >= SETUP_BUDGET {
-            report.outcome = OperationOutcome::TimedOut;
-            return Ok(());
+            return Ok(SessionOutcome::TimedOut);
         }
-        output.send(Reply::Started {
-            attempt: report.attempt.clone(),
-            game: child.pid(),
+        events.record(OwnerEvent::GameOwnedSuspended {
+            pid: u64::from(child.pid()),
+            identity: serde_json::to_string(&child.identity()?)?,
         })?;
-        report.outcome = if let (Some(observer), Some(capture), Some(spec)) =
-            (&mut observer, &mut capture, &request.observation)
-        {
-            capture.record(evidence::recorded::OwnerEvent::GameOwnedSuspended {
-                pid: u64::from(child.pid()),
-                identity: serde_json::to_string(&child.identity()?)?,
-            })?;
-            observer.start(child.pid())?;
-            capture.record(evidence::recorded::OwnerEvent::WorkerStarted)?;
-            if let Some(session) = &spec.session {
-                observe_session(
-                    input,
-                    output,
-                    child,
-                    observer,
-                    capture,
-                    &report.output,
-                    spec.deadline_seconds,
-                    session.idle_seconds,
-                )?
-            } else {
-                observe_worker(
-                    input,
-                    child,
-                    observer,
-                    Duration::from_secs(spec.deadline_seconds),
-                )?
-            }
-        } else {
-            observe(
-                input,
-                child,
-                Instant::now(),
-                Duration::from_millis(request.request.hold_ms),
-            )?
-        };
-        Ok(())
+        observer.start(child.pid())?;
+        events.record(OwnerEvent::WorkerStarted)?;
+        observe_session(
+            input,
+            output,
+            child,
+            observer,
+            &mut events,
+            &Session {
+                work_directory: &work,
+                attempt: &report.attempt,
+                registries: plan.registry_names(),
+                startup: Duration::from_secs(request.startup_seconds),
+                idle: Duration::from_secs(request.idle_seconds),
+            },
+        )
     })();
-    if let Err(error) = operation {
-        if let Some(capture) = &mut capture
-            && let Err(retention) =
-                capture.record(evidence::recorded::OwnerEvent::ObservationUnavailable {
-                    reason: error.to_string(),
-                })
+    report.outcome = session.unwrap_or_else(|error| {
+        if owns_work_directory
+            && let Err(journal) = events.record(OwnerEvent::ObservationUnavailable {
+                reason: error.to_string(),
+            })
         {
-            report.diagnostics.push(retention.to_string());
+            report.diagnostics.push(journal.to_string());
         }
-        report.outcome = OperationOutcome::Failed(error.to_string());
-    }
+        SessionOutcome::Failed(error.to_string())
+    });
+    let mut record = |event, diagnostics: &mut Vec<String>| {
+        if let Err(error) = events.record(event) {
+            diagnostics.push(error.to_string());
+        }
+    };
     let mut worker_stopped = true;
     if let Some(observer) = &mut observer {
-        if session.is_some()
-            && report.outcome != OperationOutcome::WorkerLost
-            && let Some(capture) = &mut capture
-            && let Err(error) = capture.record(evidence::recorded::OwnerEvent::WorkerStopRequested)
-        {
-            report.diagnostics.push(error.to_string());
+        if report.outcome != SessionOutcome::WorkerLost {
+            record(OwnerEvent::WorkerStopRequested, &mut report.diagnostics);
         }
         if let Err(error) = observer.stop() {
             worker_stopped = false;
             report.diagnostics.push(error.to_string());
         }
-        if let (Some(code), Some(capture)) = (observer.exited, &mut capture) {
-            if session.is_none() && code != 0 && report.outcome == OperationOutcome::Completed {
-                report.outcome = OperationOutcome::WorkerLost;
-            }
-            if let Err(error) =
-                capture.record(evidence::recorded::OwnerEvent::WorkerExited { returncode: code })
-            {
-                report.diagnostics.push(error.to_string());
-            }
+        if let Some(returncode) = observer.exited {
+            record(
+                OwnerEvent::WorkerExited { returncode },
+                &mut report.diagnostics,
+            );
         }
     }
     if let Some(mut child) = game {
         report.disposal = match child.dispose(DISPOSAL_BUDGET) {
-            Ok(()) => OperationDisposal::Reaped,
-            Err(error) => OperationDisposal::Unconfirmed(error.to_string()),
+            Ok(()) => Disposal::Confirmed,
+            Err(error) => Disposal::Unconfirmed(error.to_string()),
         };
-        if let Some(capture) = &mut capture {
-            let event = evidence::recorded::OwnerEvent::DisposalChecked {
-                confirmed: report.disposal == OperationDisposal::Reaped,
+        record(
+            OwnerEvent::DisposalChecked {
+                confirmed: report.disposal == Disposal::Confirmed,
                 reaped_pid: u64::from(child.pid()),
                 game_exit: child.exit_status(),
-                remaining_identity: if report.disposal == OperationDisposal::Reaped {
-                    None
-                } else {
-                    Some(serde_json::to_string(&child.identity().ok())?)
-                },
-            };
-            if let Err(error) = capture.record(event) {
-                report.diagnostics.push(error.to_string());
-            }
-        }
+            },
+            &mut report.diagnostics,
+        );
     }
     if let Err(error) = plan.integrity() {
-        report.outcome = OperationOutcome::Failed(error.to_string());
+        report.outcome = SessionOutcome::Failed(error.to_string());
     }
-    if worker_stopped && !matches!(report.disposal, OperationDisposal::Unconfirmed(_)) {
+    if worker_stopped && !matches!(report.disposal, Disposal::Unconfirmed(_)) {
         match reservation.disposed() {
             Ok(()) => report.reservation_resolved = true,
             Err(error) => {
                 report.outcome =
-                    OperationOutcome::Failed(format!("Disposal journal commit failed: {error}"))
+                    SessionOutcome::Failed(format!("Disposal journal commit failed: {error}"))
             }
         }
     }
-    if let Some(capture) = capture {
-        if session.is_some() {
-            let (registries, diagnostics) = capture.session_snapshot(&report.output, "final");
-            report.registries = registries;
-            report.diagnostics.extend(diagnostics);
-        } else {
-            match capture.finish(&report.output) {
-                Ok(reference) => report.replay = Some(reference),
-                Err(error) => report
-                    .diagnostics
-                    .push(format!("Capture finalization failed: {error}")),
-            }
-        }
-    }
-    if owns_output {
-        retain_report(&reservation, &mut report);
+    if owns_work_directory {
+        write_report(&work, &reservation, &mut report);
     }
     Ok(report)
 }
 
-#[allow(clippy::too_many_arguments)]
+/// The fixed facts of one session that the observation loop needs.
+struct Session<'a> {
+    work_directory: &'a Path,
+    attempt: &'a str,
+    /// Internal names of the registries that the session observes.
+    registries: Vec<String>,
+    startup: Duration,
+    idle: Duration,
+}
+
+/// Wait for the pause, reduce the worker's stream once, send the answers, then serve controls
+/// until the session ends.
 fn observe_session(
     input: &Receiver<Input>,
     output: &Reporter,
     child: &binding::OwnedGame,
     observer: &mut binding::Observer,
-    capture: &mut crate::capture::Capture,
-    retained: &Path,
-    startup_seconds: u64,
-    idle_seconds: u64,
-) -> Result<OperationOutcome, SupervisorError> {
-    let mut deadline = Instant::now() + Duration::from_secs(startup_seconds);
-    let mut snapshots = None;
+    events: &mut OwnerEvents,
+    session: &Session<'_>,
+) -> Result<SessionOutcome, SupervisorError> {
+    let mut deadline = Instant::now() + session.startup;
+    let mut answers = None;
     loop {
         if Instant::now() >= deadline {
-            return Ok(OperationOutcome::TimedOut);
+            return Ok(SessionOutcome::TimedOut);
         }
         if binding::conflicting_game(Some(child.pid()))? {
             return Err(SupervisorError(
@@ -377,39 +326,43 @@ fn observe_session(
             ));
         }
         if observer.poll()? {
-            return Ok(OperationOutcome::WorkerLost);
+            return Ok(SessionOutcome::WorkerLost);
         }
-        if snapshots.is_none() {
+        if answers.is_none() {
             if let Some(witness) = observer.pause_witness()? {
                 child.identity()?;
-                capture.record(evidence::recorded::OwnerEvent::GamePauseConfirmed {
+                events.record(OwnerEvent::GamePauseConfirmed {
                     pid: u64::from(child.pid()),
                     returned: witness.returned,
                 })?;
-                let readiness = capture.session_readiness(retained)?.ok_or_else(|| {
-                    SupervisorError(
-                        "Registry initialization readiness witnesses are missing or inconsistent"
-                            .into(),
-                    )
-                })?;
-                let (references, diagnostics) = capture.session_snapshot(retained, "snapshots");
-                if references.is_empty() {
-                    return Err(SupervisorError(format!(
-                        "Session evidence retention failed: {diagnostics:?}"
-                    )));
-                }
-                // Partial retention is explicit in per-registry replay; never revoke another answer.
-                crate::capture::write_json(
-                    &retained.join("snapshot-diagnostics.json"),
-                    &diagnostics,
+                let raw = files::read_bounded(
+                    &session.work_directory.join("raw-trace.jsonl"),
+                    protocol::observation::MAX_TRACE,
                 )?;
+                // A damaged stream has lost its terminals, so no answer from it is complete.
+                let (records, _) = event_stream::read_worker_stream(&raw, session.attempt);
+                let readiness =
+                    registry_items::readiness(&records, events.all(), &session.registries)
+                        .ok_or_else(|| {
+                            SupervisorError(
+                                "The witnesses of the registry initialization pause are missing or inconsistent"
+                                    .into(),
+                            )
+                        })?;
+                let registries: std::collections::BTreeMap<_, _> = session
+                    .registries
+                    .iter()
+                    .map(|name| {
+                        let items = registry_items::reduce(name, &records, events.all());
+                        (name.clone(), items)
+                    })
+                    .collect();
                 output.send(Reply::Paused {
                     readiness,
-                    output: retained.into(),
-                    registries: references.clone(),
+                    registries: registries.clone(),
                 })?;
-                snapshots = Some(references);
-                deadline = Instant::now() + Duration::from_secs(idle_seconds);
+                answers = Some(registries);
+                deadline = Instant::now() + session.idle;
             }
         } else {
             child.identity()?;
@@ -419,192 +372,62 @@ fn observe_session(
         }
         match input.recv_timeout(Duration::from_millis(50)) {
             Ok(Input::Control(Control::ReadRegistry { name, request })) => {
-                let Some(reference) = snapshots
+                // Only an answer that the caller can give restarts the idle time.
+                let answered = answers
                     .as_ref()
-                    .and_then(|references| references.get(&name))
-                else {
+                    .and_then(|answers| answers.get(&name))
+                    .is_some_and(|items| items.observed != Observed::Unavailable);
+                if !answered {
                     return Err(SupervisorError(
-                        "Registry read before readiness or outside declared bounds".into(),
-                    ));
-                };
-                let mut descriptor = reference.clone();
-                let path = std::path::Path::new(&reference.path);
-                descriptor.path = path.file_name().unwrap().to_string_lossy().into();
-                let result = crate::Engine
-                    .replay_registry(crate::ReplayRequest {
-                        artifact_root: retained.join(path.parent().unwrap()),
-                        descriptor,
-                    })
-                    .map_err(|error| SupervisorError(error.to_string()))?;
-                if result.activation != crate::Activation::Demonstrated
-                    || !matches!(
-                        result.completion,
-                        crate::Completion::Complete | crate::Completion::Incomplete
-                    )
-                {
-                    return Err(SupervisorError(
-                        "Unavailable registry read cannot extend session lifetime".into(),
+                        "Registry read before the pause or for a registry with no answer".into(),
                     ));
                 }
                 output.send(Reply::RegistryRead { request })?;
-                deadline = Instant::now() + Duration::from_secs(idle_seconds);
+                deadline = Instant::now() + session.idle;
             }
-            Ok(Input::Control(Control::Close)) => return Ok(OperationOutcome::Completed),
+            Ok(Input::Control(Control::Close)) => return Ok(SessionOutcome::Completed),
             Ok(event) => return Ok(interruption(event)),
-            Err(RecvTimeoutError::Disconnected) => return Ok(OperationOutcome::CallerLost),
+            Err(RecvTimeoutError::Disconnected) => return Ok(SessionOutcome::CallerLost),
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
 }
 
-fn observe_worker(
-    input: &Receiver<Input>,
-    child: &binding::OwnedGame,
-    observer: &mut binding::Observer,
-    budget: Duration,
-) -> Result<OperationOutcome, SupervisorError> {
-    let started = Instant::now();
-    loop {
-        if started.elapsed() >= budget {
-            return Ok(OperationOutcome::TimedOut);
-        }
-        if binding::conflicting_game(Some(child.pid()))? {
-            return Err(SupervisorError(
-                "External game invalidated isolation".into(),
-            ));
-        }
-        if observer.poll()? {
-            return Ok(OperationOutcome::Completed);
-        }
-        match input.recv_timeout(Duration::from_millis(50)) {
-            Ok(event) => return Ok(interruption(event)),
-            Err(RecvTimeoutError::Disconnected) => return Ok(OperationOutcome::CallerLost),
-            Err(RecvTimeoutError::Timeout) => {}
-        }
-    }
-}
-
-fn prepare_fixture(
-    output: &Path,
-    spec: &crate::operation::ObservationSpec,
-) -> Result<(), SupervisorError> {
-    let profile = output.join("profile");
-    for relative in [
-        "mod",
-        "mod/atlas_early",
-        "mod/atlas_early/common",
-        "mod/atlas_early/common/tradition_categories",
-    ] {
-        binding::private_directory(&profile.join(relative))?;
-    }
-    fs::write(
-        profile
-            .join("mod/atlas_early")
-            .join(crate::capture::FIXTURE_FILE),
-        &spec.fixture,
-    )?;
-    let mod_path = profile.join("mod/atlas_early");
-    let mod_path = mod_path
-        .to_str()
-        .filter(|path| !path.contains(['"', '\n', '\r']))
-        .ok_or_else(|| {
-            SupervisorError("Profile path cannot be represented in mod descriptor".into())
-        })?;
-    fs::write(
-        profile.join("mod/atlas_early.mod"),
-        format!("name=\"Native bounded observation\"\npath=\"{mod_path}\"\n"),
-    )?;
-    fs::write(
-        profile.join("dlc_load.json"),
-        r#"{"enabled_mods":["mod/atlas_early.mod"],"disabled_dlcs":[]}"#,
-    )?;
-    Ok(())
-}
-
-fn retain_report(reservation: &Reservation, report: &mut AttemptReport) {
+/// Leave the reservation record and the report in the work directory. Native keeps the
+/// directory after a failure, and a caller that was lost never received the report.
+fn write_report(work_directory: &Path, reservation: &Reservation, report: &mut SessionReport) {
     let owner = reservation
         .snapshot()
-        .and_then(|snapshot| write_new(&report.output.join("owner.json"), &snapshot));
+        .and_then(|snapshot| files::write_json(&work_directory.join("owner.json"), &snapshot));
     if let Err(error) = owner {
         report.diagnostics.push(format!("owner.json: {error}"));
     }
-    let capture = operation::AttemptCapture {
-        version: 4,
-        build: env!("PDX_NATIVE_BUILD").into(),
-        report: report.clone(),
-    };
-    if let Err(error) = write_new(&report.output.join("capture.json"), &capture) {
-        report.diagnostics.push(format!("capture.json: {error}"));
-    }
-    // Write the report last so a missing capture remains visible even after controller loss.
-    if let Err(error) = write_new(&report.output.join("report.json"), report) {
+    // Write the report last, so that it names every earlier failure.
+    if let Err(error) = files::write_json(&work_directory.join("report.json"), report) {
         report.diagnostics.push(format!("report.json: {error}"));
     }
 }
 
-fn hold_outcome(hold: Duration, elapsed: Duration) -> Option<OperationOutcome> {
-    if elapsed < hold {
-        return None;
-    }
-    Some(if hold == HOLD_LIMIT {
-        OperationOutcome::TimedOut
-    } else {
-        OperationOutcome::Completed
-    })
-}
-
-fn observe(
-    input: &Receiver<Input>,
-    child: &binding::OwnedGame,
-    started: Instant,
-    hold: Duration,
-) -> Result<OperationOutcome, SupervisorError> {
-    loop {
-        if let Some(outcome) = hold_outcome(hold, started.elapsed()) {
-            return Ok(outcome);
-        }
-        if binding::conflicting_game(Some(child.pid()))? {
-            return Err(SupervisorError(
-                "External game invalidated isolation".into(),
-            ));
-        }
-        if !child.suspended()? {
-            return Err(SupervisorError("Owned game no longer suspended".into()));
-        }
-        match input.recv_timeout(Duration::from_millis(100)) {
-            Ok(event) => return Ok(interruption(event)),
-            Err(RecvTimeoutError::Disconnected) => return Ok(OperationOutcome::CallerLost),
-            Err(RecvTimeoutError::Timeout) => {}
-        }
-    }
-}
-fn interruption(event: Input) -> OperationOutcome {
+fn interruption(event: Input) -> SessionOutcome {
     match event {
-        Input::Control(Control::Cancel) => OperationOutcome::Cancelled,
-        #[cfg(test)]
-        Input::Control(Control::WorkerLost) => OperationOutcome::WorkerLost,
-        _ => OperationOutcome::CallerLost,
+        Input::Control(Control::Cancel) => SessionOutcome::Cancelled,
+        _ => SessionOutcome::CallerLost,
     }
 }
 
-fn prepare_profile(output: &Path) -> Result<(), SupervisorError> {
-    binding::private_directory(&output.join("profile"))?;
+/// A private game profile: a small window, no sound, no mods. The ordinary profile is never
+/// touched.
+fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
+    binding::private_directory(&work_directory.join("profile"))?;
     fs::write(
-        output.join("profile/settings.txt"),
+        work_directory.join("profile/settings.txt"),
         "graphics={size={x=640 y=360} fullScreen=no borderless=no renderer=2}\nmaster_volume=0\nmusic_volume=0\n",
     )?;
-    fs::write(output.join("profile/pdx_settings.txt"), "")?;
+    fs::write(work_directory.join("profile/pdx_settings.txt"), "")?;
     fs::write(
-        output.join("profile/dlc_load.json"),
+        work_directory.join("profile/dlc_load.json"),
         "{\"enabled_mods\":[],\"disabled_dlcs\":[]}",
     )?;
-    Ok(())
-}
-fn write_new(path: &Path, value: &impl serde::Serialize) -> Result<(), SupervisorError> {
-    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-    serde_json::to_writer_pretty(&mut file, value)?;
-    file.sync_all()?;
-    File::open(path.parent().unwrap())?.sync_all()?;
     Ok(())
 }
 
@@ -630,63 +453,18 @@ mod tests {
     }
 
     #[test]
-    fn disposal_is_independent_of_completion_and_worker_exit() {
+    fn an_owned_suspended_child_is_reaped_and_its_reservation_resolved() {
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
-        for (index, expected) in [
-            OperationOutcome::Completed,
-            OperationOutcome::Cancelled,
-            OperationOutcome::CallerLost,
-            OperationOutcome::WorkerLost,
-            OperationOutcome::TimedOut,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let output = store();
-            let mut reservation =
-                reserve(root.path(), &format!("case{index}"), output.path()).unwrap();
-            let mut child = binding::test_child(output.path()).unwrap();
-            reservation.record_game(child.identity().unwrap()).unwrap();
-            assert!(child.suspended().unwrap());
-            let (send, input) = mpsc::sync_channel(1);
-            let started = if expected == OperationOutcome::TimedOut {
-                Instant::now() - HOLD_LIMIT
-            } else {
-                Instant::now()
-            };
-            match expected {
-                OperationOutcome::Cancelled => send.send(Input::Control(Control::Cancel)).unwrap(),
-                OperationOutcome::WorkerLost => {
-                    // Real worker termination precedes notification; its handle never owns game/lock.
-                    let mut worker = Command::new("/bin/sleep").arg("60").spawn().unwrap();
-                    worker.kill().unwrap();
-                    worker.wait().unwrap();
-                    send.send(Input::Control(Control::WorkerLost)).unwrap();
-                }
-                OperationOutcome::CallerLost => {
-                    drop(send);
-                }
-                _ => {}
-            }
-            let outcome = observe(
-                &input,
-                &child,
-                started,
-                if expected == OperationOutcome::Completed {
-                    Duration::ZERO
-                } else if expected == OperationOutcome::TimedOut {
-                    HOLD_LIMIT
-                } else {
-                    Duration::from_secs(1)
-                },
-            )
-            .unwrap();
-            assert_eq!(outcome, expected);
-            child.dispose(DISPOSAL_BUDGET).unwrap();
-            assert!(binding::process_identity(child.pid()).is_err());
-            reservation.disposed().unwrap();
-        }
+        let output = store();
+        let mut reservation = reserve(root.path(), "owned", output.path()).unwrap();
+        let mut child = binding::test_child(output.path()).unwrap();
+        reservation.record_game(child.identity().unwrap()).unwrap();
+        assert!(child.suspended().unwrap());
+        child.dispose(DISPOSAL_BUDGET).unwrap();
+        assert!(binding::process_identity(child.pid()).is_err());
+        reservation.disposed().unwrap();
+        assert_eq!(reservation.snapshot().unwrap()["state"], "Disposed");
     }
 
     #[test]
@@ -709,34 +487,29 @@ mod tests {
     }
 
     #[test]
-    fn retained_report_records_capture_failure_without_overwriting_it() {
+    fn the_report_names_a_file_that_could_not_be_written_and_replaces_nothing() {
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "capture-failure", output.path()).unwrap();
+        let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
         reservation.disposed().unwrap();
-        fs::write(output.path().join("capture.json"), "existing evidence").unwrap();
-        let mut report = AttemptReport {
-            origin: operation::ORIGIN.into(),
-            attempt: "capture-failure".into(),
-            composition: "test".into(),
-            outcome: OperationOutcome::Cancelled,
-            disposal: OperationDisposal::NotLaunched,
+        fs::write(output.path().join("owner.json"), "existing file").unwrap();
+        let mut report = SessionReport {
+            attempt: "report".into(),
+            outcome: SessionOutcome::Cancelled,
+            disposal: Disposal::NotApplicable,
             reservation_resolved: true,
-            output: output.path().into(),
             diagnostics: Vec::new(),
-            replay: None,
-            registries: Default::default(),
         };
-        retain_report(&reservation, &mut report);
-        let retained: AttemptReport =
+        write_report(output.path(), &reservation, &mut report);
+        let written: SessionReport =
             serde_json::from_slice(&fs::read(output.path().join("report.json")).unwrap()).unwrap();
-        assert_eq!(retained.diagnostics, report.diagnostics);
-        assert_eq!(retained.diagnostics.len(), 1);
-        assert!(retained.diagnostics[0].contains("capture.json"));
-        assert_eq!(retained.disposal, OperationDisposal::NotLaunched);
+        assert_eq!(written.diagnostics, report.diagnostics);
+        assert_eq!(written.diagnostics.len(), 1);
+        assert!(written.diagnostics[0].contains("owner.json"));
+        assert_eq!(written.disposal, Disposal::NotApplicable);
         assert_eq!(
-            fs::read_to_string(output.path().join("capture.json")).unwrap(),
-            "existing evidence"
+            fs::read_to_string(output.path().join("owner.json")).unwrap(),
+            "existing file"
         );
     }
 
@@ -810,29 +583,11 @@ mod tests {
 mod interruption_tests {
     use super::*;
     #[test]
-    fn valid_holds_complete_after_their_full_window_even_with_polling_delay() {
-        let hold = Duration::from_millis(29_999);
-        assert_eq!(hold_outcome(hold, hold - Duration::from_millis(1)), None);
-        assert_eq!(hold_outcome(hold, hold), Some(OperationOutcome::Completed));
-        assert_eq!(
-            hold_outcome(hold, HOLD_LIMIT + Duration::from_millis(100)),
-            Some(OperationOutcome::Completed)
-        );
-        assert_eq!(
-            hold_outcome(HOLD_LIMIT, HOLD_LIMIT),
-            Some(OperationOutcome::TimedOut)
-        );
-    }
-    #[test]
-    fn prelaunch_and_running_interruptions_keep_their_cause() {
-        assert_eq!(
-            interruption(Input::Control(Control::WorkerLost)),
-            OperationOutcome::WorkerLost
-        );
+    fn a_cancel_and_a_lost_caller_keep_their_cause() {
         assert_eq!(
             interruption(Input::Control(Control::Cancel)),
-            OperationOutcome::Cancelled
+            SessionOutcome::Cancelled
         );
-        assert_eq!(interruption(Input::Lost), OperationOutcome::CallerLost);
+        assert_eq!(interruption(Input::Lost), SessionOutcome::CallerLost);
     }
 }

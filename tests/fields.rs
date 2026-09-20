@@ -13,8 +13,8 @@ fn branch(from: u64, to: u64, link: bool) -> u32 {
     (if link { 0x94000000 } else { 0x14000000 })
         | (((to as i64 - from as i64) / 4) as u32 & 0x3ffffff)
 }
-fn reference(path: &str, bytes: &[u8]) -> pdx_native::internals::legacy::ArtifactReference {
-    pdx_native::internals::legacy::ArtifactReference {
+fn reference(path: &str, bytes: &[u8]) -> evidence::ArtifactReference {
+    evidence::ArtifactReference {
         path: path.into(),
         bytes: bytes.len() as u64,
         sha256: format!("{:x}", Sha256::digest(bytes)),

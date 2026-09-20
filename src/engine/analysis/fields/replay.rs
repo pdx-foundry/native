@@ -1,6 +1,7 @@
 use super::*;
-use crate::{EvidenceReference, ReplayError, engine::analysis::decode::AnalysisOrigin};
+use crate::engine::analysis::decode::AnalysisOrigin;
 use evidence::store::{is_sha256, sha256};
+use evidence::{EvidenceReference, ReplayError};
 fn malformed(path: &str, reason: impl ToString) -> ReplayError {
     ReplayError::Malformed {
         path: path.into(),

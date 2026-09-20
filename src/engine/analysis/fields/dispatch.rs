@@ -1,6 +1,7 @@
 use super::tokens::{decode, function, number, register, symbol_names};
 use super::{Condition, FieldInput, PathOutcome, ReaderJoin, TokenPath, Value};
-use crate::{EvidenceReference, engine::analysis::decode::Instruction};
+use crate::engine::analysis::decode::Instruction;
+use evidence::EvidenceReference;
 use std::collections::BTreeMap;
 
 const MIN: i64 = i32::MIN as i64;

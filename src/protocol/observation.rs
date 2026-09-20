@@ -2,11 +2,12 @@
     not(all(target_os = "macos", target_arch = "aarch64")),
     allow(dead_code)
 )]
-//! Private worker wire authority. Python schemas are generated from these Rust types.
+//! The private wire between the supervisor and its debugger worker. These Rust types are the
+//! authority; the worker's Python schemas (`protocol.py`) are generated from them.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/4";
+pub(crate) const VERSION: &str = "native-observation/5";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 
@@ -18,12 +19,13 @@ pub(crate) struct WorkerRequest {
     pub game: u32,
     pub executable: String,
     pub target: String,
+    /// SHA-256 of each file of the worker package, by file name.
     pub artifacts: BTreeMap<String, String>,
-    pub bindings: BTreeMap<String, u64>,
     pub machine: crate::binding::Machine,
-    pub registry: Option<RegistryBinding>,
-    pub session: Option<SessionBindings>,
-    pub fixture: String,
+    /// The registries to observe, by internal name.
+    pub registries: BTreeMap<String, RegistryBinding>,
+    /// The registry that receives `control`, when `control` is a fault.
+    pub control_registry: Option<String>,
     pub control: String,
     pub deadline_seconds: u64,
 }
@@ -56,7 +58,7 @@ pub(crate) fn python_bindings() -> String {
         "request": schemars::schema_for!(WorkerRequest),
         "hello": schemars::schema_for!(WorkerHello),
         "grant": schemars::schema_for!(ResumeGrant),
-        "record": schemars::schema_for!(evidence::recorded::TraceRecord),
+        "record": schemars::schema_for!(crate::engine::operations::event_stream::WorkerRecord),
         "pause": schemars::schema_for!(PauseWitness),
         "pause_check": schemars::schema_for!(PauseCheck),
     });
@@ -94,14 +96,6 @@ pub(crate) struct RegistryBinding {
     pub key_offset: u64,
     pub pointer_size: u64,
     pub string_tag_offset: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SessionBindings {
-    pub registries: BTreeMap<String, RegistryBinding>,
-    pub unavailable: BTreeMap<String, String>,
-    pub control_registry: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

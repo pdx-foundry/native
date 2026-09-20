@@ -34,7 +34,7 @@ impl Native {
     pub fn build(&self) -> BuildId {
         match self.recorded() {
             Some(_) => BuildId("recorded".into()),
-            None => BuildId(self.identity().0),
+            None => BuildId(self.bound().build().into()),
         }
     }
 
@@ -74,18 +74,10 @@ impl Native {
                     _ => Support::Unsupported("this build has no static analysis recipe".into()),
                 }
             }
-            Operation::RegistryItems => {
-                let mut reasons = Vec::new();
-                for name in self.registry_names() {
-                    let report = self
-                        .capability(&crate::api::CapabilityRequest::Registry { registry: name });
-                    if report.availability == crate::api::Availability::Available {
-                        return Support::Supported;
-                    }
-                    reasons = report.reasons;
-                }
-                Support::Unsupported(format!("{reasons:?}"))
-            }
+            Operation::RegistryItems => match self.blocking_reasons() {
+                reasons if reasons.is_empty() => Support::Supported,
+                reasons => Support::Unsupported(format!("{reasons:?}")),
+            },
         }
     }
 
@@ -191,7 +183,7 @@ fn descriptor(analysis: &crate::binding::BoundAnalysis) -> FieldDescriptor {
     let inputs = analysis.fields.as_ref().unwrap_or(&analysis.inputs);
     FieldDescriptor {
         format: fields::FORMAT.into(),
-        capture_origin: crate::CaptureOrigin::Captured,
+        capture_origin: evidence::CaptureOrigin::Captured,
         provenance: AnalysisProvenance {
             executable: inputs.executable.clone(),
             slice: inputs.slice.clone(),
@@ -202,7 +194,7 @@ fn descriptor(analysis: &crate::binding::BoundAnalysis) -> FieldDescriptor {
             qualification_records: Vec::new(),
             evidence: Vec::new(),
         },
-        input: crate::ArtifactReference {
+        input: evidence::ArtifactReference {
             path: "executable".into(),
             sha256: inputs.executable.clone(),
             bytes: 0,

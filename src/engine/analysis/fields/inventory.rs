@@ -1,6 +1,6 @@
 use super::tokens::Token;
 use super::{FieldGap, PathOutcome, ReaderContractGap, ReaderJoin, RootField, TokenPath};
-use crate::EvidenceReference;
+use evidence::EvidenceReference;
 use std::collections::BTreeMap;
 
 pub(super) fn fields_and_gaps(

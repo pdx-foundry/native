@@ -1,11 +1,11 @@
-use crate::{capture::Capture, supervisor::SupervisorError};
+use crate::supervisor::SupervisorError;
 use std::path::PathBuf;
 fn unavailable<T>() -> Result<T, SupervisorError> {
     Err(SupervisorError(
         "HostUnavailable: early observation requires Apple Silicon macOS".into(),
     ))
 }
-pub(crate) fn probe_observer() -> Result<String, SupervisorError> {
+pub(crate) fn probe_observer() -> Result<(), SupervisorError> {
     unavailable()
 }
 pub(crate) struct Observer {
@@ -14,7 +14,7 @@ pub(crate) struct Observer {
 impl Observer {
     pub(in crate::binding) fn prepare(
         _: crate::binding::platform::ObservationSetup<'_>,
-    ) -> Result<(Self, Capture), SupervisorError> {
+    ) -> Result<Self, SupervisorError> {
         unavailable()
     }
     pub(crate) fn guard(&self) -> PathBuf {

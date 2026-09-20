@@ -11,11 +11,11 @@ spec.loader.exec_module(wire)
 
 class ProtocolTests(unittest.TestCase):
     def test_trace_requires_valid_event_and_envelope(self):
-        row = dict(run='attempt', seq=1, kind='field-observed', file='fixture', line=2,
-                   field='tree_template', owner='0x42', ordinal=1, thread=7)
+        row = dict(run='attempt', seq=1, kind='registry-entry', name='traditions',
+                   owner='0x1000', index=0, object='0x2000', key='tr_example', thread=7)
         self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
         for changes in [dict(seq=-1), dict(seq=True), dict(seq=2**64), dict(kind='unknown'),
-                        dict(line='2'), dict(owner=None)]:
+                        dict(index='0'), dict(owner=None)]:
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 wire.encode('record', dict(row, **changes))
         del row['owner']

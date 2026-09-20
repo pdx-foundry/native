@@ -1,7 +1,18 @@
 use std::sync::Mutex;
 
 use super::{binary, installation::Installation};
-use crate::{AnalysisError, UnavailableReason, qualification::analysis::AnalysisInputs};
+use crate::{AnalysisError, UnavailableReason};
+
+/// Identities of the executable that the static methods read.
+#[derive(Debug, Clone)]
+pub(crate) struct AnalysisInputs {
+    pub composition: String,
+    pub executable: String,
+    pub slice: String,
+    pub implementation: String,
+    pub method: &'static str,
+    pub decoder: &'static str,
+}
 
 /// Bound static methods share one executable integrity state and independent admission.
 #[derive(Debug)]
