@@ -10,7 +10,12 @@ mod questions;
 /// Configure a consumer supervisor before starting an independently owned Game.
 #[derive(Debug)]
 pub struct Native {
-    binding: Arc<Binding>,
+    /// `None` only for recorded answers.
+    binding: Option<Arc<Binding>>,
+    /// Read every answer from this directory, and start no process.
+    recorded: Option<Arc<std::path::PathBuf>>,
+    /// Write every answer to this directory as it is returned.
+    recorder: Option<Arc<std::path::PathBuf>>,
     invalidated: Arc<Mutex<Option<UnavailableReason>>>,
     pub(crate) hosting: Option<crate::game::Hosting>,
     candidates: Arc<OnceLock<Result<Vec<crate::binding::NamedCandidate>, crate::AnalysisError>>>,
@@ -21,28 +26,66 @@ impl Native {
     pub fn open(request: OpenRequest) -> Result<Self, OpenError> {
         Ok(Self::from_binding(Binding::open(request)?))
     }
-    pub(crate) fn from_binding(binding: Binding) -> Self {
+    /// Read every answer from recorded files. No installation is opened and no process starts.
+    ///
+    /// Static and live questions work the same as with a real game: `start_game` returns a
+    /// `Game` that reads recorded answers. A question with no file returns `Error::NotRecorded`,
+    /// and every answer carries `Basis::Recorded`.
+    pub fn from_recorded_answers(directory: impl Into<std::path::PathBuf>) -> Self {
         Self {
-            binding: Arc::new(binding),
+            binding: None,
+            recorded: Some(Arc::new(directory.into())),
+            recorder: None,
             invalidated: Arc::new(Mutex::new(None)),
             hosting: None,
             candidates: Arc::new(OnceLock::new()),
         }
     }
+    /// Write every answer, and every error, to this directory as it is returned. A later
+    /// `from_recorded_answers` on the same directory then gives the same answers without a game.
+    pub fn record_answers_to(mut self, directory: impl Into<std::path::PathBuf>) -> Self {
+        self.recorder = Some(Arc::new(directory.into()));
+        self
+    }
+    pub(crate) fn from_binding(binding: Binding) -> Self {
+        Self {
+            binding: Some(Arc::new(binding)),
+            recorded: None,
+            recorder: None,
+            invalidated: Arc::new(Mutex::new(None)),
+            hosting: None,
+            candidates: Arc::new(OnceLock::new()),
+        }
+    }
+    /// The installation binding. Recorded answers have none; only the earlier hidden methods
+    /// reach this without a check, and they are never used on recorded answers.
+    pub(crate) fn bound(&self) -> &Arc<Binding> {
+        self.binding
+            .as_ref()
+            .expect("recorded answers have no installation binding")
+    }
+    pub(crate) fn recorded(&self) -> Option<&std::path::Path> {
+        self.recorded.as_deref().map(|path| path.as_path())
+    }
+    pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
+        self.recorder.as_deref().map(|path| path.as_path())
+    }
     pub(crate) fn registry_names(&self) -> Vec<String> {
-        self.binding.registry_names()
+        self.bound().registry_names()
     }
     /// Content directory of each live registry, with its internal name.
     pub(crate) fn registry_directories(&self) -> std::collections::BTreeMap<String, String> {
-        self.binding
+        self.bound()
             .registry_names()
             .into_iter()
-            .filter_map(|name| Some((self.binding.registry_directory(&name)?, name)))
+            .filter_map(|name| Some((self.bound().registry_directory(&name)?, name)))
             .collect()
     }
     pub(crate) fn detached_context(&self) -> Self {
         Self {
             binding: self.binding.clone(),
+            recorded: self.recorded.clone(),
+            recorder: self.recorder.clone(),
             invalidated: self.invalidated.clone(),
             hosting: None,
             candidates: self.candidates.clone(),
@@ -51,17 +94,17 @@ impl Native {
     #[doc(hidden)]
     /// Opaque pinned composition identity. Equality does not establish current integrity.
     pub fn identity(&self) -> ContextIdentity {
-        self.binding.identity()
+        self.bound().identity()
     }
     #[doc(hidden)]
     /// Installation input origin.
     pub fn origin(&self) -> ContextOrigin {
-        self.binding.origin()
+        self.bound().origin()
     }
     fn integrity(&self) -> Option<UnavailableReason> {
         let mut invalidated = self.invalidated.lock().expect("context integrity lock");
         if invalidated.is_none() {
-            *invalidated = self.binding.integrity();
+            *invalidated = self.bound().integrity();
         }
         invalidated.clone()
     }
@@ -70,7 +113,7 @@ impl Native {
     /// Stellaris. Static questions need no admission.
     pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
         qualification::evaluate(
-            &self.binding.current_inputs(),
+            &self.bound().current_inputs(),
             request,
             self.origin(),
             self.integrity(),
@@ -83,12 +126,18 @@ impl Native {
         command: std::process::Command,
         options: crate::GameOptions,
     ) -> Result<Self, crate::GameError> {
-        self.hosting = Some(crate::game::Hosting::new(command, options)?);
+        // Recorded answers start no process, so the supervisor is not needed.
+        if self.recorded.is_none() {
+            self.hosting = Some(crate::game::Hosting::new(command, options)?);
+        }
         Ok(self)
     }
     /// Start a paused registry initialization session, never a loaded world.
     /// Dropping this future requests independent cleanup. No async runtime owns the process.
     pub async fn start_game(&self) -> Result<crate::Game, crate::GameError> {
+        if let Some(directory) = &self.recorded {
+            return Ok(crate::Game::recorded(directory.clone()));
+        }
         crate::game::start(
             self.detached_context(),
             self.hosting
@@ -106,7 +155,7 @@ impl Native {
         authorization: crate::operation::Authorization,
         control: Option<(String, crate::operation::ObservationControl)>,
     ) -> Result<crate::operation::PreparedPlan, crate::GameError> {
-        let names = self.binding.registry_names();
+        let names = self.bound().registry_names();
         if authorization == crate::operation::Authorization::Admitted {
             let reports: Vec<_> = names
                 .iter()
@@ -140,7 +189,7 @@ impl Native {
         };
         let plan = crate::operation::PlanRequest {
             request: crate::operation::AttemptRequest {
-                installation_hint: self.binding.installation_hint()?,
+                installation_hint: self.bound().installation_hint()?,
                 output,
                 hold_ms: 1,
             },

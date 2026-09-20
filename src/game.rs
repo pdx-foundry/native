@@ -163,14 +163,57 @@ pub struct Game {
     /// Content directory of each observed registry, with its internal name.
     directories: BTreeMap<String, String>,
     build: crate::BuildId,
+    /// Read every answer from this directory; no process exists.
+    recorded: Option<Arc<PathBuf>>,
+    /// Write every answer to this directory as it is returned.
+    recorder: Option<Arc<PathBuf>>,
 }
 impl Game {
+    /// A session over recorded answers. No supervisor or game process is started.
+    pub(crate) fn recorded(directory: Arc<PathBuf>) -> Self {
+        let paused = Paused {
+            readiness: GameReadiness::PausedAfterRegistryInitialization,
+            registries: BTreeMap::new(),
+            replay: BTreeMap::new(),
+        };
+        let (_, state) = watch::channel(State::default());
+        Self {
+            commands: None,
+            stop: Arc::new(AtomicU8::new(0)),
+            state,
+            paused,
+            closing: false,
+            directories: BTreeMap::new(),
+            build: crate::BuildId("recorded".into()),
+            recorded: Some(directory),
+            recorder: None,
+        }
+    }
+
     /// List the item names of one registry, as the engine holds them after its initial load.
     ///
     /// The registry is named by its content directory, such as `common/traditions`. Every call
     /// returns the same startup observation; the game is never resumed. Cancelling this future
     /// leaves the session alive.
     pub async fn registry_items(
+        &mut self,
+        registry: &str,
+    ) -> Result<crate::Answer<Vec<String>>, crate::Error> {
+        use crate::Error;
+        if let Some(directory) = &self.recorded {
+            if self.closing {
+                return Err(Error::Closed);
+            }
+            return crate::recorded::read(directory, "registry_items", Some(registry));
+        }
+        let answer = self.registry_items_from_game(registry).await;
+        if let Some(directory) = &self.recorder {
+            crate::recorded::write(directory, "registry_items", Some(registry), &answer)?;
+        }
+        answer
+    }
+
+    async fn registry_items_from_game(
         &mut self,
         registry: &str,
     ) -> Result<crate::Answer<Vec<String>>, crate::Error> {
@@ -306,6 +349,21 @@ impl Game {
     /// Close the session and await independent disposal. Repeated calls return the same report.
     /// Cleanup continues if this future is cancelled after it has been polled.
     pub async fn close(&mut self) -> Result<GameReport, GameError> {
+        if self.recorded.is_some() {
+            self.closing = true;
+            return Ok(GameReport {
+                context: crate::ContextIdentity("recorded".into()),
+                attempt: "recorded".into(),
+                readiness: Some(self.paused.readiness),
+                outcome: crate::OperationOutcome::Completed,
+                disposal: crate::OperationDisposal::NotLaunched,
+                reservation_resolved: true,
+                registries: BTreeMap::new(),
+                replay: BTreeMap::new(),
+                retained: PathBuf::new(),
+                diagnostics: Vec::new(),
+            });
+        }
         if !self.closing {
             self.closing = true;
             let _ = self
@@ -358,6 +416,7 @@ pub(crate) async fn start(
 ) -> Result<Game, GameError> {
     let directories = context.registry_directories();
     let build = context.build();
+    let recorder = context.recorder().map(|path| Arc::new(path.to_path_buf()));
     let (commands, receive) = mpsc::sync_channel(16);
     let stop = Arc::new(AtomicU8::new(0));
     let owner_stop = stop.clone();
@@ -394,6 +453,8 @@ pub(crate) async fn start(
                 closing: false,
                 directories,
                 build,
+                recorded: None,
+                recorder,
             });
         }
         changes
@@ -497,6 +558,8 @@ mod tests {
                 closing: false,
                 directories: BTreeMap::from([("common/traditions".into(), "traditions".into())]),
                 build: crate::BuildId("test".into()),
+                recorded: None,
+                recorder: None,
             },
             receive,
             state,

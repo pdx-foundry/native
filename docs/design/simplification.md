@@ -188,9 +188,26 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
    `Answer<Vec<String>>`; on M45 it gives 234 traditions and 33 categories, complete, with the
    game reaped, in about 34 seconds (`examples/registry-items.rs`, no Cargo feature). A registry
    outside the build's live recipe gives `Unsupported` with the covered names, not
-   `UnknownRegistry`. Still to do: remove `Engine`, the replay API, `get_registry`, the earlier
-   item query and the capability types; add recorded answers.
-   Add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
+   `UnknownRegistry`.
+
+   **Step 3 done, 2026-09-20.** The documented public root is 25 items: `Native`, `Game`,
+   `Answer` and their value, gap, source and error types, plus `supervisor::serve`.
+   `Native::supports(operation)` replaces the capability report. `Native::get_registry`,
+   `RegistryDescription`, `EngineContext` and `Engine::open` are removed. The earlier capability,
+   replay and result types are in a hidden `internals::legacy` module, which only Native's live
+   harness and replay tests use; step 4 deletes it with the evidence package.
+
+   Recorded answers exist (`src/recorded.rs`): `Native::from_recorded_answers(dir)` and
+   `Native::record_answers_to(dir)`. Layout: `registries.json`,
+   `registry_fields/<registry>.json`, `registry_items/<registry>.json`. Verified on M45: a
+   recorded live run (20 KB) reads back the same 234 and 33 items and the same error, with
+   `Basis::Recorded`, no supervisor and no process. `tests/recorded_answers.rs` uses
+   hand-written files, including a failure case, and needs no game.
+
+   Left for step 4 because they depend on `capture.rs` and retention: `start_game` and `close`
+   still return `GameError` and `GameReport`, and `GameOptions` still takes a work directory.
+   The target is `close() -> Disposal` and one `Error` type.
+   Original text of this step: add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.
 4. Remove admission, the three features, `investigation`, `capture.rs`, the evidence package,

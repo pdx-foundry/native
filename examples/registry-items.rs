@@ -2,6 +2,9 @@
 //! registries load, and is closed at the end.
 //!
 //! usage: registry-items <installation> <existing-work-directory> [registry ...]
+//!
+//! Set `RECORD_ANSWERS_TO` to a directory to write each answer there. Give that directory as
+//! `<installation>` with `RECORDED=1` to read the answers back with no game.
 use pdx_native::{GameOptions, Native, OpenRequest};
 use std::process::Command;
 
@@ -17,10 +20,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut supervisor = Command::new(std::env::current_exe()?);
     supervisor.arg("--supervisor");
-    let native = Native::open(OpenRequest {
-        installation_hint: installation.into(),
-    })?
-    .with_supervisor(supervisor, GameOptions::new(work.into()))?;
+    let native = if std::env::var_os("RECORDED").is_some() {
+        Native::from_recorded_answers(installation)
+    } else {
+        Native::open(OpenRequest {
+            installation_hint: installation.into(),
+        })?
+    };
+    let native = match std::env::var_os("RECORD_ANSWERS_TO") {
+        Some(directory) => native.record_answers_to(directory),
+        None => native,
+    };
+    let native = native.with_supervisor(supervisor, GameOptions::new(work.into()))?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;

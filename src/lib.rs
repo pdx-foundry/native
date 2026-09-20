@@ -15,6 +15,7 @@ mod binding;
 mod execution;
 mod protocol;
 mod qualification;
+mod recorded;
 mod session;
 
 pub mod supervisor;

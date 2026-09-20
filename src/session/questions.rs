@@ -32,16 +32,40 @@ fn error(operation: Operation, error: AnalysisError) -> Error {
 impl Native {
     /// Opaque identity of the exact game build, as stamped on every answer.
     pub fn build(&self) -> BuildId {
-        BuildId(self.identity().0)
+        match self.recorded() {
+            Some(_) => BuildId("recorded".into()),
+            None => BuildId(self.identity().0),
+        }
+    }
+
+    /// Answer from recorded files when they are the back end; otherwise run the method, and
+    /// write the result when a recorder is set.
+    fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+        question: &str,
+        subject: Option<&str>,
+        method: impl FnOnce() -> Result<Answer<T>, Error>,
+    ) -> Result<Answer<T>, Error> {
+        if let Some(directory) = self.recorded() {
+            return crate::recorded::read(directory, question, subject);
+        }
+        let answer = method();
+        if let Some(directory) = self.recorder() {
+            crate::recorded::write(directory, question, subject, &answer)?;
+        }
+        answer
     }
 
     /// Whether this build and host can answer an operation. This never starts a game; for a live
     /// operation it checks that the supervisor's tools can be found.
     pub fn supports(&self, operation: Operation) -> Support {
+        if self.recorded().is_some() {
+            return Support::Supported;
+        }
         match operation {
             Operation::Registries | Operation::RegistryFields => {
                 match self
-                    .binding
+                    .bound()
                     .analysis
                     .as_ref()
                     .map(|a| a.discovery.is_some())
@@ -68,7 +92,7 @@ impl Native {
     fn named_candidates(&self, operation: Operation) -> Result<&[NamedCandidate], Error> {
         self.candidates
             .get_or_init(|| {
-                self.binding
+                self.bound()
                     .analysis
                     .as_ref()
                     .ok_or(AnalysisError::Unavailable {
@@ -85,6 +109,10 @@ impl Native {
     /// The answer is always partial: the method finds registries that use the engine's shared
     /// database template, and does not find custom, nested, or late loaders.
     pub fn registries(&self) -> Result<Answer<Vec<Registry>>, Error> {
+        self.answer("registries", None, || self.registries_from_executable())
+    }
+
+    fn registries_from_executable(&self) -> Result<Answer<Vec<Registry>>, Error> {
         let candidates = self.named_candidates(Operation::Registries)?;
         let mut names = BTreeSet::new();
         let mut unnamed = 0;
@@ -121,6 +149,12 @@ impl Native {
     /// The answer is always partial: a reader identity establishes routing only, and nested
     /// blocks, inherited readers, and dynamic names are outside the method.
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
+        self.answer("registry_fields", Some(registry), || {
+            self.registry_fields_from_executable(registry)
+        })
+    }
+
+    fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let operation = Operation::RegistryFields;
         let name = registry.trim_end_matches('/');
         let mut matching = self
@@ -132,7 +166,7 @@ impl Native {
                 name: registry.into(),
             });
         };
-        let analysis = self.binding.analysis.as_ref().expect("candidates exist");
+        let analysis = self.bound().analysis.as_ref().expect("candidates exist");
         let input = analysis
             .field_input(candidate.record.clone())
             .map_err(|e| error(operation, e))?;

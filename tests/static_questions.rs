@@ -64,3 +64,28 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
         Err(Error::UnknownRegistry { .. })
     ));
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
+    let directory = tempfile::tempdir().unwrap();
+    let real = native().record_answers_to(directory.path());
+    let registries = real.registries().unwrap();
+    let fields = real.registry_fields("common/traditions").unwrap();
+    let unknown = real.registry_fields("common/no_such_registry");
+
+    let recorded = Native::from_recorded_answers(directory.path());
+    let mut again = recorded.registries().unwrap();
+    assert_eq!(again.source.basis, Basis::Recorded);
+    again.source.basis = registries.source.basis;
+    assert_eq!(again, registries);
+    let mut again = recorded.registry_fields("common/traditions").unwrap();
+    again.source.basis = fields.source.basis;
+    assert_eq!(again, fields);
+    // Errors are recorded too.
+    assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
+    assert!(matches!(
+        recorded.registry_fields("common/armies"),
+        Err(Error::NotRecorded { .. })
+    ));
+}

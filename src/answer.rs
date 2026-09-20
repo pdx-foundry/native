@@ -144,6 +144,13 @@ pub enum Error {
     },
     /// The game session is closing or closed.
     Closed,
+    /// Recorded answers hold no file for this question. Never an empty answer.
+    NotRecorded {
+        /// The question and its subject, such as `registry_items/common/traditions`.
+        question: String,
+    },
+    /// A recorded answer could not be read or written.
+    Recorded(String),
     /// The connection to the supervisor failed. Disposal of the game is not established.
     Supervisor(String),
 }
@@ -161,6 +168,8 @@ impl std::fmt::Display for Error {
                 write!(f, "{operation:?} was not observed: {reason}")
             }
             Self::Closed => f.write_str("the game session is closed"),
+            Self::NotRecorded { question } => write!(f, "no answer is recorded for {question}"),
+            Self::Recorded(reason) => write!(f, "recorded answer failed: {reason}"),
             Self::Supervisor(reason) => write!(f, "the supervisor connection failed: {reason}"),
         }
     }
