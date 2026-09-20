@@ -107,6 +107,18 @@ pub enum Operation {
     RegistryItems,
 }
 
+/// Whether the game process that a session owned is gone. Only the independent supervisor can
+/// confirm it; a lost connection or an exit code never does.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Disposal {
+    /// The supervisor reaped the game process that it owned.
+    Confirmed,
+    /// Disposal is not established. A new game is refused until this is resolved.
+    Unconfirmed(String),
+    /// No game process was created: the start failed early, or the answers are recorded.
+    NotApplicable,
+}
+
 /// Whether this build and host can answer an operation. Asking never starts a game.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Support {
@@ -142,6 +154,13 @@ pub enum Error {
         /// What was not established.
         reason: String,
     },
+    /// The game did not reach a safe pause. The session is over.
+    Startup {
+        /// Why the start failed.
+        reason: String,
+        /// Whether the game process, if one was created, is gone.
+        disposal: Disposal,
+    },
     /// The game session is closing or closed.
     Closed,
     /// Recorded answers hold no file for this question. Never an empty answer.
@@ -166,6 +185,12 @@ impl std::fmt::Display for Error {
             Self::Method(reason) => write!(f, "the method failed: {reason}"),
             Self::Observation { operation, reason } => {
                 write!(f, "{operation:?} was not observed: {reason}")
+            }
+            Self::Startup { reason, disposal } => {
+                write!(
+                    f,
+                    "the game did not start: {reason} (disposal: {disposal:?})"
+                )
             }
             Self::Closed => f.write_str("the game session is closed"),
             Self::NotRecorded { question } => write!(f, "no answer is recorded for {question}"),

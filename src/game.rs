@@ -14,9 +14,32 @@ use tokio::sync::{oneshot, watch};
 
 mod driver;
 
-/// Session retention and deadlines. Cleanup has its own independent bounded budget.
-#[derive(Debug, Clone)]
+/// How to start a game. The consumer supplies the supervisor process; Native supplies the rest.
+#[derive(Debug)]
 pub struct GameOptions {
+    pub(crate) supervisor: Command,
+    /// Seconds allowed for the game to reach its pause, 1 to 180. The default is 180.
+    pub startup_seconds: u64,
+    /// Seconds that a paused game may stay idle, 1 to 180. Each answer restarts it. The default
+    /// is 180.
+    pub idle_seconds: u64,
+}
+impl GameOptions {
+    /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
+    /// input and output, then exits. It must link the same Native build as the caller.
+    pub fn new(supervisor: Command) -> Self {
+        Self {
+            supervisor,
+            startup_seconds: 180,
+            idle_seconds: 180,
+        }
+    }
+}
+
+/// The earlier options: a retention directory that the caller supplies.
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct RetentionOptions {
     /// Existing absolute directory for new immutable attempts.
     pub retention_directory: PathBuf,
     /// Initialization budget in seconds, 1–180; the constructor defaults to 180.
@@ -24,7 +47,7 @@ pub struct GameOptions {
     /// Idle budget in seconds, 1–180, reset by successful registry reads.
     pub idle_seconds: u64,
 }
-impl GameOptions {
+impl RetentionOptions {
     /// Use 180-second startup and idle budgets.
     pub fn new(retention_directory: PathBuf) -> Self {
         Self {
@@ -38,10 +61,10 @@ impl GameOptions {
 #[derive(Debug, Clone)]
 pub(crate) struct Hosting {
     command: Arc<Mutex<Command>>,
-    options: GameOptions,
+    options: RetentionOptions,
 }
 impl Hosting {
-    pub(crate) fn new(command: Command, mut options: GameOptions) -> Result<Self, GameError> {
+    pub(crate) fn new(command: Command, mut options: RetentionOptions) -> Result<Self, GameError> {
         if !options.retention_directory.is_absolute()
             || !options.retention_directory.is_dir()
             || !(1..=180).contains(&options.startup_seconds)
@@ -87,6 +110,37 @@ impl std::fmt::Display for GameError {
     }
 }
 impl std::error::Error for GameError {}
+impl From<&crate::OperationDisposal> for crate::Disposal {
+    fn from(disposal: &crate::OperationDisposal) -> Self {
+        match disposal {
+            crate::OperationDisposal::NotLaunched => Self::NotApplicable,
+            crate::OperationDisposal::Reaped => Self::Confirmed,
+            crate::OperationDisposal::Unconfirmed(reason) => Self::Unconfirmed(reason.clone()),
+        }
+    }
+}
+impl From<GameError> for crate::Error {
+    fn from(error: GameError) -> Self {
+        use crate::{Disposal, Error, Operation};
+        match error {
+            GameError::InputsChanged(_) => Error::BuildChanged,
+            GameError::Unavailable { registries } => Error::Unsupported {
+                operation: Operation::RegistryItems,
+                reason: format!("{registries:?}"),
+            },
+            GameError::StartupFailed(report) => Error::Startup {
+                reason: format!("{:?}; {}", report.outcome, report.diagnostics.join("; ")),
+                disposal: Disposal::from(&report.disposal),
+            },
+            GameError::NotConfigured | GameError::InvalidOptions(_) => Error::Startup {
+                reason: format!("{error:?}"),
+                disposal: Disposal::NotApplicable,
+            },
+            // The connection failed, so disposal is not established.
+            GameError::Supervisor(reason) => Error::Supervisor(reason),
+        }
+    }
+}
 impl From<crate::supervisor::SupervisorError> for GameError {
     fn from(error: crate::supervisor::SupervisorError) -> Self {
         Self::Supervisor(error.to_string())
@@ -167,6 +221,8 @@ pub struct Game {
     recorded: Option<Arc<PathBuf>>,
     /// Write every answer to this directory as it is returned.
     recorder: Option<Arc<PathBuf>>,
+    /// Temporary work directory that Native made. Removed after a clean close.
+    pub(crate) work: Option<PathBuf>,
 }
 impl Game {
     /// A session over recorded answers. No supervisor or game process is started.
@@ -187,6 +243,7 @@ impl Game {
             build: crate::BuildId("recorded".into()),
             recorded: Some(directory),
             recorder: None,
+            work: None,
         }
     }
 
@@ -346,9 +403,24 @@ impl Game {
                 .compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
         }
     }
-    /// Close the session and await independent disposal. Repeated calls return the same report.
-    /// Cleanup continues if this future is cancelled after it has been polled.
-    pub async fn close(&mut self) -> Result<GameReport, GameError> {
+    /// Close the session and wait until the supervisor reports whether the game is gone.
+    ///
+    /// Repeated calls give the same result. Cleanup continues if this future is dropped after it
+    /// was polled. The temporary work directory is removed after a confirmed disposal; after any
+    /// other result it is kept for inspection.
+    pub async fn close(&mut self) -> Result<crate::Disposal, crate::Error> {
+        let report = self.close_with_report().await.map_err(crate::Error::from)?;
+        let disposal = crate::Disposal::from(&report.disposal);
+        if disposal == crate::Disposal::Confirmed
+            && let Some(work) = self.work.take()
+        {
+            let _ = std::fs::remove_dir_all(work);
+        }
+        Ok(disposal)
+    }
+    /// The earlier close, with the full retained report.
+    #[doc(hidden)]
+    pub async fn close_with_report(&mut self) -> Result<GameReport, GameError> {
         if self.recorded.is_some() {
             self.closing = true;
             return Ok(GameReport {
@@ -455,6 +527,7 @@ pub(crate) async fn start(
                 build,
                 recorded: None,
                 recorder,
+                work: None,
             });
         }
         changes
@@ -560,6 +633,7 @@ mod tests {
                 build: crate::BuildId("test".into()),
                 recorded: None,
                 recorder: None,
+                work: None,
             },
             receive,
             state,
@@ -574,7 +648,7 @@ mod tests {
         let alias = root.path().join("alias");
         std::os::unix::fs::symlink(&target, &alias).unwrap();
         let hosting =
-            Hosting::new(Command::new("must-not-start"), GameOptions::new(alias)).unwrap();
+            Hosting::new(Command::new("must-not-start"), RetentionOptions::new(alias)).unwrap();
         assert_eq!(
             hosting.options.retention_directory,
             target.canonicalize().unwrap()

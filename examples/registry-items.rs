@@ -1,11 +1,11 @@
 //! List the item names of registries from a supervised game. The game starts, pauses after its
 //! registries load, and is closed at the end.
 //!
-//! usage: registry-items <installation> <existing-work-directory> [registry ...]
+//! usage: registry-items <installation> [registry ...]
 //!
 //! Set `RECORD_ANSWERS_TO` to a directory to write each answer there. Give that directory as
 //! `<installation>` with `RECORDED=1` to read the answers back with no game.
-use pdx_native::{GameOptions, Native, OpenRequest};
+use pdx_native::{GameOptions, Native};
 use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,28 +15,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pdx_native::supervisor::serve(std::io::stdin(), std::io::stdout())?;
         return Ok(());
     }
-    let [installation, work, registries @ ..] = args.as_slice() else {
-        return Err("usage: registry-items <installation> <work-directory> [registry ...]".into());
+    let [installation, registries @ ..] = args.as_slice() else {
+        return Err("usage: registry-items <installation> [registry ...]".into());
     };
     let mut supervisor = Command::new(std::env::current_exe()?);
     supervisor.arg("--supervisor");
     let native = if std::env::var_os("RECORDED").is_some() {
         Native::from_recorded_answers(installation)
     } else {
-        Native::open(OpenRequest {
-            installation_hint: installation.into(),
-        })?
+        Native::open(installation)?
     };
     let native = match std::env::var_os("RECORD_ANSWERS_TO") {
         Some(directory) => native.record_answers_to(directory),
         None => native,
     };
-    let native = native.with_supervisor(supervisor, GameOptions::new(work.into()))?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
     runtime.block_on(async {
-        let mut game = native.start_game().await?;
+        let mut game = native.start_game(GameOptions::new(supervisor)).await?;
         let default = ["common/traditions".to_owned()];
         let registries = if registries.is_empty() {
             &default[..]
@@ -50,8 +47,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         // Always close, including when a question had no answer.
-        let report = game.close().await?;
-        eprintln!("disposal: {:?}", report.disposal);
+        let disposal = game.close().await?;
+        eprintln!("disposal: {disposal:?}");
         Ok(())
     })
 }

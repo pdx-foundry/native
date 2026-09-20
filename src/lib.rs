@@ -26,12 +26,12 @@ pub mod investigation;
 #[cfg(all(feature = "production", feature = "maintainer-tools"))]
 compile_error!("production cannot include maintainer-tools");
 
-pub use answer::Support;
 pub use answer::{
     Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,
     ReaderKind, Registry, Source,
 };
-pub use api::{OpenError, OpenRequest};
+pub use answer::{Disposal, Support};
+pub use api::OpenError;
 pub use session::Native;
 
 mod capture;
@@ -59,10 +59,11 @@ pub mod internals {
     pub mod legacy {
         pub use crate::api::{
             Availability, CapabilityBounds, CapabilityReport, CapabilityRequest, ContextIdentity,
-            ContextOrigin, Engine, Qualification, RegistryBounds, ReplayRequest, UnavailableReason,
+            ContextOrigin, Engine, OpenRequest, Qualification, RegistryBounds, ReplayRequest,
+            UnavailableReason,
         };
         pub use crate::engine::analysis::AnalysisError;
-        pub use crate::game::RegistryAvailability;
+        pub use crate::game::{RegistryAvailability, RetentionOptions};
         pub use crate::registry::RegistryError;
         pub use evidence::registry::{RegistryEntry, RegistryProvenance, RegistryResult};
         pub use evidence::{

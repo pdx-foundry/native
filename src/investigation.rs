@@ -14,7 +14,7 @@ pub use crate::operation::{
 pub async fn start_game(
     native: &crate::Native,
     command: std::process::Command,
-    options: crate::GameOptions,
+    options: crate::game::RetentionOptions,
     control_registry: String,
     control: ObservationControl,
 ) -> Result<crate::Game, crate::GameError> {

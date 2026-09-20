@@ -1,5 +1,5 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
-use pdx_native::{Basis, Completeness, Error, GapKind, Native, OperationDisposal, Support};
+use pdx_native::{Basis, Completeness, Disposal, Error, GameOptions, GapKind, Native, Support};
 use serde_json::json;
 use std::{fs, path::Path};
 
@@ -76,7 +76,9 @@ fn a_question_with_no_file_is_not_recorded_and_never_an_empty_answer() {
 async fn live_questions_need_no_supervisor_and_start_no_process() {
     let root = recorded();
     let native = Native::from_recorded_answers(root.path());
-    let mut game = native.start_game().await.unwrap();
+    // Recorded answers ignore the options: this command is never started.
+    let options = GameOptions::new(std::process::Command::new("must-not-start"));
+    let mut game = native.start_game(options).await.unwrap();
     let items = game.registry_items("common/traditions").await.unwrap();
     assert_eq!(items.value, ["tr_example_adopt", "tr_example_finish"]);
     assert_eq!(items.completeness, Completeness::Complete);
@@ -90,8 +92,7 @@ async fn live_questions_need_no_supervisor_and_start_no_process() {
         game.registry_items("common/armies").await,
         Err(Error::NotRecorded { .. })
     ));
-    let report = game.close().await.unwrap();
-    assert_eq!(report.disposal, OperationDisposal::NotLaunched);
+    assert_eq!(game.close().await.unwrap(), Disposal::NotApplicable);
     assert!(matches!(
         game.registry_items("common/traditions").await,
         Err(Error::Closed)

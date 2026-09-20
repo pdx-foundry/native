@@ -1,13 +1,12 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
-use pdx_native::{Basis, Completeness, Error, Field, GapKind, Native, OpenRequest};
+use pdx_native::{Basis, Completeness, Error, Field, GapKind, Native};
 
 fn native() -> Native {
-    Native::open(OpenRequest {
-        installation_hint: std::env::var_os("STELLARIS_PATH")
-            .expect("STELLARIS_PATH names the installation or executable")
-            .into(),
-    })
+    Native::open(
+        std::env::var_os("STELLARIS_PATH")
+            .expect("STELLARIS_PATH names the installation or executable"),
+    )
     .expect("the installed build is in the target catalogue")
 }
 

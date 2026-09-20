@@ -495,7 +495,7 @@ mod storage_tests {
             })
             .unwrap();
         assert_eq!(result.completion, crate::Completion::Complete);
-        assert_eq!(result.disposal, crate::Disposal::Confirmed);
+        assert_eq!(result.disposal, evidence::Disposal::Confirmed);
         assert!(
             !result
                 .gaps

@@ -210,8 +210,38 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
    Original text of this step: add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.
-4. Remove admission, the three features, `investigation`, `capture.rs`, the evidence package,
-   and the check tools. Simplify `operation.rs` and the supervisor protocol to match.
+4. **In progress.**
+   - **Done, 2026-09-20: the public signatures.** `Native::open(path)`,
+     `GameOptions::new(supervisor_command)`, `native.start_game(options) -> Result<Game, Error>`
+     and `game.close() -> Result<Disposal, Error>`. Native makes a temporary work directory and
+     removes it after a confirmed disposal; after any other result it stays for inspection.
+     `Error::Startup` carries the disposal of a failed start. Verified on M45. The earlier
+     `with_supervisor`, `start_game_with_report`, `close_with_report` and `RetentionOptions` are
+     hidden and serve only the live harness. `OpenError` stays a separate type for `open`.
+   - **Finding: part of the evidence package is the live reducer.** The supervisor writes the
+     worker's event stream to files in the work directory, and the caller gets its items by
+     running `evidence::registry::replay` on those files (`game.rs`, `replay_results`). So
+     `registry.rs` (event stream to items, with the loader, owner, thread and terminal joins),
+     `stream.rs`, `recorded.rs` and `store.rs` are production code. They move into
+     `src/engine/operations` and lose the word "replay". What is deleted: `replay.rs` and the
+     SDK-483 early-observation format with `tests/replay.rs` and `tests/fixtures`, the
+     descriptor, artifact-hash and provenance types, `Engine`, `ReplayRequest`, and
+     `internals::legacy`.
+   - **To do, in order:**
+     1. Replace the `maintainer-tools` harness (`examples/support/session.rs`, `investigation`,
+        `tools/check-game-sessions.py`) with `tests/live.rs`, ignored by default, which needs
+        `STELLARIS_PATH`. It keeps the failure controls: missing hook, late hook, dropped record,
+        missing terminal, access failure, worker loss, timeout, cancel, caller loss. The controls
+        need a hidden test entry, because `supervisor::serve` refuses them at present
+        (`Authorization::Admitted`). Then remove `investigation`, `Authorization::Candidate`, and
+        the `production` and `maintainer-tools` features.
+     2. Move the live reducer as described above; remove `capture.rs` parts that only write
+        descriptors, startup and final snapshot copies, and replay references; remove
+        `GameReport`, `GameError`, the hidden earlier methods and `internals::legacy`.
+     3. Remove the replay descriptors inside `engine/analysis` (`discovery` and `fields` results
+        still carry `EvidenceReference`), then the `native-evidence` package and the workspace.
+     4. Remove the `build.rs` source hash (`PDX_NATIVE_OPERATION`), the check tools and the
+        qualification pages in `docs/native`; rewrite the README for the new API.
 5. Clean `.local` (below).
 
 The durable reservation journal is unchanged. Whether an operating-system lock alone is

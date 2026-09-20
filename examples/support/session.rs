@@ -1,5 +1,6 @@
 use pdx_native::internals::legacy::Engine;
-use pdx_native::{GameError, GameOptions, Native, OpenRequest};
+use pdx_native::internals::legacy::RetentionOptions as GameOptions;
+use pdx_native::{GameError, Native};
 use std::{io, process::Command};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,9 +23,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     let result = runtime.block_on(async {
         let mode = args.get(2).map(String::as_str).unwrap_or("normal");
-        let native = Native::open(OpenRequest {
-            installation_hint: args[0].clone().into(),
-        })?;
+        let native = Native::open(&args[0])?;
         let mut command = Command::new(std::env::current_exe()?);
         command.arg("--supervisor");
         let mut options = GameOptions::new(args[1].clone().into());
@@ -55,7 +54,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 return Err("unknown production mode".into());
             }
             let native = native.with_supervisor(command, options)?;
-            async move { native.start_game().await }
+            async move { native.start_game_with_report().await }
         };
         #[cfg(feature = "maintainer-tools")]
         let startup = {
@@ -184,15 +183,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         if mode == "close-cancel" {
             assert!(
-                tokio::time::timeout(std::time::Duration::from_millis(1), game.close())
-                    .await
-                    .is_err()
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(1),
+                    game.close_with_report()
+                )
+                .await
+                .is_err()
             );
         }
-        let report = game.close().await?;
+        let report = game.close_with_report().await?;
         assert_eq!(
             serde_json::to_value(&report)?,
-            serde_json::to_value(game.close().await?)?
+            serde_json::to_value(game.close_with_report().await?)?
         );
         assert!(matches!(
             game.get_registry_items("traditions").await,

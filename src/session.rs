@@ -22,9 +22,13 @@ pub struct Native {
 }
 
 impl Native {
-    /// Pin an installation without starting a process.
-    pub fn open(request: OpenRequest) -> Result<Self, OpenError> {
-        Ok(Self::from_binding(Binding::open(request)?))
+    /// Pin the installation at this location: an executable, an application bundle, or an
+    /// installation directory. No process starts. A build that is not in the target catalogue is
+    /// refused; there is no nearest-version fallback.
+    pub fn open(installation: impl Into<std::path::PathBuf>) -> Result<Self, OpenError> {
+        Ok(Self::from_binding(Binding::open(OpenRequest {
+            installation_hint: installation.into(),
+        })?))
     }
     /// Read every answer from recorded files. No installation is opened and no process starts.
     ///
@@ -119,12 +123,12 @@ impl Native {
             self.integrity(),
         )
     }
-    /// Configure a dedicated direct child calling supervisor::serve on private stdin/stdout.
-    /// See examples/live.rs for the supervisor role and async session flow.
+    /// The earlier configuration, with a retention directory that the caller supplies.
+    #[doc(hidden)]
     pub fn with_supervisor(
         mut self,
         command: std::process::Command,
-        options: crate::GameOptions,
+        options: crate::game::RetentionOptions,
     ) -> Result<Self, crate::GameError> {
         // Recorded answers start no process, so the supervisor is not needed.
         if self.recorded.is_none() {
@@ -132,12 +136,43 @@ impl Native {
         }
         Ok(self)
     }
-    /// Start a paused registry initialization session, never a loaded world.
-    /// Dropping this future requests independent cleanup. No async runtime owns the process.
-    pub async fn start_game(&self) -> Result<crate::Game, crate::GameError> {
+    /// Start a supervised game and wait until it is paused after its registries load. The game
+    /// never loads a world. With recorded answers, no process starts and the options are ignored.
+    ///
+    /// Dropping this future requests cleanup. No async runtime owns the process: an independent
+    /// thread and the supervisor do, so cleanup continues if the caller is lost.
+    pub async fn start_game(
+        &self,
+        options: crate::GameOptions,
+    ) -> Result<crate::Game, crate::Error> {
         if let Some(directory) = &self.recorded {
             return Ok(crate::Game::recorded(directory.clone()));
         }
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        let work = std::env::temp_dir().join(format!("pdx-native-{}-{id}", std::process::id()));
+        std::fs::create_dir_all(&work).map_err(|error| crate::Error::Startup {
+            reason: format!("work directory: {error}"),
+            disposal: crate::Disposal::NotApplicable,
+        })?;
+        let mut retention = crate::game::RetentionOptions::new(work.clone());
+        retention.startup_seconds = options.startup_seconds;
+        retention.idle_seconds = options.idle_seconds;
+        let hosting = crate::game::Hosting::new(options.supervisor, retention)?;
+        let mut game = crate::game::start(
+            self.detached_context(),
+            hosting,
+            crate::operation::Authorization::Admitted,
+            None,
+        )
+        .await?;
+        game.work = Some(work);
+        Ok(game)
+    }
+    /// The earlier start, configured by `with_supervisor`.
+    #[doc(hidden)]
+    pub async fn start_game_with_report(&self) -> Result<crate::Game, crate::GameError> {
         crate::game::start(
             self.detached_context(),
             self.hosting
@@ -151,7 +186,7 @@ impl Native {
     pub(crate) fn prepare_session(
         &self,
         output: std::path::PathBuf,
-        options: &crate::GameOptions,
+        options: &crate::game::RetentionOptions,
         authorization: crate::operation::Authorization,
         control: Option<(String, crate::operation::ObservationControl)>,
     ) -> Result<crate::operation::PreparedPlan, crate::GameError> {
