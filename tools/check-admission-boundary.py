@@ -53,31 +53,33 @@ def main():
         for name in ["src", "crates", "examples"]:
             shutil.copytree(ROOT / name, package / name)
         analysis = package / "src/engine/analysis.rs"
-        analysis.write_text(analysis.read_text() + "\nmod prohibited_operation;\n")
+        analysis.write_bytes(analysis.read_bytes() + b"\nmod prohibited_operation;\n")
         (package / "src/engine/analysis").mkdir(exist_ok=True)
         probe = package / "src/engine/analysis/prohibited_operation.rs"
         probe.write_text("pub fn harmless() {}\n")
         original = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]))
         evidence_manifest = package / 'crates/native-evidence/Cargo.toml'
-        manifest_text = evidence_manifest.read_text()
-        evidence_manifest.write_text(manifest_text + '\n# Fingerprint variation control.\n')
+        manifest_bytes = evidence_manifest.read_bytes()
+        evidence_manifest.write_bytes(manifest_bytes + b'\n# Fingerprint variation control.\n')
         changed = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]))
         if original == changed:
             raise SystemExit('Evidence manifest change retained the qualified operation identity')
-        evidence_manifest.write_text(manifest_text)
+        evidence_manifest.write_bytes(manifest_bytes)
+        # Preserve exact bytes: text-mode writes on Windows would turn unrelated restored
+        # sources into CRLF files and make the record-only control report a false change.
         # Every static implementation seam must affect its portable identity. Acceptance
         # records must not: otherwise promotion would invalidate its own implementation.
         baseline = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]), "PDX_NATIVE_ANALYSIS")
         for relative in ["src/binding/binary.rs", "src/engine/analysis.rs", "src/binding/machine/arm64.rs", "src/binding/targets/recipes.rs", "src/qualification/analysis.rs", "crates/native-evidence/src/analysis.rs", "crates/native-evidence/Cargo.toml"]:
             source = package / relative
-            original_text = source.read_text()
-            source.write_text(original_text + ("\n# Identity control.\n" if relative.endswith('.toml') else "\n// Identity control.\n"))
+            original_bytes = source.read_bytes()
+            source.write_bytes(original_bytes + (b"\n# Identity control.\n" if relative.endswith('.toml') else b"\n// Identity control.\n"))
             changed = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]), "PDX_NATIVE_ANALYSIS")
             if baseline == changed:
                 raise SystemExit(f'Static fingerprint omitted {relative}')
-            source.write_text(original_text)
+            source.write_bytes(original_bytes)
         record = package / 'src/qualification/records/analysis.json'
-        record.write_text(record.read_text() + '\n')
+        record.write_bytes(record.read_bytes() + b'\n')
         unchanged = operation_fingerprint(cargo(package, ["check", "--lib", "--locked", "--message-format=json"]), "PDX_NATIVE_ANALYSIS")
         if baseline != unchanged:
             raise SystemExit('Static qualification record changed its own implementation identity')
