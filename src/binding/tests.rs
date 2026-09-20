@@ -15,18 +15,18 @@ fn installation() -> (TempDir, Binding) {
     let (installation, _) = Installation::open(directory.path()).unwrap();
     // Private I/O control, never a catalogue entry or accepted qualification. Public contexts
     // cannot supply these bytes to the composer, and the test factory cannot accept this path.
-    let request = CapabilityRequest::default();
     let binding = Binding {
         inputs: AdmissionInputs {
             composition: "private-io-control".into(),
             bounds: crate::RegistryBounds {
-                registries: vec![request.registry],
+                registries: vec!["traditions".into()],
             },
             content: installation.content.clone(),
             prerequisites: Vec::new(),
             toolchain: Ok("test-toolchain".into()),
         },
         operation: None,
+        analysis: None,
         source: Source::Installation(installation),
         authority: Authority {
             accepted: vec![],
@@ -181,6 +181,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         binding: Binding {
             inputs,
             operation: Some(operation),
+            analysis: None,
             source: Source::Installation(installed),
             authority: Authority {
                 accepted: vec![],

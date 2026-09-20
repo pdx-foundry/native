@@ -1,4 +1,7 @@
 # Hash-pinned replay artifacts must retain exact bytes on every checkout host.
+*.rs text eol=lf
+*.toml text eol=lf
+Cargo.lock text eol=lf
 tests/fixtures/** -text
 # Packaged Python and generated wire bindings have byte identities across hosts.
 src/**/*.py text eol=lf

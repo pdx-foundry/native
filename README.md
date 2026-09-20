@@ -9,6 +9,10 @@ startup does not imply a loaded world or available gameplay operations.
 See [installation queries and Game sessions](docs/design/live-observations.md), including the
 SDK-518 migration and qualification boundary. Reader and field discovery remain explicitly unknown.
 
+`Native::analysis()` decodes one qualified M45-observe function without a game, content files,
+or a debugger. [Static analysis and replay](docs/design/static-analysis.md) describes the public
+interface and its bounded qualification.
+
 The separate evidence library replays both historical and new registry artifacts without a game.
 Consumers supply their executable's supervisor role; Native distributes no runtime executable.
 
@@ -54,4 +58,4 @@ for limits and build checks.
 
 Maintainer-only [candidate observations](docs/design/candidate-observations.md) capture the retained
 registration/category window under an independent supervisor and emit replayable evidence.
-Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile. The SDK-518 acceptance is historical; the changed SDK-521 session implementation requires new acceptance. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.
+Public live admission requires the production feature and a reviewed target, content, toolchain, implementation, and release profile. SDK-527 changes the shared implementation identity; live admission remains unavailable until a separate requalification. The SDK-518 acceptance is historical; the changed SDK-521 session implementation requires new acceptance. See the [production consumer contract](docs/design/live-observations.md) and `examples/live.rs`.

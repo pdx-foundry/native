@@ -8,7 +8,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let context = Engine::open(OpenRequest { installation_hint })?;
     println!(
         "{}",
-        serde_json::to_string_pretty(&context.capability(&CapabilityRequest::default()))?
+        serde_json::to_string_pretty(&[
+            context.capability(&CapabilityRequest::StaticDecode),
+            context.capability(&CapabilityRequest::default()),
+        ])?
     );
     Ok(())
 }

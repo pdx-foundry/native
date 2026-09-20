@@ -41,3 +41,5 @@ impl Authority {
         }
     }
 }
+
+pub(crate) mod analysis;

@@ -93,6 +93,7 @@ pub(crate) fn synthetic(case: SyntheticCase) -> Binding {
     Binding {
         inputs,
         operation: None,
+        analysis: None,
         source: Source::Synthetic(integrity),
         authority: Authority {
             accepted,

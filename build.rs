@@ -21,11 +21,43 @@ fn main() {
         } else {
             println!("cargo:rerun-if-changed={}", path.display());
             let bytes = std::fs::read(path).unwrap();
-            hash.update(path.to_string_lossy().as_bytes());
+            hash.update(path.to_string_lossy().replace('\\', "/").as_bytes());
             hash.update((bytes.len() as u64).to_le_bytes());
             hash.update(bytes);
         }
     }
+    // Static qualification is portable across hosts. It binds source and dependencies,
+    // not a debugger, compiler installation, build profile, or mutable acceptance record.
+    let mut analysis = Sha256::new();
+    for path in [
+        "src/lib.rs",
+        "src/api.rs",
+        "src/session.rs",
+        "src/engine.rs",
+        "src/engine",
+        "src/binding.rs",
+        "src/binding/analysis.rs",
+        "src/binding/binary.rs",
+        "src/binding/installation.rs",
+        "src/binding/compose.rs",
+        "src/binding/machine.rs",
+        "src/binding/machine",
+        "src/binding/targets.rs",
+        "src/binding/targets/recipes.rs",
+        "src/binding/targets/records.rs",
+        "src/qualification/analysis.rs",
+        "crates/native-evidence/src",
+        "crates/native-evidence/Cargo.toml",
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.rs",
+    ] {
+        sources(std::path::Path::new(path), &mut analysis);
+    }
+    println!(
+        "cargo:rustc-env=PDX_NATIVE_ANALYSIS={:x}",
+        analysis.finalize()
+    );
     let mut operation = Sha256::new();
     for path in [
         "src/api.rs",

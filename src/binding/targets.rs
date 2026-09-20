@@ -37,3 +37,14 @@ fn lookup_in(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(super) fn test_identity() -> ImageIdentity {
+    let record = &records::CATALOGUE[0];
+    ImageIdentity {
+        executable: record.executable.into(),
+        slice: record.slice.into(),
+        architecture: record.architecture,
+        format: record.format,
+    }
+}

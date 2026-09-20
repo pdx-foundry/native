@@ -1,3 +1,5 @@
+mod analysis;
+pub(crate) use analysis::{BoundAnalysis, Decoder};
 mod binary;
 mod compose;
 mod groups;
@@ -15,6 +17,7 @@ use crate::{ContextIdentity, ContextOrigin, OpenError, OpenRequest, UnavailableR
 /// The only session-facing binding value. Raw target and platform descriptors stay below here.
 pub(crate) struct Binding {
     inputs: AdmissionInputs,
+    pub(crate) analysis: Option<std::sync::Arc<BoundAnalysis>>,
     operation: Option<compose::ResolvedObservation>,
     source: Source,
     authority: Authority,
@@ -32,8 +35,13 @@ impl Binding {
         let (installation, bytes) = installation::Installation::open(&request.installation_hint)?;
         let image = binary::identify(&bytes)?;
         let (inputs, operation) = compose::compose(&image, installation.content.clone())?;
+        let analysis = Some(std::sync::Arc::new(compose::analysis(
+            &image,
+            installation.clone(),
+        )?));
         Ok(Self {
             inputs,
+            analysis,
             operation: Some(operation),
             source: Source::Installation(installation),
             authority: Authority::bundled(),
@@ -146,7 +154,7 @@ impl ExecutionPlan {
         let report = crate::qualification::evaluate(
             &inputs,
             self.binding.authority(),
-            &crate::CapabilityRequest {
+            &crate::CapabilityRequest::Registry {
                 registry: registry.into(),
             },
             self.binding.origin(),

@@ -18,6 +18,17 @@ pub struct ReplayRequest {
 pub struct Engine;
 
 impl Engine {
+    /// Verify and decode retained instructions without opening an installation or launching a game.
+    pub fn replay_analysis(
+        &self,
+        request: ReplayRequest,
+    ) -> Result<crate::AnalysisResult, ReplayError> {
+        evidence::analysis::replay(
+            &ArtifactStore::new(request.artifact_root),
+            &request.descriptor,
+        )
+    }
+
     /// Verify and replay a retained registry snapshot without an installed game.
     pub fn replay_registry(
         &self,
@@ -90,19 +101,33 @@ pub enum ContextOrigin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ContextIdentity(pub(crate) String);
 
-/// Name of the engine registry to retrieve. Unknown names receive explicit unsupported results.
+/// Operation whose qualification and current availability should be inspected.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CapabilityRequest {
-    /// Stable Native registry name, currently `traditions` or `tradition_categories`.
-    pub registry: String,
+pub enum CapabilityRequest {
+    /// Live observations for one exact registry name.
+    Registry {
+        /// Stable Native registry name, currently `traditions` or `tradition_categories`.
+        registry: String,
+    },
+    /// The single qualified, game-free instruction decode control.
+    StaticDecode,
 }
 
 impl Default for CapabilityRequest {
     fn default() -> Self {
-        Self {
+        Self::Registry {
             registry: "traditions".into(),
         }
     }
+}
+
+/// Declared or qualified bounds for one operation family.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum CapabilityBounds {
+    /// Named registry observations.
+    Registry(RegistryBounds),
+    /// Exactly the recipe's bounded decode control, not arbitrary executable ranges.
+    StaticDecode,
 }
 
 /// Registry names declared by a method or covered by one acceptance record.
@@ -152,7 +177,7 @@ pub enum UnavailableReason {
     RevisionMismatch,
     /// Current content does not match the accepted dependency identities.
     ContentMismatch,
-    /// The request is invalid or exceeds supported registry scope.
+    /// The request is invalid or exceeds the supported operation bounds.
     OutsideBounds,
     /// The executable changed after binding; this context must be reopened.
     TargetChanged,
@@ -164,10 +189,10 @@ pub enum UnavailableReason {
     PrerequisiteMissing,
 }
 
-/// Independent qualification and availability results for one registry request.
+/// Independent qualification and availability results for one operation request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CapabilityReport {
-    /// Fixed composition identity, opaque to consumers.
+    /// Operation-specific composition identity, opaque to consumers.
     pub context: ContextIdentity,
     /// Source of this context's inputs.
     pub origin: ContextOrigin,
@@ -176,9 +201,9 @@ pub struct CapabilityReport {
     /// Whether this request currently passes admission.
     pub availability: Availability,
     /// Declared operation bounds; qualification is required separately.
-    pub bounds: RegistryBounds,
+    pub bounds: CapabilityBounds,
     /// Bounds of applicable accepted records, kept separate so their union grants no support.
-    pub accepted_bounds: Vec<RegistryBounds>,
+    pub accepted_bounds: Vec<CapabilityBounds>,
     /// All established reasons that block admission.
     pub reasons: Vec<UnavailableReason>,
     /// Accepted qualification record identities supporting this result.
