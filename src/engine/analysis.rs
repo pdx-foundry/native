@@ -66,7 +66,16 @@ pub(crate) fn capability(binding: &BoundAnalysis) -> CapabilityReport {
 
 impl AnalysisContext {
     pub(crate) fn open(binding: Arc<BoundAnalysis>) -> Result<Self, AnalysisError> {
-        admit(&binding)?;
+        binding.executable()?;
+        let decode = capability(&binding);
+        let discovery = discovery_capability(&binding);
+        if decode.availability != Availability::Available
+            && discovery.availability != Availability::Available
+        {
+            return Err(AnalysisError::Unavailable {
+                reasons: decode.reasons,
+            });
+        }
         Ok(Self { binding })
     }
 
@@ -98,5 +107,71 @@ impl AnalysisContext {
             },
             instructions,
         })
+    }
+}
+
+/// Evaluate discovery independently of the decode control and live prerequisites.
+pub(crate) fn discovery_capability(binding: &BoundAnalysis) -> CapabilityReport {
+    let Some(discovery) = &binding.discovery else {
+        let mut report = analysis::unavailable(
+            crate::ContextIdentity(binding.inputs.composition.clone()),
+            ContextOrigin::Installation,
+        );
+        report.bounds = crate::CapabilityBounds::RegistryDiscovery;
+        return report;
+    };
+    let integrity = match binding.executable() {
+        Ok(_) => None,
+        Err(AnalysisError::Unavailable { reasons }) => reasons.into_iter().next(),
+        Err(_) => Some(UnavailableReason::InputUnavailable),
+    };
+    analysis::evaluate(
+        &discovery.inputs,
+        &AnalysisAuthority::bundled(),
+        ContextOrigin::Installation,
+        integrity,
+    )
+}
+impl AnalysisContext {
+    /// Discover bounded registry candidates without config seeds or a game launch.
+    /// Static matches never establish live ownership; retain the input artifact for replay.
+    pub fn discover_registries(&self) -> Result<crate::RegistryDiscoveryResult, AnalysisError> {
+        let report = discovery_capability(&self.binding);
+        if report.availability != Availability::Available {
+            return Err(AnalysisError::Unavailable {
+                reasons: report.reasons,
+            });
+        }
+        let input = self.binding.discovery_input()?;
+        let inputs = &self
+            .binding
+            .discovery
+            .as_ref()
+            .expect("admitted discovery binding")
+            .inputs;
+        let bytes = serde_json::to_vec(&input).expect("recorded discovery inputs");
+        use sha2::{Digest, Sha256};
+        let descriptor = evidence::discovery::DiscoveryDescriptor {
+            format: evidence::discovery::FORMAT.into(),
+            capture_origin: evidence::CaptureOrigin::Captured,
+            provenance: AnalysisProvenance {
+                executable: inputs.executable.clone(),
+                slice: inputs.slice.clone(),
+                composition: inputs.composition.clone(),
+                method: inputs.method.into(),
+                decoder: inputs.decoder.into(),
+                implementation: inputs.implementation.clone(),
+                qualification_records: report.qualification_records,
+                evidence: report.evidence,
+            },
+            input: crate::ArtifactReference {
+                path: "registry-discovery/input.json".into(),
+                sha256: format!("{:x}", Sha256::digest(&bytes)),
+                bytes: bytes.len() as u64,
+            },
+            runs: vec![],
+        };
+        evidence::discovery::derive(descriptor, &bytes, AnalysisOrigin::Executable)
+            .map_err(|e| AnalysisError::Decode(e.to_string()))
     }
 }

@@ -17,3 +17,5 @@ pub use records::{
 pub mod registry;
 
 pub mod analysis;
+
+pub mod discovery;

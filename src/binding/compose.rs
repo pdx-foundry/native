@@ -100,6 +100,9 @@ pub(super) fn synthetic_variation(
         method: MethodId::TraditionRegistryKeys,
         strategy: targets::StrategyId::MacSuspendedChildLoaderEntry,
         content: "{}",
+        discovery: targets::lookup(&super::targets::test_identity())
+            .unwrap()
+            .discovery,
         analysis: targets::lookup(&super::targets::test_identity())
             .unwrap()
             .analysis,
@@ -149,10 +152,29 @@ pub(super) fn analysis(
         decoder: evidence::analysis::DECODER,
         implementation: env!("PDX_NATIVE_ANALYSIS").into(),
     };
-    Ok(super::BoundAnalysis::new(
-        inputs,
-        control,
-        decoder,
-        installation,
-    ))
+    let recipe = targets::lookup(image)?.discovery;
+    let layout = evidence::discovery::SchedulerLayout {
+        start: recipe.start,
+        end: recipe.end,
+        offset: recipe.offset,
+        stride: recipe.stride,
+        count: recipe.count,
+    };
+    let mut discovery_inputs = inputs.clone();
+    discovery_inputs.method = evidence::discovery::METHOD;
+    discovery_inputs.composition = hash(
+        &serde_json::to_vec(&serde_json::json!({
+            "operation": "registry-discovery", "executable": image.executable, "slice": image.slice,
+            "recipe": recipe.revision, "layout": layout, "method": evidence::discovery::METHOD,
+            "decoder": evidence::analysis::DECODER, "demangler": "cpp_demangle-0.5.1",
+            "implementation": env!("PDX_NATIVE_ANALYSIS"),
+        }))
+        .expect("discovery composition"),
+    );
+    let mut bound = super::BoundAnalysis::new(inputs, control, decoder, installation);
+    bound.discovery = Some(super::analysis::BoundDiscovery {
+        inputs: discovery_inputs,
+        layout,
+    });
+    Ok(bound)
 }

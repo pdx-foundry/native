@@ -20,6 +20,10 @@ PDX Native is the canonical home for reusable engine integration knowledge. This
 
 ## Ownership and status
 
+SDK-528 adds [static registry discovery and historical ownership replay](design/registry-discovery.md).
+Its qualified Rust port retains the SDK-489 candidate/scheduler bounds and passes 41 retained controls.
+It does not launch a game or establish current live ownership.
+
 SDK-527 adds a [qualified static decode control](design/static-analysis.md) with retained-byte
 replay. Its shared build changes invalidate the preceding live-session composition; the live
 records below remain historical until a separate requalification. Static acceptance grants no

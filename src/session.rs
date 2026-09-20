@@ -60,6 +60,17 @@ impl Native {
     /// Inspect one operation. Registry admission may probe live prerequisites; static decoding
     /// checks only executable inputs. Neither request launches Stellaris.
     pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
+        if matches!(request, CapabilityRequest::RegistryDiscovery) {
+            return self.binding.analysis.as_ref().map_or_else(
+                || {
+                    let mut report =
+                        qualification::analysis::unavailable(self.identity(), self.origin());
+                    report.bounds = crate::CapabilityBounds::RegistryDiscovery;
+                    report
+                },
+                |binding| crate::engine::analysis::discovery_capability(binding),
+            );
+        }
         if matches!(request, CapabilityRequest::StaticDecode) {
             return self.binding.analysis.as_ref().map_or_else(
                 || qualification::analysis::unavailable(self.identity(), self.origin()),
@@ -74,7 +85,7 @@ impl Native {
             self.integrity(),
         )
     }
-    /// Open the qualified static decode method without content, a debugger, or a game process.
+    /// Open a static context when at least one analysis method is admitted, without a game process.
     /// The returned context refuses changed executable bytes on every operation.
     pub fn analysis(&self) -> Result<crate::AnalysisContext, crate::AnalysisError> {
         let binding =

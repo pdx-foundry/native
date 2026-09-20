@@ -1,15 +1,15 @@
 {
-  "composition": "5d34e70c6a1d7e86018a7b062e6fa244d0fcacd1b0a7aa93ed458b6e3608f301",
+  "composition": "ff1ee5cdaece53ace0092eccbe431c4b65c9d5eb10cf4ce38b0fb25aa87d4176",
   "decode_matches_historical_control": true,
   "descriptor": {
     "bytes": 771,
     "path": "descriptor.json",
-    "sha256": "f2af42f3ba2d135a2b33f1ed84a193c53e5761d5462ef1b1b11c82d39da53c21"
+    "sha256": "697804636d518f27e245aa24a15bae8e38a8ca51df971079c5cf9cf31dff59b9"
   },
   "game_launches": 0,
   "historical_bundle": "70fce0ce8dae5dbb473937b08ef77e711218e34a1e2d6406519ad3b574dbfe79",
   "historical_control": "typed-extraction/reference-observation-prototype/evidence/planet-getter.txt",
-  "implementation": "b5b612b854e5e1d726567dbbe2e159e1400a6234a42a12ccb90dc9954ff9131a",
+  "implementation": "1ad54dca3ced66aac2ac477e008e2237ab1ce167c076e19a014fec43fc9c69f6",
   "instruction_count": 11,
   "normalization_control": {
     "bytes": 288,
@@ -20,7 +20,7 @@
   "result": {
     "bytes": 2784,
     "path": "result.json",
-    "sha256": "567b39d96047baa3b804cabe2ecc934fcd2a84165aacb74d1920c4e3982a746d"
+    "sha256": "38743c53e4f8c1f3ffa7ed8a35b21b33afe09c1506dc8d263de2e1d964a29b40"
   },
   "status": "qualified-static-control",
   "basis": "Exact M45 control compared with retained disassembly; public replay reproduces instructions. Portable authored controls run in the macOS/Linux/Windows CI matrix.",
@@ -30,8 +30,8 @@
     "Cross-host controls use authored bytes; the full private executable is verified locally."
   ],
   "candidate": {
-    "path": "sdk-527-qualification-02/qualification.json",
+    "path": "sdk-528-review-decode-20260920/qualification.json",
     "bytes": 1022,
-    "sha256": "d959d3a9c4b0360ec82061e2144e54844240cb8ea77d5a9074092d0bf7dc5deb"
+    "sha256": "12b8b6552a68b8d64a13b6e1cc8f28cf5b034e50f72540e9f1a5cf229f7774a8"
   }
 }

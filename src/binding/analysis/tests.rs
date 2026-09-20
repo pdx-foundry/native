@@ -326,3 +326,114 @@ fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
     fat[8..12].copy_from_slice(&0x0100000cu32.to_be_bytes());
     assert!(binary::code_range(&fat, 0x1000, 44).is_err());
 }
+
+#[test]
+#[ignore = "requires M45 executable and retained SDK-489 bundle"]
+fn qualify_registry_discovery() {
+    use evidence::discovery::{candidates, scheduler};
+    let path = std::env::var_os("PDX_NATIVE_ANALYSIS_EXECUTABLE").expect("exact M45 executable");
+    let output = std::path::PathBuf::from(
+        std::env::var_os("PDX_NATIVE_DISCOVERY_OUTPUT").expect("new private output"),
+    );
+    fs::create_dir(&output).expect("new output directory");
+    let retained = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(".local/evidence/restored/atlas-ownership/prototype/registry-ownership");
+    let binding = Binding::open(OpenRequest {
+        installation_hint: path.into(),
+    })
+    .unwrap();
+    let bound = binding.analysis.unwrap();
+    let input = bound.discovery_input().unwrap();
+    let bytes = serde_json::to_vec(&input).unwrap();
+    fs::create_dir(output.join("registry-discovery")).unwrap();
+    fs::write(output.join("registry-discovery/input.json"), &bytes).unwrap();
+    let found = candidates(&input.symbols);
+    let expected: Vec<evidence::discovery::CandidateRecord> =
+        serde_json::from_slice(&fs::read(retained.join("candidates.json")).unwrap()).unwrap();
+    assert_eq!(found, expected, "complete candidate parity");
+    let (rows, gaps) = scheduler(&input).unwrap();
+    let expected: Vec<serde_json::Value> =
+        serde_json::from_slice(&fs::read(retained.join("static-table.json")).unwrap()).unwrap();
+    assert_eq!(rows.len(), 198);
+    for (row, expected) in rows.iter().zip(expected) {
+        let mut expected = expected;
+        expected.as_object_mut().unwrap().remove("slots");
+        assert_eq!(
+            serde_json::to_value(row).unwrap(),
+            expected,
+            "scheduler row {}",
+            row.index
+        );
+    }
+    let inputs = &bound.discovery.as_ref().unwrap().inputs;
+    let descriptor = evidence::discovery::DiscoveryDescriptor {
+        format: evidence::discovery::FORMAT.into(),
+        capture_origin: CaptureOrigin::Captured,
+        provenance: AnalysisProvenance {
+            executable: inputs.executable.clone(),
+            slice: inputs.slice.clone(),
+            composition: inputs.composition.clone(),
+            implementation: inputs.implementation.clone(),
+            method: inputs.method.into(),
+            decoder: inputs.decoder.into(),
+            qualification_records: vec![],
+            evidence: vec![],
+        },
+        input: support::reference("registry-discovery/input.json", &bytes),
+        runs: vec![],
+    };
+    let result =
+        evidence::discovery::derive(descriptor.clone(), &bytes, AnalysisOrigin::Executable)
+            .unwrap();
+    assert_eq!(
+        result
+            .scheduling
+            .iter()
+            .filter(|r| r.candidates.is_empty())
+            .count(),
+        35
+    );
+    assert_eq!(result.candidates.len(), 164);
+    let raw = serde_json::to_vec_pretty(&descriptor).unwrap();
+    fs::write(output.join("descriptor.json"), &raw).unwrap();
+    let report = serde_json::json!({"composition":inputs.composition,"implementation":inputs.implementation,"candidates":found.len(),"scheduling":rows.len(),"outside_template":35,"unknown_instructions":gaps,"game_launches":0,"descriptor":support::reference("descriptor.json",&raw)});
+    fs::write(
+        output.join("qualification.json"),
+        serde_json::to_vec_pretty(&report).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn discovery_admission_uses_its_own_composition_and_bounds() {
+    let (_, mut binding) = fixture();
+    binding.inputs.method = evidence::discovery::METHOD;
+    binding.inputs.composition = "e".repeat(64);
+    let mut authority = AnalysisAuthority {
+        accepted: vec![AnalysisRecord {
+            id: "decode-only".into(),
+            composition: "c".repeat(64),
+            evidence: vec![],
+        }],
+        withdrawn: vec![],
+    };
+    let report = evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None);
+    assert_eq!(report.bounds, crate::CapabilityBounds::RegistryDiscovery);
+    assert_eq!(report.availability, Availability::Unavailable);
+    authority.accepted.push(AnalysisRecord {
+        id: "discovery".into(),
+        composition: binding.inputs.composition.clone(),
+        evidence: vec![],
+    });
+    let report = evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None);
+    assert_eq!(report.availability, Availability::Available);
+    assert_eq!(
+        report.accepted_bounds,
+        [crate::CapabilityBounds::RegistryDiscovery]
+    );
+    authority.withdrawn.push("discovery".into());
+    assert_eq!(
+        evaluate(&binding.inputs, &authority, ContextOrigin::Synthetic, None).reasons,
+        [UnavailableReason::QualificationWithdrawn]
+    );
+}
