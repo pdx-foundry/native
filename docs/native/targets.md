@@ -30,8 +30,15 @@ Current support follows the target catalogue and Cargo tests, as specified by th
 work is deferred under the [roadmap](../roadmap.md); the decisions below describe the historical
 experiments and do not admit another build or platform.
 
-Accepted SDK-476 starts qualification with a pinned Apple Silicon 4.5 beta. Stable support requires requalification against stable 4.5 and the agreed Mac/Windows targets. Linux and Intel Mac are outside the initial support promise. One qualified stable release is actively maintained; a patch is not admitted automatically.
+SDK-476 originally started qualification with a pinned Apple Silicon 4.5 beta and required Mac
+and Windows stable targets. The simplification decision and roadmap supersede that platform gate:
+Windows is deferred, and support is now the exact catalogue entry plus its tests. Linux and Intel
+Mac remain outside the initial scope. A patch is not admitted automatically.
 
-SDK-445 is marked Done in Linear, but its text and result documents retain an open overall maintenance comparison. Do not derive economical maintenance from its status. SDK-485 remains Backlog: unchanged Atlas extraction across Mac ARM64/Windows x64 and a second distinct executable is still required. A second ARM64 target was not established in the retained records. Partial wall intervals and run counts are not active human/agent labor measurements.
+SDK-445 is marked Done in Linear, but its text and result documents retain an open overall
+maintenance comparison. Do not derive economical maintenance from its status. SDK-485 is now the
+deferred update rehearsal on a second distinct Apple Silicon executable; its earlier Mac/Windows
+criterion is superseded. A second ARM64 target was not established in the retained records.
+Partial wall intervals and run counts are not active human/agent labor measurements.
 
 Source: `sdk-testing` bundle, `sdk-testing/prototype/compatibility-harness/{apple-silicon,windows,windows-446}/`; Mac raw archive in `apple-silicon-baseline`; Windows raw archives in `linear-records/assets/3abce4f4-ee3d-4a66-bb4f-5ef058a2fb66` and `c7ff3152-650d-4148-bb86-a2b7ac72e306`. Local exported issue/comment records include SDK-476, SDK-485, SDK-445 and SDK-447–449. [Retrieval instructions](retrieval.md) explain nested archives.

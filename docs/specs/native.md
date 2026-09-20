@@ -2,8 +2,8 @@
 
 Status: implementation specification, rewritten 2026-09-20 to agree with the approved
 [simplification decision](../design/simplification.md). It replaces the evidence-producer
-specification of 2026-09-17. The earlier text is in Git history. The code does not yet agree with
-this document; the decision's work order brings it into agreement.
+specification of 2026-09-17. The earlier text is in Git history. The delivered operations agree
+with this document; the roadmap tracks the operations that are still planned.
 
 ## Problem Statement
 
@@ -88,25 +88,26 @@ Native establishes what was read or observed. Atlas decides what that establishe
 
 ### 2. Public API
 
-The [decision document](../design/simplification.md) holds the API sketch. The requirements are:
+The [decision document](../design/simplification.md) holds the API sketch. Availability below is
+the state after the simplification effort:
 
-| Operation | Atlas supplies | Native returns |
-| --- | --- | --- |
-| `Native::open` | Installation location | A pinned installation, or a precise failure (missing, unknown build, ambiguous) |
-| `supports` | An operation | Supported, or unsupported with a reason |
-| `registries`, `registry_fields` | A registry name | Registries; fields with reader identity and kind, or an unknown reader |
-| `declarations`, `defines`, `on_actions` | A declaration kind | Engine declarations with description, usage, scopes |
-| `start_game` | Supervisor command, deadlines | A `Game` paused at a stated readiness boundary |
-| `Game::registry_items` | A registry name | Item names from the engine collection |
-| `Game::observe_fixture` | Fixture files and requested observations | Field observations that name file, field, owner, and stage |
-| `Game::close`, `Game::cancel` | — | A disposal result: confirmed, unconfirmed, or not applicable |
-| `from_recorded_answers`, `record_answers_to` | A directory | Recorded answers in place of a game; a record of a real run |
+| Operation | Availability | Atlas supplies | Native returns |
+| --- | --- | --- | --- |
+| `Native::open` | Implemented | Installation location | A pinned installation, or a precise `OpenError` |
+| `supports` | Implemented | An `Operation` | `Support::Supported`, or `Support::Unsupported` with a reason |
+| `registries`, `registry_fields` | Implemented | A registry name for fields | Registries; fields with reader identity and kind, or an unknown reader |
+| `start_game` | Implemented | Supervisor command and deadlines | A `Game` paused at a stated readiness boundary |
+| `Game::registry_items` | Implemented | A registry name | Item names from the engine collection |
+| `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
+| `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
+| `declarations`, `defines`, `on_actions` | Planned | A declaration kind | Engine declarations with description, usage, and scopes |
+| `Game::observe_fixture` | Planned | Fixture files and requested observations | Field observations that name file, field, owner, and stage |
 
 Rules for the API:
 
 - **Names prefer clarity to brevity.** A method name says its subject (`registry_fields`).
-- **A registry is named by a string** in every operation: the content directory key
-  (`traditions` for `common/traditions`). A discovered candidate with no established name is a
+- **A registry is named by a string** in every operation: the full content directory
+  (`common/traditions`, `map/galaxy`). A discovered candidate with no established name is a
   gap, not a registry.
 - **No native details in public types.** No addresses, offsets, tokens, symbols, instructions,
   debugger commands, launch switches, or timing workarounds appear in a request or a result.
@@ -138,7 +139,8 @@ pub enum Basis { Declared, StaticAnalysis, LiveObservation, Recorded }
 - Two fields that use one shared reader report the same reader identity.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
 
-There is one `Error` type. `Answer<T>` and `Error` are serializable.
+Question, session, and recorded-answer failures use one `Error` type. Opening an installation uses
+`OpenError`, because no `Native` exists yet. `Answer<T>` and `Error` are serializable.
 
 ### 4. Game lifecycle and isolation
 

@@ -138,6 +138,8 @@ that ticket is done. The blocking relations in Linear are the authority for what
 Tickets are in the Linear **Atlas** project, one milestone per row above. The `Repo` label group
 (`Native` or `Atlas`) says in which repository the work of a ticket is done. Each ticket is a
 vertical slice: it ends at the public API, with tests on small tracked inputs and recorded
-answers, checked through the Atlas caller. Acceptance criteria in tickets that name replay,
-retained captures or qualification records are superseded by the simplification decision. Open extraction questions stay with their Atlas
-map tickets; each Native ticket links to the question it implements and reports its result there.
+answers, checked through the Atlas caller. The open tickets agree with the simplification
+decision (rewritten 2026-09-20). Completed tickets keep their original text; criteria in them that
+name replay, retained captures or qualification records are superseded. Open extraction questions
+stay with their Atlas map tickets; each Native ticket links to the question it implements and
+reports its result there.

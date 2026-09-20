@@ -1,7 +1,8 @@
 # Decision: return Native to a simple engine API
 
-Status: approved by Jackson, 2026-09-19. This document amends the [specification](../specs/native.md) and the
-[technical design](architecture.md); those documents are to be rewritten to agree with it.
+Status: approved by Jackson, 2026-09-19; implemented 2026-09-20. This document amends the
+[specification](../specs/native.md) and the [technical design](architecture.md), which now agree
+with it.
 
 Naming rule: public names prefer clarity to brevity. A method name says its subject
 (`registry_fields`, not `fields`).
@@ -41,24 +42,26 @@ again. Tests use small recorded answers when no game is available.
 
 ```rust
 // Installation. No process is started.
-let native = Native::open("/path/to/Stellaris")?;      // Err: Missing, UnknownBuild, Ambiguous...
-native.build();                                         // label + opaque id, for stamps only
-native.supports(Operation::Fields);                     // Supported | Unsupported(reason)
+let native = Native::open("/path/to/Stellaris")?;      // Result<Native, OpenError>
+native.build();                                         // opaque exact-build identity
+native.supports(Operation::RegistryFields);             // Supported | Unsupported(reason)
 
-// Static questions.
+// Implemented static questions.
 native.registries()?;                                   // Answer<Vec<Registry>>
 native.registry_fields("common/traditions")?;           // Answer<Vec<Field>>
-native.declarations(DeclarationKind::Effect)?;          // Answer<Vec<Declaration>>   (milestone 3)
-native.defines()?;  native.on_actions()?;               //                            (milestone 3)
 
-// Live questions. The consumer owns when a game runs; Native owns how.
+// Implemented live questions. The consumer owns when a game runs; Native owns how.
 let mut game = native.start_game(GameOptions::new(supervisor_command)).await?;
 game.registry_items("common/traditions").await?;        // Answer<Vec<String>>
-game.observe_fixture(fixture).await?;                   // Answer<Vec<FieldRead>>     (SDK-532)
 game.close().await?;                                    // Disposal: Confirmed | Unconfirmed
 
 // Tests without a game.
-let native = Native::from_recorded_answers("tests/recorded/m45")?;
+let native = Native::from_recorded_answers("/path/to/recorded-answers")?;
+
+// Planned operations, not present yet.
+native.declarations(DeclarationKind::Effect)?;          // milestone 3
+native.defines()?;  native.on_actions()?;               // milestone 3
+game.observe_fixture(fixture).await?;                   // SDK-532
 ```
 
 One result type:
@@ -73,16 +76,17 @@ pub struct Answer<T> {
 pub enum Basis { Declared, StaticAnalysis, LiveObservation, Recorded }
 ```
 
-One error type, `Error`, with `Unsupported { operation, reason }`, `BuildChanged`, `Game(...)`,
-and `Io`. `Answer<T>` implements `Serialize` and `Deserialize`; recorded answers are a
-directory of these, and they always carry `Basis::Recorded`.
+Question, session and recorded-answer failures use `Error`; installation opening uses the
+separate `OpenError`. `Answer<T>` and `Error` implement `Serialize` and `Deserialize`; recorded
+answers are a directory of these, and successful recorded answers carry `Basis::Recorded`.
 
 Normalized value types (a sketch; each ticket fixes its own):
 
 ```rust
-pub struct Registry { pub name: String, pub directory: Option<String> }
+pub struct Registry { pub name: String }
 pub struct Field    { pub name: String, pub reader: Reader, pub conditional: bool }
-pub enum   Reader   { Known { id: ReaderId, kind: ReaderKind }, Unknown }
+pub struct Reader   { pub id: Option<ReaderId>, pub kind: ReaderKind }
+pub enum ReaderKind { Unknown /* extended as reader support lands */ }
 pub struct Declaration { pub name: String, pub description: String, pub usage: String,
                          pub scopes: Vec<String>, pub targets: Vec<String> }
 ```
@@ -151,9 +155,11 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
 ## Work order
 
 1. **Done, 2026-09-20.** Amend the specification and design. Update the roadmap, README notice,
-   `AGENTS.md` and development policy. The Linear tickets are not edited: the roadmap "Tracking"
-   paragraph states that criteria which name replay, retained captures or qualification records
-   are superseded. This work order has no Linear tickets; this document tracks it.
+   `AGENTS.md` and development policy. This work order has no Linear tickets; this document
+   tracks it. The open Native tickets (SDK-522, SDK-529, SDK-531 to SDK-557) and the open Atlas
+   map tickets (SDK-470, SDK-480, SDK-485, SDK-486, SDK-490 to SDK-511, SDK-524, SDK-558) were
+   updated on 2026-09-20, after the merge, to agree with this decision. Completed tickets keep
+   their original text.
 2. **Done, 2026-09-20.** The decode, discovery and fields methods moved from
    `crates/native-evidence` to `src/engine/analysis`. The source-hash pin and the static
    qualification records are removed: a static method is available when the build is in the
@@ -191,8 +197,9 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
    outside the build's live recipe gives `Unsupported` with the covered names, not
    `UnknownRegistry`.
 
-   **Step 3 done, 2026-09-20.** The documented public root is 25 items: `Native`, `Game`,
-   `Answer` and their value, gap, source and error types, plus `supervisor::serve`.
+   **Step 3 done, 2026-09-20.** The documented public root contains `Native`, `Game`,
+   `GameOptions`, `Answer` and their operation, value, gap, source and error types, plus
+   `supervisor::serve` and its error type.
    `Native::supports(operation)` replaces the capability report. `Native::get_registry`,
    `RegistryDescription`, `EngineContext` and `Engine::open` are removed. The earlier capability,
    replay and result types are in a hidden `internals::legacy` module, which only Native's live

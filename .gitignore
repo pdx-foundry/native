@@ -4,5 +4,10 @@
 # Private raw engine evidence and imported project records.
 /.local/
 
+.DS_Store
+
 # Python test and maintainer-tool bytecode.
 __pycache__/
+
+.claude/worktrees/
+.codex/environments/

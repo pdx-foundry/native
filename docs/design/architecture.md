@@ -55,7 +55,7 @@ src/
     targets/
       records.rs                   exact-target data and recipe references
       recipes.rs                   host-neutral identifiers for required implementations
-    groups.rs                      typed engine function/global/layout definitions
+    groups.rs                      build-specific live addresses and layouts
     platform.rs                    compile-time host selection; live strategy resolution
     platform/
       macos/                       macOS ownership/access, the LLDB strategy and its worker
@@ -126,7 +126,7 @@ receives those, not a universal object that exposes platform, version, and every
 
 | Knowledge or decision | Single authority |
 | --- | --- |
-| Public request and answer meaning | `api` definitions and their documented invariants |
+| Public request and answer meaning | `answer`, `api`, `session`, and `game` definitions and their documented invariants |
 | Owner/worker message shape | `protocol` definitions; generated bindings for another language |
 | Recorded-answer file shape | `recorded` |
 | Installation locations and host prerequisites | Compile-time-selected `binding::platform` implementation |
@@ -187,8 +187,8 @@ Represent support as a **sparse set of exact-target compositions**. There is no 
 product of versions, platforms, methods, and operations.
 
 Each target record refers to an explicit recipe. Both are host-neutral Rust data: architecture,
-format, binding-group references, and typed strategy and method identifiers, with no references to
-concrete platform types or function pointers. Records do not use `cfg`.
+format, binding-group references, a live strategy identifier, and the static discovery layout,
+with no references to concrete platform types or function pointers. Records do not use `cfg`.
 
 `binding::compose` looks up the record and recipe, resolves its binding groups and machine methods,
 and asks the compiled host's strategy resolver to turn a strategy identifier into an
@@ -212,32 +212,24 @@ changed group.
 
 ### M45-observe data sketch
 
-Types and lookup boilerplate are abbreviated. Exact native declarations live in `binding/groups`.
+Types and lookup boilerplate are abbreviated. Exact live addresses and layouts live in
+`binding/groups`.
 
 ```rust
 const M45_OBSERVE: TargetRecord = TargetRecord {
-    label: "M45-observe",
-    executable_sha256: "3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216",
-    slice_sha256: "1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623",
-    architecture: Architecture::Arm64,
-    format: BinaryFormat::MachO,
-    recipe: &M45_EARLY_OBSERVATIONS,
+    executable: "3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216",
+    slice: "1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623",
+    architecture: object::Architecture::Aarch64,
+    format: object::BinaryFormat::MachO,
+    recipe: &M45_OBSERVE_RECIPE,
 };
 
-const M45_EARLY_OBSERVATIONS: Recipe = Recipe {
-    bindings: &[
-        BindingGroupId::M45ObserveRegistrationEntries,
-        BindingGroupId::M45ObserveCategoryReader,
-    ],
-    operations: &[OperationRecipe {
-        operation: OperationId::EarlyReadEntries,
-        method: MethodId::BoundedRegistrationAndCategoryReads,
-        strategy: LiveStrategyId::MacSuspendedChildLoaderEntry,
-    }],
+const M45_OBSERVE_RECIPE: Recipe = Recipe {
+    groups: &[BindingGroupId::M45TraditionRegistries],
+    strategy: StrategyId::MacSuspendedChildLoaderEntry,
+    discovery: &M45_DISCOVERY,
 };
 ```
-
-`BindingKey` names a role within a group; it is not a public request to call an address.
 
 ## Binding once, executing without target tests
 
@@ -245,11 +237,11 @@ const M45_EARLY_OBSERVATIONS: Recipe = Recipe {
 
 1. Accept an installation location. Read the executable identity and select the slice. Atlas
    supplies no build or architecture selector.
-2. Look up the exact target record. Build an immutable composition from its recipe. An unknown
-   build is an error.
-3. Resolve and verify the required symbols, patterns, globals, and layouts through their owning
-   modules.
-4. Return `Native`. Target descriptors and bindings stay private.
+2. Look up the exact target record. An unknown build is an error.
+3. Resolve the recipe's machine support, live strategy and binding groups, and prepare the static
+   analysis binding.
+4. Return `Native`. Target records, recipes and native bindings stay private. Input integrity and
+   host prerequisites are checked again when a question or game needs them.
 
 Later operations dispatch through the bound operation set. They do not take a build enum or
 inspect a version string. `supports(operation)` reads the same set.
@@ -288,7 +280,7 @@ during the job. Never kill an unowned game.
 | Native release | API definitions, catalogue entries, recipes, methods, bindings |
 | Host-wide namespace | Exclusive launch reservation and journal; held by the supervisor |
 | `Native` | Exact target binding, bound operation set, selected back end |
-| `Game` | Deadlines, temporary work directory, worker event sequence |
+| `Game` | Deadlines, temporary work directory, normalized paused answers |
 | Supervisor | Owned process handles, private profile, disposal result |
 | Worker | Current hooks, debugger state, transient observations |
 
