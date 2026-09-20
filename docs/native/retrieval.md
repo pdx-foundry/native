@@ -78,3 +78,10 @@ The SDK-528 [registry-discovery contract](../design/registry-discovery.md) descr
 verified SDK-489 preparation and the installation-free `replay-discovery` example. Preparation copies
 only into a new working capture; it preserves the retained capsule. Historical manifests retain the
 original content boundaries and independent disposal records.
+
+## Registry root-field replay
+
+The [SDK-530 contract](../design/registry-fields.md) documents executable-only capture and
+`replay-fields`. `tools/prepare-registry-fields.py` verifies SDK-487 comparison bytes only after
+new Rust results have been frozen. It writes to a new comparison directory and never modifies
+the retained prototype. Complete registry semantics remain unqualified after successful replay.

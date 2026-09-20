@@ -176,5 +176,13 @@ pub(super) fn analysis(
         inputs: discovery_inputs,
         layout,
     });
+    let mut fields = bound.inputs.clone();
+    fields.method = evidence::fields::METHOD;
+    fields.composition = hash(&serde_json::to_vec(&serde_json::json!({
+        "operation": "registry-fields", "executable": image.executable, "slice": image.slice,
+        "method": fields.method, "decoder": fields.decoder, "implementation": fields.implementation,
+        "discovery": bound.discovery.as_ref().unwrap().inputs.composition,
+    })).expect("field analysis composition"));
+    bound.fields = Some(fields);
     Ok(bound)
 }

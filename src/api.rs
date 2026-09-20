@@ -18,6 +18,17 @@ pub struct ReplayRequest {
 pub struct Engine;
 
 impl Engine {
+    /// Recompute root fields and reader joins from verified executable evidence.
+    pub fn replay_registry_fields(
+        &self,
+        request: ReplayRequest,
+    ) -> Result<crate::RegistryFieldResult, ReplayError> {
+        evidence::fields::replay(
+            &ArtifactStore::new(request.artifact_root),
+            &request.descriptor,
+        )
+    }
+
     /// Recompute registry candidates and historical ownership from verified retained artifacts.
     pub fn replay_registry_discovery(
         &self,
@@ -124,6 +135,8 @@ pub enum CapabilityRequest {
     StaticDecode,
     /// Bounded static registry candidates and startup scheduling links.
     RegistryDiscovery,
+    /// Root-token dispatch and reader joins without config seeds.
+    RegistryFields,
 }
 
 impl Default for CapabilityRequest {
@@ -143,6 +156,8 @@ pub enum CapabilityBounds {
     StaticDecode,
     /// Bounded static registry candidates and startup scheduling links.
     RegistryDiscovery,
+    /// Root-token dispatch and reader joins without config seeds.
+    RegistryFields,
 }
 
 /// Registry names declared by a method or covered by one acceptance record.

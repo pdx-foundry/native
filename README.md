@@ -7,11 +7,15 @@ An async `Game` owns one supervised Stellaris process and returns independent st
 for `traditions` and `tradition_categories`. The process stays paused at registry initialization;
 startup does not imply a loaded world or available gameplay operations.
 See [installation queries and Game sessions](docs/design/live-observations.md), including the
-SDK-518 migration and qualification boundary. Reader and field discovery remain explicitly unknown.
+SDK-518 migration and qualification boundary. Reader semantics remain explicitly unknown; root-field routing has a separate static operation.
 
 `Native::analysis()` decodes one qualified M45-observe function without a game, content files,
 or a debugger. [Static analysis and replay](docs/design/static-analysis.md) describes the public
 interface and its bounded qualification.
+
+`AnalysisContext::analyze_subject(&discovery, &subject)` discovers root fields from executable
+bytes and returns reader joins or explicit gaps. [Root-field discovery and replay](docs/design/registry-fields.md)
+describes the SDK-487 port and its retained failed-completeness result.
 
 `Native::analysis()?.discover_registries()` discovers template candidates and startup scheduling
 links without config seeds. [Registry discovery and replay](docs/design/registry-discovery.md)

@@ -19,3 +19,5 @@ pub mod registry;
 pub mod analysis;
 
 pub mod discovery;
+
+pub mod fields;

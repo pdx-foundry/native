@@ -22,8 +22,8 @@ only its own handles (and their clones); another result rejects them even on the
 Static discovery returns 164 candidates and 198 scheduling witnesses on the retained target;
 35 witnesses are outside the template method. It reports every candidate as unobserved until
 historical trace evidence is supplied through replay. These counts do not establish all registries.
-`get_registry(name)` remains the existing declared-metadata query. Reader and field schemas are
-still unknown where no separate method qualifies them.
+`get_registry(name)` remains the existing declared-metadata query. [Root-field routing](registry-fields.md) is available through `analyze_subject` on a candidate
+issued by the same analysis context. Full reader and field schemas remain unqualified.
 
 ## Retain and replay
 

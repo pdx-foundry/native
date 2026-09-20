@@ -46,6 +46,9 @@ pub(crate) fn evaluate(
     if inputs.method == evidence::discovery::METHOD {
         report.bounds = CapabilityBounds::RegistryDiscovery;
     }
+    if inputs.method == evidence::fields::METHOD {
+        report.bounds = CapabilityBounds::RegistryFields;
+    }
     report.reasons.clear();
     if let Some(reason) = integrity {
         report.reasons.push(reason);

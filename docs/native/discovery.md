@@ -48,3 +48,11 @@ SDK-528 ports bounded template discovery, static scheduler reconstruction and hi
 replay into Rust. See [the public operation and replay contract](../design/registry-discovery.md).
 The implementation and its tests govern this port; the retained SDK-489 capture remains historical.
 No fresh game run or complete registry inventory is implied.
+
+## Implemented root-field discovery
+
+SDK-530 ports the SDK-487 root-to-delegate token method into Rust, with exact agenda parity,
+explicit tradition reader gaps, and executable-only public controls. See the
+[root-field API, replay and qualification contract](../design/registry-fields.md). The five
+shared-reader blockers remain failed completeness obligations. The retained bundle is comparison
+and provenance material; discovery reads the executable and receives no field or config seeds.

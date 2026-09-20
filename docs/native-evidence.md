@@ -20,6 +20,10 @@ PDX Native is the canonical home for reusable engine integration knowledge. This
 
 ## Ownership and status
 
+SDK-530 adds [registry root-field analysis and replay](design/registry-fields.md). It retains
+SDK-487's 10 agenda fields, 21 token paths, and five unresolved shared-reader contracts. Its
+implementation does not establish complete registry semantics or renew live-session qualification.
+
 SDK-528 adds [static registry discovery and historical ownership replay](design/registry-discovery.md).
 Its qualified Rust port retains the SDK-489 candidate/scheduler bounds and passes 41 retained controls.
 It does not launch a game or establish current live ownership.
