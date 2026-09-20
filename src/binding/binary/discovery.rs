@@ -52,6 +52,10 @@ fn display_name(raw: &str) -> String {
         .unwrap_or_else(|| raw.into())
 }
 
+fn exact_binding_name(raw: &str, import_addend: i64, pointer_addend: u8) -> Option<String> {
+    (import_addend == 0 && pointer_addend == 0).then(|| display_name(raw))
+}
+
 struct Fixups {
     pointers: BTreeMap<u64, u64>,
     bindings: BTreeMap<u64, String>,
@@ -158,7 +162,11 @@ fn fixups(
                     let addend = u64_at(payload, imports + ordinal * 16 + 8)? as i64;
                     let library = (import & 0xffff) as u16 as i16;
                     let name = cstring(payload, names + (import >> 32) as usize)?;
-                    bindings.insert(address, display_name(name));
+                    if let Some(name) =
+                        exact_binding_name(name, addend, ((pointer >> 24) & 0xff) as u8)
+                    {
+                        bindings.insert(address, name);
+                    }
                     // Only same-image weak coalescing has an established local resolution.
                     if library == -3
                         && addend == 0
@@ -359,4 +367,20 @@ pub(in crate::binding) fn read(
         strings,
         vtables,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_bindings_require_zero_import_and_pointer_addends() {
+        assert_eq!(
+            exact_binding_name("_known", 0, 0).as_deref(),
+            Some("_known")
+        );
+        assert_eq!(exact_binding_name("_known", 1, 0), None);
+        assert_eq!(exact_binding_name("_known", 0, 1), None);
+        assert_eq!(exact_binding_name("_known", -1, 0), None);
+    }
 }

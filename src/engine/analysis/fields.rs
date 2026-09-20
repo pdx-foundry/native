@@ -38,6 +38,7 @@ mod inventory;
 mod records;
 mod tokens;
 pub use records::*;
+pub(crate) use tokens::recover_names as recover_token_names;
 
 use super::InputError;
 

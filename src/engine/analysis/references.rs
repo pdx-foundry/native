@@ -540,11 +540,14 @@ fn authored_field(
             parse_number(value).filter(|value| *value >= 10_000)
         })
         .collect();
-    candidates.into_iter().find_map(|token| {
-        (trace_reader(&function.instructions, token, names) == Some(input_offset))
-            .then(|| input.token_names.get(&token).cloned())
-            .flatten()
-    })
+    let fields: BTreeSet<_> = candidates
+        .into_iter()
+        .filter(|token| trace_reader(&function.instructions, *token, names) == Some(input_offset))
+        .filter_map(|token| input.token_names.get(&token).cloned())
+        .collect();
+    let mut fields = fields.into_iter();
+    let field = fields.next()?;
+    fields.next().is_none().then_some(field)
 }
 
 fn trace_reader(
@@ -556,7 +559,18 @@ fn trace_reader(
     enum Value {
         Owner(i64),
         Reader,
-        Integer(i64),
+        Integer(u64),
+    }
+    #[derive(Clone, Copy)]
+    enum Width {
+        Word,
+        Double,
+    }
+    #[derive(Clone, Copy)]
+    struct Comparison {
+        left: u64,
+        right: u64,
+        width: Width,
     }
     let indexes: BTreeMap<_, _> = rows
         .iter()
@@ -566,7 +580,7 @@ fn trace_reader(
     let mut registers = BTreeMap::from([
         ("x0".to_owned(), Value::Owner(0)),
         ("x1".to_owned(), Value::Reader),
-        ("x2".to_owned(), Value::Integer(token)),
+        ("x2".to_owned(), Value::Integer(token as u32 as u64)),
     ]);
     let mut flags = None;
     let mut pc = 0;
@@ -583,10 +597,24 @@ fn trace_reader(
                 .map(|digits| format!("x{digits}"))
                 .unwrap_or_else(|| name.to_owned())
         };
+        let width = |operand: &str| match operand.as_bytes().first() {
+            Some(b'w') => Some(Width::Word),
+            Some(b'x') => Some(Width::Double),
+            _ => None,
+        };
         let value = |operand: &str, registers: &BTreeMap<String, Value>| {
-            parse_number(operand)
-                .map(Value::Integer)
-                .or_else(|| registers.get(&register(operand)).cloned())
+            if let Some(number) = parse_number(operand) {
+                return Some(Value::Integer(number as u64));
+            }
+            let value = registers.get(&register(operand))?.clone();
+            if operand.starts_with('w') {
+                match value {
+                    Value::Integer(value) => Some(Value::Integer(value as u32 as u64)),
+                    Value::Owner(_) | Value::Reader => None,
+                }
+            } else {
+                Some(value)
+            }
         };
         match (row.operation.as_str(), operands.as_slice()) {
             ("b" | "bl", [target]) => {
@@ -605,14 +633,18 @@ fn trace_reader(
                 .flatten();
             }
             (operation, [target]) if operation.starts_with("b.") => {
-                let (left, right) = flags?;
+                let Comparison { left, right, width } = flags?;
+                let signed = match width {
+                    Width::Word => (left as u32 as i32 as i64, right as u32 as i32 as i64),
+                    Width::Double => (left as i64, right as i64),
+                };
                 let take = match operation {
                     "b.eq" => left == right,
                     "b.ne" => left != right,
-                    "b.gt" => left > right,
-                    "b.le" => left <= right,
-                    "b.lt" => left < right,
-                    "b.ge" => left >= right,
+                    "b.gt" => signed.0 > signed.1,
+                    "b.le" => signed.0 <= signed.1,
+                    "b.lt" => signed.0 < signed.1,
+                    "b.ge" => signed.0 >= signed.1,
                     _ => return None,
                 };
                 if take {
@@ -623,9 +655,7 @@ fn trace_reader(
                 let mut next = value(source, &registers);
                 if destination.starts_with('w') {
                     next = match next {
-                        Some(Value::Integer(value)) => {
-                            Some(Value::Integer(value as u32 as i32 as i64))
-                        }
+                        Some(Value::Integer(value)) => Some(Value::Integer(value as u32 as u64)),
                         _ => None,
                     };
                 }
@@ -637,22 +667,41 @@ fn trace_reader(
             }
             ("add" | "sub", [destination, left, right]) => {
                 let amount = match value(right, &registers) {
-                    Some(Value::Integer(amount)) => {
-                        if row.operation == "sub" {
-                            -amount
-                        } else {
-                            amount
-                        }
-                    }
+                    Some(Value::Integer(amount)) => amount,
                     _ => {
                         registers.remove(&register(destination));
                         continue;
                     }
                 };
-                let next = match value(left, &registers) {
-                    Some(Value::Integer(value)) => value.checked_add(amount).map(Value::Integer),
-                    Some(Value::Owner(offset)) if destination.starts_with('x') => {
-                        offset.checked_add(amount).map(Value::Owner)
+                let next = match (width(destination), value(left, &registers)) {
+                    (Some(Width::Word), Some(Value::Integer(value))) => {
+                        let value = value as u32;
+                        let amount = amount as u32;
+                        let result = if row.operation == "sub" {
+                            value.wrapping_sub(amount)
+                        } else {
+                            value.wrapping_add(amount)
+                        };
+                        Some(Value::Integer(result as u64))
+                    }
+                    (Some(Width::Double), Some(Value::Integer(value))) => {
+                        let result = if row.operation == "sub" {
+                            value.wrapping_sub(amount)
+                        } else {
+                            value.wrapping_add(amount)
+                        };
+                        Some(Value::Integer(result))
+                    }
+                    (Some(Width::Double), Some(Value::Owner(offset))) => {
+                        let amount = i64::try_from(amount).ok();
+                        let amount = if row.operation == "sub" {
+                            amount.and_then(i64::checked_neg)
+                        } else {
+                            amount
+                        };
+                        amount
+                            .and_then(|amount| offset.checked_add(amount))
+                            .map(Value::Owner)
                     }
                     _ => None,
                 };
@@ -663,9 +712,18 @@ fn trace_reader(
                 }
             }
             ("cmp", [left, right]) => {
+                let comparison_width = width(left)?;
                 flags = match (value(left, &registers), value(right, &registers)) {
                     (Some(Value::Integer(left)), Some(Value::Integer(right))) => {
-                        Some((left, right))
+                        let (left, right) = match comparison_width {
+                            Width::Word => (left as u32 as u64, right as u32 as u64),
+                            Width::Double => (left, right),
+                        };
+                        Some(Comparison {
+                            left,
+                            right,
+                            width: comparison_width,
+                        })
                     }
                     _ => None,
                 };
@@ -1284,5 +1342,89 @@ mod tests {
             canonical_immediates("x0,#10,#-12,#0x20"),
             "x0,#0xa,#-0xc,#0x20"
         );
+    }
+
+    fn conditional_reader(rows: Vec<Instruction>) -> Option<i64> {
+        trace_reader(
+            &rows,
+            10_000,
+            &BTreeMap::from([(0x3000, Some("CReader::Read(CString&, bool)"))]),
+        )
+    }
+
+    fn reader_tail(address: u64) -> Vec<Instruction> {
+        vec![
+            instruction(address, "mov", "x19,x0"),
+            instruction(address + 4, "mov", "x0,x1"),
+            instruction(address + 8, "add", "x1,x19,#0x40"),
+            instruction(address + 12, "b", "0x3000"),
+        ]
+    }
+
+    #[test]
+    fn word_arithmetic_does_not_take_an_impossible_signed_path() {
+        let mut rows = vec![
+            instruction(0x1000, "mov", "w3,#0x80000000"),
+            instruction(0x1004, "add", "w3,w3,#1"),
+            instruction(0x1008, "cmp", "x3,#0"),
+            instruction(0x100c, "b.lt", "0x1014"),
+            instruction(0x1010, "ret", ""),
+        ];
+        rows.extend(reader_tail(0x1014));
+        assert_eq!(conditional_reader(rows), None);
+    }
+
+    #[test]
+    fn word_subtraction_wraps_before_comparison() {
+        let mut rows = vec![
+            instruction(0x1000, "mov", "w3,#0"),
+            instruction(0x1004, "sub", "w3,w3,#1"),
+            instruction(0x1008, "cmp", "w3,#0xffffffff"),
+            instruction(0x100c, "b.eq", "0x1014"),
+            instruction(0x1010, "ret", ""),
+        ];
+        rows.extend(reader_tail(0x1014));
+        assert_eq!(conditional_reader(rows), Some(0x40));
+    }
+
+    #[test]
+    fn signed_word_comparison_uses_word_width() {
+        let mut rows = vec![
+            instruction(0x1000, "mov", "w3,#0x7fffffff"),
+            instruction(0x1004, "add", "w3,w3,#1"),
+            instruction(0x1008, "cmp", "w3,#0"),
+            instruction(0x100c, "b.lt", "0x1014"),
+            instruction(0x1010, "ret", ""),
+        ];
+        rows.extend(reader_tail(0x1014));
+        assert_eq!(conditional_reader(rows), Some(0x40));
+    }
+
+    #[test]
+    fn distinct_names_for_one_reader_slot_are_ambiguous() {
+        let mut fixture = Fixture::new("CAmbiguousEffect");
+        fixture.input.token_names = BTreeMap::from([
+            (10_000, "first_name".into()),
+            (10_001, "second_name".into()),
+        ]);
+        fixture.direct_symbol(0x3000, "CReader::Read(CString&, bool)");
+        fixture.input.functions.push(DecodedFunction {
+            name: "CAmbiguousEffect::ReadMember(CReader&, int, EScopeType)".into(),
+            instructions: vec![
+                instruction(0x1000, "mov", "w3,#10000"),
+                instruction(0x1004, "cmp", "w2,w3"),
+                instruction(0x1008, "b.eq", "0x1018"),
+                instruction(0x100c, "mov", "w3,#10001"),
+                instruction(0x1010, "cmp", "w2,w3"),
+                instruction(0x1014, "b.ne", "0x1028"),
+                instruction(0x1018, "mov", "x19,x0"),
+                instruction(0x101c, "mov", "x0,x1"),
+                instruction(0x1020, "add", "x1,x19,#0x40"),
+                instruction(0x1024, "b", "0x3000"),
+                instruction(0x1028, "ret", ""),
+            ],
+        });
+        let names = symbol_names(&fixture.input.symbols);
+        assert_eq!(authored_field(&fixture.input, 0x40, &names), None);
     }
 }

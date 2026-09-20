@@ -127,59 +127,7 @@ fn recover_token_names(
     symbols: &[Symbol],
     strings: &BTreeMap<u64, String>,
 ) -> BTreeMap<i64, String> {
-    let constructors: BTreeSet<_> = symbols
-        .iter()
-        .filter(|symbol| symbol.name == "CToken::CToken(int, char const*)")
-        .map(|symbol| symbol.address)
-        .collect();
-    let mut names = BTreeMap::new();
-    for (index, row) in rows.iter().enumerate() {
-        let Some(token) = row
-            .operands
-            .strip_prefix("w1,")
-            .filter(|_| row.operation == "mov")
-            .and_then(parse_number)
-        else {
-            continue;
-        };
-        if index < 3 || index + 1 >= rows.len() {
-            continue;
-        }
-        let page = &rows[index - 3];
-        let offset = &rows[index - 2];
-        let call = &rows[index + 1];
-        let Some(page) = page
-            .operands
-            .strip_prefix("x2,")
-            .filter(|_| page.operation == "adrp")
-            .and_then(parse_number)
-        else {
-            continue;
-        };
-        let Some(offset) = offset
-            .operands
-            .strip_prefix("x2,x2,")
-            .filter(|_| offset.operation == "add")
-            .and_then(parse_number)
-        else {
-            continue;
-        };
-        let Some(target) = (call.operation == "bl")
-            .then(|| parse_number(&call.operands))
-            .flatten()
-            .map(|address| address as u64)
-        else {
-            continue;
-        };
-        if constructors.contains(&target)
-            && let Some(name) = page
-                .checked_add(offset)
-                .and_then(|address| strings.get(&(address as u64)))
-        {
-            names.insert(token as u32 as i32 as i64, name.clone());
-        }
-    }
-    names
+    crate::engine::analysis::fields::recover_token_names(rows, symbols, strings)
 }
 
 fn parse_number(value: &str) -> Option<i64> {
@@ -192,4 +140,109 @@ fn parse_number(value: &str) -> Option<i64> {
         |hex| i64::from_str_radix(hex, 16).ok(),
     )?;
     Some(if negative { -number } else { number })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(address: u64, operation: &str, operands: &str) -> Instruction {
+        Instruction {
+            address,
+            operation: operation.into(),
+            operands: operands.into(),
+            bytes: [0; 4],
+        }
+    }
+
+    fn symbols() -> Vec<Symbol> {
+        vec![Symbol {
+            name: "CToken::CToken(int, char const*)".into(),
+            address: 0x3000,
+        }]
+    }
+
+    fn constructor(address: u64, token: i64, string: u64) -> Vec<Instruction> {
+        vec![
+            row(address, "adrp", "x2,#0x2000"),
+            row(
+                address + 4,
+                "add",
+                &format!("x2,x2,#{:#x}", string - 0x2000),
+            ),
+            row(address + 8, "nop", ""),
+            row(address + 12, "mov", &format!("w1,#{token}")),
+            row(address + 16, "bl", "#0x3000"),
+        ]
+    }
+
+    #[test]
+    fn clobbered_name_is_not_recovered() {
+        let rows = vec![
+            row(0x1000, "adrp", "x2,#0x2000"),
+            row(0x1004, "add", "x2,x2,#0"),
+            row(0x1008, "mov", "x2,xzr"),
+            row(0x100c, "mov", "w1,#10000"),
+            row(0x1010, "bl", "#0x3000"),
+        ];
+        assert!(
+            recover_token_names(
+                &rows,
+                &symbols(),
+                &BTreeMap::from([(0x2000, "invented".into())]),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn branch_bypass_does_not_recover_arguments() {
+        let rows = vec![
+            row(0x1000, "adrp", "x2,#0x2000"),
+            row(0x1004, "add", "x2,x2,#0"),
+            row(0x1008, "b", "#0x1010"),
+            row(0x100c, "mov", "w1,#10000"),
+            row(0x1010, "bl", "#0x3000"),
+        ];
+        assert!(
+            recover_token_names(
+                &rows,
+                &symbols(),
+                &BTreeMap::from([(0x2000, "bypassed".into())]),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn ambiguous_constructor_address_is_not_authoritative() {
+        let rows = constructor(0x1000, 10_000, 0x2000);
+        let mut symbols = symbols();
+        symbols.push(Symbol {
+            name: "Unrelated::Function()".into(),
+            address: 0x3000,
+        });
+        assert!(
+            recover_token_names(
+                &rows,
+                &symbols,
+                &BTreeMap::from([(0x2000, "ambiguous".into())]),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn conflicting_names_do_not_choose_one() {
+        let mut rows = constructor(0x1000, 10_000, 0x2000);
+        rows.extend(constructor(0x1020, 10_000, 0x2010));
+        assert!(
+            recover_token_names(
+                &rows,
+                &symbols(),
+                &BTreeMap::from([(0x2000, "first".into()), (0x2010, "second".into()),]),
+            )
+            .is_empty()
+        );
+    }
 }
