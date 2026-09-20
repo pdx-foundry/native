@@ -3,13 +3,8 @@ name = "pdx-native"
 version = "0.1.0"
 edition = "2024"
 
-[workspace]
-members = ["crates/native-evidence"]
-resolver = "3"
-
 [dependencies]
 tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
-evidence = { package = "pdx-native-evidence", path = "crates/native-evidence", version = "0.1.0" }
 cpp_demangle = "=0.5.1"
 object = { version = "=0.37.3", default-features = false, features = ["read", "std"] }
 serde = { version = "1", features = ["derive"] }
@@ -20,9 +15,6 @@ schemars = { version = "1.2.2", default-features = false, features = ["derive"] 
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 libc = "0.2"
-
-[build-dependencies]
-sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

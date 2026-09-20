@@ -1,16 +1,7 @@
-//! Bounded instruction decoding and replay from recorded bytes. No installation or process access.
-
+//! Bounded ARM64 instruction decoding. Every byte of a range is accounted for, or the range is
+//! an error.
 use capstone::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use evidence::{ArtifactReference, CaptureOrigin};
-
-/// Exact algorithm used by the initial bounded decode control.
-pub const METHOD: &str = "static-decode-control/v1";
-/// Pinned decoder and Native's textual operand normalization revision.
-pub const DECODER: &str = "capstone-0.14.0/arm64-normalization-v1";
-/// Recorded descriptor format; revisions require an explicit replay implementation.
-pub const FORMAT: &str = "pdx-native-analysis/v1";
 
 /// One fully decoded ARM64 instruction. This establishes no higher-level reader semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,65 +18,7 @@ pub struct Instruction {
     pub operands: String,
 }
 
-/// Identities attached to the original operation; replay does not grant fresh qualification.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AnalysisProvenance {
-    /// Exact executable SHA-256.
-    pub executable: String,
-    /// Exact selected slice SHA-256.
-    pub slice: String,
-    /// Opaque identity of the static operation composition.
-    pub composition: String,
-    /// Native analysis method revision.
-    pub method: String,
-    /// Decoder and normalization revision.
-    pub decoder: String,
-    /// Static implementation source/dependency fingerprint.
-    pub implementation: String,
-    /// Qualification records applicable when the original operation ran.
-    pub qualification_records: Vec<String>,
-    /// Immutable qualification evidence references, not loaded by replay.
-    pub evidence: Vec<ArtifactReference>,
-}
-
-/// Relocatable descriptor of a bounded byte range. It stores inputs, never decoded answers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AnalysisDescriptor {
-    /// Must equal the supported descriptor format.
-    pub format: String,
-    /// Whether bytes originated in an executable or an authored test.
-    pub capture_origin: CaptureOrigin,
-    /// Identities of the original analysis operation.
-    pub provenance: AnalysisProvenance,
-    /// Virtual address at which decoding starts.
-    pub address: u64,
-    /// Exact raw instructions under the supplied artifact root.
-    pub code: ArtifactReference,
-}
-
-/// How a static decode result was produced; neither alternative launches a game.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub enum AnalysisOrigin {
-    /// Decoded from a currently verified executable.
-    Executable,
-    /// Decoded from verified retained bytes; provenance remains historical.
-    Replay,
-}
-
-/// Complete decoding of the bounded range with its original provenance.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct AnalysisResult {
-    /// Current execution or recorded replay.
-    pub origin: AnalysisOrigin,
-    /// Verified inputs and original provenance supporting these instructions.
-    pub descriptor: AnalysisDescriptor,
-    /// Every instruction in the bounded range, in address order.
-    pub instructions: Vec<Instruction>,
-}
-
-/// A range cannot be decoded completely under the pinned method.
+/// A range cannot be decoded completely.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodeError(pub String);
 

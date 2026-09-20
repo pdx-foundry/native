@@ -20,42 +20,79 @@
 //!   reachability: at most 40 visits per decoded instruction in aggregate.
 //! - Unknown instructions, unsupported addressing, missing symbols or names, conflicting token
 //!   names, cycles and clobbered values become explicit gaps.
-//! - Inputs: descriptors to 1 MiB; recorded inputs to 64 MiB, 128 functions and 4 MiB of
-//!   aggregate code, with a 1 MiB per-function decode bound.
+//! - Inputs: at most 128 functions and 4 MiB of aggregate code, with a 1 MiB per-function
+//!   decode bound.
 //!
 //! `partition_accounted` means that the ledger accounts for every signed token interval,
 //! including gaps. It never means that every path was resolved. Council agenda keeps five
 //! unresolved shared-reader contracts from the SDK-487 prototype: scoped integer values,
 //! triggers, effects, graphical modifiers and AI weight.
+//!
+//! What the result does not establish: the template loader and owner symbol relationship is
+//! static, not observed live ownership. Dispatch stops at a delegate or an obstruction, so nested
+//! grammars, post-read behavior and dynamic names stay open. Names come only from literal engine
+//! token constructors; no config or content file is an authority.
 mod control_flow;
 mod dispatch;
 mod inventory;
 mod records;
-mod replay;
 mod tokens;
 pub use records::*;
-pub(crate) use replay::analyze;
-pub use replay::derive;
 
-/// Bounded root-token and reader-routing method revision.
+use super::InputError;
+
+/// Name and revision of the method, as stamped on its answers.
 pub const METHOD: &str = "registry-fields/v1";
-/// Recorded executable-input format.
-pub const FORMAT: &str = "pdx-native-registry-fields/v1";
 
-/// Resolve a candidate handle against immutable discovery inputs, never caller-edited output rows.
-pub fn selection(
-    discovery: &crate::engine::analysis::discovery::RegistryDiscoveryResult,
-    subject: &crate::engine::analysis::discovery::RegistrySubject,
-) -> Result<
-    crate::engine::analysis::discovery::CandidateRecord,
-    crate::engine::analysis::discovery::ForeignRegistrySubject,
-> {
-    use crate::engine::analysis::discovery::{ForeignRegistrySubject, StaticInput, candidates};
-    discovery.subject(subject)?;
-    let input: StaticInput =
-        serde_json::from_slice(discovery.input_bytes()).map_err(|_| ForeignRegistrySubject)?;
-    candidates(&input.symbols)
-        .get(subject.ordinal)
-        .cloned()
-        .ok_or(ForeignRegistrySubject)
+/// Find the root fields of the selected candidate. Completeness is derived, never supplied.
+pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
+    if input.functions.len() > 128
+        || input.functions.iter().map(|f| f.code.len()).sum::<usize>() > 4 * 1024 * 1024
+    {
+        return Err(InputError("function input budget exceeded".into()));
+    }
+    if !crate::engine::analysis::discovery::candidates(&input.symbols).contains(&input.selection) {
+        return Err(InputError(
+            "selected loader is not an executable-derived candidate".into(),
+        ));
+    }
+    let gap = |kind: &str, reason: String| FieldGap {
+        kind: kind.into(),
+        reason,
+        path: None,
+    };
+    let mut gaps: Vec<_> = input
+        .gaps
+        .iter()
+        .map(|reason| gap("input-boundary", reason.clone()))
+        .collect();
+    let (tokens, token_gaps) = tokens::recover(input);
+    gaps.extend(
+        token_gaps
+            .into_iter()
+            .map(|reason| gap("token-table", reason)),
+    );
+    let paths = dispatch::explore(input);
+    let (fields, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
+    gaps.extend(path_gaps);
+    let partition_accounted = inventory::partition_accounted(&paths);
+    if !partition_accounted {
+        gaps.push(gap(
+            "token-partition",
+            "token intervals are missing or overlap".into(),
+        ));
+    }
+    gaps.push(gap(
+        "reader-contract",
+        "Routing does not establish shared-reader semantics or complete registry membership."
+            .into(),
+    ));
+    Ok(RegistryFieldResult {
+        fields,
+        paths,
+        gaps,
+        partition_accounted,
+        complete_registry: false,
+        blocking_readers: inventory::blocking_readers(&input.selection.owner_candidate),
+    })
 }

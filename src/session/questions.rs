@@ -6,9 +6,8 @@ use crate::answer::{
 };
 use crate::binding::NamedCandidate;
 use crate::engine::analysis::{
-    decode::{AnalysisOrigin, AnalysisProvenance},
     directories::{self, Directory},
-    fields::{self, FieldDescriptor, PathOutcome, ReaderJoin, RegistryFieldResult},
+    fields::{self, PathOutcome, ReaderJoin, RegistryFieldResult},
 };
 use crate::{AnalysisError, UnavailableReason};
 use sha2::{Digest, Sha256};
@@ -63,17 +62,10 @@ impl Native {
             return Support::Supported;
         }
         match operation {
-            Operation::Registries | Operation::RegistryFields => {
-                match self
-                    .bound()
-                    .analysis
-                    .as_ref()
-                    .map(|a| a.discovery.is_some())
-                {
-                    Some(true) => Support::Supported,
-                    _ => Support::Unsupported("this build has no static analysis recipe".into()),
-                }
-            }
+            Operation::Registries | Operation::RegistryFields => match self.bound().analysis {
+                Some(_) => Support::Supported,
+                None => Support::Unsupported("this build has no static analysis recipe".into()),
+            },
             Operation::RegistryItems => match self.blocking_reasons() {
                 reasons if reasons.is_empty() => Support::Supported,
                 reasons => Support::Unsupported(format!("{reasons:?}")),
@@ -162,43 +154,13 @@ impl Native {
         let input = analysis
             .field_input(candidate.record.clone())
             .map_err(|e| error(operation, e))?;
-        let result = fields::analyze(
-            descriptor(analysis),
-            input,
-            AnalysisOrigin::Executable,
-            Vec::new(),
-        )
-        .map_err(|e| Error::Method(e.to_string()))?;
+        let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
         Ok(Answer {
             value: normalized_fields(&result),
             completeness: Completeness::Partial,
             gaps: normalized_gaps(&result, name),
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
         })
-    }
-}
-
-// The method's internal result still carries a replay descriptor; step 4 removes it.
-fn descriptor(analysis: &crate::binding::BoundAnalysis) -> FieldDescriptor {
-    let inputs = analysis.fields.as_ref().unwrap_or(&analysis.inputs);
-    FieldDescriptor {
-        format: fields::FORMAT.into(),
-        capture_origin: evidence::CaptureOrigin::Captured,
-        provenance: AnalysisProvenance {
-            executable: inputs.executable.clone(),
-            slice: inputs.slice.clone(),
-            composition: inputs.composition.clone(),
-            method: fields::METHOD.into(),
-            decoder: inputs.decoder.into(),
-            implementation: inputs.implementation.clone(),
-            qualification_records: Vec::new(),
-            evidence: Vec::new(),
-        },
-        input: evidence::ArtifactReference {
-            path: "executable".into(),
-            sha256: inputs.executable.clone(),
-            bytes: 0,
-        },
     }
 }
 

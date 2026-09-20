@@ -1,7 +1,6 @@
 use super::tokens::{decode, function, number, register, symbol_names};
 use super::{Condition, FieldInput, PathOutcome, ReaderJoin, TokenPath, Value};
 use crate::engine::analysis::decode::Instruction;
-use evidence::EvidenceReference;
 use std::collections::BTreeMap;
 
 const MIN: i64 = i32::MIN as i64;
@@ -33,19 +32,13 @@ impl State {
             Some(value)
         }
     }
-    fn finish(
-        &self,
-        terminal: u64,
-        outcome: PathOutcome,
-        evidence: &EvidenceReference,
-    ) -> TokenPath {
+    fn finish(&self, terminal: u64, outcome: PathOutcome) -> TokenPath {
         TokenPath {
             domain: self.domain,
             conditions: self.conditions.clone(),
             instructions: self.path.clone(),
             terminal,
             outcome,
-            evidence: evidence.clone(),
         }
     }
     fn assign(&mut self, destination: &str, value: Option<Value>) {
@@ -239,7 +232,7 @@ fn apply(row: &Instruction, state: &mut State) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<TokenPath> {
+pub(super) fn explore(input: &FieldInput) -> Vec<TokenPath> {
     let name = format!(
         "{}::ReadMember(CReader&, int)",
         input.selection.owner_candidate
@@ -263,7 +256,7 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
         .and_then(decode)
     {
         Ok(rows) => rows,
-        Err(reason) => return vec![initial.finish(0, PathOutcome::Gap(reason), evidence)],
+        Err(reason) => return vec![initial.finish(0, PathOutcome::Gap(reason))],
     };
     let indexes: BTreeMap<_, _> = rows
         .iter()
@@ -278,18 +271,12 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
     while let Some(mut state) = pending.pop() {
         visited += 1;
         if visited > MAX_STATES {
-            leaves.push(state.finish(
-                0,
-                PathOutcome::Gap("state budget exhausted".into()),
-                evidence,
-            ));
-            leaves.extend(pending.drain(..).map(|s| {
-                s.finish(
-                    0,
-                    PathOutcome::Gap("state budget exhausted".into()),
-                    evidence,
-                )
-            }));
+            leaves.push(state.finish(0, PathOutcome::Gap("state budget exhausted".into())));
+            leaves.extend(
+                pending
+                    .drain(..)
+                    .map(|s| s.finish(0, PathOutcome::Gap("state budget exhausted".into()))),
+            );
             break;
         }
         loop {
@@ -297,7 +284,6 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                 leaves.push(state.finish(
                     0,
                     PathOutcome::Gap("end of function without reader or rejection".into()),
-                    evidence,
                 ));
                 break;
             };
@@ -305,7 +291,6 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                 leaves.push(state.finish(
                     row.address,
                     PathOutcome::Gap("cycle or instruction budget".into()),
-                    evidence,
                 ));
                 break;
             }
@@ -331,7 +316,7 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                 } else {
                     PathOutcome::Reader(reader_join(name, &state))
                 };
-                leaves.push(state.finish(row.address, outcome, evidence));
+                leaves.push(state.finish(row.address, outcome));
                 break;
             }
             if let Some(condition) = row.operation.strip_prefix("b.") {
@@ -343,7 +328,6 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                     leaves.push(state.finish(
                         row.address,
                         PathOutcome::Gap("unknown flags, condition, or branch target".into()),
-                        evidence,
                     ));
                     break;
                 };
@@ -362,7 +346,6 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                     leaves.push(state.finish(
                         row.address,
                         PathOutcome::Gap("unresolved state branch target".into()),
-                        evidence,
                     ));
                     break;
                 };
@@ -386,7 +369,7 @@ pub(super) fn explore(input: &FieldInput, evidence: &EvidenceReference) -> Vec<T
                 break;
             }
             if let Err(reason) = apply(row, &mut state) {
-                leaves.push(state.finish(row.address, PathOutcome::Gap(reason), evidence));
+                leaves.push(state.finish(row.address, PathOutcome::Gap(reason)));
                 break;
             }
         }

@@ -1,8 +1,4 @@
-use crate::{
-    engine::analysis::decode::{AnalysisOrigin, AnalysisProvenance},
-    engine::analysis::discovery::{CandidateRecord, Symbol},
-};
-use evidence::{ArtifactReference, CaptureOrigin, EvidenceReference};
+use crate::engine::analysis::discovery::{CandidateRecord, Symbol};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -17,11 +13,12 @@ pub struct Function {
     /// Complete bounded function bytes.
     pub code: Vec<u8>,
 }
-/// Executable-only inputs. Selection comes from a discovery subject, never a field list.
+/// What the method reads, all from the executable. The selection is a discovered candidate,
+/// never a list of field names.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FieldInput {
-    /// Template loader candidate selected by the opaque subject.
+    /// The template loader candidate whose fields are asked for.
     pub selection: CandidateRecord,
     /// Executable symbol inventory used to verify selection and resolve calls.
     pub symbols: Vec<Symbol>,
@@ -31,19 +28,6 @@ pub struct FieldInput {
     pub strings: BTreeMap<u64, String>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
-}
-/// Replay inputs and the identities of their original capture.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct FieldDescriptor {
-    /// Supported field replay format.
-    pub format: String,
-    /// Captured or authored synthetic evidence.
-    pub capture_origin: CaptureOrigin,
-    /// Exact executable, method and qualification identities.
-    pub provenance: AnalysisProvenance,
-    /// Hashed executable inputs; no extracted answers.
-    pub input: ArtifactReference,
 }
 /// Provenance of a value at a dispatch boundary; unknown values are omitted.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -64,7 +48,7 @@ pub enum Value {
 /// Conditional alternative not determined by the field token.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct Condition {
-    /// Instruction offset in the retained executable evidence.
+    /// Address of the instruction that tests the value.
     pub at: u64,
     /// Value tested, if its provenance is established.
     pub value: Option<Value>,
@@ -76,7 +60,7 @@ pub struct Condition {
 pub enum ReaderJoin {
     /// Known reader/delegate receives the original reader and owner-derived destination.
     Joined {
-        /// Target-local callee evidence locator, not a stable reader-kind identity.
+        /// Symbol of the callee in this build. It is not a stable reader-kind identity.
         callee: String,
         /// Proven argument values at the call boundary.
         arguments: BTreeMap<String, Value>,
@@ -110,8 +94,6 @@ pub struct TokenPath {
     pub terminal: u64,
     /// What this path establishes or fails to establish.
     pub outcome: PathOutcome,
-    /// Proof location in the input artifact.
-    pub evidence: EvidenceReference,
 }
 /// One named root token with every corresponding reader alternative.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -120,14 +102,12 @@ pub struct RootField {
     pub name: String,
     /// Engine-local signed token identity.
     pub token: i64,
-    /// Constructor call address in retained executable evidence.
+    /// Address of the token constructor call that names the field.
     pub constructor: u64,
     /// Indices into the result's token-path ledger.
     pub paths: Vec<usize>,
     /// Token-to-reader join or explicit missing join for every listed path.
     pub readers: Vec<ReaderJoin>,
-    /// Evidence containing the constructor and literal name.
-    pub evidence: EvidenceReference,
 }
 /// A remaining obligation, separate from a discovered field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -138,24 +118,18 @@ pub struct FieldGap {
     pub reason: String,
     /// Related path index, when applicable.
     pub path: Option<usize>,
-    /// Evidence supporting this limitation.
-    pub evidence: EvidenceReference,
 }
-/// A shared-reader contract explicitly left unresolved by the retained SDK-487 experiment.
+/// A shared-reader contract that the SDK-487 experiment left unresolved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReaderContractGap {
-    /// Retained contract label; this does not qualify a reader kind.
+    /// Label of the contract. It does not establish a reader kind.
     pub reader: String,
     /// Missing contract properties.
     pub reason: String,
 }
-/// Field discovery is bounded routing evidence, never a complete registry schema.
+/// The root fields of one registry. This is bounded routing knowledge, never a complete schema.
 #[derive(Debug, Clone, Serialize)]
 pub struct RegistryFieldResult {
-    /// Current executable derivation or retained replay.
-    pub origin: AnalysisOrigin,
-    /// Replay descriptor with revision and qualification identities.
-    pub descriptor: FieldDescriptor,
     /// Named root fields, with explicit reader alternatives.
     pub fields: Vec<RootField>,
     /// Full bounded token-path ledger.
@@ -164,18 +138,8 @@ pub struct RegistryFieldResult {
     pub gaps: Vec<FieldGap>,
     /// Whether all token intervals are accounted for; this does not close path gaps.
     pub partition_accounted: bool,
-    /// Always false for this method; shared-reader semantics are not qualified.
+    /// Always false for this method; shared-reader semantics are not established.
     pub complete_registry: bool,
-    /// Named retained shared-reader blockers, where applicable.
+    /// Named shared-reader blockers, where applicable.
     pub blocking_readers: Vec<ReaderContractGap>,
-    /// Limits of these observations.
-    pub limits: Vec<String>,
-    #[serde(skip)]
-    pub(super) input_bytes: Vec<u8>,
-}
-impl RegistryFieldResult {
-    /// Exact input artifact bytes to retain for installation-free replay.
-    pub fn input_bytes(&self) -> &[u8] {
-        &self.input_bytes
-    }
 }

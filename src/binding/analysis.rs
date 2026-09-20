@@ -1,35 +1,33 @@
+//! The static methods bound to one installation: every read checks that the executable is
+//! still the one that was opened.
 use std::sync::Mutex;
 
 use super::{binary, installation::Installation};
+use crate::engine::analysis::discovery::SchedulerLayout;
 use crate::{AnalysisError, UnavailableReason};
 
-/// Identities of the executable that the static methods read.
-#[derive(Debug, Clone)]
-pub(crate) struct AnalysisInputs {
-    pub composition: String,
-    pub executable: String,
-    pub slice: String,
-    pub implementation: String,
-    pub method: &'static str,
-    pub decoder: &'static str,
-}
-
-/// Bound static methods share one executable integrity state and independent admission.
 #[derive(Debug)]
 pub(crate) struct BoundAnalysis {
-    pub inputs: AnalysisInputs,
-    pub discovery: Option<BoundDiscovery>,
-    pub fields: Option<AnalysisInputs>,
+    /// SHA-256 of the executable file and of its selected slice, as they were at `open`.
+    executable: String,
+    slice: String,
+    layout: SchedulerLayout,
     installation: Installation,
+    /// The first change that a read saw. It stays, even when the original bytes come back.
     invalidated: Mutex<Option<UnavailableReason>>,
 }
 
 impl BoundAnalysis {
-    pub(super) fn new(inputs: AnalysisInputs, installation: Installation) -> Self {
+    pub(super) fn new(
+        executable: String,
+        slice: String,
+        layout: SchedulerLayout,
+        installation: Installation,
+    ) -> Self {
         Self {
-            inputs,
-            discovery: None,
-            fields: None,
+            executable,
+            slice,
+            layout,
             installation,
             invalidated: Mutex::new(None),
         }
@@ -47,7 +45,7 @@ impl BoundAnalysis {
         }
         let bytes = self.installation.executable_bytes().and_then(|bytes| {
             let image = binary::identify(&bytes).map_err(|_| UnavailableReason::TargetChanged)?;
-            if image.executable != self.inputs.executable || image.slice != self.inputs.slice {
+            if image.executable != self.executable || image.slice != self.slice {
                 return Err(UnavailableReason::TargetChanged);
             }
             Ok(bytes)
@@ -68,19 +66,13 @@ impl BoundAnalysis {
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug)]
-pub(crate) struct BoundDiscovery {
-    pub inputs: AnalysisInputs,
-    pub layout: crate::engine::analysis::discovery::SchedulerLayout,
-}
 impl BoundAnalysis {
     pub(crate) fn field_input(
         &self,
         selection: crate::engine::analysis::discovery::CandidateRecord,
     ) -> Result<crate::engine::analysis::fields::FieldInput, AnalysisError> {
         let bytes = self.executable()?;
-        let discovery = self.discovery.as_ref().ok_or(AnalysisError::InvalidRange)?;
-        let input = binary::discovery::read(&bytes, &discovery.layout)?;
+        let input = binary::discovery::read(&bytes, &self.layout)?;
         if !crate::engine::analysis::discovery::candidates(&input.symbols).contains(&selection) {
             return Err(AnalysisError::InvalidRange);
         }
@@ -100,14 +92,7 @@ impl BoundAnalysis {
     pub(crate) fn named_candidates(&self) -> Result<Vec<NamedCandidate>, AnalysisError> {
         use crate::engine::analysis::{directories, discovery};
         let bytes = self.executable()?;
-        let layout = &self
-            .discovery
-            .as_ref()
-            .ok_or_else(|| AnalysisError::Unavailable {
-                reasons: vec![UnavailableReason::ImplementationUnavailable],
-            })?
-            .layout;
-        let input = binary::discovery::read(&bytes, layout)?;
+        let input = binary::discovery::read(&bytes, &self.layout)?;
         let records = discovery::candidates(&input.symbols);
         let constructors = binary::constructors::read(&bytes, &input, &records)?;
         let anchors = binary::constructors::anchors(&input);

@@ -6,9 +6,6 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-// Shared test support names this crate as `pdx_native` from unit and integration tests.
-extern crate self as pdx_native;
-
 mod answer;
 mod api;
 mod binding;

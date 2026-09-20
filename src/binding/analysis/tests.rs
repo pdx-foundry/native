@@ -10,15 +10,16 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     fs::write(&path, support::macho(&support::code())).unwrap();
     let (installation, bytes) = Installation::open(&path).unwrap();
     let image = binary::identify(&bytes).unwrap();
-    let inputs = AnalysisInputs {
-        composition: "c".repeat(64),
-        executable: image.executable,
-        slice: image.slice,
-        implementation: "d".repeat(64),
-        method: crate::engine::analysis::decode::METHOD,
-        decoder: crate::engine::analysis::decode::DECODER,
+    // These tests read only the executable bytes, so the layout is never used.
+    let layout = SchedulerLayout {
+        start: 0,
+        end: 0,
+        offset: 0,
+        stride: 48,
+        count: 0,
     };
-    (root, BoundAnalysis::new(inputs, installation))
+    let analysis = BoundAnalysis::new(image.executable, image.slice, layout, installation);
+    (root, analysis)
 }
 
 #[test]
@@ -31,7 +32,7 @@ fn reader_uses_verified_slice_bytes_without_content_or_live_tools() {
     fs::write(root.path().join("common/arbitrary.txt"), "content changed").unwrap();
     assert_eq!(binding.executable().unwrap(), image);
     let mut binding = binding;
-    binding.inputs.slice = "e".repeat(64);
+    binding.slice = "e".repeat(64);
     assert!(
         matches!(binding.executable(), Err(AnalysisError::Unavailable { reasons }) if reasons == [UnavailableReason::TargetChanged])
     );

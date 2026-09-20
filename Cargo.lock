@@ -186,23 +186,12 @@ dependencies = [
  "cpp_demangle",
  "libc",
  "object",
- "pdx-native-evidence",
  "schemars",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "pdx-native-evidence"
-version = "0.1.0"
-dependencies = [
- "schemars",
- "serde",
- "serde_json",
- "sha2",
 ]
 
 [[package]]

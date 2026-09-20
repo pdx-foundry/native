@@ -1,10 +1,8 @@
-use evidence::CaptureOrigin;
+//! The registry field method on small authored inputs.
 use pdx_native::internals::{
-    decode::{AnalysisOrigin, AnalysisProvenance, DECODER},
     discovery::{Symbol, candidates},
-    fields::{self, FieldDescriptor, FieldInput, Function, PathOutcome, ReaderJoin},
+    fields::{self, FieldInput, Function, PathOutcome, ReaderJoin},
 };
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 fn code(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|w| w.to_le_bytes()).collect()
@@ -12,13 +10,6 @@ fn code(words: &[u32]) -> Vec<u8> {
 fn branch(from: u64, to: u64, link: bool) -> u32 {
     (if link { 0x94000000 } else { 0x14000000 })
         | (((to as i64 - from as i64) / 4) as u32 & 0x3ffffff)
-}
-fn reference(path: &str, bytes: &[u8]) -> evidence::ArtifactReference {
-    evidence::ArtifactReference {
-        path: path.into(),
-        bytes: bytes.len() as u64,
-        sha256: format!("{:x}", Sha256::digest(bytes)),
-    }
 }
 fn fixture() -> FieldInput {
     let root = "CExample::ReadMember(CReader&, int)";
@@ -67,26 +58,8 @@ fn fixture() -> FieldInput {
         ],
     }
 }
-fn descriptor(bytes: &[u8]) -> FieldDescriptor {
-    FieldDescriptor {
-        format: fields::FORMAT.into(),
-        capture_origin: CaptureOrigin::Synthetic,
-        input: reference("input.json", bytes),
-        provenance: AnalysisProvenance {
-            executable: "a".repeat(64),
-            slice: "b".repeat(64),
-            composition: "c".repeat(64),
-            implementation: "d".repeat(64),
-            method: fields::METHOD.into(),
-            decoder: DECODER.into(),
-            qualification_records: vec![],
-            evidence: vec![],
-        },
-    }
-}
 fn derive(input: FieldInput) -> fields::RegistryFieldResult {
-    let bytes = serde_json::to_vec(&input).unwrap();
-    fields::derive(descriptor(&bytes), &bytes, AnalysisOrigin::Replay).unwrap()
+    fields::analyze(&input).unwrap()
 }
 fn replace(input: &mut FieldInput, index: usize, word: u32) {
     input.functions[0].code[index * 4..index * 4 + 4].copy_from_slice(&word.to_le_bytes());
@@ -188,11 +161,13 @@ fn altered_flags_and_external_branch_do_not_silently_drop_token_intervals() {
     }
 }
 #[test]
-fn completeness_cannot_be_supplied_in_recorded_inputs() {
+fn completeness_is_never_an_input_and_a_foreign_selection_is_refused() {
     let mut input = serde_json::to_value(fixture()).unwrap();
     input["complete_registry"] = true.into();
-    let bytes = serde_json::to_vec(&input).unwrap();
-    assert!(fields::derive(descriptor(&bytes), &bytes, AnalysisOrigin::Replay).is_err());
+    assert!(serde_json::from_value::<FieldInput>(input).is_err());
+    let mut input = fixture();
+    input.selection.owner_candidate = "COther".into();
+    assert!(fields::analyze(&input).is_err());
 }
 
 #[test]

@@ -1,11 +1,8 @@
+//! Authored ARM64 code and a minimal Mach-O image around it. Native's unit tests and its
+//! integration tests share this file.
 #![allow(dead_code)]
 
-use evidence::{ArtifactReference, CaptureOrigin};
-use pdx_native::internals::decode::{AnalysisDescriptor, AnalysisProvenance};
-use sha2::{Digest, Sha256};
-
-// Independently authored ARM64 sequence at 0x1000. This is not the retained getter:
-// add uses w0/#0x20, bl goes to 0x1040, adrp goes to 0x2000, and csel uses ne.
+// An authored ARM64 sequence at 0x1000; it is not game code.
 pub fn code() -> Vec<u8> {
     [
         0xa9bf7bfdu32, // stp x29, x30, [sp, #-16]!
@@ -41,33 +38,7 @@ pub fn expected() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-pub fn reference(path: &str, bytes: &[u8]) -> ArtifactReference {
-    ArtifactReference {
-        path: path.into(),
-        sha256: format!("{:x}", Sha256::digest(bytes)),
-        bytes: bytes.len() as u64,
-    }
-}
-
-pub fn descriptor() -> AnalysisDescriptor {
-    AnalysisDescriptor {
-        format: pdx_native::internals::decode::FORMAT.into(),
-        capture_origin: CaptureOrigin::Synthetic,
-        address: 0x1000,
-        code: reference("control.bin", &code()),
-        provenance: AnalysisProvenance {
-            executable: "a".repeat(64),
-            slice: "b".repeat(64),
-            composition: "c".repeat(64),
-            implementation: "d".repeat(64),
-            method: pdx_native::internals::decode::METHOD.into(),
-            decoder: pdx_native::internals::decode::DECODER.into(),
-            qualification_records: vec![],
-            evidence: vec![],
-        },
-    }
-}
-
+/// A 64-bit ARM64 Mach-O executable with one `__text` section at 0x1000 that holds `code`.
 pub fn macho(code: &[u8]) -> Vec<u8> {
     let length = code.len() as u64;
     let mut bytes: Vec<u8> = [0xfeedfacfu32, 0x0100000c, 0, 2, 1, 152, 0, 0]

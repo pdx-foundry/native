@@ -1,12 +1,8 @@
-use evidence::CaptureOrigin;
-use pdx_native::internals::decode::AnalysisOrigin;
-use pdx_native::internals::discovery::{DiscoveryDescriptor, DiscoveryGapKind};
+//! The registry discovery method on small authored inputs.
 use pdx_native::internals::discovery::{
-    SchedulerLayout, StaticInput, Symbol, candidates, scheduler,
+    DiscoveryGapKind, SchedulerLayout, StaticInput, Symbol, candidates, discover, scheduler,
 };
 use std::collections::BTreeMap;
-#[path = "analysis_support/mod.rs"]
-mod support;
 
 fn input() -> StaticInput {
     StaticInput {
@@ -16,46 +12,26 @@ fn input() -> StaticInput {
         pointers:BTreeMap::new(),strings:BTreeMap::from([(0x2000,"example".into())]),vtables:BTreeMap::new(),
     }
 }
-fn descriptor(bytes: &[u8]) -> DiscoveryDescriptor {
-    let mut provenance = support::descriptor().provenance;
-    provenance.method = pdx_native::internals::discovery::METHOD.into();
-    DiscoveryDescriptor {
-        format: pdx_native::internals::discovery::FORMAT.into(),
-        capture_origin: CaptureOrigin::Synthetic,
-        provenance,
-        input: support::reference("input.json", bytes),
-        runs: vec![],
-    }
-}
 #[test]
-fn static_discovery_is_bounded_and_context_owned() {
-    let input = input();
-    let bytes = serde_json::to_vec(&input).unwrap();
-    let descriptor = descriptor(&bytes);
-    let result = pdx_native::internals::discovery::derive(
-        descriptor.clone(),
-        &bytes,
-        AnalysisOrigin::Executable,
-    )
-    .unwrap();
+fn static_discovery_is_bounded_and_joins_the_schedule_to_its_candidate() {
+    let result = discover(&input()).unwrap();
     assert_eq!(result.candidates.len(), 1);
     assert!(!result.candidates[0].has_named_member_reader);
     assert!(result.scheduling[0].recovered);
-    assert_eq!(result.scheduling[0].candidates.len(), 1);
-    assert!(result.relationships.is_empty());
+    assert_eq!(result.scheduling[0].candidates, [0]);
     assert!(
         result
             .gaps
             .iter()
-            .any(|g| g.kind == DiscoveryGapKind::UnobservedCandidate)
+            .any(|g| g.kind == DiscoveryGapKind::UnobservedCandidate && g.candidate == Some(0))
     );
-    assert!(result.subject(&result.candidates[0].subject).is_ok());
-    let again =
-        pdx_native::internals::discovery::derive(descriptor, &bytes, AnalysisOrigin::Executable)
-            .unwrap();
-    assert!(again.subject(&result.candidates[0].subject).is_err());
-    let handle = serde_json::to_string(&result.candidates[0].subject).unwrap();
-    assert!(!handle.contains("Example") && !handle.contains("0x"));
+    // The method never claims that it found every registry.
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == DiscoveryGapKind::UnresolvedHelper)
+    );
 }
 #[test]
 fn omissions_and_clobbers_preserve_obligations() {
@@ -70,13 +46,7 @@ fn omissions_and_clobbers_preserve_obligations() {
     let (rows, gaps) = scheduler(&input).unwrap();
     assert!(rows[0].values[0].is_none() && !gaps.is_empty());
     input = input_fixture_with_clobber(0x91002273); // add x19,x19,#8 changes table owner
-    let bytes = serde_json::to_vec(&input).unwrap();
-    let result = pdx_native::internals::discovery::derive(
-        descriptor(&bytes),
-        &bytes,
-        AnalysisOrigin::Replay,
-    )
-    .unwrap();
+    let result = discover(&input).unwrap();
     assert!(
         result
             .gaps
@@ -85,13 +55,7 @@ fn omissions_and_clobbers_preserve_obligations() {
     );
     let mut input = self::input();
     input.symbols.clear();
-    let bytes = serde_json::to_vec(&input).unwrap();
-    let result = pdx_native::internals::discovery::derive(
-        descriptor(&bytes),
-        &bytes,
-        AnalysisOrigin::Replay,
-    )
-    .unwrap();
+    let result = discover(&input).unwrap();
     assert!(result.candidates.is_empty());
     assert_eq!(result.scheduling.len(), 1);
     assert!(

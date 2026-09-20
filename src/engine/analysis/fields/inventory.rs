@@ -1,12 +1,10 @@
 use super::tokens::Token;
 use super::{FieldGap, PathOutcome, ReaderContractGap, ReaderJoin, RootField, TokenPath};
-use evidence::EvidenceReference;
 use std::collections::BTreeMap;
 
 pub(super) fn fields_and_gaps(
     paths: &[TokenPath],
     tokens: &BTreeMap<i64, Token>,
-    evidence: &EvidenceReference,
 ) -> (Vec<RootField>, Vec<FieldGap>) {
     let mut gaps = Vec::new();
     let mut fields = BTreeMap::<i64, RootField>::new();
@@ -21,7 +19,6 @@ pub(super) fn fields_and_gaps(
                 constructor: token.constructor,
                 paths: vec![],
                 readers: vec![],
-                evidence: evidence.clone(),
             });
         }
     }
@@ -38,7 +35,6 @@ pub(super) fn fields_and_gaps(
                 kind: "reader-join".into(),
                 reason: reason.clone(),
                 path: Some(index),
-                evidence: evidence.clone(),
             });
         }
         // An obstruction on another state alternative must stay attached to an established field.
@@ -53,7 +49,6 @@ pub(super) fn fields_and_gaps(
                 reason: "non-singleton, missing/ambiguous token name, or unestablished member path"
                     .into(),
                 path: Some(index),
-                evidence: evidence.clone(),
             });
         }
     }
