@@ -1,5 +1,6 @@
 use pdx_native::{
-    Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, Engine, Gap, ReplayRequest,
+    Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, Engine,
+    ObservationGap as Gap, ReplayRequest,
 };
 use std::{fs, path::PathBuf};
 

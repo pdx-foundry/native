@@ -500,7 +500,7 @@ mod storage_tests {
             !result
                 .gaps
                 .iter()
-                .any(|gap| matches!(gap, crate::Gap::OriginalProfileInputUnavailable { .. }))
+                .any(|gap| matches!(gap, evidence::Gap::OriginalProfileInputUnavailable { .. }))
         );
         assert_eq!(
             fs::read(root.path().join("evidence/profile/settings.txt")).unwrap(),

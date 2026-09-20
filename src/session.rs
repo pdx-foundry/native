@@ -2,7 +2,9 @@ use crate::{
     CapabilityReport, CapabilityRequest, ContextIdentity, ContextOrigin, OpenError, OpenRequest,
     UnavailableReason, binding::Binding, qualification,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+
+mod questions;
 
 /// A pinned installation. Static queries never launch a game or probe a debugger.
 /// Configure a consumer supervisor before starting an independently owned Game.
@@ -11,6 +13,7 @@ pub struct Native {
     binding: Arc<Binding>,
     invalidated: Arc<Mutex<Option<UnavailableReason>>>,
     pub(crate) hosting: Option<crate::game::Hosting>,
+    candidates: Arc<OnceLock<Result<Vec<crate::binding::NamedCandidate>, crate::AnalysisError>>>,
 }
 
 /// Installation context retained for source compatibility with capability and replay callers.
@@ -30,6 +33,7 @@ impl Native {
             binding: Arc::new(binding),
             invalidated: Arc::new(Mutex::new(None)),
             hosting: None,
+            candidates: Arc::new(OnceLock::new()),
         }
     }
     pub(crate) fn registry_names(&self) -> Vec<String> {
@@ -40,6 +44,7 @@ impl Native {
             binding: self.binding.clone(),
             invalidated: self.invalidated.clone(),
             hosting: None,
+            candidates: self.candidates.clone(),
         }
     }
     /// Opaque pinned composition identity. Equality does not establish current integrity.

@@ -1,6 +1,6 @@
 use pdx_native::{
-    Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, Engine, Gap,
-    ObservationFact, ReplayError, ReplayRequest, ReplayResult, ResultOrigin,
+    Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, Engine, ObservationFact,
+    ObservationGap as Gap, ReplayError, ReplayRequest, ReplayResult, ResultOrigin,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

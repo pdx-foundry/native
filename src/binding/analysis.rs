@@ -126,3 +126,40 @@ impl BoundAnalysis {
         binary::fields::read(&bytes, input, selection)
     }
 }
+
+/// One template candidate and the content directory that its constructors establish.
+#[derive(Debug, Clone)]
+pub(crate) struct NamedCandidate {
+    pub record: crate::engine::analysis::discovery::CandidateRecord,
+    pub directory: crate::engine::analysis::directories::Directory,
+}
+
+impl BoundAnalysis {
+    /// Template candidates with their directories, in candidate order.
+    pub(crate) fn named_candidates(&self) -> Result<Vec<NamedCandidate>, AnalysisError> {
+        use crate::engine::analysis::{directories, discovery};
+        let bytes = self.executable()?;
+        let layout = &self
+            .discovery
+            .as_ref()
+            .ok_or_else(|| AnalysisError::Unavailable {
+                reasons: vec![UnavailableReason::ImplementationUnavailable],
+            })?
+            .layout;
+        let input = binary::discovery::read(&bytes, layout)?;
+        let records = discovery::candidates(&input.symbols);
+        let constructors = binary::constructors::read(&bytes, &input, &records)?;
+        Ok(records
+            .into_iter()
+            .map(|record| NamedCandidate {
+                directory: directories::directory(
+                    constructors
+                        .get(&record.database)
+                        .map_or(&[][..], Vec::as_slice),
+                    &input.strings,
+                ),
+                record,
+            })
+            .collect())
+    }
+}

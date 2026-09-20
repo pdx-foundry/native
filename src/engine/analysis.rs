@@ -1,4 +1,5 @@
 pub mod decode;
+pub mod directories;
 pub mod discovery;
 pub mod fields;
 

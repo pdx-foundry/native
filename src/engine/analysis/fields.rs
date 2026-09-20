@@ -34,6 +34,7 @@ mod records;
 mod replay;
 mod tokens;
 pub use records::*;
+pub(crate) use replay::analyze;
 pub use replay::{derive, replay};
 
 /// Bounded root-token and reader-routing method revision.

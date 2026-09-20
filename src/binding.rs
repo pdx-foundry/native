@@ -1,5 +1,5 @@
 mod analysis;
-pub(crate) use analysis::{BoundAnalysis, Decoder};
+pub(crate) use analysis::{BoundAnalysis, Decoder, NamedCandidate};
 mod binary;
 mod compose;
 mod groups;

@@ -5,6 +5,7 @@
 // Shared test support names this crate as `pdx_native` from unit and integration tests.
 extern crate self as pdx_native;
 
+mod answer;
 mod api;
 mod binding;
 mod execution;
@@ -27,14 +28,19 @@ compile_error!("production cannot include test-support or maintainer-tools");
 #[doc(hidden)]
 pub mod test_support;
 
+pub use answer::{
+    Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,
+    ReaderKind, Registry, Source,
+};
 pub use api::{
     Availability, CapabilityBounds, CapabilityReport, CapabilityRequest, ContextIdentity,
     ContextOrigin, OpenError, OpenRequest, Qualification, RegistryBounds, UnavailableReason,
 };
 pub use api::{Engine, ReplayRequest};
 pub use evidence::{
-    Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, EvidenceReference, Gap,
-    Observation, ObservationFact, ReplayError, ReplayResult, ResultOrigin, SubjectHandle,
+    Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, EvidenceReference,
+    Gap as ObservationGap, Observation, ObservationFact, ReplayError, ReplayResult, ResultOrigin,
+    SubjectHandle,
 };
 pub use session::{EngineContext, Native};
 

@@ -47,13 +47,13 @@ native.supports(Operation::Fields);                     // Supported | Unsupport
 
 // Static questions.
 native.registries()?;                                   // Answer<Vec<Registry>>
-native.registry_fields("traditions")?;                  // Answer<Vec<Field>>
+native.registry_fields("common/traditions")?;           // Answer<Vec<Field>>
 native.declarations(DeclarationKind::Effect)?;          // Answer<Vec<Declaration>>   (milestone 3)
 native.defines()?;  native.on_actions()?;               //                            (milestone 3)
 
 // Live questions. The consumer owns when a game runs; Native owns how.
 let mut game = native.start_game(GameOptions::new(supervisor_command)).await?;
-game.registry_items("traditions").await?;               // Answer<Vec<String>>
+game.registry_items("common/traditions").await?;        // Answer<Vec<String>>
 game.observe_fixture(fixture).await?;                   // Answer<Vec<FieldRead>>     (SDK-532)
 game.close().await?;                                    // Disposal: Confirmed | Unconfirmed
 
@@ -111,8 +111,8 @@ fake-worker supervisor tests do that (see Tests).
 ### Registry names
 
 A registry is named by a string in every operation, static or live. A discovered candidate with
-no established name is a `Gap`, not a `Registry`. The name is the content directory key
-(`traditions` for `common/traditions`).
+no established name is a `Gap`, not a `Registry`. The name is the full content directory
+(`common/traditions`, `map/galaxy`), because seven template registries load from outside `common/`.
 
 **Resolved by experiment, 2026-09-20:** the name is available statically. The constructor of each
 database class loads its content directory literal (an `adrp`/`add` pair). A scan of the M45
@@ -164,7 +164,15 @@ directory. `registries()` and `registry_fields(name)` stay static questions.
      method logic keeps its small authored inputs.
    - **The present discovery method gives no registry name.** A short experiment showed that the
      name is available statically from each database constructor. See "Registry names".
-3. Add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
+3. **Static part done, 2026-09-20.** `Answer<T>`, `Error`, the normalized value types,
+   `Native::build`, `Native::registries` and `Native::registry_fields` exist. The directory method
+   (`engine/analysis/directories.rs`) names 163 of 164 template registries on M45; every name
+   agrees with the live-observed directory, with no conflict. Parity tests compare with 8 KB of
+   tracked expected output (`tests/expected/m45`). Two fields in different registries already
+   report one reader identity. Still to do in this step: remove the earlier static API
+   (`Native::analysis`, the raw result exports, the static replay methods and examples), then the
+   live side below.
+   Add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.
 4. Remove admission, the three features, `investigation`, `capture.rs`, the evidence package,

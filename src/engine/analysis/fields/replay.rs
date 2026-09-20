@@ -78,6 +78,15 @@ pub fn derive(
     }
     let input: FieldInput =
         serde_json::from_slice(bytes).map_err(|e| malformed(&descriptor.input.path, e))?;
+    analyze(descriptor, input, origin, bytes.to_vec())
+}
+/// Run the method on inputs that the caller read from a verified executable.
+pub(crate) fn analyze(
+    descriptor: FieldDescriptor,
+    input: FieldInput,
+    origin: AnalysisOrigin,
+    input_bytes: Vec<u8>,
+) -> Result<RegistryFieldResult, ReplayError> {
     if input.functions.len() > 128
         || input.functions.iter().map(|f| f.code.len()).sum::<usize>() > 4 * 1024 * 1024
     {
@@ -147,6 +156,6 @@ pub fn derive(
             "Root token dispatch stops at a delegate or obstruction; nested grammars, post-read behavior and dynamic names remain unqualified.".into(),
             "Names come only from literal engine token constructors. No config or content comparison is discovery authority.".into(),
         ],
-        input_bytes: bytes.to_vec(),
+        input_bytes,
     })
 }

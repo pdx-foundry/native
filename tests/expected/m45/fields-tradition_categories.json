@@ -1,0 +1,58 @@
+[
+ {
+  "name": "desc",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "potential",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "ai_weight",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "traditions",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "adoption_bonus",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "finish_bonus",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tree_template",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ }
+]
