@@ -1,6 +1,5 @@
 //! The one place that assembles the implementation for an exact build.
 use super::{
-    ContentIdentity,
     binary::ImageIdentity,
     groups, machine, platform,
     targets::{self},
@@ -11,8 +10,6 @@ use crate::{OpenError, UnavailableReason};
 pub(super) struct ResolvedObservation {
     pub machine: super::Machine,
     pub strategy: platform::StrategyResolution,
-    /// SHA-256 of each installed content file that the private game profile pins.
-    pub content: ContentIdentity,
     pub registries:
         std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
 }
@@ -36,7 +33,6 @@ fn assemble(
         machine: machine::resolve(image.architecture)?,
         strategy: platform::resolve(recipe.strategy),
         registries: groups::registries(recipe.groups),
-        content: serde_json::from_str(recipe.content).expect("tracked content manifest"),
     })
 }
 

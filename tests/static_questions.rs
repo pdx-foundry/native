@@ -73,7 +73,8 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let fields = real.registry_fields("common/traditions").unwrap();
     let unknown = real.registry_fields("common/no_such_registry");
 
-    let recorded = Native::from_recorded_answers(directory.path());
+    let recorded = Native::from_recorded_answers(directory.path()).unwrap();
+    assert_eq!(recorded.build(), real.build());
     let mut again = recorded.registries().unwrap();
     assert_eq!(again.source.basis, Basis::Recorded);
     again.source.basis = registries.source.basis;

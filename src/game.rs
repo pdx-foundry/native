@@ -75,6 +75,7 @@ struct Paused {
 struct Finished {
     outcome: SessionOutcome,
     disposal: Disposal,
+    reservation_resolved: bool,
     diagnostics: Vec<String>,
 }
 
@@ -105,7 +106,7 @@ pub struct Game {
     directories: BTreeMap<String, String>,
     build: crate::BuildId,
     /// Read every answer from this directory; no process exists.
-    recorded: Option<Arc<PathBuf>>,
+    recorded: Option<Arc<crate::recorded::Answers>>,
     /// Write every answer to this directory as it is returned.
     recorder: Option<Arc<PathBuf>>,
     /// Temporary work directory that Native made. Removed after a clean close.
@@ -113,7 +114,7 @@ pub struct Game {
 }
 impl Game {
     /// A session over recorded answers. No supervisor or game process is started.
-    pub(crate) fn recorded(directory: Arc<PathBuf>) -> Self {
+    pub(crate) fn recorded(directory: Arc<crate::recorded::Answers>) -> Self {
         let paused = Paused {
             readiness: GameReadiness::PausedAfterRegistryInitialization,
             registries: BTreeMap::new(),
@@ -126,7 +127,7 @@ impl Game {
             paused,
             closing: false,
             directories: BTreeMap::new(),
-            build: crate::BuildId("recorded".into()),
+            build: directory.build.clone(),
             recorded: Some(directory),
             recorder: None,
             work: None,
@@ -147,11 +148,17 @@ impl Game {
             if self.closing {
                 return Err(Error::Closed);
             }
-            return crate::recorded::read(directory, "registry_items", Some(registry));
+            return directory.read("registry_items", Some(registry));
         }
         let answer = self.registry_items_from_game(registry).await;
         if let Some(directory) = &self.recorder {
-            crate::recorded::write(directory, "registry_items", Some(registry), &answer)?;
+            crate::recorded::write(
+                directory,
+                &self.build,
+                "registry_items",
+                Some(registry),
+                &answer,
+            )?;
         }
         answer
     }
@@ -252,8 +259,8 @@ impl Game {
     /// Close the session and wait until the supervisor reports whether the game is gone.
     ///
     /// Repeated calls give the same result. Cleanup continues if this future is dropped after it
-    /// was polled. The temporary work directory is removed after a confirmed disposal; after any
-    /// other result it is kept for inspection.
+    /// was polled. Failed session cleanup returns `Error::Cleanup`, with the witnessed disposal.
+    /// The temporary work directory is removed only after a clean, confirmed disposal.
     pub async fn close(&mut self) -> Result<Disposal, Error> {
         if self.recorded.is_some() {
             self.closing = true;
@@ -274,6 +281,19 @@ impl Game {
                 .await
                 .map_err(|_| Error::Supervisor("Session owner thread lost".into()))?;
         };
+        if matches!(finished.outcome, SessionOutcome::Failed(_))
+            || !finished.reservation_resolved
+            || !finished.diagnostics.is_empty()
+        {
+            return Err(Error::Cleanup {
+                reason: format!(
+                    "{:?}; {}",
+                    finished.outcome,
+                    finished.diagnostics.join("; ")
+                ),
+                disposal: finished.disposal,
+            });
+        }
         if finished.disposal == Disposal::Confirmed
             && let Some(work) = self.work.take()
         {
@@ -351,6 +371,7 @@ mod tests {
         Finished {
             outcome: SessionOutcome::Completed,
             disposal: Disposal::Confirmed,
+            reservation_resolved: true,
             diagnostics: Vec::new(),
         }
     }
@@ -380,6 +401,54 @@ mod tests {
             receive,
             state,
         )
+    }
+
+    #[tokio::test]
+    async fn failed_cleanup_keeps_diagnostics_even_when_the_game_is_gone() {
+        for failure in ["reservation", "outcome", "diagnostics"] {
+            let (mut game, _commands, state) = game();
+            let root = tempfile::tempdir().unwrap();
+            let work = root.path().join("session");
+            std::fs::create_dir(&work).unwrap();
+            let log = work.join("report.json");
+            std::fs::write(&log, "cleanup diagnostics").unwrap();
+            game.work = Some(work.clone());
+            let mut report = finished();
+            match failure {
+                "reservation" => report.reservation_resolved = false,
+                "outcome" => {
+                    report.outcome = SessionOutcome::Failed("Disposal journal commit failed".into())
+                }
+                _ => report.diagnostics.push("worker stop failed".into()),
+            }
+            state.send_modify(|state| state.finished = Some(Ok(report.clone())));
+            let error = game.close().await.unwrap_err();
+            assert!(matches!(
+                error,
+                Error::Cleanup {
+                    disposal: Disposal::Confirmed,
+                    ..
+                }
+            ));
+            assert_eq!(game.close().await.unwrap_err(), error);
+            assert_eq!(
+                std::fs::read_to_string(&log).unwrap(),
+                "cleanup diagnostics"
+            );
+            assert_eq!(game.work.as_ref(), Some(&work));
+        }
+    }
+
+    #[tokio::test]
+    async fn clean_close_removes_its_temporary_directory() {
+        let (mut game, _commands, state) = game();
+        let root = tempfile::tempdir().unwrap();
+        let work = root.path().join("session");
+        std::fs::create_dir(&work).unwrap();
+        game.work = Some(work.clone());
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
+        assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
+        assert!(!work.exists());
     }
 
     #[tokio::test]

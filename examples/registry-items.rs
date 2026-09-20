@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut supervisor = Command::new(std::env::current_exe()?);
     supervisor.arg("--supervisor");
     let native = if std::env::var_os("RECORDED").is_some() {
-        Native::from_recorded_answers(installation)
+        Native::from_recorded_answers(installation)?
     } else {
         Native::open(installation)?
     };

@@ -189,6 +189,7 @@ fn connect(
                 let mut finished = Finished {
                     outcome: report.outcome,
                     disposal: report.disposal,
+                    reservation_resolved: report.reservation_resolved,
                     diagnostics: report.diagnostics,
                 };
                 if !report.reservation_resolved {

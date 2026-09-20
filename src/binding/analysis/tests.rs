@@ -23,6 +23,81 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
 }
 
 #[test]
+fn static_support_checks_the_pinned_executable_without_requiring_content() {
+    use crate::{Native, Operation, Support};
+    for mutation in ["changed", "missing"] {
+        let (root, analysis) = fixture();
+        let binding = crate::binding::Binding {
+            installation: analysis.installation.clone(),
+            analysis: Some(std::sync::Arc::new(analysis)),
+            operation: None,
+        };
+        let native = Native::from_binding(binding);
+        for operation in [Operation::Registries, Operation::RegistryFields] {
+            assert_eq!(native.supports(operation), Support::Supported);
+        }
+        let path = root.path().join("image");
+        let original = fs::read(&path).unwrap();
+        if mutation == "changed" {
+            fs::write(&path, "changed").unwrap();
+        } else {
+            fs::remove_file(&path).unwrap();
+        }
+        for operation in [Operation::Registries, Operation::RegistryFields] {
+            assert!(matches!(
+                native.supports(operation),
+                Support::Unsupported(_)
+            ));
+        }
+        fs::write(path, original).unwrap();
+        for operation in [Operation::Registries, Operation::RegistryFields] {
+            assert!(matches!(
+                native.supports(operation),
+                Support::Unsupported(_)
+            ));
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn cached_static_answers_refuse_changed_or_missing_executables() {
+    use crate::{Error, Native};
+    let installed =
+        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    let (_, bytes) = Installation::open(std::path::Path::new(&installed)).unwrap();
+    for mutation in ["changed", "missing"] {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("image");
+        fs::write(&path, &bytes).unwrap();
+        let native = Native::open(&path).unwrap();
+        assert!(!native.registries().unwrap().value.is_empty());
+        assert!(matches!(
+            native.registry_fields("common/no_such_registry"),
+            Err(Error::UnknownRegistry { .. })
+        ));
+        if mutation == "changed" {
+            fs::write(&path, "changed").unwrap();
+        } else {
+            fs::remove_file(&path).unwrap();
+        }
+        let error = native.registries().unwrap_err();
+        match mutation {
+            "changed" => assert_eq!(error, Error::BuildChanged),
+            _ => assert!(matches!(error, Error::Unsupported { .. })),
+        }
+        for registry in ["common/traditions", "common/no_such_registry"] {
+            assert!(matches!(
+                native.registry_fields(registry),
+                Err(Error::BuildChanged | Error::Unsupported { .. })
+            ));
+        }
+        fs::write(path, &bytes).unwrap();
+        assert_eq!(native.registries().unwrap_err(), error);
+    }
+}
+
+#[test]
 fn reader_uses_verified_slice_bytes_without_content_or_live_tools() {
     let (root, binding) = fixture();
     assert!(!root.path().join("common").exists());

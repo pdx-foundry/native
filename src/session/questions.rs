@@ -32,7 +32,7 @@ impl Native {
     /// Opaque identity of the exact game build, as stamped on every answer.
     pub fn build(&self) -> BuildId {
         match self.recorded() {
-            Some(_) => BuildId("recorded".into()),
+            Some(recorded) => recorded.build.clone(),
             None => BuildId(self.bound().build().into()),
         }
     }
@@ -46,11 +46,11 @@ impl Native {
         method: impl FnOnce() -> Result<Answer<T>, Error>,
     ) -> Result<Answer<T>, Error> {
         if let Some(directory) = self.recorded() {
-            return crate::recorded::read(directory, question, subject);
+            return directory.read(question, subject);
         }
         let answer = method();
         if let Some(directory) = self.recorder() {
-            crate::recorded::write(directory, question, subject, &answer)?;
+            crate::recorded::write(directory, &self.build(), question, subject, &answer)?;
         }
         answer
     }
@@ -62,8 +62,11 @@ impl Native {
             return Support::Supported;
         }
         match operation {
-            Operation::Registries | Operation::RegistryFields => match self.bound().analysis {
-                Some(_) => Support::Supported,
+            Operation::Registries | Operation::RegistryFields => match &self.bound().analysis {
+                Some(analysis) => match analysis.executable() {
+                    Ok(_) => Support::Supported,
+                    Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
+                },
                 None => Support::Unsupported("this build has no static analysis recipe".into()),
             },
             Operation::RegistryItems => match self.blocking_reasons() {
@@ -74,16 +77,18 @@ impl Native {
     }
 
     fn named_candidates(&self, operation: Operation) -> Result<&[NamedCandidate], Error> {
+        let analysis = self
+            .bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation,
+                reason: "this build has no static analysis recipe".into(),
+            })?;
+        // Cached discovery still belongs to the pinned executable.
+        analysis.executable().map_err(|e| error(operation, e))?;
         self.candidates
-            .get_or_init(|| {
-                self.bound()
-                    .analysis
-                    .as_ref()
-                    .ok_or(AnalysisError::Unavailable {
-                        reasons: vec![UnavailableReason::ImplementationUnavailable],
-                    })
-                    .and_then(|analysis| analysis.named_candidates())
-            })
+            .get_or_init(|| analysis.named_candidates())
             .as_deref()
             .map_err(|e| error(operation, e.clone()))
     }

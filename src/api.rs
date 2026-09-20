@@ -33,8 +33,6 @@ pub(crate) enum UnavailableReason {
     /// The compiled host cannot use the build's live strategy.
     #[cfg_attr(all(target_os = "macos", target_arch = "aarch64"), allow(dead_code))]
     HostUnavailable,
-    /// The build has no implementation of the operation.
-    ImplementationUnavailable,
     /// The executable changed after `open`; open the installation again.
     TargetChanged,
     /// Installed content that a session pins changed after `open`.

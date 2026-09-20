@@ -161,6 +161,13 @@ pub enum Error {
         /// Whether the game process, if one was created, is gone.
         disposal: Disposal,
     },
+    /// Final session cleanup failed. The work directory is kept for inspection.
+    Cleanup {
+        /// What failed during cleanup.
+        reason: String,
+        /// Whether the supervisor established that the game process is gone.
+        disposal: Disposal,
+    },
     /// The game session is closing or closed.
     Closed,
     /// Recorded answers hold no file for this question. Never an empty answer.
@@ -190,6 +197,12 @@ impl std::fmt::Display for Error {
                 write!(
                     f,
                     "the game did not start: {reason} (disposal: {disposal:?})"
+                )
+            }
+            Self::Cleanup { reason, disposal } => {
+                write!(
+                    f,
+                    "session cleanup failed: {reason} (disposal: {disposal:?})"
                 )
             }
             Self::Closed => f.write_str("the game session is closed"),

@@ -11,7 +11,7 @@ pub struct Native {
     /// `None` only for recorded answers.
     binding: Option<Arc<Binding>>,
     /// Read every answer from this directory, and start no process.
-    recorded: Option<Arc<std::path::PathBuf>>,
+    recorded: Option<Arc<crate::recorded::Answers>>,
     /// Write every answer to this directory as it is returned.
     recorder: Option<Arc<std::path::PathBuf>>,
     /// The first change of the executable or the pinned content that this `Native` saw. It
@@ -31,15 +31,18 @@ impl Native {
     ///
     /// Static and live questions work the same as with a real game: `start_game` returns a
     /// `Game` that reads recorded answers. A question with no file returns `Error::NotRecorded`,
-    /// and every answer carries `Basis::Recorded`.
-    pub fn from_recorded_answers(directory: impl Into<std::path::PathBuf>) -> Self {
-        Self {
+    /// and every answer carries `Basis::Recorded`. `build.json` must contain the original
+    /// serialized `BuildId`; missing or invalid metadata returns `Error::Recorded`.
+    pub fn from_recorded_answers(
+        directory: impl Into<std::path::PathBuf>,
+    ) -> Result<Self, crate::Error> {
+        Ok(Self {
             binding: None,
-            recorded: Some(Arc::new(directory.into())),
+            recorded: Some(Arc::new(crate::recorded::Answers::open(directory.into())?)),
             recorder: None,
             invalidated: Arc::new(Mutex::new(None)),
             candidates: Arc::new(OnceLock::new()),
-        }
+        })
     }
     /// Write every answer, and every error, to this directory as it is returned. A later
     /// `from_recorded_answers` on the same directory then gives the same answers without a game.
@@ -63,8 +66,8 @@ impl Native {
             .as_ref()
             .expect("recorded answers have no installation binding")
     }
-    pub(crate) fn recorded(&self) -> Option<&std::path::Path> {
-        self.recorded.as_deref().map(|path| path.as_path())
+    pub(crate) fn recorded(&self) -> Option<&crate::recorded::Answers> {
+        self.recorded.as_deref()
     }
     pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
         self.recorder.as_deref().map(|path| path.as_path())

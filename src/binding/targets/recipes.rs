@@ -13,15 +13,12 @@ pub(in crate::binding) enum StrategyId {
 pub(in crate::binding) struct Recipe {
     pub groups: &'static [BindingGroupId],
     pub strategy: StrategyId,
-    /// SHA-256 of each installed content file that the private game profile pins, as JSON.
-    pub content: &'static str,
     pub discovery: &'static DiscoveryRecipe,
 }
 
 pub(super) const M45_OBSERVE: Recipe = Recipe {
     groups: &[BindingGroupId::M45TraditionRegistries],
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
-    content: include_str!("m45-observation-content.json"),
     discovery: &M45_DISCOVERY,
 };
 

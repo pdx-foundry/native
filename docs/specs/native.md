@@ -153,6 +153,8 @@ observation worker.
   partial; it is never complete.
 - `close` returns disposal as confirmed, unconfirmed, or not applicable. Worker failure, caller
   loss, timeout, cancellation, and partial launch all end with a bounded cleanup attempt.
+  Failed final cleanup returns `Error::Cleanup` with the witnessed disposal and retains the work
+  directory, including when the game is gone but its reservation journal could not be committed.
 - One Native-owned game runs on a host at a time. A conflicting instance is refused with a reason.
   The durable reservation journal is unchanged for now.
 - A `Game` uses a temporary work directory, deleted on close and kept only on failure.
@@ -208,6 +210,12 @@ Recorded answers are JSON files of `Result<Answer<T>, Error>`. `record_answers_t
 during a real run. `from_recorded_answers` serves them for static and live questions and starts no
 process. A question with no recorded answer returns `Error::NotRecorded`. Each recorded answer
 carries `Basis::Recorded`. Failure cases can be written by hand.
+
+Each directory has a `build.json` containing the original serialized `BuildId` (a JSON string).
+Opening a recorded directory returns `Result<Native, Error>` and requires valid build metadata.
+`Native::build()` and all successful answers use that original identity. Reads and recording
+into an existing directory reject a different build. Errors can be recorded without a successful
+answer and still keep the build identity.
 
 Atlas claims keep provenance through `Source`. They do not reference retained captures. This
 amends the SDK-473 evidence decision (accepted by Jackson, 2026-09-19).

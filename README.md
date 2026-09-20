@@ -62,11 +62,14 @@ ask the question again.
 ## Recorded answers for tests
 
 `native.record_answers_to(dir)` writes each answer as JSON during a real run.
-`Native::from_recorded_answers(dir)` reads those files and starts no process; consumer code stays
+`Native::from_recorded_answers(dir)?` reads those files and starts no process; consumer code stays
 the same. Each file holds one `Result<Answer<T>, Error>`, so you can write a failure case by hand.
 A recorded answer always has `Basis::Recorded`. A question with no file gives `Error::NotRecorded`.
+`build.json` holds the original serialized `BuildId`, including for error-only recordings.
+`native.build()` returns that identity; answers from another build return `Error::Recorded`.
 
 ```text
+build.json
 registries.json
 registry_fields/common/traditions.json
 registry_items/common/traditions.json

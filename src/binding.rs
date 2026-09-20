@@ -11,8 +11,6 @@ mod targets;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use installation::ContentIdentity;
-
 use crate::{OpenError, UnavailableReason};
 
 /// One pinned installation with the implementation that its exact build selects. This is the
@@ -268,7 +266,15 @@ impl ExecutionPlan {
         platform::lifecycle::private_directory(&profile.join("mod"))?;
         let mount = profile.join("mod/native_registry");
         platform::lifecycle::private_directory(&mount)?;
-        for (relative, expected) in &self.operation().content {
+        let content = self.installation().content.as_ref().map_err(|reason| {
+            SupervisorError(format!(
+                "Pinned registry content is unavailable: {reason:?}"
+            ))
+        })?;
+        for registry in self.operation().registries.values() {
+            std::fs::create_dir_all(mount.join(&registry.directory))?;
+        }
+        for (relative, expected) in content {
             if !relative.starts_with("common/") {
                 continue;
             }
@@ -303,6 +309,7 @@ impl ExecutionPlan {
             profile.join("dlc_load.json"),
             r#"{"enabled_mods":["mod/native_registry.mod"],"disabled_dlcs":[]}"#,
         )?;
+        self.integrity()?;
         Ok(())
     }
 }

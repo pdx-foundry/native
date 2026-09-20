@@ -76,6 +76,46 @@ fn missing_inputs_never_become_empty_success() {
     );
 }
 
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edits() {
+    let (root, _) = installation();
+    let modified = "common/traditions/test.txt";
+    let added = "common/traditions/nested/added.txt";
+    fs::write(root.path().join(modified), "edited before open").unwrap();
+    fs::create_dir(root.path().join("common/traditions/nested")).unwrap();
+    fs::write(root.path().join(added), "added before open").unwrap();
+    let (installation, _) = Installation::open(root.path()).unwrap();
+    let plan = super::ExecutionPlan {
+        binding: Binding {
+            installation,
+            operation: Some(super::compose::synthetic_variation()),
+            analysis: None,
+        },
+    };
+    let work = tempdir().unwrap();
+    fs::create_dir(work.path().join("profile")).unwrap();
+    plan.prepare_registry_profile(work.path()).unwrap();
+    let mount = work.path().join("profile/mod/native_registry");
+    for relative in [modified, added] {
+        assert_eq!(
+            fs::read(mount.join(relative)).unwrap(),
+            fs::read(root.path().join(relative)).unwrap()
+        );
+    }
+    assert!(mount.join("common/tradition_categories").is_dir());
+    assert!(!mount.join("launcher-settings.json").exists());
+    let descriptor =
+        fs::read_to_string(work.path().join("profile/mod/native_registry.mod")).unwrap();
+    assert!(descriptor.contains("replace_path=\"common/traditions\""));
+    assert!(descriptor.contains("replace_path=\"common/tradition_categories\""));
+
+    fs::write(root.path().join(added), "changed after open").unwrap();
+    let next = tempdir().unwrap();
+    assert!(plan.prepare_registry_profile(next.path()).is_err());
+    assert!(!next.path().join("profile").exists());
+}
+
 #[cfg(unix)]
 #[test]
 fn retargeting_the_original_executable_hint_is_detected() {
