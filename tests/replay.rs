@@ -1,4 +1,4 @@
-use pdx_native::{
+use pdx_native::internals::legacy::{
     Activation, ArtifactReference, CaptureOrigin, Completion, Disposal, Engine, ObservationFact,
     ObservationGap as Gap, ReplayError, ReplayRequest, ReplayResult, ResultOrigin,
 };

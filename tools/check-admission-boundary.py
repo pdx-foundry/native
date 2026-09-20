@@ -84,11 +84,11 @@ def main():
             f'[dependencies]\npdx-native = {{ path = {json.dumps(str(ROOT))} }}\n'
         )
         main_rs = consumer / "src/main.rs"
-        main_rs.write_text("fn main() { let _ = pdx_native::Engine; }\n")
+        main_rs.write_text("fn main() { let _ = pdx_native::Operation::Registries; }\n")
         cargo(consumer, ["check"])
         main_rs.write_text("use pdx_native::investigation;\nfn main() {}\n")
         cargo(consumer, ["check"], "no `investigation` in the root")
-        main_rs.write_text("fn main() { let _ = pdx_native::EngineContext {}; }\n")
+        main_rs.write_text("fn main() { let _ = pdx_native::Native {}; }\n")
         cargo(consumer, ["check"], "private fields")
         main_rs.write_text("fn main() { let _ = pdx_native::Game {}; }\n")
         cargo(consumer, ["check"], "private fields")

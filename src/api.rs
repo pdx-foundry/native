@@ -29,11 +29,6 @@ impl Engine {
         )
     }
 
-    /// Bind an exact installation without launching a game. No version or adapter fallback is used.
-    pub fn open(request: OpenRequest) -> Result<crate::EngineContext, OpenError> {
-        crate::session::open(request)
-    }
-
     /// Verify and derive one historical attempt without installation discovery or live execution.
     /// Incomplete attempts return their retained observations and gaps. Inaccessible or incompatible
     /// evidence returns an error rather than an empty successful result.

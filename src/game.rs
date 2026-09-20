@@ -237,6 +237,7 @@ impl Game {
     pub fn readiness(&self) -> GameReadiness {
         self.paused.readiness
     }
+    #[doc(hidden)]
     /// Inspect every declared registry independently, without extending the idle deadline.
     pub fn registry_availability(&self) -> BTreeMap<String, RegistryAvailability> {
         self.paused
@@ -245,10 +246,12 @@ impl Game {
             .map(|(name, result)| (name.clone(), availability(result)))
             .collect()
     }
+    #[doc(hidden)]
     /// Immutable startup replay references. Replaying these does not confirm later cleanup.
     pub fn replay_references(&self) -> &BTreeMap<String, ReplayRequest> {
         &self.paused.replay
     }
+    #[doc(hidden)]
     /// Read the same initial-loader snapshot on every call. No game execution is resumed.
     /// Cancelling this future leaves the session alive.
     pub async fn get_registry_items(

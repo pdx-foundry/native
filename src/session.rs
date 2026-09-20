@@ -16,13 +16,6 @@ pub struct Native {
     candidates: Arc<OnceLock<Result<Vec<crate::binding::NamedCandidate>, crate::AnalysisError>>>,
 }
 
-/// Installation context retained for source compatibility with capability and replay callers.
-pub type EngineContext = Native;
-
-pub(crate) fn open(request: OpenRequest) -> Result<Native, OpenError> {
-    Native::open(request)
-}
-
 impl Native {
     /// Pin an installation without starting a process.
     pub fn open(request: OpenRequest) -> Result<Self, OpenError> {
@@ -55,11 +48,13 @@ impl Native {
             candidates: self.candidates.clone(),
         }
     }
+    #[doc(hidden)]
     /// Opaque pinned composition identity. Equality does not establish current integrity.
     pub fn identity(&self) -> ContextIdentity {
         self.binding.identity()
     }
-    /// Installation or authored synthetic input origin.
+    #[doc(hidden)]
+    /// Installation input origin.
     pub fn origin(&self) -> ContextOrigin {
         self.binding.origin()
     }
@@ -70,6 +65,7 @@ impl Native {
         }
         invalidated.clone()
     }
+    #[doc(hidden)]
     /// Inspect one live operation. Admission may probe live prerequisites; it never launches
     /// Stellaris. Static questions need no admission.
     pub fn capability(&self, request: &CapabilityRequest) -> CapabilityReport {
@@ -79,28 +75,6 @@ impl Native {
             self.origin(),
             self.integrity(),
         )
-    }
-    /// Describe a declared registry without live admission, debugger access, or a game process.
-    pub fn get_registry(
-        &self,
-        name: &str,
-    ) -> Result<crate::RegistryDescription, crate::RegistryError> {
-        let directory = self.binding.registry_directory(name).ok_or_else(|| {
-            crate::RegistryError::Unsupported {
-                registry: name.into(),
-            }
-        })?;
-        if let Some(reason) = self.integrity() {
-            return Err(crate::RegistryError::Unavailable {
-                reasons: vec![reason],
-            });
-        }
-        Ok(crate::RegistryDescription {
-            name: name.into(), content_directory: directory, context: self.identity(), origin: self.origin(),
-            reader_discovery: crate::DiscoveryStatus::Unknown { reason: "Reader discovery has not been qualified".into() },
-            field_discovery: crate::DiscoveryStatus::Unknown { reason: "Field discovery has not been qualified".into() },
-            limits: vec!["Target-declared registry metadata; no complete reader, field schema, or registered items established".into()],
-        })
     }
     /// Configure a dedicated direct child calling supervisor::serve on private stdin/stdout.
     /// See examples/live.rs for the supervisor role and async session flow.

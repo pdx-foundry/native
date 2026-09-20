@@ -107,6 +107,15 @@ pub enum Operation {
     RegistryItems,
 }
 
+/// Whether this build and host can answer an operation. Asking never starts a game.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Support {
+    /// The operation has an implementation here, and its inputs and tools can be read.
+    Supported,
+    /// The operation cannot run here, for this reason.
+    Unsupported(String),
+}
+
 /// Why a question has no answer. Never used for a search that completed and found nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Error {

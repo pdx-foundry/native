@@ -1,5 +1,5 @@
 //! Minimal Atlas-style caller; accepts only a storage root and a retained descriptor reference.
-use pdx_native::{ArtifactReference, Engine, ReplayRequest};
+use pdx_native::internals::legacy::{ArtifactReference, Engine, ReplayRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);

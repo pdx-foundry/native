@@ -2,7 +2,7 @@
 use super::Native;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,
-    ReaderKind, Registry, Source,
+    ReaderKind, Registry, Source, Support,
 };
 use crate::binding::NamedCandidate;
 use crate::engine::analysis::{
@@ -33,6 +33,36 @@ impl Native {
     /// Opaque identity of the exact game build, as stamped on every answer.
     pub fn build(&self) -> BuildId {
         BuildId(self.identity().0)
+    }
+
+    /// Whether this build and host can answer an operation. This never starts a game; for a live
+    /// operation it checks that the supervisor's tools can be found.
+    pub fn supports(&self, operation: Operation) -> Support {
+        match operation {
+            Operation::Registries | Operation::RegistryFields => {
+                match self
+                    .binding
+                    .analysis
+                    .as_ref()
+                    .map(|a| a.discovery.is_some())
+                {
+                    Some(true) => Support::Supported,
+                    _ => Support::Unsupported("this build has no static analysis recipe".into()),
+                }
+            }
+            Operation::RegistryItems => {
+                let mut reasons = Vec::new();
+                for name in self.registry_names() {
+                    let report = self
+                        .capability(&crate::api::CapabilityRequest::Registry { registry: name });
+                    if report.availability == crate::api::Availability::Available {
+                        return Support::Supported;
+                    }
+                    reasons = report.reasons;
+                }
+                Support::Unsupported(format!("{reasons:?}"))
+            }
+        }
     }
 
     fn named_candidates(&self, operation: Operation) -> Result<&[NamedCandidate], Error> {

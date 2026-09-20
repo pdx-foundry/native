@@ -18,7 +18,7 @@ pub async fn start_game(
     control_registry: String,
     control: ObservationControl,
 ) -> Result<crate::Game, crate::GameError> {
-    if native.get_registry(&control_registry).is_err() {
+    if !native.registry_names().contains(&control_registry) {
         return Err(crate::GameError::InvalidOptions(
             "Unknown control registry".into(),
         ));

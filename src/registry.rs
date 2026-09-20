@@ -1,4 +1,4 @@
-//! Installation-bound registry descriptions and explicit discovery gaps.
+//! Why a live registry question has no answer.
 use serde::Serialize;
 
 /// Why a registry question cannot be answered.
@@ -32,32 +32,3 @@ impl std::fmt::Display for RegistryError {
     }
 }
 impl std::error::Error for RegistryError {}
-
-/// Explicit discovery status. Unknown never means a successful empty schema.
-#[derive(Debug, Clone, Serialize)]
-pub enum DiscoveryStatus {
-    /// No qualified discovery supplies these facts.
-    Unknown {
-        /// Qualification or evidence gap.
-        reason: String,
-    },
-}
-
-/// Installation-bound declarations, independent of registered item enumeration.
-#[derive(Debug, Clone, Serialize)]
-pub struct RegistryDescription {
-    /// Public registry name.
-    pub name: String,
-    /// Target-declared content directory; not a parsed registry inventory.
-    pub content_directory: String,
-    /// Opaque identity of the pinned installation composition.
-    pub context: crate::ContextIdentity,
-    /// Installed or synthetic source.
-    pub origin: crate::ContextOrigin,
-    /// Status of qualified reader discovery.
-    pub reader_discovery: DiscoveryStatus,
-    /// Status of qualified field discovery.
-    pub field_discovery: DiscoveryStatus,
-    /// Limits of the declared facts.
-    pub limits: Vec<String>,
-}

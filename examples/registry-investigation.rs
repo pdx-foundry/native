@@ -1,5 +1,6 @@
 //! Maintainer-only capture of the same registry implementation used by ordinary queries.
-use pdx_native::{Engine, ReplayRequest, investigation as candidate};
+use pdx_native::internals::legacy::{Engine, ReplayRequest};
+use pdx_native::investigation as candidate;
 use std::{
     io,
     path::PathBuf,

@@ -1,4 +1,4 @@
-use pdx_native::{
+use pdx_native::internals::legacy::{
     ArtifactReference, CaptureOrigin, Completion, Engine, ReplayError, ReplayRequest, ResultOrigin,
 };
 use serde_json::{Value, json};
@@ -190,7 +190,10 @@ fn session_replay_keeps_active_and_final_disposal_separate() {
     };
     let before = Engine.replay_registry(active.clone()).unwrap();
     assert_eq!(before.completion, Completion::Complete);
-    assert_eq!(before.disposal, pdx_native::Disposal::Unconfirmed);
+    assert_eq!(
+        before.disposal,
+        pdx_native::internals::legacy::Disposal::Unconfirmed
+    );
     let old: Value =
         serde_json::from_slice(&std::fs::read(root.path().join("descriptor.json")).unwrap())
             .unwrap();
@@ -204,7 +207,7 @@ fn session_replay_keeps_active_and_final_disposal_separate() {
             .replay_registry(final_request.clone())
             .unwrap()
             .disposal,
-        pdx_native::Disposal::Confirmed
+        pdx_native::internals::legacy::Disposal::Confirmed
     );
     assert_eq!(
         serde_json::to_value(before).unwrap(),

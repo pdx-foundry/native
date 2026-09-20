@@ -1,4 +1,5 @@
-use pdx_native::{Engine, GameError, GameOptions, Native, OpenRequest};
+use pdx_native::internals::legacy::Engine;
+use pdx_native::{GameError, GameOptions, Native, OpenRequest};
 use std::{io, process::Command};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,8 +25,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         let native = Native::open(OpenRequest {
             installation_hint: args[0].clone().into(),
         })?;
-        // Static descriptions are independent of supervisor configuration and live readiness.
-        eprintln!("description: {:?}", native.get_registry("traditions")?);
         let mut command = Command::new(std::env::current_exe()?);
         command.arg("--supervisor");
         let mut options = GameOptions::new(args[1].clone().into());
@@ -197,7 +196,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         );
         assert!(matches!(
             game.get_registry_items("traditions").await,
-            Err(pdx_native::RegistryError::Closed)
+            Err(pdx_native::internals::legacy::RegistryError::Closed)
         ));
         println!("{}", serde_json::to_string_pretty(&report)?);
         Ok(())

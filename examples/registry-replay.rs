@@ -1,5 +1,5 @@
 //! Replay a registry snapshot without a game installation.
-use pdx_native::{Engine, ReplayRequest};
+use pdx_native::internals::legacy::{Engine, ReplayRequest};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() != 2 {
