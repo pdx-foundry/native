@@ -1,6 +1,7 @@
 use crate::AnalysisError;
 use crate::engine::analysis::decode::{Instruction, decode_arm64};
 use crate::engine::analysis::discovery::{StaticInput, Symbol};
+use crate::engine::analysis::fields::recover_token_names;
 use crate::engine::analysis::references::{DecodedFunction, ReferenceInput};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -120,14 +121,6 @@ fn called_functions(rows: &[Instruction], symbols: &[Symbol]) -> BTreeSet<String
         .filter_map(|address| names.get(&address).copied().flatten())
         .map(str::to_owned)
         .collect()
-}
-
-fn recover_token_names(
-    rows: &[Instruction],
-    symbols: &[Symbol],
-    strings: &BTreeMap<u64, String>,
-) -> BTreeMap<i64, String> {
-    crate::engine::analysis::fields::recover_token_names(rows, symbols, strings)
 }
 
 fn parse_number(value: &str) -> Option<i64> {
