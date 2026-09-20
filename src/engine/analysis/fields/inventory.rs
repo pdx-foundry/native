@@ -75,11 +75,11 @@ pub(super) fn blocking_readers(owner: &str) -> Vec<ReaderContractGap> {
     if owner == "CCouncilAgenda" {
         // Retained SDK-487 failed-completeness obligations, not discovery seeds or reader kinds.
         [
-            ("scoped-integer-value","Expression representation, repeated reads, evaluation and coercion remain unqualified."),
-            ("trigger-clause","Shared operators, validation lifecycle and ROOT/PREV scope contracts remain unqualified."),
-            ("effect-clause","Shared operators, validation lifecycle and ROOT/PREV scope contracts remain unqualified."),
-            ("graphical-modifier","Inherited members, dynamic modifiers and post-read behavior remain unqualified."),
-            ("ai-weight","Scaled/complex grammar and evaluation remain unqualified across indirect calls, loops and jump tables."),
+            ("scoped-integer-value","Expression representation, repeated reads, evaluation and coercion are not established."),
+            ("trigger-clause","Shared operators, validation lifecycle and ROOT/PREV scope contracts are not established."),
+            ("effect-clause","Shared operators, validation lifecycle and ROOT/PREV scope contracts are not established."),
+            ("graphical-modifier","Inherited members, dynamic modifiers and post-read behavior are not established."),
+            ("ai-weight","Scaled/complex grammar and evaluation are not established across indirect calls, loops and jump tables."),
         ]
         .into_iter()
         .map(|(reader, reason)| ReaderContractGap {

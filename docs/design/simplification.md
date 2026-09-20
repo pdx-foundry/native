@@ -210,7 +210,7 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
    Original text of this step: add `Answer`, `Error`, the `Native` and `Game` methods, `from_recorded_answers` and `record_answers_to`. Remove `Engine`,
    the replay methods and the capability types. Update the Atlas caller; it is not frozen again
    until this is done.
-4. **In progress.**
+4. **Done, 2026-09-20.**
    - **Done, 2026-09-20: the public signatures.** `Native::open(path)`,
      `GameOptions::new(supervisor_command)`, `native.start_game(options) -> Result<Game, Error>`
      and `game.close() -> Result<Disposal, Error>`. Native makes a temporary work directory and
@@ -227,7 +227,7 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
      SDK-483 early-observation format with `tests/replay.rs` and `tests/fixtures`, the
      descriptor, artifact-hash and provenance types, `Engine`, `ReplayRequest`, and
      `internals::legacy`.
-   - **To do, in order:**
+   - **The work, in order:**
      1. **Done, 2026-09-20.** `tests/live.rs` replaces the `maintainer-tools` harness. Its cases
         are ignored by default; run them with `STELLARIS_PATH` set and `--ignored`. The test
         executable is also its own supervisor (`--supervisor`), so the target has
@@ -246,13 +246,52 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
         `check-registry-observations`, `check-admission-boundary`). The supervisor still holds
         the code paths for a request with no session; no request can reach them, and item 2
         removes them with the capture code.
-     2. Move the live reducer as described above; remove `capture.rs` parts that only write
-        descriptors, startup and final snapshot copies, and replay references; remove
-        `GameReport`, `GameError`, the hidden earlier methods and `internals::legacy`.
-     3. Remove the replay descriptors inside `engine/analysis` (`discovery` and `fields` results
-        still carry `EvidenceReference`), then the `native-evidence` package and the workspace.
-     4. Remove the `build.rs` source hash (`PDX_NATIVE_OPERATION`), the check tools and the
-        qualification pages in `docs/native`; rewrite the README for the new API.
+     2. **Done, 2026-09-20.** The live reducer is `src/engine/operations`: `event_stream.rs`
+        (the worker and owner record types, and the rules for reading the worker's stream file)
+        and `registry_items.rs` (stream to items, and the readiness of the pause). The
+        supervisor reduces the stream once, when the game is paused, and sends the items of each
+        registry in its `Paused` reply. The caller reads no file from the work directory. For
+        that reason the descriptors, artifact hashes, startup and final snapshot copies,
+        provenance fields and references between the two sides are all gone, with no simpler
+        check in their place: the only file transport left is from the worker to the supervisor.
+
+        Kept, because they decide whether an answer is complete: the activation witness,
+        sequence continuity, the loader, owner and thread joins, slot order, terminal totals, and
+        worker loss. Kept, because they stop a half-written or foreign file: a stream record must
+        be one whole line with this session's attempt identity (a damaged stream loses every
+        terminal, so it cannot give a complete answer); files are created once and never
+        replaced; control messages appear under their final name only when complete; reads
+        accept only a regular file of bounded size; the worker checks the hash of each file of
+        its package and of the executable.
+
+        Removed: `GameReport`, `GameError`, `RetentionOptions`, the hidden earlier methods, the
+        capability types, `src/qualification` (admission is `Binding::blocking_reasons`, a list),
+        `internals::legacy`, `capture.rs`, and the supervisor paths for a request with no
+        session. Live admission now probes the debugger once for a session, not once for each
+        registry. `BuildId` is the SHA-256 of the executable.
+
+        Removed with the SDK-483 early-observation format: its reducer, tests and fixtures, the
+        two replay examples, the worker's early-observation and single-registry modes, and the
+        tools that served replay or qualification. Its engine bindings (registration entry,
+        category reader) are in Git at `dd33300`, `src/binding/groups.rs`. `tools/evidence.py`
+        stays: it still works, and `docs/native/retrieval.md` uses it to verify and restore the
+        knowledge bundles. `tools/observation/test_protocol.py` stays for the worker codec.
+
+        Not done: the fake-worker supervisor test that "Tests" names does not exist. The unit
+        test of the removed hold loop went with that loop. The live tests cover worker loss,
+        timeout, cancel, drop and cleanup; without a game, unit tests cover the reducer, the
+        reservation journal, the worker's process cleanup and the pause witness.
+     3. **Done, 2026-09-20.** `discovery::discover(input)` and `fields::analyze(input)` are
+        plain functions from the method input to the method result. All method logic and its
+        tests stay. `crates/native-evidence` and the workspace are removed; Native is one
+        package. `pdx_native::internals` (hidden) holds only what Native's own integration tests
+        use: the three static method modules and the live fault control.
+     4. **Done, 2026-09-20.** `build.rs` no longer hashes the source. It compiles the presentation guard and writes a build stamp: the time at which
+        Cargo ran the script, which Cargo does again when `src`, the manifest or the script
+        changes. The caller and the supervisor compare the package version plus this stamp in
+        their handshake, so two different states of the source do not talk to each other. The
+        README has the new API and the live test command. The qualification records in
+        `docs/native` were removed in commit `955987c`.
 5. Clean `.local` (below).
 
 The durable reservation journal is unchanged. Whether an operating-system lock alone is

@@ -74,7 +74,7 @@ pub enum ReaderJoin {
 /// Terminal disposition of a bounded root-token path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum PathOutcome {
-    /// Qualified base reader reports an unexpected member.
+    /// The verified base reader reports an unexpected member.
     Rejected,
     /// Root path reaches a reader boundary or an unresolved helper.
     Reader(ReaderJoin),

@@ -4,8 +4,8 @@ A standard Rust API to ask Stellaris questions, the same on each platform and ga
 Native identifies the exact build, answers from the executable or from a supervised game, and
 says how complete each answer is. Atlas is its first consumer.
 
-Status: the [simplification work order](docs/design/simplification.md#work-order) is not complete.
-The API below is final; some earlier internals and Cargo features are still in the source.
+Native is one Cargo package with no optional features. The
+[simplification decision](docs/design/simplification.md) records how it got there.
 
 ## Static questions
 
@@ -96,10 +96,13 @@ unresolved reservations first. Native never creates, moves, or clears this direc
 
 ```sh
 cargo test --workspace
-STELLARIS_PATH=/path/to/Stellaris cargo test --test static_questions -- --ignored
+STELLARIS_PATH=/path/to/Stellaris cargo test --release --test static_questions -- --ignored
+STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
 ```
 
-The first command needs no game. The ignored tests need the exact supported build.
+The first command needs no game. The second reads the executable of the exact supported build
+and starts no game. The third starts the real game 16 times, one case after the other, and takes
+about nine minutes; a word after `--ignored` selects the cases whose name contains it.
 
 ## Documents
 

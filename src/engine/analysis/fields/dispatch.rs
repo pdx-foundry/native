@@ -150,7 +150,7 @@ fn reader_join(name: Option<&str>, state: &State) -> ReaderJoin {
     } else {
         ReaderJoin::Missing {
             reason: format!(
-                "unqualified reader routing or clobbered receiver/destination at {name}"
+                "unestablished reader routing or clobbered receiver/destination at {name}"
             ),
         }
     }

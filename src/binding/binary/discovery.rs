@@ -43,7 +43,7 @@ fn data_at<'a>(
 }
 
 // The M45 image uses DYLD_CHAINED_IMPORT_ADDEND64 and DYLD_CHAINED_PTR_64_OFFSET.
-// These are target-qualified fixups, not a general Mach-O dynamic loader.
+// These are the fixup forms of this target, not a general Mach-O dynamic loader.
 fn fixups(
     bytes: &[u8],
     file: &object::File<'_>,
@@ -144,7 +144,7 @@ fn fixups(
                     let addend = u64_at(payload, imports + ordinal * 16 + 8)? as i64;
                     let library = (import & 0xffff) as u16 as i16;
                     let name = cstring(payload, names + (import >> 32) as usize)?;
-                    // Only same-image weak coalescing has a qualified local resolution.
+                    // Only same-image weak coalescing has an established local resolution.
                     if library == -3
                         && addend == 0
                         && ((pointer >> 24) & 0xff) == 0

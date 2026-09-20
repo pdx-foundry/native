@@ -2,8 +2,7 @@
 
 Status: implementation design supporting the [Native specification](../specs/native.md), rewritten
 2026-09-20 to agree with the [simplification decision](simplification.md). The layout below is the
-target. The code still contains the replay package, admission, and feature guards until the
-decision's work order removes them. The earlier text is in Git history.
+present source. The earlier text is in Git history.
 
 ## Design position
 
@@ -31,42 +30,60 @@ One Cargo package, one library, no optional features. Consumers supply the super
 
 ```text
 Cargo.toml                         pdx-native package
+build.rs                           compiles the presentation guard; writes the build stamp
 src/
   lib.rs                           explicit exports of the public API
-  api.rs                           Native, Answer, Source, Gap, Error, normalized value types
+  answer.rs                        Answer, Source, Gap, Error, Disposal, normalized value types
+  api.rs                           OpenError; the private reasons that block an answer
+  session.rs                       Native: a pinned installation, or recorded answers
+  session/questions.rs             the static questions
   game.rs                          Game: live session or recorded back end
+  game/driver.rs                   the thread that talks to the supervisor process
   recorded.rs                      recorded answers: read, write, NotRecorded
   supervisor.rs                    public consumer-hosted supervisor entry point
-  protocol/                        private owner/worker messages and handshake
+  work_directory.rs                file rules of a session's work directory
+  protocol.rs                      caller/supervisor handshake, replies and framing
+  protocol/
+    session.rs                     session request, controls, final report, test faults
+    observation.rs                 supervisor/worker wire; generates the worker's Python schemas
   binding.rs                       narrow bound interfaces; private composition subtree
   binding/
     compose.rs                     sole target implementation assembly point
+    analysis.rs                    static methods bound to one verified executable
+    installation.rs                installation location, pinned content, integrity
     targets.rs                     catalogue lookup; no concrete host imports
     targets/
-      records/                     exact-target data and recipe references
-      recipes/                     host-neutral identifiers for required implementations
-    groups/                        typed engine function/global/layout definitions
+      records.rs                   exact-target data and recipe references
+      recipes.rs                   host-neutral identifiers for required implementations
+    groups.rs                      typed engine function/global/layout definitions
     platform.rs                    compile-time host selection; live strategy resolution
     platform/
-      macos/                       macOS ownership/access and live strategies
+      macos/                       macOS ownership/access, the LLDB strategy and its worker
+      unavailable/                 every other host: live operations are unsupported
     binary.rs                      thin object-crate integration and identity capture
+    binary/                        executable readers for the static methods
     machine.rs                     decoder/call-mechanism resolution
     machine/
-      arm64/                       ARM64 normalization and call glue
+      arm64.rs                     ARM64 registers and spawn preference
   engine/
-    analysis/                      registries, fields, readers, declarations: bounded static methods
-    operations/                    live engine operations
+    analysis/                      decode, directories, discovery, fields: bounded static methods
+    operations/
+      event_stream.rs              worker and owner records; rules for reading the worker's stream
+      registry_items.rs            stream to registry items; readiness of the pause
   execution/
-    supervisor.rs                  independent process/resource ownership
+    supervisor.rs                  independent process/resource ownership; reduces at the pause
+    owner_events.rs                the supervisor's record of what it did
     instances.rs                   host-wide live-job exclusion and durable reservations
-    worker.rs                      worker coordination; selected LLDB subprocess
 tests/
-  static_methods.rs                small tracked test inputs with expected output
-  recorded.rs                      recorded answers through the public API
-  supervisor.rs                    fake worker: loss, timeout, cancel, cleanup
-  live.rs                          ignored by default; needs STELLARIS_PATH
-  inputs/                          test inputs (bytes each method reads) and expected JSON
-  recorded/                        recorded answers
+  analysis.rs, discovery.rs, fields.rs   static method logic on small authored inputs
+  static_questions.rs              parity with tests/expected; ignored; needs STELLARIS_PATH
+  recorded_answers.rs              recorded answers through the public API
+  installation.rs                  installation identification errors
+  live.rs                          the real game; ignored; needs STELLARIS_PATH
+  expected/                        small tracked expected output of the parity tests
+tools/
+  evidence.py                      verify and restore the private knowledge bundles
+  observation/test_protocol.py     the worker's generated codec
 docs/
   specs/native.md                  product behavior
   design/                          this design and the simplification decision
@@ -120,7 +137,7 @@ receives those, not a universal object that exposes platform, version, and every
 | Which implementations make one build's operation | Recipe under `binding/targets/recipes`, resolved by `compose` |
 | What a reusable analysis method establishes | Method implementation in `engine/analysis` |
 | Whether a build is supported | Presence in the target catalogue; tests prove it |
-| Whether a live answer is complete | The validated worker event stream, reduced once in `game` |
+| Whether a live answer is complete | The validated worker event stream, reduced once by the supervisor with `engine::operations` |
 | Which live resources belong to a job and whether they were disposed | The independent supervisor |
 | Whether any Native owner may launch a game on this host | `execution::instances` reservation |
 | What answers establish about a game rule | Atlas extraction |
@@ -250,8 +267,10 @@ The caller holds `Native` and `Game`. The independent supervisor process holds t
 resources, the cleanup budget, and the cancellation state. The observation worker holds transient
 debugger state. Worker failure must not remove the supervisor's disposal capability.
 
-The supervisor validates the pinned composition identity that the caller passes. The worker must
-accept the same identity or fail; it does not search for a different compatible build.
+The supervisor opens the installation itself and refuses a game build other than the one that the
+caller opened. The caller and the supervisor also compare their Native build in the handshake. The
+worker checks the hash of the executable and of its own package; it does not search for a
+different compatible build.
 
 `execution::instances` owns the host-wide live-instance namespace: one Native-owned Stellaris game
 per host. The supervisor takes an OS-backed exclusive lock before it checks for conflicting game

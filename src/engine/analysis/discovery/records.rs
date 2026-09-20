@@ -94,7 +94,7 @@ pub struct RegistryDiscovery {
 pub struct CandidateRecord {
     /// Database type argument.
     pub database: String,
-    /// Owner type argument; unqualified until joined.
+    /// Owner type argument; not an established owner until joined.
     pub owner_candidate: String,
     /// Loader symbol.
     pub loader: String,
