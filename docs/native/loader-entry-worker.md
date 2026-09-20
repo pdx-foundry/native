@@ -1,7 +1,7 @@
 # SDK-515 loader-entry worker candidate
 
 On 2026-09-18, Native repeated the accepted SDK-483 mechanism with an explicit worker
-handshake and transport/package identities. The [decision](../design/debugger-worker.md)
+handshake and transport/package identities. The decision (design page removed 2026-09-20; see Git history)
 selects an LLDB subprocess with embedded Python for the loader-entry strategy. This result
 is **candidate evidence**, not production support or acceptance of a Rust port.
 

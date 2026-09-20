@@ -35,7 +35,7 @@ timeout retain their distinct owner outcomes; replay separately reports the work
 
 No accepted qualification record was added. Public live operations remain unavailable. These
 are bounded call/read-entry observations, not complete registries, stored-value validation, or
-runtime semantics. The [implementation](../design/candidate-observations.md) describes the API,
+runtime semantics. The implementation (design page removed 2026-09-20; see Git history) describes the API,
 generated protocol, artifact format, bounds, and reproduction command.
 
 ## Failed attempts and interventions

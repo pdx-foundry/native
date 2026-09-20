@@ -1,6 +1,7 @@
 # Roadmap: from two registries to full config coverage
 
-Status: proposed plan, 2026-09-19. The [Native specification](specs/native.md) and
+Status: proposed plan, 2026-09-19; amended 2026-09-20 for the
+[simplification decision](design/simplification.md). The [Native specification](specs/native.md) and
 [technical design](design/architecture.md) remain the authority for behavior and layout. The
 [Atlas map](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database)
 remains the authority for decisions and open extraction questions. This document only orders the work.
@@ -13,10 +14,10 @@ platform-independent JSON snapshots. Native supplies every engine observation th
 ## Starting point
 
 Native admits one production operation: item names for `traditions` and `tradition_categories` on
-one exact Mac ARM64 executable. Supervision, admission, capture, replay and the frozen Atlas caller
-are verified. There is no `engine/analysis` module. All analysis methods (registry ownership, field
-discovery, reader binding, references, numeric grammar, command inventories) exist only as retained
-Python prototypes.
+one exact Mac ARM64 executable. Supervision and the Atlas caller are verified. Static analysis,
+registry candidates and root-field discovery exist in Rust (SDK-527, SDK-528, SDK-530), but inside
+the replay package, which the simplification removes. There is no `engine/analysis` module yet. The other analysis methods (reader binding, references, numeric grammar, command inventories)
+exist only as retained Python prototypes.
 
 ## The target, measured
 
@@ -94,13 +95,18 @@ shapes, not as handwritten answers.
   The rehearsal blocks no earlier milestone, and it measures most when the full method set exists,
   so it is the final milestone (rescoped SDK-485).
 - **The beta installation is preserved first.** Stellaris 4.5 leaves beta in the week of 2026-09-21.
-  The only accepted qualification is pinned to the exact beta executable and 68 content files. A
-  verified copy of that installation must exist before Steam updates it (SDK-522), or live work
-  stops until a forced requalification.
+  The only supported target record is the exact beta executable. A verified copy of that
+  installation must exist before Steam updates it (SDK-522), or live work stops until a new
+  target record exists and its tests pass.
 
 ## Milestones
 
 Linear works milestones in order, so the order below is the work order.
+
+**First: simplification.** Before more milestone 2 work, do the
+[simplification work order](design/simplification.md#work-order): move the analysis methods to
+`engine/analysis`, add the new public API, remove the replay and qualification parts, and clean
+`.local`. This work has no Linear tickets; the decision document tracks it.
 
 | # | Milestone | Work | Exit gate | Tickets |
 | --- | --- | --- | --- | --- |
@@ -110,7 +116,7 @@ Linear works milestones in order, so the order below is the work order.
 | 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method is frozen, then tested on held-out cases. | Council agenda completeness passes; held-out rate recorded per method | SDK-541 to SDK-550 |
 | 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; frozen methods over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
-| 7 | Update rehearsal | Requalify the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
+| 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
 
 Milestone 3 needs only the static context (SDK-527), so its first tickets are unblocked as soon as
 that ticket is done. The blocking relations in Linear are the authority for what can start.
@@ -123,12 +129,14 @@ that ticket is done. The blocking relations in Linear are the authority for what
   of the documentation. These get the `Atlas` repository label.
 - Installation discovery without a location hint (specification user story 2). It does not block
   config coverage.
-- Private remote evidence preservation is already tracked as SDK-486.
+- Private remote preservation of the prototype sources is tracked as SDK-486. Retained captures
+  are no longer preserved.
 
 ## Tracking
 
 Tickets are in the Linear **Atlas** project, one milestone per row above. The `Repo` label group
 (`Native` or `Atlas`) says in which repository the work of a ticket is done. Each ticket is a
-vertical slice: it ends at the public interface, with replayable evidence and a qualification
-record, checked through the frozen Atlas caller. Open extraction questions stay with their Atlas
+vertical slice: it ends at the public API, with tests on small tracked inputs and recorded
+answers, checked through the Atlas caller. Acceptance criteria in tickets that name replay,
+retained captures or qualification records are superseded by the simplification decision. Open extraction questions stay with their Atlas
 map tickets; each Native ticket links to the question it implements and reports its result there.

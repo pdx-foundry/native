@@ -120,5 +120,5 @@ knowledge is preserved in `sdk-521-session-development-v1`, listed in the
 [inventory](source-inventory.json), with a verified external local copy. No historical prototype
 bundle was deleted. Routine development captures remain disposable under the new policy.
 
-The [SDK-518 migration](../design/live-observations.md#migration-from-sdk-518) supplies SDK-519’s consumer
+The SDK-518 migration (design page removed 2026-09-20; see Git history) supplies SDK-519’s consumer
 flow. No Atlas repository files changed.

@@ -119,4 +119,4 @@ Accept this exact bounded candidate qualification for source promotion, subject 
 ordinary production controls before PR publication. Approval authorizes adding the proposed record
 to `src/qualification/records/accepted.json`; the investigation binary cannot do that. If relevant
 implementation behavior changes or production controls fail, revise the report and requalify before
-publishing. See the [consumer contract](../design/live-observations.md) for startup and prerequisite details.
+publishing. See the consumer contract (design page removed 2026-09-20; see Git history) for startup and prerequisite details.

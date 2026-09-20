@@ -20,6 +20,10 @@ agent-operated development recovery, not automatic recovery by the library. Keep
 truthful: administrative clearance does not establish that Native reaped the original process. A short
 recovery note is enough; a new evidence archive and another permission request are not required.
 
+**Amendment, 2026-09-20:** the [simplification decision](design/simplification.md) removes
+qualification records and promotion. Until the work order removes that code, the paragraph below
+applies to it. Afterwards, a build is supported when it is in the target catalogue and its tests pass.
+
 Agents may qualify and promote a changed implementation after the required checks pass, then run its
 ordinary production controls. Record what was tested and its limits. Separate human acceptance is not
 required during this development phase; do not describe agent verification as a new human review.

@@ -20,24 +20,24 @@ PDX Native is the canonical home for reusable engine integration knowledge. This
 
 ## Ownership and status
 
-SDK-530 adds [registry root-field analysis and replay](design/registry-fields.md). It retains
+SDK-530 adds registry root-field analysis and replay (design page removed 2026-09-20; see Git history). It retains
 SDK-487's 10 agenda fields, 21 token paths, and five unresolved shared-reader contracts. Its
 implementation does not establish complete registry semantics or renew live-session qualification.
 
-SDK-528 adds [static registry discovery and historical ownership replay](design/registry-discovery.md).
+SDK-528 adds static registry discovery and historical ownership replay (design page removed 2026-09-20; see Git history).
 Its qualified Rust port retains the SDK-489 candidate/scheduler bounds and passes 41 retained controls.
 It does not launch a game or establish current live ownership.
 
-SDK-527 adds a [qualified static decode control](design/static-analysis.md) with retained-byte
+SDK-527 adds a qualified static decode control (design page removed 2026-09-20; see Git history) with retained-byte
 replay. Its shared build changes invalidate the preceding live-session composition; the live
 records below remain historical until a separate requalification. Static acceptance grants no
 live authority.
 
-The [bounded replay implementation](design/replay.md) adds a game-free Rust consumer flow for the
+The bounded replay implementation (design page removed 2026-09-20; see Git history) adds a game-free Rust consumer flow for the
 retained SDK-483 window. Its tests govern retained derivation behavior, with explicit synthetic and
 historical origins. Public live admission uses matching tracked qualification records. The maintainer-only
-[candidate capture path](design/candidate-observations.md) can now produce fresh recorded evidence
-for the same replay validator; capture success does not grant qualification. SDK-518 established bounded registry questions over shared execution. SDK-521 replaces the live consumer surface with [installation queries and paused Game sessions](design/live-observations.md); its changed implementation requires fresh verification and a matching record.
+candidate capture path (design page removed 2026-09-20; see Git history) can now produce fresh recorded evidence
+for the same replay validator; capture success does not grant qualification. SDK-518 established bounded registry questions over shared execution. SDK-521 replaces the live consumer surface with installation queries and paused Game sessions (design page removed 2026-09-20; see Git history); its changed implementation requires fresh verification and a matching record.
 The [Game session qualification status](native/game-session-qualification.md) retains the current
 checks, a failed game-exit control, its verified shutdown correction, and completed development recovery.
 All 27 candidate controls and 15 [ordinary production controls](native/game-session-production.md)

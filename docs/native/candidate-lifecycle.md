@@ -53,7 +53,7 @@ python3 tools/evidence.py sdk-516-lifecycle
 python3 tools/evidence.py sdk-516-lifecycle --restore
 ```
 
-See [consumer-hosted lifecycle](../design/lifecycle.md) for integration, provisioning, and the
+See consumer-hosted lifecycle (design page removed 2026-09-20; see Git history) for integration, provisioning, and the
 explicit real-game control command. Default, synthetic, and maintainer suites, Clippy, architecture
 boundary checks, private replay, and a Windows maintainer cross-compilation check passed locally.
 Windows/Linux runtime support is not implied by those checks.

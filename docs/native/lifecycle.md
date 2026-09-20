@@ -32,4 +32,4 @@ Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibil
 
 ## Rust library candidate lifecycle
 
-SDK-516 adds the [consumer-hosted supervisor](../design/lifecycle.md), with [fresh candidate controls](candidate-lifecycle.md). Native supplies lifecycle policy and platform services; consumers supply the executable. The games remain suspended; public live qualification is unchanged.
+SDK-516 adds the consumer-hosted supervisor (design page removed 2026-09-20; see Git history), with [fresh candidate controls](candidate-lifecycle.md). Native supplies lifecycle policy and platform services; consumers supply the executable. The games remain suspended; public live qualification is unchanged.

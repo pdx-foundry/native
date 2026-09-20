@@ -25,7 +25,7 @@ the registry and its reader fields; it is not implemented by this ticket.
 These captures used the maintainer authorization entry point with the same shared execution method.
 The maintainer accepted this report before its source record was added. The public replay example
 can show the retained answers without a game installation; see the
-[consumer guide](../design/live-observations.md).
+consumer guide (design page removed 2026-09-20; see Git history).
 
 The supported question is bounded to the exact M45-observe ARM64 macOS target and the retained
 68-file installed input boundary: 67 registry files and launcher identity. Native mounts private

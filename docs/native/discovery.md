@@ -45,7 +45,7 @@ Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/d
 ## Implemented registry discovery
 
 SDK-528 ports bounded template discovery, static scheduler reconstruction and historical ownership
-replay into Rust. See [the public operation and replay contract](../design/registry-discovery.md).
+replay into Rust. See the public operation and replay contract (design page removed 2026-09-20; see Git history).
 The implementation and its tests govern this port; the retained SDK-489 capture remains historical.
 No fresh game run or complete registry inventory is implied.
 
@@ -53,6 +53,6 @@ No fresh game run or complete registry inventory is implied.
 
 SDK-530 ports the SDK-487 root-to-delegate token method into Rust, with exact agenda parity,
 explicit tradition reader gaps, and executable-only public controls. See the
-[root-field API, replay and qualification contract](../design/registry-fields.md). The five
+root-field API, replay and qualification contract (design page removed 2026-09-20; see Git history). The five
 shared-reader blockers remain failed completeness obligations. The retained bundle is comparison
 and provenance material; discovery reads the executable and receives no field or config seeds.

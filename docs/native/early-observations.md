@@ -30,10 +30,10 @@ Initial `task_for_pid` failed. One human intervention enabled debugger access. A
 ## Reuse and limits
 
 SDK-515 now retains a [fresh debugger-worker integration trial](loader-entry-worker.md)
-and [backend decision](../design/debugger-worker.md). It selects an LLDB subprocess with
+and backend decision (design page removed 2026-09-20; see Git history). It selects an LLDB subprocess with
 embedded Python for the strategy and repeats the four controls with a pinned handshake.
 That candidate trial does not qualify the production port. SDK-517 adds the
-[candidate capture implementation](../design/candidate-observations.md) under the independent
+candidate capture implementation (design page removed 2026-09-20; see Git history) under the independent
 Rust owner; public live qualification remains separate.
 
 Carry **activation**, **observation completion**, and **confirmed disposal** as separate facts. Empty output with an unresolved hook is unavailable; record loss prevents completion; worker loss does not erase already collected observations. Native owns target-specific addresses, argument conventions, source/owner joins and cleanup. Atlas supplies observation requests, fixtures and a deadline.
