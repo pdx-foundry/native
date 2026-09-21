@@ -14,9 +14,10 @@ pub struct Native {
     recorded: Option<Arc<crate::recorded::Answers>>,
     /// Write every answer to this directory as it is returned.
     recorder: Option<Arc<std::path::PathBuf>>,
-    /// The first change of the executable or the pinned content that this `Native` saw. It
-    /// stays, even when the original bytes come back.
-    invalidated: Arc<Mutex<Option<UnavailableReason>>>,
+    /// The first executable change and the first default-content change seen by this context.
+    /// Each stays invalidated even when the original bytes return.
+    target_invalidated: Arc<Mutex<Option<UnavailableReason>>>,
+    default_invalidated: Arc<Mutex<Option<UnavailableReason>>>,
     candidates: Arc<OnceLock<Result<Vec<crate::binding::NamedCandidate>, crate::AnalysisError>>>,
 }
 
@@ -40,7 +41,8 @@ impl Native {
             binding: None,
             recorded: Some(Arc::new(crate::recorded::Answers::open(directory.into())?)),
             recorder: None,
-            invalidated: Arc::new(Mutex::new(None)),
+            target_invalidated: Arc::new(Mutex::new(None)),
+            default_invalidated: Arc::new(Mutex::new(None)),
             candidates: Arc::new(OnceLock::new()),
         })
     }
@@ -55,7 +57,8 @@ impl Native {
             binding: Some(Arc::new(binding)),
             recorded: None,
             recorder: None,
-            invalidated: Arc::new(Mutex::new(None)),
+            target_invalidated: Arc::new(Mutex::new(None)),
+            default_invalidated: Arc::new(Mutex::new(None)),
             candidates: Arc::new(OnceLock::new()),
         }
     }
@@ -72,17 +75,38 @@ impl Native {
     pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
         self.recorder.as_deref().map(|path| path.as_path())
     }
-    fn integrity(&self) -> Option<UnavailableReason> {
-        let mut invalidated = self.invalidated.lock().expect("context integrity lock");
+    fn target_integrity(&self) -> Option<UnavailableReason> {
+        let mut invalidated = self
+            .target_invalidated
+            .lock()
+            .expect("target integrity lock");
         if invalidated.is_none() {
-            *invalidated = self.bound().integrity();
+            *invalidated = self.bound().target_integrity();
+        }
+        invalidated.clone()
+    }
+    fn integrity(&self) -> Option<UnavailableReason> {
+        if let Some(reason) = self.target_integrity() {
+            return Some(reason);
+        }
+        let mut invalidated = self
+            .default_invalidated
+            .lock()
+            .expect("default content integrity lock");
+        if invalidated.is_none() {
+            *invalidated = self.bound().default_content_integrity();
         }
         invalidated.clone()
     }
     /// Every reason why a game session cannot start now. This may start the host's debugger
     /// tools to check them; it never starts the game.
     pub(crate) fn blocking_reasons(&self) -> Vec<UnavailableReason> {
-        self.bound().blocking_reasons(self.integrity())
+        self.bound().blocking_reasons(self.integrity(), true)
+    }
+    /// Method and host availability without a particular content selection.
+    pub(crate) fn selected_blocking_reasons(&self) -> Vec<UnavailableReason> {
+        self.bound()
+            .blocking_reasons(self.target_integrity(), false)
     }
     /// Start a supervised game and wait until it is paused after its registries load. The game
     /// never loads a world. With recorded answers, no process starts; the fixture selects its recording and launch options are ignored.
@@ -114,7 +138,11 @@ impl Native {
                 reason: "this build has no fixture observation recipe".into(),
             });
         }
-        let reasons = self.blocking_reasons();
+        let reasons = if options.registries.is_some() {
+            self.selected_blocking_reasons()
+        } else {
+            self.blocking_reasons()
+        };
         if reasons.contains(&UnavailableReason::TargetChanged) {
             return Err(Error::BuildChanged);
         }
@@ -132,6 +160,16 @@ impl Native {
             .registries
             .clone()
             .unwrap_or_else(|| self.bound().default_registries());
+        if let Some(fixture) = &options.fixture
+            && !registries.iter().any(|name| name == fixture.registry())
+        {
+            return Err(Error::FixtureRequest {
+                reason: format!(
+                    "select {} in GameOptions::registries to observe this fixture",
+                    fixture.registry()
+                ),
+            });
+        }
         let known: std::collections::BTreeSet<_> = self
             .registries()?
             .value

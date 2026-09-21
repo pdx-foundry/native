@@ -65,6 +65,29 @@ fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
 }
 
 #[test]
+fn selected_sessions_ignore_unselected_default_content() {
+    let (root, binding) = installation();
+    let context = crate::Native::from_binding(binding);
+    fs::write(root.path().join("common/traditions/test.txt"), "changed").unwrap();
+    assert!(
+        context
+            .blocking_reasons()
+            .contains(&UnavailableReason::ContentChanged)
+    );
+    assert!(context.selected_blocking_reasons().is_empty());
+
+    let (root, binding) = installation();
+    fs::remove_dir_all(root.path().join("common/tradition_categories")).unwrap();
+    let context = crate::Native::from_binding(binding);
+    assert!(
+        context
+            .blocking_reasons()
+            .contains(&UnavailableReason::InputUnavailable)
+    );
+    assert!(context.selected_blocking_reasons().is_empty());
+}
+
+#[test]
 fn missing_inputs_never_become_empty_success() {
     let (directory, binding) = installation();
     let context = crate::Native::from_binding(binding);
@@ -149,6 +172,36 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     );
     assert!(!root.path().join(fixture.file()).exists());
 
+    let selected = std::collections::BTreeMap::from([(
+        "common/traditions".into(),
+        registries["common/traditions"].clone(),
+    )]);
+    let selected_content = plan.session_content(&["common/traditions".into()]).unwrap();
+    let fixture_only_work = tempdir().unwrap();
+    fs::create_dir(fixture_only_work.path().join("profile")).unwrap();
+    plan.prepare_registry_profile(
+        fixture_only_work.path(),
+        Some(&fixture),
+        &selected,
+        &selected_content,
+    )
+    .unwrap();
+    let fixture_only_mod = fs::read_to_string(
+        fixture_only_work
+            .path()
+            .join("profile/mod/native_registry.mod"),
+    )
+    .unwrap();
+    assert!(fixture_only_mod.contains("replace_path=\"common/tradition_categories\""));
+    assert!(fixture_only_mod.contains("replace_path=\"common/traditions\""));
+    assert!(
+        fixture_only_work
+            .path()
+            .join("profile/mod/native_registry")
+            .join(fixture.file())
+            .is_file()
+    );
+
     fs::write(root.path().join(added), "changed after open").unwrap();
     let next = tempdir().unwrap();
     assert!(
@@ -166,12 +219,15 @@ fn retargeting_the_original_executable_hint_is_detected() {
     let hint = directory.path().join("hint");
     symlink(directory.path().join("stellaris"), &hint).unwrap();
     let (bound, _) = Installation::open(&hint).unwrap();
-    assert_eq!(bound.integrity(), None);
+    assert_eq!(bound.target_integrity(), None);
     let replacement = directory.path().join("replacement");
     fs::write(&replacement, "authored test bytes").unwrap();
     fs::remove_file(&hint).unwrap();
     symlink(&replacement, &hint).unwrap();
-    assert_eq!(bound.integrity(), Some(UnavailableReason::TargetChanged));
+    assert_eq!(
+        bound.target_integrity(),
+        Some(UnavailableReason::TargetChanged)
+    );
 }
 
 #[cfg(unix)]

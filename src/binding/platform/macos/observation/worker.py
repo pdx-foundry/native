@@ -601,7 +601,7 @@ def run(debugger):
             emit('native-exception', reason='native exception stopped the bounded observation')
             break
         time.sleep(.02)
-    if not finished and returned_registries and process.IsValid() and process.GetState() == lldb.eStateRunning:
+    if not finished and process.IsValid() and process.GetState() == lldb.eStateRunning:
         stop_error = process.Stop()
         stop_deadline = time.monotonic() + 2
         while process.GetState() != lldb.eStateStopped and time.monotonic() < stop_deadline:

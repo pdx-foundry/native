@@ -3,7 +3,8 @@
 `Game::registry_items(name)` reads a selected registry's collection when its initial loader
 returns. `Complete` means that every slot, key, owner, thread, sequence and terminal witness
 agrees at that boundary. It says nothing about later validation or gameplay. A loader that has
-not returned before the pause gives `Unsupported`. A registry whose key layout cannot be read
+not returned before the pause gives `Unsupported`, even when it was the only selected registry.
+A registry whose key layout cannot be read
 also gives `Unsupported`; it never gives an empty complete answer for that failure.
 
 Select content directories from `Native::registries()` with `GameOptions::registries` before

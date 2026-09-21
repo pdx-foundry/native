@@ -328,8 +328,7 @@ pub(crate) fn readiness(
     let WorkerEvent::SessionPaused { returned } = &pause.event else {
         return None;
     };
-    if returned.is_empty()
-        || returned.iter().collect::<BTreeSet<_>>().len() != returned.len()
+    if returned.iter().collect::<BTreeSet<_>>().len() != returned.len()
         || !returned.iter().all(|name| declared.contains(name))
     {
         return None;
@@ -528,6 +527,31 @@ mod tests {
         let absent = reduce(CATEGORIES, &records, &owner);
         assert_eq!(absent.observed, Observed::NotLoaded);
         assert!(absent.items.is_empty());
+    }
+
+    #[test]
+    fn a_pause_with_no_returned_loaders_keeps_the_selected_registry_unsupported() {
+        let (mut records, mut owner, _) = session(&["first"]);
+        records.retain(|record| registry_name(&record.event).is_none());
+        for (index, record) in records.iter_mut().enumerate() {
+            record.seq = index as u64 + 1;
+            if let WorkerEvent::SessionPaused { returned } = &mut record.event {
+                returned.clear();
+            }
+        }
+        for event in &mut owner {
+            if let OwnerEvent::GamePauseConfirmed { returned, .. } = event {
+                returned.clear();
+            }
+        }
+        assert_eq!(
+            readiness(&records, &owner, &[TRADITIONS.into()]),
+            Some(GameReadiness::PausedDuringRegistryInitialization)
+        );
+        assert_eq!(
+            reduce(TRADITIONS, &records, &owner).observed,
+            Observed::NotLoaded
+        );
     }
 
     #[test]

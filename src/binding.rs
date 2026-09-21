@@ -114,19 +114,23 @@ impl Binding {
             .is_some_and(|operation| operation.fixture.is_some())
     }
 
-    /// Whether the executable or the pinned content changed since `open`.
-    pub(crate) fn integrity(&self) -> Option<UnavailableReason> {
-        self.installation.integrity()
+    pub(crate) fn target_integrity(&self) -> Option<UnavailableReason> {
+        self.installation.target_integrity()
+    }
+
+    pub(crate) fn default_content_integrity(&self) -> Option<UnavailableReason> {
+        self.installation.default_content_integrity()
     }
 
     /// Every reason why a game session cannot start now. Empty means that it can. This may
     /// start the host's debugger tools to check them; it never starts the game.
     ///
-    /// `integrity` is the caller's view of [`Binding::integrity`]; a `Native` keeps a change
+    /// `integrity` is the caller's view of its pinned inputs; a `Native` keeps a change
     /// that it saw once.
     pub(crate) fn blocking_reasons(
         &self,
         integrity: Option<UnavailableReason>,
+        check_defaults: bool,
     ) -> Vec<UnavailableReason> {
         let mut reasons = Vec::new();
         let mut add = |reason: UnavailableReason| {
@@ -141,7 +145,7 @@ impl Binding {
                 .for_each(&mut add);
         }
         integrity.into_iter().for_each(&mut add);
-        if let Err(reason) = &self.installation.content {
+        if check_defaults && let Err(reason) = &self.installation.content {
             add(reason.clone());
         }
         if let Some(operation) = &self.operation
@@ -213,7 +217,7 @@ impl ExecutionPlan {
             .expect("an opened installation has an operation")
     }
     pub fn integrity(&self) -> Result<(), crate::supervisor::SupervisorError> {
-        match self.binding.integrity() {
+        match self.binding.target_integrity() {
             None => Ok(()),
             Some(reason) => Err(crate::supervisor::SupervisorError(format!(
                 "Inputs changed: {reason:?}"
@@ -223,7 +227,9 @@ impl ExecutionPlan {
     /// Refuse the session when anything blocks it. The caller asked the same question before
     /// it started this supervisor; the supervisor does not trust that answer.
     pub fn admit(&self) -> Result<(), crate::supervisor::SupervisorError> {
-        let reasons = self.binding.blocking_reasons(self.binding.integrity());
+        let reasons = self
+            .binding
+            .blocking_reasons(self.binding.target_integrity(), false);
         if !reasons.is_empty() {
             return Err(crate::supervisor::SupervisorError(format!(
                 "A game session cannot start: {reasons:?}"
@@ -444,6 +450,9 @@ impl ExecutionPlan {
         for registry in registries.values() {
             std::fs::create_dir_all(mount.join(&registry.directory))?;
         }
+        if let Some(fixture) = fixture {
+            std::fs::create_dir_all(mount.join(fixture.registry()))?;
+        }
         for (relative, expected) in content {
             if relative == "launcher-settings.json"
                 || fixture.is_some_and(|fixture| {
@@ -477,9 +486,16 @@ impl ExecutionPlan {
             .ok_or_else(|| {
                 SupervisorError("Profile path cannot be represented in the mod file".into())
             })?;
-        let replaced: String = registries
+        let mut replaced_paths: std::collections::BTreeSet<_> = registries
             .values()
-            .map(|registry| format!("replace_path=\"{}\"\n", registry.directory))
+            .map(|registry| registry.directory.as_str())
+            .collect();
+        if let Some(fixture) = fixture {
+            replaced_paths.insert(fixture.registry());
+        }
+        let replaced: String = replaced_paths
+            .into_iter()
+            .map(|directory| format!("replace_path=\"{directory}\"\n"))
             .collect();
         files::write_new(
             &profile.join("mod/native_registry.mod"),

@@ -70,10 +70,11 @@ impl Installation {
         Ok(bytes)
     }
 
-    pub fn integrity(&self) -> Option<UnavailableReason> {
-        if let Err(reason) = self.executable_bytes() {
-            return Some(reason);
-        }
+    pub fn target_integrity(&self) -> Option<UnavailableReason> {
+        self.executable_bytes().err()
+    }
+
+    pub fn default_content_integrity(&self) -> Option<UnavailableReason> {
         match (
             &self.content,
             content_snapshot(&self.root, &self.default_directories, false),

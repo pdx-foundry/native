@@ -26,6 +26,11 @@ struct Tool {
     module: String,
 }
 
+fn worker_deadline_seconds(startup_seconds: u64) -> u64 {
+    let margin = (startup_seconds / 10).clamp(1, 10);
+    startup_seconds.saturating_sub(margin).max(1)
+}
+
 fn command_output(command: &mut Command, budget: Duration) -> Result<String, SupervisorError> {
     let deadline = Instant::now() + budget;
     let mut child = command
@@ -157,7 +162,7 @@ impl Observer {
                 .wire_name(),
             fixture,
             fixture_fault: fixture_fault.is_some(),
-            deadline_seconds: startup_seconds.saturating_sub(10).max(1),
+            deadline_seconds: worker_deadline_seconds(startup_seconds),
         };
         Ok(Self {
             output: work_directory.into(),
@@ -298,7 +303,6 @@ impl Observer {
                 || witness.game != self.request.game
                 || self.worker.as_ref().map(Child::id) != Some(witness.worker)
                 || witness.thread == 0
-                || witness.returned.is_empty()
                 || witness
                     .returned
                     .iter()
@@ -488,6 +492,14 @@ pub(in crate::binding) fn package() -> BTreeMap<String, Vec<u8>> {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn worker_deadline_preserves_short_startup_budgets() {
+        for (startup, worker) in [(2, 1), (5, 4), (10, 9), (30, 27), (180, 170)] {
+            assert_eq!(worker_deadline_seconds(startup), worker);
+        }
+    }
+
     fn observer(root: &Path, command: &mut Command) -> Observer {
         Observer {
             output: root.into(),

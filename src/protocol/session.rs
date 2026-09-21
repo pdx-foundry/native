@@ -85,6 +85,16 @@ impl SessionRequest {
                 "Expected 1 to 164 unique registry content directories".into(),
             ));
         }
+        if let Some(fixture) = &self.fixture
+            && !self
+                .registries
+                .iter()
+                .any(|name| name == fixture.registry())
+        {
+            return Err(SupervisorError(
+                "The fixture registry must be selected for observation".into(),
+            ));
+        }
         if self
             .fault
             .as_ref()
@@ -223,6 +233,12 @@ mod tests {
             idle.idle_seconds = seconds;
             assert!(idle.validate().is_err());
         }
+        let mut fixture_outside_selection = request();
+        fixture_outside_selection.fixture = Some(crate::FixtureRequest::new(
+            "common/tradition_categories/atlas.txt",
+            "atlas = {}",
+        ));
+        assert!(fixture_outside_selection.validate().is_err());
         for names in [
             vec!["common/traditions", "common/traditions"],
             vec!["common/../traditions"],

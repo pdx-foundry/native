@@ -35,6 +35,7 @@ const CATEGORIES: &str = "common/tradition_categories";
 const ASCENSION_PERKS: &str = "common/ascension_perks";
 const MAP_GALAXY: &str = "map/galaxy";
 const CIVICS: &str = "common/governments/civics";
+const GAME_SCENARIOS: &str = "common/game_scenarios";
 /// Item counts of the catalogued M45 build.
 const ITEM_COUNTS: [(&str, usize); 3] =
     [(TRADITIONS, 234), (CATEGORIES, 33), (ASCENSION_PERKS, 49)];
@@ -132,8 +133,10 @@ enum Case {
     Normal,
     InvalidSelection,
     OutsideCommon,
+    LateOnly,
     RecordedRoundTrip,
     Fixture(Fault),
+    FixtureOutsideSelection,
     FixtureSelection(pdx_native::FixtureObservationKind),
     FixtureRegistrationDropped,
     FixtureLaterRegistryDropped,
@@ -175,10 +178,15 @@ fn cases() -> Vec<(String, Case)> {
         ("normal".to_owned(), Case::Normal),
         ("invalid_selection".to_owned(), Case::InvalidSelection),
         ("outside_common".to_owned(), Case::OutsideCommon),
+        ("late_only".to_owned(), Case::LateOnly),
         ("recorded_round_trip".to_owned(), Case::RecordedRoundTrip),
         ("startup_timeout".to_owned(), Case::StartupTimeout),
         ("cancel".to_owned(), Case::Cancel),
         ("drop_without_close".to_owned(), Case::DropWithoutClose),
+        (
+            "fixture_outside_selection_is_rejected".to_owned(),
+            Case::FixtureOutsideSelection,
+        ),
     ];
     let faults = [
         ("missing_hook", Fault::MissingHook, Expect::NoAnswer),
@@ -283,8 +291,10 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::Normal => normal(native).await,
         Case::InvalidSelection => invalid_selection(native).await,
         Case::OutsideCommon => outside_common(native).await,
+        Case::LateOnly => late_only(native).await,
         Case::RecordedRoundTrip => recorded_round_trip(native).await,
         Case::Fixture(control) => fixture_case(control, None).await,
+        Case::FixtureOutsideSelection => fixture_outside_selection(native).await,
         Case::FixtureSelection(kind) => fixture_case(Fault::Normal, Some(kind)).await,
         Case::FixtureRegistrationDropped => {
             fixture_case(
@@ -969,6 +979,22 @@ async fn fixture_case(
     result
 }
 
+async fn fixture_outside_selection(native: &Native) -> Outcome {
+    match native
+        .start_game(
+            options()
+                .registries([MAP_GALAXY])
+                .fixture(fixture_request()),
+        )
+        .await
+    {
+        Err(Error::FixtureRequest { reason }) if reason.contains("GameOptions::registries") => {
+            Ok(())
+        }
+        other => Err(format!("fixture outside registry selection: {other:?}").into()),
+    }
+}
+
 async fn fixture_timeout(native: &Native) -> Outcome {
     let mut request = fixture_request();
     request.deadline_seconds = 1;
@@ -1263,6 +1289,24 @@ async fn outside_common(native: &Native) -> Outcome {
             return Err("tradition control changed".into());
         }
         Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn late_only(native: &Native) -> Outcome {
+    let mut options = options().registries([GAME_SCENARIOS]);
+    options.startup_seconds = 60;
+    let mut game = native.start_game(options).await?;
+    let mut result = async {
+        if game.readiness() != GameReadiness::PausedDuringRegistryInitialization {
+            return Err("late-only session did not pause during initialization".into());
+        }
+        match game.registry_items(GAME_SCENARIOS).await {
+            Err(Error::Unsupported { reason, .. }) if reason.contains("initial loader") => Ok(()),
+            other => Err(format!("late-only registry: {other:?}").into()),
+        }
     }
     .await;
     and_close(&mut result, &mut game).await;
