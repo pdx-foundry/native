@@ -57,6 +57,128 @@ impl VerifiedAnalysis<'_> {
 }
 
 impl BoundAnalysis {
+    /// Locate the file reader return while its source and owner still exist. Only a loader
+    /// with the same definition owner as an established binding can reuse that binding.
+    pub(crate) fn fixture_loader(
+        &self,
+        template_registry: &str,
+        registry: &str,
+    ) -> Result<Option<(u64, u64, u64)>, AnalysisError> {
+        use crate::engine::analysis::{decode::decode_arm64, directories::Directory};
+
+        let verified = self.verified()?;
+        let candidate = |name: &str| {
+            let mut matching = verified
+                .named_candidates()
+                .iter()
+                .filter(|candidate| candidate.directory == Directory::Named(name.into()));
+            match (matching.next(), matching.next()) {
+                (Some(candidate), None) => Some(candidate),
+                _ => None,
+            }
+        };
+        let (Some(template), Some(selected)) = (candidate(template_registry), candidate(registry))
+        else {
+            return Ok(None);
+        };
+        if template.record.owner_candidate != selected.record.owner_candidate {
+            return Ok(None);
+        }
+        let Some(address) = selected
+            .record
+            .address
+            .strip_prefix("0x")
+            .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        else {
+            return Ok(None);
+        };
+        let expected_reader = format!(
+            "TSingleObjectGameDatabase<{}, {}, false>::LoadFromReader(CReader&, bool)",
+            selected.record.database, selected.record.owner_candidate
+        );
+        let code = binary::code_range(&verified.executable, address, 256)?;
+        let rows = decode_arm64(&code, address).map_err(|_| AnalysisError::InvalidRange)?;
+        let matches: Vec<_> =
+            rows.windows(3)
+                .filter_map(|window| {
+                    let [call, after, cleanup] = window else {
+                        return None;
+                    };
+                    let target = call
+                        .operands
+                        .strip_prefix("#0x")
+                        .and_then(|hex| u64::from_str_radix(hex, 16).ok())?;
+                    (call.operation == "bl"
+                        && after.operation == "mov"
+                        && after.operands == "x0,sp"
+                        && cleanup.operation == "bl"
+                        && verified.catalog.symbols.iter().any(|symbol| {
+                            symbol.address == target && symbol.name == expected_reader
+                        }))
+                    .then_some((address, target, after.address))
+                })
+                .collect();
+        Ok(matches.first().copied().filter(|_| matches.len() == 1))
+    }
+
+    /// Derive string storage from the root dispatch's proven reader arguments.
+    pub(crate) fn fixture_string_fields(
+        &self,
+        registry: &str,
+    ) -> Result<Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>, AnalysisError> {
+        use crate::engine::analysis::{
+            directories::Directory,
+            fields::{self, ReaderJoin, Value},
+        };
+
+        let verified = self.verified()?;
+        let mut matching = verified
+            .named_candidates()
+            .iter()
+            .filter(|candidate| candidate.directory == Directory::Named(registry.into()));
+        let (Some(candidate), None) = (matching.next(), matching.next()) else {
+            return Ok(Vec::new());
+        };
+        let input = verified.field_input(candidate.record.clone())?;
+        let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
+        Ok(result
+            .fields
+            .iter()
+            .filter_map(|field| {
+                if field.readers.len() != 1
+                    || field
+                        .paths
+                        .iter()
+                        .any(|&path| !result.paths[path].conditions.is_empty())
+                {
+                    return None;
+                }
+                let ReaderJoin::Joined { callee, arguments } = &field.readers[0] else {
+                    return None;
+                };
+                if callee != "CReader::Read(CString&, bool)"
+                    || arguments.get("x0") != Some(&Value::Reader(0))
+                    || arguments.get("x8") != Some(&Value::Constant(field.token))
+                {
+                    return None;
+                }
+                let Some(Value::Owner(offset)) = arguments.get("x1") else {
+                    return None;
+                };
+                let (Ok(token), Ok(storage_offset)) =
+                    (u64::try_from(field.token), u64::try_from(*offset))
+                else {
+                    return None;
+                };
+                Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
+                    token,
+                    name: field.name.clone(),
+                    storage_offset,
+                })
+            })
+            .collect())
+    }
+
     pub(super) fn new(layout: SchedulerLayout, installation: Installation) -> Self {
         Self {
             layout,
@@ -127,18 +249,6 @@ impl BoundAnalysis {
         let input = verified.field_input(candidate.record.clone())?;
         let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
         Ok(Some(crate::session::questions::normalized_fields(&result)))
-    }
-
-    pub(crate) fn reference_inputs(
-        &self,
-        owners: &[&str],
-    ) -> Result<Vec<crate::engine::analysis::references::ReferenceInput>, AnalysisError> {
-        let bytes = self.executable()?;
-        let input = binary::discovery::read(&bytes, &self.layout)?;
-        owners
-            .iter()
-            .map(|owner| binary::references::read(&bytes, &input, owner))
-            .collect()
     }
 }
 

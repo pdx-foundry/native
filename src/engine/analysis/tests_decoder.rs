@@ -1,7 +1,6 @@
 //! The bounded ARM64 decoder.
-mod analysis_support;
-use analysis_support::*;
-use pdx_native::internals::decode::decode_arm64;
+use crate::engine::analysis::analysis_support::*;
+use crate::engine::analysis::decode::decode_arm64;
 
 #[test]
 fn decoder_requires_a_complete_aligned_bounded_range() {

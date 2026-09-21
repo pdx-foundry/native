@@ -25,7 +25,6 @@ impl OwnerEvents {
             .open(&self.file)?;
         serde_json::to_writer(&mut file, &event)?;
         file.write_all(b"\n")?;
-        file.sync_all()?;
         self.events.push(event);
         Ok(())
     }

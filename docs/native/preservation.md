@@ -55,7 +55,7 @@ and verification; migration or a candidate address alone does not establish supp
 
 ## Simplification cleanup, 2026-09-20
 
-Every bundle passed `tools/evidence.py`, and each archive and manifest has a byte-identical copy
+Every bundle passed `tools/knowledge_bundles.py`, and each archive and manifest has a byte-identical copy
 in `~/Documents/PDX/evidence/native-2026-09-18/`. Duplicate restores, staging and verification
 copies and obsolete SDK run outputs were then removed. Generated large method inputs and routine
 private profiles are disposable; static parity tests now derive their input from the executable.

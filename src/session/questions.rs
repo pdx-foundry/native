@@ -97,8 +97,8 @@ impl Native {
 
     /// List the engine registries, each named by its content directory.
     ///
-    /// The answer is always partial: the method finds registries that use the engine's shared
-    /// database template, and does not find custom, nested, or late loaders.
+    /// The search covers shared database-template candidates. Custom, nested, and late loaders
+    /// are outside it. Completeness says whether every candidate inside that boundary was named.
     pub fn registries(&self) -> Result<Answer<Vec<Registry>>, Error> {
         self.answer("registries", None, || self.registries_from_executable())
     }
@@ -129,7 +129,11 @@ impl Native {
         }
         Ok(Answer {
             value: names.into_iter().map(|name| Registry { name }).collect(),
-            completeness: Completeness::Partial,
+            completeness: if unnamed == 0 {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            },
             gaps,
             source: Source::new(self.build(), directories::METHOD, Basis::StaticAnalysis),
         })
@@ -137,8 +141,9 @@ impl Native {
 
     /// List the root fields of one registry's definitions, with the shared reader of each.
     ///
-    /// The answer is always partial: a reader identity establishes routing only, and nested
-    /// blocks, inherited readers, and dynamic names are outside the method.
+    /// The search covers root reader paths for one shared-template registry. Nested blocks,
+    /// inherited readers, and dynamic names are outside it. Completeness says whether those root
+    /// paths and their reader classifications were resolved.
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         self.answer("registry_fields", Some(registry), || {
             self.registry_fields_from_executable(registry)
@@ -162,50 +167,17 @@ impl Native {
             .field_input(candidate.record.clone())
             .map_err(|e| error(operation, e))?;
         let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
+        let gaps = normalized_gaps(&result, name);
         Ok(Answer {
             value: normalized_fields(&result),
-            completeness: Completeness::Partial,
-            gaps: normalized_gaps(&result, name),
+            completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            },
+            gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
         })
-    }
-
-    pub(crate) fn reference_result(
-        &self,
-        owner: &str,
-    ) -> Result<crate::engine::analysis::references::ReferenceResult, Error> {
-        self.reference_results(&[owner])
-            .map(|mut results| results.remove(0))
-    }
-
-    pub(crate) fn reference_results(
-        &self,
-        owners: &[&str],
-    ) -> Result<Vec<crate::engine::analysis::references::ReferenceResult>, Error> {
-        if self.recorded().is_some() {
-            return Err(Error::Method(
-                "internal reference analysis requires a verified executable".into(),
-            ));
-        }
-        let operation = Operation::RegistryFields;
-        let analysis = self
-            .bound()
-            .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation,
-                reason: "this build has no static analysis recipe".into(),
-            })?;
-        let inputs = analysis
-            .reference_inputs(owners)
-            .map_err(|analysis_error| error(operation, analysis_error))?;
-        inputs
-            .iter()
-            .map(|input| {
-                crate::engine::analysis::references::analyze(input)
-                    .map_err(|analysis_error| error(operation, analysis_error.into()))
-            })
-            .collect()
     }
 }
 

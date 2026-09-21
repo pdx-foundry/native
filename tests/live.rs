@@ -143,6 +143,7 @@ enum Case {
     FixtureTimeout,
     FixtureRefusal,
     FixtureOutcome(FixtureOutcomeCase),
+    FixtureTransfer,
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -239,6 +240,10 @@ fn cases() -> Vec<(String, Case)> {
         Case::FixtureSelection(pdx_native::FixtureObservationKind::RegistrationEntries),
     ));
     cases.push((
+        "fixture_transfer_string_reader".into(),
+        Case::FixtureTransfer,
+    ));
+    cases.push((
         "fixture_field_reads_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
     ));
@@ -307,6 +312,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureTimeout => fixture_timeout(native).await,
         Case::FixtureRefusal => fixture_refusal(native).await,
         Case::FixtureOutcome(case) => fixture_outcome(case).await,
+        Case::FixtureTransfer => fixture_transfer(native).await,
         Case::StartupTimeout => startup_timeout(native).await,
         Case::Cancel => cancel(native).await,
         Case::DropWithoutClose => drop_without_close(native).await,
@@ -344,6 +350,54 @@ async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
             return Err("fixture did not replace only its selected registry".into());
         }
         assert_recorded_fixture(recorded.path(), request, &answer).await?;
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn fixture_transfer(native: &Native) -> Outcome {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest, FixtureStorage};
+
+    let request = FixtureRequest::field_outcomes(
+        "common/ascension_perks/native_transfer.txt",
+        "native_transfer = {\n custom_tooltip = \"transfer_tip\"\n unlocks_agenda = \"transfer_agenda\"\n}\n",
+        [
+            FixtureFieldQuestion::new(ASCENSION_PERKS, "native_transfer", "custom_tooltip"),
+            FixtureFieldQuestion::new(ASCENSION_PERKS, "native_transfer", "unlocks_agenda"),
+        ],
+    );
+    let mut game = native
+        .start_game(options().registries([ASCENSION_PERKS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.completeness != Completeness::Complete {
+            return Err(format!("transfer was incomplete: {answer:?}").into());
+        }
+        let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("transfer outcomes: {answer:?}").into());
+        };
+        if tooltip.owner.is_none() || tooltip.owner != agenda.owner {
+            return Err(format!("transfer owner join: {answer:?}").into());
+        }
+        for (outcome, expected) in [(tooltip, "transfer_tip"), (agenda, "transfer_agenda")] {
+            let FixtureStorage::String {
+                occurrences,
+                final_value,
+                completeness: Completeness::Complete,
+            } = &outcome.storage
+            else {
+                return Err(format!("transfer storage: {answer:?}").into());
+            };
+            if occurrences.len() != 1
+                || occurrences[0].value != expected
+                || final_value.as_deref() != Some(expected)
+            {
+                return Err(format!("transfer value: {answer:?}").into());
+            }
+        }
         Ok(())
     }
     .await;

@@ -256,7 +256,7 @@ impl std::fmt::Debug for Binding {
 }
 
 pub(crate) use platform::lifecycle::{
-    HostReservation, OwnedGame, acquire_reservation, conflicting_game, open_record, prepare_owner,
+    HostReservation, OwnedGame, acquire_reservation, conflicting_game, prepare_owner,
     private_directory, process_identity,
 };
 
@@ -343,9 +343,36 @@ impl ExecutionPlan {
         fixture: &crate::FixtureRequest,
     ) -> Result<crate::protocol::observation::FixtureSetup, crate::supervisor::SupervisorError>
     {
-        let bindings = self.operation().fixture.clone().ok_or_else(|| {
+        let mut bindings = self.operation().fixture.clone().ok_or_else(|| {
             crate::supervisor::SupervisorError("No fixture binding for this build".into())
         })?;
+        if !fixture.field_questions.is_empty()
+            && !bindings
+                .outcome_registries
+                .iter()
+                .any(|binding| binding.registry == fixture.registry())
+        {
+            let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
+                crate::supervisor::SupervisorError(
+                    "No static reader authority for fixture questions".into(),
+                )
+            })?;
+            let template = &bindings.outcome_registries[0];
+            let Some((load_entry, reader_entry, reader_return)) = analysis
+                .fixture_loader(&template.registry, fixture.registry())
+                .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?
+            else {
+                return Err(crate::supervisor::SupervisorError(
+                    "Fixture registry has no verified shared-owner loader boundary".into(),
+                ));
+            };
+            let mut selected = template.clone();
+            selected.registry = fixture.registry().into();
+            selected.load_entry = load_entry;
+            selected.reader_entry = reader_entry;
+            selected.reader_return = reader_return;
+            bindings.outcome_registries.push(selected);
+        }
         let fields = if fixture.field_questions.is_empty() {
             Vec::new()
         } else {
@@ -359,6 +386,23 @@ impl ExecutionPlan {
                 .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?
                 .unwrap_or_default()
         };
+        if !fixture.field_questions.is_empty() {
+            let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
+                crate::supervisor::SupervisorError(
+                    "No static reader authority for fixture questions".into(),
+                )
+            })?;
+            let derived = analysis
+                .fixture_string_fields(fixture.registry())
+                .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
+            if let Some(binding) = bindings
+                .outcome_registries
+                .iter_mut()
+                .find(|binding| binding.registry == fixture.registry())
+            {
+                binding.fields = derived;
+            }
+        }
         let questions = fixture
             .field_questions
             .iter()

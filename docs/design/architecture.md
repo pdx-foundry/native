@@ -39,6 +39,7 @@ src/
   session/questions.rs             the static questions
   game.rs                          Game: live session or recorded back end
   game/driver.rs                   the thread that talks to the supervisor process
+  fixture.rs                       consumer fixture request and normalized observation types
   recorded.rs                      recorded answers: read, write, NotRecorded
   supervisor.rs                    public consumer-hosted supervisor entry point
   work_directory.rs                file rules of a session's work directory
@@ -66,23 +67,24 @@ src/
     machine/
       arm64.rs                     ARM64 registers and spawn preference
   engine/
-    analysis/                      decode, directories, discovery, fields: bounded static methods
+    analysis/                      decode, directories, discovery, fields, readers: bounded static methods
     operations/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
+      fixture.rs                   fixture observation reducer
       registry_items.rs            stream to registry items; readiness of the pause
   execution/
     supervisor.rs                  independent process/resource ownership; reduces at the pause
     owner_events.rs                the supervisor's record of what it did
-    instances.rs                   host-wide live-job exclusion and durable reservations
+    instances.rs                   host lock and process-inventory admission
 tests/
-  analysis.rs, discovery.rs, fields.rs   static method logic on small authored inputs
+  (static method unit tests live beside engine/analysis source)
   static_questions.rs              parity with tests/expected; ignored; needs STELLARIS_PATH
   recorded_answers.rs              recorded answers through the public API
   installation.rs                  installation identification errors
   live.rs                          the real game; ignored; needs STELLARIS_PATH
   expected/                        small tracked expected output of the parity tests
 tools/
-  evidence.py                      verify and restore the private knowledge bundles
+  knowledge_bundles.py             verify and restore the private knowledge bundles
   observation/test_protocol.py     the worker's generated codec
 docs/
   specs/native.md                  product behavior
@@ -102,7 +104,7 @@ Atlas → public API ─┬─ target composition → selected implementations
                     ├─ game supervision   → normalized live answers
                     └─ recorded answers   (no process, no installation)
 
-Independent supervisor → owned game + worker + reservation journal
+Independent supervisor → host lock + owned game + worker + session report
 ```
 
 The private `binding` subtree contains composition, target records, platform leaves, and machine
@@ -117,7 +119,7 @@ Enforce this with module privacy. `binding::targets` is private to `binding`; lo
 
 **Public types hold no native details.** Addresses, tokens, symbols, and instruction paths stay
 inside `engine::analysis` and `binding`. A method maps its internal result to the normalized value
-type (`Registry`, `Field`, `Reader`, `Declaration`) before it returns.
+type (`Registry`, `Field`, `Reader`) before it returns.
 
 Keep internal interfaces narrow. An operation that needs a bound reader and an observation channel
 receives those, not a universal object that exposes platform, version, and every engine service.
@@ -272,11 +274,9 @@ different compatible build.
 
 `execution::instances` owns the host-wide live-instance namespace: one Native-owned Stellaris game
 per host. The supervisor takes an OS-backed exclusive lock before it checks for conflicting game
-processes, and holds it through confirmed disposal. A durable reservation journal records the
-attempt, the process identities, and the reserved or disposed state. An unresolved or unreadable
-entry blocks a new launch; the runtime never clears it from PID absence or elapsed time alone.
-Agent-operated recovery follows the [development policy](../development-policy.md). Whether the
-lock alone is sufficient is a separate, later decision.
+processes, and holds it through disposal. Old session reports do not block a later launch after
+the lock and process inventory checks pass. The work directory records process identities,
+disposal and report-write failures for the caller.
 
 Ordinary game launchers do not honor the lock. Check for a conflicting instance before launch and
 during the job. Never kill an unowned game.
@@ -284,7 +284,7 @@ during the job. Never kill an unowned game.
 | Lifetime | Owned state |
 | --- | --- |
 | Native release | API definitions, catalogue entries, recipes, methods, bindings |
-| Host-wide namespace | Exclusive launch reservation and journal; held by the supervisor |
+| Host-wide namespace | Exclusive launch lock; held by the supervisor |
 | `Native` | Exact target binding, bound operation set, selected back end |
 | `Game` | Deadlines, temporary work directory, normalized paused answers |
 | Supervisor | Owned process handles, private profile, disposal result |
@@ -340,9 +340,8 @@ The useful maintenance question is: **which authoritative decision changed?**
 4. **Public types:** no address, token, symbol, or instruction appears in a public type.
 5. **Authority under failure:** dropped records cannot give a complete answer; worker death cannot
    erase resource ownership; a missing recorded answer cannot give an empty answer.
-6. **Host-wide exclusion:** two supervisors contend for one reservation; caller death does not
-   release it; an unreadable journal entry blocks launch; an ordinary game instance is refused
-   and never terminated.
+6. **Host-wide exclusion:** two supervisors contend for one lock; an ordinary game instance is
+   refused and never terminated. A finished prior session does not block the next launch.
 
 Do not assert private call sequences in consumer tests. Assert answers, gaps, side effects, and
 errors.

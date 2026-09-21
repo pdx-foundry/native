@@ -61,7 +61,7 @@ identities. No raw game records or copied native callback sources are published 
 Offline verification after restoring into a new directory:
 
 ```sh
-python3 tools/evidence.py sdk-515-loader-entry-review --restore
+python3 tools/knowledge_bundles.py sdk-515-loader-entry-review --restore
 python3 .local/evidence/restored/sdk-515-loader-entry-review/sdk-515-loader-entry-review/trial-03/trial-source/verify.py \
   .local/evidence/restored/sdk-515-loader-entry-review/sdk-515-loader-entry-review/trial-03
 ```

@@ -3,7 +3,7 @@
 //!
 //! The order of a session: handshake, request, admission, reservation, private profile, worker
 //! package, suspended game, worker, pause, answers, controls, then cleanup. Cleanup always runs:
-//! stop the worker, reap the game, commit the disposal to the reservation journal, and report.
+//! stop the worker, reap the game, confirm disposal and report.
 use super::{instances::Reservation, owner_events::OwnerEvents};
 use crate::{
     answer::Disposal,
@@ -294,7 +294,7 @@ fn run(
             Ok(()) => report.reservation_resolved = true,
             Err(error) => {
                 report.outcome =
-                    SessionOutcome::Failed(format!("Disposal journal commit failed: {error}"))
+                    SessionOutcome::Failed(format!("Disposal bookkeeping failed: {error}"))
             }
         }
     }
@@ -423,7 +423,7 @@ fn observe_session(
     }
 }
 
-/// Leave the reservation record and the report in the work directory. Native keeps the
+/// Leave the owner details and the report in the work directory. Native keeps the
 /// directory after a failure, and a caller that was lost never received the report.
 fn write_report(work_directory: &Path, reservation: &Reservation, report: &mut SessionReport) {
     let owner = reservation
@@ -431,10 +431,14 @@ fn write_report(work_directory: &Path, reservation: &Reservation, report: &mut S
         .and_then(|snapshot| files::write_json(&work_directory.join("owner.json"), &snapshot));
     if let Err(error) = owner {
         report.diagnostics.push(format!("owner.json: {error}"));
+        report.reservation_resolved = false;
+        report.outcome = SessionOutcome::Failed("Session bookkeeping failed".into());
     }
     // Write the report last, so that it names every earlier failure.
     if let Err(error) = files::write_json(&work_directory.join("report.json"), report) {
         report.diagnostics.push(format!("report.json: {error}"));
+        report.reservation_resolved = false;
+        report.outcome = SessionOutcome::Failed("Session bookkeeping failed".into());
     }
 }
 
@@ -494,30 +498,25 @@ mod tests {
         child.dispose(DISPOSAL_BUDGET).unwrap();
         assert!(binding::process_identity(child.pid()).is_err());
         reservation.disposed().unwrap();
-        assert_eq!(reservation.snapshot().unwrap()["state"], "Disposed");
+        assert_eq!(reservation.snapshot().unwrap()["state"], "disposed");
     }
 
     #[test]
-    fn partial_launch_and_failed_commit_preserve_ownership() {
+    fn earlier_session_files_do_not_block_a_new_reservation() {
+        let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "partial", output.path()).unwrap();
-        let mut child = binding::test_child(output.path()).unwrap();
-        fs::write(root.path().join("partial.pending"), "interrupted write").unwrap();
-        assert!(reservation.record_game(child.identity().unwrap()).is_err());
-        child.dispose(DISPOSAL_BUDGET).unwrap();
-        assert!(reservation.disposed().is_err());
-        assert_eq!(reservation.snapshot().unwrap()["state"], "Reserved");
+        let reservation = reserve(root.path(), "prior", output.path()).unwrap();
         drop(reservation);
-        assert!(reserve(root.path(), "next", output.path()).is_err());
-        assert_eq!(
-            fs::read_to_string(root.path().join("partial.pending")).unwrap(),
-            "interrupted write"
-        );
+        fs::write(root.path().join("prior.pending"), "old session").unwrap();
+        let mut next = reserve(root.path(), "next", output.path()).unwrap();
+        next.disposed().unwrap();
+        assert_eq!(next.snapshot().unwrap()["state"], "disposed");
     }
 
     #[test]
     fn the_report_names_a_file_that_could_not_be_written_and_replaces_nothing() {
+        let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
         let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
@@ -543,28 +542,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn unknown_unreadable_and_unresolved_records_block_without_overwrite() {
-        let root = store();
-        let output = store();
-        let reservation = reserve(root.path(), "prior", output.path()).unwrap();
-        drop(reservation);
-        let path = root.path().join("prior.json");
-        let original = fs::read(&path).unwrap();
-        assert!(reserve(root.path(), "unresolved", output.path()).is_err());
-        assert_eq!(fs::read(&path).unwrap(), original);
-        for content in [b"{\"version\":999}".as_slice(), b"{", b"null"] {
-            fs::write(&path, content).unwrap();
-            assert!(reserve(root.path(), "next", output.path()).is_err());
-            assert_eq!(fs::read(&path).unwrap(), content);
-        }
-        fs::write(&path, &original).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o0)).unwrap();
-        assert!(reserve(root.path(), "denied", output.path()).is_err());
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-        assert_eq!(fs::read(&path).unwrap(), original);
-    }
-
     // Invoked only by the parent test in a separate test-runner process. No production override.
     #[test]
     fn reservation_process_driver() {
@@ -580,6 +557,7 @@ mod tests {
 
     #[test]
     fn competing_process_and_dead_owner_cannot_reuse_namespace() {
+        let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
         let ready = output.path().join("ready");
@@ -603,9 +581,9 @@ mod tests {
         assert!(reserve(root.path(), "competitor", output.path()).is_err());
         owner.kill().unwrap();
         owner.wait().unwrap();
-        // OS lock is now free, but unresolved durable ownership still prevents launch.
+        // The lock is free; the old owner no longer blocks a launch.
         assert!(binding::test_reservation(root.path()).is_ok());
-        assert!(reserve(root.path(), "afterdeath", output.path()).is_err());
+        assert!(reserve(root.path(), "afterdeath", output.path()).is_ok());
     }
 }
 

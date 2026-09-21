@@ -1,0 +1,33 @@
+# Milestone 2 repair notes
+
+## Shared decisions from PRs #15 and #18
+
+PR #15 encoded the M45 CString tag offset for fixture field reads. PR #18 added the same
+offset to the shared-template registry layout. Both describe the same representation. The
+fixture binding now reads `M45_TEMPLATE_LAYOUT.string_tag_offset`; the layout has one owner in
+`src/binding/groups.rs`. The fixture field-token entries remain category-specific read-entry
+controls. Outcome field tokens and storage offsets come from verified reader analysis, and the
+worker receives those resolved bindings. Fixture path validation remains the public request
+boundary, while observation code applies the selected exact-build hooks.
+
+## Transport and lifecycle
+
+Session files are temporary. Atomic publication, bounded reads, session identity, stream
+continuity and worker-source hashes remain; the file and directory `fsync` calls were removed.
+The worker-source hashes still verify that the copied Python package is the one the supervisor
+prepared. The generated Python protocol remains the sole wire-schema projection from Rust.
+
+The OS lock excludes concurrent Native supervisors, and the process inventory refuses an
+ordinary Stellaris instance. A prior session report is no longer an admission gate. Cleanup
+still reports game disposal separately from failure to write the owner or session report.
+
+## Static completeness
+
+`registries` searches the shared database-template candidates. It is complete when every
+candidate inside that boundary has one content directory; custom, nested and late loaders are
+outside the search. `registry_fields` searches root reader paths for one such registry. It is
+complete when every path, field name and promised reader classification is resolved. An
+`OutsideMethod` gap documents the boundary and can accompany `Complete`. Unnamed candidates,
+unresolved paths, unknown reader classifications and unreadable required input make the bounded
+answer partial. These semantics are revisions `registry-directories/v3` and
+`registry-fields/v3`. The frozen milestone sweep retains the earlier v2 answers.

@@ -1,8 +1,33 @@
 use super::*;
 use std::fs;
 
-#[path = "../../../tests/analysis_support/mod.rs"]
-mod support;
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn tradition_fixture_bindings_come_from_reader_arguments() {
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let analysis = native.bound().analysis.as_ref().unwrap();
+    let fields = analysis.fixture_string_fields("common/traditions").unwrap();
+    let found: Vec<_> = fields
+        .iter()
+        .map(|field| (field.name.as_str(), field.token, field.storage_offset))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("custom_tooltip", 10001, 0x1c0),
+            ("custom_tooltip_with_modifiers", 11046, 0x1e8),
+            ("unlocks_agenda", 14639, 0x5a0),
+        ]
+    );
+    assert_eq!(
+        analysis
+            .fixture_loader("common/traditions", "common/traditions")
+            .unwrap(),
+        Some((0x100ce090c, 0x100ce1bec, 0x100ce097c))
+    );
+}
+
+use crate::engine::analysis::analysis_support as support;
 
 fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     let root = tempfile::tempdir().unwrap();

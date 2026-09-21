@@ -1,5 +1,5 @@
 //! The registry discovery method on small authored inputs.
-use pdx_native::internals::discovery::{
+use crate::engine::analysis::discovery::{
     DiscoveryGapKind, SchedulerLayout, StaticInput, Symbol, candidates, discover, scheduler,
 };
 use std::collections::BTreeMap;

@@ -292,7 +292,7 @@ in memory; this adds no qualification record or persisted content pin.
         Removed with the SDK-483 early-observation format: its reducer, tests and fixtures, the
         two replay examples, the worker's early-observation and single-registry modes, and the
         tools that served replay or qualification. Its engine bindings (registration entry,
-        category reader) are in Git at `dd33300`, `src/binding/groups.rs`. `tools/evidence.py`
+        category reader) are in Git at `dd33300`, `src/binding/groups.rs`. `tools/knowledge_bundles.py`
         stays: it still works, and `docs/native/retrieval.md` uses it to verify and restore the
         knowledge bundles. `tools/observation/test_protocol.py` stays for the worker codec.
 
@@ -331,8 +331,9 @@ The caller reads normalized answers from the supervisor and no longer opens capt
 review follow-up repairs stale document/tool references and keeps failed live-case work directories
 when a later case passes. The full fake-worker supervisor test remains the known test gap above.
 
-The durable reservation journal is unchanged. Whether an operating-system lock alone is
-sufficient is a separate, later decision.
+This paragraph records the original decision. The milestone 2 review later replaced the durable
+reservation journal with the OS lock and process inventory; see
+[the repair notes](../native/milestone-2-repair-notes.md).
 
 ## `.local` (7.2 GB)
 

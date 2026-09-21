@@ -118,4 +118,3 @@ pub(in crate::binding) mod constructors;
 pub(in crate::binding) mod discovery;
 
 pub(super) mod fields;
-pub(super) mod references;

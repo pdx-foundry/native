@@ -86,3 +86,28 @@ to the requested field occurrence, and stores the independently observed value `
 The coverage terminal means only that parser diagnostic collection completed for this file load.
 No M45 mechanism in this method reaches post-read validation, a world, or gameplay runtime;
 requested runtime is an explicit unavailable outcome and `OutsideMethod` gap.
+
+### Milestone 2 string-reader transfer (2026-09-21)
+
+The frozen `registry-fields/v2` sweep found one string reader shared by 170 fields. The
+bounded experiment selected `CReader::Read(CString&, bool)` and the `CTraditionType`
+owner. The static root-dispatch trace derives the field token from `x8` and the
+owner-relative destination from `x1`; it reproduces the three previously handwritten
+tradition offsets. No named-field token or storage offset remains in the live binding.
+The loader candidate establishes the registry's exact `LoadFile` entry and owner class.
+The loader's unique direct call to its specialized `LoadFromReader` establishes the
+return instruction where the reader and owner are still live. The known tradition
+fixture passed after this change. Only then did the same method run on
+`common/ascension_perks`: two unfamiliar field questions returned the expected strings
+through `Game::observe_fixture`, joined to one owner, with complete observation and
+confirmed disposal (`fixture_transfer_string_reader`). No ascension-specific native
+field constant was added.
+
+The exact-build binding still supplies the shared owner constructor and member entry,
+parser diagnostic entry points, `CString` representation, reader/lexer source layout,
+and launch-thread observation window. Those are manual engine relationships on
+M45-observe. The retained exception claims only initial-load string storage for fields
+whose trace gives one nonconditional owner destination and token, when the registry
+uses the same owner class and the loader call boundary is unique. Its obstacle is
+deriving these object and source layouts on other builds. A future binding must replace
+or reverify them; the method reports unsupported fields and registries as unavailable.

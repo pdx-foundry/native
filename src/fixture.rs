@@ -66,8 +66,8 @@ impl FixtureFieldQuestion {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FixtureRequest {
-    /// One UTF-8 `.txt` file under `common/traditions` or
-    /// `common/tradition_categories`, at most 64 KiB.
+    /// One UTF-8 `.txt` file under `common/traditions`,
+    /// `common/tradition_categories`, or `common/ascension_perks`, at most 64 KiB.
     /// Paths are relative to the game content root; values are the exact file contents.
     pub files: BTreeMap<String, String>,
     /// A nonempty set of the requested event kinds, with no duplicates.
@@ -93,13 +93,13 @@ impl FixtureRequest {
             ],
             field_questions: Vec::new(),
             window: FixtureWindow::InitialCategoryLoad,
-            deadline_seconds: 180,
+            deadline_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
         }
     }
 
-    /// Request field outcomes for one traditions or tradition-categories file. Existing
+    /// Request field outcomes for one traditions, tradition-categories, or ascension-perks file. Existing
     /// registration and category-read selections are not added; callers may add registration
-    /// entries for either registry, while category field reads require tradition categories.
+    /// entries, while category field reads require tradition categories.
     pub fn field_outcomes(
         path: impl Into<String>,
         text: impl Into<String>,
@@ -112,7 +112,7 @@ impl FixtureRequest {
             observations: Vec::new(),
             field_questions,
             window: FixtureWindow::InitialFileLoad,
-            deadline_seconds: 180,
+            deadline_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
         }
     }
 
@@ -128,9 +128,11 @@ impl FixtureRequest {
             ("common/tradition_categories", filename)
         } else if let Some(filename) = path.strip_prefix("common/traditions/") {
             ("common/traditions", filename)
+        } else if let Some(filename) = path.strip_prefix("common/ascension_perks/") {
+            ("common/ascension_perks", filename)
         } else {
             return Err(reject(
-                "Fixture files must be in common/traditions or common/tradition_categories",
+                "Fixture files must be in a supported common registry",
             ));
         };
         let filename = registry.1;
@@ -205,7 +207,7 @@ impl FixtureRequest {
                 "InitialCategoryLoad requires a common/tradition_categories fixture",
             ));
         }
-        if registry.0 == "common/traditions"
+        if registry.0 != "common/tradition_categories"
             && self
                 .observations
                 .contains(&FixtureObservationKind::CategoryFieldReads)
@@ -214,7 +216,7 @@ impl FixtureRequest {
                 "CategoryFieldReads requires a common/tradition_categories fixture",
             ));
         }
-        if !(1..=180).contains(&self.deadline_seconds) {
+        if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&self.deadline_seconds) {
             return Err(reject("Fixture deadline must be 1 to 180 seconds"));
         }
         Ok(())

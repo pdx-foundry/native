@@ -21,7 +21,7 @@ fn registries_are_named_by_their_content_directory() {
     let answer = native().registries().unwrap();
     let names: Vec<_> = answer.value.iter().map(|r| r.name.clone()).collect();
     assert_eq!(names, expected::<Vec<String>>("registries.json"));
-    assert_eq!(answer.completeness, Completeness::Partial);
+    assert_eq!(answer.completeness, Completeness::Complete);
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
     // `common/ship_categories` passes a global CString; its static initializer names it.
     assert!(names.contains(&"common/ship_categories".to_owned()));
@@ -48,7 +48,18 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
     ] {
         let answer = native.registry_fields(registry).unwrap();
         assert_eq!(answer.value, expected::<Vec<Field>>(file), "{registry}");
-        assert_eq!(answer.completeness, Completeness::Partial);
+        assert_eq!(
+            answer.completeness,
+            if answer
+                .gaps
+                .iter()
+                .all(|gap| gap.kind == GapKind::OutsideMethod)
+            {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            }
+        );
         for field in &answer.value {
             let expected_gap = if field.reader.id.is_none() {
                 Some(GapKind::UnresolvedReader)
@@ -107,22 +118,4 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
         recorded.registry_fields("common/armies"),
         Err(Error::NotRecorded { .. })
     ));
-}
-
-#[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn reference_initializers_match_the_retained_sdk_482_cases() {
-    let native = native();
-    let owners = [
-        "CCreateShipEffect",
-        "CAddDistrictEffect",
-        "CChangePlanetClassEffect",
-        "CCreateArmyEffect",
-        "CAddRelicEffect",
-    ];
-    let results = pdx_native::internals::reference_results(&native, &owners).unwrap();
-    assert_eq!(
-        results,
-        expected::<Vec<pdx_native::internals::references::ReferenceResult>>("references.json")
-    );
 }

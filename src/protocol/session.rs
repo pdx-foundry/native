@@ -7,6 +7,8 @@ use crate::{answer::Disposal, supervisor::SupervisorError};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub(crate) const MAX_SESSION_SECONDS: u64 = 180;
+
 /// What the caller asks its supervisor to do: start one game and hold it at its pause.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,8 +58,8 @@ impl SessionRequest {
             ));
         }
         if !self.work_directory.is_absolute()
-            || !(1..=180).contains(&self.startup_seconds)
-            || !(1..=180).contains(&self.idle_seconds)
+            || !(1..=MAX_SESSION_SECONDS).contains(&self.startup_seconds)
+            || !(1..=MAX_SESSION_SECONDS).contains(&self.idle_seconds)
         {
             return Err(SupervisorError(
                 "Expected an absolute work directory and budgets of 1 to 180 seconds".into(),
@@ -151,12 +153,12 @@ pub(crate) enum SessionOutcome {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionReport {
-    /// Identity of this session in the reservation journal and the worker's stream.
+    /// Identity of this session in its report and the worker's stream.
     pub attempt: String,
     pub outcome: SessionOutcome,
     /// Whether the supervisor reaped the game. Independent of the outcome.
     pub disposal: Disposal,
-    /// Whether the disposal is committed to the reservation journal.
+    /// Whether cleanup and required bookkeeping completed.
     pub reservation_resolved: bool,
     /// Failures that did not decide the outcome.
     pub diagnostics: Vec<String>,
@@ -167,7 +169,9 @@ pub(crate) struct SessionReport {
 /// Reach it through `GameOptions::fault`. The supervisor applies a fault only to the registry
 /// that the request names; the other registries are observed as usual.
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ObservationControl {
     /// No fault.
@@ -185,20 +189,6 @@ pub enum ObservationControl {
     AccessFailure,
     /// Stop the debugger worker while it reads the registry.
     WorkerLoss,
-}
-
-impl ObservationControl {
-    /// The name that the worker knows this fault by.
-    #[cfg_attr(
-        not(all(target_os = "macos", target_arch = "aarch64")),
-        allow(dead_code)
-    )]
-    pub(crate) fn wire_name(self) -> String {
-        serde_json::to_value(self)
-            .ok()
-            .and_then(|value| value.as_str().map(String::from))
-            .expect("a fault serializes as its name")
-    }
 }
 
 #[cfg(test)]

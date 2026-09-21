@@ -16,7 +16,7 @@ pub(super) fn fixture(
             reader_lexer_offset: 0x30,
             lexer_file_offset: 8,
             file_name_offset: 0x20,
-            string_tag_offset: 23,
+            string_tag_offset: M45_TEMPLATE_LAYOUT.string_tag_offset,
             file_line_offset: 8,
             fields: [(16793, "tree_template"), (14263, "traditions")]
                 .into_iter()
@@ -37,20 +37,7 @@ pub(super) fn fixture(
                     member_entry: 0x100cda028,
                     malformed_entry: 0x1025ae998,
                     unexpected_entry: 0x1025ae720,
-                    fields: [
-                        (10001, "custom_tooltip", 0x1c0),
-                        (11046, "custom_tooltip_with_modifiers", 0x1e8),
-                        (14639, "unlocks_agenda", 0x5a0),
-                    ]
-                    .into_iter()
-                    .map(|(token, name, storage_offset)| {
-                        crate::protocol::observation::FixtureOutcomeFieldBinding {
-                            token,
-                            name: name.into(),
-                            storage_offset,
-                        }
-                    })
-                    .collect(),
+                    fields: Vec::new(),
                 },
             ],
         })
