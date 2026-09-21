@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/7";
+pub(crate) const VERSION: &str = "native-observation/8";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 
@@ -135,6 +135,7 @@ pub(crate) struct FixtureOutcomeRegistryBinding {
     pub constructor_entry: u64,
     pub member_entry: u64,
     pub malformed_entry: u64,
+    pub unexpected_entry: u64,
     pub fields: Vec<FixtureOutcomeFieldBinding>,
 }
 

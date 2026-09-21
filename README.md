@@ -80,12 +80,14 @@ For parser outcomes, use `FixtureRequest::field_outcomes` with one or more
 `FixtureFieldQuestion` values. The file may be in `common/traditions` or
 `common/tradition_categories`. Each outcome keeps these dimensions separate:
 
-- `FixtureStorage` contains actual String storage after each joined occurrence and at the file
-  terminal, or a typed unavailable reason. A completed zero-occurrence result requires a witnessed
-  definition constructor and completed file-load window.
+- `FixtureStorage` contains actual String storage after each joined occurrence and an optional
+  file-terminal value, or a typed unavailable reason. Its own completeness keeps witnessed values
+  when a later record or terminal is missing. A complete zero-occurrence result requires a
+  witnessed definition constructor and completed file-load window.
 - `diagnostics` preserves messages captured at the engine reader-report stage, with a source join
   or a missing-join reason. `DiagnosticCoverage::Complete` covers only parser diagnostics during
-  this file load. It does not claim later validation.
+  this file load. `NotRequested` is distinct from unsupported or incomplete collection. It does
+  not claim later validation.
 - `FixtureRuntime` distinguishes `NotRequested` from `Unavailable`. Runtime is outside this
   initial-load method, so a runtime request makes the answer partial with an `OutsideMethod` gap.
 
@@ -95,6 +97,10 @@ return.
 
 Choose either or both `FixtureObservationKind` values for the category entry question. It uses
 `FixtureWindow::InitialCategoryLoad`; field outcomes use `FixtureWindow::InitialFileLoad`.
+`CategoryFieldReads` supports only `common/tradition_categories`; registration entries may be
+combined with either supported registry. Tradition field outcomes can capture malformed and
+unexpected-field parser diagnostics. Category field outcomes report parser diagnostics and
+storage unavailable because this build has no outcome binding for that registry.
 `deadline_seconds` defaults to 180 and must be 1–180; the
 smaller of it and `GameOptions::startup_seconds` bounds startup observation. Repeated questions
 read the same startup results and refresh the idle timeout. A different fixture needs a new session.

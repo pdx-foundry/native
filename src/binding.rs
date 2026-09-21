@@ -218,6 +218,86 @@ pub(crate) static LIFECYCLE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::
 pub(crate) use platform::observation::Observer;
 
 impl ExecutionPlan {
+    fn fixture_question_setup(
+        &self,
+        bindings: &crate::protocol::observation::FixtureBinding,
+        index: usize,
+        question: &crate::FixtureFieldQuestion,
+    ) -> Result<
+        crate::protocol::observation::FixtureQuestionSetup,
+        crate::supervisor::SupervisorError,
+    > {
+        let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
+            crate::supervisor::SupervisorError(
+                "No static reader authority for fixture questions".into(),
+            )
+        })?;
+        let field = analysis
+            .registry_field(&question.registry, &question.field)
+            .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
+        let exact = bindings
+            .outcome_registries
+            .iter()
+            .find(|binding| binding.registry == question.registry)
+            .and_then(|binding| {
+                binding
+                    .fields
+                    .iter()
+                    .find(|field| field.name == question.field)
+            });
+        let reader_kind = field
+            .as_ref()
+            .map(|field| format!("{:?}", field.reader.kind))
+            .unwrap_or_else(|| "Unknown".into());
+        let unavailable = match (&field, exact) {
+            (None, _) => Some("The field is not established by registry_fields".into()),
+            (Some(field), _) if field.reader.kind != crate::ReaderKind::String => Some(format!(
+                "The {:?} reader has no storage decoder in this method",
+                field.reader.kind
+            )),
+            (Some(_), None) => Some("No exact-build storage binding for this field".into()),
+            _ => None,
+        };
+        Ok(crate::protocol::observation::FixtureQuestionSetup {
+            index: index as u64,
+            definition: question.definition.clone(),
+            field: question.field.clone(),
+            diagnostics: question.diagnostics,
+            runtime: question.runtime,
+            reader_id: field
+                .as_ref()
+                .and_then(|field| field.reader.id.as_ref().map(|id| id.0.clone())),
+            reader_kind,
+            token: exact.map(|field| field.token),
+            storage_offset: exact.map(|field| field.storage_offset),
+            unavailable,
+        })
+    }
+
+    fn fixture_setup(
+        &self,
+        fixture: &crate::FixtureRequest,
+    ) -> Result<crate::protocol::observation::FixtureSetup, crate::supervisor::SupervisorError>
+    {
+        let bindings = self.operation().fixture.clone().ok_or_else(|| {
+            crate::supervisor::SupervisorError("No fixture binding for this build".into())
+        })?;
+        let questions = fixture
+            .field_questions
+            .iter()
+            .enumerate()
+            .map(|(index, question)| self.fixture_question_setup(&bindings, index, question))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(crate::protocol::observation::FixtureSetup {
+            file: fixture.file().into(),
+            registration_entries: fixture
+                .requests(crate::FixtureObservationKind::RegistrationEntries),
+            field_reads: fixture.requests(crate::FixtureObservationKind::CategoryFieldReads),
+            questions,
+            bindings,
+        })
+    }
+
     /// Prepare the debugger worker for one session in its work directory.
     pub(crate) fn observer(
         &self,
@@ -243,87 +323,7 @@ impl ExecutionPlan {
             fixture: request
                 .fixture
                 .as_ref()
-                .map(|fixture| -> Result<_, crate::supervisor::SupervisorError> {
-                    let bindings = operation.fixture.clone().ok_or_else(|| {
-                        crate::supervisor::SupervisorError(
-                            "No fixture binding for this build".into(),
-                        )
-                    })?;
-                    let questions = fixture
-                        .field_questions
-                        .iter()
-                        .enumerate()
-                        .map(|(index, question)| {
-                            let field = self
-                                .binding
-                                .analysis
-                                .as_ref()
-                                .ok_or_else(|| {
-                                    crate::supervisor::SupervisorError(
-                                        "No static reader authority for fixture questions".into(),
-                                    )
-                                })?
-                                .registry_field(&question.registry, &question.field)
-                                .map_err(|error| {
-                                    crate::supervisor::SupervisorError(error.to_string())
-                                })?;
-                            let exact = bindings
-                                .outcome_registries
-                                .iter()
-                                .find(|binding| binding.registry == question.registry)
-                                .and_then(|binding| {
-                                    binding
-                                        .fields
-                                        .iter()
-                                        .find(|field| field.name == question.field)
-                                });
-                            let reader_kind = field
-                                .as_ref()
-                                .map(|field| format!("{:?}", field.reader.kind))
-                                .unwrap_or_else(|| "Unknown".into());
-                            let unavailable = match (&field, exact) {
-                                (None, _) => {
-                                    Some("The field is not established by registry_fields".into())
-                                }
-                                (Some(field), _)
-                                    if field.reader.kind != crate::ReaderKind::String =>
-                                {
-                                    Some(format!(
-                                        "The {:?} reader has no storage decoder in this method",
-                                        field.reader.kind
-                                    ))
-                                }
-                                (Some(_), None) => {
-                                    Some("No exact-build storage binding for this field".into())
-                                }
-                                _ => None,
-                            };
-                            Ok(crate::protocol::observation::FixtureQuestionSetup {
-                                index: index as u64,
-                                definition: question.definition.clone(),
-                                field: question.field.clone(),
-                                diagnostics: question.diagnostics,
-                                runtime: question.runtime,
-                                reader_id: field.as_ref().and_then(|field| {
-                                    field.reader.id.as_ref().map(|id| id.0.clone())
-                                }),
-                                reader_kind,
-                                token: exact.map(|field| field.token),
-                                storage_offset: exact.map(|field| field.storage_offset),
-                                unavailable,
-                            })
-                        })
-                        .collect::<Result<Vec<_>, crate::supervisor::SupervisorError>>()?;
-                    Ok(crate::protocol::observation::FixtureSetup {
-                        file: fixture.file().into(),
-                        registration_entries: fixture
-                            .requests(crate::FixtureObservationKind::RegistrationEntries),
-                        field_reads: fixture
-                            .requests(crate::FixtureObservationKind::CategoryFieldReads),
-                        questions,
-                        bindings,
-                    })
-                })
+                .map(|fixture| self.fixture_setup(fixture))
                 .transpose()?,
             fixture_fault: request.fixture_fault,
             startup_seconds: request.startup_seconds,

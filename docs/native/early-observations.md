@@ -74,10 +74,11 @@ reader is still alive. The statically established String fields are `custom_tool
 `325efaa17499c32d`. The constructor establishes an omitted definition without parsing fixture text.
 Each joined field return reads actual owner storage, and the file terminal reads it again.
 
-Diagnostics are intercepted at `CReader::ReportMalformed(CString const&)`, the overload that
-creates the reader error entry, so the no-argument forwarding overload does not duplicate them.
-The multiline quoted-string control reports the engine text `Malformed token`, joins it to the
-requested field occurrence, and keeps the independently observed stored value.
+Diagnostics are intercepted at `CReader::ReportMalformed(CString const&)` and
+`CReader::ReportUnexpected(CString const&)`, the overloads that create their own reader error
+entries, so the no-argument forwarding overloads do not duplicate them.
+The multiline quoted-string control reports the engine text `Malformed token` on line 3, joins it
+to the requested field occurrence, and stores the independently observed value `Unreadable String`.
 The coverage terminal means only that parser diagnostic collection completed for this file load.
 No M45 mechanism in this method reaches post-read validation, a world, or gameplay runtime;
 requested runtime is an explicit unavailable outcome and `OutsideMethod` gap.

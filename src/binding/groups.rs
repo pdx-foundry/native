@@ -36,6 +36,7 @@ pub(super) fn fixture(
                     constructor_entry: 0x100cd9a20,
                     member_entry: 0x100cda028,
                     malformed_entry: 0x1025ae998,
+                    unexpected_entry: 0x1025ae720,
                     fields: [
                         (10001, "custom_tooltip", 0x1c0),
                         (11046, "custom_tooltip_with_modifiers", 0x1e8),

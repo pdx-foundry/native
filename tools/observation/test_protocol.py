@@ -13,7 +13,8 @@ class ProtocolTests(unittest.TestCase):
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
         outcome = dict(registry='common/traditions', load_entry=16384, reader_entry=16400,
                        reader_return=16416, constructor_entry=16432, member_entry=16448,
-                       malformed_entry=16464, fields=[dict(token=10001, name='custom_tooltip',
+                       malformed_entry=16464, unexpected_entry=16480,
+                       fields=[dict(token=10001, name='custom_tooltip',
                        storage_offset=448)])
         fixture = dict(file='common/tradition_categories/atlas.txt', registration_entries=True,
                        field_reads=True, questions=[], bindings=dict(registration_entry=4096, load_entry=8192,
@@ -41,6 +42,10 @@ class ProtocolTests(unittest.TestCase):
         terminal = dict(kind='end', registrations=3, field_reads=2, field_outcomes=0,
                         diagnostics=0, producer_last_sequence=12)
         self.assertEqual(wire.decode('record', wire.encode('record', dict(row, event=terminal)))['event'], terminal)
+        diagnostic = dict(kind='diagnostic', text='Unexpected token',
+                          stage='reader-unexpected-report', file=None, line=None,
+                          definition=None, field=None, occurrence=None)
+        self.assertEqual(wire.decode('record', wire.encode('record', dict(row, event=diagnostic)))['event'], diagnostic)
 
     def test_trace_requires_valid_event_and_envelope(self):
         row = dict(run='attempt', seq=1, kind='registry-entry', name='traditions',

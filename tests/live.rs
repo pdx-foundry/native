@@ -153,6 +153,10 @@ enum FixtureOutcomeCase {
     Repeated,
     Malformed,
     Runtime,
+    UnknownField,
+    SameOwner,
+    CategoryUnsupported,
+    DiagnosticsNotRequested,
 }
 
 fn cases() -> Vec<(String, Case)> {
@@ -228,6 +232,16 @@ fn cases() -> Vec<(String, Case)> {
         ("repeated", FixtureOutcomeCase::Repeated),
         ("malformed", FixtureOutcomeCase::Malformed),
         ("runtime", FixtureOutcomeCase::Runtime),
+        ("unknown_field", FixtureOutcomeCase::UnknownField),
+        ("same_owner", FixtureOutcomeCase::SameOwner),
+        (
+            "category_unsupported",
+            FixtureOutcomeCase::CategoryUnsupported,
+        ),
+        (
+            "diagnostics_not_requested",
+            FixtureOutcomeCase::DiagnosticsNotRequested,
+        ),
     ] {
         cases.push((
             format!("fixture_outcome_{name}"),
@@ -267,34 +281,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
 }
 
 async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
-    use pdx_native::{
-        DiagnosticCoverage, DiagnosticWindow, FixtureRuntime, FixtureStorage, ReaderKind,
-    };
-
-    let (body, runtime) = match case {
-        FixtureOutcomeCase::Valid => (" unlocks_agenda = \"agenda_one\"\n", false),
-        FixtureOutcomeCase::Omitted => ("", false),
-        FixtureOutcomeCase::Repeated => (
-            " unlocks_agenda = \"agenda_one\"\n unlocks_agenda = \"agenda_two\"\n",
-            false,
-        ),
-        FixtureOutcomeCase::Malformed => (" unlocks_agenda = \"agenda\nbroken\"\n", false),
-        FixtureOutcomeCase::Runtime => (" unlocks_agenda = \"agenda_one\"\n", true),
-    };
-    let mut question = pdx_native::FixtureFieldQuestion::new(
-        TRADITIONS,
-        "native_fixture_tradition",
-        "unlocks_agenda",
-    );
-    if runtime {
-        question = question.with_runtime();
-    }
-    let text = format!("native_fixture_tradition = {{\n{body}}}\n");
-    let request = pdx_native::FixtureRequest::field_outcomes(
-        "common/traditions/native_fixture.txt",
-        text,
-        [question],
-    );
+    let request = fixture_outcome_request(case);
     let recorded = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recorded.path());
@@ -303,106 +290,289 @@ async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
         .await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
-        let outcome = answer
-            .value
-            .field_outcomes
-            .first()
-            .ok_or("missing field outcome")?;
-        if outcome.question.field != "unlocks_agenda"
-            || outcome.owner.is_none()
-            || outcome.definition_line != Some(1)
-            || outcome.reader.kind != ReaderKind::String
-            || answer.value.diagnostic_coverage
-                != (DiagnosticCoverage::Complete {
-                    window: DiagnosticWindow::FixtureFileLoad,
-                })
-        {
-            return Err(format!("field outcome identity: {answer:?}").into());
-        }
-        let FixtureStorage::String {
-            occurrences,
-            final_value,
-        } = &outcome.storage
-        else {
-            return Err(format!("field storage unavailable: {answer:?}").into());
+        assert_fixture_outcome(case, &answer)?;
+        let expected_counts = if matches!(case, FixtureOutcomeCase::CategoryUnsupported) {
+            (234, 1)
+        } else {
+            (1, 33)
         };
-        match case {
-            FixtureOutcomeCase::Valid => {
-                if answer.completeness != Completeness::Complete
-                    || occurrences.len() != 1
-                    || occurrences[0].value != "agenda_one"
-                    || final_value != "agenda_one"
-                    || !answer.value.diagnostics.is_empty()
-                {
-                    return Err(format!("valid outcome: {answer:?}").into());
-                }
-            }
-            FixtureOutcomeCase::Omitted => {
-                if answer.completeness != Completeness::Complete
-                    || !occurrences.is_empty()
-                    || !final_value.is_empty()
-                    || !answer.value.diagnostics.is_empty()
-                {
-                    return Err(format!("omitted outcome: {answer:?}").into());
-                }
-            }
-            FixtureOutcomeCase::Repeated => {
-                let values = occurrences
-                    .iter()
-                    .map(|occurrence| occurrence.value.as_str())
-                    .collect::<Vec<_>>();
-                if answer.completeness != Completeness::Complete
-                    || values != ["agenda_one", "agenda_two"]
-                    || final_value != "agenda_two"
-                {
-                    return Err(format!("repeated outcome: {answer:?}").into());
-                }
-            }
-            FixtureOutcomeCase::Malformed => {
-                if answer.completeness != Completeness::Complete
-                    || occurrences.len() != 1
-                    || answer.value.diagnostics.is_empty()
-                    || outcome.diagnostics.is_empty()
-                {
-                    return Err(format!("malformed outcome: {answer:?}").into());
-                }
-            }
-            FixtureOutcomeCase::Runtime => {
-                if answer.completeness != Completeness::Partial
-                    || !matches!(outcome.runtime, FixtureRuntime::Unavailable(_))
-                    || !answer
-                        .gaps
-                        .iter()
-                        .any(|gap| gap.kind == pdx_native::GapKind::OutsideMethod)
-                {
-                    return Err(format!("runtime outcome: {answer:?}").into());
-                }
-            }
-        }
-        if !runtime && outcome.runtime != FixtureRuntime::NotRequested {
-            return Err("unrequested runtime was not kept distinct".into());
-        }
-        if complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)? != 1
-            || complete(&game.registry_items(CATEGORIES).await?, CATEGORIES)? != 33
+        if complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)? != expected_counts.0
+            || complete(&game.registry_items(CATEGORIES).await?, CATEGORIES)? != expected_counts.1
         {
-            return Err("fixture did not replace only traditions".into());
+            return Err("fixture did not replace only its selected registry".into());
         }
-        let recorded_native = Native::from_recorded_answers(recorded.path())?;
-        let mut recorded_game = recorded_native
-            .start_game(GameOptions::new(Command::new("must-not-start")).fixture(request))
-            .await?;
-        let mut expected = answer.clone();
-        expected.source.basis = Basis::Recorded;
-        if recorded_game.observe_fixture().await? != expected
-            || recorded_game.close().await? != Disposal::NotApplicable
-        {
-            return Err("recorded field outcome differs".into());
-        }
+        assert_recorded_fixture(recorded.path(), request, &answer).await?;
         Ok(())
     }
     .await;
     and_close(&mut result, &mut game).await;
     result
+}
+
+fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureRequest {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+
+    if matches!(case, FixtureOutcomeCase::CategoryUnsupported) {
+        return FixtureRequest::field_outcomes(
+            "common/tradition_categories/native_fixture.txt",
+            "native_fixture_category = {\n tree_template = \"bad\nvalue\"\n}\n",
+            [FixtureFieldQuestion::new(
+                CATEGORIES,
+                "native_fixture_category",
+                "tree_template",
+            )],
+        );
+    }
+    if matches!(case, FixtureOutcomeCase::SameOwner) {
+        return FixtureRequest::field_outcomes(
+            "common/traditions/native_fixture.txt",
+            "native_fixture_tradition = {\n custom_tooltip = \"tip\"\n unlocks_agenda = \"agenda\"\n}\n",
+            [
+                FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "custom_tooltip"),
+                FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda"),
+            ],
+        );
+    }
+    let body = match case {
+        FixtureOutcomeCase::Valid
+        | FixtureOutcomeCase::Runtime
+        | FixtureOutcomeCase::DiagnosticsNotRequested => " unlocks_agenda = \"agenda_one\"\n",
+        FixtureOutcomeCase::Omitted => "",
+        FixtureOutcomeCase::Repeated => {
+            " unlocks_agenda = \"agenda_one\"\n unlocks_agenda = \"agenda_two\"\n"
+        }
+        FixtureOutcomeCase::Malformed => " unlocks_agenda = \"agenda\nbroken\"\n",
+        FixtureOutcomeCase::UnknownField => {
+            " unlocks_agenda = \"agenda_one\"\n this_is_an_unknown_field = { broken = yes }\n"
+        }
+        FixtureOutcomeCase::SameOwner | FixtureOutcomeCase::CategoryUnsupported => unreachable!(),
+    };
+    let mut question =
+        FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda");
+    if matches!(case, FixtureOutcomeCase::Runtime) {
+        question = question.with_runtime();
+    }
+    if matches!(case, FixtureOutcomeCase::DiagnosticsNotRequested) {
+        question.diagnostics = false;
+    }
+    FixtureRequest::field_outcomes(
+        "common/traditions/native_fixture.txt",
+        format!("native_fixture_tradition = {{\n{body}}}\n"),
+        [question],
+    )
+}
+
+fn assert_fixture_outcome(
+    case: FixtureOutcomeCase,
+    answer: &Answer<pdx_native::FixtureObservation>,
+) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureRuntime, FixtureStorage,
+        ReaderKind,
+    };
+
+    let expected_completeness = if matches!(
+        case,
+        FixtureOutcomeCase::Runtime | FixtureOutcomeCase::CategoryUnsupported
+    ) {
+        Completeness::Partial
+    } else {
+        Completeness::Complete
+    };
+    if answer.completeness != expected_completeness {
+        return Err(format!("fixture completeness: {answer:?}").into());
+    }
+    let expected_coverage = match case {
+        FixtureOutcomeCase::CategoryUnsupported => {
+            matches!(
+                answer.value.diagnostic_coverage,
+                DiagnosticCoverage::Unavailable(_)
+            )
+        }
+        FixtureOutcomeCase::DiagnosticsNotRequested => {
+            answer.value.diagnostic_coverage == DiagnosticCoverage::NotRequested
+        }
+        _ => {
+            answer.value.diagnostic_coverage
+                == (DiagnosticCoverage::Complete {
+                    window: DiagnosticWindow::FixtureFileLoad,
+                })
+        }
+    };
+    if !expected_coverage {
+        return Err(format!("diagnostic coverage: {answer:?}").into());
+    }
+    if matches!(case, FixtureOutcomeCase::CategoryUnsupported) {
+        let outcome = answer
+            .value
+            .field_outcomes
+            .first()
+            .ok_or("missing category outcome")?;
+        if !matches!(outcome.storage, FixtureStorage::Unavailable(_))
+            || !answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::OutsideMethod)
+        {
+            return Err(format!("unsupported category outcome: {answer:?}").into());
+        }
+        return Ok(());
+    }
+    if matches!(case, FixtureOutcomeCase::SameOwner) {
+        let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("same-owner outcomes: {answer:?}").into());
+        };
+        if tooltip.owner.is_none()
+            || tooltip.owner != agenda.owner
+            || tooltip.definition_line != Some(1)
+            || agenda.definition_line != Some(1)
+        {
+            return Err(format!("same-owner identity: {answer:?}").into());
+        }
+        assert_string_storage(tooltip, &[(2, 1, "tip")], Some("tip"))?;
+        assert_string_storage(agenda, &[(3, 1, "agenda")], Some("agenda"))?;
+        return Ok(());
+    }
+    let outcome = answer
+        .value
+        .field_outcomes
+        .first()
+        .ok_or("missing field outcome")?;
+    if outcome.question.field != "unlocks_agenda"
+        || outcome.owner.is_none()
+        || outcome.definition_line != Some(1)
+        || outcome.reader.kind != ReaderKind::String
+    {
+        return Err(format!("field outcome identity: {answer:?}").into());
+    }
+    match case {
+        FixtureOutcomeCase::Valid
+        | FixtureOutcomeCase::Runtime
+        | FixtureOutcomeCase::DiagnosticsNotRequested
+        | FixtureOutcomeCase::UnknownField => {
+            assert_string_storage(outcome, &[(2, 1, "agenda_one")], Some("agenda_one"))?;
+        }
+        FixtureOutcomeCase::Omitted => assert_string_storage(outcome, &[], Some(""))?,
+        FixtureOutcomeCase::Repeated => assert_string_storage(
+            outcome,
+            &[(2, 1, "agenda_one"), (3, 2, "agenda_two")],
+            Some("agenda_two"),
+        )?,
+        FixtureOutcomeCase::Malformed => {
+            assert_string_storage(
+                outcome,
+                &[(3, 1, "Unreadable String")],
+                Some("Unreadable String"),
+            )?;
+        }
+        FixtureOutcomeCase::SameOwner | FixtureOutcomeCase::CategoryUnsupported => unreachable!(),
+    }
+    match case {
+        FixtureOutcomeCase::Malformed => {
+            let [diagnostic] = answer.value.diagnostics.as_slice() else {
+                return Err(format!("malformed diagnostics: {answer:?}").into());
+            };
+            if diagnostic.text != "Malformed token"
+                || diagnostic.stage != "reader-malformed-report"
+                || outcome.diagnostics != [0]
+                || !matches!(
+                    &diagnostic.join,
+                    DiagnosticJoin::Source { file, line: 3, definition: Some(definition),
+                        field: Some(field), occurrence: Some(1) }
+                        if file == "common/traditions/native_fixture.txt"
+                            && definition == "native_fixture_tradition"
+                            && field == "unlocks_agenda"
+                )
+            {
+                return Err(format!("malformed diagnostic join: {answer:?}").into());
+            }
+        }
+        FixtureOutcomeCase::UnknownField => {
+            let [diagnostic] = answer.value.diagnostics.as_slice() else {
+                return Err(format!("unexpected-field diagnostics: {answer:?}").into());
+            };
+            if diagnostic.text != "Unexpected token"
+                || diagnostic.stage != "reader-unexpected-report"
+                || !outcome.diagnostics.is_empty()
+                || !matches!(
+                    &diagnostic.join,
+                    DiagnosticJoin::Source { file, line: 3, definition: None,
+                        field: None, occurrence: None }
+                        if file == "common/traditions/native_fixture.txt"
+                )
+            {
+                return Err(format!("unexpected-field diagnostic join: {answer:?}").into());
+            }
+        }
+        _ if !answer.value.diagnostics.is_empty() => {
+            return Err(format!("unexpected parser diagnostics: {answer:?}").into());
+        }
+        _ => {}
+    }
+    if matches!(case, FixtureOutcomeCase::Runtime) {
+        if !matches!(outcome.runtime, FixtureRuntime::Unavailable(_))
+            || !answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::OutsideMethod)
+        {
+            return Err(format!("runtime outcome: {answer:?}").into());
+        }
+    } else if outcome.runtime != FixtureRuntime::NotRequested {
+        return Err("unrequested runtime was not kept distinct".into());
+    }
+    Ok(())
+}
+
+fn assert_string_storage(
+    outcome: &pdx_native::FixtureFieldOutcome,
+    expected: &[(u64, u64, &str)],
+    expected_final: Option<&str>,
+) -> Outcome {
+    let pdx_native::FixtureStorage::String {
+        occurrences,
+        final_value,
+        completeness,
+    } = &outcome.storage
+    else {
+        return Err(format!("field storage unavailable: {outcome:?}").into());
+    };
+    let actual = occurrences
+        .iter()
+        .map(|occurrence| {
+            (
+                occurrence.line,
+                occurrence.occurrence,
+                occurrence.value.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    if actual != expected
+        || final_value.as_deref() != expected_final
+        || *completeness != Completeness::Complete
+    {
+        return Err(format!("field storage values: {outcome:?}").into());
+    }
+    Ok(())
+}
+
+async fn assert_recorded_fixture(
+    directory: &std::path::Path,
+    request: pdx_native::FixtureRequest,
+    answer: &Answer<pdx_native::FixtureObservation>,
+) -> Outcome {
+    let recorded_native = Native::from_recorded_answers(directory)?;
+    let mut recorded_game = recorded_native
+        .start_game(GameOptions::new(Command::new("must-not-start")).fixture(request))
+        .await?;
+    let mut expected = answer.clone();
+    expected.source.basis = Basis::Recorded;
+    if recorded_game.observe_fixture().await? != expected
+        || recorded_game.close().await? != Disposal::NotApplicable
+    {
+        return Err("recorded field outcome differs".into());
+    }
+    Ok(())
 }
 
 fn options() -> GameOptions {
@@ -537,6 +707,11 @@ async fn fixture_case(
             (_, answer) => {
                 return Err(format!("{control:?}: unexpected fixture result: {answer:?}").into());
             }
+        }
+        if let Ok(answer) = &first
+            && answer.value.diagnostic_coverage != pdx_native::DiagnosticCoverage::NotRequested
+        {
+            return Err(format!("entry-only diagnostic coverage: {answer:?}").into());
         }
         for _ in 0..2 {
             let categories = game.registry_items(CATEGORIES).await?;
