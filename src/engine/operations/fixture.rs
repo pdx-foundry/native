@@ -348,334 +348,44 @@ impl<'a> Window<'a> {
             return;
         }
         match event {
-            FixtureEvent::RegistrationEntry { ordinal } => {
-                let expected = self
-                    .value
-                    .registration_entries
-                    .last()
-                    .map_or(1, |entry| entry.ordinal + 1);
-                if !self.request.requests(Kind::RegistrationEntries)
-                    || self.loading
-                    || self.registrations_ended
-                    || !(1..=3).contains(ordinal)
-                    || *ordinal < expected
-                {
-                    self.window_gap("Invalid registration entry order");
-                    return;
-                }
-                if *ordinal != expected {
-                    self.window_gap("A registration entry is missing");
-                }
-                self.value.registration_entries.push(RegistrationEntry {
-                    ordinal: *ordinal,
-                    stage: ProcessingStage::RegistrationEntry,
-                });
-            }
-            FixtureEvent::RegistrationEnd { count } => {
-                if !self.request.requests(Kind::RegistrationEntries)
-                    || self.registrations_ended
-                    || self.loading
-                    || *count != 3
-                    || self.value.registration_entries.len() != 3
-                {
-                    self.window_gap("The registration terminal disagrees with its entries");
-                }
-                self.registrations_ended = true;
-            }
-            FixtureEvent::LoadStart { file } => {
-                if self.loading || file != self.request.file() {
-                    self.window_gap("The fixture loader entry is repeated or names another file");
-                    return;
-                }
-                if self.request.requests(Kind::RegistrationEntries) && !self.registrations_ended {
-                    self.window_gap("Registration did not finish before the fixture load");
-                }
-                self.loading = true;
-            }
+            FixtureEvent::RegistrationEntry { ordinal } => self.accept_registration_entry(*ordinal),
+            FixtureEvent::RegistrationEnd { count } => self.accept_registration_end(*count),
+            FixtureEvent::LoadStart { file } => self.accept_load_start(file),
             FixtureEvent::FieldRead {
                 file,
                 line,
                 field,
                 owner,
                 ordinal,
-            } => {
-                let valid = self.request.requests(Kind::CategoryFieldReads)
-                    && self.loading
-                    && !self.returned
-                    && file == self.request.file()
-                    && *line > 0
-                    && *line <= self.request.files[file].lines().count() as u64
-                    && matches!(field.as_str(), "tree_template" | "traditions")
-                    && super::registry_items::pointer(owner)
-                    && self.owner.as_ref().is_none_or(|expected| expected == owner)
-                    && *ordinal > self.last_field_ordinal
-                    && *ordinal <= 2;
-                if !valid {
-                    self.window_gap(
-                        "A field read lacks a matching file, owner, line, order or loader",
-                    );
-                    return;
-                }
-                if *ordinal != self.last_field_ordinal + 1 {
-                    self.window_gap("A field read is missing");
-                }
-                self.last_field_ordinal = *ordinal;
-                self.owner = Some(owner.clone());
-                let public_owner = self.public_owner(owner);
-                self.value.field_reads.push(FieldRead {
-                    file: file.clone(),
-                    line: *line,
-                    field: field.clone(),
-                    owner: public_owner,
-                    stage: ProcessingStage::FieldReadEntry,
-                });
-            }
+            } => self.accept_field_read(file, *line, field, owner, *ordinal),
             FixtureEvent::Definition {
                 file,
                 line,
                 definition,
                 owner,
-            } => {
-                let valid = self.loading
-                    && !self.returned
-                    && file == self.request.file()
-                    && *line > 0
-                    && *line <= self.request.files[file].lines().count() as u64
-                    && super::registry_items::pointer(owner)
-                    && !self.definitions.contains_key(definition);
-                if !valid {
-                    self.window_gap("A definition lacks a matching file, owner, line or loader");
-                } else {
-                    let public_owner = self.public_owner(owner);
-                    self.definitions.insert(
-                        definition.clone(),
-                        DefinitionState {
-                            native_owner: owner.clone(),
-                            public_owner,
-                            line: *line,
-                        },
-                    );
-                }
-            }
+            } => self.accept_definition(file, *line, definition, owner),
             FixtureEvent::FieldAuthority {
                 question,
                 reader_id,
                 reader_kind,
                 storage_supported,
                 unavailable,
-            } => {
-                let Some(_) = self.request.field_questions.get(*question as usize) else {
-                    self.window_gap("A field authority names an unknown question");
-                    return;
-                };
-                if !self.loading || self.returned || self.field_authorities.contains_key(question) {
-                    self.field_gap(*question, "A field authority is late or repeated");
-                    return;
-                }
-                let reader = Reader {
-                    id: reader_id.clone().map(ReaderId),
-                    kind: parse_reader_kind(reader_kind),
-                };
-                let coherent = if *storage_supported {
-                    reader.kind == ReaderKind::String
-                        && reader.id.is_some()
-                        && unavailable.is_none()
-                } else {
-                    unavailable.is_some()
-                };
-                if !coherent {
-                    self.field_gap(*question, "The field authority is internally inconsistent");
-                }
-                self.field_authorities.insert(
-                    *question,
-                    FieldAuthorityState {
-                        reader,
-                        storage_supported: *storage_supported && coherent,
-                        unavailable: unavailable.clone(),
-                    },
-                );
-            }
-            FixtureEvent::FieldStorage {
-                question,
-                file,
-                line,
-                definition,
-                field,
-                owner,
-                occurrence,
-                value,
-            } => {
-                let Some(asked) = self.request.field_questions.get(*question as usize) else {
-                    self.window_gap("A storage event names an unknown question");
-                    return;
-                };
-                let expected = self
-                    .occurrences
-                    .get(question)
-                    .map_or(1, |items| items.len() as u64 + 1);
-                let valid = self.loading
-                    && !self.returned
-                    && file == self.request.file()
-                    && definition == &asked.definition
-                    && field == &asked.field
-                    && self
-                        .definitions
-                        .get(definition)
-                        .is_some_and(|known| &known.native_owner == owner)
-                    && self
-                        .field_authorities
-                        .get(question)
-                        .is_some_and(|authority| authority.storage_supported)
-                    && !self.field_terminals.contains_key(question)
-                    && *line > 0
-                    && *line <= self.request.files[file].lines().count() as u64
-                    && *occurrence == expected;
-                if !valid {
-                    self.field_gap(
-                        *question,
-                        "A stored value lacks a matching question, source, owner, order or open field window",
-                    );
-                } else {
-                    self.occurrences
-                        .entry(*question)
-                        .or_default()
-                        .push(StoredStringOccurrence {
-                            line: *line,
-                            occurrence: *occurrence,
-                            value: value.clone(),
-                        });
-                }
-            }
-            FixtureEvent::Diagnostic {
-                text,
-                stage,
-                file,
-                line,
-                definition,
-                field,
-                occurrence,
-            } => {
-                if !self.diagnostics_requested || !self.loading || self.returned {
-                    self.diagnostic_gap("A parser diagnostic is outside its requested window");
-                }
-                if self.diagnostic_terminal.is_some() {
-                    self.diagnostic_gap("A parser diagnostic arrived after its terminal");
-                }
-                if !matches!(
-                    stage.as_str(),
-                    "reader-malformed-report" | "reader-unexpected-report"
-                ) {
-                    self.diagnostic_gap("A parser diagnostic names an unknown engine stage");
-                }
-                self.raw_diagnostics.push(RawDiagnostic {
-                    text: text.clone(),
-                    stage: stage.clone(),
-                    file: file.clone(),
-                    line: *line,
-                    definition: definition.clone(),
-                    field: field.clone(),
-                    occurrence: *occurrence,
-                });
-            }
-            FixtureEvent::FieldTerminal {
-                question,
-                owner,
-                definition_line,
+            } => self.accept_field_authority(
+                *question,
                 reader_id,
                 reader_kind,
-                final_value,
+                *storage_supported,
                 unavailable,
-            } => {
-                let Some(asked) = self.request.field_questions.get(*question as usize) else {
-                    self.window_gap("A field terminal names an unknown question");
-                    return;
-                };
-                if !self.loading || self.returned || self.field_terminals.contains_key(question) {
-                    self.field_gap(*question, "A field terminal is late or repeated");
-                    return;
-                }
-                let authority_matches =
-                    self.field_authorities
-                        .get(question)
-                        .is_some_and(|authority| {
-                            authority.reader.kind == parse_reader_kind(reader_kind)
-                                && authority.reader.id.as_ref().map(|id| &id.0)
-                                    == reader_id.as_ref()
-                        });
-                if !authority_matches {
-                    self.field_gap(
-                        *question,
-                        "A field terminal disagrees with reader authority",
-                    );
-                }
-                let storage_supported = self
-                    .field_authorities
-                    .get(question)
-                    .is_some_and(|authority| authority.storage_supported);
-                let owner_joined = owner.as_ref().is_some_and(|pointer| {
-                    self.definitions
-                        .get(&asked.definition)
-                        .is_some_and(|known| {
-                            &known.native_owner == pointer && Some(known.line) == *definition_line
-                        })
-                });
-                let shape_valid = if storage_supported {
-                    owner_joined && final_value.is_some() && unavailable.is_none()
-                } else {
-                    final_value.is_none() && unavailable.is_some()
-                };
-                if !shape_valid {
-                    self.field_gap(
-                        *question,
-                        "A field terminal lacks its required owner, storage or unavailable reason",
-                    );
-                }
-                self.field_terminals.insert(
-                    *question,
-                    FieldTerminalState {
-                        final_value: (authority_matches && owner_joined)
-                            .then(|| final_value.clone())
-                            .flatten(),
-                        unavailable: unavailable.clone(),
-                    },
-                );
-            }
-            FixtureEvent::DiagnosticsTerminal { count } => {
-                if !self.diagnostics_requested
-                    || !self.loading
-                    || self.returned
-                    || self.diagnostic_terminal.is_some()
-                    || *count != self.raw_diagnostics.len() as u64
-                {
-                    self.diagnostic_gap("The diagnostic terminal disagrees with its records");
-                }
-                if self.diagnostic_terminal.is_none() {
-                    self.diagnostic_terminal = Some(DiagnosticTerminalState::Complete);
-                }
-            }
+            ),
+            FixtureEvent::FieldStorage { .. } => self.accept_field_storage(event),
+            FixtureEvent::Diagnostic { .. } => self.accept_diagnostic(event),
+            FixtureEvent::FieldTerminal { .. } => self.accept_field_terminal(event),
+            FixtureEvent::DiagnosticsTerminal { count } => self.accept_diagnostics_terminal(*count),
             FixtureEvent::DiagnosticsUnavailable { reason } => {
-                if !self.diagnostics_requested
-                    || !self.loading
-                    || self.returned
-                    || self.diagnostic_terminal.is_some()
-                    || !self.raw_diagnostics.is_empty()
-                {
-                    self.diagnostic_gap("The unavailable diagnostic terminal is inconsistent");
-                }
-                if self.diagnostic_terminal.is_none() {
-                    self.diagnostic_terminal =
-                        Some(DiagnosticTerminalState::Unavailable(reason.clone()));
-                }
+                self.accept_diagnostics_unavailable(reason)
             }
             FixtureEvent::LoadReturned { file, field_count } => {
-                if !self.loading || self.returned || file != self.request.file() {
-                    self.window_gap("The fixture return has no unique matching loader entry");
-                    return;
-                }
-                if *field_count != self.value.field_reads.len() as u64 {
-                    self.window_gap("The loader return disagrees with the field reads");
-                }
-                self.returned = true;
+                self.accept_load_returned(file, *field_count)
             }
             FixtureEvent::End {
                 registrations,
@@ -683,35 +393,383 @@ impl<'a> Window<'a> {
                 field_outcomes,
                 diagnostics,
                 producer_last_sequence,
-            } => {
-                if !self.returned
-                    || *producer_last_sequence != record.seq
-                    || *registrations != self.value.registration_entries.len() as u64
-                    || *field_reads != self.value.field_reads.len() as u64
-                    || (self.request.requests(Kind::RegistrationEntries)
-                        && !self.registrations_ended)
-                {
-                    self.window_gap("The fixture terminal disagrees with its window");
-                }
-                if *field_outcomes != self.field_terminals.len() as u64 {
-                    for index in 0..self.request.field_questions.len() as u64 {
-                        self.field_gap(
-                            index,
-                            "The fixture terminal disagrees with field terminals",
-                        );
-                    }
-                }
-                if *diagnostics != self.raw_diagnostics.len() as u64
-                    || (self.diagnostics_requested != self.diagnostic_terminal.is_some())
-                {
-                    self.diagnostic_gap(
-                        "The fixture terminal disagrees with the diagnostic window",
-                    );
-                }
-                self.ended = true;
-            }
+            } => self.accept_end(
+                record.seq,
+                *registrations,
+                *field_reads,
+                *field_outcomes,
+                *diagnostics,
+                *producer_last_sequence,
+            ),
             FixtureEvent::Unavailable { .. } => unreachable!(),
         }
+    }
+
+    fn accept_registration_entry(&mut self, ordinal: u64) {
+        let expected = self
+            .value
+            .registration_entries
+            .last()
+            .map_or(1, |entry| entry.ordinal + 1);
+        if !self.request.requests(Kind::RegistrationEntries)
+            || self.loading
+            || self.registrations_ended
+            || !(1..=3).contains(&ordinal)
+            || ordinal < expected
+        {
+            self.window_gap("Invalid registration entry order");
+            return;
+        }
+        if ordinal != expected {
+            self.window_gap("A registration entry is missing");
+        }
+        self.value.registration_entries.push(RegistrationEntry {
+            ordinal,
+            stage: ProcessingStage::RegistrationEntry,
+        });
+    }
+
+    fn accept_registration_end(&mut self, count: u64) {
+        if !self.request.requests(Kind::RegistrationEntries)
+            || self.registrations_ended
+            || self.loading
+            || count != 3
+            || self.value.registration_entries.len() != 3
+        {
+            self.window_gap("The registration terminal disagrees with its entries");
+        }
+        self.registrations_ended = true;
+    }
+
+    fn accept_load_start(&mut self, file: &str) {
+        if self.loading || file != self.request.file() {
+            self.window_gap("The fixture loader entry is repeated or names another file");
+            return;
+        }
+        if self.request.requests(Kind::RegistrationEntries) && !self.registrations_ended {
+            self.window_gap("Registration did not finish before the fixture load");
+        }
+        self.loading = true;
+    }
+
+    fn accept_field_read(&mut self, file: &str, line: u64, field: &str, owner: &str, ordinal: u64) {
+        let valid = self.request.requests(Kind::CategoryFieldReads)
+            && self.loading
+            && !self.returned
+            && file == self.request.file()
+            && line > 0
+            && line <= self.request.files[file].lines().count() as u64
+            && matches!(field, "tree_template" | "traditions")
+            && super::registry_items::pointer(owner)
+            && self.owner.as_ref().is_none_or(|expected| expected == owner)
+            && ordinal > self.last_field_ordinal
+            && ordinal <= 2;
+        if !valid {
+            self.window_gap("A field read lacks a matching file, owner, line, order or loader");
+            return;
+        }
+        if ordinal != self.last_field_ordinal + 1 {
+            self.window_gap("A field read is missing");
+        }
+        self.last_field_ordinal = ordinal;
+        self.owner = Some(owner.into());
+        let public_owner = self.public_owner(owner);
+        self.value.field_reads.push(FieldRead {
+            file: file.into(),
+            line,
+            field: field.into(),
+            owner: public_owner,
+            stage: ProcessingStage::FieldReadEntry,
+        });
+    }
+
+    fn accept_definition(&mut self, file: &str, line: u64, definition: &str, owner: &str) {
+        let valid = self.loading
+            && !self.returned
+            && file == self.request.file()
+            && line > 0
+            && line <= self.request.files[file].lines().count() as u64
+            && super::registry_items::pointer(owner)
+            && !self.definitions.contains_key(definition);
+        if !valid {
+            self.window_gap("A definition lacks a matching file, owner, line or loader");
+            return;
+        }
+        let public_owner = self.public_owner(owner);
+        self.definitions.insert(
+            definition.into(),
+            DefinitionState {
+                native_owner: owner.into(),
+                public_owner,
+                line,
+            },
+        );
+    }
+
+    fn accept_field_authority(
+        &mut self,
+        question: u64,
+        reader_id: &Option<String>,
+        reader_kind: &str,
+        storage_supported: bool,
+        unavailable: &Option<String>,
+    ) {
+        let Some(_) = self.request.field_questions.get(question as usize) else {
+            self.window_gap("A field authority names an unknown question");
+            return;
+        };
+        if !self.loading || self.returned || self.field_authorities.contains_key(&question) {
+            self.field_gap(question, "A field authority is late or repeated");
+            return;
+        }
+        let reader = Reader {
+            id: reader_id.clone().map(ReaderId),
+            kind: parse_reader_kind(reader_kind),
+        };
+        let coherent = if storage_supported {
+            reader.kind == ReaderKind::String && reader.id.is_some() && unavailable.is_none()
+        } else {
+            unavailable.is_some()
+        };
+        if !coherent {
+            self.field_gap(question, "The field authority is internally inconsistent");
+        }
+        self.field_authorities.insert(
+            question,
+            FieldAuthorityState {
+                reader,
+                storage_supported: storage_supported && coherent,
+                unavailable: unavailable.clone(),
+            },
+        );
+    }
+
+    fn accept_field_storage(&mut self, event: &FixtureEvent) {
+        let FixtureEvent::FieldStorage {
+            question,
+            file,
+            line,
+            definition,
+            field,
+            owner,
+            occurrence,
+            value,
+        } = event
+        else {
+            unreachable!("field-storage handler received another event")
+        };
+        let Some(asked) = self.request.field_questions.get(*question as usize) else {
+            self.window_gap("A storage event names an unknown question");
+            return;
+        };
+        let expected = self
+            .occurrences
+            .get(question)
+            .map_or(1, |items| items.len() as u64 + 1);
+        let valid = self.loading
+            && !self.returned
+            && file == self.request.file()
+            && definition == &asked.definition
+            && field == &asked.field
+            && self
+                .definitions
+                .get(definition)
+                .is_some_and(|known| &known.native_owner == owner)
+            && self
+                .field_authorities
+                .get(question)
+                .is_some_and(|authority| authority.storage_supported)
+            && !self.field_terminals.contains_key(question)
+            && *line > 0
+            && *line <= self.request.files[file].lines().count() as u64
+            && *occurrence == expected;
+        if !valid {
+            self.field_gap(
+                *question,
+                "A stored value lacks a matching question, source, owner, order or open field window",
+            );
+            return;
+        }
+        self.occurrences
+            .entry(*question)
+            .or_default()
+            .push(StoredStringOccurrence {
+                line: *line,
+                occurrence: *occurrence,
+                value: value.clone(),
+            });
+    }
+
+    fn accept_diagnostic(&mut self, event: &FixtureEvent) {
+        let FixtureEvent::Diagnostic {
+            text,
+            stage,
+            file,
+            line,
+            definition,
+            field,
+            occurrence,
+        } = event
+        else {
+            unreachable!("diagnostic handler received another event")
+        };
+        if !self.diagnostics_requested || !self.loading || self.returned {
+            self.diagnostic_gap("A parser diagnostic is outside its requested window");
+        }
+        if self.diagnostic_terminal.is_some() {
+            self.diagnostic_gap("A parser diagnostic arrived after its terminal");
+        }
+        if !matches!(
+            stage.as_str(),
+            "reader-malformed-report" | "reader-unexpected-report"
+        ) {
+            self.diagnostic_gap("A parser diagnostic names an unknown engine stage");
+        }
+        self.raw_diagnostics.push(RawDiagnostic {
+            text: text.clone(),
+            stage: stage.clone(),
+            file: file.clone(),
+            line: *line,
+            definition: definition.clone(),
+            field: field.clone(),
+            occurrence: *occurrence,
+        });
+    }
+
+    fn accept_field_terminal(&mut self, event: &FixtureEvent) {
+        let FixtureEvent::FieldTerminal {
+            question,
+            owner,
+            definition_line,
+            reader_id,
+            reader_kind,
+            final_value,
+            unavailable,
+        } = event
+        else {
+            unreachable!("field-terminal handler received another event")
+        };
+        let Some(asked) = self.request.field_questions.get(*question as usize) else {
+            self.window_gap("A field terminal names an unknown question");
+            return;
+        };
+        if !self.loading || self.returned || self.field_terminals.contains_key(question) {
+            self.field_gap(*question, "A field terminal is late or repeated");
+            return;
+        }
+        let authority_matches = self
+            .field_authorities
+            .get(question)
+            .is_some_and(|authority| {
+                authority.reader.kind == parse_reader_kind(reader_kind)
+                    && authority.reader.id.as_ref().map(|id| &id.0) == reader_id.as_ref()
+            });
+        if !authority_matches {
+            self.field_gap(
+                *question,
+                "A field terminal disagrees with reader authority",
+            );
+        }
+        let storage_supported = self
+            .field_authorities
+            .get(question)
+            .is_some_and(|authority| authority.storage_supported);
+        let owner_joined = owner.as_ref().is_some_and(|pointer| {
+            self.definitions
+                .get(&asked.definition)
+                .is_some_and(|known| {
+                    &known.native_owner == pointer && Some(known.line) == *definition_line
+                })
+        });
+        let shape_valid = if storage_supported {
+            owner_joined && final_value.is_some() && unavailable.is_none()
+        } else {
+            final_value.is_none() && unavailable.is_some()
+        };
+        if !shape_valid {
+            self.field_gap(
+                *question,
+                "A field terminal lacks its required owner, storage or unavailable reason",
+            );
+        }
+        self.field_terminals.insert(
+            *question,
+            FieldTerminalState {
+                final_value: (authority_matches && owner_joined)
+                    .then(|| final_value.clone())
+                    .flatten(),
+                unavailable: unavailable.clone(),
+            },
+        );
+    }
+
+    fn accept_diagnostics_terminal(&mut self, count: u64) {
+        if !self.diagnostics_requested
+            || !self.loading
+            || self.returned
+            || self.diagnostic_terminal.is_some()
+            || count != self.raw_diagnostics.len() as u64
+        {
+            self.diagnostic_gap("The diagnostic terminal disagrees with its records");
+        }
+        if self.diagnostic_terminal.is_none() {
+            self.diagnostic_terminal = Some(DiagnosticTerminalState::Complete);
+        }
+    }
+
+    fn accept_diagnostics_unavailable(&mut self, reason: &str) {
+        if !self.diagnostics_requested
+            || !self.loading
+            || self.returned
+            || self.diagnostic_terminal.is_some()
+            || !self.raw_diagnostics.is_empty()
+        {
+            self.diagnostic_gap("The unavailable diagnostic terminal is inconsistent");
+        }
+        if self.diagnostic_terminal.is_none() {
+            self.diagnostic_terminal = Some(DiagnosticTerminalState::Unavailable(reason.into()));
+        }
+    }
+
+    fn accept_load_returned(&mut self, file: &str, field_count: u64) {
+        if !self.loading || self.returned || file != self.request.file() {
+            self.window_gap("The fixture return has no unique matching loader entry");
+            return;
+        }
+        if field_count != self.value.field_reads.len() as u64 {
+            self.window_gap("The loader return disagrees with the field reads");
+        }
+        self.returned = true;
+    }
+
+    fn accept_end(
+        &mut self,
+        sequence: u64,
+        registrations: u64,
+        field_reads: u64,
+        field_outcomes: u64,
+        diagnostics: u64,
+        producer_last_sequence: u64,
+    ) {
+        if !self.returned
+            || producer_last_sequence != sequence
+            || registrations != self.value.registration_entries.len() as u64
+            || field_reads != self.value.field_reads.len() as u64
+            || (self.request.requests(Kind::RegistrationEntries) && !self.registrations_ended)
+        {
+            self.window_gap("The fixture terminal disagrees with its window");
+        }
+        if field_outcomes != self.field_terminals.len() as u64 {
+            for index in 0..self.request.field_questions.len() as u64 {
+                self.field_gap(index, "The fixture terminal disagrees with field terminals");
+            }
+        }
+        if diagnostics != self.raw_diagnostics.len() as u64
+            || (self.diagnostics_requested != self.diagnostic_terminal.is_some())
+        {
+            self.diagnostic_gap("The fixture terminal disagrees with the diagnostic window");
+        }
+        self.ended = true;
     }
 
     fn finish_diagnostics(&mut self) {
