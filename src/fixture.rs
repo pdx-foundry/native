@@ -198,6 +198,13 @@ impl FixtureRequest {
         if !self.field_questions.is_empty() && self.window != FixtureWindow::InitialFileLoad {
             return Err(reject("Field outcomes use InitialFileLoad"));
         }
+        if self.window == FixtureWindow::InitialCategoryLoad
+            && registry.0 != "common/tradition_categories"
+        {
+            return Err(reject(
+                "InitialCategoryLoad requires a common/tradition_categories fixture",
+            ));
+        }
         if registry.0 == "common/traditions"
             && self
                 .observations
@@ -468,6 +475,10 @@ mod tests {
             [question.clone()],
         );
         assert!(outcome.validate().is_ok());
+        let mut tradition_outcome_with_registration = outcome.clone();
+        tradition_outcome_with_registration.observations =
+            vec![FixtureObservationKind::RegistrationEntries];
+        assert!(tradition_outcome_with_registration.validate().is_ok());
         let mut wrong_registry = outcome.clone();
         wrong_registry.field_questions[0].registry = "common/tradition_categories".into();
         assert!(wrong_registry.validate().is_err());
@@ -512,6 +523,10 @@ mod tests {
                 .validate()
                 .is_err()
         );
+        let mut tradition_registration =
+            FixtureRequest::new("common/traditions/x.txt", "sample = {}\n");
+        tradition_registration.observations = vec![FixtureObservationKind::RegistrationEntries];
+        assert!(tradition_registration.validate().is_err());
         for property in ["window", "observations"] {
             let mut serialized = serde_json::to_value(&request).unwrap();
             serialized[property] = if property == "window" {

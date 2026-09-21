@@ -97,10 +97,11 @@ return.
 
 Choose either or both `FixtureObservationKind` values for the category entry question. It uses
 `FixtureWindow::InitialCategoryLoad`; field outcomes use `FixtureWindow::InitialFileLoad`.
-`CategoryFieldReads` supports only `common/tradition_categories`; registration entries may be
-combined with either supported registry. Tradition field outcomes can capture malformed and
-unexpected-field parser diagnostics. Category field outcomes report parser diagnostics and
-storage unavailable because this build has no outcome binding for that registry.
+`InitialCategoryLoad` and `CategoryFieldReads` require `common/tradition_categories`. Registration
+entries may accompany that category window, or accompany an `InitialFileLoad` field-outcome request
+in either supported registry. Tradition field outcomes can capture malformed and unexpected-field
+parser diagnostics. Category field outcomes report parser diagnostics and storage unavailable
+because this build has no outcome binding for that registry.
 `deadline_seconds` defaults to 180 and must be 1–180; the
 smaller of it and `GameOptions::startup_seconds` bounds startup observation. Repeated questions
 read the same startup results and refresh the idle timeout. A different fixture needs a new session.
