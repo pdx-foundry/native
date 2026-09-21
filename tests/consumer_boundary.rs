@@ -447,7 +447,7 @@ fn scan(root: &Path, include_tests: bool) -> Vec<Violation> {
         "no Rust caller source found: {}",
         root.display()
     );
-    found.extend(dependency_aliases(root));
+    found.extend(dependency_aliases(root, include_tests));
     found
 }
 
@@ -467,7 +467,7 @@ fn visit_files(path: &Path, found: &mut Vec<Violation>, scanned: &mut usize) {
     }
 }
 
-fn dependency_aliases(root: &Path) -> Vec<Violation> {
+fn dependency_aliases(root: &Path, include_tests: bool) -> Vec<Violation> {
     let manifest = root.join("Cargo.toml");
     let output = Command::new("cargo")
         .args(["metadata", "--no-deps", "--locked", "--format-version", "1"])
@@ -483,10 +483,14 @@ fn dependency_aliases(root: &Path) -> Vec<Violation> {
     let metadata: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("parse caller metadata");
     let manifest = manifest.canonicalize().expect("canonical caller manifest");
-    aliases_in_metadata(&metadata, &manifest)
+    aliases_in_metadata(&metadata, &manifest, include_tests)
 }
 
-fn aliases_in_metadata(metadata: &serde_json::Value, manifest: &Path) -> Vec<Violation> {
+fn aliases_in_metadata(
+    metadata: &serde_json::Value,
+    manifest: &Path,
+    include_tests: bool,
+) -> Vec<Violation> {
     metadata["packages"]
         .as_array()
         .expect("metadata packages")
@@ -498,6 +502,7 @@ fn aliases_in_metadata(metadata: &serde_json::Value, manifest: &Path) -> Vec<Vio
         })
         .flat_map(|package| package["dependencies"].as_array().into_iter().flatten())
         .filter(|dependency| dependency["name"] == "pdx-native")
+        .filter(|dependency| include_tests || dependency["kind"] != "dev")
         .filter_map(|dependency| dependency["rename"].as_str())
         .map(|alias| Violation {
             file: manifest.to_path_buf(),
@@ -594,18 +599,24 @@ fn cargo_dependency_alias_is_rejected() {
         "manifest_path": "/caller/Cargo.toml",
         "dependencies": [{"name": "pdx-native", "rename": "native"}]
     }]});
-    let violations = aliases_in_metadata(&metadata, manifest);
+    let violations = aliases_in_metadata(&metadata, manifest, true);
     assert_eq!(violations.len(), 1);
     assert!(violations[0].detail.contains("native"));
+    assert!(aliases_in_metadata(&metadata, manifest, false).len() == 1);
+
+    let dev_metadata = serde_json::json!({"packages": [{
+        "manifest_path": "/caller/Cargo.toml",
+        "dependencies": [{"name": "pdx-native", "rename": "native", "kind": "dev"}]
+    }]});
+    assert_eq!(aliases_in_metadata(&dev_metadata, manifest, true).len(), 1);
+    assert!(aliases_in_metadata(&dev_metadata, manifest, false).is_empty());
 }
 
 #[test]
 #[ignore = "set ATLAS_CALLER_PATH to the Atlas caller"]
 fn atlas_caller_uses_only_supported_exports() {
     let root = std::env::var_os("ATLAS_CALLER_PATH").expect("ATLAS_CALLER_PATH is required");
-    // Atlas's root crate also has unrelated ledger tests with a Unix-only symlink case.
-    let include_tests = std::env::var_os("ATLAS_CALLER_SOURCE_ONLY").is_none();
-    let found = scan(Path::new(&root), include_tests);
+    let found = scan(Path::new(&root), false);
     let descriptions: Vec<_> = found
         .iter()
         .map(|item| format!("{}: {}: {}", item.file.display(), item.rule, item.detail))
