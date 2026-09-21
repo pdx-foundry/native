@@ -1,9 +1,14 @@
 //! A source-level boundary check for Atlas's frozen Native consumer.
 
-use std::path::{Path, PathBuf};
+use proc_macro2::{TokenStream, TokenTree};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 use syn::{
-    Attribute, ExprLit, ExprMethodCall, ExprPath, ExprUnsafe, ItemFn, ItemUse, Lit, LitInt, LitStr,
-    Macro, UseTree, visit::Visit,
+    Attribute, ExprLit, ExprMethodCall, ExprUnsafe, ItemForeignMod, ItemImpl, ItemTrait, ItemUse,
+    Lit, LitInt, LitStr, Macro, Meta, Signature, UseTree, parse::Parser, punctuated::Punctuated,
+    visit::Visit,
 };
 
 const EXPORTS: &[&str] = &[
@@ -108,6 +113,11 @@ impl Checker {
         match tree {
             UseTree::Name(name)
                 if matches!(name.ident.to_string().as_str(), "serve" | "SupervisorError") => {}
+            UseTree::Rename(rename)
+                if matches!(
+                    rename.ident.to_string().as_str(),
+                    "serve" | "SupervisorError"
+                ) => {}
             UseTree::Group(group) => {
                 for item in &group.items {
                     self.check_supervisor_tree(item);
@@ -131,22 +141,93 @@ impl Checker {
             _ => {}
         }
     }
+
+    fn scan_macro_tokens(&mut self, tokens: TokenStream) {
+        let tokens: Vec<_> = tokens.into_iter().collect();
+        for (index, token) in tokens.iter().enumerate() {
+            match token {
+                TokenTree::Group(group) => self.scan_macro_tokens(group.stream()),
+                TokenTree::Literal(literal) => {
+                    if let Ok(value) = syn::parse_str::<Lit>(&literal.to_string()) {
+                        self.check_literal(&value);
+                    }
+                }
+                TokenTree::Ident(ident) => {
+                    let name = ident.to_string();
+                    if matches!(
+                        name.as_str(),
+                        "fault" | "fixture_fault" | "ObservationControl"
+                    ) {
+                        self.reject("hidden test hook", &name);
+                    }
+                    if name == "unsafe" {
+                        self.reject("native mechanism", "unsafe macro token");
+                    }
+                    if name == "pdx_native" && is_path_separator(&tokens, index + 1) {
+                        match tokens.get(index + 3) {
+                            Some(TokenTree::Ident(export)) => {
+                                self.check_export(&export.to_string());
+                                if export == "supervisor"
+                                    && let Some(member) = path_ident(&tokens, index + 6)
+                                    && !matches!(member.as_str(), "serve" | "SupervisorError")
+                                {
+                                    self.reject("unsupported supervisor export", member);
+                                }
+                            }
+                            Some(TokenTree::Group(_)) => self.reject(
+                                "unsupported export",
+                                "grouped Native imports inside macros are not checked",
+                            ),
+                            _ => {}
+                        }
+                    }
+                    if name == "std"
+                        && path_ident(&tokens, index + 3).as_deref() == Some("env")
+                        && path_ident(&tokens, index + 6).as_deref() == Some("consts")
+                    {
+                        self.reject("platform branch", "std::env::consts in macro");
+                    }
+                    if name == "cfg"
+                        && matches!(tokens.get(index + 1), Some(TokenTree::Punct(p)) if p.as_char() == '!')
+                    {
+                        self.reject("platform branch", "cfg! macro token");
+                    }
+                }
+                TokenTree::Punct(_) => {}
+            }
+        }
+    }
+}
+
+fn is_path_separator(tokens: &[TokenTree], start: usize) -> bool {
+    matches!(tokens.get(start), Some(TokenTree::Punct(p)) if p.as_char() == ':')
+        && matches!(tokens.get(start + 1), Some(TokenTree::Punct(p)) if p.as_char() == ':')
+}
+
+fn path_ident(tokens: &[TokenTree], start: usize) -> Option<String> {
+    if !is_path_separator(tokens, start - 2) {
+        return None;
+    }
+    match tokens.get(start) {
+        Some(TokenTree::Ident(ident)) => Some(ident.to_string()),
+        _ => None,
+    }
 }
 
 impl<'ast> Visit<'ast> for Checker {
     fn visit_item_use(&mut self, item: &'ast ItemUse) {
         self.check_use_tree(&item.tree, false);
+        if imports_platform_consts(&item.tree, 0) {
+            self.reject("platform branch", "std::env::consts import");
+        }
         syn::visit::visit_item_use(self, item);
     }
 
     fn visit_attribute(&mut self, attribute: &'ast Attribute) {
-        if attribute.path().is_ident("cfg")
-            && let syn::Meta::List(list) = &attribute.meta
+        if (attribute.path().is_ident("cfg") || attribute.path().is_ident("cfg_attr"))
+            && is_platform_meta(&attribute.meta)
         {
-            let text = list.tokens.to_string();
-            if text.contains("target_os") || text.contains("target_arch") {
-                self.reject("platform branch", text);
-            }
+            self.reject("platform branch", "cfg/cfg_attr predicate");
         }
         syn::visit::visit_attribute(self, attribute);
     }
@@ -155,6 +236,7 @@ impl<'ast> Visit<'ast> for Checker {
         if item.path.is_ident("cfg") {
             self.reject("platform branch", "cfg! macro");
         }
+        self.scan_macro_tokens(item.tokens.clone());
         syn::visit::visit_macro(self, item);
     }
 
@@ -168,16 +250,37 @@ impl<'ast> Visit<'ast> for Checker {
         syn::visit::visit_expr_method_call(self, expression);
     }
 
-    fn visit_expr_path(&mut self, expression: &'ast ExprPath) {
-        check_path(self, &expression.path);
-        syn::visit::visit_expr_path(self, expression);
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        check_path(self, path);
+        syn::visit::visit_path(self, path);
     }
 
-    fn visit_item_fn(&mut self, item: &'ast ItemFn) {
-        if matches!(&item.sig.safety, syn::Safety::Unsafe(_)) {
+    fn visit_signature(&mut self, signature: &'ast Signature) {
+        if matches!(&signature.safety, syn::Safety::Unsafe(_)) {
             self.reject("native mechanism", "unsafe function");
         }
-        syn::visit::visit_item_fn(self, item);
+        syn::visit::visit_signature(self, signature);
+    }
+
+    fn visit_item_trait(&mut self, item: &'ast ItemTrait) {
+        if item.unsafety.is_some() {
+            self.reject("native mechanism", "unsafe trait");
+        }
+        syn::visit::visit_item_trait(self, item);
+    }
+
+    fn visit_item_impl(&mut self, item: &'ast ItemImpl) {
+        if item.unsafety.is_some() {
+            self.reject("native mechanism", "unsafe impl");
+        }
+        syn::visit::visit_item_impl(self, item);
+    }
+
+    fn visit_item_foreign_mod(&mut self, item: &'ast ItemForeignMod) {
+        if item.unsafety.is_some() {
+            self.reject("native mechanism", "unsafe extern block");
+        }
+        syn::visit::visit_item_foreign_mod(self, item);
     }
 
     fn visit_item_extern_crate(&mut self, item: &'ast syn::ItemExternCrate) {
@@ -228,6 +331,70 @@ fn check_path(checker: &mut Checker, path: &syn::Path) {
     if segments.iter().any(|name| name == "ObservationControl") {
         checker.reject("hidden test hook", "ObservationControl");
     }
+    for name in &segments {
+        if matches!(name.as_str(), "fault" | "fixture_fault") {
+            checker.reject("hidden test hook", name);
+        }
+    }
+}
+
+fn is_platform_predicate(word: &str) -> bool {
+    matches!(
+        word,
+        "windows"
+            | "unix"
+            | "target_os"
+            | "target_arch"
+            | "target_family"
+            | "target_env"
+            | "target_vendor"
+            | "target_pointer_width"
+            | "target_endian"
+            | "target_feature"
+            | "target_abi"
+    )
+}
+
+fn is_platform_meta(meta: &Meta) -> bool {
+    let path = meta.path();
+    if path
+        .get_ident()
+        .is_some_and(|ident| is_platform_predicate(&ident.to_string()))
+    {
+        return true;
+    }
+    let Meta::List(list) = meta else {
+        return false;
+    };
+    let parser = Punctuated::<Meta, syn::Token![,]>::parse_terminated;
+    match parser.parse2(list.tokens.clone()) {
+        Ok(items) => items.iter().any(is_platform_meta),
+        Err(_) => true,
+    }
+}
+
+fn imports_platform_consts(tree: &UseTree, depth: usize) -> bool {
+    match tree {
+        UseTree::Path(path) => {
+            let expected = ["std", "env", "consts"];
+            if depth < expected.len() && path.ident == expected[depth] {
+                if depth == expected.len() - 1 {
+                    true
+                } else {
+                    imports_platform_consts(&path.tree, depth + 1)
+                }
+            } else {
+                false
+            }
+        }
+        UseTree::Group(group) => group
+            .items
+            .iter()
+            .any(|item| imports_platform_consts(item, depth)),
+        UseTree::Name(name) if depth == 2 => name.ident == "consts",
+        UseTree::Rename(rename) if depth == 2 => rename.ident == "consts",
+        _ => false,
+    }
 }
 
 fn is_native_integer(value: &LitInt) -> bool {
@@ -243,11 +410,11 @@ fn is_native_integer(value: &LitInt) -> bool {
 
 fn is_build_literal(value: &LitStr) -> bool {
     let text = value.value();
-    let version = text.split('.').count() >= 2
-        && text
-            .chars()
-            .all(|character| character.is_ascii_digit() || character == '.')
-        && text.chars().any(|character| character == '.');
+    let parts: Vec<_> = text.split('.').collect();
+    let version = parts.len() >= 2
+        && parts.iter().all(|part| {
+            !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
+        });
     let hash = text.len() == 64 && text.chars().all(|character| character.is_ascii_hexdigit());
     version || hash
 }
@@ -263,26 +430,80 @@ fn violations(file: &Path, source: &str) -> Vec<Violation> {
 }
 
 fn scan(root: &Path) -> Vec<Violation> {
+    assert!(root.is_dir(), "caller root is missing: {}", root.display());
+    assert!(
+        root.join("src").is_dir(),
+        "caller src directory is missing: {}",
+        root.display()
+    );
     let mut found = Vec::new();
+    let mut scanned = 0;
     for directory in ["src", "tests"] {
-        visit_files(&root.join(directory), &mut found);
+        visit_files(&root.join(directory), &mut found, &mut scanned);
     }
+    assert!(
+        scanned > 0,
+        "no Rust caller source found: {}",
+        root.display()
+    );
+    found.extend(dependency_aliases(root));
     found
 }
 
-fn visit_files(path: &Path, found: &mut Vec<Violation>) {
+fn visit_files(path: &Path, found: &mut Vec<Violation>, scanned: &mut usize) {
     if !path.exists() {
         return;
     }
     for entry in std::fs::read_dir(path).expect("read caller directory") {
         let path = entry.expect("directory entry").path();
         if path.is_dir() {
-            visit_files(&path, found);
+            visit_files(&path, found, scanned);
         } else if path.extension().is_some_and(|extension| extension == "rs") {
+            *scanned += 1;
             let source = std::fs::read_to_string(&path).expect("read caller source");
             found.extend(violations(&path, &source));
         }
     }
+}
+
+fn dependency_aliases(root: &Path) -> Vec<Violation> {
+    let manifest = root.join("Cargo.toml");
+    let output = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--locked", "--format-version", "1"])
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("run cargo metadata for caller");
+    assert!(
+        output.status.success(),
+        "caller metadata failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("parse caller metadata");
+    let manifest = manifest.canonicalize().expect("canonical caller manifest");
+    aliases_in_metadata(&metadata, &manifest)
+}
+
+fn aliases_in_metadata(metadata: &serde_json::Value, manifest: &Path) -> Vec<Violation> {
+    metadata["packages"]
+        .as_array()
+        .expect("metadata packages")
+        .iter()
+        .filter(|package| {
+            package["manifest_path"]
+                .as_str()
+                .is_some_and(|path| Path::new(path) == manifest)
+        })
+        .flat_map(|package| package["dependencies"].as_array().into_iter().flatten())
+        .filter(|dependency| dependency["name"] == "pdx-native")
+        .filter_map(|dependency| dependency["rename"].as_str())
+        .map(|alias| Violation {
+            file: manifest.to_path_buf(),
+            rule: "unsupported export",
+            detail: format!("Cargo renames pdx-native as {alias}"),
+        })
+        .collect()
 }
 
 #[test]
@@ -297,16 +518,51 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
         ("extern crate pdx_native as native; fn f() {}", false),
         ("fn f() { pdx_native::internals::x(); }", false),
         ("fn f() { let _ = pdx_native::supervisor::serve; }", true),
+        (
+            "use pdx_native::supervisor::{serve as run, SupervisorError as E};",
+            true,
+        ),
         ("fn f() { let _ = pdx_native::supervisor::hidden; }", false),
+        ("type C = pdx_native::internals::ObservationControl;", false),
+        ("fn f() { let _ = pdx_native::GameOptions::fault; }", false),
+        ("fn f() { let _ = GameOptions::fixture_fault; }", false),
         ("fn f() { let _ = 0x1234; }", false),
         ("fn f() { let _ = 0x12; }", true),
         ("fn f() { let _ = \"4.5\"; }", false),
         ("fn f() { let _ = \"not a version\"; }", true),
+        ("fn f() { let _ = \".\"; }", true),
+        ("fn f() { let _ = \"1.\"; }", true),
+        ("fn f() { let _ = \".1\"; }", true),
+        ("fn f() { let _ = \"1..2\"; }", true),
         ("#[cfg(target_os = \"macos\")] fn f() {}", false),
+        ("#[cfg(windows)] fn f() {}", false),
+        ("#[cfg(unix)] fn f() {}", false),
+        (
+            "#[cfg_attr(target_family = \"unix\", allow(dead_code))] fn f() {}",
+            false,
+        ),
+        ("#[cfg(feature = \"x\")] fn f() {}", true),
+        ("#[cfg(feature = \"windows\")] fn f() {}", true),
         ("fn f() { let _ = cfg!(target_arch = \"aarch64\"); }", false),
         ("fn f() { let _ = std::env::consts::OS; }", false),
+        ("use std::env::consts;", false),
+        ("use std::env::{consts as host};", false),
         ("fn f() { x.fault(); }", false),
         ("fn f() { x.fixture_fault(); }", false),
+        ("unsafe trait T {}", false),
+        ("unsafe impl Send for T {}", false),
+        ("impl T { unsafe fn f() {} }", false),
+        ("trait T { unsafe fn f(); }", false),
+        ("unsafe extern \"C\" {}", false),
+        (
+            "fn f() { dbg!(pdx_native::internals::reference_result()); }",
+            false,
+        ),
+        ("fn f() { dbg!(pdx_native::supervisor::hidden()); }", false),
+        (
+            "fn f() { serde_json::json!({\"address\": 0x1234}); }",
+            false,
+        ),
         (
             "fn f() { let _ = pdx_native::Operation::Registries; }",
             true,
@@ -320,6 +576,26 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
             "{source}"
         );
     }
+}
+
+#[test]
+fn missing_caller_source_cannot_pass() {
+    let root = tempfile::tempdir().unwrap();
+    assert!(std::panic::catch_unwind(|| scan(root.path())).is_err());
+    std::fs::create_dir(root.path().join("src")).unwrap();
+    assert!(std::panic::catch_unwind(|| scan(root.path())).is_err());
+}
+
+#[test]
+fn cargo_dependency_alias_is_rejected() {
+    let manifest = Path::new("/caller/Cargo.toml");
+    let metadata = serde_json::json!({"packages": [{
+        "manifest_path": "/caller/Cargo.toml",
+        "dependencies": [{"name": "pdx-native", "rename": "native"}]
+    }]});
+    let violations = aliases_in_metadata(&metadata, manifest);
+    assert_eq!(violations.len(), 1);
+    assert!(violations[0].detail.contains("native"));
 }
 
 #[test]
