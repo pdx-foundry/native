@@ -63,7 +63,9 @@ pub(crate) fn reduce(
     };
     let mut window = Window::new(request, thread, resumed);
     for record in records {
-        if record.seq != window.next_sequence {
+        // The terminal closes this question's window. Later registry record loss does not
+        // revoke it; damaged transport still removes the terminal in read_worker_stream.
+        if !window.ended && record.seq != window.next_sequence {
             window.gap("Observation records are missing or out of order");
         }
         window.next_sequence = record.seq.saturating_add(1);
@@ -72,7 +74,9 @@ pub(crate) fn reduce(
             WorkerEvent::CallbackError { .. }
             | WorkerEvent::NativeException { .. }
             | WorkerEvent::CapabilityUnavailable { .. }
-            | WorkerEvent::EarlyActivationUnavailable { .. } => {
+            | WorkerEvent::EarlyActivationUnavailable { .. }
+                if !window.ended =>
+            {
                 window.gap("The worker could not finish the fixture observation");
             }
             _ => {}
@@ -454,6 +458,18 @@ mod tests {
                 .completeness,
             Completeness::Partial
         );
+    }
+
+    #[test]
+    fn later_registry_record_loss_does_not_revoke_a_completed_fixture_window() {
+        let expected = answer(events());
+        let mut later_loss = events();
+        later_loss.push(json!({"kind":"registry-entry", "run":"attempt", "seq":14,
+            "thread":7, "name":"tradition_categories", "owner":"0x4000",
+            "index":1, "object":"0x8000", "key":"other"}));
+        later_loss.push(json!({"kind":"callback-error", "run":"attempt", "seq":15,
+            "error":"a later observation failed"}));
+        assert_eq!(answer(later_loss), expected);
     }
 
     #[test]

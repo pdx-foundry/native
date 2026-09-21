@@ -45,8 +45,11 @@ def emit(kind, **fields):
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
-    if request['fixture_fault'] and request['control'] == 'dropped-record' and kind == 'fixture' and fields['event']['kind'] == 'field-read' and fields['event']['ordinal'] == 1:
-        return
+    if request['fixture_fault'] and request['control'] == 'dropped-record' and kind == 'fixture':
+        dropped = ('field-read', 1) if request['fixture']['field_reads'] else ('registration-entry', 2)
+        event = fields['event']
+        if (event['kind'], event.get('ordinal')) == dropped:
+            return
     if control == 'dropped-record' and kind == 'registry-entry' and fields['index'] == 0:
         return
     path = ROOT / 'raw-trace.jsonl'

@@ -127,6 +127,8 @@ enum Case {
     Normal,
     Fixture(Fault),
     FixtureSelection(pdx_native::FixtureObservationKind),
+    FixtureRegistrationDropped,
+    FixtureLaterRegistryDropped,
     FixtureTimeout,
     FixtureRefusal,
     StartupTimeout,
@@ -200,6 +202,14 @@ fn cases() -> Vec<(String, Case)> {
         "fixture_field_reads_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
     ));
+    cases.push((
+        "fixture_registration_dropped_record".into(),
+        Case::FixtureRegistrationDropped,
+    ));
+    cases.push((
+        "fixture_later_registry_dropped_record".into(),
+        Case::FixtureLaterRegistryDropped,
+    ));
     cases.push(("fixture_timeout".into(), Case::FixtureTimeout));
     cases.push(("fixture_refusal".into(), Case::FixtureRefusal));
     cases
@@ -210,6 +220,14 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::Normal => normal(native).await,
         Case::Fixture(control) => fixture_case(control, None).await,
         Case::FixtureSelection(kind) => fixture_case(Fault::Normal, Some(kind)).await,
+        Case::FixtureRegistrationDropped => {
+            fixture_case(
+                Fault::DroppedRecord,
+                Some(pdx_native::FixtureObservationKind::RegistrationEntries),
+            )
+            .await
+        }
+        Case::FixtureLaterRegistryDropped => fixture_later_registry_dropped(native).await,
         Case::FixtureTimeout => fixture_timeout(native).await,
         Case::FixtureRefusal => fixture_refusal(native).await,
         Case::StartupTimeout => startup_timeout(native).await,
@@ -289,12 +307,22 @@ async fn fixture_case(
                     )
                     .into());
                 }
-                let expected_reads = if control == Fault::DroppedRecord {
+                let registration_only =
+                    selection == Some(pdx_native::FixtureObservationKind::RegistrationEntries);
+                let expected_registrations = if registration_only && control == Fault::DroppedRecord
+                {
+                    2
+                } else {
+                    3
+                };
+                let expected_reads = if registration_only {
+                    0
+                } else if control == Fault::DroppedRecord {
                     1
                 } else {
                     2
                 };
-                if answer.value.registration_entries.len() != 3
+                if answer.value.registration_entries.len() != expected_registrations
                     || answer.value.field_reads.len() != expected_reads
                 {
                     return Err(format!("{control:?}: established entries lost: {answer:?}").into());
@@ -412,6 +440,39 @@ async fn fixture_timeout(native: &Native) -> Outcome {
         }
         Err(error) => Err(format!("fixture timeout: {error:?}").into()),
     }
+}
+
+async fn fixture_later_registry_dropped(native: &Native) -> Outcome {
+    let mut game = native
+        .start_game(
+            options()
+                .fixture(fixture_request())
+                .fault(CATEGORIES, Fault::DroppedRecord),
+        )
+        .await?;
+    let mut result = async {
+        let fixture = game.observe_fixture().await?;
+        if fixture.completeness != Completeness::Complete
+            || !fixture.gaps.is_empty()
+            || fixture.value.registration_entries.len() != 3
+            || fixture.value.field_reads.len() != 2
+        {
+            return Err(
+                format!("later registry loss changed completed fixture: {fixture:?}").into(),
+            );
+        }
+        let categories = game.registry_items(CATEGORIES).await?;
+        if categories.completeness != Completeness::Partial || categories.gaps.is_empty() {
+            return Err(format!("registry fault did not take effect: {categories:?}").into());
+        }
+        if game.observe_fixture().await? != fixture {
+            return Err("fixture changed after registry query".into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
 }
 
 async fn fixture_refusal(native: &Native) -> Outcome {

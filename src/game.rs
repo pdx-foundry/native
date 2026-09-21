@@ -157,7 +157,10 @@ impl Game {
                 reason: "The supervisor sent no fixture observation".into(),
             })
         });
-        self.restart_idle_time(ReadQuestion::Fixture).await?;
+        let answer = match self.restart_idle_time(ReadQuestion::Fixture).await {
+            Ok(()) => answer,
+            Err(error) => Err(error),
+        };
         if let Some(directory) = &self.recorder {
             crate::recorded::write(
                 directory,
@@ -430,6 +433,39 @@ pub(crate) async fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn fixture_acknowledgement_loss_is_recorded_as_the_returned_error() {
+        let (mut game, commands, _state) = game();
+        let fixture =
+            crate::FixtureRequest::new("common/tradition_categories/test.txt", "test = {}\n");
+        let subject = fixture.recorded_subject();
+        game.fixture = Some(fixture);
+        game.paused.fixture = Some(Ok(crate::Answer {
+            value: crate::FixtureObservation::default(),
+            completeness: crate::Completeness::Complete,
+            gaps: vec![],
+            source: crate::Source::new(
+                game.build.clone(),
+                "test/v1",
+                crate::Basis::LiveObservation,
+            ),
+        }));
+        let root = tempfile::tempdir().unwrap();
+        game.recorder = Some(Arc::new(root.path().into()));
+        let lost_acknowledgement = std::thread::spawn(move || {
+            let DriverCommand::Read { reply, .. } = commands.recv().unwrap();
+            drop(reply);
+        });
+        let error = game.observe_fixture().await.unwrap_err();
+        assert!(matches!(error, Error::Supervisor(_)));
+        lost_acknowledgement.join().unwrap();
+        let recording = crate::recorded::Answers::open(root.path().into()).unwrap();
+        assert_eq!(
+            recording.read::<crate::FixtureObservation>("observe_fixture", Some(&subject)),
+            Err(error)
+        );
+    }
 
     #[tokio::test]
     async fn fixture_reads_refresh_idle_time_and_record_errors_without_resuming() {
