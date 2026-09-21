@@ -1,6 +1,35 @@
 //! Typed engine bindings: the addresses and layouts that one binding group declares.
 use super::targets::BindingGroupId;
 
+/// SDK-483/517 read-entry and source joins on the exact M45-observe ARM64 slice. The
+/// retained implementation is in Git at dd33300; these bindings authorize observation only.
+pub(super) fn fixture(
+    groups: &[BindingGroupId],
+) -> Option<crate::protocol::observation::FixtureBinding> {
+    groups
+        .iter()
+        .any(|group| matches!(group, BindingGroupId::M45CategoryFixture))
+        .then(|| crate::protocol::observation::FixtureBinding {
+            registration_entry: 0x1004559bc,
+            load_entry: 0x100cd8258,
+            field_entry: 0x100cd5f2c,
+            reader_lexer_offset: 0x30,
+            lexer_file_offset: 8,
+            file_name_offset: 0x20,
+            string_tag_offset: 23,
+            file_line_offset: 8,
+            fields: [(16793, "tree_template"), (14263, "traditions")]
+                .into_iter()
+                .map(
+                    |(token, name)| crate::protocol::observation::FixtureFieldBinding {
+                        token,
+                        name: name.into(),
+                    },
+                )
+                .collect(),
+        })
+}
+
 // Exact M45 disassembly: each PostReadInit traverses +0x48 pointers / +0x54 count.
 // Tradition tab completion reads each object's CString at +0x10. The category constructor
 // establishes the same key storage. A CString holds short text in place; bit 7 of the byte at
@@ -19,6 +48,7 @@ const M45_TRADITION_REGISTRIES: &[(&str, u64)] = &[
 fn declaration(group: BindingGroupId) -> &'static [(&'static str, u64)] {
     match group {
         BindingGroupId::M45TraditionRegistries => M45_TRADITION_REGISTRIES,
+        BindingGroupId::M45CategoryFixture => &[],
     }
 }
 

@@ -1,6 +1,6 @@
 """The debugger worker of one game session. It runs inside LLDB.
 
-It sets one hook at each registry's loader before the game runs. When a loader returns, it reads
+It sets registry and requested fixture hooks before the game runs. When a loader returns, it reads
 the registry's collection and writes what it sees to raw-trace.jsonl. When every observed
 registry has returned, it holds the game at that point until the supervisor releases it. Engine
 locations arrive in the request, from Native's binding groups."""
@@ -45,6 +45,11 @@ def emit(kind, **fields):
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
+    if request['fixture_fault'] and request['control'] == 'dropped-record' and kind == 'fixture':
+        dropped = ('field-read', 1) if request['fixture']['field_reads'] else ('registration-entry', 2)
+        event = fields['event']
+        if (event['kind'], event.get('ordinal')) == dropped:
+            return
     if control == 'dropped-record' and kind == 'registry-entry' and fields['index'] == 0:
         return
     path = ROOT / 'raw-trace.jsonl'
@@ -189,10 +194,115 @@ def registry_callback(frame, name):
     return finished
 
 
+class FixtureObserver:
+    """One file's read-entry window; registry callbacks own the eventual session pause."""
+    def __init__(self, config):
+        self.config = config
+        self.bindings = config['bindings']
+        self.fields = {field['token']: field['name'] for field in self.bindings['fields']}
+        self.control = request['control'] if request['fixture_fault'] else 'normal'
+        self.registrations = 0
+        self.field_count = 0
+        self.loading = False
+        self.returned = False
+        self.owner = None
+
+    def hooks(self):
+        hooks = [('fixture:load', self.bindings['load_entry'])]
+        if self.config['registration_entries']:
+            hooks.append(('fixture:registration', self.bindings['registration_entry']))
+        if self.config['field_reads']:
+            hooks.append(('fixture:field', self.bindings['field_entry']))
+        return hooks
+
+    def emit(self, kind, thread, **fields):
+        emit('fixture', event=dict(kind=kind, **fields), thread=thread)
+
+    def location(self, process, reader):
+        lexer = uint(process, reader + self.bindings['reader_lexer_offset'])
+        source = uint(process, lexer + self.bindings['lexer_file_offset'])
+        storage = source + self.bindings['file_name_offset']
+        address = uint(process, storage) if uint(process, storage + self.bindings['string_tag_offset'], 1) & 128 else storage
+        return string(process, address), uint(process, source + self.bindings['file_line_offset'], 4)
+
+    def callback(self, frame, name):
+        process = frame.GetThread().GetProcess()
+        thread = frame.GetThread().GetThreadID()
+        registers = request['machine']['registers']
+        if thread != entry_thread:
+            raise RuntimeError('fixture callback differs from the launch thread')
+        if name == 'fixture:registration':
+            self.registrations += 1
+            self.emit('registration-entry', thread, ordinal=self.registrations)
+            if self.registrations == 3:
+                breakpoints[name].SetEnabled(False)
+                self.emit('registration-end', thread, count=3)
+                if self.control == 'worker-loss':
+                    emit('worker-loss-ready')
+                    (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+                    return True
+        elif name == 'fixture:load':
+            file = string(process, register(frame, registers['file']))
+            if file != self.config['file']:
+                return False
+            if self.loading:
+                raise RuntimeError('fixture loader entered more than once')
+            self.loading = True
+            self.emit('load-start', thread, file=file)
+            hook = process.GetTarget().BreakpointCreateByAddress(register(frame, registers['return']))
+            hook.SetThreadID(thread)
+            hook.SetOneShot(True)
+            hook.SetScriptCallbackFunction('worker.callback')
+            if hook.GetNumResolvedLocations() != 1:
+                raise RuntimeError('fixture return hook unresolved')
+            breakpoints['fixture:return'] = hook
+            if self.control == 'access-failure':
+                uint(process, 0)
+                raise RuntimeError('access failure unexpectedly read zero')
+        elif name == 'fixture:field':
+            file, line = self.location(process, register(frame, registers['reader']))
+            if file != self.config['file']:
+                return False
+            owner = register(frame, registers['owner'])
+            token = register(frame, registers['field-token'])
+            if not self.loading or self.returned or not owner or self.owner not in (None, owner):
+                raise RuntimeError('fixture field has no matching loader or owner')
+            if token not in self.fields or self.field_count >= 2:
+                breakpoints[name].SetEnabled(False)
+                raise RuntimeError('field outside the bounded category window')
+            self.owner = owner
+            self.field_count += 1
+            self.emit('field-read', thread, file=file, line=line, field=self.fields[token], owner=hex(owner), ordinal=self.field_count)
+            if self.control == 'worker-loss' and not self.config['registration_entries']:
+                emit('worker-loss-ready')
+                (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+                return True
+        elif name == 'fixture:return':
+            if not self.loading or self.returned:
+                raise RuntimeError('fixture return has no matching loader entry')
+            self.returned = True
+            for key, hook in breakpoints.items():
+                if key.startswith('fixture:'):
+                    hook.SetEnabled(False)
+            self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
+            if self.control != 'missing-terminal':
+                self.emit('end', thread, registrations=self.registrations, field_reads=self.field_count, producer_last_sequence=sequence + 1)
+        return False
+
+
+fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
+
+
 def callback(frame, loc, _):
     global finished
     try:
         name = next(key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID())
+        if name.startswith('fixture:'):
+            try:
+                return fixture.callback(frame, name)
+            except Exception:
+                fixture.emit('unavailable', frame.GetThread().GetThreadID(), reason=traceback.format_exc())
+                return False
         return registry_callback(frame, name)
     except Exception:
         emit('callback-error', error=traceback.format_exc())
@@ -215,6 +325,10 @@ def run(debugger):
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
     hooks = [('registry:' + name, value['load_entry']) for name, value in request['registries'].items()]
     controlled_hook = 'registry:' + request['control_registry'] if request['control_registry'] else None
+    if fixture:
+        hooks.extend(fixture.hooks())
+        if request['fixture_fault']:
+            controlled_hook = 'fixture:field' if request['fixture']['field_reads'] else 'fixture:registration'
     for name, address in hooks:
         if name == controlled_hook and request['control'] == 'missing-hook':
             continue
@@ -240,9 +354,13 @@ def run(debugger):
     for name, _ in hooks:
         hook = state.get(name)
         if hook and hook['enabled'] and hook['locations'] == 1 and hook['resolved'] == 1 and hook['hits'] == 0:
-            session_active.add(name.split(':', 1)[1])
+            if name.startswith('registry:'):
+                session_active.add(name.split(':', 1)[1])
         else:
-            emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')
+            if name.startswith('fixture:'):
+                fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
+            else:
+                emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')
     if not session_active:
         return
     emit('hooks-active-before-resume', hooks=state)

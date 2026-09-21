@@ -105,6 +105,8 @@ pub enum Operation {
     RegistryFields,
     /// `Game::registry_items`
     RegistryItems,
+    /// `Game::observe_fixture`
+    ObserveFixture,
 }
 
 /// Whether the game process that a session owned is gone. Only the independent supervisor can
@@ -140,6 +142,11 @@ pub enum Error {
     },
     /// The executable changed after `open`. Open the installation again.
     BuildChanged,
+    /// A fixture request cannot be mounted or observed. Refused before game launch.
+    FixtureRequest {
+        /// The unsupported input or missing setup.
+        reason: String,
+    },
     /// No registry with this name was found. `registries` lists the known names.
     UnknownRegistry {
         /// The name asked for.
@@ -187,6 +194,7 @@ impl std::fmt::Display for Error {
             Self::Unsupported { operation, reason } => {
                 write!(f, "{operation:?} is not supported: {reason}")
             }
+            Self::FixtureRequest { reason } => write!(f, "Invalid fixture request: {reason}"),
             Self::BuildChanged => f.write_str("the executable changed after it was opened"),
             Self::UnknownRegistry { name } => write!(f, "no registry is named {name}"),
             Self::Method(reason) => write!(f, "the method failed: {reason}"),

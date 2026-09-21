@@ -47,6 +47,44 @@ let disposal = game.close().await?;                           // Disposal::Confi
 Always call `close`, also after a question fails. `native.supports(operation)` says if a
 question can run here, and starts nothing.
 
+## Prepared fixtures
+
+Prepare the files and observation request before launching. See `examples/observe-fixture.rs`.
+
+```rust
+use pdx_native::{FixtureRequest, GameOptions};
+
+let fixture = FixtureRequest::new(
+    "common/tradition_categories/atlas.txt",
+    "atlas = {\n tree_template = \"template\"\n traditions = {}\n}\n",
+);
+let mut game = native.start_game(GameOptions::new(supervisor).fixture(fixture)).await?;
+let observed = game.observe_fixture().await; // Answer<FixtureObservation>, or an error
+let disposal = game.close().await?;          // Also close after an observation error.
+let observed = observed?;
+```
+
+The initial window covers three registration entries and up to two field-reader entries for
+`tree_template` and `traditions`. `FixtureObservation` has separate `registration_entries` and
+`field_reads` lists. Each field read names its file, source line, opaque owner and processing
+stage. These are entry observations; they establish no stored value, validation or gameplay rule.
+
+Supply one category `.txt` file, at most 64 KiB. Its filename uses letters, digits, underscores or
+hyphens. The fixture replaces the private category directory; registry queries describe this
+mounted content. Other observed registry content remains pinned to the installation. Unsupported
+paths, observation selections and budgets fail before game launch. Script parsing remains the
+engine's responsibility; an unobserved file or a read outside the bounded window cannot give a
+complete answer.
+
+Choose either or both `FixtureObservationKind` values. The only window is
+`FixtureWindow::InitialCategoryLoad`. `deadline_seconds` defaults to 180 and must be 1–180; the
+smaller of it and `GameOptions::startup_seconds` bounds startup observation. Repeated questions
+read the same startup results and refresh the idle timeout. A different fixture needs a new session.
+
+Recorded sessions also take the prepared request. File hashes include relative paths and exact
+contents; the request hash distinguishes observation selections and windows, but not deadlines.
+`Basis::Recorded` is the only change to a saved successful answer.
+
 ## Answers
 
 Each question returns `Answer<T>`:
@@ -73,6 +111,7 @@ build.json
 registries.json
 registry_fields/common/traditions.json
 registry_items/common/traditions.json
+observe_fixture/<files-hash>/<request-hash>.json
 ```
 
 ## Supported build
@@ -107,8 +146,8 @@ cargo doc --no-deps
 ```
 
 The default tests need no game. The static parity tests read the executable of the exact supported
-build and start no game. The live test command starts the real game 16 times, one case after
-the other, and takes about nine minutes; a word after `--ignored` selects cases by name.
+build and start no game. The live test command runs registry and fixture controls one case after
+the other, and takes several minutes; a word after `--ignored` selects cases by name.
 Run the live suite separately from the default tests: lifecycle unit tests briefly create a
 harmless process named `stellaris` to check that Native refuses an ordinary game.
 

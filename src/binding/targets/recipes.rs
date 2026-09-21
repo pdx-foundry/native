@@ -3,6 +3,7 @@
 #[derive(Debug, Clone, Copy)]
 pub(in crate::binding) enum BindingGroupId {
     M45TraditionRegistries,
+    M45CategoryFixture,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -17,7 +18,10 @@ pub(in crate::binding) struct Recipe {
 }
 
 pub(super) const M45_OBSERVE: Recipe = Recipe {
-    groups: &[BindingGroupId::M45TraditionRegistries],
+    groups: &[
+        BindingGroupId::M45TraditionRegistries,
+        BindingGroupId::M45CategoryFixture,
+    ],
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     discovery: &M45_DISCOVERY,
 };

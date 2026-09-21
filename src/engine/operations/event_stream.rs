@@ -44,6 +44,8 @@ pub(crate) struct Frame {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(crate) enum WorkerEvent {
+    /// Events of the bounded consumer fixture window.
+    Fixture { event: super::fixture::FixtureEvent },
     /// The worker set its hooks; the debugger has not attached yet.
     HooksRequested,
     /// The debugger attached to the game while it was still suspended at its first instruction.
@@ -168,9 +170,89 @@ pub(crate) fn read_worker_stream(raw: &[u8], attempt: &str) -> (Vec<WorkerRecord
         records.extend(parsed);
     }
     if damage.is_some() {
-        records.retain(|record| !matches!(record.event, WorkerEvent::RegistryEnd { .. }));
+        records.retain(|record| {
+            !matches!(
+                record.event,
+                WorkerEvent::RegistryEnd { .. }
+                    | WorkerEvent::Fixture {
+                        event: super::fixture::FixtureEvent::End { .. }
+                    }
+            )
+        });
     }
     (records, damage)
+}
+
+/// The only record that matches, or `None` when there are none or several.
+pub(crate) fn single(
+    records: &[WorkerRecord],
+    matches: impl Fn(&WorkerEvent) -> bool,
+) -> Option<&WorkerRecord> {
+    let mut found = records.iter().filter(|record| matches(&record.event));
+    let record = found.next()?;
+    found.next().is_none().then_some(record)
+}
+
+/// Establish the owned loader-entry stop and every required hook before resume.
+/// Returns the launch thread and resume sequence; operation reducers enforce their event order.
+pub(crate) fn activation(
+    records: &[WorkerRecord],
+    owner: &[OwnerEvent],
+    required: &[&str],
+) -> Option<(u64, u64)> {
+    let witness = || -> Option<(u64, u64)> {
+        let launch = single(records, |event| {
+            matches!(event, WorkerEvent::LaunchStopped { .. })
+        })?;
+        let WorkerEvent::LaunchStopped {
+            error,
+            pid,
+            triple,
+            frames,
+        } = &launch.event
+        else {
+            return None;
+        };
+        let owned: Vec<_> = owner
+            .iter()
+            .filter_map(|event| match event {
+                OwnerEvent::GameOwnedSuspended { pid, identity } if !identity.is_empty() => {
+                    Some(*pid)
+                }
+                _ => None,
+            })
+            .collect();
+        if error != "success"
+            || *pid == 0
+            || owned != [*pid]
+            || !triple.starts_with("arm64-")
+            || !frames.iter().any(|frame| frame.function == "_dyld_start")
+            || launch.thread.unwrap_or(0) == 0
+        {
+            return None;
+        }
+        let active = single(records, |event| {
+            matches!(event, WorkerEvent::HooksActiveBeforeResume { .. })
+        })?;
+        let WorkerEvent::HooksActiveBeforeResume { hooks } = &active.event else {
+            return None;
+        };
+        if !required.iter().all(|name| {
+            hooks.get(*name).is_some_and(|hook| {
+                hook.enabled && hook.locations == 1 && hook.resolved == 1 && hook.hits == 0
+            })
+        }) {
+            return None;
+        }
+        let resume = single(records, |event| matches!(event, WorkerEvent::Resume { .. }))?;
+        if !matches!(&resume.event, WorkerEvent::Resume { error } if error == "success")
+            || !(launch.seq < active.seq && active.seq < resume.seq)
+        {
+            return None;
+        }
+        Some((launch.thread?, resume.seq))
+    };
+    witness()
 }
 
 #[cfg(test)]

@@ -65,5 +65,7 @@ error handling; it does not reproduce a failed process start. Native's live suit
 
 The migrated prototype uses the adjacent Native checkout while this branch is reviewed. Before
 freezing a release, replace that path dependency with the merged Native Git revision and update
-its lockfile. Do not reuse the old freeze. The category script stays an authored input for future
-`observe_fixture` work (SDK-532); enumeration does not inject it.
+its lockfile. Do not reuse the old freeze. Supply the authored category script through
+`GameOptions::fixture(request)` before launch (SDK-532); enumeration alone does not inject it.
+Then `game.observe_fixture()` returns separate registration entries and field reads from that
+session. The first implementation covers one category file and the bounded initial read window.

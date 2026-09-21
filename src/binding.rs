@@ -65,6 +65,12 @@ impl Binding {
             .map(|registry| registry.directory.clone())
     }
 
+    pub(crate) fn has_fixture_method(&self) -> bool {
+        self.operation
+            .as_ref()
+            .is_some_and(|operation| operation.fixture.is_some())
+    }
+
     /// Whether the executable or the pinned content changed since `open`.
     pub(crate) fn integrity(&self) -> Option<UnavailableReason> {
         self.installation.integrity()
@@ -234,6 +240,26 @@ impl ExecutionPlan {
             executable: self.installation().executable(),
             registries: &operation.registries,
             fault: request.fault.as_ref(),
+            fixture: request
+                .fixture
+                .as_ref()
+                .map(|fixture| -> Result<_, crate::supervisor::SupervisorError> {
+                    let bindings = operation.fixture.clone().ok_or_else(|| {
+                        crate::supervisor::SupervisorError(
+                            "No fixture binding for this build".into(),
+                        )
+                    })?;
+                    Ok(crate::protocol::observation::FixtureSetup {
+                        file: fixture.file().into(),
+                        registration_entries: fixture
+                            .requests(crate::FixtureObservationKind::RegistrationEntries),
+                        field_reads: fixture
+                            .requests(crate::FixtureObservationKind::CategoryFieldReads),
+                        bindings,
+                    })
+                })
+                .transpose()?,
+            fixture_fault: request.fixture_fault,
             startup_seconds: request.startup_seconds,
             machine: &operation.machine,
             package: &operation.strategy.package,
@@ -259,6 +285,7 @@ impl ExecutionPlan {
     pub(crate) fn prepare_registry_profile(
         &self,
         work_directory: &std::path::Path,
+        fixture: Option<&crate::FixtureRequest>,
     ) -> Result<(), crate::supervisor::SupervisorError> {
         use crate::{supervisor::SupervisorError, work_directory as files};
         self.integrity()?;
@@ -275,7 +302,9 @@ impl ExecutionPlan {
             std::fs::create_dir_all(mount.join(&registry.directory))?;
         }
         for (relative, expected) in content {
-            if !relative.starts_with("common/") {
+            if !relative.starts_with("common/")
+                || (fixture.is_some() && relative.starts_with("common/tradition_categories/"))
+            {
                 continue;
             }
             let source = self.installation().root().join(relative);
@@ -288,6 +317,14 @@ impl ExecutionPlan {
             let target = mount.join(relative);
             std::fs::create_dir_all(target.parent().unwrap())?;
             files::write_new(&target, &bytes)?;
+        }
+        if let Some(fixture) = fixture {
+            fixture
+                .validate()
+                .map_err(|error| SupervisorError(error.to_string()))?;
+            for (relative, text) in &fixture.files {
+                files::write_new(&mount.join(relative), text.as_bytes())?;
+            }
         }
         let mount = mount
             .to_str()

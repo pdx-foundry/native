@@ -17,7 +17,7 @@
 //! may run on a host, so the cases run one at a time.
 //!
 //! The fault cases use the hidden `GameOptions::fault`. A fault applies to one registry; the
-//! other registry must stay complete. The tests never stop a process. They only check that every
+//! other registry must stay complete. The tests stop only their own unrelated sentinel process. They check that every
 //! game and supervisor process that a case started is gone when the case ends.
 use pdx_native::internals::ObservationControl as Fault;
 use pdx_native::{
@@ -95,9 +95,14 @@ fn main() {
         }
         let earlier_work = work_directories().expect("work directory inventory");
         let started = Instant::now();
-        let result = runtime
-            .block_on(run(&native, &case))
-            .and_then(|()| processes_are_gone(&before))
+        let isolation =
+            Isolation::begin().expect("ordinary profile and unrelated process baseline");
+        let outcome = runtime.block_on(run(&native, &case));
+        let isolation_result = isolation.finish();
+        let cleanup = processes_are_gone(&before);
+        let result = outcome
+            .and(isolation_result)
+            .and(cleanup)
             .and_then(|()| remove_work_directories(&earlier_work));
         let seconds = started.elapsed().as_secs();
         match result {
@@ -120,6 +125,12 @@ fn main() {
 
 enum Case {
     Normal,
+    Fixture(Fault),
+    FixtureSelection(pdx_native::FixtureObservationKind),
+    FixtureRegistrationDropped,
+    FixtureLaterRegistryDropped,
+    FixtureTimeout,
+    FixtureRefusal,
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -172,12 +183,53 @@ fn cases() -> Vec<(String, Case)> {
             Case::WorkerLoss { registry },
         ));
     }
+    for (name, control) in [
+        ("normal", Fault::Normal),
+        ("missing_hook", Fault::MissingHook),
+        ("late_hook", Fault::LateHook),
+        ("dropped_record", Fault::DroppedRecord),
+        ("missing_terminal", Fault::MissingTerminal),
+        ("worker_loss", Fault::WorkerLoss),
+        ("access_failure", Fault::AccessFailure),
+    ] {
+        cases.push((format!("fixture_{name}"), Case::Fixture(control)));
+    }
+    cases.push((
+        "fixture_registration_only".into(),
+        Case::FixtureSelection(pdx_native::FixtureObservationKind::RegistrationEntries),
+    ));
+    cases.push((
+        "fixture_field_reads_only".into(),
+        Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
+    ));
+    cases.push((
+        "fixture_registration_dropped_record".into(),
+        Case::FixtureRegistrationDropped,
+    ));
+    cases.push((
+        "fixture_later_registry_dropped_record".into(),
+        Case::FixtureLaterRegistryDropped,
+    ));
+    cases.push(("fixture_timeout".into(), Case::FixtureTimeout));
+    cases.push(("fixture_refusal".into(), Case::FixtureRefusal));
     cases
 }
 
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::Normal => normal(native).await,
+        Case::Fixture(control) => fixture_case(control, None).await,
+        Case::FixtureSelection(kind) => fixture_case(Fault::Normal, Some(kind)).await,
+        Case::FixtureRegistrationDropped => {
+            fixture_case(
+                Fault::DroppedRecord,
+                Some(pdx_native::FixtureObservationKind::RegistrationEntries),
+            )
+            .await
+        }
+        Case::FixtureLaterRegistryDropped => fixture_later_registry_dropped(native).await,
+        Case::FixtureTimeout => fixture_timeout(native).await,
+        Case::FixtureRefusal => fixture_refusal(native).await,
         Case::StartupTimeout => startup_timeout(native).await,
         Case::Cancel => cancel(native).await,
         Case::DropWithoutClose => drop_without_close(native).await,
@@ -195,6 +247,335 @@ fn options() -> GameOptions {
     let mut supervisor = Command::new(std::env::current_exe().expect("test executable path"));
     supervisor.arg("--supervisor");
     GameOptions::new(supervisor)
+}
+
+fn fixture_request() -> pdx_native::FixtureRequest {
+    pdx_native::FixtureRequest::new(
+        "common/tradition_categories/atlas.txt",
+        "atlas_early_category = {\n tree_template = \"atlas_early_template\"\n traditions = { }\n}\n",
+    )
+}
+
+async fn fixture_case(
+    control: Fault,
+    selection: Option<pdx_native::FixtureObservationKind>,
+) -> Outcome {
+    use pdx_native::{Operation, ProcessingStage, Support};
+    let recorded = tempfile::tempdir()?;
+    let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
+        .record_answers_to(recorded.path());
+    if native.supports(Operation::ObserveFixture) != Support::Supported {
+        return Err("fixture operation is not supported".into());
+    }
+    let mut request = fixture_request();
+    if let Some(kind) = selection {
+        request.observations = vec![kind];
+    }
+    let mut prepared = options().fixture(request.clone());
+    if control != Fault::Normal {
+        prepared = prepared.fixture_fault(control);
+    }
+    let started = native.start_game(prepared).await;
+    if control == Fault::WorkerLoss {
+        return match started {
+            Err(Error::Startup {
+                disposal: Disposal::Confirmed,
+                reason,
+            }) if reason.contains("WorkerLost") => Ok(()),
+            Ok(mut game) => {
+                let _ = game.close().await;
+                Err("fixture worker loss unexpectedly started a session".into())
+            }
+            Err(error) => Err(format!("fixture worker loss: {error:?}").into()),
+        };
+    }
+    let mut game = started?;
+    let mut result = async {
+        let first = game.observe_fixture().await;
+        match (&control, &first) {
+            (
+                Fault::MissingHook | Fault::LateHook,
+                Err(Error::Observation {
+                    operation: Operation::ObserveFixture,
+                    ..
+                }),
+            ) => {}
+            (Fault::DroppedRecord | Fault::MissingTerminal | Fault::AccessFailure, Ok(answer)) => {
+                if answer.completeness != Completeness::Partial || answer.gaps.is_empty() {
+                    return Err(format!(
+                        "{control:?}: expected partial fixture answer: {answer:?}"
+                    )
+                    .into());
+                }
+                let registration_only =
+                    selection == Some(pdx_native::FixtureObservationKind::RegistrationEntries);
+                let expected_registrations = if registration_only && control == Fault::DroppedRecord
+                {
+                    2
+                } else {
+                    3
+                };
+                let expected_reads = if registration_only {
+                    0
+                } else if control == Fault::DroppedRecord {
+                    1
+                } else {
+                    2
+                };
+                if answer.value.registration_entries.len() != expected_registrations
+                    || answer.value.field_reads.len() != expected_reads
+                {
+                    return Err(format!("{control:?}: established entries lost: {answer:?}").into());
+                }
+            }
+            (Fault::Normal, Ok(answer)) => {
+                let reads = &answer.value.field_reads;
+                let expected_registrations: &[u64] = if request
+                    .observations
+                    .contains(&pdx_native::FixtureObservationKind::RegistrationEntries)
+                {
+                    &[1, 2, 3]
+                } else {
+                    &[]
+                };
+                let expected_reads: &[(&str, u64, &str)] = if request
+                    .observations
+                    .contains(&pdx_native::FixtureObservationKind::CategoryFieldReads)
+                {
+                    &[
+                        ("common/tradition_categories/atlas.txt", 2, "tree_template"),
+                        ("common/tradition_categories/atlas.txt", 3, "traditions"),
+                    ]
+                } else {
+                    &[]
+                };
+                if answer.completeness != Completeness::Complete
+                    || !answer.gaps.is_empty()
+                    || answer.source.basis != Basis::LiveObservation
+                    || answer
+                        .value
+                        .registration_entries
+                        .iter()
+                        .map(|entry| entry.ordinal)
+                        .collect::<Vec<_>>()
+                        != expected_registrations
+                    || reads
+                        .iter()
+                        .map(|read| (read.file.as_str(), read.line, read.field.as_str()))
+                        .collect::<Vec<_>>()
+                        != expected_reads
+                    || (reads.len() == 2 && reads[0].owner != reads[1].owner)
+                    || reads
+                        .iter()
+                        .any(|read| read.stage != ProcessingStage::FieldReadEntry)
+                {
+                    return Err(format!("normal fixture: {answer:?}").into());
+                }
+            }
+            (_, answer) => {
+                return Err(format!("{control:?}: unexpected fixture result: {answer:?}").into());
+            }
+        }
+        for _ in 0..2 {
+            let categories = game.registry_items(CATEGORIES).await?;
+            if complete(&categories, CATEGORIES)? != 1
+                || categories.value != ["atlas_early_category"]
+            {
+                return Err(format!("mounted categories: {categories:?}").into());
+            }
+            if complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)? != 234 {
+                return Err("fixture altered the pinned traditions".into());
+            }
+            if game.observe_fixture().await != first {
+                return Err("fixture read changed after registry query".into());
+            }
+        }
+        let recorded_native = Native::from_recorded_answers(recorded.path())?;
+        let mut recorded_game = recorded_native
+            .start_game(GameOptions::new(Command::new("must-not-start")).fixture(request.clone()))
+            .await?;
+        let expected = first.map(|mut answer| {
+            answer.source.basis = Basis::Recorded;
+            answer
+        });
+        if recorded_game.observe_fixture().await != expected {
+            return Err("recorded fixture differs from live answer".into());
+        }
+        if recorded_game.close().await? != Disposal::NotApplicable {
+            return Err("recorded fixture started a game".into());
+        }
+        let mut changed = request.clone();
+        changed.files.values_mut().next().unwrap().push('\n');
+        let mut absent = recorded_native
+            .start_game(GameOptions::new(Command::new("must-not-start")).fixture(changed))
+            .await?;
+        if !matches!(
+            absent.observe_fixture().await,
+            Err(Error::NotRecorded { .. })
+        ) {
+            return Err("different fixture used another file's answer".into());
+        }
+        absent.close().await?;
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    if result.is_ok() && !matches!(game.observe_fixture().await, Err(Error::Closed)) {
+        return Err("closed fixture session still answered".into());
+    }
+    result
+}
+
+async fn fixture_timeout(native: &Native) -> Outcome {
+    let mut request = fixture_request();
+    request.deadline_seconds = 1;
+    match native.start_game(options().fixture(request)).await {
+        Err(Error::Startup {
+            disposal: Disposal::Confirmed,
+            reason,
+        }) if reason.contains("TimedOut") => Ok(()),
+        Ok(mut game) => {
+            let _ = game.close().await;
+            Err("fixture deadline was not enforced".into())
+        }
+        Err(error) => Err(format!("fixture timeout: {error:?}").into()),
+    }
+}
+
+async fn fixture_later_registry_dropped(native: &Native) -> Outcome {
+    let mut game = native
+        .start_game(
+            options()
+                .fixture(fixture_request())
+                .fault(CATEGORIES, Fault::DroppedRecord),
+        )
+        .await?;
+    let mut result = async {
+        let fixture = game.observe_fixture().await?;
+        if fixture.completeness != Completeness::Complete
+            || !fixture.gaps.is_empty()
+            || fixture.value.registration_entries.len() != 3
+            || fixture.value.field_reads.len() != 2
+        {
+            return Err(
+                format!("later registry loss changed completed fixture: {fixture:?}").into(),
+            );
+        }
+        let categories = game.registry_items(CATEGORIES).await?;
+        if categories.completeness != Completeness::Partial || categories.gaps.is_empty() {
+            return Err(format!("registry fault did not take effect: {categories:?}").into());
+        }
+        if game.observe_fixture().await? != fixture {
+            return Err("fixture changed after registry query".into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn fixture_refusal(native: &Native) -> Outcome {
+    let before = work_directories()?;
+    let request = pdx_native::FixtureRequest::new("common/unsupported/fixture.txt", "x = {}");
+    match native.start_game(options().fixture(request)).await {
+        Err(Error::FixtureRequest { reason }) if reason.contains("common/tradition_categories") => {
+        }
+        Ok(mut game) => {
+            let _ = game.close().await;
+            return Err("unsupported fixture launched".into());
+        }
+        Err(error) => return Err(format!("fixture refusal: {error:?}").into()),
+    }
+    if work_directories()? != before {
+        return Err("refused fixture created session state".into());
+    }
+    Ok(())
+}
+
+/// An unrelated owned child must survive Native's cleanup, and the ordinary game profile must
+/// remain byte-for-byte unchanged. The sentinel is reaped before the supervisor-leak check.
+struct Isolation {
+    sentinel: std::process::Child,
+    profile: std::collections::BTreeMap<std::path::PathBuf, String>,
+}
+impl Isolation {
+    fn begin() -> Result<Self, Box<dyn std::error::Error>> {
+        let profile = profile_snapshot()?;
+        let sentinel = Command::new("/bin/sleep").arg("3600").spawn()?;
+        Ok(Self { sentinel, profile })
+    }
+    fn finish(mut self) -> Outcome {
+        if self.sentinel.try_wait()?.is_some() {
+            return Err("Native stopped an unrelated process".into());
+        }
+        if profile_snapshot()? != self.profile {
+            return Err("Native changed the ordinary profile".into());
+        }
+        Ok(())
+    }
+}
+impl Drop for Isolation {
+    fn drop(&mut self) {
+        let _ = self.sentinel.kill();
+        let _ = self.sentinel.wait();
+    }
+}
+
+fn profile_snapshot()
+-> Result<std::collections::BTreeMap<std::path::PathBuf, String>, Box<dyn std::error::Error>> {
+    use sha2::{Digest, Sha256};
+    use std::{
+        collections::BTreeMap,
+        fs,
+        io::Read,
+        path::{Path, PathBuf},
+    };
+    fn visit(path: &Path, snapshot: &mut BTreeMap<PathBuf, String>) -> std::io::Result<()> {
+        let metadata = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let value = if metadata.is_symlink() {
+            format!("link:{:?}", fs::read_link(path)?)
+        } else if metadata.is_dir() {
+            for child in fs::read_dir(path)? {
+                visit(&child?.path(), snapshot)?;
+            }
+            "directory".into()
+        } else {
+            let mut digest = Sha256::new();
+            let mut file = fs::File::open(path)?;
+            let mut buffer = [0; 65536];
+            loop {
+                let read = file.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                digest.update(&buffer[..read]);
+            }
+            format!("{:x}", digest.finalize())
+        };
+        snapshot.insert(
+            path.into(),
+            format!(
+                "{value}:{:?}:{:?}",
+                metadata.permissions(),
+                metadata.modified()?
+            ),
+        );
+        Ok(())
+    }
+    let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME is missing")?);
+    let mut snapshot = BTreeMap::new();
+    for relative in [
+        "Documents/Paradox Interactive/Stellaris",
+        "Library/Application Support/Paradox Interactive/Stellaris",
+    ] {
+        visit(&home.join(relative), &mut snapshot)?;
+    }
+    Ok(snapshot)
 }
 
 /// The item count of a complete live answer.

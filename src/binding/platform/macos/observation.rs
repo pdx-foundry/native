@@ -122,6 +122,8 @@ impl Observer {
             executable,
             registries,
             fault,
+            fixture,
+            fixture_fault,
             startup_seconds,
             machine,
             package,
@@ -149,9 +151,12 @@ impl Observer {
             machine: machine.clone(),
             registries: registries.clone(),
             control_registry: fault.map(|fault| fault.registry.clone()),
-            control: fault
-                .map_or_else(Default::default, |fault| fault.control)
+            control: fixture_fault
+                .or_else(|| fault.map(|fault| fault.control))
+                .unwrap_or_default()
                 .wire_name(),
+            fixture,
+            fixture_fault: fixture_fault.is_some(),
             deadline_seconds: startup_seconds,
         };
         Ok(Self {
@@ -497,6 +502,8 @@ mod tests {
                 registries: BTreeMap::new(),
                 control_registry: None,
                 control: "normal".into(),
+                fixture: None,
+                fixture_fault: false,
                 deadline_seconds: 1,
             },
             tool: Tool {

@@ -62,6 +62,9 @@ impl Native {
         if self.recorded().is_some() {
             return Support::Supported;
         }
+        if operation == Operation::ObserveFixture && !self.bound().has_fixture_method() {
+            return Support::Unsupported("this build has no fixture observation recipe".into());
+        }
         match operation {
             Operation::Registries | Operation::RegistryFields => match &self.bound().analysis {
                 Some(analysis) => match analysis.executable() {
@@ -70,7 +73,7 @@ impl Native {
                 },
                 None => Support::Unsupported("this build has no static analysis recipe".into()),
             },
-            Operation::RegistryItems => match self.blocking_reasons() {
+            Operation::RegistryItems | Operation::ObserveFixture => match self.blocking_reasons() {
                 reasons if reasons.is_empty() => Support::Supported,
                 reasons => Support::Unsupported(format!("{reasons:?}")),
             },

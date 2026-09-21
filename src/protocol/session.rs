@@ -23,6 +23,10 @@ pub(crate) struct SessionRequest {
     pub idle_seconds: u64,
     /// A deliberate fault, for Native's live tests.
     pub fault: Option<Fault>,
+    /// Consumer fixture, mounted before launch.
+    pub fixture: Option<crate::FixtureRequest>,
+    /// A fault restricted to fixture observations.
+    pub fixture_fault: Option<ObservationControl>,
 }
 
 /// A deliberate fault and the internal name of the registry that receives it.
@@ -35,6 +39,20 @@ pub(crate) struct Fault {
 
 impl SessionRequest {
     pub(crate) fn validate(&self) -> Result<(), SupervisorError> {
+        if let Some(fixture) = &self.fixture {
+            fixture
+                .validate()
+                .map_err(|error| SupervisorError(error.to_string()))?;
+        }
+        if self.fixture_fault.is_some()
+            && (self.fixture.is_none()
+                || self.fault.is_some()
+                || self.fixture_fault == Some(ObservationControl::Normal))
+        {
+            return Err(SupervisorError(
+                "A fixture fault requires a fixture and no registry fault".into(),
+            ));
+        }
         if !self.work_directory.is_absolute()
             || !(1..=180).contains(&self.startup_seconds)
             || !(1..=180).contains(&self.idle_seconds)
@@ -65,6 +83,8 @@ pub(crate) enum Control {
     Close,
     /// The caller answered a question about this registry, so the idle time starts again.
     ReadRegistry { name: String, request: u64 },
+    /// The caller read its prepared fixture observation.
+    ReadFixture { request: u64 },
 }
 
 /// Why a session ended. This says nothing about disposal.
@@ -150,6 +170,8 @@ mod tests {
             startup_seconds: 180,
             idle_seconds: 180,
             fault: None,
+            fixture: None,
+            fixture_fault: None,
         }
     }
 
