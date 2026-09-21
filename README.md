@@ -173,7 +173,7 @@ unresolved reservations first. Native never creates, moves, or clears this direc
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-ATLAS_CALLER_PATH=/path/to/pdx-atlas/prototypes/native-registry cargo test --test consumer_boundary -- --ignored
+ATLAS_CALLER_PATH=/path/to/pdx-atlas cargo test --test consumer_boundary -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test static_questions -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
 cargo run --release --example registry-items-report -- /path/to/Stellaris

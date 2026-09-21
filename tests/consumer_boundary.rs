@@ -1,4 +1,4 @@
-//! A source-level boundary check for Atlas's frozen Native consumer.
+//! A source-level boundary check for Atlas's Native consumer.
 
 use proc_macro2::{TokenStream, TokenTree};
 use std::{
@@ -429,7 +429,7 @@ fn violations(file: &Path, source: &str) -> Vec<Violation> {
     checker.violations
 }
 
-fn scan(root: &Path) -> Vec<Violation> {
+fn scan(root: &Path, include_tests: bool) -> Vec<Violation> {
     assert!(root.is_dir(), "caller root is missing: {}", root.display());
     assert!(
         root.join("src").is_dir(),
@@ -438,15 +438,16 @@ fn scan(root: &Path) -> Vec<Violation> {
     );
     let mut found = Vec::new();
     let mut scanned = 0;
-    for directory in ["src", "tests"] {
-        visit_files(&root.join(directory), &mut found, &mut scanned);
+    visit_files(&root.join("src"), &mut found, &mut scanned);
+    if include_tests {
+        visit_files(&root.join("tests"), &mut found, &mut scanned);
     }
     assert!(
         scanned > 0,
         "no Rust caller source found: {}",
         root.display()
     );
-    found.extend(dependency_aliases(root));
+    found.extend(dependency_aliases(root, include_tests));
     found
 }
 
@@ -466,7 +467,7 @@ fn visit_files(path: &Path, found: &mut Vec<Violation>, scanned: &mut usize) {
     }
 }
 
-fn dependency_aliases(root: &Path) -> Vec<Violation> {
+fn dependency_aliases(root: &Path, include_tests: bool) -> Vec<Violation> {
     let manifest = root.join("Cargo.toml");
     let output = Command::new("cargo")
         .args(["metadata", "--no-deps", "--locked", "--format-version", "1"])
@@ -482,10 +483,14 @@ fn dependency_aliases(root: &Path) -> Vec<Violation> {
     let metadata: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("parse caller metadata");
     let manifest = manifest.canonicalize().expect("canonical caller manifest");
-    aliases_in_metadata(&metadata, &manifest)
+    aliases_in_metadata(&metadata, &manifest, include_tests)
 }
 
-fn aliases_in_metadata(metadata: &serde_json::Value, manifest: &Path) -> Vec<Violation> {
+fn aliases_in_metadata(
+    metadata: &serde_json::Value,
+    manifest: &Path,
+    include_tests: bool,
+) -> Vec<Violation> {
     metadata["packages"]
         .as_array()
         .expect("metadata packages")
@@ -497,6 +502,7 @@ fn aliases_in_metadata(metadata: &serde_json::Value, manifest: &Path) -> Vec<Vio
         })
         .flat_map(|package| package["dependencies"].as_array().into_iter().flatten())
         .filter(|dependency| dependency["name"] == "pdx-native")
+        .filter(|dependency| include_tests || dependency["kind"] != "dev")
         .filter_map(|dependency| dependency["rename"].as_str())
         .map(|alias| Violation {
             file: manifest.to_path_buf(),
@@ -581,9 +587,9 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
 #[test]
 fn missing_caller_source_cannot_pass() {
     let root = tempfile::tempdir().unwrap();
-    assert!(std::panic::catch_unwind(|| scan(root.path())).is_err());
+    assert!(std::panic::catch_unwind(|| scan(root.path(), true)).is_err());
     std::fs::create_dir(root.path().join("src")).unwrap();
-    assert!(std::panic::catch_unwind(|| scan(root.path())).is_err());
+    assert!(std::panic::catch_unwind(|| scan(root.path(), true)).is_err());
 }
 
 #[test]
@@ -593,16 +599,24 @@ fn cargo_dependency_alias_is_rejected() {
         "manifest_path": "/caller/Cargo.toml",
         "dependencies": [{"name": "pdx-native", "rename": "native"}]
     }]});
-    let violations = aliases_in_metadata(&metadata, manifest);
+    let violations = aliases_in_metadata(&metadata, manifest, true);
     assert_eq!(violations.len(), 1);
     assert!(violations[0].detail.contains("native"));
+    assert!(aliases_in_metadata(&metadata, manifest, false).len() == 1);
+
+    let dev_metadata = serde_json::json!({"packages": [{
+        "manifest_path": "/caller/Cargo.toml",
+        "dependencies": [{"name": "pdx-native", "rename": "native", "kind": "dev"}]
+    }]});
+    assert_eq!(aliases_in_metadata(&dev_metadata, manifest, true).len(), 1);
+    assert!(aliases_in_metadata(&dev_metadata, manifest, false).is_empty());
 }
 
 #[test]
-#[ignore = "set ATLAS_CALLER_PATH to the frozen Atlas caller"]
-fn frozen_atlas_caller_uses_only_supported_exports() {
+#[ignore = "set ATLAS_CALLER_PATH to the Atlas caller"]
+fn atlas_caller_uses_only_supported_exports() {
     let root = std::env::var_os("ATLAS_CALLER_PATH").expect("ATLAS_CALLER_PATH is required");
-    let found = scan(Path::new(&root));
+    let found = scan(Path::new(&root), false);
     let descriptions: Vec<_> = found
         .iter()
         .map(|item| format!("{}: {}: {}", item.file.display(), item.rule, item.detail))

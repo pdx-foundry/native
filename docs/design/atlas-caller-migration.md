@@ -83,9 +83,9 @@ would make live and recorded runs disagree. Fixture answers have their own reque
 Run `frozen INSTALLATION ANSWERS` to record the live questions, then
 `frozen-recorded ANSWERS` to run the same questions without a process. The answers must match
 apart from `Basis`; a live close is `Confirmed`, and a recorded close is `NotApplicable`.
-The caller pins the merged Native Git commit in its manifest and lockfile. Check its public
-boundary with:
+The production Atlas caller pins the merged Native Git commit in its manifest and lockfile.
+Check its public boundary with:
 
 ```sh
-ATLAS_CALLER_PATH=/path/to/pdx-atlas/prototypes/native-registry cargo test --test consumer_boundary -- --ignored
+ATLAS_CALLER_PATH=/path/to/pdx-atlas cargo test --test consumer_boundary -- --ignored
 ```
