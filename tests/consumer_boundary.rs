@@ -1,4 +1,4 @@
-//! A source-level boundary check for Atlas's frozen Native consumer.
+//! A source-level boundary check for Atlas's Native consumer.
 
 use proc_macro2::{TokenStream, TokenTree};
 use std::{
@@ -429,7 +429,7 @@ fn violations(file: &Path, source: &str) -> Vec<Violation> {
     checker.violations
 }
 
-fn scan(root: &Path) -> Vec<Violation> {
+fn scan(root: &Path, include_tests: bool) -> Vec<Violation> {
     assert!(root.is_dir(), "caller root is missing: {}", root.display());
     assert!(
         root.join("src").is_dir(),
@@ -438,8 +438,9 @@ fn scan(root: &Path) -> Vec<Violation> {
     );
     let mut found = Vec::new();
     let mut scanned = 0;
-    for directory in ["src", "tests"] {
-        visit_files(&root.join(directory), &mut found, &mut scanned);
+    visit_files(&root.join("src"), &mut found, &mut scanned);
+    if include_tests {
+        visit_files(&root.join("tests"), &mut found, &mut scanned);
     }
     assert!(
         scanned > 0,
@@ -581,9 +582,9 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
 #[test]
 fn missing_caller_source_cannot_pass() {
     let root = tempfile::tempdir().unwrap();
-    assert!(std::panic::catch_unwind(|| scan(root.path())).is_err());
+    assert!(std::panic::catch_unwind(|| scan(root.path(), true)).is_err());
     std::fs::create_dir(root.path().join("src")).unwrap();
-    assert!(std::panic::catch_unwind(|| scan(root.path())).is_err());
+    assert!(std::panic::catch_unwind(|| scan(root.path(), true)).is_err());
 }
 
 #[test]
@@ -599,10 +600,12 @@ fn cargo_dependency_alias_is_rejected() {
 }
 
 #[test]
-#[ignore = "set ATLAS_CALLER_PATH to the frozen Atlas caller"]
-fn frozen_atlas_caller_uses_only_supported_exports() {
+#[ignore = "set ATLAS_CALLER_PATH to the Atlas caller"]
+fn atlas_caller_uses_only_supported_exports() {
     let root = std::env::var_os("ATLAS_CALLER_PATH").expect("ATLAS_CALLER_PATH is required");
-    let found = scan(Path::new(&root));
+    // Atlas's root crate also has unrelated ledger tests with a Unix-only symlink case.
+    let include_tests = std::env::var_os("ATLAS_CALLER_SOURCE_ONLY").is_none();
+    let found = scan(Path::new(&root), include_tests);
     let descriptions: Vec<_> = found
         .iter()
         .map(|item| format!("{}: {}: {}", item.file.display(), item.rule, item.detail))
