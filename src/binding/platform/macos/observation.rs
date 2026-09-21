@@ -157,7 +157,7 @@ impl Observer {
                 .wire_name(),
             fixture,
             fixture_fault: fixture_fault.is_some(),
-            deadline_seconds: startup_seconds,
+            deadline_seconds: startup_seconds.saturating_sub(10).max(1),
         };
         Ok(Self {
             output: work_directory.into(),

@@ -32,6 +32,7 @@ pub struct GameOptions {
     pub(crate) fault: Option<(String, ObservationControl)>,
     pub(crate) fixture: Option<crate::FixtureRequest>,
     pub(crate) fixture_fault: Option<ObservationControl>,
+    pub(crate) registries: Option<Vec<String>>,
 }
 impl GameOptions {
     /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
@@ -44,11 +45,28 @@ impl GameOptions {
             fault: None,
             fixture: None,
             fixture_fault: None,
+            registries: None,
         }
     }
     /// Prepare one fixed fixture before launch. Registry queries observe this mounted content.
     pub fn fixture(mut self, request: crate::FixtureRequest) -> Self {
         self.fixture = Some(request);
+        self
+    }
+    /// Select the content directories whose initial loads this session observes. Use names from
+    /// `Native::registries`. Choose 1 to 164 unique names before `start_game`; an empty or
+    /// duplicate selection is refused. Without a selection, the build's defaults are observed.
+    pub fn registries<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.registries = Some(
+            names
+                .into_iter()
+                .map(|name| name.into().trim_end_matches('/').into())
+                .collect(),
+        );
         self
     }
     /// Inject a fixture fault for Native’s live tests. Requires a prepared fixture.
@@ -69,7 +87,7 @@ impl GameOptions {
 /// What `start` needs besides the request: the caller's names and where answers go.
 pub(crate) struct Session {
     /// Content directory of each observed registry, with its internal name.
-    pub directories: BTreeMap<String, String>,
+    pub observed: std::collections::BTreeSet<String>,
     pub build: crate::BuildId,
     /// Write every answer to this directory as it is returned.
     pub recorder: Option<Arc<PathBuf>>,
@@ -124,7 +142,7 @@ pub struct Game {
     paused: Paused,
     closing: bool,
     /// Content directory of each observed registry, with its internal name.
-    directories: BTreeMap<String, String>,
+    observed: std::collections::BTreeSet<String>,
     build: crate::BuildId,
     /// Read every answer from this directory; no process exists.
     recorded: Option<Arc<crate::recorded::Answers>>,
@@ -190,7 +208,7 @@ impl Game {
             state,
             paused,
             closing: false,
-            directories: BTreeMap::new(),
+            observed: Default::default(),
             build: directory.build.clone(),
             recorded: Some(directory),
             recorder: None,
@@ -203,16 +221,18 @@ impl Game {
     ///
     /// The registry is named by its content directory, such as `common/traditions`. Every call
     /// returns the same startup observation; the game is never resumed. Cancelling this future
-    /// leaves the session alive.
+    /// leaves the session alive. Select names from `Native::registries()` with
+    /// `GameOptions::registries` before starting a live game. A name not selected for this session,
+    /// or one whose initial loader did not run before the pause, returns `Error::Unsupported`.
     pub async fn registry_items(
         &mut self,
         registry: &str,
     ) -> Result<crate::Answer<Vec<String>>, crate::Error> {
         use crate::Error;
+        if self.closing || self.state.borrow().finished.is_some() {
+            return Err(Error::Closed);
+        }
         if let Some(directory) = &self.recorded {
-            if self.closing {
-                return Err(Error::Closed);
-            }
             return directory.read("registry_items", Some(registry));
         }
         let answer = self.registry_items_from_game(registry).await;
@@ -235,15 +255,15 @@ impl Game {
         use crate::{Answer, Basis, Completeness, Gap, GapKind, Operation, Source};
         let operation = Operation::RegistryItems;
         let directory = registry.trim_end_matches('/');
-        // Item observation covers only the registries that the build's live recipe binds. Another
-        // name can be a real registry, so this is not `UnknownRegistry`.
-        let Some(name) = self.directories.get(directory).cloned() else {
-            let covered: Vec<_> = self.directories.keys().cloned().collect();
+        if !self.observed.contains(directory) {
             return Err(Error::Unsupported {
                 operation,
-                reason: format!("item observation covers only: {}", covered.join(", ")),
+                reason: format!(
+                    "this session does not observe {directory}; name it in GameOptions::registries before start_game"
+                ),
             });
-        };
+        }
+        let name = directory.to_owned();
         if self.closing || self.state.borrow().finished.is_some() {
             return Err(Error::Closed);
         }
@@ -263,6 +283,27 @@ impl Game {
                 ),
             });
         };
+        if observed.observed == Observed::NotLoaded {
+            return Err(Error::Unsupported {
+                operation,
+                reason: format!(
+                    "the initial loader of {directory} did not run before the session paused; late and on-demand loaders are outside this method"
+                ),
+            });
+        }
+        if observed.observed == Observed::Unsupported {
+            return Err(Error::Unsupported {
+                operation,
+                reason: format!(
+                    "item observation of {directory} is unavailable: {}",
+                    observed
+                        .diagnostics
+                        .first()
+                        .map(String::as_str)
+                        .unwrap_or("unsupported item layout")
+                ),
+            });
+        }
         self.restart_idle_time(ReadQuestion::Registry(name)).await?;
         let complete = observed.observed == Observed::Complete;
         Ok(Answer {
@@ -415,7 +456,7 @@ pub(crate) async fn start(
                 state: changes,
                 paused,
                 closing: false,
-                directories: session.directories,
+                observed: session.observed,
                 build: session.build,
                 recorded: None,
                 recorder: session.recorder,
@@ -531,7 +572,7 @@ mod tests {
                 state: changes,
                 paused,
                 closing: false,
-                directories: BTreeMap::from([("common/traditions".into(), "traditions".into())]),
+                observed: std::collections::BTreeSet::from(["common/traditions".into()]),
                 build: crate::BuildId("test".into()),
                 recorded: None,
                 recorder: None,
@@ -592,6 +633,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_read_after_close_does_not_overwrite_a_recorded_answer() {
+        let (mut game, _commands, _state) = game();
+        let root = tempfile::tempdir().unwrap();
+        let original: Result<crate::Answer<Vec<String>>, Error> = Err(Error::BuildChanged);
+        crate::recorded::write(
+            root.path(),
+            &game.build,
+            "registry_items",
+            Some("common/traditions"),
+            &original,
+        )
+        .unwrap();
+        game.recorder = Some(Arc::new(root.path().into()));
+        game.closing = true;
+        assert!(matches!(
+            game.registry_items("common/traditions").await,
+            Err(Error::Closed)
+        ));
+        let recorded = crate::recorded::Answers::open(root.path().into()).unwrap();
+        assert_eq!(
+            recorded.read::<Vec<String>>("registry_items", Some("common/traditions")),
+            original
+        );
+    }
+
+    #[tokio::test]
     async fn cancelled_close_keeps_cleanup_requested_and_close_is_idempotent() {
         let (mut game, commands, state) = game();
         assert!(
@@ -639,7 +706,7 @@ mod tests {
             Err(Error::Observation { .. })
         ));
         game.paused.registries.insert(
-            "traditions".into(),
+            "common/traditions".into(),
             RegistryItems {
                 items: vec!["kept".into()],
                 observed: Observed::Unavailable,
@@ -650,6 +717,28 @@ mod tests {
             game.registry_items("common/traditions").await,
             Err(Error::Observation { reason, .. }) if reason == "access failed"
         ));
+        assert!(matches!(
+            commands.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+    #[tokio::test]
+    async fn an_unloaded_or_unsupported_layout_is_precisely_unavailable() {
+        let (mut game, commands, _state) = game();
+        for observed in [Observed::NotLoaded, Observed::Unsupported] {
+            game.paused.registries.insert(
+                "common/traditions".into(),
+                RegistryItems {
+                    items: Vec::new(),
+                    observed,
+                    diagnostics: vec!["unavailable key layout".into()],
+                },
+            );
+            assert!(matches!(
+                game.registry_items("common/traditions").await,
+                Err(Error::Unsupported { .. })
+            ));
+        }
         assert!(matches!(
             commands.try_recv(),
             Err(mpsc::TryRecvError::Empty)

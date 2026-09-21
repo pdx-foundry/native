@@ -21,6 +21,8 @@ pub(crate) struct SessionRequest {
     pub startup_seconds: u64,
     /// Seconds that the paused game may stay idle, 1 to 180.
     pub idle_seconds: u64,
+    /// Content directories selected for this session.
+    pub registries: Vec<String>,
     /// A deliberate fault, for Native's live tests.
     pub fault: Option<Fault>,
     /// Consumer fixture, mounted before launch.
@@ -59,6 +61,37 @@ impl SessionRequest {
         {
             return Err(SupervisorError(
                 "Expected an absolute work directory and budgets of 1 to 180 seconds".into(),
+            ));
+        }
+        let valid = |name: &str| {
+            name.split('/').all(|segment| {
+                !segment.is_empty()
+                    && segment.bytes().all(|byte| {
+                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+                    })
+            })
+        };
+        if self.registries.is_empty()
+            || self.registries.len() > 164
+            || self.registries.iter().any(|name| !valid(name))
+            || self
+                .registries
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != self.registries.len()
+        {
+            return Err(SupervisorError(
+                "Expected 1 to 164 unique registry content directories".into(),
+            ));
+        }
+        if self
+            .fault
+            .as_ref()
+            .is_some_and(|fault| !self.registries.contains(&fault.registry))
+        {
+            return Err(SupervisorError(
+                "The fault names an unselected registry".into(),
             ));
         }
         if self
@@ -169,6 +202,7 @@ mod tests {
             work_directory: std::env::temp_dir().join("unused-native-test"),
             startup_seconds: 180,
             idle_seconds: 180,
+            registries: vec!["common/traditions".into()],
             fault: None,
             fixture: None,
             fixture_fault: None,
@@ -189,6 +223,15 @@ mod tests {
             idle.idle_seconds = seconds;
             assert!(idle.validate().is_err());
         }
+        for names in [
+            vec!["common/traditions", "common/traditions"],
+            vec!["common/../traditions"],
+            vec![""],
+        ] {
+            let mut invalid = request();
+            invalid.registries = names.into_iter().map(String::from).collect();
+            assert!(invalid.validate().is_err());
+        }
     }
 
     #[test]
@@ -196,7 +239,7 @@ mod tests {
         let with = |control| {
             let mut request = request();
             request.fault = Some(Fault {
-                registry: "traditions".into(),
+                registry: "common/traditions".into(),
                 control,
             });
             request

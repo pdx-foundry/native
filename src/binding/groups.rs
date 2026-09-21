@@ -60,51 +60,46 @@ pub(super) fn fixture(
 // Tradition tab completion reads each object's CString at +0x10. The category constructor
 // establishes the same key storage. A CString holds short text in place; bit 7 of the byte at
 // +23 says that it holds a pointer to the text.
-const M45_TRADITION_REGISTRIES: &[(&str, u64)] = &[
-    ("traditions-load-entry", 0x100ce0474),
-    ("tradition_categories-load-entry", 0x100cd7d70),
-    ("registry-directory-offset", 0x10),
-    ("registry-data-offset", 0x48),
-    ("registry-count-offset", 0x54),
-    ("registry-key-offset", 0x10),
-    ("registry-pointer-size", 8),
-    ("string-storage-tag-offset", 23),
-];
-
-fn declaration(group: BindingGroupId) -> &'static [(&'static str, u64)] {
-    match group {
-        BindingGroupId::M45TraditionRegistries => M45_TRADITION_REGISTRIES,
-        BindingGroupId::M45CategoryFixture => &[],
-    }
+#[derive(Clone, Copy)]
+pub(super) struct RegistryLayout {
+    directory_offset: u64,
+    data_offset: u64,
+    count_offset: u64,
+    key_offset: u64,
+    pointer_size: u64,
+    string_tag_offset: u64,
 }
 
-/// The registries that these groups bind, by internal name.
-pub(super) fn registries(
-    groups: &[BindingGroupId],
-) -> std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding> {
-    let bindings: std::collections::BTreeMap<&str, u64> = groups
+const M45_TEMPLATE_LAYOUT: RegistryLayout = RegistryLayout {
+    directory_offset: 0x10,
+    data_offset: 0x48,
+    count_offset: 0x54,
+    key_offset: 0x10,
+    pointer_size: 8,
+    string_tag_offset: 23,
+};
+
+pub(super) fn registry_layout(groups: &[BindingGroupId]) -> Option<RegistryLayout> {
+    groups
         .iter()
-        .flat_map(|group| declaration(*group))
-        .copied()
-        .collect();
-    ["traditions", "tradition_categories"]
-        .into_iter()
-        .filter_map(|name| {
-            let address = bindings.get(format!("{name}-load-entry").as_str())?;
-            Some((
-                name.into(),
-                crate::protocol::observation::RegistryBinding {
-                    name: name.into(),
-                    directory: format!("common/{name}"),
-                    load_entry: *address,
-                    directory_offset: bindings["registry-directory-offset"],
-                    data_offset: bindings["registry-data-offset"],
-                    count_offset: bindings["registry-count-offset"],
-                    key_offset: bindings["registry-key-offset"],
-                    pointer_size: bindings["registry-pointer-size"],
-                    string_tag_offset: bindings["string-storage-tag-offset"],
-                },
-            ))
-        })
-        .collect()
+        .any(|group| matches!(group, BindingGroupId::M45TemplateRegistryLayout))
+        .then_some(M45_TEMPLATE_LAYOUT)
+}
+
+pub(super) fn registry_binding(
+    layout: RegistryLayout,
+    directory: &str,
+    load_entry: u64,
+) -> crate::protocol::observation::RegistryBinding {
+    crate::protocol::observation::RegistryBinding {
+        name: directory.into(),
+        directory: directory.into(),
+        load_entry,
+        directory_offset: layout.directory_offset,
+        data_offset: layout.data_offset,
+        count_offset: layout.count_offset,
+        key_offset: layout.key_offset,
+        pointer_size: layout.pointer_size,
+        string_tag_offset: layout.string_tag_offset,
+    }
 }

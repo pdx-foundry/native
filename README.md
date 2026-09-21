@@ -39,13 +39,20 @@ let mut supervisor = Command::new(std::env::current_exe()?);
 supervisor.arg("--supervisor");
 
 let native = Native::open("/path/to/Stellaris")?;
-let mut game = native.start_game(GameOptions::new(supervisor)).await?;
+let mut game = native.start_game(
+    GameOptions::new(supervisor).registries(["common/traditions", "common/ascension_perks"])
+).await?;
 let items = game.registry_items("common/traditions").await?;  // Answer<Vec<String>>
 let disposal = game.close().await?;                           // Disposal::Confirmed
 ```
 
 Always call `close`, also after a question fails. `native.supports(operation)` says if a
 question can run here, and starts nothing.
+`GameOptions::registries` selects the directories to observe before launch. Without it, the
+M45 session observes traditions and tradition categories. A listed but unselected registry
+returns `Unsupported`; a selected loader that does not run before the pause gives a precise
+`Unsupported` reason. See `examples/registry-items-report.rs` for a report over all discovered
+registries.
 
 ## Prepared fixtures
 
@@ -168,6 +175,7 @@ cargo test --workspace
 ATLAS_CALLER_PATH=/path/to/pdx-atlas/prototypes/native-registry cargo test --test consumer_boundary -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test static_questions -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
+cargo run --release --example registry-items-report -- /path/to/Stellaris
 cargo doc --no-deps
 ```
 

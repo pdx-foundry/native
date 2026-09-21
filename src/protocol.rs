@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 pub(crate) mod observation;
 pub(crate) mod session;
 
-const VERSION: u32 = 6;
+const VERSION: u32 = 7;
 /// A `Paused` reply holds the items of every observed registry, which the worker's stream
 /// bounds; the other messages are small.
 const MAX_MESSAGE: usize = observation::MAX_TRACE + 64 * 1024;

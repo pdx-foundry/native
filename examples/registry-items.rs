@@ -33,13 +33,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enable_all()
         .build()?;
     runtime.block_on(async {
-        let mut game = native.start_game(GameOptions::new(supervisor)).await?;
         let default = ["common/traditions".to_owned()];
         let registries = if registries.is_empty() {
             &default[..]
         } else {
             registries
         };
+        let mut game = native
+            .start_game(GameOptions::new(supervisor).registries(registries.to_vec()))
+            .await?;
         for registry in registries {
             match game.registry_items(registry).await {
                 Ok(answer) => println!("{}", serde_json::to_string_pretty(&answer)?),

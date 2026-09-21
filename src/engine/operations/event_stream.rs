@@ -93,6 +93,8 @@ pub(crate) enum WorkerEvent {
     },
     /// The worker could not observe this registry.
     RegistryUnavailable { name: String, reason: String },
+    /// The collection was reached, but this binding cannot read its item keys.
+    RegistryUnsupported { name: String, reason: String },
     /// The game is held at a safe pause, after these registries returned from their loaders.
     SessionPaused { returned: Vec<String> },
     /// The debugger could not attach, a hook was missing or late, or the supervisor's permission

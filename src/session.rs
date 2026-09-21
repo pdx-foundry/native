@@ -72,14 +72,6 @@ impl Native {
     pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
         self.recorder.as_deref().map(|path| path.as_path())
     }
-    /// Content directory of each registry that a game session observes, with its internal name.
-    pub(crate) fn registry_directories(&self) -> std::collections::BTreeMap<String, String> {
-        self.bound()
-            .registry_names()
-            .into_iter()
-            .filter_map(|name| Some((self.bound().registry_directory(&name)?, name)))
-            .collect()
-    }
     fn integrity(&self) -> Option<UnavailableReason> {
         let mut invalidated = self.invalidated.lock().expect("context integrity lock");
         if invalidated.is_none() {
@@ -136,16 +128,29 @@ impl Native {
                 reason: format!("{reasons:?}"),
             });
         }
-        // The supervisor knows a registry by its internal name.
-        let directories = self.registry_directories();
-        let fault = match options.fault {
-            Some((directory, control)) => {
-                let registry = directories.get(&directory).cloned();
-                let registry = registry.ok_or(Error::UnknownRegistry { name: directory })?;
-                Some(crate::protocol::session::Fault { registry, control })
+        let registries = options
+            .registries
+            .clone()
+            .unwrap_or_else(|| self.bound().default_registries());
+        let known: std::collections::BTreeSet<_> = self
+            .registries()?
+            .value
+            .into_iter()
+            .map(|registry| registry.name)
+            .collect();
+        for registry in &registries {
+            if !known.contains(registry) {
+                return Err(Error::UnknownRegistry {
+                    name: registry.clone(),
+                });
             }
-            None => None,
-        };
+        }
+        let fault = options
+            .fault
+            .map(|(directory, control)| crate::protocol::session::Fault {
+                registry: directory,
+                control,
+            });
         let id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_nanos());
@@ -162,6 +167,7 @@ impl Native {
                     options.startup_seconds.min(fixture.deadline_seconds)
                 }),
             idle_seconds: options.idle_seconds,
+            registries: registries.clone(),
             fault,
             fixture: options.fixture.clone(),
             fixture_fault: options.fixture_fault,
@@ -175,7 +181,7 @@ impl Native {
             disposal: Disposal::NotApplicable,
         })?;
         let session = crate::game::Session {
-            directories,
+            observed: registries.into_iter().collect(),
             build: self.build(),
             recorder: self.recorder.clone(),
             work,

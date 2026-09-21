@@ -43,6 +43,10 @@ No production adapter, Windows timing, database-constructor order, late/hot relo
 
 - **Where to read the items.** The worker reads item keys from the engine objects when the initial collection loader returns. The collection is full at that point, and later validation has not run. A first attempt waited for entry to the later post-read phase; the game did not reach it in 180 seconds.
 - **Inputs.** The engine reads private copies of the registry directories. On M45-observe the result is 234 traditions and 33 tradition categories, from one paused process, in about 35 to 45 seconds.
+- **SDK-529 extension.** Static discovery now supplies initial loader entries for selected
+  registry directories. The same return-boundary witness gave 49 ascension perks, 17 ethics,
+  171 edicts, 358 civics from a nested directory, and 10 galaxy definitions from `map/galaxy`
+  in an M45 live probe. See [registry items](registry-items.md) for report status and limits.
 - **Launch flag.** The launch uses `-debug_mode`, as the prototype did. One early batch omitted the flag and still reached the fixture, so the flag is not known to be necessary.
 - **Missing debugger.** To test a missing debugger without a change to the host, set `DEVELOPER_DIR` to a directory that does not exist.
 

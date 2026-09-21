@@ -5,6 +5,15 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Enumerate exact template LoadFile candidates independently of named member readers.
 pub fn candidates(symbols: &[Symbol]) -> Vec<CandidateRecord> {
     let names: BTreeSet<_> = symbols.iter().map(|s| s.name.as_str()).collect();
+    let mut entries: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
+    for symbol in symbols {
+        if symbol.name.ends_with("::Init()") {
+            entries
+                .entry(&symbol.name)
+                .or_default()
+                .push(symbol.address);
+        }
+    }
     let mut result = Vec::new();
     for symbol in symbols {
         let Some(args) = symbol
@@ -28,6 +37,12 @@ pub fn candidates(symbols: &[Symbol]) -> Vec<CandidateRecord> {
             owner_candidate: args[1].into(),
             loader: symbol.name.clone(),
             address: format!("{:#x}", symbol.address),
+            initial_loader: {
+                let init = format!("TSingleObjectGameDatabase<{}>::Init()", args.join(", "));
+                entries.get(init.as_str()).and_then(|addresses| {
+                    (addresses.len() == 1).then(|| format!("{:#x}", addresses[0]))
+                })
+            },
             has_named_member_reader: names
                 .contains(format!("{}::ReadMember(CReader&, int)", args[1]).as_str()),
         });

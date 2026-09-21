@@ -14,7 +14,8 @@ platform-independent JSON snapshots. Native supplies every engine observation th
 ## Starting point
 
 Native exposes static `registries()` and `registry_fields(name)`, plus live item names for
-`common/traditions` and `common/tradition_categories` on one exact Mac ARM64 executable.
+selected discovered registries on one exact Mac ARM64 executable. The default live session
+observes `common/traditions` and `common/tradition_categories`.
 Static analysis lives in `engine/analysis`; the live stream reducer lives in `engine/operations`.
 The API returns normalized answers with typed gaps and source stamps. The Atlas prototype caller
 uses the same questions for live and recorded answers; see the [migration](design/atlas-caller-migration.md).

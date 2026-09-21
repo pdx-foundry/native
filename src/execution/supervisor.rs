@@ -34,7 +34,7 @@ const DISPOSAL_BUDGET: Duration = Duration::from_secs(10);
 
 enum Input {
     Hello(Hello),
-    Request(SessionRequest),
+    Request(Box<SessionRequest>),
     Control(Control),
     Lost,
 }
@@ -51,7 +51,7 @@ fn reader(mut input: impl Read + Send + 'static) -> Receiver<Input> {
             send.send(Input::Hello(hello))
                 .map_err(|e| SupervisorError(e.to_string()))?;
             let request = protocol::read(&mut input)?;
-            send.send(Input::Request(request))
+            send.send(Input::Request(Box::new(request)))
                 .map_err(|e| SupervisorError(e.to_string()))?;
             loop {
                 let control: Control = protocol::read(&mut input)?;
@@ -135,7 +135,7 @@ fn handshake(
         return Err(SupervisorError("Expected a session request".into()));
     };
     request.validate()?;
-    Ok(request)
+    Ok(*request)
 }
 
 fn run(
@@ -150,6 +150,8 @@ fn run(
         ));
     }
     plan.admit()?;
+    let registries = plan.registry_bindings(&request.registries)?;
+    let content = plan.session_content(&request.registries)?;
     let parent = request
         .work_directory
         .parent()
@@ -189,8 +191,14 @@ fn run(
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
         prepare_profile(&work)?;
-        plan.prepare_registry_profile(&work, request.fixture.as_ref())?;
-        let observer = observer.insert(plan.observer(&work, &report.attempt, &request)?);
+        plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
+        if !plan.session_content_unchanged(&request.registries, &content) {
+            return Err(SupervisorError(
+                "Registry content changed during profile preparation".into(),
+            ));
+        }
+        let observer =
+            observer.insert(plan.observer(&work, &report.attempt, &request, &registries)?);
         plan.integrity()?;
         match input.try_recv() {
             Ok(event) => return Ok(interruption(event)),
@@ -225,7 +233,7 @@ fn run(
             &Session {
                 work_directory: &work,
                 attempt: &report.attempt,
-                registries: plan.registry_names(),
+                registries: request.registries.clone(),
                 fixture: request.fixture.as_ref(),
                 build: crate::BuildId(request.build.clone()),
                 startup: Duration::from_secs(request.startup_seconds),

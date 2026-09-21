@@ -14,6 +14,7 @@ see [preservation](../native/preservation.md). Atlas's published claim ledger is
 | `with_supervisor(command, options)` then `start_game()` | `start_game(GameOptions::new(command))` |
 | Caller-supplied retention directory | Native-owned temporary work directory |
 | `get_registry_items(name)` and `RegistryResult` | `registry_items(name)` and `Answer<Vec<String>>` |
+| A fixed live registry list | `GameOptions::registries(names)` before `start_game` |
 | `registry_availability()` | The result of each question: complete, partial, or `Error` |
 | `close()` returning `GameReport` | `close()` returning `Result<Disposal, Error>` |
 | `Engine::replay_registry`, descriptors and final snapshots | `Native::from_recorded_answers(directory)?` and the same question flow |
@@ -22,6 +23,9 @@ see [preservation](../native/preservation.md). Atlas's published claim ledger is
 `Native::open` still returns `OpenError`. Question and session errors use `Error`; a failed start
 can carry `Error::Startup { reason, disposal }`. A lost supervisor connection never confirms disposal.
 Always await `close`, even when one or all questions fail. Each registry result is independent.
+Select the content directories to observe before starting the game. Omitting the selection keeps
+the two M45 tradition registries for existing callers. A discovered registry outside the session
+selection returns `Unsupported`; Atlas can run another bounded session for it.
 Failed final cleanup returns `Error::Cleanup { reason, disposal }` and keeps the work directory.
 A confirmed process disposal can accompany a cleanup error, such as an unresolved host reservation.
 
