@@ -45,3 +45,22 @@ No production adapter, Windows timing, database-constructor order, late/hot relo
 - **Inputs.** The engine reads private copies of the registry directories. On M45-observe the result is 234 traditions and 33 tradition categories, from one paused process, in about 35 to 45 seconds.
 - **Launch flag.** The launch uses `-debug_mode`, as the prototype did. One early batch omitted the flag and still reached the fixture, so the flag is not known to be necessary.
 - **Missing debugger.** To test a missing debugger without a change to the host, set `DEVELOPER_DIR` to a directory that does not exist.
+
+## Prepared fixture sessions (SDK-532, M45-observe)
+
+The public session now combines the retained registration/category hooks with the registry hooks.
+The fixture's loader-return callback ends its observation window without stopping the session;
+the existing registry callbacks then establish the final pause. The exact M45-observe installation
+passed all 27 cases in `tests/live.rs`, including the existing registry controls, on 2026-09-20.
+
+A private category directory containing the two-field fixture gives three registration entries,
+`tree_template` at line 2 and `traditions` at line 3, joined to one owner. The same session returns
+one category and the 234 pinned traditions. Either observation kind can also be requested alone.
+Missing/late fixture hooks give an observation error. Dropped records, missing terminals and the
+injected access failure give partial answers. Worker loss before the pause gives a startup error
+with confirmed disposal. The tests check ordinary-profile contents and an unrelated process after
+every case, and compare saved answers with game-free reads.
+
+The first integration attempt failed before attachment: a numeric-key binding map generated
+`patternProperties`, which the worker codec deliberately refuses. A typed list of field bindings
+uses the supported schema subset; the Python request-codec test covers this boundary.

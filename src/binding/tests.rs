@@ -95,7 +95,7 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     };
     let work = tempdir().unwrap();
     fs::create_dir(work.path().join("profile")).unwrap();
-    plan.prepare_registry_profile(work.path()).unwrap();
+    plan.prepare_registry_profile(work.path(), None).unwrap();
     let mount = work.path().join("profile/mod/native_registry");
     for relative in [modified, added] {
         assert_eq!(
@@ -110,9 +110,32 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     assert!(descriptor.contains("replace_path=\"common/traditions\""));
     assert!(descriptor.contains("replace_path=\"common/tradition_categories\""));
 
+    let fixture =
+        crate::FixtureRequest::new("common/tradition_categories/atlas.txt", "atlas = {}\n");
+    let fixture_work = tempdir().unwrap();
+    fs::create_dir(fixture_work.path().join("profile")).unwrap();
+    plan.prepare_registry_profile(fixture_work.path(), Some(&fixture))
+        .unwrap();
+    let fixture_mount = fixture_work.path().join("profile/mod/native_registry");
+    assert_eq!(
+        fs::read_to_string(fixture_mount.join(fixture.file())).unwrap(),
+        "atlas = {}\n"
+    );
+    assert_eq!(
+        fs::read_dir(fixture_mount.join("common/tradition_categories"))
+            .unwrap()
+            .count(),
+        1
+    );
+    assert_eq!(
+        fs::read(fixture_mount.join(modified)).unwrap(),
+        fs::read(root.path().join(modified)).unwrap()
+    );
+    assert!(!root.path().join(fixture.file()).exists());
+
     fs::write(root.path().join(added), "changed after open").unwrap();
     let next = tempdir().unwrap();
-    assert!(plan.prepare_registry_profile(next.path()).is_err());
+    assert!(plan.prepare_registry_profile(next.path(), None).is_err());
     assert!(!next.path().join("profile").exists());
 }
 
@@ -192,6 +215,8 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         work_directory: directory.path().join("unused"),
         startup_seconds: 7,
         idle_seconds: 1,
+        fixture: None,
+        fixture_fault: None,
         fault: Some(Fault {
             registry: "traditions".into(),
             control: ObservationControl::MissingHook,

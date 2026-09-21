@@ -30,6 +30,8 @@ pub struct GameOptions {
     pub idle_seconds: u64,
     /// A deliberate fault and the content directory of the registry that receives it.
     pub(crate) fault: Option<(String, ObservationControl)>,
+    pub(crate) fixture: Option<crate::FixtureRequest>,
+    pub(crate) fixture_fault: Option<ObservationControl>,
 }
 impl GameOptions {
     /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
@@ -40,7 +42,20 @@ impl GameOptions {
             startup_seconds: 180,
             idle_seconds: 180,
             fault: None,
+            fixture: None,
+            fixture_fault: None,
         }
+    }
+    /// Prepare one fixed fixture before launch. Registry queries observe this mounted content.
+    pub fn fixture(mut self, request: crate::FixtureRequest) -> Self {
+        self.fixture = Some(request);
+        self
+    }
+    /// Inject a fixture fault for Native’s live tests. Requires a prepared fixture.
+    #[doc(hidden)]
+    pub fn fixture_fault(mut self, control: ObservationControl) -> Self {
+        self.fixture_fault = Some(control);
+        self
     }
     /// Inject a deliberate fault into the observation of one registry, named by its content
     /// directory. Only Native's live tests use this; see `tests/live.rs`.
@@ -60,6 +75,7 @@ pub(crate) struct Session {
     pub recorder: Option<Arc<PathBuf>>,
     /// Temporary directory that Native made for this session.
     pub work: PathBuf,
+    pub fixture: Option<crate::FixtureRequest>,
 }
 
 /// What the supervisor established when the game paused.
@@ -68,6 +84,7 @@ struct Paused {
     readiness: GameReadiness,
     /// By internal registry name.
     registries: BTreeMap<String, RegistryItems>,
+    fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
 }
 
 /// How a session ended, from the supervisor's final report.
@@ -85,10 +102,14 @@ struct State {
     /// `Err` when the connection to the supervisor failed; disposal is then not established.
     finished: Option<Result<Finished, Error>>,
 }
+enum ReadQuestion {
+    Registry(String),
+    Fixture,
+}
 enum DriverCommand {
     /// The caller answered a question about this registry; the idle time starts again.
     Read {
-        name: String,
+        question: ReadQuestion,
         reply: oneshot::Sender<Result<(), Error>>,
     },
 }
@@ -111,13 +132,53 @@ pub struct Game {
     recorder: Option<Arc<PathBuf>>,
     /// Temporary work directory that Native made. Removed after a clean close.
     work: Option<PathBuf>,
+    fixture: Option<crate::FixtureRequest>,
 }
 impl Game {
+    /// Return the prepared fixture's read-entry observations. Every call uses the same startup
+    /// observation and refreshes the idle timeout; it never resumes the game. Set the fixture
+    /// with `GameOptions::fixture` before calling `Native::start_game`.
+    pub async fn observe_fixture(
+        &mut self,
+    ) -> Result<crate::Answer<crate::FixtureObservation>, Error> {
+        if self.closing || self.state.borrow().finished.is_some() {
+            return Err(Error::Closed);
+        }
+        let fixture = self.fixture.as_ref().ok_or_else(|| Error::FixtureRequest {
+            reason: "Prepare a fixture with GameOptions::fixture before starting the game".into(),
+        })?;
+        let subject = fixture.recorded_subject();
+        if let Some(directory) = &self.recorded {
+            return directory.read("observe_fixture", Some(&subject));
+        }
+        let answer = self.paused.fixture.clone().unwrap_or_else(|| {
+            Err(Error::Observation {
+                operation: crate::Operation::ObserveFixture,
+                reason: "The supervisor sent no fixture observation".into(),
+            })
+        });
+        self.restart_idle_time(ReadQuestion::Fixture).await?;
+        if let Some(directory) = &self.recorder {
+            crate::recorded::write(
+                directory,
+                &self.build,
+                "observe_fixture",
+                Some(&subject),
+                &answer,
+            )?;
+        }
+        answer
+    }
+
     /// A session over recorded answers. No supervisor or game process is started.
-    pub(crate) fn recorded(directory: Arc<crate::recorded::Answers>) -> Self {
+    pub(crate) fn recorded(
+        directory: Arc<crate::recorded::Answers>,
+        fixture: Option<crate::FixtureRequest>,
+    ) -> Self {
         let paused = Paused {
             readiness: GameReadiness::PausedAfterRegistryInitialization,
             registries: BTreeMap::new(),
+            fixture: None,
         };
         let (_, state) = watch::channel(State::default());
         Self {
@@ -131,6 +192,7 @@ impl Game {
             recorded: Some(directory),
             recorder: None,
             work: None,
+            fixture,
         }
     }
 
@@ -198,7 +260,7 @@ impl Game {
                 ),
             });
         };
-        self.restart_idle_time(name).await?;
+        self.restart_idle_time(ReadQuestion::Registry(name)).await?;
         let complete = observed.observed == Observed::Complete;
         Ok(Answer {
             value: observed.items,
@@ -226,21 +288,21 @@ impl Game {
 
     /// Tell the supervisor that the caller got an answer, and wait for its acknowledgement. The
     /// supervisor ends a session that stays idle.
-    async fn restart_idle_time(&mut self, name: String) -> Result<(), Error> {
+    async fn restart_idle_time(&mut self, question: ReadQuestion) -> Result<(), Error> {
         let (reply, receive) = oneshot::channel();
         self.commands
             .as_ref()
             .ok_or(Error::Closed)?
-            .try_send(DriverCommand::Read { name, reply })
+            .try_send(DriverCommand::Read { question, reply })
             .map_err(|error| match error {
                 mpsc::TrySendError::Full(_) => {
-                    Error::Supervisor("Too many pending registry reads".into())
+                    Error::Supervisor("Too many pending observation reads".into())
                 }
                 mpsc::TrySendError::Disconnected(_) => Error::Closed,
             })?;
         receive
             .await
-            .map_err(|_| Error::Supervisor("Registry read acknowledgement lost".into()))?
+            .map_err(|_| Error::Supervisor("Observation read acknowledgement lost".into()))?
     }
 
     /// The witnessed initialization pause. This does not advertise gameplay readiness.
@@ -355,6 +417,7 @@ pub(crate) async fn start(
                 recorded: None,
                 recorder: session.recorder,
                 work: Some(session.work),
+                fixture: session.fixture,
             });
         }
         changes
@@ -367,6 +430,45 @@ pub(crate) async fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn fixture_reads_refresh_idle_time_and_record_errors_without_resuming() {
+        let (mut game, commands, state) = game();
+        assert!(matches!(
+            game.observe_fixture().await,
+            Err(Error::FixtureRequest { .. })
+        ));
+        assert!(commands.try_recv().is_err());
+        let fixture =
+            crate::FixtureRequest::new("common/tradition_categories/test.txt", "test = {}\n");
+        let subject = fixture.recorded_subject();
+        game.fixture = Some(fixture);
+        let error = Error::Observation {
+            operation: crate::Operation::ObserveFixture,
+            reason: "Missing fixture hook".into(),
+        };
+        game.paused.fixture = Some(Err(error.clone()));
+        let root = tempfile::tempdir().unwrap();
+        game.recorder = Some(Arc::new(root.path().into()));
+        let acknowledgements = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let DriverCommand::Read { question, reply } = commands.recv().unwrap();
+                assert!(matches!(question, ReadQuestion::Fixture));
+                reply.send(Ok(())).unwrap();
+            }
+        });
+        for _ in 0..2 {
+            assert_eq!(game.observe_fixture().await, Err(error.clone()));
+        }
+        acknowledgements.join().unwrap();
+        let recording = crate::recorded::Answers::open(root.path().into()).unwrap();
+        assert_eq!(
+            recording.read::<crate::FixtureObservation>("observe_fixture", Some(&subject)),
+            Err(error)
+        );
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
+        assert_eq!(game.observe_fixture().await, Err(Error::Closed));
+    }
     fn finished() -> Finished {
         Finished {
             outcome: SessionOutcome::Completed,
@@ -379,6 +481,7 @@ mod tests {
         let paused = Paused {
             readiness: GameReadiness::PausedDuringRegistryInitialization,
             registries: BTreeMap::new(),
+            fixture: None,
         };
         let (commands, receive) = mpsc::sync_channel(16);
         let (state, changes) = watch::channel(State {
@@ -397,6 +500,7 @@ mod tests {
                 recorded: None,
                 recorder: None,
                 work: None,
+                fixture: None,
             },
             receive,
             state,

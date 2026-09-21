@@ -9,6 +9,7 @@ use crate::{OpenError, UnavailableReason};
 /// The live observation of one build, resolved for the compiled host.
 pub(super) struct ResolvedObservation {
     pub machine: super::Machine,
+    pub fixture: Option<crate::protocol::observation::FixtureBinding>,
     pub strategy: platform::StrategyResolution,
     pub registries:
         std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
@@ -33,6 +34,7 @@ fn assemble(
         machine: machine::resolve(image.architecture)?,
         strategy: platform::resolve(recipe.strategy),
         registries: groups::registries(recipe.groups),
+        fixture: groups::fixture(recipe.groups),
     })
 }
 

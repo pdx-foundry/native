@@ -114,16 +114,19 @@ fn connect(
             deadline = Instant::now() + Duration::from_secs(CLEANUP_SECONDS);
         }
         match commands.try_recv() {
-            Ok(DriverCommand::Read { name, reply }) if !ending && pending.len() < 16 => {
+            Ok(DriverCommand::Read { question, reply }) if !ending && pending.len() < 16 => {
                 sequence += 1;
                 pending.insert(sequence, reply);
                 protocol::write(
                     output_pipe
                         .as_mut()
                         .ok_or_else(|| SupervisorError("Control closed".into()))?,
-                    &Control::ReadRegistry {
-                        name,
-                        request: sequence,
+                    &match question {
+                        ReadQuestion::Registry(name) => Control::ReadRegistry {
+                            name,
+                            request: sequence,
+                        },
+                        ReadQuestion::Fixture => Control::ReadFixture { request: sequence },
                     },
                 )?;
             }
@@ -160,6 +163,7 @@ fn connect(
             Reply::Paused {
                 readiness,
                 registries,
+                fixture,
             } => {
                 if state.borrow().paused.is_some() {
                     return Err(SupervisorError("Unexpected second pause".into()));
@@ -168,6 +172,7 @@ fn connect(
                     state.paused = Some(Paused {
                         readiness,
                         registries,
+                        fixture,
                     })
                 });
                 if !ending {
@@ -175,7 +180,7 @@ fn connect(
                         Instant::now() + Duration::from_secs(timing.idle_seconds + CLEANUP_SECONDS);
                 }
             }
-            Reply::RegistryRead { request } => {
+            Reply::ObservationRead { request } => {
                 let Some(reply) = pending.remove(&request) else {
                     return Err(SupervisorError("Unexpected read acknowledgement".into()));
                 };

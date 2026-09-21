@@ -61,8 +61,11 @@ let native = Native::from_recorded_answers("/path/to/recorded-answers")?;
 // Planned operations, not present yet.
 native.declarations(DeclarationKind::Effect)?;          // milestone 3
 native.defines()?;  native.on_actions()?;               // milestone 3
-game.observe_fixture(fixture).await?;                   // SDK-532
 ```
+
+**SDK-532:** fixture observation is now implemented. Prepare `GameOptions::fixture(request)`
+before `start_game`, then call `game.observe_fixture().await?`. Its `Answer<FixtureObservation>`
+contains separate registration entries and field reads from that fixed session.
 
 One result type:
 
@@ -93,11 +96,13 @@ pub struct Declaration { pub name: String, pub description: String, pub usage: S
 
 ### Recorded answers cover static and live questions
 
-The word *fixture* means only the script files that a consumer gives to `observe_fixture`.
+The word *fixture* means only the script files that a consumer prepares with
+`GameOptions::fixture` before launch and reads through `observe_fixture`.
 
 `Native::from_recorded_answers(dir)` selects a recorded back end once. Static questions read recorded
 answers. `start_game` returns a `Game` that reads recorded answers and starts no process; its
-options are ignored and `close` returns `Disposal::NotApplicable`. Consumer code is the same for a
+launch options are ignored, the prepared fixture selects its recording, and `close` returns
+`Disposal::NotApplicable`. Consumer code is the same for a
 real game and recorded answers.
 
 - A recorded file holds a `Result<Answer<T>, Error>` as JSON, so `Error` is serializable. Failure

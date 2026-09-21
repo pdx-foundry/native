@@ -20,7 +20,7 @@
 //! No diagnostic gives a complete answer. Any diagnostic gives a partial answer that keeps the
 //! accepted items, or no answer when the registry was not observed at all. An empty complete
 //! answer therefore means an empty registry, never "could not look".
-use super::event_stream::{OwnerEvent, WorkerEvent, WorkerRecord};
+use super::event_stream::{OwnerEvent, WorkerEvent, WorkerRecord, single};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -76,7 +76,10 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
             && registry_name(&records[position - 1].event)
                 .zip(registry_name(&record.event))
                 .is_some_and(|(before, after)| before == after && before != name);
-        if record.seq != expected && !hole_elsewhere {
+        let hole_in_fixture = position > 0
+            && matches!(records[position - 1].event, WorkerEvent::Fixture { .. })
+            && matches!(record.event, WorkerEvent::Fixture { .. });
+        if record.seq != expected && !hole_elsewhere && !hole_in_fixture {
             diagnostics.push(format!(
                 "Sequence gap: expected {expected}, found {}",
                 record.seq
@@ -201,7 +204,8 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                     diagnostics.push(error.clone());
                 }
             }
-            WorkerEvent::HooksRequested
+            WorkerEvent::Fixture { .. }
+            | WorkerEvent::HooksRequested
             | WorkerEvent::LaunchStopped { .. }
             | WorkerEvent::HooksActiveBeforeResume { .. }
             | WorkerEvent::Resume { .. }
@@ -244,7 +248,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
 }
 
 /// An engine address as the worker writes it: hexadecimal, not null, aligned to a pointer.
-fn pointer(value: &str) -> bool {
+pub(super) fn pointer(value: &str) -> bool {
     value
         .strip_prefix("0x")
         .and_then(|value| u64::from_str_radix(value, 16).ok())
@@ -263,79 +267,18 @@ fn registry_name(event: &WorkerEvent) -> Option<&str> {
     }
 }
 
-/// The only record that matches, or `None` when there are none or several.
-fn single(
-    records: &[WorkerRecord],
-    matches: impl Fn(&WorkerEvent) -> bool,
-) -> Option<&WorkerRecord> {
-    let mut found = records.iter().filter(|record| matches(&record.event));
-    let record = found.next()?;
-    found.next().is_none().then_some(record)
-}
-
-/// The activation witness: the hook of `registry` was in place before the owned game ran.
+/// The registry loader must run on the activated thread after resume.
 fn activated(records: &[WorkerRecord], owner: &[OwnerEvent], registry: &str) -> bool {
-    let witness = || -> Option<()> {
-        let launch = single(records, |event| {
-            matches!(event, WorkerEvent::LaunchStopped { .. })
-        })?;
-        let WorkerEvent::LaunchStopped {
-            error,
-            pid,
-            triple,
-            frames,
-        } = &launch.event
-        else {
-            return None;
-        };
-        let owned: Vec<_> = owner
-            .iter()
-            .filter_map(|event| match event {
-                OwnerEvent::GameOwnedSuspended { pid, identity } if !identity.is_empty() => {
-                    Some(*pid)
-                }
-                _ => None,
-            })
-            .collect();
-        if error != "success"
-            || *pid == 0
-            || owned != [*pid]
-            || !triple.starts_with("arm64-")
-            || !frames.iter().any(|frame| frame.function == "_dyld_start")
-            || launch.thread.unwrap_or(0) == 0
-        {
-            return None;
-        }
-        let active = single(records, |event| {
-            matches!(event, WorkerEvent::HooksActiveBeforeResume { .. })
-        })?;
-        let WorkerEvent::HooksActiveBeforeResume { hooks } = &active.event else {
-            return None;
-        };
-        if !hooks
-            .get(&format!("registry:{registry}"))
-            .is_some_and(|hook| {
-                hook.enabled && hook.locations == 1 && hook.resolved == 1 && hook.hits == 0
-            })
-        {
-            return None;
-        }
-        let resume = single(records, |event| matches!(event, WorkerEvent::Resume { .. }))?;
-        if !matches!(&resume.event, WorkerEvent::Resume { error } if error == "success")
-            || !(launch.seq < active.seq && active.seq < resume.seq)
-        {
-            return None;
-        }
-        // No loader may run before the resume or on another thread than the launch thread.
-        let early_or_foreign = records.iter().any(|record| {
-            matches!(
-                record.event,
-                WorkerEvent::RegistrySnapshot { .. } | WorkerEvent::RegistryLoadStart { .. }
-            ) && (record.seq <= resume.seq || record.thread != launch.thread)
-        });
-        (!early_or_foreign).then_some(())
+    let hook = format!("registry:{registry}");
+    let Some((thread, resumed)) = super::event_stream::activation(records, owner, &[&hook]) else {
+        return false;
     };
-    witness().is_some()
+    !records.iter().any(|record| {
+        matches!(
+            record.event,
+            WorkerEvent::RegistrySnapshot { .. } | WorkerEvent::RegistryLoadStart { .. }
+        ) && (record.seq <= resumed || record.thread != Some(thread))
+    })
 }
 
 /// Where the game is paused, or `None` when the pause witnesses are missing or disagree.

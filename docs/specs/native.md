@@ -101,7 +101,7 @@ the state after the simplification effort:
 | `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations`, `defines`, `on_actions` | Planned | A declaration kind | Engine declarations with description, usage, and scopes |
-| `Game::observe_fixture` | Planned | Fixture files and requested observations | Field observations that name file, field, owner, and stage |
+| `Game::observe_fixture` | Implemented | A fixture request prepared in `GameOptions` before launch | Separate registration entries and field reads naming file, line, owner, and stage |
 
 Rules for the API:
 

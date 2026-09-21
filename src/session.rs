@@ -93,7 +93,7 @@ impl Native {
         self.bound().blocking_reasons(self.integrity())
     }
     /// Start a supervised game and wait until it is paused after its registries load. The game
-    /// never loads a world. With recorded answers, no process starts and the options are ignored.
+    /// never loads a world. With recorded answers, no process starts; the fixture selects its recording and launch options are ignored.
     ///
     /// Dropping this future requests cleanup. No async runtime owns the process: an independent
     /// thread and the supervisor do, so cleanup continues if the caller is lost.
@@ -102,8 +102,25 @@ impl Native {
         options: crate::GameOptions,
     ) -> Result<crate::Game, crate::Error> {
         use crate::{Disposal, Error, Operation};
+        if let Some(fixture) = &options.fixture {
+            fixture.validate()?;
+        }
         if let Some(directory) = &self.recorded {
-            return Ok(crate::Game::recorded(directory.clone()));
+            return Ok(crate::Game::recorded(directory.clone(), options.fixture));
+        }
+        if !(1..=180).contains(&options.startup_seconds)
+            || !(1..=180).contains(&options.idle_seconds)
+        {
+            return Err(Error::Startup {
+                reason: "Startup and idle budgets must be 1 to 180 seconds".into(),
+                disposal: Disposal::NotApplicable,
+            });
+        }
+        if options.fixture.is_some() && !self.bound().has_fixture_method() {
+            return Err(Error::Unsupported {
+                operation: Operation::ObserveFixture,
+                reason: "this build has no fixture observation recipe".into(),
+            });
         }
         let reasons = self.blocking_reasons();
         if reasons.contains(&UnavailableReason::TargetChanged) {
@@ -111,7 +128,11 @@ impl Native {
         }
         if !reasons.is_empty() {
             return Err(Error::Unsupported {
-                operation: Operation::RegistryItems,
+                operation: if options.fixture.is_some() {
+                    Operation::ObserveFixture
+                } else {
+                    Operation::RegistryItems
+                },
                 reason: format!("{reasons:?}"),
             });
         }
@@ -134,9 +155,16 @@ impl Native {
             build: self.bound().build().into(),
             // The supervisor creates this directory; `work` holds nothing else.
             work_directory: work.join("session"),
-            startup_seconds: options.startup_seconds,
+            startup_seconds: options
+                .fixture
+                .as_ref()
+                .map_or(options.startup_seconds, |fixture| {
+                    options.startup_seconds.min(fixture.deadline_seconds)
+                }),
             idle_seconds: options.idle_seconds,
             fault,
+            fixture: options.fixture.clone(),
+            fixture_fault: options.fixture_fault,
         };
         request.validate().map_err(|error| Error::Startup {
             reason: error.to_string(),
@@ -151,6 +179,7 @@ impl Native {
             build: self.build(),
             recorder: self.recorder.clone(),
             work,
+            fixture: options.fixture,
         };
         crate::game::start(options.supervisor, request, session).await
     }

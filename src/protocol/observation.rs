@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/5";
+pub(crate) const VERSION: &str = "native-observation/6";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 
@@ -27,6 +27,8 @@ pub(crate) struct WorkerRequest {
     /// The registry that receives `control`, when `control` is a fault.
     pub control_registry: Option<String>,
     pub control: String,
+    pub fixture: Option<FixtureSetup>,
+    pub fixture_fault: bool,
     pub deadline_seconds: u64,
 }
 
@@ -96,6 +98,39 @@ pub(crate) struct RegistryBinding {
     pub key_offset: u64,
     pub pointer_size: u64,
     pub string_tag_offset: u64,
+}
+
+/// Exact-build entry points and source-location layout for category fixtures.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureBinding {
+    pub registration_entry: u64,
+    pub load_entry: u64,
+    pub field_entry: u64,
+    pub reader_lexer_offset: u64,
+    pub lexer_file_offset: u64,
+    pub file_name_offset: u64,
+    pub string_tag_offset: u64,
+    pub file_line_offset: u64,
+    pub fields: Vec<FixtureFieldBinding>,
+}
+
+/// A field token selected by the exact-build recipe.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureFieldBinding {
+    pub token: u64,
+    pub name: String,
+}
+
+/// The validated observation selection, resolved before starting the worker.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureSetup {
+    pub file: String,
+    pub registration_entries: bool,
+    pub field_reads: bool,
+    pub bindings: FixtureBinding,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 pub(crate) mod observation;
 pub(crate) mod session;
 
-const VERSION: u32 = 5;
+const VERSION: u32 = 6;
 /// A `Paused` reply holds the items of every observed registry, which the worker's stream
 /// bounds; the other messages are small.
 const MAX_MESSAGE: usize = observation::MAX_TRACE + 64 * 1024;
@@ -69,13 +69,14 @@ pub(crate) enum Reply {
     /// The game is held at its pause, with what the session established about each registry.
     Paused {
         readiness: crate::GameReadiness,
+        fixture: Option<Result<crate::Answer<crate::FixtureObservation>, crate::Error>>,
         registries: std::collections::BTreeMap<
             String,
             crate::engine::operations::registry_items::RegistryItems,
         >,
     },
-    /// Acknowledges `Control::ReadRegistry`.
-    RegistryRead { request: u64 },
+    /// Acknowledges a registry or fixture read.
+    ObservationRead { request: u64 },
     /// The session is over. Always the last message.
     Finished(Box<session::SessionReport>),
 }

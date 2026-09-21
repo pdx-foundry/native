@@ -11,6 +11,7 @@ mod api;
 mod binding;
 mod engine;
 mod execution;
+mod fixture;
 mod game;
 mod protocol;
 mod recorded;
@@ -25,6 +26,10 @@ pub use answer::{
 };
 pub use api::OpenError;
 pub use engine::operations::registry_items::GameReadiness;
+pub use fixture::{
+    FieldRead, FixtureObservation, FixtureObservationKind, FixtureOwnerId, FixtureRequest,
+    FixtureWindow, ProcessingStage, RegistrationEntry,
+};
 pub use game::{Game, GameOptions};
 pub use session::Native;
 

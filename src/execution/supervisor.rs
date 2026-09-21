@@ -189,7 +189,7 @@ fn run(
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
         prepare_profile(&work)?;
-        plan.prepare_registry_profile(&work)?;
+        plan.prepare_registry_profile(&work, request.fixture.as_ref())?;
         let observer = observer.insert(plan.observer(&work, &report.attempt, &request)?);
         plan.integrity()?;
         match input.try_recv() {
@@ -226,6 +226,8 @@ fn run(
                 work_directory: &work,
                 attempt: &report.attempt,
                 registries: plan.registry_names(),
+                fixture: request.fixture.as_ref(),
+                build: crate::BuildId(request.build.clone()),
                 startup: Duration::from_secs(request.startup_seconds),
                 idle: Duration::from_secs(request.idle_seconds),
             },
@@ -300,6 +302,8 @@ struct Session<'a> {
     attempt: &'a str,
     /// Internal names of the registries that the session observes.
     registries: Vec<String>,
+    fixture: Option<&'a crate::FixtureRequest>,
+    build: crate::BuildId,
     startup: Duration,
     idle: Duration,
 }
@@ -357,8 +361,17 @@ fn observe_session(
                         (name.clone(), items)
                     })
                     .collect();
+                let fixture = session.fixture.map(|request| {
+                    crate::engine::operations::fixture::reduce(
+                        request,
+                        &records,
+                        events.all(),
+                        session.build.clone(),
+                    )
+                });
                 output.send(Reply::Paused {
                     readiness,
+                    fixture,
                     registries: registries.clone(),
                 })?;
                 answers = Some(registries);
@@ -382,7 +395,16 @@ fn observe_session(
                         "Registry read before the pause or for a registry with no answer".into(),
                     ));
                 }
-                output.send(Reply::RegistryRead { request })?;
+                output.send(Reply::ObservationRead { request })?;
+                deadline = Instant::now() + session.idle;
+            }
+            Ok(Input::Control(Control::ReadFixture { request })) => {
+                if answers.is_none() || session.fixture.is_none() {
+                    return Err(SupervisorError(
+                        "Fixture read without a prepared fixture at the pause".into(),
+                    ));
+                }
+                output.send(Reply::ObservationRead { request })?;
                 deadline = Instant::now() + session.idle;
             }
             Ok(Input::Control(Control::Close)) => return Ok(SessionOutcome::Completed),

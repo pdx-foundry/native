@@ -10,6 +10,32 @@ spec.loader.exec_module(wire)
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
+        fixture = dict(file='common/tradition_categories/atlas.txt', registration_entries=True,
+                       field_reads=True, bindings=dict(registration_entry=4096, load_entry=8192,
+                       field_entry=12288, reader_lexer_offset=48, lexer_file_offset=8,
+                       file_name_offset=32, string_tag_offset=23, file_line_offset=8,
+                       fields=[dict(token=16793, name='tree_template'), dict(token=14263, name='traditions')]))
+        request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
+                       artifacts={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
+                       registries={}, control_registry=None, control='normal', deadline_seconds=180,
+                       fixture=fixture, fixture_fault=False)
+        self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
+        fixture['bindings']['fields'][0]['token'] = 'not an integer'
+        with self.assertRaises(ValueError):
+            wire.encode('request', request)
+
+    def test_fixture_records_keep_typed_source_and_terminal_counts(self):
+        event = dict(kind='field-read', file='common/tradition_categories/atlas.txt',
+                     line=2, field='tree_template', owner='0x2000', ordinal=1)
+        row = dict(run='attempt', seq=9, thread=7, kind='fixture', event=event)
+        self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
+        for changes in [dict(line=-1), dict(ordinal=True), dict(owner=None), dict(extra='unknown')]:
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                wire.encode('record', dict(row, event=dict(event, **changes)))
+        terminal = dict(kind='end', registrations=3, field_reads=2, producer_last_sequence=12)
+        self.assertEqual(wire.decode('record', wire.encode('record', dict(row, event=terminal)))['event'], terminal)
+
     def test_trace_requires_valid_event_and_envelope(self):
         row = dict(run='attempt', seq=1, kind='registry-entry', name='traditions',
                    owner='0x1000', index=0, object='0x2000', key='tr_example', thread=7)
