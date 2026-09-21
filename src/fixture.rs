@@ -19,17 +19,61 @@ pub enum FixtureWindow {
     /// Initial registration through the supplied category file's loader return.
     /// At most three registration entries and two category field reads are observed.
     InitialCategoryLoad,
+    /// Initial parsing of the supplied file, ending when its reader returns to `LoadFile`.
+    InitialFileLoad,
+}
+
+/// One field whose parser outcome is requested for a named definition.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FixtureFieldQuestion {
+    /// Content directory that owns the definition.
+    pub registry: String,
+    /// Definition key as observed by the engine.
+    pub definition: String,
+    /// Root field name.
+    pub field: String,
+    /// Whether parser diagnostics from the file-load window are requested.
+    pub diagnostics: bool,
+    /// Whether a runtime outcome is requested. This initial-load method reports it unavailable.
+    pub runtime: bool,
+}
+
+impl FixtureFieldQuestion {
+    /// Request parser storage and diagnostics for one field. Runtime is not requested.
+    pub fn new(
+        registry: impl Into<String>,
+        definition: impl Into<String>,
+        field: impl Into<String>,
+    ) -> Self {
+        Self {
+            registry: registry.into(),
+            definition: definition.into(),
+            field: field.into(),
+            diagnostics: true,
+            runtime: false,
+        }
+    }
+
+    /// Also request the runtime dimension, which is outside the initial-load method.
+    pub fn with_runtime(mut self) -> Self {
+        self.runtime = true;
+        self
+    }
 }
 
 /// Files and questions fixed before `Native::start_game` launches its process.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FixtureRequest {
-    /// One UTF-8 `.txt` file under `common/tradition_categories`, at most 64 KiB.
+    /// One UTF-8 `.txt` file under `common/traditions` or
+    /// `common/tradition_categories`, at most 64 KiB.
     /// Paths are relative to the game content root; values are the exact file contents.
     pub files: BTreeMap<String, String>,
     /// A nonempty set of the requested event kinds, with no duplicates.
     pub observations: Vec<FixtureObservationKind>,
+    /// Bounded field-outcome questions. Each definition and field pair must be unique.
+    pub field_questions: Vec<FixtureFieldQuestion>,
     /// The engine phase in which to observe the fixture.
     pub window: FixtureWindow,
     /// Startup observation budget in seconds, 1–180. The smaller startup budget wins.
@@ -37,8 +81,9 @@ pub struct FixtureRequest {
 }
 
 impl FixtureRequest {
-    /// Request both observation kinds through the initial category load, with a 180-second
-    /// deadline. `start_game` validates the path and contents before launching anything.
+    /// Request both category observation kinds through the initial category load, with a
+    /// 180-second deadline. The file must be under `common/tradition_categories`.
+    /// `start_game` validates the path and contents before launching anything.
     pub fn new(path: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
             files: BTreeMap::from([(path.into(), text.into())]),
@@ -46,7 +91,27 @@ impl FixtureRequest {
                 FixtureObservationKind::RegistrationEntries,
                 FixtureObservationKind::CategoryFieldReads,
             ],
+            field_questions: Vec::new(),
             window: FixtureWindow::InitialCategoryLoad,
+            deadline_seconds: 180,
+        }
+    }
+
+    /// Request field outcomes for one traditions or tradition-categories file. Existing
+    /// registration and category-read selections are not added; callers may add registration
+    /// entries for either registry, while category field reads require tradition categories.
+    pub fn field_outcomes(
+        path: impl Into<String>,
+        text: impl Into<String>,
+        questions: impl IntoIterator<Item = FixtureFieldQuestion>,
+    ) -> Self {
+        let mut field_questions: Vec<_> = questions.into_iter().collect();
+        field_questions.sort();
+        Self {
+            files: BTreeMap::from([(path.into(), text.into())]),
+            observations: Vec::new(),
+            field_questions,
+            window: FixtureWindow::InitialFileLoad,
             deadline_seconds: 180,
         }
     }
@@ -56,16 +121,21 @@ impl FixtureRequest {
             reason: reason.into(),
         };
         if self.files.len() != 1 {
-            return Err(reject("Exactly one category fixture file is supported"));
+            return Err(reject("Exactly one fixture file is supported"));
         }
         let (path, text) = self.files.first_key_value().unwrap();
-        let Some(filename) = path.strip_prefix("common/tradition_categories/") else {
+        let registry = if let Some(filename) = path.strip_prefix("common/tradition_categories/") {
+            ("common/tradition_categories", filename)
+        } else if let Some(filename) = path.strip_prefix("common/traditions/") {
+            ("common/traditions", filename)
+        } else {
             return Err(reject(
-                "Fixture files must be in common/tradition_categories",
+                "Fixture files must be in common/traditions or common/tradition_categories",
             ));
         };
+        let filename = registry.1;
         let Some(stem) = filename.strip_suffix(".txt") else {
-            return Err(reject("The category fixture must have a .txt extension"));
+            return Err(reject("The fixture must have a .txt extension"));
         };
         if stem.is_empty()
             || stem.len() > 128
@@ -82,11 +152,66 @@ impl FixtureRequest {
                 "Fixture text must be nonempty UTF-8 without NUL, at most 64 KiB",
             ));
         }
-        if self.observations.is_empty()
+        if (self.observations.is_empty() && self.field_questions.is_empty())
             || self.observations.iter().collect::<BTreeSet<_>>().len() != self.observations.len()
         {
             return Err(reject(
                 "Request at least one observation kind, without duplicates",
+            ));
+        }
+        let identities = self
+            .field_questions
+            .iter()
+            .map(|question| (&question.registry, &question.definition, &question.field))
+            .collect::<BTreeSet<_>>();
+        if self.field_questions.len() > 32
+            || identities.len() != self.field_questions.len()
+            || self
+                .field_questions
+                .windows(2)
+                .any(|pair| pair[0] > pair[1])
+        {
+            return Err(reject(
+                "Request at most 32 unique field identities in canonical order",
+            ));
+        }
+        for question in &self.field_questions {
+            let valid_name = |name: &str| {
+                !name.is_empty()
+                    && name.len() <= 128
+                    && name.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b':')
+                    })
+            };
+            if question.registry != registry.0
+                || !valid_name(&question.definition)
+                || !valid_name(&question.field)
+            {
+                return Err(reject(
+                    "Field questions must name this fixture registry and bounded nonempty names",
+                ));
+            }
+        }
+        if self.field_questions.is_empty() && self.window != FixtureWindow::InitialCategoryLoad {
+            return Err(reject("Read-entry observations use InitialCategoryLoad"));
+        }
+        if !self.field_questions.is_empty() && self.window != FixtureWindow::InitialFileLoad {
+            return Err(reject("Field outcomes use InitialFileLoad"));
+        }
+        if self.window == FixtureWindow::InitialCategoryLoad
+            && registry.0 != "common/tradition_categories"
+        {
+            return Err(reject(
+                "InitialCategoryLoad requires a common/tradition_categories fixture",
+            ));
+        }
+        if registry.0 == "common/traditions"
+            && self
+                .observations
+                .contains(&FixtureObservationKind::CategoryFieldReads)
+        {
+            return Err(reject(
+                "CategoryFieldReads requires a common/tradition_categories fixture",
             ));
         }
         if !(1..=180).contains(&self.deadline_seconds) {
@@ -97,6 +222,10 @@ impl FixtureRequest {
 
     pub(crate) fn file(&self) -> &str {
         self.files.first_key_value().expect("validated fixture").0
+    }
+
+    pub(crate) fn registry(&self) -> &str {
+        self.file().rsplit_once('/').expect("validated fixture").0
     }
 
     pub(crate) fn requests(&self, kind: FixtureObservationKind) -> bool {
@@ -114,8 +243,9 @@ impl FixtureRequest {
             }
         }
         let observations: BTreeSet<_> = self.observations.iter().collect();
-        let question =
-            serde_json::to_vec(&(observations, self.window)).expect("fixture serializes");
+        let questions: BTreeSet<_> = self.field_questions.iter().collect();
+        let question = serde_json::to_vec(&(observations, questions, self.window))
+            .expect("fixture serializes");
         format!("{:x}/{:x}", files.finalize(), Sha256::digest(question))
     }
 }
@@ -159,6 +289,116 @@ pub struct FieldRead {
     pub stage: ProcessingStage,
 }
 
+/// One stored string read after a source occurrence returned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredStringOccurrence {
+    /// One-based source line reported by the engine.
+    pub line: u64,
+    /// One-based occurrence of this field on this definition.
+    pub occurrence: u64,
+    /// Actual string in the definition after the reader returned.
+    pub value: String,
+}
+
+/// Independently observed parser storage for one requested field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FixtureStorage {
+    /// No String storage observation was established; the reason states what was unavailable.
+    Unavailable(String),
+    /// Values after each occurrence and the value when the file load completed.
+    String {
+        /// Source-ordered values after each joined reader return.
+        occurrences: Vec<StoredStringOccurrence>,
+        /// Value at the file-load terminal, including constructor initialization when observed.
+        final_value: Option<String>,
+        /// Whether all storage records and terminals completed intact.
+        completeness: crate::Completeness,
+    },
+}
+
+/// Runtime state for a requested field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FixtureRuntime {
+    /// The caller did not request this dimension.
+    NotRequested,
+    /// Runtime is outside this initial-file-load method.
+    Unavailable(String),
+}
+
+/// Source correlation for one engine diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticJoin {
+    /// The diagnostic was joined to a fixture source location.
+    Source {
+        /// Fixture-relative file.
+        file: String,
+        /// One-based engine source line.
+        line: u64,
+        /// Definition key when established.
+        definition: Option<String>,
+        /// Field when established.
+        field: Option<String>,
+        /// Field occurrence when established.
+        occurrence: Option<u64>,
+    },
+    /// The engine diagnostic was preserved, but its fixture source join was not established.
+    Unavailable(String),
+}
+
+/// One diagnostic captured at the engine's reader-report stage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FixtureDiagnostic {
+    /// Exact diagnostic text supplied to the engine report routine.
+    pub text: String,
+    /// Actual engine stage that was intercepted.
+    pub stage: String,
+    /// Independent source correlation.
+    pub join: DiagnosticJoin,
+}
+
+/// Coverage of parser diagnostics during the fixture file load.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticCoverage {
+    /// No field question requested parser diagnostics.
+    #[default]
+    NotRequested,
+    /// Hooks were active and collection completed at the file-load return.
+    Complete {
+        /// Exact bounded diagnostic window that completed.
+        window: DiagnosticWindow,
+    },
+    /// Diagnostic collection is unsupported or did not complete.
+    Unavailable(String),
+}
+
+/// Bounded engine window covered by diagnostic collection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticWindow {
+    /// Parser diagnostics emitted while the selected fixture file loaded.
+    FixtureFileLoad,
+}
+
+/// Parser and runtime outcomes for one requested definition field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FixtureFieldOutcome {
+    /// The original bounded question.
+    pub question: FixtureFieldQuestion,
+    /// Fixture-relative file.
+    pub file: String,
+    /// Session-local owner identity, when the definition constructor was witnessed.
+    pub owner: Option<FixtureOwnerId>,
+    /// One-based definition source line, when established by the engine reader.
+    pub definition_line: Option<u64>,
+    /// Shared reader established by Native's static method.
+    pub reader: crate::Reader,
+    /// Independently observed parser storage.
+    pub storage: FixtureStorage,
+    /// Indices into `FixtureObservation::diagnostics`.
+    pub diagnostics: Vec<usize>,
+    /// Requested runtime dimension.
+    pub runtime: FixtureRuntime,
+}
+
 /// Established entries from the requested fixture window, in each kind's observation order.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureObservation {
@@ -166,6 +406,12 @@ pub struct FixtureObservation {
     pub registration_entries: Vec<RegistrationEntry>,
     /// Field-reader entries; not stored values or validation results.
     pub field_reads: Vec<FieldRead>,
+    /// Outcomes for each requested field, in canonical question order.
+    pub field_outcomes: Vec<FixtureFieldOutcome>,
+    /// Engine diagnostics from the fixture file load, including diagnostics without a field join.
+    pub diagnostics: Vec<FixtureDiagnostic>,
+    /// Explicit coverage of the parser-diagnostic window.
+    pub diagnostic_coverage: DiagnosticCoverage,
 }
 
 #[cfg(test)]
@@ -175,13 +421,12 @@ mod tests {
     const FILE: &str = "common/tradition_categories/example.txt";
 
     #[test]
-    fn only_bounded_relative_category_files_and_unique_questions_are_accepted() {
+    fn only_bounded_relative_fixture_files_and_unique_questions_are_accepted() {
         let request = FixtureRequest::new(FILE, "category = {}\n");
         assert!(request.validate().is_ok());
         for path in [
             "/tmp/x.txt",
             "../x.txt",
-            "common/traditions/x.txt",
             "common/tradition_categories/../x.txt",
             "common/tradition_categories/a/b.txt",
             "common/tradition_categories/a\\b.txt",
@@ -223,6 +468,65 @@ mod tests {
             .files
             .insert("common/tradition_categories/other.txt".into(), "x".into());
         assert!(invalid.validate().is_err());
+        let question = FixtureFieldQuestion::new("common/traditions", "sample", "unlocks_agenda");
+        let outcome = FixtureRequest::field_outcomes(
+            "common/traditions/x.txt",
+            "sample = {}\n",
+            [question.clone()],
+        );
+        assert!(outcome.validate().is_ok());
+        let mut tradition_outcome_with_registration = outcome.clone();
+        tradition_outcome_with_registration.observations =
+            vec![FixtureObservationKind::RegistrationEntries];
+        assert!(tradition_outcome_with_registration.validate().is_ok());
+        let mut wrong_registry = outcome.clone();
+        wrong_registry.field_questions[0].registry = "common/tradition_categories".into();
+        assert!(wrong_registry.validate().is_err());
+        let mut too_many = outcome.clone();
+        too_many.field_questions = (0..33)
+            .map(|index| {
+                FixtureFieldQuestion::new(
+                    "common/traditions",
+                    format!("sample_{index}"),
+                    "unlocks_agenda",
+                )
+            })
+            .collect();
+        assert!(too_many.validate().is_err());
+        let sorted = FixtureRequest::field_outcomes(
+            "common/traditions/x.txt",
+            "sample = {}\n",
+            [
+                FixtureFieldQuestion::new("common/traditions", "z", "unlocks_agenda"),
+                FixtureFieldQuestion::new("common/traditions", "a", "unlocks_agenda"),
+            ],
+        );
+        assert_eq!(sorted.field_questions[0].definition, "a");
+        let mut reordered = sorted.clone();
+        reordered.field_questions.reverse();
+        assert!(reordered.validate().is_err());
+        assert_eq!(sorted.recorded_subject(), reordered.recorded_subject());
+        let mut duplicate = question.clone();
+        duplicate.diagnostics = false;
+        duplicate.runtime = true;
+        assert!(
+            FixtureRequest::field_outcomes(
+                "common/traditions/x.txt",
+                "sample = {}\n",
+                [question, duplicate],
+            )
+            .validate()
+            .is_err()
+        );
+        assert!(
+            FixtureRequest::new("common/traditions/x.txt", "sample = {}\n")
+                .validate()
+                .is_err()
+        );
+        let mut tradition_registration =
+            FixtureRequest::new("common/traditions/x.txt", "sample = {}\n");
+        tradition_registration.observations = vec![FixtureObservationKind::RegistrationEntries];
+        assert!(tradition_registration.validate().is_err());
         for property in ["window", "observations"] {
             let mut serialized = serde_json::to_value(&request).unwrap();
             serialized[property] = if property == "window" {
@@ -271,6 +575,7 @@ mod tests {
                     stage: ProcessingStage::RegistrationEntry,
                 }],
                 field_reads: vec![],
+                ..FixtureObservation::default()
             },
             completeness: Completeness::Complete,
             gaps: vec![],

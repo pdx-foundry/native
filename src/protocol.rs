@@ -69,7 +69,7 @@ pub(crate) enum Reply {
     /// The game is held at its pause, with what the session established about each registry.
     Paused {
         readiness: crate::GameReadiness,
-        fixture: Option<Result<crate::Answer<crate::FixtureObservation>, crate::Error>>,
+        fixture: Box<Option<Result<crate::Answer<crate::FixtureObservation>, crate::Error>>>,
         registries: std::collections::BTreeMap<
             String,
             crate::engine::operations::registry_items::RegistryItems,

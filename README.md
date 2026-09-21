@@ -69,15 +69,40 @@ The initial window covers three registration entries and up to two field-reader 
 `field_reads` lists. Each field read names its file, source line, opaque owner and processing
 stage. These are entry observations; they establish no stored value, validation or gameplay rule.
 
-Supply one category `.txt` file, at most 64 KiB. Its filename uses letters, digits, underscores or
-hyphens. The fixture replaces the private category directory; registry queries describe this
-mounted content. Other observed registry content remains pinned to the installation. Unsupported
+Supply one `.txt` file in a supported registry, at most 64 KiB. Its filename uses letters, digits,
+underscores or hyphens. The fixture replaces that private registry directory; registry queries
+describe this mounted content. Other observed registry content remains pinned. Unsupported
 paths, observation selections and budgets fail before game launch. Script parsing remains the
 engine's responsibility; an unobserved file or a read outside the bounded window cannot give a
 complete answer.
 
-Choose either or both `FixtureObservationKind` values. The only window is
-`FixtureWindow::InitialCategoryLoad`. `deadline_seconds` defaults to 180 and must be 1–180; the
+For parser outcomes, use `FixtureRequest::field_outcomes` with one or more
+`FixtureFieldQuestion` values. The file may be in `common/traditions` or
+`common/tradition_categories`. Each outcome keeps these dimensions separate:
+
+- `FixtureStorage` contains actual String storage after each joined occurrence and an optional
+  file-terminal value, or a typed unavailable reason. Its own completeness keeps witnessed values
+  when a later record or terminal is missing. A complete zero-occurrence result requires a
+  witnessed definition constructor and completed file-load window.
+- `diagnostics` preserves messages captured at the engine reader-report stage, with a source join
+  or a missing-join reason. `DiagnosticCoverage::Complete` covers only parser diagnostics during
+  this file load. `NotRequested` is distinct from unsupported or incomplete collection. It does
+  not claim later validation.
+- `FixtureRuntime` distinguishes `NotRequested` from `Unavailable`. Runtime is outside this
+  initial-load method, so a runtime request makes the answer partial with an `OutsideMethod` gap.
+
+Unknown fields and readers without a bound storage decoder return explicit unavailable storage.
+Native does not infer validity or runtime success from storage, a diagnostic list, or a loader
+return.
+
+Choose either or both `FixtureObservationKind` values for the category entry question. It uses
+`FixtureWindow::InitialCategoryLoad`; field outcomes use `FixtureWindow::InitialFileLoad`.
+`InitialCategoryLoad` and `CategoryFieldReads` require `common/tradition_categories`. Registration
+entries may accompany that category window, or accompany an `InitialFileLoad` field-outcome request
+in either supported registry. Tradition field outcomes can capture malformed and unexpected-field
+parser diagnostics. Category field outcomes report parser diagnostics and storage unavailable
+because this build has no outcome binding for that registry.
+`deadline_seconds` defaults to 180 and must be 1–180; the
 smaller of it and `GameOptions::startup_seconds` bounds startup observation. Repeated questions
 read the same startup results and refresh the idle timeout. A different fixture needs a new session.
 

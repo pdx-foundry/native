@@ -2,7 +2,7 @@
 use crate::{OpenError, UnavailableReason, binding::Binding};
 use std::sync::{Arc, Mutex, OnceLock};
 
-mod questions;
+pub(crate) mod questions;
 
 /// A pinned installation. Static questions never start a game. `start_game` starts a game that
 /// an independent supervisor process owns.

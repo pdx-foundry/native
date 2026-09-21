@@ -195,24 +195,49 @@ def registry_callback(frame, name):
 
 
 class FixtureObserver:
-    """One file's read-entry window; registry callbacks own the eventual session pause."""
+    """One file's parser window; registry callbacks own the eventual session pause."""
     def __init__(self, config):
         self.config = config
         self.bindings = config['bindings']
         self.fields = {field['token']: field['name'] for field in self.bindings['fields']}
+        registry = config['file'].rsplit('/', 1)[0]
+        self.outcome_binding = next((item for item in self.bindings['outcome_registries'] if item['registry'] == registry), None)
+        self.questions = {item['index']: item for item in config['questions']}
+        self.requested_definitions = {item['definition'] for item in config['questions']}
+        self.question_by_token = {(item['definition'], item['token']): item for item in config['questions'] if item['token'] is not None}
+        self.diagnostics_requested = any(item['diagnostics'] for item in config['questions'])
         self.control = request['control'] if request['fixture_fault'] else 'normal'
         self.registrations = 0
         self.field_count = 0
         self.loading = False
         self.returned = False
         self.owner = None
+        self.definitions = {}
+        self.constructor_count = 0
+        self.occurrences = {index: 0 for index in self.questions}
+        self.pending_constructors = {}
+        self.pending_fields = {}
+        self.diagnostics = 0
+        self.active_reader = None
 
     def hooks(self):
-        hooks = [('fixture:load', self.bindings['load_entry'])]
+        load_entry = self.outcome_binding['load_entry'] if self.questions and self.outcome_binding else self.bindings['load_entry']
+        hooks = [('fixture:load', load_entry)]
         if self.config['registration_entries']:
             hooks.append(('fixture:registration', self.bindings['registration_entry']))
         if self.config['field_reads']:
             hooks.append(('fixture:field', self.bindings['field_entry']))
+        if self.questions and self.outcome_binding:
+            hooks.extend([
+                ('fixture:constructor', self.outcome_binding['constructor_entry']),
+                ('fixture:reader', self.outcome_binding['reader_entry']),
+                ('fixture:member', self.outcome_binding['member_entry']),
+            ])
+            if self.diagnostics_requested:
+                hooks.extend([
+                    ('fixture:malformed', self.outcome_binding['malformed_entry']),
+                    ('fixture:unexpected', self.outcome_binding['unexpected_entry']),
+                ])
         return hooks
 
     def emit(self, kind, thread, **fields):
@@ -225,6 +250,215 @@ class FixtureObserver:
         address = uint(process, storage) if uint(process, storage + self.bindings['string_tag_offset'], 1) & 128 else storage
         return string(process, address), uint(process, source + self.bindings['file_line_offset'], 4)
 
+    def stored_string(self, process, storage):
+        address = uint(process, storage) if uint(process, storage + self.bindings['string_tag_offset'], 1) & 128 else storage
+        return string(process, address)
+
+    def return_hook(self, frame, name):
+        process = frame.GetThread().GetProcess()
+        hook = process.GetTarget().BreakpointCreateByAddress(register(frame, request['machine']['registers']['return']))
+        hook.SetThreadID(frame.GetThread().GetThreadID())
+        hook.SetOneShot(True)
+        hook.SetScriptCallbackFunction('worker.callback')
+        if hook.GetNumResolvedLocations() != 1:
+            raise RuntimeError('fixture dynamic return hook unresolved')
+        breakpoints[name] = hook
+
+    def finish_questions(self, process, thread):
+        for index, question in self.questions.items():
+            unavailable = question['unavailable']
+            owner = self.definitions.get(question['definition'])
+            if unavailable:
+                self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
+                    reader_id=question['reader_id'], reader_kind=question['reader_kind'],
+                    final_value=None, unavailable=unavailable)
+            elif owner is None:
+                self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
+                    reader_id=question['reader_id'], reader_kind=question['reader_kind'],
+                    final_value=None, unavailable='Requested definition constructor was not observed')
+            else:
+                value = self.stored_string(process, owner['owner'] + question['storage_offset'])
+                self.emit('field-terminal', thread, question=index, owner=hex(owner['owner']),
+                    definition_line=owner['line'], reader_id=question['reader_id'],
+                    reader_kind=question['reader_kind'], final_value=value, unavailable=None)
+        if self.diagnostics_requested:
+            if self.outcome_binding:
+                self.emit('diagnostics-terminal', thread, count=self.diagnostics)
+            else:
+                self.emit('diagnostics-unavailable', thread,
+                    reason='Parser diagnostics are outside this registry binding')
+
+    def on_registration(self, thread, name):
+        self.registrations += 1
+        self.emit('registration-entry', thread, ordinal=self.registrations)
+        if self.registrations != 3:
+            return False
+        breakpoints[name].SetEnabled(False)
+        self.emit('registration-end', thread, count=3)
+        if self.control == 'worker-loss':
+            emit('worker-loss-ready')
+            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+            return True
+        return False
+
+    def on_load(self, frame, process, thread, registers):
+        file = string(process, register(frame, registers['file']))
+        if file != self.config['file']:
+            return False
+        if self.loading:
+            raise RuntimeError('fixture loader entered more than once')
+        self.loading = True
+        self.emit('load-start', thread, file=file)
+        for index, question in self.questions.items():
+            supported = (question['unavailable'] is None and question['reader_kind'] == 'String'
+                and question['reader_id'] is not None and question['token'] is not None
+                and question['storage_offset'] is not None)
+            self.emit('field-authority', thread, question=index,
+                reader_id=question['reader_id'], reader_kind=question['reader_kind'],
+                storage_supported=supported, unavailable=question['unavailable'])
+        if self.questions and self.outcome_binding:
+            return_address = process.GetTarget().ResolveFileAddress(self.outcome_binding['reader_return'])
+            hook = process.GetTarget().BreakpointCreateBySBAddress(return_address)
+        else:
+            hook = process.GetTarget().BreakpointCreateByAddress(register(frame, registers['return']))
+        hook.SetThreadID(thread)
+        hook.SetOneShot(True)
+        hook.SetScriptCallbackFunction('worker.callback')
+        if hook.GetNumResolvedLocations() != 1:
+            raise RuntimeError('fixture return hook unresolved')
+        breakpoints['fixture:return'] = hook
+        if self.control == 'access-failure':
+            uint(process, 0)
+            raise RuntimeError('access failure unexpectedly read zero')
+        return False
+
+    def on_constructor(self, frame, process, registers):
+        if not self.loading or self.returned:
+            return False
+        key = self.stored_string(process, register(frame, 'x2'))
+        if key not in self.requested_definitions:
+            return False
+        if self.constructor_count >= 256:
+            raise RuntimeError('fixture definition bound exceeded')
+        owner = register(frame, registers['owner'])
+        if self.active_reader is None:
+            raise RuntimeError('fixture constructor has no active file reader')
+        file, line = self.location(process, self.active_reader)
+        if file != self.config['file']:
+            return False
+        self.constructor_count += 1
+        dynamic = 'fixture:constructor-return:' + str(self.constructor_count)
+        self.pending_constructors[dynamic] = dict(owner=owner, definition=key, line=line)
+        self.return_hook(frame, dynamic)
+        return False
+
+    def on_constructor_return(self, thread, name):
+        breakpoints[name].SetEnabled(False)
+        definition = self.pending_constructors.pop(name, None)
+        if definition is None:
+            return False
+        if definition['definition'] in self.definitions:
+            raise RuntimeError('fixture definition key constructed more than once')
+        self.definitions[definition['definition']] = definition
+        self.emit('definition', thread, file=self.config['file'], line=definition['line'],
+            definition=definition['definition'], owner=hex(definition['owner']))
+        return False
+
+    def on_member(self, frame, process, registers):
+        if not self.loading or self.returned:
+            return False
+        owner = register(frame, registers['owner'])
+        definition = next((key for key, value in self.definitions.items() if value['owner'] == owner), None)
+        token = register(frame, registers['field-token'])
+        question = self.question_by_token.get((definition, token))
+        if question is None:
+            return False
+        index = question['index']
+        self.occurrences[index] += 1
+        if self.occurrences[index] > 128:
+            raise RuntimeError('fixture field occurrence bound exceeded')
+        reader = register(frame, registers['reader'])
+        file, line = self.location(process, reader)
+        if file != self.config['file']:
+            raise RuntimeError('fixture member source differs from selected file')
+        dynamic = 'fixture:member-return:' + str(index) + ':' + str(self.occurrences[index])
+        self.pending_fields[dynamic] = dict(question=index, owner=owner, reader=reader,
+            line=line, occurrence=self.occurrences[index], field=question['field'], definition=definition)
+        self.return_hook(frame, dynamic)
+        return False
+
+    def on_member_return(self, process, thread, name):
+        breakpoints[name].SetEnabled(False)
+        pending = self.pending_fields.pop(name, None)
+        if pending is None:
+            return False
+        question = self.questions[pending['question']]
+        value = self.stored_string(process, pending['owner'] + question['storage_offset'])
+        self.emit('field-storage', thread, question=pending['question'], file=self.config['file'],
+            line=pending['line'], definition=pending['definition'], field=pending['field'],
+            owner=hex(pending['owner']), occurrence=pending['occurrence'], value=value)
+        return False
+
+    def on_diagnostic(self, frame, process, thread, registers, stage):
+        if not self.loading or self.returned:
+            return False
+        if self.diagnostics >= 128:
+            raise RuntimeError('fixture diagnostic bound exceeded')
+        reader = register(frame, registers['owner'])
+        text = self.stored_string(process, register(frame, registers['reader']))
+        file, line = None, None
+        try:
+            observed_file, observed_line = self.location(process, reader)
+            if observed_file != self.config['file']:
+                return False
+            file, line = observed_file, observed_line
+        except Exception:
+            pass
+        pending = next((value for value in self.pending_fields.values()
+            if value['reader'] == reader), None)
+        self.diagnostics += 1
+        self.emit('diagnostic', thread, text=text, stage=stage, file=file, line=line,
+            definition=pending.get('definition') if pending else None,
+            field=pending.get('field') if pending else None,
+            occurrence=pending.get('occurrence') if pending else None)
+        return False
+
+    def on_field(self, frame, process, thread, registers, name):
+        file, line = self.location(process, register(frame, registers['reader']))
+        if file != self.config['file']:
+            return False
+        owner = register(frame, registers['owner'])
+        token = register(frame, registers['field-token'])
+        if not self.loading or self.returned or not owner or self.owner not in (None, owner):
+            raise RuntimeError('fixture field has no matching loader or owner')
+        if token not in self.fields or self.field_count >= 2:
+            breakpoints[name].SetEnabled(False)
+            raise RuntimeError('field outside the bounded category window')
+        self.owner = owner
+        self.field_count += 1
+        self.emit('field-read', thread, file=file, line=line, field=self.fields[token],
+            owner=hex(owner), ordinal=self.field_count)
+        if self.control == 'worker-loss' and not self.config['registration_entries']:
+            emit('worker-loss-ready')
+            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+            return True
+        return False
+
+    def on_return(self, process, thread):
+        if not self.loading or self.returned:
+            raise RuntimeError('fixture return has no matching loader entry')
+        self.returned = True
+        self.finish_questions(process, thread)
+        for key, hook in breakpoints.items():
+            if key.startswith('fixture:'):
+                hook.SetEnabled(False)
+        self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
+        if self.control != 'missing-terminal':
+            self.emit('end', thread, registrations=self.registrations, field_reads=self.field_count,
+                field_outcomes=len(self.questions), diagnostics=self.diagnostics,
+                producer_last_sequence=sequence + 1)
+        return False
+
     def callback(self, frame, name):
         process = frame.GetThread().GetProcess()
         thread = frame.GetThread().GetThreadID()
@@ -232,61 +466,29 @@ class FixtureObserver:
         if thread != entry_thread:
             raise RuntimeError('fixture callback differs from the launch thread')
         if name == 'fixture:registration':
-            self.registrations += 1
-            self.emit('registration-entry', thread, ordinal=self.registrations)
-            if self.registrations == 3:
-                breakpoints[name].SetEnabled(False)
-                self.emit('registration-end', thread, count=3)
-                if self.control == 'worker-loss':
-                    emit('worker-loss-ready')
-                    (ROOT / 'worker-loss-ready').touch(exist_ok=False)
-                    return True
-        elif name == 'fixture:load':
-            file = string(process, register(frame, registers['file']))
-            if file != self.config['file']:
-                return False
-            if self.loading:
-                raise RuntimeError('fixture loader entered more than once')
-            self.loading = True
-            self.emit('load-start', thread, file=file)
-            hook = process.GetTarget().BreakpointCreateByAddress(register(frame, registers['return']))
-            hook.SetThreadID(thread)
-            hook.SetOneShot(True)
-            hook.SetScriptCallbackFunction('worker.callback')
-            if hook.GetNumResolvedLocations() != 1:
-                raise RuntimeError('fixture return hook unresolved')
-            breakpoints['fixture:return'] = hook
-            if self.control == 'access-failure':
-                uint(process, 0)
-                raise RuntimeError('access failure unexpectedly read zero')
-        elif name == 'fixture:field':
-            file, line = self.location(process, register(frame, registers['reader']))
-            if file != self.config['file']:
-                return False
-            owner = register(frame, registers['owner'])
-            token = register(frame, registers['field-token'])
-            if not self.loading or self.returned or not owner or self.owner not in (None, owner):
-                raise RuntimeError('fixture field has no matching loader or owner')
-            if token not in self.fields or self.field_count >= 2:
-                breakpoints[name].SetEnabled(False)
-                raise RuntimeError('field outside the bounded category window')
-            self.owner = owner
-            self.field_count += 1
-            self.emit('field-read', thread, file=file, line=line, field=self.fields[token], owner=hex(owner), ordinal=self.field_count)
-            if self.control == 'worker-loss' and not self.config['registration_entries']:
-                emit('worker-loss-ready')
-                (ROOT / 'worker-loss-ready').touch(exist_ok=False)
-                return True
-        elif name == 'fixture:return':
-            if not self.loading or self.returned:
-                raise RuntimeError('fixture return has no matching loader entry')
-            self.returned = True
-            for key, hook in breakpoints.items():
-                if key.startswith('fixture:'):
-                    hook.SetEnabled(False)
-            self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
-            if self.control != 'missing-terminal':
-                self.emit('end', thread, registrations=self.registrations, field_reads=self.field_count, producer_last_sequence=sequence + 1)
+            return self.on_registration(thread, name)
+        if name == 'fixture:load':
+            return self.on_load(frame, process, thread, registers)
+        if name == 'fixture:constructor':
+            return self.on_constructor(frame, process, registers)
+        if name == 'fixture:reader':
+            if self.loading and not self.returned:
+                self.active_reader = register(frame, registers['reader'])
+            return False
+        if name.startswith('fixture:constructor-return:'):
+            return self.on_constructor_return(thread, name)
+        if name == 'fixture:member':
+            return self.on_member(frame, process, registers)
+        if name.startswith('fixture:member-return:'):
+            return self.on_member_return(process, thread, name)
+        if name == 'fixture:malformed':
+            return self.on_diagnostic(frame, process, thread, registers, 'reader-malformed-report')
+        if name == 'fixture:unexpected':
+            return self.on_diagnostic(frame, process, thread, registers, 'reader-unexpected-report')
+        if name == 'fixture:field':
+            return self.on_field(frame, process, thread, registers, name)
+        if name == 'fixture:return':
+            return self.on_return(process, thread)
         return False
 
 

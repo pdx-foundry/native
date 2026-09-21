@@ -64,3 +64,21 @@ every case, and compare saved answers with game-free reads.
 The first integration attempt failed before attachment: a numeric-key binding map generated
 `patternProperties`, which the worker codec deliberately refuses. A typed list of field bindings
 uses the supported schema subset; the Python request-codec test covers this boundary.
+
+## Parser field outcomes (SDK-533, M45-observe)
+
+The tradition file method joins the exact `CTraditionType` constructor, root member reader,
+String-reader return, malformed-report routine, and the return from `LoadFromReader` while its
+reader is still alive. The statically established String fields are `custom_tooltip`,
+`custom_tooltip_with_modifiers`, and `unlocks_agenda`; they share reader identity
+`325efaa17499c32d`. The constructor establishes an omitted definition without parsing fixture text.
+Each joined field return reads actual owner storage, and the file terminal reads it again.
+
+Diagnostics are intercepted at `CReader::ReportMalformed(CString const&)` and
+`CReader::ReportUnexpected(CString const&)`, the overloads that create their own reader error
+entries, so the no-argument forwarding overloads do not duplicate them.
+The multiline quoted-string control reports the engine text `Malformed token` on line 3, joins it
+to the requested field occurrence, and stores the independently observed value `Unreadable String`.
+The coverage terminal means only that parser diagnostic collection completed for this file load.
+No M45 mechanism in this method reaches post-read validation, a world, or gameplay runtime;
+requested runtime is an explicit unavailable outcome and `OutsideMethod` gap.

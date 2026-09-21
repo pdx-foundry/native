@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/6";
+pub(crate) const VERSION: &str = "native-observation/8";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 
@@ -113,6 +113,7 @@ pub(crate) struct FixtureBinding {
     pub string_tag_offset: u64,
     pub file_line_offset: u64,
     pub fields: Vec<FixtureFieldBinding>,
+    pub outcome_registries: Vec<FixtureOutcomeRegistryBinding>,
 }
 
 /// A field token selected by the exact-build recipe.
@@ -123,6 +124,46 @@ pub(crate) struct FixtureFieldBinding {
     pub name: String,
 }
 
+/// Exact-build hooks and storage layouts for one fixture registry.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureOutcomeRegistryBinding {
+    pub registry: String,
+    pub load_entry: u64,
+    pub reader_entry: u64,
+    pub reader_return: u64,
+    pub constructor_entry: u64,
+    pub member_entry: u64,
+    pub malformed_entry: u64,
+    pub unexpected_entry: u64,
+    pub fields: Vec<FixtureOutcomeFieldBinding>,
+}
+
+/// One field's exact token and owner-relative storage.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureOutcomeFieldBinding {
+    pub token: u64,
+    pub name: String,
+    pub storage_offset: u64,
+}
+
+/// One public question resolved against static reader evidence and exact live bindings.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureQuestionSetup {
+    pub index: u64,
+    pub definition: String,
+    pub field: String,
+    pub diagnostics: bool,
+    pub runtime: bool,
+    pub reader_id: Option<String>,
+    pub reader_kind: String,
+    pub token: Option<u64>,
+    pub storage_offset: Option<u64>,
+    pub unavailable: Option<String>,
+}
+
 /// The validated observation selection, resolved before starting the worker.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -130,6 +171,7 @@ pub(crate) struct FixtureSetup {
     pub file: String,
     pub registration_entries: bool,
     pub field_reads: bool,
+    pub questions: Vec<FixtureQuestionSetup>,
     pub bindings: FixtureBinding,
 }
 
