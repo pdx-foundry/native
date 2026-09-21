@@ -1,0 +1,1435 @@
+{
+  "machine": {
+    "revision": "3d3810bf75f5a4beb030a2d1a3e157f6375c5c3b",
+    "installation": "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris",
+    "date": "2026-09-21T14:28:19-0400",
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83\n",
+    "hardware": "machdep.cpu.brand_string: Apple M4\nhw.memsize: 34359738368\nhw.ncpu: 10\n",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: aarch64-apple-darwin\nrelease: 1.98.1\nLLVM version: 22.1.8\n"
+  },
+  "timings": {
+    "baseline": [
+      {
+        "label": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--tests",
+          "--examples",
+          "--message-format=json"
+        ],
+        "seconds": 12.397642333991826,
+        "exit_code": 0
+      },
+      {
+        "label": "loader-parity-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/deps/pdx_native-e6521ec2599a0cc8",
+          "--ignored",
+          "--exact",
+          "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry",
+          "--nocapture"
+        ],
+        "seconds": 3.712340750033036,
+        "exit_code": 0
+      },
+      {
+        "label": "loader-parity-2",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/deps/pdx_native-e6521ec2599a0cc8",
+          "--ignored",
+          "--exact",
+          "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry",
+          "--nocapture"
+        ],
+        "seconds": 3.5138597080949694,
+        "exit_code": 0
+      },
+      {
+        "label": "outside-common-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/deps/live-fa19b329052977b1",
+          "--ignored",
+          "outside_common"
+        ],
+        "seconds": 36.59488854184747,
+        "exit_code": 0
+      },
+      {
+        "label": "outside-common-2",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/deps/live-fa19b329052977b1",
+          "--ignored",
+          "outside_common"
+        ],
+        "seconds": 34.973657875088975,
+        "exit_code": 0
+      },
+      {
+        "label": "registry-report-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/examples/registry-items-report",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris"
+        ],
+        "seconds": 448.37927133287303,
+        "exit_code": 0
+      },
+      {
+        "label": "registry-report-2",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/examples/registry-items-report",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris"
+        ],
+        "seconds": 449.08673912496306,
+        "exit_code": 0
+      },
+      {
+        "label": "live-suite-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/deps/live-fa19b329052977b1",
+          "--ignored"
+        ],
+        "seconds": 1832.8568270418327,
+        "exit_code": 0
+      },
+      {
+        "label": "live-suite-2",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/deps/live-fa19b329052977b1",
+          "--ignored"
+        ],
+        "seconds": 2012.5456402502023,
+        "exit_code": 1
+      }
+    ],
+    "phases": [
+      {
+        "label": "retry-unknown-field",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/release/deps/live-fa19b329052977b1",
+          "--ignored",
+          "fixture_outcome_unknown_field"
+        ],
+        "seconds": 38.54259083303623,
+        "exit_code": 0
+      },
+      {
+        "label": "debug-build",
+        "command": [
+          "cargo",
+          "test",
+          "--lib",
+          "--no-run",
+          "--message-format=json"
+        ],
+        "seconds": 0.1652900001499802,
+        "exit_code": 0
+      },
+      {
+        "label": "debug-parity-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/debug/deps/pdx_native-7ca20993870616b1",
+          "--ignored",
+          "--exact",
+          "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry",
+          "--nocapture"
+        ],
+        "seconds": 73.70064204209484,
+        "exit_code": 0
+      },
+      {
+        "label": "debug-parity-2",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/debug/deps/pdx_native-7ca20993870616b1",
+          "--ignored",
+          "--exact",
+          "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry",
+          "--nocapture"
+        ],
+        "seconds": 73.71375420805998,
+        "exit_code": 0
+      },
+      {
+        "label": "instrumented-build",
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--tests",
+          "--examples",
+          "--message-format=json"
+        ],
+        "seconds": 30.939095499925315,
+        "exit_code": 0
+      },
+      {
+        "label": "profile-parity-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/.local/sdk-559/instrumented/target/release/deps/pdx_native-e6521ec2599a0cc8",
+          "--ignored",
+          "--exact",
+          "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry",
+          "--nocapture"
+        ],
+        "seconds": 4.556593250017613,
+        "exit_code": 0
+      }
+    ],
+    "static": [
+      {
+        "label": "cargo-registries-debug-1",
+        "command": [
+          "cargo",
+          "run",
+          "--package",
+          "pdx-native",
+          "--example",
+          "registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 117.59695108397864,
+        "exit_code": 0
+      },
+      {
+        "label": "cargo-registries-release-1",
+        "command": [
+          "cargo",
+          "run",
+          "--release",
+          "--package",
+          "pdx-native",
+          "--example",
+          "registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 6.454394124913961,
+        "exit_code": 0
+      },
+      {
+        "label": "cargo-registries-debug-2",
+        "command": [
+          "cargo",
+          "run",
+          "--package",
+          "pdx-native",
+          "--example",
+          "registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 61.460052125155926,
+        "exit_code": 0
+      },
+      {
+        "label": "cargo-registries-release-2",
+        "command": [
+          "cargo",
+          "run",
+          "--release",
+          "--package",
+          "pdx-native",
+          "--example",
+          "registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 3.092228583060205,
+        "exit_code": 0
+      },
+      {
+        "label": "profile-build-debug",
+        "command": [
+          "cargo",
+          "build",
+          "--example",
+          "registries"
+        ],
+        "seconds": 12.204344334080815,
+        "exit_code": 0
+      },
+      {
+        "label": "profile-registries-debug-1",
+        "command": [
+          "target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 62.31926791602746,
+        "exit_code": 0
+      },
+      {
+        "label": "profile-registries-debug-2",
+        "command": [
+          "target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 59.35837016697042,
+        "exit_code": 0
+      },
+      {
+        "label": "profile-build-release",
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--example",
+          "registries"
+        ],
+        "seconds": 24.952746625058353,
+        "exit_code": 0
+      },
+      {
+        "label": "profile-registries-release-1",
+        "command": [
+          "target/release/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 3.1288119999226183,
+        "exit_code": 0
+      },
+      {
+        "label": "profile-registries-release-2",
+        "command": [
+          "target/release/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 2.8717710829805583,
+        "exit_code": 0
+      }
+    ],
+    "optimization": [
+      {
+        "label": "baseline-repeat-build",
+        "command": [
+          "cargo",
+          "build",
+          "--example",
+          "static-repeat"
+        ],
+        "seconds": 0.22197375004179776,
+        "exit_code": 0
+      },
+      {
+        "label": "baseline-repeat",
+        "command": [
+          "target/debug/examples/static-repeat",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 89.6676479158923,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-build",
+        "command": [
+          "cargo",
+          "--config",
+          "profile.dev.package.sha2.opt-level=3",
+          "build",
+          "--example",
+          "registries",
+          "--example",
+          "static-repeat"
+        ],
+        "seconds": 4.661247374955565,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-1",
+        "command": [
+          "target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 17.957813000073656,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-2",
+        "command": [
+          "target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 16.920558832818642,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-repeat",
+        "command": [
+          "target/debug/examples/static-repeat",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 18.95087991701439,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-demangle-build",
+        "command": [
+          "cargo",
+          "--config",
+          "profile.dev.package.sha2.opt-level=3",
+          "--config",
+          "profile.dev.package.cpp_demangle.opt-level=3",
+          "build",
+          "--example",
+          "registries",
+          "--example",
+          "static-repeat"
+        ],
+        "seconds": 6.614405124913901,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-demangle-1",
+        "command": [
+          "target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 6.642425834201276,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-demangle-2",
+        "command": [
+          "target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 6.11691620782949,
+        "exit_code": 0
+      },
+      {
+        "label": "sha2-demangle-repeat",
+        "command": [
+          "target/debug/examples/static-repeat",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 7.779138749931008,
+        "exit_code": 0
+      },
+      {
+        "label": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "seconds": 0.17988725006580353,
+        "exit_code": 0
+      },
+      {
+        "label": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "seconds": 0.13625416602008045,
+        "exit_code": 0
+      },
+      {
+        "label": "full-tests",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace"
+        ],
+        "seconds": 5.211885208962485,
+        "exit_code": 0
+      }
+    ],
+    "final": [
+      {
+        "label": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--tests",
+          "--examples"
+        ],
+        "seconds": 20.106575540965423,
+        "exit_code": 0
+      },
+      {
+        "label": "exact-command-1",
+        "command": [
+          "cargo",
+          "run",
+          "--package",
+          "pdx-native",
+          "--example",
+          "registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 9.005627000005916,
+        "exit_code": 0
+      },
+      {
+        "label": "exact-command-2",
+        "command": [
+          "cargo",
+          "run",
+          "--package",
+          "pdx-native",
+          "--example",
+          "registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 6.540555999847129,
+        "exit_code": 0
+      },
+      {
+        "label": "measure-driver",
+        "command": [
+          "python3",
+          "tools/profiling/measure.py",
+          "/Users/jackson/Developer/pdx-native/.local/sdk-559/final-driver",
+          "--repeats",
+          "2"
+        ],
+        "seconds": 34.33840920799412,
+        "exit_code": 0
+      },
+      {
+        "label": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "seconds": 0.16124629089608788,
+        "exit_code": 0
+      },
+      {
+        "label": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "seconds": 5.879726874874905,
+        "exit_code": 0
+      },
+      {
+        "label": "full-tests",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace"
+        ],
+        "seconds": 13.388459125068039,
+        "exit_code": 0
+      },
+      {
+        "label": "static-parity",
+        "command": [
+          "cargo",
+          "test",
+          "--test",
+          "static_questions",
+          "--",
+          "--ignored"
+        ],
+        "seconds": 36.460146750090644,
+        "exit_code": 0
+      },
+      {
+        "label": "static-invalidation",
+        "command": [
+          "cargo",
+          "test",
+          "--lib",
+          "binding::analysis::tests",
+          "--",
+          "--ignored"
+        ],
+        "seconds": 14.801307334098965,
+        "exit_code": 0
+      },
+      {
+        "label": "python-protocol",
+        "command": [
+          "python3",
+          "tools/observation/test_protocol.py"
+        ],
+        "seconds": 0.13836937514133751,
+        "exit_code": 0
+      },
+      {
+        "label": "probe-build",
+        "command": [
+          "cargo",
+          "build",
+          "--example",
+          "registries"
+        ],
+        "seconds": 12.183516792021692,
+        "exit_code": 0
+      },
+      {
+        "label": "probe-registries",
+        "command": [
+          "target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 8.254808166995645,
+        "exit_code": 0
+      }
+    ],
+    "final-driver": [
+      {
+        "label": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--tests",
+          "--examples",
+          "--message-format=json"
+        ],
+        "seconds": 0.05159537494182587,
+        "exit_code": 0
+      },
+      {
+        "label": "registries-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 6.596890083048493,
+        "exit_code": 0
+      },
+      {
+        "label": "registries-2",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/debug/examples/registries",
+          "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+        ],
+        "seconds": 6.169608083087951,
+        "exit_code": 0
+      },
+      {
+        "label": "loader-parity-1",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/debug/deps/pdx_native-97264cd5dfd3be34",
+          "--ignored",
+          "--exact",
+          "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry",
+          "--nocapture"
+        ],
+        "seconds": 11.376616583904251,
+        "exit_code": 0
+      },
+      {
+        "label": "loader-parity-2",
+        "command": [
+          "/Users/jackson/Developer/pdx-native/target/debug/deps/pdx_native-97264cd5dfd3be34",
+          "--ignored",
+          "--exact",
+          "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry",
+          "--nocapture"
+        ],
+        "seconds": 10.047279250109568,
+        "exit_code": 0
+      }
+    ]
+  },
+  "phases": {
+    "profile-registries-debug-1-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 46.08924595799999,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.011533417,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 5.999733916,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 28.294928042000002,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 16.2606185,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 11.859898708,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 29.897529333,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 13.382130292,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.607925791,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.036049625,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.343940167,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 15.389986917,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.110017291,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.044576958,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.037267542,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 30.925841,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 45.760346042,
+        "count": 1
+      }
+    },
+    "profile-registries-debug-2-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 44.805030497,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.010999333,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 5.904752041,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 26.933098791,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 14.877480833,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 12.014155583,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 29.977693708,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 12.006391334,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.582641208,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.033922,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.343644,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 13.98853225,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.119794875,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.050985291,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.042748125,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 29.417544667,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 44.474427833,
+        "count": 1
+      }
+    },
+    "profile-registries-release-1-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 2.183304081,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.005611833,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.357995792,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 1.294879209,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.796017083,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 0.587738792,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 1.446276708,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 0.5126885,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.029681708,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.004376625,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 0.045568042,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 0.59974775,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.011228542,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.003063583,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.003221208,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 1.3970066669999999,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 2.116504084,
+        "count": 1
+      }
+    },
+    "profile-registries-release-2-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 2.1331000369999997,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.004726917,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.302777084,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 1.2851175000000001,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.730666333,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 0.590059375,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 1.449133667,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 0.512283292,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.030263125,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.004366625,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 0.046781417,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 0.604390333,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.012574875,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.003188084,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.00342075,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 1.408476542,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 2.135771416,
+        "count": 1
+      }
+    },
+    "baseline-repeat-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 74.74367254199998,
+        "count": 83
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.012293,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 6.345765958,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 44.978446917,
+        "count": 5
+      },
+      "src/binding.rs:open": {
+        "seconds": 15.414070584,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 23.503927083999997,
+        "count": 4
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 59.418604668,
+        "count": 4
+      },
+      "discovery:symbols": {
+        "seconds": 12.115691083,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.5810075,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.033987292,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.350009958,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 14.100110083,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.111179875,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.047369916,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.038766375,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 29.435996916,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 73.99227879200001,
+        "count": 3
+      }
+    },
+    "sha2-1-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 2.1799762969999996,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.006165666,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.355176458,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 1.298189875,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.795026459,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 0.5858190409999999,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 1.447555916,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 12.652211375,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.612663208,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.037098459,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.511334584,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 14.836088167,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.126403084,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.050739542,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.043873959,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 16.120214459,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 16.842182542,
+        "count": 1
+      }
+    },
+    "sha2-2-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 2.195168419,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.00636025,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.344146875,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 1.313544126,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.800046209,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 0.5889106669999999,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 1.449796917,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 12.246597417,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.585316709,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.035310792,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.309656459,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 14.198102042,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.1068165,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.043648042,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.037393958,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 15.389074417,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 16.1137715,
+        "count": 1
+      }
+    },
+    "sha2-demangle-1-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 2.273270584,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.007287917,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.41273425,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 1.332716041,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.89237,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 0.598751833,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 1.4554285409999999,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 1.807339083,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.282686042,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.0341585,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.331834916,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 3.475554292,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.108976,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.046063292,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.038995125,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 4.65712025,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 5.38803775,
+        "count": 1
+      }
+    },
+    "sha2-demangle-2-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 2.1418344990000002,
+        "count": 77
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.005479833,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.300756375,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 1.292452583,
+        "count": 3
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.732735708,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 0.59546625,
+        "count": 2
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 1.4588665,
+        "count": 2
+      },
+      "discovery:symbols": {
+        "seconds": 1.799391875,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.2789685,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.03450675,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.322025917,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 3.454807625,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.111586792,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.044534167,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.0374745,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 4.641037583,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 5.378330375,
+        "count": 1
+      }
+    },
+    "sha2-demangle-repeat-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 3.564214788999999,
+        "count": 83
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.005762667,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.306054959,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 2.1569639990000002,
+        "count": 5
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.737653667,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 1.174369708,
+        "count": 4
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 2.904127,
+        "count": 4
+      },
+      "discovery:symbols": {
+        "seconds": 1.795524292,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.287176125,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.035097958,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.31043525,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 3.450037125,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.106356959,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.047038917,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.038617041,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 4.6439580419999995,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 6.8230295409999995,
+        "count": 3
+      }
+    },
+    "sha2-repeat-phases": {
+      "src/binding/binary.rs:hash": {
+        "seconds": 3.5742182950000005,
+        "count": 83
+      },
+      "src/binding/installation.rs:content_snapshot": {
+        "seconds": 0.005576875,
+        "count": 1
+      },
+      "src/binding/installation.rs:open": {
+        "seconds": 0.326709459,
+        "count": 1
+      },
+      "src/binding/binary.rs:identify": {
+        "seconds": 2.1589185,
+        "count": 5
+      },
+      "src/binding.rs:open": {
+        "seconds": 0.755927584,
+        "count": 1
+      },
+      "src/binding/installation.rs:executable_bytes": {
+        "seconds": 1.173243792,
+        "count": 4
+      },
+      "src/binding/analysis.rs:executable": {
+        "seconds": 2.907366292,
+        "count": 4
+      },
+      "discovery:symbols": {
+        "seconds": 12.560162875,
+        "count": 1
+      },
+      "discovery:fixups": {
+        "seconds": 0.581327041,
+        "count": 1
+      },
+      "discovery:strings": {
+        "seconds": 0.035435375,
+        "count": 1
+      },
+      "discovery:code-and-vtables": {
+        "seconds": 1.323257792,
+        "count": 1
+      },
+      "src/binding/binary/discovery.rs:read": {
+        "seconds": 14.521235291,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:read": {
+        "seconds": 0.1072825,
+        "count": 1
+      },
+      "src/binding/binary/constructors.rs:initializers": {
+        "seconds": 0.043692875,
+        "count": 1
+      },
+      "src/engine/analysis/directories.rs:globals": {
+        "seconds": 0.037158375,
+        "count": 1
+      },
+      "src/binding/analysis.rs:named_candidates": {
+        "seconds": 15.731899667,
+        "count": 1
+      },
+      "src/session/questions.rs:registries_from_executable": {
+        "seconds": 17.905522458,
+        "count": 3
+      }
+    }
+  },
+  "repeated_queries": {
+    "baseline-repeat": [
+      "open: 15.414174",
+      "first: 44.276190",
+      "cached: 14.869990",
+      "cached: 14.846284"
+    ],
+    "sha2-demangle-repeat": [
+      "open: 0.737746",
+      "first: 5.364400",
+      "cached: 0.723346",
+      "cached: 0.735475"
+    ],
+    "sha2-repeat": [
+      "open: 0.756031",
+      "first: 16.458775",
+      "cached: 0.726097",
+      "cached: 0.720865"
+    ]
+  }
+}

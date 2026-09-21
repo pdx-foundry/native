@@ -1,13 +1,15 @@
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    discovery::{CandidateRecord, StaticInput},
+    discovery::{CandidateRecord, Symbol},
     fields::{FieldInput, Function},
 };
+use std::collections::BTreeMap;
 
 /// Read the selected root and the shared engine token constructor from the same verified buffer.
 pub(in crate::binding) fn read(
     bytes: &[u8],
-    discovery: StaticInput,
+    symbols: &[Symbol],
+    strings: &BTreeMap<u64, String>,
     selection: CandidateRecord,
 ) -> Result<FieldInput, AnalysisError> {
     let mut functions = Vec::new();
@@ -18,8 +20,7 @@ pub(in crate::binding) fn read(
         "CPersistent::ReadMember(CReader&, int)",
         "GetTokenArray()",
     ] {
-        let starts: std::collections::BTreeSet<_> = discovery
-            .symbols
+        let starts: std::collections::BTreeSet<_> = symbols
             .iter()
             .filter(|s| s.name == name)
             .map(|s| s.address)
@@ -29,8 +30,7 @@ pub(in crate::binding) fn read(
             continue;
         }
         let start = *starts.first().unwrap();
-        let Some(end) = discovery
-            .symbols
+        let Some(end) = symbols
             .iter()
             .filter(|s| s.address > start)
             .map(|s| s.address)
@@ -60,9 +60,9 @@ pub(in crate::binding) fn read(
     }
     Ok(FieldInput {
         selection,
-        symbols: discovery.symbols,
+        symbols: symbols.to_vec(),
         functions,
-        strings: discovery.strings,
+        strings: strings.clone(),
         gaps,
     })
 }

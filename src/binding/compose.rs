@@ -70,10 +70,5 @@ pub(super) fn analysis(
         stride: recipe.stride,
         count: recipe.count,
     };
-    Ok(super::BoundAnalysis::new(
-        image.executable.clone(),
-        image.slice.clone(),
-        layout,
-        installation,
-    ))
+    Ok(super::BoundAnalysis::new(layout, installation))
 }

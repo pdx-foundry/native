@@ -4,7 +4,7 @@ use crate::answer::{
     Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,
     ReaderKind, Registry, Source, Support,
 };
-use crate::binding::NamedCandidate;
+use crate::binding::VerifiedAnalysis;
 use crate::engine::analysis::{
     directories::{self, Directory},
     fields::{self, PathOutcome, RegistryFieldResult},
@@ -83,7 +83,7 @@ impl Native {
         }
     }
 
-    fn named_candidates(&self, operation: Operation) -> Result<&[NamedCandidate], Error> {
+    fn verified_analysis(&self, operation: Operation) -> Result<VerifiedAnalysis<'_>, Error> {
         let analysis = self
             .bound()
             .analysis
@@ -92,12 +92,7 @@ impl Native {
                 operation,
                 reason: "this build has no static analysis recipe".into(),
             })?;
-        // Cached discovery still belongs to the pinned executable.
-        analysis.executable().map_err(|e| error(operation, e))?;
-        self.candidates
-            .get_or_init(|| analysis.named_candidates())
-            .as_deref()
-            .map_err(|e| error(operation, e.clone()))
+        analysis.verified().map_err(|e| error(operation, e))
     }
 
     /// List the engine registries, each named by its content directory.
@@ -109,10 +104,10 @@ impl Native {
     }
 
     fn registries_from_executable(&self) -> Result<Answer<Vec<Registry>>, Error> {
-        let candidates = self.named_candidates(Operation::Registries)?;
+        let verified = self.verified_analysis(Operation::Registries)?;
         let mut names = BTreeSet::new();
         let mut unnamed = 0;
-        for candidate in candidates {
+        for candidate in verified.named_candidates() {
             match &candidate.directory {
                 Directory::Named(name) => {
                     names.insert(name.clone());
@@ -153,8 +148,9 @@ impl Native {
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let operation = Operation::RegistryFields;
         let name = registry.trim_end_matches('/');
-        let mut matching = self
-            .named_candidates(operation)?
+        let verified = self.verified_analysis(operation)?;
+        let mut matching = verified
+            .named_candidates()
             .iter()
             .filter(|c| c.directory == Directory::Named(name.to_owned()));
         let (Some(candidate), None) = (matching.next(), matching.next()) else {
@@ -162,8 +158,7 @@ impl Native {
                 name: registry.into(),
             });
         };
-        let analysis = self.bound().analysis.as_ref().expect("candidates exist");
-        let input = analysis
+        let input = verified
             .field_input(candidate.record.clone())
             .map_err(|e| error(operation, e))?;
         let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;

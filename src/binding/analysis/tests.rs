@@ -8,8 +8,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("image");
     fs::write(&path, support::macho(&support::code())).unwrap();
-    let (installation, bytes) = Installation::open(&path).unwrap();
-    let image = binary::identify(&bytes).unwrap();
+    let (installation, _) = Installation::open(&path).unwrap();
     // These tests read only the executable bytes, so the layout is never used.
     let layout = SchedulerLayout {
         start: 0,
@@ -18,7 +17,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
         stride: 48,
         count: 0,
     };
-    let analysis = BoundAnalysis::new(image.executable, image.slice, layout, installation);
+    let analysis = BoundAnalysis::new(layout, installation);
     (root, analysis)
 }
 
@@ -65,15 +64,11 @@ fn every_m45_named_candidate_has_one_initial_loader_entry() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
-    let candidates = binding
-        .analysis
-        .as_ref()
-        .unwrap()
-        .named_candidates()
-        .unwrap();
-    assert_eq!(candidates.len(), 164);
+    let candidates = binding.analysis.as_ref().unwrap().verified().unwrap();
+    assert_eq!(candidates.named_candidates().len(), 164);
     assert!(
         candidates
+            .named_candidates()
             .iter()
             .all(|candidate| candidate.record.initial_loader.is_some())
     );
@@ -82,6 +77,40 @@ fn every_m45_named_candidate_has_one_initial_loader_entry() {
         .unwrap();
     assert_eq!(known["common/traditions"].load_entry, 0x100ce0474);
     assert_eq!(known["common/tradition_categories"].load_entry, 0x100cd7d70);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn repeated_public_and_binding_queries_agree() {
+    use crate::Native;
+    let installation =
+        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    let native = Native::open(installation).unwrap();
+    let first = native.registries().unwrap();
+    assert_eq!(native.registries().unwrap(), first);
+    for registry in ["common/traditions", "common/tradition_categories"] {
+        let fields = native.registry_fields(registry).unwrap();
+        assert_eq!(native.registry_fields(registry).unwrap(), fields);
+        let fixture_fields = native
+            .bound()
+            .analysis
+            .as_ref()
+            .unwrap()
+            .registry_fields(registry)
+            .unwrap()
+            .unwrap();
+        assert_eq!(fixture_fields, fields.value);
+    }
+    let selected = [
+        "common/traditions".into(),
+        "common/tradition_categories".into(),
+    ];
+    let first = native.bound().registry_bindings(&selected).unwrap();
+    let second = native.bound().registry_bindings(&selected).unwrap();
+    assert_eq!(
+        serde_json::to_value(first).unwrap(),
+        serde_json::to_value(second).unwrap()
+    );
 }
 
 #[test]
@@ -117,13 +146,25 @@ fn cached_static_answers_refuse_changed_or_missing_executables() {
                 Err(Error::BuildChanged | Error::Unsupported { .. })
             ));
         }
+        assert!(
+            native
+                .bound()
+                .registry_bindings(&["common/traditions".into()])
+                .is_err()
+        );
         fs::write(path, &bytes).unwrap();
         assert_eq!(native.registries().unwrap_err(), error);
+        assert!(
+            native
+                .bound()
+                .registry_bindings(&["common/traditions".into()])
+                .is_err()
+        );
     }
 }
 
 #[test]
-fn reader_uses_verified_slice_bytes_without_content_or_live_tools() {
+fn reader_uses_verified_executable_bytes_without_content_or_live_tools() {
     let (root, binding) = fixture();
     assert!(!root.path().join("common").exists());
     let image = support::macho(&support::code());
@@ -131,11 +172,6 @@ fn reader_uses_verified_slice_bytes_without_content_or_live_tools() {
     fs::create_dir(root.path().join("common")).unwrap();
     fs::write(root.path().join("common/arbitrary.txt"), "content changed").unwrap();
     assert_eq!(binding.executable().unwrap(), image);
-    let mut binding = binding;
-    binding.slice = "e".repeat(64);
-    assert!(
-        matches!(binding.executable(), Err(AnalysisError::Unavailable { reasons }) if reasons == [UnavailableReason::TargetChanged])
-    );
 }
 
 #[test]
@@ -164,6 +200,45 @@ fn a_changed_or_missing_executable_permanently_invalidates_static_reads() {
         fs::write(path, original).unwrap();
         assert_eq!(binding.executable().unwrap_err(), error);
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn retargeted_executable_permanently_invalidates_static_reads() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempfile::tempdir().unwrap();
+    let image = support::macho(&support::code());
+    let original = root.path().join("original");
+    let replacement = root.path().join("replacement");
+    let hint = root.path().join("hint");
+    fs::write(&original, &image).unwrap();
+    fs::write(&replacement, &image).unwrap();
+    symlink(&original, &hint).unwrap();
+    let (installation, _) = Installation::open(&hint).unwrap();
+    let analysis = BoundAnalysis::new(
+        SchedulerLayout {
+            start: 0,
+            end: 0,
+            offset: 0,
+            stride: 48,
+            count: 0,
+        },
+        installation,
+    );
+    assert_eq!(analysis.executable().unwrap(), image);
+    fs::remove_file(&hint).unwrap();
+    symlink(&replacement, &hint).unwrap();
+    let error = analysis.executable().unwrap_err();
+    assert_eq!(
+        error,
+        AnalysisError::Unavailable {
+            reasons: vec![UnavailableReason::TargetChanged]
+        }
+    );
+    fs::remove_file(&hint).unwrap();
+    symlink(&original, &hint).unwrap();
+    assert_eq!(analysis.executable().unwrap_err(), error);
 }
 
 #[test]

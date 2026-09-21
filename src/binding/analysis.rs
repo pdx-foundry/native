@@ -1,35 +1,68 @@
 //! The static methods bound to one installation: every read checks that the executable is
 //! still the one that was opened.
-use std::sync::Mutex;
+use std::{
+    collections::BTreeMap,
+    sync::{Mutex, OnceLock},
+};
 
 use super::{binary, installation::Installation};
-use crate::engine::analysis::discovery::SchedulerLayout;
+use crate::engine::analysis::discovery::{SchedulerLayout, Symbol};
 use crate::{AnalysisError, UnavailableReason};
 
-#[derive(Debug)]
 pub(crate) struct BoundAnalysis {
-    /// SHA-256 of the executable file and of its selected slice, as they were at `open`.
-    executable: String,
-    slice: String,
     layout: SchedulerLayout,
     installation: Installation,
     /// The first change that a read saw. It stays, even when the original bytes come back.
     invalidated: Mutex<Option<UnavailableReason>>,
+    catalog: OnceLock<Result<Catalog, AnalysisError>>,
+}
+
+struct Catalog {
+    candidates: Vec<NamedCandidate>,
+    symbols: Vec<Symbol>,
+    strings: BTreeMap<u64, String>,
+}
+
+/// One fresh integrity check and the immutable analysis derived from this installation.
+pub(crate) struct VerifiedAnalysis<'a> {
+    executable: Vec<u8>,
+    catalog: &'a Catalog,
+}
+
+impl VerifiedAnalysis<'_> {
+    pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
+        &self.catalog.candidates
+    }
+
+    /// Read fields for a candidate from this analysis; reject records from another source.
+    pub(crate) fn field_input(
+        &self,
+        selection: crate::engine::analysis::discovery::CandidateRecord,
+    ) -> Result<crate::engine::analysis::fields::FieldInput, AnalysisError> {
+        if !self
+            .catalog
+            .candidates
+            .iter()
+            .any(|candidate| candidate.record == selection)
+        {
+            return Err(AnalysisError::InvalidRange);
+        }
+        binary::fields::read(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            selection,
+        )
+    }
 }
 
 impl BoundAnalysis {
-    pub(super) fn new(
-        executable: String,
-        slice: String,
-        layout: SchedulerLayout,
-        installation: Installation,
-    ) -> Self {
+    pub(super) fn new(layout: SchedulerLayout, installation: Installation) -> Self {
         Self {
-            executable,
-            slice,
             layout,
             installation,
             invalidated: Mutex::new(None),
+            catalog: OnceLock::new(),
         }
     }
 
@@ -43,13 +76,8 @@ impl BoundAnalysis {
                 reasons: vec![reason.clone()],
             });
         }
-        let bytes = self.installation.executable_bytes().and_then(|bytes| {
-            let image = binary::identify(&bytes).map_err(|_| UnavailableReason::TargetChanged)?;
-            if image.executable != self.executable || image.slice != self.slice {
-                return Err(UnavailableReason::TargetChanged);
-            }
-            Ok(bytes)
-        });
+        // The full-file hash pins every byte of the selected slice identified at open.
+        let bytes = self.installation.executable_bytes();
         let bytes = match bytes {
             Ok(bytes) => bytes,
             Err(reason) => {
@@ -60,6 +88,19 @@ impl BoundAnalysis {
             }
         };
         Ok(bytes)
+    }
+
+    pub(crate) fn verified(&self) -> Result<VerifiedAnalysis<'_>, AnalysisError> {
+        let executable = self.executable()?;
+        let catalog = self
+            .catalog
+            .get_or_init(|| self.build_catalog(&executable))
+            .as_ref()
+            .map_err(Clone::clone)?;
+        Ok(VerifiedAnalysis {
+            executable,
+            catalog,
+        })
     }
 }
 
@@ -75,28 +116,17 @@ impl BoundAnalysis {
     ) -> Result<Option<Vec<crate::Field>>, AnalysisError> {
         use crate::engine::analysis::{directories::Directory, fields};
 
-        let candidates = self.named_candidates()?;
-        let mut matching = candidates
+        let verified = self.verified()?;
+        let mut matching = verified
+            .named_candidates()
             .iter()
             .filter(|candidate| candidate.directory == Directory::Named(registry.into()));
         let (Some(candidate), None) = (matching.next(), matching.next()) else {
             return Ok(None);
         };
-        let input = self.field_input(candidate.record.clone())?;
+        let input = verified.field_input(candidate.record.clone())?;
         let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
         Ok(Some(crate::session::questions::normalized_fields(&result)))
-    }
-
-    pub(crate) fn field_input(
-        &self,
-        selection: crate::engine::analysis::discovery::CandidateRecord,
-    ) -> Result<crate::engine::analysis::fields::FieldInput, AnalysisError> {
-        let bytes = self.executable()?;
-        let input = binary::discovery::read(&bytes, &self.layout)?;
-        if !crate::engine::analysis::discovery::candidates(&input.symbols).contains(&selection) {
-            return Err(AnalysisError::InvalidRange);
-        }
-        binary::fields::read(&bytes, input, selection)
     }
 
     pub(crate) fn reference_inputs(
@@ -120,13 +150,11 @@ pub(crate) struct NamedCandidate {
 }
 
 impl BoundAnalysis {
-    /// Template candidates with their directories, in candidate order.
-    pub(crate) fn named_candidates(&self) -> Result<Vec<NamedCandidate>, AnalysisError> {
+    fn build_catalog(&self, bytes: &[u8]) -> Result<Catalog, AnalysisError> {
         use crate::engine::analysis::{directories, discovery};
-        let bytes = self.executable()?;
-        let input = binary::discovery::read(&bytes, &self.layout)?;
+        let input = binary::discovery::read(bytes, &self.layout)?;
         let records = discovery::candidates(&input.symbols);
-        let constructors = binary::constructors::read(&bytes, &input, &records)?;
+        let constructors = binary::constructors::read(bytes, &input, &records)?;
         let anchors = binary::constructors::anchors(&input);
         let arguments: Vec<Vec<directories::Argument>> = records
             .iter()
@@ -139,24 +167,28 @@ impl BoundAnalysis {
                     .collect()
             })
             .collect();
-        // Static initializers are read only when a constructor passes a global.
         let needs_globals = arguments
             .iter()
             .flatten()
             .any(|a| matches!(a, directories::Argument::Global(_)));
         let globals = if needs_globals {
-            let initializers = binary::constructors::initializers(&bytes, &input)?;
+            let initializers = binary::constructors::initializers(bytes, &input)?;
             directories::globals(&initializers, &anchors, &input.strings)
         } else {
             Default::default()
         };
-        Ok(records
+        let candidates = records
             .into_iter()
             .zip(arguments)
             .map(|(record, arguments)| NamedCandidate {
                 directory: directories::directory(&arguments, &globals),
                 record,
             })
-            .collect())
+            .collect();
+        Ok(Catalog {
+            candidates,
+            symbols: input.symbols,
+            strings: input.strings,
+        })
     }
 }

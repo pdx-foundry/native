@@ -3,6 +3,39 @@ use crate::UnavailableReason;
 use std::fs;
 use tempfile::{TempDir, tempdir};
 
+#[test]
+fn initial_loader_requires_one_named_candidate_with_an_address() {
+    let candidate = |directory: &str, initial_loader: Option<&str>| super::NamedCandidate {
+        record: crate::engine::analysis::discovery::CandidateRecord {
+            database: "CTestDatabase".into(),
+            owner_candidate: "CTestOwner".into(),
+            loader: "loader".into(),
+            address: "0x1000".into(),
+            initial_loader: initial_loader.map(str::to_owned),
+            has_named_member_reader: false,
+        },
+        directory: crate::engine::analysis::directories::Directory::Named(directory.into()),
+    };
+    let known = candidate("common/traditions", Some("0x1234"));
+    assert_eq!(
+        super::initial_loader(std::slice::from_ref(&known), "common/traditions"),
+        Ok(0x1234)
+    );
+    assert!(super::initial_loader(&[], "common/traditions").is_err());
+    assert!(super::initial_loader(&[known.clone(), known], "common/traditions").is_err());
+    assert!(
+        super::initial_loader(&[candidate("common/traditions", None)], "common/traditions")
+            .is_err()
+    );
+    assert!(
+        super::initial_loader(
+            &[candidate("common/traditions", Some("invalid"))],
+            "common/traditions"
+        )
+        .is_err()
+    );
+}
+
 /// An authored installation. Its executable is in no catalogue, so the binding has no operation;
 /// these tests concern only the integrity of the pinned inputs.
 fn installation() -> (TempDir, Binding) {

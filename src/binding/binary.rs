@@ -18,7 +18,7 @@ pub(super) fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-pub(super) fn identify(bytes: &[u8]) -> Result<ImageIdentity, OpenError> {
+pub(super) fn identify(bytes: &[u8], executable_hash: &str) -> Result<ImageIdentity, OpenError> {
     let slice = selected_slice(bytes)?;
     let file = object::File::parse(slice).map_err(|_| OpenError::MalformedExecutable)?;
     if file.kind() != ObjectKind::Executable {
@@ -31,7 +31,7 @@ pub(super) fn identify(bytes: &[u8]) -> Result<ImageIdentity, OpenError> {
         return Err(OpenError::UnsupportedTarget);
     }
     Ok(ImageIdentity {
-        executable: hash(bytes),
+        executable: executable_hash.into(),
         slice: hash(slice),
         architecture: file.architecture(),
         format: file.format(),
