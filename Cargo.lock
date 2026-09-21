@@ -186,10 +186,12 @@ dependencies = [
  "cpp_demangle",
  "libc",
  "object",
+ "proc-macro2",
  "schemars",
  "serde",
  "serde_json",
  "sha2",
+ "syn",
  "tempfile",
  "tokio",
 ]

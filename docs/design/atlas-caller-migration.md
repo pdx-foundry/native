@@ -63,9 +63,25 @@ preservation of partial values and gaps, source stamps, independent failures, mi
 records, and the recorded CLI with an empty `PATH`. A recorded query error tests the consumer's
 error handling; it does not reproduce a failed process start. Native's live suite checks that path.
 
-The migrated prototype uses the adjacent Native checkout while this branch is reviewed. Before
-freezing a release, replace that path dependency with the merged Native Git revision and update
-its lockfile. Do not reuse the old freeze. Supply the authored category script through
-`GameOptions::fixture(request)` before launch (SDK-532); enumeration alone does not inject it.
-Then `game.observe_fixture()` returns separate registration entries and field reads from that
-session. The first implementation covers one category file and the bounded initial read window.
+## Frozen tradition flow
+
+The Atlas caller now has a tracked `frozen` flow. Atlas owns the question list and its mapping
+to `config/common/traditions.cwt`. Native supplies whole answers; Atlas reports each question as
+observed, an owned gap, or unanswered. Native support remains a separate section. A field's
+unresolved reader does not erase observations about other fields.
+
+The flow uses four sessions: unmounted registry item names; tradition parser outcomes over valid,
+omitted, repeated, malformed and unknown-field inputs; category parser outcomes; and the category
+read-entry fixture. Only the first session asks for item names. Native's recorded item key is the
+registry name, not the fixture, so querying differently mounted item lists in several sessions
+would make live and recorded runs disagree. Fixture answers have their own request keys.
+
+Run `frozen INSTALLATION ANSWERS` to record the live questions, then
+`frozen-recorded ANSWERS` to run the same questions without a process. The answers must match
+apart from `Basis`; a live close is `Confirmed`, and a recorded close is `NotApplicable`.
+The caller pins the merged Native Git commit in its manifest and lockfile. Check its public
+boundary with:
+
+```sh
+ATLAS_CALLER_PATH=/path/to/pdx-atlas/prototypes/native-registry cargo test --test consumer_boundary -- --ignored
+```

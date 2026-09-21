@@ -83,6 +83,7 @@ a rule.
 
 Dependencies run from Atlas extraction into Native's public API. Native does not import Atlas's
 rule model. Atlas does not import adapters, analysis helpers, or process control.
+The frozen Atlas caller is checked by `tests/consumer_boundary.rs` against this public boundary.
 
 Native establishes what was read or observed. Atlas decides what that establishes about a rule.
 
