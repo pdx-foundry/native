@@ -25,6 +25,7 @@ use pdx_native::{
 };
 use std::{
     collections::BTreeSet,
+    fmt::Write as _,
     process::Command,
     time::{Duration, Instant},
 };
@@ -156,7 +157,10 @@ enum FixtureOutcomeCase {
     UnknownField,
     SameOwner,
     CategoryUnsupported,
+    CategoryStorageUnsupported,
     DiagnosticsNotRequested,
+    MaximumQuestions,
+    UnrelatedDefinitions,
 }
 
 fn cases() -> Vec<(String, Case)> {
@@ -239,8 +243,17 @@ fn cases() -> Vec<(String, Case)> {
             FixtureOutcomeCase::CategoryUnsupported,
         ),
         (
+            "category_storage_unsupported",
+            FixtureOutcomeCase::CategoryStorageUnsupported,
+        ),
+        (
             "diagnostics_not_requested",
             FixtureOutcomeCase::DiagnosticsNotRequested,
+        ),
+        ("maximum_questions", FixtureOutcomeCase::MaximumQuestions),
+        (
+            "unrelated_definitions",
+            FixtureOutcomeCase::UnrelatedDefinitions,
         ),
     ] {
         cases.push((
@@ -291,10 +304,12 @@ async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
     let mut result = async {
         let answer = game.observe_fixture().await?;
         assert_fixture_outcome(case, &answer)?;
-        let expected_counts = if matches!(case, FixtureOutcomeCase::CategoryUnsupported) {
-            (234, 1)
-        } else {
-            (1, 33)
+        let expected_counts = match case {
+            FixtureOutcomeCase::CategoryUnsupported
+            | FixtureOutcomeCase::CategoryStorageUnsupported => (234, 1),
+            FixtureOutcomeCase::MaximumQuestions => (32, 33),
+            FixtureOutcomeCase::UnrelatedDefinitions => (517, 33),
+            _ => (1, 33),
         };
         if complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)? != expected_counts.0
             || complete(&game.registry_items(CATEGORIES).await?, CATEGORIES)? != expected_counts.1
@@ -312,15 +327,19 @@ async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
 fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureRequest {
     use pdx_native::{FixtureFieldQuestion, FixtureRequest};
 
-    if matches!(case, FixtureOutcomeCase::CategoryUnsupported) {
+    if matches!(
+        case,
+        FixtureOutcomeCase::CategoryUnsupported | FixtureOutcomeCase::CategoryStorageUnsupported
+    ) {
+        let mut question =
+            FixtureFieldQuestion::new(CATEGORIES, "native_fixture_category", "tree_template");
+        if matches!(case, FixtureOutcomeCase::CategoryStorageUnsupported) {
+            question.diagnostics = false;
+        }
         return FixtureRequest::field_outcomes(
             "common/tradition_categories/native_fixture.txt",
             "native_fixture_category = {\n tree_template = \"bad\nvalue\"\n}\n",
-            [FixtureFieldQuestion::new(
-                CATEGORIES,
-                "native_fixture_category",
-                "tree_template",
-            )],
+            [question],
         );
     }
     if matches!(case, FixtureOutcomeCase::SameOwner) {
@@ -332,6 +351,12 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
                 FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda"),
             ],
         );
+    }
+    if matches!(case, FixtureOutcomeCase::MaximumQuestions) {
+        return maximum_questions_request();
+    }
+    if matches!(case, FixtureOutcomeCase::UnrelatedDefinitions) {
+        return unrelated_definitions_request();
     }
     let body = match case {
         FixtureOutcomeCase::Valid
@@ -345,7 +370,11 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
         FixtureOutcomeCase::UnknownField => {
             " unlocks_agenda = \"agenda_one\"\n this_is_an_unknown_field = { broken = yes }\n"
         }
-        FixtureOutcomeCase::SameOwner | FixtureOutcomeCase::CategoryUnsupported => unreachable!(),
+        FixtureOutcomeCase::SameOwner
+        | FixtureOutcomeCase::CategoryUnsupported
+        | FixtureOutcomeCase::CategoryStorageUnsupported
+        | FixtureOutcomeCase::MaximumQuestions
+        | FixtureOutcomeCase::UnrelatedDefinitions => unreachable!(),
     };
     let mut question =
         FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda");
@@ -362,6 +391,58 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
     )
 }
 
+fn maximum_questions_request() -> pdx_native::FixtureRequest {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+
+    let mut text = String::new();
+    let mut questions = Vec::new();
+    for index in 0..32 {
+        let definition = format!("native_fixture_tradition_{index:02}");
+        writeln!(text, "{definition} = {{").unwrap();
+        writeln!(text, " unlocks_agenda = \"agenda_{index:02}\"").unwrap();
+        writeln!(text, "}}").unwrap();
+        let mut question = FixtureFieldQuestion::new(TRADITIONS, definition, "unlocks_agenda");
+        question.diagnostics = false;
+        questions.push(question);
+    }
+    FixtureRequest::field_outcomes("common/traditions/native_fixture.txt", text, questions)
+}
+
+fn unrelated_definitions_request() -> pdx_native::FixtureRequest {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+
+    let mut text = String::new();
+    for index in 0..257 {
+        writeln!(text, "native_fixture_before_{index:03} = {{}}").unwrap();
+    }
+    for _ in 0..2 {
+        writeln!(text, "native_fixture_repeat = {{}}").unwrap();
+    }
+    writeln!(text, "native_fixture_target = {{").unwrap();
+    writeln!(text, " unlocks_agenda = \"target_agenda\"").unwrap();
+    writeln!(text, "}}").unwrap();
+    writeln!(
+        text,
+        "native_fixture_unrelated_diagnostic = {{ this_is_an_unknown_field = {{ broken = yes }} }}"
+    )
+    .unwrap();
+    for index in 0..257 {
+        writeln!(text, "native_fixture_after_{index:03} = {{}}").unwrap();
+    }
+    for _ in 0..2 {
+        writeln!(text, "native_fixture_repeat = {{}}").unwrap();
+    }
+    FixtureRequest::field_outcomes(
+        "common/traditions/native_fixture.txt",
+        text,
+        [FixtureFieldQuestion::new(
+            TRADITIONS,
+            "native_fixture_target",
+            "unlocks_agenda",
+        )],
+    )
+}
+
 fn assert_fixture_outcome(
     case: FixtureOutcomeCase,
     answer: &Answer<pdx_native::FixtureObservation>,
@@ -373,7 +454,9 @@ fn assert_fixture_outcome(
 
     let expected_completeness = if matches!(
         case,
-        FixtureOutcomeCase::Runtime | FixtureOutcomeCase::CategoryUnsupported
+        FixtureOutcomeCase::Runtime
+            | FixtureOutcomeCase::CategoryUnsupported
+            | FixtureOutcomeCase::CategoryStorageUnsupported
     ) {
         Completeness::Partial
     } else {
@@ -390,6 +473,9 @@ fn assert_fixture_outcome(
             )
         }
         FixtureOutcomeCase::DiagnosticsNotRequested => {
+            answer.value.diagnostic_coverage == DiagnosticCoverage::NotRequested
+        }
+        FixtureOutcomeCase::CategoryStorageUnsupported | FixtureOutcomeCase::MaximumQuestions => {
             answer.value.diagnostic_coverage == DiagnosticCoverage::NotRequested
         }
         _ => {
@@ -417,6 +503,34 @@ fn assert_fixture_outcome(
             return Err(format!("unsupported category outcome: {answer:?}").into());
         }
         return Ok(());
+    }
+    if matches!(case, FixtureOutcomeCase::CategoryStorageUnsupported) {
+        let outcome = answer
+            .value
+            .field_outcomes
+            .first()
+            .ok_or("missing category storage outcome")?;
+        if outcome.reader.kind != ReaderKind::String
+            || outcome.reader.id.is_none()
+            || !matches!(outcome.storage, FixtureStorage::Unavailable(_))
+            || !answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::OutsideMethod)
+            || answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::IncompleteObservation)
+        {
+            return Err(format!("unsupported category storage: {answer:?}").into());
+        }
+        return Ok(());
+    }
+    if matches!(case, FixtureOutcomeCase::MaximumQuestions) {
+        return assert_maximum_questions(answer);
+    }
+    if matches!(case, FixtureOutcomeCase::UnrelatedDefinitions) {
+        return assert_unrelated_definitions(answer);
     }
     if matches!(case, FixtureOutcomeCase::SameOwner) {
         let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
@@ -465,7 +579,11 @@ fn assert_fixture_outcome(
                 Some("Unreadable String"),
             )?;
         }
-        FixtureOutcomeCase::SameOwner | FixtureOutcomeCase::CategoryUnsupported => unreachable!(),
+        FixtureOutcomeCase::SameOwner
+        | FixtureOutcomeCase::CategoryUnsupported
+        | FixtureOutcomeCase::CategoryStorageUnsupported
+        | FixtureOutcomeCase::MaximumQuestions
+        | FixtureOutcomeCase::UnrelatedDefinitions => unreachable!(),
     }
     match case {
         FixtureOutcomeCase::Malformed => {
@@ -522,6 +640,77 @@ fn assert_fixture_outcome(
         return Err("unrequested runtime was not kept distinct".into());
     }
     Ok(())
+}
+
+fn assert_maximum_questions(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
+    use pdx_native::{DiagnosticCoverage, ReaderKind};
+
+    if answer.completeness != Completeness::Complete
+        || answer.value.diagnostic_coverage != DiagnosticCoverage::NotRequested
+        || !answer.gaps.is_empty()
+        || answer.value.field_outcomes.len() != 32
+    {
+        return Err(format!("maximum field questions: {answer:?}").into());
+    }
+    let expected_reader = answer.value.field_outcomes[0].reader.clone();
+    if expected_reader.kind != ReaderKind::String || expected_reader.id.is_none() {
+        return Err(format!("maximum field reader: {answer:?}").into());
+    }
+    for (index, outcome) in answer.value.field_outcomes.iter().enumerate() {
+        let definition = format!("native_fixture_tradition_{index:02}");
+        let value = format!("agenda_{index:02}");
+        let definition_line = index as u64 * 3 + 1;
+        let field_line = definition_line + 1;
+        if outcome.question.definition != definition
+            || outcome.question.field != "unlocks_agenda"
+            || outcome.owner.is_none()
+            || outcome.definition_line != Some(definition_line)
+            || outcome.reader != expected_reader
+        {
+            return Err(format!("maximum field outcome {index}: {answer:?}").into());
+        }
+        assert_string_storage(outcome, &[(field_line, 1, &value)], Some(&value))?;
+    }
+    Ok(())
+}
+
+fn assert_unrelated_definitions(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
+    use pdx_native::{DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, ReaderKind};
+
+    let [outcome] = answer.value.field_outcomes.as_slice() else {
+        return Err(format!("unrelated definition outcome: {answer:?}").into());
+    };
+    let [diagnostic] = answer.value.diagnostics.as_slice() else {
+        return Err(format!("unrelated definition diagnostic: {answer:?}").into());
+    };
+    if answer.completeness != Completeness::Complete
+        || answer.value.diagnostic_coverage
+            != (DiagnosticCoverage::Complete {
+                window: DiagnosticWindow::FixtureFileLoad,
+            })
+        || !answer.gaps.is_empty()
+        || outcome.question.definition != "native_fixture_target"
+        || outcome.owner.is_none()
+        || outcome.definition_line != Some(260)
+        || outcome.reader.kind != ReaderKind::String
+        || outcome.reader.id.is_none()
+        || !outcome.diagnostics.is_empty()
+        || diagnostic.text != "Unexpected token"
+        || diagnostic.stage != "reader-unexpected-report"
+        || !matches!(
+            &diagnostic.join,
+            DiagnosticJoin::Source {
+                file,
+                line: 263,
+                definition: None,
+                field: None,
+                occurrence: None,
+            } if file == "common/traditions/native_fixture.txt"
+        )
+    {
+        return Err(format!("unrelated definitions: {answer:?}").into());
+    }
+    assert_string_storage(outcome, &[(261, 1, "target_agenda")], Some("target_agenda"))
 }
 
 fn assert_string_storage(

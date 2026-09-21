@@ -203,6 +203,7 @@ class FixtureObserver:
         registry = config['file'].rsplit('/', 1)[0]
         self.outcome_binding = next((item for item in self.bindings['outcome_registries'] if item['registry'] == registry), None)
         self.questions = {item['index']: item for item in config['questions']}
+        self.requested_definitions = {item['definition'] for item in config['questions']}
         self.question_by_token = {(item['definition'], item['token']): item for item in config['questions'] if item['token'] is not None}
         self.diagnostics_requested = any(item['diagnostics'] for item in config['questions'])
         self.control = request['control'] if request['fixture_fault'] else 'normal'
@@ -334,10 +335,12 @@ class FixtureObserver:
     def on_constructor(self, frame, process, registers):
         if not self.loading or self.returned:
             return False
+        key = self.stored_string(process, register(frame, 'x2'))
+        if key not in self.requested_definitions:
+            return False
         if self.constructor_count >= 256:
             raise RuntimeError('fixture definition bound exceeded')
         owner = register(frame, registers['owner'])
-        key = self.stored_string(process, register(frame, 'x2'))
         if self.active_reader is None:
             raise RuntimeError('fixture constructor has no active file reader')
         file, line = self.location(process, self.active_reader)

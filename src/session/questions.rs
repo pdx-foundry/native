@@ -211,7 +211,7 @@ impl Native {
     }
 }
 
-fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
+pub(crate) fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
     result
         .fields
         .iter()

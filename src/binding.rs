@@ -219,22 +219,12 @@ pub(crate) use platform::observation::Observer;
 
 impl ExecutionPlan {
     fn fixture_question_setup(
-        &self,
         bindings: &crate::protocol::observation::FixtureBinding,
+        fields: &[crate::Field],
         index: usize,
         question: &crate::FixtureFieldQuestion,
-    ) -> Result<
-        crate::protocol::observation::FixtureQuestionSetup,
-        crate::supervisor::SupervisorError,
-    > {
-        let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
-            crate::supervisor::SupervisorError(
-                "No static reader authority for fixture questions".into(),
-            )
-        })?;
-        let field = analysis
-            .registry_field(&question.registry, &question.field)
-            .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
+    ) -> crate::protocol::observation::FixtureQuestionSetup {
+        let field = fields.iter().find(|field| field.name == question.field);
         let exact = bindings
             .outcome_registries
             .iter()
@@ -246,10 +236,9 @@ impl ExecutionPlan {
                     .find(|field| field.name == question.field)
             });
         let reader_kind = field
-            .as_ref()
             .map(|field| format!("{:?}", field.reader.kind))
             .unwrap_or_else(|| "Unknown".into());
-        let unavailable = match (&field, exact) {
+        let unavailable = match (field, exact) {
             (None, _) => Some("The field is not established by registry_fields".into()),
             (Some(field), _) if field.reader.kind != crate::ReaderKind::String => Some(format!(
                 "The {:?} reader has no storage decoder in this method",
@@ -258,20 +247,18 @@ impl ExecutionPlan {
             (Some(_), None) => Some("No exact-build storage binding for this field".into()),
             _ => None,
         };
-        Ok(crate::protocol::observation::FixtureQuestionSetup {
+        crate::protocol::observation::FixtureQuestionSetup {
             index: index as u64,
             definition: question.definition.clone(),
             field: question.field.clone(),
             diagnostics: question.diagnostics,
             runtime: question.runtime,
-            reader_id: field
-                .as_ref()
-                .and_then(|field| field.reader.id.as_ref().map(|id| id.0.clone())),
+            reader_id: field.and_then(|field| field.reader.id.as_ref().map(|id| id.0.clone())),
             reader_kind,
             token: exact.map(|field| field.token),
             storage_offset: exact.map(|field| field.storage_offset),
             unavailable,
-        })
+        }
     }
 
     fn fixture_setup(
@@ -282,12 +269,27 @@ impl ExecutionPlan {
         let bindings = self.operation().fixture.clone().ok_or_else(|| {
             crate::supervisor::SupervisorError("No fixture binding for this build".into())
         })?;
+        let fields = if fixture.field_questions.is_empty() {
+            Vec::new()
+        } else {
+            let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
+                crate::supervisor::SupervisorError(
+                    "No static reader authority for fixture questions".into(),
+                )
+            })?;
+            analysis
+                .registry_fields(fixture.registry())
+                .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?
+                .unwrap_or_default()
+        };
         let questions = fixture
             .field_questions
             .iter()
             .enumerate()
-            .map(|(index, question)| self.fixture_question_setup(&bindings, index, question))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|(index, question)| {
+                Self::fixture_question_setup(&bindings, &fields, index, question)
+            })
+            .collect();
         Ok(crate::protocol::observation::FixtureSetup {
             file: fixture.file().into(),
             registration_entries: fixture

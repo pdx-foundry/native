@@ -197,6 +197,7 @@ struct DefinitionState {
 
 struct FieldAuthorityState {
     reader: Reader,
+    coherent: bool,
     storage_supported: bool,
     unavailable: Option<String>,
 }
@@ -538,6 +539,7 @@ impl<'a> Window<'a> {
             question,
             FieldAuthorityState {
                 reader,
+                coherent,
                 storage_supported: storage_supported && coherent,
                 unavailable: unavailable.clone(),
             },
@@ -935,10 +937,13 @@ impl<'a> Window<'a> {
                             .and_then(|terminal| terminal.unavailable.clone())
                     })
                     .unwrap_or_else(|| "The field reader authority was not established".into());
-                let kind = match reader.kind {
-                    ReaderKind::Unknown => GapKind::UnresolvedReader,
-                    ReaderKind::String => GapKind::IncompleteObservation,
-                    _ => GapKind::OutsideMethod,
+                let kind = match authority.as_ref() {
+                    None => GapKind::IncompleteObservation,
+                    Some(authority) if !authority.coherent => GapKind::IncompleteObservation,
+                    Some(authority) if authority.reader.kind == ReaderKind::Unknown => {
+                        GapKind::UnresolvedReader
+                    }
+                    Some(_) => GapKind::OutsideMethod,
                 };
                 self.push_gap(kind, Some(question.field.clone()), &reason);
                 FixtureStorage::Unavailable(reason)
@@ -1616,6 +1621,31 @@ mod tests {
             ));
             assert!(answer.gaps.iter().any(|gap| gap.kind == gap_kind));
         }
+    }
+
+    #[test]
+    fn established_string_without_a_decoder_is_outside_the_method() {
+        let mut request = category_outcome_request();
+        request.field_questions[0].diagnostics = false;
+        let mut events = category_outcome_events();
+        events.retain(|event| {
+            event.pointer("/event/kind").and_then(Value::as_str) != Some("diagnostics-unavailable")
+        });
+        renumber(&mut events);
+        let answer = reduce(&request, &records(events), &owner(), BuildId("b".into())).unwrap();
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::OutsideMethod)
+        );
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .all(|gap| gap.kind != GapKind::IncompleteObservation)
+        );
     }
 
     #[test]

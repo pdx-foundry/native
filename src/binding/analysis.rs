@@ -67,13 +67,12 @@ impl BoundAnalysis {
 mod tests;
 
 impl BoundAnalysis {
-    /// Resolve one public field reader from the same executable analysis used by
+    /// Resolve public field readers from the same executable analysis used by
     /// `Native::registry_fields`.
-    pub(crate) fn registry_field(
+    pub(crate) fn registry_fields(
         &self,
         registry: &str,
-        field_name: &str,
-    ) -> Result<Option<crate::Field>, AnalysisError> {
+    ) -> Result<Option<Vec<crate::Field>>, AnalysisError> {
         use crate::engine::analysis::{directories::Directory, fields};
 
         let candidates = self.named_candidates()?;
@@ -85,11 +84,7 @@ impl BoundAnalysis {
         };
         let input = self.field_input(candidate.record.clone())?;
         let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
-        Ok(result
-            .fields
-            .iter()
-            .find(|field| field.name == field_name)
-            .map(|field| crate::session::questions::normalized_field(field, &result)))
+        Ok(Some(crate::session::questions::normalized_fields(&result)))
     }
 
     pub(crate) fn field_input(
