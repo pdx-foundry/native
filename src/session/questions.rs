@@ -57,7 +57,8 @@ impl Native {
     }
 
     /// Whether this build and host can answer an operation. This never starts a game; for a live
-    /// operation it checks that the supervisor's tools can be found.
+    /// operation it checks that the supervisor's tools can be found. Selected content is checked
+    /// when `start_game` is called.
     pub fn supports(&self, operation: Operation) -> Support {
         if self.recorded().is_some() {
             return Support::Supported;
@@ -73,10 +74,12 @@ impl Native {
                 },
                 None => Support::Unsupported("this build has no static analysis recipe".into()),
             },
-            Operation::RegistryItems | Operation::ObserveFixture => match self.blocking_reasons() {
-                reasons if reasons.is_empty() => Support::Supported,
-                reasons => Support::Unsupported(format!("{reasons:?}")),
-            },
+            Operation::RegistryItems | Operation::ObserveFixture => {
+                match self.selected_blocking_reasons() {
+                    reasons if reasons.is_empty() => Support::Supported,
+                    reasons => Support::Unsupported(format!("{reasons:?}")),
+                }
+            }
         }
     }
 

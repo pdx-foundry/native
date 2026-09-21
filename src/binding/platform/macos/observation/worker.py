@@ -25,6 +25,15 @@ registry_owners = {}
 returned_registries = []
 session_active = set()
 safe_pause = False
+callback_active = False
+
+
+class UnsupportedKeyLayout(Exception):
+    pass
+
+
+class TraceStorageBound(Exception):
+    pass
 
 
 def sha(path):
@@ -53,7 +62,10 @@ def emit(kind, **fields):
     if control == 'dropped-record' and kind == 'registry-entry' and fields['index'] == 0:
         return
     path = ROOT / 'raw-trace.jsonl'
-    if path.stat().st_size + len(encoded) > protocol.MAX_TRACE:
+    limit = protocol.MAX_TRACE - 256 * 1024 if kind == 'registry-entry' else protocol.MAX_TRACE
+    if path.stat().st_size + len(encoded) > limit:
+        if kind == 'registry-entry':
+            raise TraceStorageBound('trace storage bound exceeded')
         raise RuntimeError('trace storage bound exceeded')
     with path.open('ab') as output:
         output.write(encoded)
@@ -148,8 +160,8 @@ def registry_snapshot(frame):
         if not obj or obj % registry['pointer_size'] or obj in objects:
             raise RuntimeError('invalid or duplicate registry object')
         key = cstring(obj + registry['key_offset'])
-        if not key or key in keys:
-            raise RuntimeError('empty or duplicate registry key')
+        if not key or key in keys or any(character.isspace() or ord(character) < 32 for character in key):
+            raise UnsupportedKeyLayout('item key layout not established: empty, duplicate, or invalid item key')
         keys.add(key)
         objects.add(obj)
         emit('registry-entry', name=registry['name'], owner=hex(owner), index=index, object=hex(obj), key=key, thread=thread)
@@ -180,6 +192,8 @@ def registry_callback(frame, name):
             return result
         breakpoints[name].SetEnabled(False)
         registry_snapshot(frame)
+    except (UnsupportedKeyLayout, TraceStorageBound) as error:
+        emit('registry-unsupported', name=selected, reason=str(error), thread=frame.GetThread().GetThreadID())
     except Exception:
         emit('registry-unavailable', name=selected, reason=traceback.format_exc(), thread=frame.GetThread().GetThreadID())
         # Continue only after this callback proved its actual loader-return boundary.
@@ -496,7 +510,8 @@ fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
 
 
 def callback(frame, loc, _):
-    global finished
+    global finished, callback_active
+    callback_active = True
     try:
         name = next(key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID())
         if name.startswith('fixture:'):
@@ -510,10 +525,12 @@ def callback(frame, loc, _):
         emit('callback-error', error=traceback.format_exc())
         finished = True
         return True
+    finally:
+        callback_active = False
 
 
 def run(debugger):
-    global entry_thread, session_active
+    global entry_thread, session_active, safe_pause
     import lldb
     import sys
     artifacts = {name: sha(ROOT / 'source' / name) for name in request['artifacts']}
@@ -584,6 +601,12 @@ def run(debugger):
             emit('native-exception', reason='native exception stopped the bounded observation')
             break
         time.sleep(.02)
+    if not finished and process.IsValid() and process.GetState() == lldb.eStateRunning:
+        stop_error = process.Stop()
+        stop_deadline = time.monotonic() + 2
+        while process.GetState() != lldb.eStateStopped and time.monotonic() < stop_deadline:
+            time.sleep(.02)
+        safe_pause = stop_error.Success() and process.GetState() == lldb.eStateStopped and not callback_active
     if safe_pause and process.GetState() == lldb.eStateStopped:
         emit('session-paused', returned=returned_registries, thread=entry_thread)
         paused_thread = process.GetThreadByID(entry_thread)

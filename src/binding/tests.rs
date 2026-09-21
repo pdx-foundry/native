@@ -65,6 +65,29 @@ fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
 }
 
 #[test]
+fn selected_sessions_ignore_unselected_default_content() {
+    let (root, binding) = installation();
+    let context = crate::Native::from_binding(binding);
+    fs::write(root.path().join("common/traditions/test.txt"), "changed").unwrap();
+    assert!(
+        context
+            .blocking_reasons()
+            .contains(&UnavailableReason::ContentChanged)
+    );
+    assert!(context.selected_blocking_reasons().is_empty());
+
+    let (root, binding) = installation();
+    fs::remove_dir_all(root.path().join("common/tradition_categories")).unwrap();
+    let context = crate::Native::from_binding(binding);
+    assert!(
+        context
+            .blocking_reasons()
+            .contains(&UnavailableReason::InputUnavailable)
+    );
+    assert!(context.selected_blocking_reasons().is_empty());
+}
+
+#[test]
 fn missing_inputs_never_become_empty_success() {
     let (directory, binding) = installation();
     let context = crate::Native::from_binding(binding);
@@ -93,9 +116,25 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
             analysis: None,
         },
     };
+    let names = plan.binding.default_registries();
+    let registries: std::collections::BTreeMap<_, _> = names
+        .iter()
+        .map(|name| {
+            (
+                name.clone(),
+                super::groups::registry_binding(
+                    plan.operation().registry_layout.unwrap(),
+                    name,
+                    0x5678,
+                ),
+            )
+        })
+        .collect();
+    let content = plan.installation().content.as_ref().unwrap();
     let work = tempdir().unwrap();
     fs::create_dir(work.path().join("profile")).unwrap();
-    plan.prepare_registry_profile(work.path(), None).unwrap();
+    plan.prepare_registry_profile(work.path(), None, &registries, content)
+        .unwrap();
     let mount = work.path().join("profile/mod/native_registry");
     for relative in [modified, added] {
         assert_eq!(
@@ -114,7 +153,7 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
         crate::FixtureRequest::new("common/tradition_categories/atlas.txt", "atlas = {}\n");
     let fixture_work = tempdir().unwrap();
     fs::create_dir(fixture_work.path().join("profile")).unwrap();
-    plan.prepare_registry_profile(fixture_work.path(), Some(&fixture))
+    plan.prepare_registry_profile(fixture_work.path(), Some(&fixture), &registries, content)
         .unwrap();
     let fixture_mount = fixture_work.path().join("profile/mod/native_registry");
     assert_eq!(
@@ -133,9 +172,42 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     );
     assert!(!root.path().join(fixture.file()).exists());
 
+    let selected = std::collections::BTreeMap::from([(
+        "common/traditions".into(),
+        registries["common/traditions"].clone(),
+    )]);
+    let selected_content = plan.session_content(&["common/traditions".into()]).unwrap();
+    let fixture_only_work = tempdir().unwrap();
+    fs::create_dir(fixture_only_work.path().join("profile")).unwrap();
+    plan.prepare_registry_profile(
+        fixture_only_work.path(),
+        Some(&fixture),
+        &selected,
+        &selected_content,
+    )
+    .unwrap();
+    let fixture_only_mod = fs::read_to_string(
+        fixture_only_work
+            .path()
+            .join("profile/mod/native_registry.mod"),
+    )
+    .unwrap();
+    assert!(fixture_only_mod.contains("replace_path=\"common/tradition_categories\""));
+    assert!(fixture_only_mod.contains("replace_path=\"common/traditions\""));
+    assert!(
+        fixture_only_work
+            .path()
+            .join("profile/mod/native_registry")
+            .join(fixture.file())
+            .is_file()
+    );
+
     fs::write(root.path().join(added), "changed after open").unwrap();
     let next = tempdir().unwrap();
-    assert!(plan.prepare_registry_profile(next.path(), None).is_err());
+    assert!(
+        plan.prepare_registry_profile(next.path(), None, &registries, content)
+            .is_err()
+    );
     assert!(!next.path().join("profile").exists());
 }
 
@@ -147,12 +219,15 @@ fn retargeting_the_original_executable_hint_is_detected() {
     let hint = directory.path().join("hint");
     symlink(directory.path().join("stellaris"), &hint).unwrap();
     let (bound, _) = Installation::open(&hint).unwrap();
-    assert_eq!(bound.integrity(), None);
+    assert_eq!(bound.target_integrity(), None);
     let replacement = directory.path().join("replacement");
     fs::write(&replacement, "authored test bytes").unwrap();
     fs::remove_file(&hint).unwrap();
     symlink(&replacement, &hint).unwrap();
-    assert_eq!(bound.integrity(), Some(UnavailableReason::TargetChanged));
+    assert_eq!(
+        bound.target_integrity(),
+        Some(UnavailableReason::TargetChanged)
+    );
 }
 
 #[cfg(unix)]
@@ -185,20 +260,21 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     use crate::supervisor::SupervisorError;
     fn inspect(setup: ObservationSetup<'_>) -> Result<super::Observer, SupervisorError> {
         assert_eq!(setup.machine.architecture, "synthetic-machine");
-        assert_eq!(setup.registries["traditions"].load_entry, 0x5678);
+        assert_eq!(setup.registries["common/traditions"].load_entry, 0x5678);
         assert_eq!(setup.package["selected.txt"], b"selected package");
-        assert_eq!(setup.fault.unwrap().registry, "traditions");
+        assert_eq!(setup.fault.unwrap().registry, "common/traditions");
         assert_eq!(setup.startup_seconds, 7);
         Err(SupervisorError("selected strategy reached".into()))
     }
     let (directory, _) = installation();
     let (installed, _) = Installation::open(directory.path()).unwrap();
     let mut operation = compose::synthetic_variation();
-    operation
-        .registries
-        .get_mut("traditions")
-        .unwrap()
-        .load_entry = 0x5678;
+    let registry = super::groups::registry_binding(
+        operation.registry_layout.unwrap(),
+        "common/traditions",
+        0x5678,
+    );
+    let registries = std::collections::BTreeMap::from([("common/traditions".into(), registry)]);
     operation.machine.architecture = "synthetic-machine".into();
     operation.strategy.package = [("selected.txt".into(), b"selected package".to_vec())].into();
     operation.strategy.prepare = inspect;
@@ -215,15 +291,16 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         work_directory: directory.path().join("unused"),
         startup_seconds: 7,
         idle_seconds: 1,
+        registries: vec!["common/traditions".into()],
         fixture: None,
         fixture_fault: None,
         fault: Some(Fault {
-            registry: "traditions".into(),
+            registry: "common/traditions".into(),
             control: ObservationControl::MissingHook,
         }),
     };
     let error = plan
-        .observer(&request.work_directory, "test", &request)
+        .observer(&request.work_directory, "test", &request, &registries)
         .err()
         .unwrap();
     assert_eq!(error.to_string(), "selected strategy reached");
@@ -231,7 +308,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     // A fault for a registry that the session does not observe never reaches the strategy.
     request.fault.as_mut().unwrap().registry = "unknown".into();
     let error = plan
-        .observer(&request.work_directory, "test", &request)
+        .observer(&request.work_directory, "test", &request, &registries)
         .err()
         .unwrap();
     assert_ne!(error.to_string(), "selected strategy reached");

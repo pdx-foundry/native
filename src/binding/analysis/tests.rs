@@ -61,6 +61,31 @@ fn static_support_checks_the_pinned_executable_without_requiring_content() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn every_m45_named_candidate_has_one_initial_loader_entry() {
+    let installation =
+        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let candidates = binding
+        .analysis
+        .as_ref()
+        .unwrap()
+        .named_candidates()
+        .unwrap();
+    assert_eq!(candidates.len(), 164);
+    assert!(
+        candidates
+            .iter()
+            .all(|candidate| candidate.record.initial_loader.is_some())
+    );
+    let known = binding
+        .registry_bindings(&binding.default_registries())
+        .unwrap();
+    assert_eq!(known["common/traditions"].load_entry, 0x100ce0474);
+    assert_eq!(known["common/tradition_categories"].load_entry, 0x100cd7d70);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn cached_static_answers_refuse_changed_or_missing_executables() {
     use crate::{Error, Native};
     let installed =

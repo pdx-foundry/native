@@ -33,6 +33,20 @@ fn recorded() -> tempfile::TempDir {
         json!({ "Ok": { "value": ["tr_example_adopt", "tr_example_finish"],
             "completeness": "Complete", "gaps": [], "source": source() } }),
     );
+    for (file, key) in [
+        (
+            "registry_items/common/governments/civics.json",
+            "civic_example",
+        ),
+        ("registry_items/map/galaxy.json", "galaxy_example"),
+    ] {
+        write(
+            root.path(),
+            file,
+            json!({ "Ok": { "value": [key],
+            "completeness": "Complete", "gaps": [], "source": source() } }),
+        );
+    }
     write(
         root.path(),
         "registry_fields/common/traditions.json",
@@ -157,6 +171,12 @@ async fn live_questions_need_no_supervisor_and_start_no_process() {
     assert_eq!(items.completeness, Completeness::Complete);
     assert_eq!(items.source.basis, Basis::Recorded);
     assert_eq!(items.source.build, native.build());
+    for (name, key) in [
+        ("common/governments/civics", "civic_example"),
+        ("map/galaxy", "galaxy_example"),
+    ] {
+        assert_eq!(game.registry_items(name).await.unwrap().value, [key]);
+    }
     // A hand-written failure case comes back as the same error.
     assert!(matches!(
         game.registry_items("common/tradition_categories").await,

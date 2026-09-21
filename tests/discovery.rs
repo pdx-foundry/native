@@ -6,7 +6,10 @@ use std::collections::BTreeMap;
 
 fn input() -> StaticInput {
     StaticInput {
-        symbols: vec![Symbol {name:"TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::LoadFile(char const*, bool)".into(),address:0x3000}],
+        symbols: vec![
+            Symbol {name:"TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::LoadFile(char const*, bool)".into(),address:0x3000},
+            Symbol {name:"TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::Init()".into(),address:0x4000},
+        ],
         code: [0x910003f3u32, 0xb0000008,0xf9003268,0xd0000009,0xf9003669,0xa9077e7f,0xa9087e7f].into_iter().flat_map(u32::to_le_bytes).collect(),
         layout:SchedulerLayout{start:0x1000,end:0x101c,offset:96,stride:48,count:1},
         pointers:BTreeMap::new(),global_bindings:BTreeMap::new(),strings:BTreeMap::from([(0x2000,"example".into())]),vtables:BTreeMap::new(),
@@ -17,6 +20,10 @@ fn static_discovery_is_bounded_and_joins_the_schedule_to_its_candidate() {
     let result = discover(&input()).unwrap();
     assert_eq!(result.candidates.len(), 1);
     assert!(!result.candidates[0].has_named_member_reader);
+    assert_eq!(
+        result.candidates[0].initial_loader.as_deref(),
+        Some("0x4000")
+    );
     assert!(result.scheduling[0].recovered);
     assert_eq!(result.scheduling[0].candidates, [0]);
     assert!(
@@ -84,6 +91,11 @@ fn template_matching_does_not_require_a_named_reader_or_accept_near_matches() {
         address: 0x5000,
     });
     assert!(candidates(&symbols)[0].has_named_member_reader);
+    symbols.push(Symbol {
+        name: "TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::Init()".into(),
+        address: 0x5008,
+    });
+    assert_eq!(candidates(&symbols)[0].initial_loader, None);
 }
 
 #[test]

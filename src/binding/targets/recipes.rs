@@ -2,7 +2,7 @@
 //! operations. A recipe is host-neutral data.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::binding) enum BindingGroupId {
-    M45TraditionRegistries,
+    M45TemplateRegistryLayout,
     M45CategoryFixture,
 }
 
@@ -13,15 +13,20 @@ pub(in crate::binding) enum StrategyId {
 
 pub(in crate::binding) struct Recipe {
     pub groups: &'static [BindingGroupId],
+    pub default_registries: &'static [&'static str],
     pub strategy: StrategyId,
     pub discovery: &'static DiscoveryRecipe,
 }
 
+pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
+    &["common/traditions", "common/tradition_categories"];
+
 pub(super) const M45_OBSERVE: Recipe = Recipe {
     groups: &[
-        BindingGroupId::M45TraditionRegistries,
+        BindingGroupId::M45TemplateRegistryLayout,
         BindingGroupId::M45CategoryFixture,
     ],
+    default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     discovery: &M45_DISCOVERY,
 };

@@ -212,8 +212,8 @@ changed group.
 
 ### M45-observe data sketch
 
-Types and lookup boilerplate are abbreviated. Exact live addresses and layouts live in
-`binding/groups`.
+Types and lookup boilerplate are abbreviated. The live layout lives in `binding/groups`;
+static discovery finds the initial loader symbol for each selected registry.
 
 ```rust
 const M45_OBSERVE: TargetRecord = TargetRecord {
@@ -225,11 +225,17 @@ const M45_OBSERVE: TargetRecord = TargetRecord {
 };
 
 const M45_OBSERVE_RECIPE: Recipe = Recipe {
-    groups: &[BindingGroupId::M45TraditionRegistries],
+    groups: &[BindingGroupId::M45TemplateRegistryLayout],
+    default_registries: &["common/traditions", "common/tradition_categories"],
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     discovery: &M45_DISCOVERY,
 };
 ```
+
+The registry group holds the shared M45 collection layout. Static discovery supplies each
+selected registry's initial loader entry. The content directory is its identity on the caller,
+supervisor and worker sides. The supervisor derives these bindings again from the executable;
+it does not trust addresses from the caller.
 
 ## Binding once, executing without target tests
 

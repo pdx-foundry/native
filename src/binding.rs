@@ -13,6 +13,23 @@ mod tests;
 
 use crate::{OpenError, UnavailableReason};
 
+fn initial_loader(candidates: &[NamedCandidate], directory: &str) -> Result<u64, String> {
+    use crate::engine::analysis::directories::Directory;
+    let mut matches = candidates.iter().filter(
+        |candidate| matches!(&candidate.directory, Directory::Named(name) if name == directory),
+    );
+    let (Some(candidate), None) = (matches.next(), matches.next()) else {
+        return Err(format!("{directory}: no unique static registry candidate"));
+    };
+    candidate
+        .record
+        .initial_loader
+        .as_ref()
+        .and_then(|address| address.strip_prefix("0x"))
+        .and_then(|address| u64::from_str_radix(address, 16).ok())
+        .ok_or_else(|| format!("{directory}: initial loader entry is unavailable"))
+}
+
 /// One pinned installation with the implementation that its exact build selects. This is the
 /// only binding value that the session and the supervisor see; target records and platform
 /// leaves stay below here.
@@ -49,20 +66,46 @@ impl Binding {
         self.installation.locator().into()
     }
 
-    /// Internal names of the registries that a game session observes.
-    pub(crate) fn registry_names(&self) -> Vec<String> {
+    pub(crate) fn default_registries(&self) -> Vec<String> {
         self.operation
             .iter()
-            .flat_map(|operation| operation.registries.keys().cloned())
+            .flat_map(|operation| {
+                operation
+                    .default_registries
+                    .iter()
+                    .map(|name| (*name).into())
+            })
             .collect()
     }
 
-    pub(crate) fn registry_directory(&self, name: &str) -> Option<String> {
-        self.operation
-            .as_ref()?
-            .registries
-            .get(name)
-            .map(|registry| registry.directory.clone())
+    pub(crate) fn registry_bindings(
+        &self,
+        directories: &[String],
+    ) -> Result<
+        std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
+        String,
+    > {
+        let layout = self
+            .operation
+            .as_ref()
+            .and_then(|operation| operation.registry_layout)
+            .ok_or("this build has no registry observation layout")?;
+        let candidates = self
+            .analysis
+            .as_ref()
+            .ok_or("this build has no static registry analysis")?
+            .named_candidates()
+            .map_err(|error| error.to_string())?;
+        directories
+            .iter()
+            .map(|directory| {
+                let address = initial_loader(&candidates, directory)?;
+                Ok((
+                    directory.clone(),
+                    groups::registry_binding(layout, directory, address),
+                ))
+            })
+            .collect()
     }
 
     pub(crate) fn has_fixture_method(&self) -> bool {
@@ -71,19 +114,23 @@ impl Binding {
             .is_some_and(|operation| operation.fixture.is_some())
     }
 
-    /// Whether the executable or the pinned content changed since `open`.
-    pub(crate) fn integrity(&self) -> Option<UnavailableReason> {
-        self.installation.integrity()
+    pub(crate) fn target_integrity(&self) -> Option<UnavailableReason> {
+        self.installation.target_integrity()
+    }
+
+    pub(crate) fn default_content_integrity(&self) -> Option<UnavailableReason> {
+        self.installation.default_content_integrity()
     }
 
     /// Every reason why a game session cannot start now. Empty means that it can. This may
     /// start the host's debugger tools to check them; it never starts the game.
     ///
-    /// `integrity` is the caller's view of [`Binding::integrity`]; a `Native` keeps a change
+    /// `integrity` is the caller's view of its pinned inputs; a `Native` keeps a change
     /// that it saw once.
     pub(crate) fn blocking_reasons(
         &self,
         integrity: Option<UnavailableReason>,
+        check_defaults: bool,
     ) -> Vec<UnavailableReason> {
         let mut reasons = Vec::new();
         let mut add = |reason: UnavailableReason| {
@@ -98,7 +145,7 @@ impl Binding {
                 .for_each(&mut add);
         }
         integrity.into_iter().for_each(&mut add);
-        if let Err(reason) = &self.installation.content {
+        if check_defaults && let Err(reason) = &self.installation.content {
             add(reason.clone());
         }
         if let Some(operation) = &self.operation
@@ -129,11 +176,39 @@ impl ExecutionPlan {
     pub fn build(&self) -> &str {
         self.binding.build()
     }
-    pub fn registry_names(&self) -> Vec<String> {
-        self.binding.registry_names()
+    pub fn registry_bindings(
+        &self,
+        directories: &[String],
+    ) -> Result<
+        std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
+        crate::supervisor::SupervisorError,
+    > {
+        self.binding
+            .registry_bindings(directories)
+            .map_err(crate::supervisor::SupervisorError)
     }
     fn installation(&self) -> &installation::Installation {
         &self.binding.installation
+    }
+    pub fn session_content(
+        &self,
+        directories: &[String],
+    ) -> Result<installation::ContentIdentity, crate::supervisor::SupervisorError> {
+        self.installation()
+            .session_content(directories)
+            .map_err(|reason| {
+                crate::supervisor::SupervisorError(format!(
+                    "Registry content unavailable: {reason:?}"
+                ))
+            })
+    }
+    pub fn session_content_unchanged(
+        &self,
+        directories: &[String],
+        expected: &installation::ContentIdentity,
+    ) -> bool {
+        self.installation()
+            .session_content_unchanged(directories, expected)
     }
     fn operation(&self) -> &compose::ResolvedObservation {
         self.binding
@@ -142,7 +217,7 @@ impl ExecutionPlan {
             .expect("an opened installation has an operation")
     }
     pub fn integrity(&self) -> Result<(), crate::supervisor::SupervisorError> {
-        match self.binding.integrity() {
+        match self.binding.target_integrity() {
             None => Ok(()),
             Some(reason) => Err(crate::supervisor::SupervisorError(format!(
                 "Inputs changed: {reason:?}"
@@ -152,7 +227,9 @@ impl ExecutionPlan {
     /// Refuse the session when anything blocks it. The caller asked the same question before
     /// it started this supervisor; the supervisor does not trust that answer.
     pub fn admit(&self) -> Result<(), crate::supervisor::SupervisorError> {
-        let reasons = self.binding.blocking_reasons(self.binding.integrity());
+        let reasons = self
+            .binding
+            .blocking_reasons(self.binding.target_integrity(), false);
         if !reasons.is_empty() {
             return Err(crate::supervisor::SupervisorError(format!(
                 "A game session cannot start: {reasons:?}"
@@ -306,11 +383,15 @@ impl ExecutionPlan {
         work_directory: &std::path::Path,
         attempt: &str,
         request: &crate::protocol::session::SessionRequest,
+        registries: &std::collections::BTreeMap<
+            String,
+            crate::protocol::observation::RegistryBinding,
+        >,
     ) -> Result<Observer, crate::supervisor::SupervisorError> {
         self.integrity()?;
         let operation = self.operation();
         if let Some(fault) = &request.fault
-            && !operation.registries.contains_key(&fault.registry)
+            && !registries.contains_key(&fault.registry)
         {
             return Err(crate::supervisor::SupervisorError(
                 "The fault names a registry that the session does not observe".into(),
@@ -320,7 +401,7 @@ impl ExecutionPlan {
             work_directory,
             attempt,
             executable: self.installation().executable(),
-            registries: &operation.registries,
+            registries,
             fault: request.fault.as_ref(),
             fixture: request
                 .fixture
@@ -354,6 +435,11 @@ impl ExecutionPlan {
         &self,
         work_directory: &std::path::Path,
         fixture: Option<&crate::FixtureRequest>,
+        registries: &std::collections::BTreeMap<
+            String,
+            crate::protocol::observation::RegistryBinding,
+        >,
+        content: &installation::ContentIdentity,
     ) -> Result<(), crate::supervisor::SupervisorError> {
         use crate::{supervisor::SupervisorError, work_directory as files};
         self.integrity()?;
@@ -361,16 +447,14 @@ impl ExecutionPlan {
         platform::lifecycle::private_directory(&profile.join("mod"))?;
         let mount = profile.join("mod/native_registry");
         platform::lifecycle::private_directory(&mount)?;
-        let content = self.installation().content.as_ref().map_err(|reason| {
-            SupervisorError(format!(
-                "Pinned registry content is unavailable: {reason:?}"
-            ))
-        })?;
-        for registry in self.operation().registries.values() {
+        for registry in registries.values() {
             std::fs::create_dir_all(mount.join(&registry.directory))?;
         }
+        if let Some(fixture) = fixture {
+            std::fs::create_dir_all(mount.join(fixture.registry()))?;
+        }
         for (relative, expected) in content {
-            if !relative.starts_with("common/")
+            if relative == "launcher-settings.json"
                 || fixture.is_some_and(|fixture| {
                     relative.starts_with(&format!("{}/", fixture.registry()))
                 })
@@ -378,7 +462,7 @@ impl ExecutionPlan {
                 continue;
             }
             let source = self.installation().root().join(relative);
-            let bytes = files::read_bounded(&source, 1024 * 1024)?;
+            let bytes = files::read_bounded(&source, 8 * 1024 * 1024)?;
             if files::sha256(&bytes) != *expected {
                 return Err(SupervisorError(
                     "Registry content changed while preparing the private profile".into(),
@@ -402,11 +486,16 @@ impl ExecutionPlan {
             .ok_or_else(|| {
                 SupervisorError("Profile path cannot be represented in the mod file".into())
             })?;
-        let replaced: String = self
-            .operation()
-            .registries
+        let mut replaced_paths: std::collections::BTreeSet<_> = registries
             .values()
-            .map(|registry| format!("replace_path=\"{}\"\n", registry.directory))
+            .map(|registry| registry.directory.as_str())
+            .collect();
+        if let Some(fixture) = fixture {
+            replaced_paths.insert(fixture.registry());
+        }
+        let replaced: String = replaced_paths
+            .into_iter()
+            .map(|directory| format!("replace_path=\"{directory}\"\n"))
             .collect();
         files::write_new(
             &profile.join("mod/native_registry.mod"),

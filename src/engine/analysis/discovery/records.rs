@@ -102,6 +102,8 @@ pub struct CandidateRecord {
     pub loader: String,
     /// File address of the loader, in hexadecimal.
     pub address: String,
+    /// File address of the matching initial-load entry, when exactly one exists.
+    pub initial_loader: Option<String>,
     /// Named reader symbol exists.
     pub has_named_member_reader: bool,
 }

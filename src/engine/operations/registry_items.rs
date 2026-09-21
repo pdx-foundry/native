@@ -40,6 +40,10 @@ pub(crate) enum Observed {
     Complete,
     /// The registry was observed, but a witness is missing. The accepted items are kept.
     Partial,
+    /// The hook was active, but this loader did not return before the session paused.
+    NotLoaded,
+    /// The loader ran, but the binding cannot read this registry's item layout.
+    Unsupported,
     /// The registry was not observed: no activation, no access, or the worker was lost.
     Unavailable,
 }
@@ -70,6 +74,8 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
     let mut keys = BTreeSet::new();
     let mut objects = BTreeSet::new();
     let mut unavailable = false;
+    let mut unsupported = false;
+    let mut saw_registry = false;
     for (position, record) in records.iter().enumerate() {
         // A hole wholly inside the records of another registry does not count against this one.
         let hole_elsewhere = position > 0
@@ -89,6 +95,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
         if registry_name(&record.event).is_some_and(|found| found != name) {
             continue;
         }
+        saw_registry |= registry_name(&record.event) == Some(name);
         match &record.event {
             WorkerEvent::RegistryLoadStart {
                 owner, directory, ..
@@ -96,7 +103,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                 if loading.is_some()
                     || snapshot.is_some()
                     || ended
-                    || directory != &format!("common/{name}")
+                    || directory != name
                     || !pointer(owner)
                     || record.thread.unwrap_or(0) == 0
                 {
@@ -127,7 +134,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                 }) || !returned
                     || snapshot.is_some()
                     || ended
-                    || directory != &format!("common/{name}")
+                    || directory != name
                     || !pointer(owner)
                     || *count > 100_000
                     || record.thread.unwrap_or(0) == 0
@@ -189,6 +196,10 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                 unavailable = true;
                 diagnostics.push(reason.clone());
             }
+            WorkerEvent::RegistryUnsupported { reason, .. } => {
+                unsupported = true;
+                diagnostics.insert(0, reason.clone());
+            }
             // A failure after this registry's terminal does not take its answer back.
             WorkerEvent::CapabilityUnavailable { reason }
             | WorkerEvent::EarlyActivationUnavailable { reason }
@@ -214,6 +225,22 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
             | WorkerEvent::WorkerLossReady => {}
         }
     }
+    let not_loaded = activated
+        && !saw_registry
+        && diagnostics.is_empty()
+        && records
+            .iter()
+            .any(|record| matches!(record.event, WorkerEvent::SessionPaused { .. }))
+        && !owner
+            .iter()
+            .any(|event| matches!(event, OwnerEvent::ObservationUnavailable { .. }));
+    if not_loaded {
+        return RegistryItems {
+            items: Vec::new(),
+            observed: Observed::NotLoaded,
+            diagnostics: vec!["initial loader did not run before the session paused".into()],
+        };
+    }
     if !ended {
         diagnostics.push("Registry terminal missing".into());
         for event in owner {
@@ -237,6 +264,8 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
         Observed::Complete
     } else if worker_lost || unavailable || !activated {
         Observed::Unavailable
+    } else if unsupported {
+        Observed::Unsupported
     } else {
         Observed::Partial
     };
@@ -262,7 +291,8 @@ fn registry_name(event: &WorkerEvent) -> Option<&str> {
         | WorkerEvent::RegistryEntry { name, .. }
         | WorkerEvent::RegistryEnd { name, .. }
         | WorkerEvent::RegistryLoadReturned { name, .. }
-        | WorkerEvent::RegistryUnavailable { name, .. } => Some(name),
+        | WorkerEvent::RegistryUnavailable { name, .. }
+        | WorkerEvent::RegistryUnsupported { name, .. } => Some(name),
         _ => None,
     }
 }
@@ -298,8 +328,7 @@ pub(crate) fn readiness(
     let WorkerEvent::SessionPaused { returned } = &pause.event else {
         return None;
     };
-    if returned.is_empty()
-        || returned.iter().collect::<BTreeSet<_>>().len() != returned.len()
+    if returned.iter().collect::<BTreeSet<_>>().len() != returned.len()
         || !returned.iter().all(|name| declared.contains(name))
     {
         return None;
@@ -346,7 +375,7 @@ pub(crate) fn readiness(
         };
         if receiver != returned_receiver
             || !pointer(receiver)
-            || *directory != format!("common/{name}")
+            || directory != name
             || entry.thread != end.thread
             || end.thread != pause.thread
             || !(entry.seq < end.seq && end.seq < pause.seq)
@@ -366,8 +395,8 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
 
-    const TRADITIONS: &str = "traditions";
-    const CATEGORIES: &str = "tradition_categories";
+    const TRADITIONS: &str = "common/traditions";
+    const CATEGORIES: &str = "common/tradition_categories";
 
     /// A session that observed two registries. Row numbers, from 0: 0 to 3 are the activation,
     /// then each registry has a loader entry, a return, a snapshot, its entries and a terminal.
@@ -378,8 +407,8 @@ mod tests {
             json!({"kind":"hooks-requested"}),
             json!({"kind":"launch-stopped","error":"success","pid":10,"triple":"arm64-test","frames":[{"function":"_dyld_start"}]}),
             json!({"kind":"hooks-active-before-resume","hooks":{
-                "registry:traditions":{"enabled":true,"locations":1,"resolved":1,"hits":0},
-                "registry:tradition_categories":{"enabled":true,"locations":1,"resolved":1,"hits":0}}}),
+                "registry:common/traditions":{"enabled":true,"locations":1,"resolved":1,"hits":0},
+                "registry:common/tradition_categories":{"enabled":true,"locations":1,"resolved":1,"hits":0}}}),
             json!({"kind":"resume","error":"success"}),
         ];
         for (name, owner, keys) in [
@@ -387,9 +416,9 @@ mod tests {
             (CATEGORIES, "0x3000", &["category"][..]),
         ] {
             rows.extend([
-                json!({"kind":"registry-load-start","name":name,"directory":format!("common/{name}"),"owner":owner}),
+                json!({"kind":"registry-load-start","name":name,"directory":name,"owner":owner}),
                 json!({"kind":"registry-load-returned","name":name,"owner":owner}),
-                json!({"kind":"registry-snapshot","name":name,"directory":format!("common/{name}"),"owner":owner,"count":keys.len()}),
+                json!({"kind":"registry-snapshot","name":name,"directory":name,"owner":owner,"count":keys.len()}),
             ]);
             for (index, key) in keys.iter().enumerate() {
                 let object = format!(
@@ -443,6 +472,85 @@ mod tests {
         assert_eq!(
             readiness(&records, &owner, &names),
             Some(GameReadiness::PausedAfterRegistryInitialization)
+        );
+    }
+
+    #[test]
+    fn nested_and_outside_common_directories_are_registry_identities() {
+        let (mut records, mut owner, mut names) = session(&["first"]);
+        for (old, new) in [
+            (TRADITIONS, "map/galaxy"),
+            (CATEGORIES, "common/governments/civics"),
+        ] {
+            for record in &mut records {
+                let json = serde_json::to_string(record).unwrap().replace(old, new);
+                *record = serde_json::from_str(&json).unwrap();
+            }
+            for event in &mut owner {
+                let json = serde_json::to_string(event).unwrap().replace(old, new);
+                *event = serde_json::from_str(&json).unwrap();
+            }
+            for name in &mut names {
+                if name == old {
+                    *name = new.into();
+                }
+            }
+        }
+        for name in &names {
+            assert_eq!(reduce(name, &records, &owner).observed, Observed::Complete);
+        }
+        assert_eq!(
+            readiness(&records, &owner, &names),
+            Some(GameReadiness::PausedAfterRegistryInitialization)
+        );
+    }
+
+    #[test]
+    fn a_selected_loader_that_never_runs_is_not_an_empty_complete_answer() {
+        let (mut records, mut owner, names) = session(&["first"]);
+        records.retain(|record| registry_name(&record.event) != Some(CATEGORIES));
+        for (index, record) in records.iter_mut().enumerate() {
+            record.seq = index as u64 + 1;
+            if let WorkerEvent::SessionPaused { returned } = &mut record.event {
+                *returned = vec![TRADITIONS.into()];
+            }
+        }
+        for event in &mut owner {
+            if let OwnerEvent::GamePauseConfirmed { returned, .. } = event {
+                *returned = vec![TRADITIONS.into()];
+            }
+        }
+        assert_eq!(
+            readiness(&records, &owner, &names),
+            Some(GameReadiness::PausedDuringRegistryInitialization)
+        );
+        let absent = reduce(CATEGORIES, &records, &owner);
+        assert_eq!(absent.observed, Observed::NotLoaded);
+        assert!(absent.items.is_empty());
+    }
+
+    #[test]
+    fn a_pause_with_no_returned_loaders_keeps_the_selected_registry_unsupported() {
+        let (mut records, mut owner, _) = session(&["first"]);
+        records.retain(|record| registry_name(&record.event).is_none());
+        for (index, record) in records.iter_mut().enumerate() {
+            record.seq = index as u64 + 1;
+            if let WorkerEvent::SessionPaused { returned } = &mut record.event {
+                returned.clear();
+            }
+        }
+        for event in &mut owner {
+            if let OwnerEvent::GamePauseConfirmed { returned, .. } = event {
+                returned.clear();
+            }
+        }
+        assert_eq!(
+            readiness(&records, &owner, &[TRADITIONS.into()]),
+            Some(GameReadiness::PausedDuringRegistryInitialization)
+        );
+        assert_eq!(
+            reduce(TRADITIONS, &records, &owner).observed,
+            Observed::NotLoaded
         );
     }
 
@@ -592,7 +700,7 @@ mod tests {
         let WorkerEvent::HooksActiveBeforeResume { hooks } = &mut records[2].event else {
             unreachable!()
         };
-        hooks.remove("registry:traditions");
+        hooks.remove("registry:common/traditions");
         assert_eq!(
             reduce(TRADITIONS, &records, &owner).observed,
             Observed::Unavailable

@@ -142,6 +142,12 @@ Seven candidates load from outside `common/` (`map/galaxy`, `sound/advisor_voice
 
 `registries()` and `registry_fields(name)` are static questions.
 
+**SDK-529:** `GameOptions::registries` selects the content directories observed in a live
+session. `registry_items(name)` accepts any directory returned by `registries()` when selected,
+and gives a precise unsupported or partial result when its initial loader cannot be witnessed.
+The default session retains the two tradition registries. Session content consistency is checked
+in memory; this adds no qualification record or persisted content pin.
+
 ## Tests
 
 - **Static methods:** small authored inputs test the method logic. Parity tests read the real

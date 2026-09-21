@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::binary::hash;
+use super::{binary::hash, targets::M45_DEFAULT_REGISTRIES};
 use crate::{OpenError, UnavailableReason};
 
 /// SHA-256 of each content file, by its path relative to the installation root.
@@ -16,6 +16,7 @@ pub(super) struct Installation {
     executable: PathBuf,
     root: PathBuf,
     executable_hash: String,
+    default_directories: Vec<String>,
     pub content: Result<ContentIdentity, UnavailableReason>,
 }
 
@@ -35,10 +36,15 @@ impl Installation {
             fs::canonicalize(&executable).map_err(|error| access_error(&executable, error))?;
         let root = installation_root(&executable);
         let bytes = fs::read(&executable).map_err(|error| access_error(&executable, error))?;
+        let default_directories: Vec<String> = M45_DEFAULT_REGISTRIES
+            .iter()
+            .map(|name| (*name).into())
+            .collect();
         Ok((
             Self {
                 executable_hash: hash(&bytes),
-                content: content_snapshot(&root),
+                content: content_snapshot(&root, &default_directories, false),
+                default_directories,
                 root,
                 locator,
                 executable,
@@ -64,15 +70,34 @@ impl Installation {
         Ok(bytes)
     }
 
-    pub fn integrity(&self) -> Option<UnavailableReason> {
-        if let Err(reason) = self.executable_bytes() {
-            return Some(reason);
-        }
-        match (&self.content, content_snapshot(&self.root)) {
+    pub fn target_integrity(&self) -> Option<UnavailableReason> {
+        self.executable_bytes().err()
+    }
+
+    pub fn default_content_integrity(&self) -> Option<UnavailableReason> {
+        match (
+            &self.content,
+            content_snapshot(&self.root, &self.default_directories, false),
+        ) {
             (Ok(expected), Ok(current)) if *expected == current => None,
             (Ok(_), Ok(_)) => Some(UnavailableReason::ContentChanged),
             _ => Some(UnavailableReason::InputUnavailable),
         }
+    }
+
+    pub(super) fn session_content(
+        &self,
+        directories: &[String],
+    ) -> Result<ContentIdentity, UnavailableReason> {
+        content_snapshot(&self.root, directories, true)
+    }
+
+    pub(super) fn session_content_unchanged(
+        &self,
+        directories: &[String],
+        expected: &ContentIdentity,
+    ) -> bool {
+        content_snapshot(&self.root, directories, true).is_ok_and(|current| current == *expected)
     }
 }
 
@@ -128,15 +153,37 @@ fn installation_root(executable: &Path) -> PathBuf {
     }
 }
 
-fn content_snapshot(root: &Path) -> Result<ContentIdentity, UnavailableReason> {
+fn content_snapshot(
+    root: &Path,
+    directories: &[String],
+    allow_missing: bool,
+) -> Result<ContentIdentity, UnavailableReason> {
     let common = fs::symlink_metadata(root.join("common"))
         .map_err(|_| UnavailableReason::InputUnavailable)?;
     if !common.is_dir() || common.is_symlink() {
         return Err(UnavailableReason::InputUnavailable);
     }
     let mut files = vec![root.join("launcher-settings.json")];
-    for directory in ["common/tradition_categories", "common/traditions"] {
-        collect_content(&root.join(directory), &mut files)?;
+    for directory in directories {
+        let mut path = root.to_path_buf();
+        let mut missing = false;
+        for segment in directory.split('/') {
+            path.push(segment);
+            match fs::symlink_metadata(&path) {
+                Ok(metadata) if metadata.is_symlink() || !metadata.is_dir() => {
+                    return Err(UnavailableReason::InputUnavailable);
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound && allow_missing => {
+                    missing = true;
+                    break;
+                }
+                Err(_) => return Err(UnavailableReason::InputUnavailable),
+            }
+        }
+        if !missing {
+            collect_content(&path, &mut files)?;
+        }
     }
     let mut snapshot = BTreeMap::new();
     for path in files {

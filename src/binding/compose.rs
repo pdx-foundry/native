@@ -11,8 +11,8 @@ pub(super) struct ResolvedObservation {
     pub machine: super::Machine,
     pub fixture: Option<crate::protocol::observation::FixtureBinding>,
     pub strategy: platform::StrategyResolution,
-    pub registries:
-        std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
+    pub registry_layout: Option<groups::RegistryLayout>,
+    pub default_registries: &'static [&'static str],
 }
 
 impl ResolvedObservation {
@@ -33,7 +33,8 @@ fn assemble(
     Ok(ResolvedObservation {
         machine: machine::resolve(image.architecture)?,
         strategy: platform::resolve(recipe.strategy),
-        registries: groups::registries(recipe.groups),
+        registry_layout: groups::registry_layout(recipe.groups),
+        default_registries: recipe.default_registries,
         fixture: groups::fixture(recipe.groups),
     })
 }

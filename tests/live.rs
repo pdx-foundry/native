@@ -9,7 +9,7 @@
 //! ```
 //!
 //! A word after `--ignored` selects the cases whose name contains it. A case takes about 35
-//! seconds; the full set takes about ten minutes.
+//! seconds; the full set takes longer as cases are added.
 //!
 //! This file has its own `main` (`harness = false` in `Cargo.toml`) for two reasons. The
 //! supervisor is this executable with the `--supervisor` argument, and the standard harness
@@ -32,8 +32,13 @@ use std::{
 
 const TRADITIONS: &str = "common/traditions";
 const CATEGORIES: &str = "common/tradition_categories";
+const ASCENSION_PERKS: &str = "common/ascension_perks";
+const MAP_GALAXY: &str = "map/galaxy";
+const CIVICS: &str = "common/governments/civics";
+const GAME_SCENARIOS: &str = "common/game_scenarios";
 /// Item counts of the catalogued M45 build.
-const ITEM_COUNTS: [(&str, usize); 2] = [(TRADITIONS, 234), (CATEGORIES, 33)];
+const ITEM_COUNTS: [(&str, usize); 3] =
+    [(TRADITIONS, 234), (CATEGORIES, 33), (ASCENSION_PERKS, 49)];
 
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
@@ -126,7 +131,12 @@ fn main() {
 
 enum Case {
     Normal,
+    InvalidSelection,
+    OutsideCommon,
+    LateOnly,
+    RecordedRoundTrip,
     Fixture(Fault),
+    FixtureOutsideSelection,
     FixtureSelection(pdx_native::FixtureObservationKind),
     FixtureRegistrationDropped,
     FixtureLaterRegistryDropped,
@@ -166,9 +176,17 @@ enum FixtureOutcomeCase {
 fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
         ("normal".to_owned(), Case::Normal),
+        ("invalid_selection".to_owned(), Case::InvalidSelection),
+        ("outside_common".to_owned(), Case::OutsideCommon),
+        ("late_only".to_owned(), Case::LateOnly),
+        ("recorded_round_trip".to_owned(), Case::RecordedRoundTrip),
         ("startup_timeout".to_owned(), Case::StartupTimeout),
         ("cancel".to_owned(), Case::Cancel),
         ("drop_without_close".to_owned(), Case::DropWithoutClose),
+        (
+            "fixture_outside_selection_is_rejected".to_owned(),
+            Case::FixtureOutsideSelection,
+        ),
     ];
     let faults = [
         ("missing_hook", Fault::MissingHook, Expect::NoAnswer),
@@ -185,8 +203,12 @@ fn cases() -> Vec<(String, Case)> {
             Expect::PartialAnswer,
         ),
     ];
-    for (registry, other) in [(TRADITIONS, CATEGORIES), (CATEGORIES, TRADITIONS)] {
-        let short = registry.trim_start_matches("common/");
+    for (registry, other) in [
+        (TRADITIONS, CATEGORIES),
+        (CATEGORIES, TRADITIONS),
+        (ASCENSION_PERKS, TRADITIONS),
+    ] {
+        let short = registry.rsplit('/').next().unwrap();
         for (name, control, expect) in faults {
             let case = Case::Fault {
                 registry,
@@ -267,7 +289,12 @@ fn cases() -> Vec<(String, Case)> {
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::Normal => normal(native).await,
+        Case::InvalidSelection => invalid_selection(native).await,
+        Case::OutsideCommon => outside_common(native).await,
+        Case::LateOnly => late_only(native).await,
+        Case::RecordedRoundTrip => recorded_round_trip(native).await,
         Case::Fixture(control) => fixture_case(control, None).await,
+        Case::FixtureOutsideSelection => fixture_outside_selection(native).await,
         Case::FixtureSelection(kind) => fixture_case(Fault::Normal, Some(kind)).await,
         Case::FixtureRegistrationDropped => {
             fixture_case(
@@ -952,6 +979,22 @@ async fn fixture_case(
     result
 }
 
+async fn fixture_outside_selection(native: &Native) -> Outcome {
+    match native
+        .start_game(
+            options()
+                .registries([MAP_GALAXY])
+                .fixture(fixture_request()),
+        )
+        .await
+    {
+        Err(Error::FixtureRequest { reason }) if reason.contains("GameOptions::registries") => {
+            Ok(())
+        }
+        other => Err(format!("fixture outside registry selection: {other:?}").into()),
+    }
+}
+
 async fn fixture_timeout(native: &Native) -> Outcome {
     let mut request = fixture_request();
     request.deadline_seconds = 1;
@@ -1117,6 +1160,38 @@ fn complete(answer: &Answer<Vec<String>>, registry: &str) -> Result<usize, Strin
     Ok(answer.value.len())
 }
 
+/// Compare a few live key layouts with independent top-level keys in the selected game files.
+fn source_keys_match(answer: &Answer<Vec<String>>, registry: &str) -> Outcome {
+    let root = std::path::PathBuf::from(std::env::var_os("STELLARIS_PATH").unwrap());
+    let mut source = BTreeSet::new();
+    for entry in std::fs::read_dir(root.join(registry))? {
+        let path = entry?.path();
+        if path.extension().is_none_or(|extension| extension != "txt") {
+            continue;
+        }
+        for line in std::fs::read_to_string(path)?.lines() {
+            if line.starts_with([' ', '\t', '#']) {
+                continue;
+            }
+            if let Some((key, _)) = line.split_once('=') {
+                let key = key.trim();
+                if !key.is_empty()
+                    && key.bytes().all(|byte| {
+                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+                    })
+                {
+                    source.insert(key.to_owned());
+                }
+            }
+        }
+    }
+    let observed: BTreeSet<_> = answer.value.iter().cloned().collect();
+    if observed != source {
+        return Err(format!("{registry}: live keys differ from top-level source keys").into());
+    }
+    Ok(())
+}
+
 async fn close_confirmed(game: &mut Game) -> Outcome {
     let disposal = game.close().await?;
     if disposal != Disposal::Confirmed {
@@ -1133,7 +1208,9 @@ async fn close_confirmed(game: &mut Game) -> Outcome {
 }
 
 async fn normal(native: &Native) -> Outcome {
-    let mut game = native.start_game(options()).await?;
+    let mut game = native
+        .start_game(options().registries([TRADITIONS, CATEGORIES, ASCENSION_PERKS]))
+        .await?;
     let readiness = game.readiness();
     let mut result = async {
         if readiness != GameReadiness::PausedAfterRegistryInitialization {
@@ -1145,18 +1222,134 @@ async fn normal(native: &Native) -> Outcome {
             if complete(&first, registry)? != count {
                 return Err(format!("{registry}: {} items", first.value.len()).into());
             }
+            if registry == ASCENSION_PERKS {
+                source_keys_match(&first, registry)?;
+            }
             if game.registry_items(registry).await? != first {
                 return Err(format!("{registry}: a repeated read gave another answer").into());
             }
         }
         match game.registry_items("common/agendas").await {
-            Err(Error::Unsupported { .. }) => Ok(()),
-            other => Err(format!("a registry outside the live recipe: {other:?}").into()),
+            Err(Error::Unsupported { .. }) => {}
+            other => {
+                return Err(format!("a registry outside the discovery method: {other:?}").into());
+            }
+        }
+        match game.registry_items("common/ethics").await {
+            Err(Error::Unsupported { reason, .. })
+                if reason.contains("GameOptions::registries") =>
+            {
+                Ok(())
+            }
+            other => Err(format!("a listed but unselected registry: {other:?}").into()),
         }
     }
     .await;
     and_close(&mut result, &mut game).await;
     result
+}
+
+async fn invalid_selection(native: &Native) -> Outcome {
+    match native
+        .start_game(options().registries(["common/no_such_registry"]))
+        .await
+    {
+        Err(Error::UnknownRegistry { .. }) => {}
+        other => return Err(format!("unknown registry: {other:?}").into()),
+    }
+    match native
+        .start_game(options().registries([TRADITIONS, TRADITIONS]))
+        .await
+    {
+        Err(Error::Startup {
+            disposal: Disposal::NotApplicable,
+            ..
+        }) => Ok(()),
+        other => Err(format!("duplicate registry: {other:?}").into()),
+    }
+}
+
+async fn outside_common(native: &Native) -> Outcome {
+    let mut game = native
+        .start_game(options().registries([MAP_GALAXY, CIVICS, TRADITIONS]))
+        .await?;
+    let mut result = async {
+        let galaxy = game.registry_items(MAP_GALAXY).await?;
+        if complete(&galaxy, MAP_GALAXY)? != 10 {
+            return Err(format!("{MAP_GALAXY}: {} items", galaxy.value.len()).into());
+        }
+        source_keys_match(&galaxy, MAP_GALAXY)?;
+        let civics = game.registry_items(CIVICS).await?;
+        if complete(&civics, CIVICS)? != 358 {
+            return Err("civic count changed".into());
+        }
+        source_keys_match(&civics, CIVICS)?;
+        let traditions = game.registry_items(TRADITIONS).await?;
+        if complete(&traditions, TRADITIONS)? != 234 {
+            return Err("tradition control changed".into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn late_only(native: &Native) -> Outcome {
+    let mut options = options().registries([GAME_SCENARIOS]);
+    options.startup_seconds = 60;
+    let mut game = native.start_game(options).await?;
+    let mut result = async {
+        if game.readiness() != GameReadiness::PausedDuringRegistryInitialization {
+            return Err("late-only session did not pause during initialization".into());
+        }
+        match game.registry_items(GAME_SCENARIOS).await {
+            Err(Error::Unsupported { reason, .. }) if reason.contains("initial loader") => Ok(()),
+            other => Err(format!("late-only registry: {other:?}").into()),
+        }
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn recorded_round_trip(_native: &Native) -> Outcome {
+    let directory = tempfile::tempdir()?;
+    let real = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
+        .record_answers_to(directory.path());
+    let discovered = real.registries()?;
+    let selected = [TRADITIONS, CATEGORIES, ASCENSION_PERKS];
+    let mut game = real.start_game(options().registries(selected)).await?;
+    let mut original = Vec::new();
+    let mut result = async {
+        for name in selected {
+            original.push((name, game.registry_items(name).await?));
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result?;
+    let recorded = Native::from_recorded_answers(directory.path())?;
+    let mut again = recorded.registries()?;
+    again.source.basis = discovered.source.basis;
+    if again != discovered {
+        return Err("recorded registry list differs".into());
+    }
+    let mut game = recorded
+        .start_game(GameOptions::new(Command::new("must-not-start")))
+        .await?;
+    for (name, original) in original {
+        let mut again = game.registry_items(name).await?;
+        again.source.basis = original.source.basis;
+        if again != original {
+            return Err(format!("recorded {name} differs").into());
+        }
+    }
+    if game.close().await? != Disposal::NotApplicable {
+        return Err("recorded close started a process".into());
+    }
+    Ok(())
 }
 
 /// Always close, so that a failed check leaves no game. The first failure is the one reported.
@@ -1175,7 +1368,11 @@ async fn fault(
     expect: Expect,
 ) -> Outcome {
     let mut game = native
-        .start_game(options().fault(registry, control))
+        .start_game(
+            options()
+                .registries([registry, other])
+                .fault(registry, control),
+        )
         .await?;
     let readiness = game.readiness();
     let mut result = async {
@@ -1220,8 +1417,17 @@ async fn fault(
 /// The supervisor stops the debugger worker while the faulted registry loads. The game never
 /// reaches its pause, so there is no `Game`; the start fails and the game is still reaped.
 async fn worker_loss(native: &Native, registry: &'static str) -> Outcome {
+    let other = if registry == TRADITIONS {
+        CATEGORIES
+    } else {
+        TRADITIONS
+    };
     match native
-        .start_game(options().fault(registry, Fault::WorkerLoss))
+        .start_game(
+            options()
+                .registries([registry, other])
+                .fault(registry, Fault::WorkerLoss),
+        )
         .await
     {
         Err(Error::Startup {
