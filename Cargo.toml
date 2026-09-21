@@ -18,6 +18,7 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+syn = { version = "3", features = ["full", "visit"] }
 
 # The live tests start the real game. This binary is also their supervisor process, so it has
 # its own `main` in place of the standard test harness.

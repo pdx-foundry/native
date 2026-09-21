@@ -165,6 +165,7 @@ unresolved reservations first. Native never creates, moves, or clears this direc
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+ATLAS_CALLER_PATH=/path/to/pdx-atlas/prototypes/native-registry cargo test --test consumer_boundary -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test static_questions -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
 cargo doc --no-deps
@@ -173,6 +174,8 @@ cargo doc --no-deps
 The default tests need no game. The static parity tests read the executable of the exact supported
 build and start no game. The live test command runs registry and fixture controls one case after
 the other, and takes several minutes; a word after `--ignored` selects cases by name.
+The Atlas boundary check scans the frozen caller's Rust source for unsupported Native imports,
+hidden hooks, platform or build branches, and native constants.
 Run the live suite separately from the default tests: lifecycle unit tests briefly create a
 harmless process named `stellaris` to check that Native refuses an ordinary game.
 
