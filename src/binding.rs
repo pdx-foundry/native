@@ -1,5 +1,5 @@
 mod analysis;
-pub(crate) use analysis::{BoundAnalysis, NamedCandidate};
+pub(crate) use analysis::{BoundAnalysis, NamedCandidate, VerifiedAnalysis};
 mod binary;
 mod compose;
 mod groups;
@@ -43,7 +43,7 @@ pub(crate) struct Binding {
 impl Binding {
     pub(crate) fn open(installation: &std::path::Path) -> Result<Self, OpenError> {
         let (installation, bytes) = installation::Installation::open(installation)?;
-        let image = binary::identify(&bytes)?;
+        let image = binary::identify(&bytes, installation.executable_hash())?;
         let operation = compose::compose(&image)?;
         let analysis = Some(std::sync::Arc::new(compose::analysis(
             &image,
@@ -90,16 +90,16 @@ impl Binding {
             .as_ref()
             .and_then(|operation| operation.registry_layout)
             .ok_or("this build has no registry observation layout")?;
-        let candidates = self
+        let verified = self
             .analysis
             .as_ref()
             .ok_or("this build has no static registry analysis")?
-            .named_candidates()
+            .verified()
             .map_err(|error| error.to_string())?;
         directories
             .iter()
             .map(|directory| {
-                let address = initial_loader(&candidates, directory)?;
+                let address = initial_loader(verified.named_candidates(), directory)?;
                 Ok((
                     directory.clone(),
                     groups::registry_binding(layout, directory, address),

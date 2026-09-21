@@ -21,6 +21,14 @@ tempfile = "3"
 syn = { version = "3", features = ["full", "visit"] }
 proc-macro2 = "1"
 
+# Executable hashing and C++ symbol decoding dominate unoptimized static queries.
+# Keep Native itself debuggable; see docs/native/performance.md for measurements.
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.cpp_demangle]
+opt-level = 3
+
 # The live tests start the real game. This binary is also their supervisor process, so it has
 # its own `main` in place of the standard test harness.
 [[test]]

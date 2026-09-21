@@ -1,6 +1,6 @@
 //! `Native`: one pinned installation, or one directory of recorded answers.
 use crate::{OpenError, UnavailableReason, binding::Binding};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 pub(crate) mod questions;
 
@@ -18,7 +18,6 @@ pub struct Native {
     /// Each stays invalidated even when the original bytes return.
     target_invalidated: Arc<Mutex<Option<UnavailableReason>>>,
     default_invalidated: Arc<Mutex<Option<UnavailableReason>>>,
-    candidates: Arc<OnceLock<Result<Vec<crate::binding::NamedCandidate>, crate::AnalysisError>>>,
 }
 
 impl Native {
@@ -43,7 +42,6 @@ impl Native {
             recorder: None,
             target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
-            candidates: Arc::new(OnceLock::new()),
         })
     }
     /// Write every answer, and every error, to this directory as it is returned. A later
@@ -59,7 +57,6 @@ impl Native {
             recorder: None,
             target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
-            candidates: Arc::new(OnceLock::new()),
         }
     }
     /// The installation binding. Recorded answers have none; every public method answers from
