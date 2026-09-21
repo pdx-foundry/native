@@ -17,6 +17,11 @@ continuity and worker-source hashes remain; the file and directory `fsync` calls
 The worker-source hashes still verify that the copied Python package is the one the supervisor
 prepared. The generated Python protocol remains the sole wire-schema projection from Rust.
 
+The live suite uses one shared-template registry for each registry fault instead of repeating
+the same fault matrix across three registries. Fixture fault cases exercise the second path.
+Worker loss is checked before hook activation and after the first registry entry; those are
+different cleanup guarantees. Reducer, handshake and transport checks run as fast crate tests.
+
 The OS lock excludes concurrent Native supervisors, and the process inventory refuses an
 ordinary Stellaris instance. A prior session report is no longer an admission gate. Cleanup
 still reports game disposal separately from failure to write the owner or session report.

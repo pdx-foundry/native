@@ -189,6 +189,8 @@ pub enum ObservationControl {
     AccessFailure,
     /// Stop the debugger worker while it reads the registry.
     WorkerLoss,
+    /// Stop the debugger worker before it attaches or activates a hook.
+    WorkerLossBeforeActivation,
 }
 
 #[cfg(test)]

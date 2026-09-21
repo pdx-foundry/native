@@ -155,6 +155,7 @@ enum Case {
     },
     WorkerLoss {
         registry: &'static str,
+        control: Fault,
     },
 }
 
@@ -204,11 +205,7 @@ fn cases() -> Vec<(String, Case)> {
             Expect::PartialAnswer,
         ),
     ];
-    for (registry, other) in [
-        (TRADITIONS, CATEGORIES),
-        (CATEGORIES, TRADITIONS),
-        (ASCENSION_PERKS, TRADITIONS),
-    ] {
+    for (registry, other) in [(TRADITIONS, CATEGORIES)] {
         let short = registry.rsplit('/').next().unwrap();
         for (name, control, expect) in faults {
             let case = Case::Fault {
@@ -221,9 +218,19 @@ fn cases() -> Vec<(String, Case)> {
         }
         cases.push((
             format!("worker_loss_in_{short}"),
-            Case::WorkerLoss { registry },
+            Case::WorkerLoss {
+                registry,
+                control: Fault::WorkerLoss,
+            },
         ));
     }
+    cases.push((
+        "worker_loss_before_activation".into(),
+        Case::WorkerLoss {
+            registry: TRADITIONS,
+            control: Fault::WorkerLossBeforeActivation,
+        },
+    ));
     for (name, control) in [
         ("normal", Fault::Normal),
         ("missing_hook", Fault::MissingHook),
@@ -322,7 +329,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             control,
             expect,
         } => fault(native, registry, other, control, expect).await,
-        Case::WorkerLoss { registry } => worker_loss(native, registry).await,
+        Case::WorkerLoss { registry, control } => worker_loss(native, registry, control).await,
     }
 }
 
@@ -1470,7 +1477,7 @@ async fn fault(
 
 /// The supervisor stops the debugger worker while the faulted registry loads. The game never
 /// reaches its pause, so there is no `Game`; the start fails and the game is still reaped.
-async fn worker_loss(native: &Native, registry: &'static str) -> Outcome {
+async fn worker_loss(native: &Native, registry: &'static str, control: Fault) -> Outcome {
     let other = if registry == TRADITIONS {
         CATEGORIES
     } else {
@@ -1480,7 +1487,7 @@ async fn worker_loss(native: &Native, registry: &'static str) -> Outcome {
         .start_game(
             options()
                 .registries([registry, other])
-                .fault(registry, Fault::WorkerLoss),
+                .fault(registry, control),
         )
         .await
     {

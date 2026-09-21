@@ -540,6 +540,11 @@ def run(debugger):
     atomic('hello', 'hello.json', dict(version=protocol.VERSION, attempt=request['attempt'],
         game=request['game'], worker=os.getpid(), target=target_hash, source_hashes=source_hashes,
         python=sys.version, lldb=lldb.SBDebugger.GetVersionString(), module=lldb.__file__))
+    if request['control'] == protocol.CONTROL['worker_loss_before_activation']:
+        emit('worker-loss-ready')
+        (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+        while True:
+            time.sleep(.1)
     debugger.SetAsync(True)
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
     hooks = [('registry:' + name, value['load_entry']) for name, value in request['registries'].items()]

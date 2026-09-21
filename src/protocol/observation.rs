@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/10";
+pub(crate) const VERSION: &str = "native-observation/11";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 
@@ -65,6 +65,7 @@ pub(crate) fn python_bindings() -> String {
         "missing_terminal": ObservationControl::MissingTerminal,
         "access_failure": ObservationControl::AccessFailure,
         "worker_loss": ObservationControl::WorkerLoss,
+        "worker_loss_before_activation": ObservationControl::WorkerLossBeforeActivation,
     });
     let schemas = serde_json::json!({
         "request": schemars::schema_for!(WorkerRequest),

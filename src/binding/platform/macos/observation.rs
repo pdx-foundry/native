@@ -245,8 +245,11 @@ impl Observer {
                 return Err(SupervisorError("Worker hello deadline elapsed".into()));
             }
         }
-        if self.request.control == crate::protocol::session::ObservationControl::WorkerLoss
-            && self.output.join("worker-loss-ready").try_exists()?
+        if matches!(
+            self.request.control,
+            crate::protocol::session::ObservationControl::WorkerLoss
+                | crate::protocol::session::ObservationControl::WorkerLossBeforeActivation
+        ) && self.output.join("worker-loss-ready").try_exists()?
         {
             self.kill_group()?;
         }
