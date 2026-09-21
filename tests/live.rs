@@ -131,6 +131,7 @@ enum Case {
     FixtureLaterRegistryDropped,
     FixtureTimeout,
     FixtureRefusal,
+    FixtureOutcome(FixtureOutcomeCase),
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -143,6 +144,15 @@ enum Case {
     WorkerLoss {
         registry: &'static str,
     },
+}
+
+#[derive(Clone, Copy)]
+enum FixtureOutcomeCase {
+    Valid,
+    Omitted,
+    Repeated,
+    Malformed,
+    Runtime,
 }
 
 fn cases() -> Vec<(String, Case)> {
@@ -212,6 +222,18 @@ fn cases() -> Vec<(String, Case)> {
     ));
     cases.push(("fixture_timeout".into(), Case::FixtureTimeout));
     cases.push(("fixture_refusal".into(), Case::FixtureRefusal));
+    for (name, case) in [
+        ("valid", FixtureOutcomeCase::Valid),
+        ("omitted", FixtureOutcomeCase::Omitted),
+        ("repeated", FixtureOutcomeCase::Repeated),
+        ("malformed", FixtureOutcomeCase::Malformed),
+        ("runtime", FixtureOutcomeCase::Runtime),
+    ] {
+        cases.push((
+            format!("fixture_outcome_{name}"),
+            Case::FixtureOutcome(case),
+        ));
+    }
     cases
 }
 
@@ -230,6 +252,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureLaterRegistryDropped => fixture_later_registry_dropped(native).await,
         Case::FixtureTimeout => fixture_timeout(native).await,
         Case::FixtureRefusal => fixture_refusal(native).await,
+        Case::FixtureOutcome(case) => fixture_outcome(case).await,
         Case::StartupTimeout => startup_timeout(native).await,
         Case::Cancel => cancel(native).await,
         Case::DropWithoutClose => drop_without_close(native).await,
@@ -241,6 +264,145 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         } => fault(native, registry, other, control, expect).await,
         Case::WorkerLoss { registry } => worker_loss(native, registry).await,
     }
+}
+
+async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticWindow, FixtureRuntime, FixtureStorage, ReaderKind,
+    };
+
+    let (body, runtime) = match case {
+        FixtureOutcomeCase::Valid => (" unlocks_agenda = \"agenda_one\"\n", false),
+        FixtureOutcomeCase::Omitted => ("", false),
+        FixtureOutcomeCase::Repeated => (
+            " unlocks_agenda = \"agenda_one\"\n unlocks_agenda = \"agenda_two\"\n",
+            false,
+        ),
+        FixtureOutcomeCase::Malformed => (" unlocks_agenda = \"agenda\nbroken\"\n", false),
+        FixtureOutcomeCase::Runtime => (" unlocks_agenda = \"agenda_one\"\n", true),
+    };
+    let mut question = pdx_native::FixtureFieldQuestion::new(
+        TRADITIONS,
+        "native_fixture_tradition",
+        "unlocks_agenda",
+    );
+    if runtime {
+        question = question.with_runtime();
+    }
+    let text = format!("native_fixture_tradition = {{\n{body}}}\n");
+    let request = pdx_native::FixtureRequest::field_outcomes(
+        "common/traditions/native_fixture.txt",
+        text,
+        [question],
+    );
+    let recorded = tempfile::tempdir()?;
+    let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
+        .record_answers_to(recorded.path());
+    let mut game = native
+        .start_game(options().fixture(request.clone()))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let outcome = answer
+            .value
+            .field_outcomes
+            .first()
+            .ok_or("missing field outcome")?;
+        if outcome.question.field != "unlocks_agenda"
+            || outcome.owner.is_none()
+            || outcome.definition_line != Some(1)
+            || outcome.reader.kind != ReaderKind::String
+            || answer.value.diagnostic_coverage
+                != (DiagnosticCoverage::Complete {
+                    window: DiagnosticWindow::FixtureFileLoad,
+                })
+        {
+            return Err(format!("field outcome identity: {answer:?}").into());
+        }
+        let FixtureStorage::String {
+            occurrences,
+            final_value,
+        } = &outcome.storage
+        else {
+            return Err(format!("field storage unavailable: {answer:?}").into());
+        };
+        match case {
+            FixtureOutcomeCase::Valid => {
+                if answer.completeness != Completeness::Complete
+                    || occurrences.len() != 1
+                    || occurrences[0].value != "agenda_one"
+                    || final_value != "agenda_one"
+                    || !answer.value.diagnostics.is_empty()
+                {
+                    return Err(format!("valid outcome: {answer:?}").into());
+                }
+            }
+            FixtureOutcomeCase::Omitted => {
+                if answer.completeness != Completeness::Complete
+                    || !occurrences.is_empty()
+                    || !final_value.is_empty()
+                    || !answer.value.diagnostics.is_empty()
+                {
+                    return Err(format!("omitted outcome: {answer:?}").into());
+                }
+            }
+            FixtureOutcomeCase::Repeated => {
+                let values = occurrences
+                    .iter()
+                    .map(|occurrence| occurrence.value.as_str())
+                    .collect::<Vec<_>>();
+                if answer.completeness != Completeness::Complete
+                    || values != ["agenda_one", "agenda_two"]
+                    || final_value != "agenda_two"
+                {
+                    return Err(format!("repeated outcome: {answer:?}").into());
+                }
+            }
+            FixtureOutcomeCase::Malformed => {
+                if answer.completeness != Completeness::Complete
+                    || occurrences.len() != 1
+                    || answer.value.diagnostics.is_empty()
+                    || outcome.diagnostics.is_empty()
+                {
+                    return Err(format!("malformed outcome: {answer:?}").into());
+                }
+            }
+            FixtureOutcomeCase::Runtime => {
+                if answer.completeness != Completeness::Partial
+                    || !matches!(outcome.runtime, FixtureRuntime::Unavailable(_))
+                    || !answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.kind == pdx_native::GapKind::OutsideMethod)
+                {
+                    return Err(format!("runtime outcome: {answer:?}").into());
+                }
+            }
+        }
+        if !runtime && outcome.runtime != FixtureRuntime::NotRequested {
+            return Err("unrequested runtime was not kept distinct".into());
+        }
+        if complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)? != 1
+            || complete(&game.registry_items(CATEGORIES).await?, CATEGORIES)? != 33
+        {
+            return Err("fixture did not replace only traditions".into());
+        }
+        let recorded_native = Native::from_recorded_answers(recorded.path())?;
+        let mut recorded_game = recorded_native
+            .start_game(GameOptions::new(Command::new("must-not-start")).fixture(request))
+            .await?;
+        let mut expected = answer.clone();
+        expected.source.basis = Basis::Recorded;
+        if recorded_game.observe_fixture().await? != expected
+            || recorded_game.close().await? != Disposal::NotApplicable
+        {
+            return Err("recorded field outcome differs".into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
 }
 
 fn options() -> GameOptions {
@@ -479,8 +641,7 @@ async fn fixture_refusal(native: &Native) -> Outcome {
     let before = work_directories()?;
     let request = pdx_native::FixtureRequest::new("common/unsupported/fixture.txt", "x = {}");
     match native.start_game(options().fixture(request)).await {
-        Err(Error::FixtureRequest { reason }) if reason.contains("common/tradition_categories") => {
-        }
+        Err(Error::FixtureRequest { reason }) if reason.contains("Fixture files") => {}
         Ok(mut game) => {
             let _ = game.close().await;
             return Err("unsupported fixture launched".into());

@@ -2,11 +2,14 @@
 //! with session-local owner identities. Only witnessed read entries leave this module.
 use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
 use crate::{
-    Answer, Basis, BuildId, Completeness, Error, FieldRead, FixtureObservation,
-    FixtureObservationKind as Kind, FixtureOwnerId, FixtureRequest, Gap, GapKind, Operation,
-    ProcessingStage, RegistrationEntry, Source,
+    Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
+    Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
+    FixtureObservationKind as Kind, FixtureOwnerId, FixtureRequest, FixtureRuntime, FixtureStorage,
+    Gap, GapKind, Operation, ProcessingStage, Reader, ReaderId, ReaderKind, RegistrationEntry,
+    Source, StoredStringOccurrence,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Worker events inside one fixture window. Thread and sequence belong to the outer record.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -28,6 +31,43 @@ pub(crate) enum FixtureEvent {
         owner: String,
         ordinal: u64,
     },
+    Definition {
+        file: String,
+        line: u64,
+        definition: String,
+        owner: String,
+    },
+    FieldStorage {
+        question: u64,
+        file: String,
+        line: u64,
+        definition: String,
+        field: String,
+        owner: String,
+        occurrence: u64,
+        value: String,
+    },
+    Diagnostic {
+        text: String,
+        stage: String,
+        file: String,
+        line: u64,
+        definition: Option<String>,
+        field: Option<String>,
+        occurrence: Option<u64>,
+    },
+    FieldTerminal {
+        question: u64,
+        owner: Option<String>,
+        definition_line: Option<u64>,
+        reader_id: Option<String>,
+        reader_kind: String,
+        final_value: Option<String>,
+        unavailable: Option<String>,
+    },
+    DiagnosticsTerminal {
+        count: u64,
+    },
     LoadReturned {
         file: String,
         field_count: u64,
@@ -35,11 +75,43 @@ pub(crate) enum FixtureEvent {
     End {
         registrations: u64,
         field_reads: u64,
+        #[serde(default)]
+        field_outcomes: u64,
+        #[serde(default)]
+        diagnostics: u64,
         producer_last_sequence: u64,
     },
     Unavailable {
         reason: String,
     },
+}
+
+fn pending_outcome(question: &crate::FixtureFieldQuestion, file: &str) -> FixtureFieldOutcome {
+    FixtureFieldOutcome {
+        question: question.clone(),
+        file: file.into(),
+        owner: None,
+        definition_line: None,
+        reader: Reader {
+            id: None,
+            kind: ReaderKind::Unknown,
+        },
+        storage: FixtureStorage::Unavailable("Storage terminal pending".into()),
+        diagnostics: Vec::new(),
+        runtime: FixtureRuntime::NotRequested,
+    }
+}
+
+fn parse_reader_kind(kind: &str) -> ReaderKind {
+    match kind {
+        "Boolean" => ReaderKind::Boolean,
+        "Integer" => ReaderKind::Integer,
+        "FixedPoint" => ReaderKind::FixedPoint,
+        "String" => ReaderKind::String,
+        "Reference" => ReaderKind::Reference,
+        "Block" => ReaderKind::Block,
+        _ => ReaderKind::Unknown,
+    }
 }
 
 pub(crate) fn reduce(
@@ -54,6 +126,14 @@ pub(crate) fn reduce(
     }
     if request.requests(Kind::CategoryFieldReads) {
         hooks.push("fixture:field");
+    }
+    if !request.field_questions.is_empty() && request.registry() == "common/traditions" {
+        hooks.extend([
+            "fixture:constructor",
+            "fixture:reader",
+            "fixture:member",
+            "fixture:malformed",
+        ]);
     }
     let Some((thread, resumed)) = event_stream::activation(records, owner_events, &hooks) else {
         return Err(Error::Observation {
@@ -88,6 +168,27 @@ pub(crate) fn reduce(
     if !window.returned {
         window.gap("The matching fixture loader return is missing");
     }
+    if window.value.field_outcomes.len() != request.field_questions.len() {
+        window.gap("One or more requested field terminals are missing");
+        for question in &request.field_questions {
+            if !window
+                .value
+                .field_outcomes
+                .iter()
+                .any(|outcome| outcome.question == *question)
+            {
+                let mut outcome = pending_outcome(question, request.file());
+                outcome.storage =
+                    FixtureStorage::Unavailable("The field observation terminal is missing".into());
+                window.value.field_outcomes.push(outcome);
+            }
+        }
+    }
+    if !request.field_questions.is_empty() && !window.diagnostics_terminal {
+        window.gap("The parser diagnostic terminal is missing");
+        window.value.diagnostic_coverage =
+            DiagnosticCoverage::Unavailable("The parser diagnostic window did not complete".into());
+    }
     let stopping = owner_events
         .iter()
         .any(|event| matches!(event, OwnerEvent::WorkerStopRequested));
@@ -121,6 +222,10 @@ struct Window<'a> {
     ended: bool,
     owner: Option<String>,
     last_field_ordinal: u64,
+    definitions: BTreeMap<String, (String, u64)>,
+    occurrences: BTreeMap<u64, Vec<StoredStringOccurrence>>,
+    field_terminals: BTreeMap<u64, FixtureFieldOutcome>,
+    diagnostics_terminal: bool,
     value: FixtureObservation,
     gaps: Vec<Gap>,
 }
@@ -138,6 +243,10 @@ impl<'a> Window<'a> {
             ended: false,
             owner: None,
             last_field_ordinal: 0,
+            definitions: BTreeMap::new(),
+            occurrences: BTreeMap::new(),
+            field_terminals: BTreeMap::new(),
+            diagnostics_terminal: false,
             value: FixtureObservation::default(),
             gaps: Vec::new(),
         }
@@ -242,6 +351,208 @@ impl<'a> Window<'a> {
                     stage: ProcessingStage::FieldReadEntry,
                 });
             }
+            FixtureEvent::Definition {
+                file,
+                line,
+                definition,
+                owner,
+            } => {
+                let valid = self.loading
+                    && !self.returned
+                    && file == self.request.file()
+                    && *line > 0
+                    && *line <= self.request.files[file].lines().count() as u64
+                    && super::registry_items::pointer(owner)
+                    && !self.definitions.contains_key(definition);
+                if !valid {
+                    self.gap("A definition lacks a matching file, owner, line or loader");
+                } else {
+                    self.definitions
+                        .insert(definition.clone(), (owner.clone(), *line));
+                }
+            }
+            FixtureEvent::FieldStorage {
+                question,
+                file,
+                line,
+                definition,
+                field,
+                owner,
+                occurrence,
+                value,
+            } => {
+                let Some(asked) = self.request.field_questions.get(*question as usize) else {
+                    self.gap("A storage event names an unknown question");
+                    return;
+                };
+                let expected = self
+                    .occurrences
+                    .get(question)
+                    .map_or(1, |items| items.len() as u64 + 1);
+                let valid = self.loading
+                    && !self.returned
+                    && file == self.request.file()
+                    && definition == &asked.definition
+                    && field == &asked.field
+                    && self
+                        .definitions
+                        .get(definition)
+                        .is_some_and(|(known, _)| known == owner)
+                    && *line > 0
+                    && *line <= self.request.files[file].lines().count() as u64
+                    && *occurrence == expected;
+                if !valid {
+                    self.gap("A stored value lacks a matching question, source, owner or order");
+                } else {
+                    self.occurrences
+                        .entry(*question)
+                        .or_default()
+                        .push(StoredStringOccurrence {
+                            line: *line,
+                            occurrence: *occurrence,
+                            value: value.clone(),
+                        });
+                }
+            }
+            FixtureEvent::Diagnostic {
+                text,
+                stage,
+                file,
+                line,
+                definition,
+                field,
+                occurrence,
+            } => {
+                let source_valid = file == self.request.file()
+                    && *line > 0
+                    && *line <= self.request.files[file].lines().count() as u64;
+                let join = if source_valid {
+                    DiagnosticJoin::Source {
+                        file: file.clone(),
+                        line: *line,
+                        definition: definition.clone(),
+                        field: field.clone(),
+                        occurrence: *occurrence,
+                    }
+                } else {
+                    self.gap("A parser diagnostic has no valid fixture source join");
+                    DiagnosticJoin::Unavailable(
+                        "The diagnostic source did not join to the fixture".into(),
+                    )
+                };
+                let index = self.value.diagnostics.len();
+                self.value.diagnostics.push(FixtureDiagnostic {
+                    text: text.clone(),
+                    stage: stage.clone(),
+                    join,
+                });
+                if let (Some(definition), Some(field)) = (definition, field) {
+                    for (question, asked) in self.request.field_questions.iter().enumerate() {
+                        if asked.diagnostics
+                            && &asked.definition == definition
+                            && &asked.field == field
+                        {
+                            // The final outcome is built at its terminal; retain indices by a
+                            // temporary sentinel entry in the map.
+                            self.field_terminals
+                                .entry(question as u64)
+                                .or_insert_with(|| pending_outcome(asked, self.request.file()))
+                                .diagnostics
+                                .push(index);
+                        }
+                    }
+                }
+            }
+            FixtureEvent::FieldTerminal {
+                question,
+                owner,
+                definition_line,
+                reader_id,
+                reader_kind,
+                final_value,
+                unavailable,
+            } => {
+                let Some(asked) = self.request.field_questions.get(*question as usize) else {
+                    self.gap("A field terminal names an unknown question");
+                    return;
+                };
+                let diagnostics = self
+                    .field_terminals
+                    .remove(question)
+                    .map(|outcome| outcome.diagnostics)
+                    .unwrap_or_default();
+                let owner_joined = owner.as_ref().is_some_and(|pointer| {
+                    self.definitions
+                        .get(&asked.definition)
+                        .is_some_and(|(known, line)| {
+                            known == pointer && Some(*line) == *definition_line
+                        })
+                });
+                let storage = match (final_value, unavailable, owner_joined) {
+                    (Some(final_value), None, true) => FixtureStorage::String {
+                        occurrences: self.occurrences.remove(question).unwrap_or_default(),
+                        final_value: final_value.clone(),
+                    },
+                    (None, Some(reason), _) => {
+                        let kind = match reader_kind.as_str() {
+                            "String" => GapKind::IncompleteObservation,
+                            "Unknown" => GapKind::UnresolvedReader,
+                            _ => GapKind::OutsideMethod,
+                        };
+                        self.gaps.push(Gap {
+                            kind,
+                            subject: Some(asked.field.clone()),
+                            detail: reason.clone(),
+                        });
+                        FixtureStorage::Unavailable(reason.clone())
+                    }
+                    _ => {
+                        self.gap("A field terminal lacks its constructor owner or source join");
+                        FixtureStorage::Unavailable(
+                            "The field terminal did not join to its constructor".into(),
+                        )
+                    }
+                };
+                let runtime = if asked.runtime {
+                    self.gaps.push(Gap {
+                        kind: GapKind::OutsideMethod,
+                        subject: Some(asked.field.clone()),
+                        detail: "Runtime is outside the initial file-load method".into(),
+                    });
+                    FixtureRuntime::Unavailable(
+                        "Runtime is outside the initial file-load method".into(),
+                    )
+                } else {
+                    FixtureRuntime::NotRequested
+                };
+                let reader = Reader {
+                    id: reader_id.clone().map(ReaderId),
+                    kind: parse_reader_kind(reader_kind),
+                };
+                let owner = owner_joined.then_some(FixtureOwnerId(*question + 1));
+                self.field_terminals.insert(
+                    *question,
+                    FixtureFieldOutcome {
+                        question: asked.clone(),
+                        file: self.request.file().into(),
+                        owner,
+                        definition_line: *definition_line,
+                        reader,
+                        storage,
+                        diagnostics,
+                        runtime,
+                    },
+                );
+            }
+            FixtureEvent::DiagnosticsTerminal { count } => {
+                if self.diagnostics_terminal || *count != self.value.diagnostics.len() as u64 {
+                    self.gap("The diagnostic terminal disagrees with its records");
+                }
+                self.diagnostics_terminal = true;
+                self.value.diagnostic_coverage = DiagnosticCoverage::Complete {
+                    window: DiagnosticWindow::FixtureFileLoad,
+                };
+            }
             FixtureEvent::LoadReturned { file, field_count } => {
                 if !self.loading || self.returned || file != self.request.file() {
                     self.gap("The fixture return has no unique matching loader entry");
@@ -255,17 +566,25 @@ impl<'a> Window<'a> {
             FixtureEvent::End {
                 registrations,
                 field_reads,
+                field_outcomes,
+                diagnostics,
                 producer_last_sequence,
             } => {
                 if !self.returned
                     || *producer_last_sequence != record.seq
                     || *registrations != self.value.registration_entries.len() as u64
                     || *field_reads != self.value.field_reads.len() as u64
+                    || *field_outcomes != self.field_terminals.len() as u64
+                    || *diagnostics != self.value.diagnostics.len() as u64
+                    || (!self.request.field_questions.is_empty() && !self.diagnostics_terminal)
                     || (self.request.requests(Kind::RegistrationEntries)
                         && !self.registrations_ended)
                 {
                     self.gap("The fixture terminal disagrees with its window");
                 }
+                self.value.field_outcomes = (0..self.request.field_questions.len() as u64)
+                    .filter_map(|index| self.field_terminals.remove(&index))
+                    .collect();
                 self.ended = true;
             }
             FixtureEvent::Unavailable { .. } => unreachable!(),
@@ -310,6 +629,100 @@ mod tests {
             .into_iter()
             .map(|event| serde_json::from_value(event).unwrap())
             .collect()
+    }
+
+    fn field_request(runtime: bool) -> FixtureRequest {
+        let mut question =
+            crate::FixtureFieldQuestion::new("common/traditions", "sample", "unlocks_agenda");
+        question.runtime = runtime;
+        FixtureRequest::field_outcomes(
+            "common/traditions/sample.txt",
+            "sample = {\n unlocks_agenda = \"one\"\n unlocks_agenda = \"two\"\n}\n",
+            [question],
+        )
+    }
+
+    fn field_events() -> Vec<Value> {
+        let hook = json!({"enabled":true,"locations":1,"resolved":1,"hits":0});
+        let fixture = |event: Value| json!({"kind":"fixture", "event":event});
+        let mut events = vec![
+            json!({"kind":"launch-stopped", "error":"success", "pid":42, "triple":"arm64-macos", "frames":[{"function":"_dyld_start"}]}),
+            json!({"kind":"hooks-active-before-resume", "hooks":{
+                "fixture:load":hook,
+                "fixture:constructor":hook,
+                "fixture:reader":hook,
+                "fixture:member":hook,
+                "fixture:malformed":hook
+            }}),
+            json!({"kind":"resume","error":"success"}),
+            fixture(json!({"kind":"load-start","file":"common/traditions/sample.txt"})),
+            fixture(
+                json!({"kind":"definition","file":"common/traditions/sample.txt","line":1,"definition":"sample","owner":"0x2000"}),
+            ),
+            fixture(
+                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":1,"value":"one"}),
+            ),
+            fixture(
+                json!({"kind":"diagnostic","text":"malformed value","stage":"reader-malformed-report","file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","occurrence":1}),
+            ),
+            fixture(
+                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":2,"value":"two"}),
+            ),
+            fixture(
+                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":"two","unavailable":null}),
+            ),
+            fixture(json!({"kind":"diagnostics-terminal","count":1})),
+            fixture(
+                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
+            ),
+            Value::Null,
+        ];
+        let last = events.len();
+        events[last - 1] = fixture(json!({"kind":"end","registrations":0,"field_reads":0,
+            "field_outcomes":1,"diagnostics":1,"producer_last_sequence":last}));
+        events
+            .into_iter()
+            .enumerate()
+            .map(|(index, mut event)| {
+                event["seq"] = json!(index + 1);
+                event["thread"] = json!(7);
+                event["run"] = json!("attempt");
+                event
+            })
+            .collect()
+    }
+
+    fn unavailable_field_events(reader_kind: &str) -> Vec<Value> {
+        let mut events = field_events()
+            .into_iter()
+            .filter(|event| {
+                !matches!(
+                    event.pointer("/event/kind").and_then(Value::as_str),
+                    Some("field-storage" | "diagnostic")
+                )
+            })
+            .collect::<Vec<_>>();
+        for event in &mut events {
+            match event.pointer("/event/kind").and_then(Value::as_str) {
+                Some("field-terminal") => {
+                    event["event"]["reader_id"] = Value::Null;
+                    event["event"]["reader_kind"] = json!(reader_kind);
+                    event["event"]["final_value"] = Value::Null;
+                    event["event"]["unavailable"] = json!("Storage decoder unavailable");
+                }
+                Some("diagnostics-terminal") => event["event"]["count"] = json!(0),
+                Some("end") => event["event"]["diagnostics"] = json!(0),
+                _ => {}
+            }
+        }
+        let last = events.len();
+        for (index, event) in events.iter_mut().enumerate() {
+            event["seq"] = json!(index + 1);
+            if event.pointer("/event/kind").and_then(Value::as_str) == Some("end") {
+                event["event"]["producer_last_sequence"] = json!(last);
+            }
+        }
+        events
     }
     fn owner() -> Vec<OwnerEvent> {
         vec![OwnerEvent::GameOwnedSuspended {
@@ -484,5 +897,108 @@ mod tests {
         let answer = reduce(&request(), &records, &owner(), BuildId("b".into())).unwrap();
         assert_eq!(answer.completeness, Completeness::Partial);
         assert_eq!(answer.value.field_reads.len(), 2);
+    }
+
+    #[test]
+    fn field_storage_diagnostics_and_runtime_are_independent() {
+        let complete = reduce(
+            &field_request(false),
+            &records(field_events()),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap();
+        assert_eq!(complete.completeness, Completeness::Complete);
+        assert_eq!(
+            complete.value.diagnostic_coverage,
+            DiagnosticCoverage::Complete {
+                window: DiagnosticWindow::FixtureFileLoad,
+            }
+        );
+        assert_eq!(complete.value.diagnostics.len(), 1);
+        let outcome = &complete.value.field_outcomes[0];
+        assert_eq!(outcome.diagnostics, [0]);
+        assert_eq!(outcome.runtime, FixtureRuntime::NotRequested);
+        assert!(matches!(
+            &outcome.storage,
+            FixtureStorage::String { occurrences, final_value }
+                if occurrences.iter().map(|item| item.value.as_str()).collect::<Vec<_>>() == ["one", "two"]
+                    && final_value == "two"
+        ));
+
+        let runtime = reduce(
+            &field_request(true),
+            &records(field_events()),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap();
+        assert_eq!(runtime.completeness, Completeness::Partial);
+        assert!(matches!(
+            runtime.value.field_outcomes[0].runtime,
+            FixtureRuntime::Unavailable(_)
+        ));
+        assert!(
+            runtime
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::OutsideMethod)
+        );
+
+        let mut missing_diagnostic_terminal = field_events();
+        missing_diagnostic_terminal.remove(9);
+        let partial = reduce(
+            &field_request(false),
+            &records(missing_diagnostic_terminal),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap();
+        assert_eq!(partial.completeness, Completeness::Partial);
+        assert_eq!(partial.value.diagnostics.len(), 1);
+        assert!(matches!(
+            partial.value.diagnostic_coverage,
+            DiagnosticCoverage::Unavailable(_)
+        ));
+
+        let mut unjoined_diagnostic = field_events();
+        unjoined_diagnostic[6]["event"]["file"] = json!("foreign.txt");
+        unjoined_diagnostic[6]["event"]["line"] = json!(0);
+        let partial = reduce(
+            &field_request(false),
+            &records(unjoined_diagnostic),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap();
+        assert_eq!(partial.completeness, Completeness::Partial);
+        assert_eq!(partial.value.diagnostics.len(), 1);
+        assert!(matches!(
+            partial.value.diagnostics[0].join,
+            DiagnosticJoin::Unavailable(_)
+        ));
+    }
+
+    #[test]
+    fn unsupported_reader_kinds_return_typed_storage_gaps() {
+        for (reader_kind, gap_kind, expected_kind) in [
+            ("Unknown", GapKind::UnresolvedReader, ReaderKind::Unknown),
+            ("Block", GapKind::OutsideMethod, ReaderKind::Block),
+        ] {
+            let answer = reduce(
+                &field_request(false),
+                &records(unavailable_field_events(reader_kind)),
+                &owner(),
+                BuildId("b".into()),
+            )
+            .unwrap();
+            assert_eq!(answer.completeness, Completeness::Partial);
+            assert_eq!(answer.value.field_outcomes[0].reader.kind, expected_kind);
+            assert!(matches!(
+                answer.value.field_outcomes[0].storage,
+                FixtureStorage::Unavailable(ref reason) if reason == "Storage decoder unavailable"
+            ));
+            assert!(answer.gaps.iter().any(|gap| gap.kind == gap_kind));
+        }
     }
 }

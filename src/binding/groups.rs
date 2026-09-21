@@ -27,6 +27,31 @@ pub(super) fn fixture(
                     },
                 )
                 .collect(),
+            outcome_registries: vec![
+                crate::protocol::observation::FixtureOutcomeRegistryBinding {
+                    registry: "common/traditions".into(),
+                    load_entry: 0x100ce090c,
+                    reader_entry: 0x100ce1bec,
+                    reader_return: 0x100ce097c,
+                    constructor_entry: 0x100cd9a20,
+                    member_entry: 0x100cda028,
+                    malformed_entry: 0x1025ae998,
+                    fields: [
+                        (10001, "custom_tooltip", 0x1c0),
+                        (11046, "custom_tooltip_with_modifiers", 0x1e8),
+                        (14639, "unlocks_agenda", 0x5a0),
+                    ]
+                    .into_iter()
+                    .map(|(token, name, storage_offset)| {
+                        crate::protocol::observation::FixtureOutcomeFieldBinding {
+                            token,
+                            name: name.into(),
+                            storage_offset,
+                        }
+                    })
+                    .collect(),
+                },
+            ],
         })
 }
 

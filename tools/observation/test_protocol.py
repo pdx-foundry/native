@@ -11,11 +11,16 @@ spec.loader.exec_module(wire)
 
 class ProtocolTests(unittest.TestCase):
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
+        outcome = dict(registry='common/traditions', load_entry=16384, reader_entry=16400,
+                       reader_return=16416, constructor_entry=16432, member_entry=16448,
+                       malformed_entry=16464, fields=[dict(token=10001, name='custom_tooltip',
+                       storage_offset=448)])
         fixture = dict(file='common/tradition_categories/atlas.txt', registration_entries=True,
-                       field_reads=True, bindings=dict(registration_entry=4096, load_entry=8192,
+                       field_reads=True, questions=[], bindings=dict(registration_entry=4096, load_entry=8192,
                        field_entry=12288, reader_lexer_offset=48, lexer_file_offset=8,
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,
-                       fields=[dict(token=16793, name='tree_template'), dict(token=14263, name='traditions')]))
+                       fields=[dict(token=16793, name='tree_template'), dict(token=14263, name='traditions')],
+                       outcome_registries=[outcome]))
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
                        artifacts={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
                        registries={}, control_registry=None, control='normal', deadline_seconds=180,
@@ -33,7 +38,8 @@ class ProtocolTests(unittest.TestCase):
         for changes in [dict(line=-1), dict(ordinal=True), dict(owner=None), dict(extra='unknown')]:
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 wire.encode('record', dict(row, event=dict(event, **changes)))
-        terminal = dict(kind='end', registrations=3, field_reads=2, producer_last_sequence=12)
+        terminal = dict(kind='end', registrations=3, field_reads=2, field_outcomes=0,
+                        diagnostics=0, producer_last_sequence=12)
         self.assertEqual(wire.decode('record', wire.encode('record', dict(row, event=terminal)))['event'], terminal)
 
     def test_trace_requires_valid_event_and_envelope(self):

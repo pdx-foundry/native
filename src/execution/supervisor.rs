@@ -371,7 +371,7 @@ fn observe_session(
                 });
                 output.send(Reply::Paused {
                     readiness,
-                    fixture,
+                    fixture: Box::new(fixture),
                     registries: registries.clone(),
                 })?;
                 answers = Some(registries);

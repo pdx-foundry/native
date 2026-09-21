@@ -172,7 +172,7 @@ fn connect(
                     state.paused = Some(Paused {
                         readiness,
                         registries,
-                        fixture,
+                        fixture: *fixture,
                     })
                 });
                 if !ending {

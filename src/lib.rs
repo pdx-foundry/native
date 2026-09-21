@@ -27,8 +27,10 @@ pub use answer::{
 pub use api::OpenError;
 pub use engine::operations::registry_items::GameReadiness;
 pub use fixture::{
-    FieldRead, FixtureObservation, FixtureObservationKind, FixtureOwnerId, FixtureRequest,
-    FixtureWindow, ProcessingStage, RegistrationEntry,
+    DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,
+    FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureObservationKind,
+    FixtureOwnerId, FixtureRequest, FixtureRuntime, FixtureStorage, FixtureWindow, ProcessingStage,
+    RegistrationEntry, StoredStringOccurrence,
 };
 pub use game::{Game, GameOptions};
 pub use session::Native;

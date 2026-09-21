@@ -215,26 +215,31 @@ fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
     result
         .fields
         .iter()
-        .map(|field| {
-            let classification = readers::classify(&field.readers);
-            let id = classification.callee.map(|callee| {
-                let digest = Sha256::digest(callee.as_bytes());
-                ReaderId(format!("{digest:x}")[..16].to_owned())
-            });
-            Field {
-                name: field.name.clone(),
-                reader: Reader {
-                    id,
-                    kind: classification.kind,
-                },
-                conditional: field.readers.len() > 1
-                    || field
-                        .paths
-                        .iter()
-                        .any(|&path| !result.paths[path].conditions.is_empty()),
-            }
-        })
+        .map(|field| normalized_field(field, result))
         .collect()
+}
+
+pub(crate) fn normalized_field(
+    field: &crate::engine::analysis::fields::RootField,
+    result: &RegistryFieldResult,
+) -> Field {
+    let classification = readers::classify(&field.readers);
+    let id = classification.callee.map(|callee| {
+        let digest = Sha256::digest(callee.as_bytes());
+        ReaderId(format!("{digest:x}")[..16].to_owned())
+    });
+    Field {
+        name: field.name.clone(),
+        reader: Reader {
+            id,
+            kind: classification.kind,
+        },
+        conditional: field.readers.len() > 1
+            || field
+                .paths
+                .iter()
+                .any(|&path| !result.paths[path].conditions.is_empty()),
+    }
 }
 
 fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
