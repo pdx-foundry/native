@@ -114,6 +114,12 @@ impl Binding {
             .is_some_and(|operation| operation.fixture.is_some())
     }
 
+    pub(crate) fn has_declarations_method(&self) -> bool {
+        self.analysis
+            .as_ref()
+            .is_some_and(|analysis| analysis.has_declarations_method())
+    }
+
     pub(crate) fn target_integrity(&self) -> Option<UnavailableReason> {
         self.installation.target_integrity()
     }

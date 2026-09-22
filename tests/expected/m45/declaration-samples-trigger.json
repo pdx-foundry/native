@@ -1,0 +1,95 @@
+[
+  {
+    "name": "if",
+    "description": "Evaluates the triggers if the display_triggers of the limit are met",
+    "usage": "if = { limit = { <display_triggers> } <triggers> }",
+    "scopes": "Any",
+    "targets": "Unresolved"
+  },
+  {
+    "name": "else_if",
+    "description": "Evaluates the enclosed triggers if the display_triggers of the preceding `if` or `else_if` is not met and its own display_trigger of the limit is met",
+    "usage": "if = { limit = { <display_triggers> } <triggers> }\nelse_if = { limit = { <display_triggers> } <triggers> }",
+    "scopes": "Any",
+    "targets": "Unresolved"
+  },
+  {
+    "name": "exists",
+    "description": "Checks if a target scope exists",
+    "usage": "exists = <target>",
+    "scopes": "Unresolved",
+    "targets": "Unresolved"
+  },
+  {
+    "name": "has_civic",
+    "description": "Checks if the current country has the specified civic",
+    "usage": "has_civic = my_test_civic_1",
+    "scopes": {
+      "Listed": [
+        "country",
+        "dlc_recommendation"
+      ]
+    },
+    "targets": "Unresolved"
+  },
+  {
+    "name": "planet_size",
+    "description": "Checks the planet's size",
+    "usage": "planet_size < 20",
+    "scopes": {
+      "Listed": [
+        "planet",
+        "ship",
+        "colony"
+      ]
+    },
+    "targets": "Unresolved"
+  },
+  {
+    "name": "is_ruler",
+    "description": "Checks if scoped leader is the Ruler of the Empire ",
+    "usage": "is_ruler = yes/no",
+    "scopes": {
+      "Listed": [
+        "leader"
+      ]
+    },
+    "targets": "Unresolved"
+  },
+  {
+    "name": "always",
+    "description": "Sets trigger to be either always true or false",
+    "usage": "always = yes",
+    "scopes": "Any",
+    "targets": "Unresolved"
+  },
+  {
+    "name": "has_country_flag",
+    "description": "Checks if the empire has a specific flag",
+    "usage": "has_country_flag = <flag> (note: one can use e.g. my_flag@from to track relationships between objects)",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": "Unresolved"
+  },
+  {
+    "name": "acquired_specimen_count",
+    "description": "Returns the country's acquired specimens count",
+    "usage": "acquired_specimen_count > <num>",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": "Unresolved"
+  },
+  {
+    "name": "additional_crisis_strength",
+    "description": "Checks the degree to which multiply_crisis_strength effect is increasing the strength of endgame crises",
+    "usage": "additional_crisis_strength > 1.4",
+    "scopes": "Any",
+    "targets": "Unresolved"
+  }
+]

@@ -16,6 +16,14 @@ pub(in crate::binding) struct Recipe {
     pub default_registries: &'static [&'static str],
     pub strategy: StrategyId,
     pub discovery: &'static DiscoveryRecipe,
+    pub declarations: Option<&'static DeclarationRecipe>,
+}
+
+/// Virtual slots used by the two command families on this exact build.
+pub(in crate::binding) struct DeclarationRecipe {
+    pub create_slot: u64,
+    pub trigger_scope_slot: u64,
+    pub effect_scope_slot: u64,
 }
 
 pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
@@ -29,6 +37,13 @@ pub(super) const M45_OBSERVE: Recipe = Recipe {
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     discovery: &M45_DISCOVERY,
+    declarations: Some(&M45_DECLARATIONS),
+};
+
+const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
+    create_slot: 0x10,
+    trigger_scope_slot: 0x78,
+    effect_scope_slot: 0x80,
 };
 
 /// The literal initialization of the startup scheduling table (SDK-489). It ends before

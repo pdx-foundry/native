@@ -62,7 +62,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
         stride: 48,
         count: 0,
     };
-    let analysis = BoundAnalysis::new(layout, installation);
+    let analysis = BoundAnalysis::new(layout, None, installation);
     (root, analysis)
 }
 
@@ -269,6 +269,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
             stride: 48,
             count: 0,
         },
+        None,
         installation,
     );
     assert_eq!(analysis.executable().unwrap(), image);

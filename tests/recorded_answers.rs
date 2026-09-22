@@ -1,6 +1,7 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
 use pdx_native::{
-    Basis, Completeness, Disposal, Error, GameOptions, GapKind, Native, ReaderKind, Support,
+    Basis, Completeness, DeclarationKind, DeclaredScopes, Disposal, Error, GameOptions, GapKind,
+    Native, ReaderKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -68,7 +69,42 @@ fn recorded() -> tempfile::TempDir {
         json!({ "Err": { "Observation": { "operation": "RegistryItems",
             "reason": "the observation worker was lost" } } }),
     );
+    write(
+        root.path(),
+        "declarations/effect.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "always", "description": "Always succeeds", "usage": "", "scopes": "Any", "targets": "Unresolved" },
+                { "name": "win", "description": "Wins", "usage": "win = yes", "scopes": { "Listed": ["country"] }, "targets": "Unresolved" }
+            ],
+            "completeness": "Partial",
+            "gaps": [
+                { "kind": "UnnamedDeclaration", "subject": null, "detail": "runtime token" },
+            { "kind": "UnresolvedPath", "subject": "missing", "detail": "documentation" },
+            { "kind": "UnresolvedPath", "subject": null, "detail": "target declarations are not followed by this method" }
+            ],
+            "source": source()
+        }}),
+    );
     root
+}
+
+#[test]
+fn declarations_read_recorded_values_and_missing_kind_is_not_recorded() {
+    let root = recorded();
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let effect = native.declarations(DeclarationKind::Effect).unwrap();
+    assert_eq!(effect.source.basis, Basis::Recorded);
+    assert_eq!(effect.completeness, Completeness::Partial);
+    assert_eq!(effect.value[0].scopes, DeclaredScopes::Any);
+    assert_eq!(
+        effect.value[1].scopes,
+        DeclaredScopes::Listed(vec!["country".into()])
+    );
+    assert!(matches!(
+        native.declarations(DeclarationKind::Trigger),
+        Err(Error::NotRecorded { .. })
+    ));
 }
 
 #[test]

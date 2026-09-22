@@ -117,4 +117,5 @@ fn select_arm64<'a, A: FatArch>(arches: &[A], bytes: &'a [u8]) -> Result<&'a [u8
 pub(in crate::binding) mod constructors;
 pub(in crate::binding) mod discovery;
 
+pub(super) mod declarations;
 pub(super) mod fields;

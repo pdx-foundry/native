@@ -11,6 +11,7 @@ use crate::{AnalysisError, UnavailableReason};
 
 pub(crate) struct BoundAnalysis {
     layout: SchedulerLayout,
+    declarations: Option<&'static super::targets::DeclarationRecipe>,
     installation: Installation,
     /// The first change that a read saw. It stays, even when the original bytes come back.
     invalidated: Mutex<Option<UnavailableReason>>,
@@ -21,6 +22,7 @@ struct Catalog {
     candidates: Vec<NamedCandidate>,
     symbols: Vec<Symbol>,
     strings: BTreeMap<u64, String>,
+    pointers: BTreeMap<u64, u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +41,20 @@ pub(crate) struct VerifiedAnalysis<'a> {
 }
 
 impl VerifiedAnalysis<'_> {
+    pub(in crate::binding) fn declaration_input(
+        &self,
+        kind: crate::DeclarationKind,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::declarations::DeclarationInput, AnalysisError> {
+        binary::declarations::read(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            &self.catalog.pointers,
+            kind,
+            recipe,
+        )
+    }
     pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
         &self.catalog.candidates
     }
@@ -240,9 +256,14 @@ impl BoundAnalysis {
             .collect())
     }
 
-    pub(super) fn new(layout: SchedulerLayout, installation: Installation) -> Self {
+    pub(super) fn new(
+        layout: SchedulerLayout,
+        declarations: Option<&'static super::targets::DeclarationRecipe>,
+        installation: Installation,
+    ) -> Self {
         Self {
             layout,
+            declarations,
             installation,
             invalidated: Mutex::new(None),
             catalog: OnceLock::new(),
@@ -360,6 +381,19 @@ impl BoundAnalysis {
             candidates,
             symbols: input.symbols,
             strings: input.strings,
+            pointers: input.pointers,
         })
+    }
+
+    pub(crate) fn has_declarations_method(&self) -> bool {
+        self.declarations.is_some()
+    }
+
+    pub(crate) fn declaration_input(
+        &self,
+        kind: crate::DeclarationKind,
+    ) -> Result<crate::engine::analysis::declarations::DeclarationInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.declaration_input(kind, recipe)
     }
 }

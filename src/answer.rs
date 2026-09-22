@@ -47,6 +47,9 @@ pub enum GapKind {
     UnreadableInput,
     /// A field exists on a path whose name could not be recovered.
     UnnamedField,
+    /// A registration site's command name is composed at run time and absent from the
+    /// executable's literal token table.
+    UnnamedDeclaration,
     /// A path through the reader could not be followed to its end.
     UnresolvedPath,
     /// A field's reader could not be established.
@@ -105,6 +108,8 @@ pub enum Operation {
     Registries,
     /// `Native::registry_fields`
     RegistryFields,
+    /// `Native::declarations`
+    Declarations,
     /// `Game::registry_items`
     RegistryItems,
     /// `Game::observe_fixture`
@@ -242,6 +247,51 @@ pub struct Field {
     /// The engine reads this field differently depending on state that the field key does not
     /// determine.
     pub conditional: bool,
+}
+
+/// A command kind whose declarations can be read from the executable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum DeclarationKind {
+    /// An effect command.
+    Effect,
+    /// A trigger command.
+    Trigger,
+}
+
+impl DeclarationKind {
+    pub(crate) fn subject(self) -> &'static str {
+        match self {
+            Self::Effect => "effect",
+            Self::Trigger => "trigger",
+        }
+    }
+}
+
+/// The engine's documented command and declared applicability.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Declaration {
+    /// The name used for registration.
+    pub name: String,
+    /// The first line of the engine's documentation string.
+    pub description: String,
+    /// Remaining documentation lines, or empty when there are none.
+    pub usage: String,
+    /// Scopes the command declares that it supports.
+    pub scopes: DeclaredScopes,
+    /// Targets the command declares that it supports.
+    pub targets: DeclaredScopes,
+}
+
+/// A declared scope or target set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclaredScopes {
+    /// Every scope or target is supported.
+    Any,
+    /// The named scopes or targets, including an empty set.
+    Listed(Vec<String>),
+    /// The declaration could not be followed to its scope set.
+    Unresolved,
 }
 
 /// The shared reader behind a field. Two fields with one reader report the same `id`.
