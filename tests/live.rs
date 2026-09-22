@@ -608,12 +608,6 @@ fn assert_fixture_outcome(
         return Err(format!("fixture completeness: {answer:?}").into());
     }
     let expected_coverage = match case {
-        FixtureOutcomeCase::CategoryUnsupported => {
-            matches!(
-                answer.value.diagnostic_coverage,
-                DiagnosticCoverage::Unavailable(_)
-            )
-        }
         FixtureOutcomeCase::DiagnosticsNotRequested => {
             answer.value.diagnostic_coverage == DiagnosticCoverage::NotRequested
         }
@@ -636,11 +630,19 @@ fn assert_fixture_outcome(
             .field_outcomes
             .first()
             .ok_or("missing category outcome")?;
+        let [diagnostic] = answer.value.diagnostics.as_slice() else {
+            return Err(format!("missing category diagnostic: {answer:?}").into());
+        };
         if !matches!(outcome.storage, FixtureStorage::Unavailable(_))
             || !answer
                 .gaps
                 .iter()
                 .any(|gap| gap.kind == GapKind::OutsideMethod)
+            || diagnostic.text != "Malformed token"
+            || diagnostic.stage != "reader-malformed-report"
+            || !matches!(&diagnostic.join,
+                DiagnosticJoin::Source { file, line: 3, definition: None, field: None, occurrence: None }
+                if file == "common/tradition_categories/native_fixture.txt")
         {
             return Err(format!("unsupported category outcome: {answer:?}").into());
         }

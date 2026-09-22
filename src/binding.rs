@@ -290,6 +290,16 @@ pub(crate) fn test_child(
 }
 
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+pub(crate) fn test_observer(
+    output: &std::path::Path,
+    command: &mut std::process::Command,
+    game: u32,
+    registry: &str,
+) -> Observer {
+    platform::observation::test_observer(output, command, game, Some(registry))
+}
+
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 pub(crate) static LIFECYCLE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub(crate) use platform::observation::Observer;

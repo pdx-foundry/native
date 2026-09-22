@@ -248,8 +248,10 @@ supervision failures that the public API cannot cause safely.
    dropped-record, worker-loss, timeout, and cancel cases. The ordinary profile and unrelated
    processes stay unchanged.
 6. **Supervisor without a game:** unit tests cover reservation ownership, worker-process cleanup,
-   pause witnesses and caller cancellation. A full fake-worker session test remains to be added;
-   the current end-to-end failure checks require the live game.
+   pause witnesses and caller cancellation. A fake-worker session test sends a complete paused
+   answer through the supervisor observation and cleanup path. It checks the final report,
+   worker reap, game disposal and reservation release. The real debugger attachment checks
+   require the live game.
 7. **Recorded answers:** a recorded run gives the same answers as the real run apart from `Basis`;
    a missing record gives `NotRecorded`; no process starts.
 8. **Shared-method transfer:** freeze a method, then apply it to unfamiliar cases with positive and

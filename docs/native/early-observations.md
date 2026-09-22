@@ -131,6 +131,8 @@ them; the method reports unsupported fields and registries as unavailable.
 The M45 binding retains the `tree_template` and `traditions` token values for
 `common/tradition_categories`. This exception claims only that those two reader entries
 occur in the initial category-load window; it says nothing about storage or validation.
+In the separate initial file-load outcome window, a malformed category value produces a
+source-located `Malformed token` diagnostic even while its storage result is unavailable.
 The root-field analysis does not yet derive the read-entry hook and token selection as
 one general operation. Replace these names and token constants when that operation can
 select a field from the exact-build binding and pass an unfamiliar-category transfer.

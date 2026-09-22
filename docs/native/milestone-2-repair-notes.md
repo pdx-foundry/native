@@ -15,7 +15,9 @@ hooks. The category read-entry names and tokens remain a recorded manual excepti
 ## Transport and lifecycle
 
 Session files are temporary. Atomic publication, bounded reads, session identity, stream
-continuity and worker-source hashes remain; the file and directory `fsync` calls were removed.
+continuity and worker-source hashes remain. Supervisor-side file and directory `fsync` calls
+were removed; the Python worker still calls `fsync` for atomic control messages and appended
+trace records.
 The worker-source hashes still verify that the copied Python package is the one the supervisor
 prepared. The generated Python protocol remains the sole wire-schema projection from Rust.
 
@@ -23,6 +25,9 @@ The live suite uses one shared-template registry for each registry fault instead
 the same fault matrix across three registries. Fixture fault cases exercise the second path.
 Worker loss is checked before hook activation and after the first registry entry; those are
 different cleanup guarantees. Reducer, handshake and transport checks run as fast crate tests.
+A fake worker now also drives one paused registry answer through the supervisor observation
+and cleanup path without Stellaris. It checks the result, final report, worker reap, game
+disposal and reservation release.
 
 The OS lock excludes concurrent Native supervisors, and the process inventory refuses an
 ordinary Stellaris instance. A prior session report is no longer an admission gate. Cleanup

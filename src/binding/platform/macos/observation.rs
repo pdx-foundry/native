@@ -428,6 +428,63 @@ impl Drop for Observer {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn test_observer(
+    root: &std::path::Path,
+    command: &mut Command,
+    game: u32,
+    registry: Option<&str>,
+) -> Observer {
+    let registries = registry
+        .map(|name| {
+            BTreeMap::from([(
+                name.into(),
+                observation::RegistryBinding {
+                    name: name.into(),
+                    directory: name.into(),
+                    load_entry: 0,
+                    directory_offset: 0,
+                    data_offset: 0,
+                    count_offset: 0,
+                    key_offset: 0,
+                    pointer_size: 8,
+                    string_tag_offset: 23,
+                },
+            )])
+        })
+        .unwrap_or_default();
+    Observer {
+        output: root.into(),
+        request: WorkerRequest {
+            version: observation::VERSION.into(),
+            attempt: "unit".into(),
+            game,
+            executable: "/not-used".into(),
+            target: "target".into(),
+            source_hashes: BTreeMap::new(),
+            machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
+            registries,
+            control_registry: None,
+            control: crate::protocol::session::ObservationControl::Normal,
+            fixture: None,
+            fixture_fault: false,
+            deadline_seconds: 1,
+        },
+        tool: Tool {
+            path: "/not-used".into(),
+            sha256: "unused".into(),
+            python: "python".into(),
+            lldb: "lldb".into(),
+            module: "module".into(),
+        },
+        worker: Some(command.process_group(0).spawn().unwrap()),
+        granted: false,
+        pause_generation: 0,
+        launched: Some(Instant::now()),
+        exited: None,
+    }
+}
+
 fn worker_exited(pid: u32) -> Result<bool, SupervisorError> {
     // SAFETY: initialized siginfo; WNOWAIT observes only our unreaped direct child.
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
@@ -502,36 +559,7 @@ mod tests {
     }
 
     fn observer(root: &Path, command: &mut Command) -> Observer {
-        Observer {
-            output: root.into(),
-            request: WorkerRequest {
-                version: observation::VERSION.into(),
-                attempt: "unit".into(),
-                game: 123,
-                executable: "/not-used".into(),
-                target: "target".into(),
-                source_hashes: BTreeMap::new(),
-                machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
-                registries: BTreeMap::new(),
-                control_registry: None,
-                control: crate::protocol::session::ObservationControl::Normal,
-                fixture: None,
-                fixture_fault: false,
-                deadline_seconds: 1,
-            },
-            tool: Tool {
-                path: "/not-used".into(),
-                sha256: "unused".into(),
-                python: "python".into(),
-                lldb: "lldb".into(),
-                module: "module".into(),
-            },
-            worker: Some(command.process_group(0).spawn().unwrap()),
-            granted: false,
-            pause_generation: 0,
-            launched: Some(Instant::now()),
-            exited: None,
-        }
+        test_observer(root, command, 123, None)
     }
 
     #[test]
