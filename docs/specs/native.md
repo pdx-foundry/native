@@ -103,9 +103,9 @@ the state after the simplification effort:
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations` | Implemented for effects and triggers | A declaration kind | Engine name, description, usage, and declared scopes from every direct registration call in executable text; each call is one site. Runtime names, unreadable documentation, and unexamined target sets make the answer partial. |
 | `defines`, `on_actions` | Planned | — | Engine declarations |
-| `Game::observe_fixture`: registration entries | M45-observe only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
-| `Game::observe_fixture`: category reads | M45-observe only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
-| `Game::observe_fixture`: field outcomes | M45-observe only; initial file load for a registry with a verified loader and owner boundary | At most 32 named definition and field questions in one bounded relative text file | Source-correlated diagnostics and string storage where the exact-build binding supports the field; other dimensions report unavailable |
+| `Game::observe_fixture`: registration entries | M45-release only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
+| `Game::observe_fixture`: category reads | M45-release only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
+| `Game::observe_fixture`: field outcomes | M45-release only; initial file load for a registry with a verified loader and owner boundary | At most 32 named definition and field questions in one bounded relative text file | Source-correlated diagnostics and string storage where the exact-build binding supports the field; other dimensions report unavailable |
 
 Rules for the API:
 
@@ -202,6 +202,11 @@ support; it needs a target record and passing tests.
 Begin with the pinned Apple Silicon Stellaris 4.5 beta. Keep one copy of that executable
 (SDK-522); static methods and held-out tests need the exact file. Maintain one supported stable
 release at a time.
+
+**Amendment, 2026-09-22 (Jackson):** the 4.5 full release, Cygnus v4.5.0 (8697), replaces the
+beta in the catalogue. Steam does not offer old open betas for download, but it does offer old
+full releases, so a full release is the only target worth keeping. The beta ARM64 executable
+stays in `.local/executables` as a knowledge source.
 
 **Amendment, 2026-09-19 (Jackson):** Windows x64 is deferred. Atlas publishes platform-independent
 snapshots, so one platform is sufficient for rule coverage. Windows returns with the separate

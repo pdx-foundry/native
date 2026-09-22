@@ -22,21 +22,21 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     assert_eq!(
         analysis.fixture_loader("common/traditions").unwrap(),
         Some(FixtureLoader {
-            load_entry: 0x100ce090c,
-            reader_entry: 0x100ce1bec,
-            reader_return: 0x100ce097c,
-            constructor_entry: 0x100cd9a20,
-            member_entry: 0x100cda028,
+            load_entry: 0x100ce381c,
+            reader_entry: 0x100ce4afc,
+            reader_return: 0x100ce388c,
+            constructor_entry: 0x100cdc930,
+            member_entry: 0x100cdcf38,
         })
     );
     assert_eq!(
         analysis.fixture_loader("common/relics").unwrap(),
         Some(FixtureLoader {
-            load_entry: 0x100ae3298,
-            reader_entry: 0x100ae5664,
-            reader_return: 0x100ae3308,
-            constructor_entry: 0x100ae14dc,
-            member_entry: 0x100ae1754,
+            load_entry: 0x100ae4494,
+            reader_entry: 0x100ae6860,
+            reader_return: 0x100ae4504,
+            constructor_entry: 0x100ae26d8,
+            member_entry: 0x100ae2950,
         })
     );
     let relic_fields = analysis.fixture_string_fields("common/relics").unwrap();
@@ -120,8 +120,8 @@ fn every_m45_named_candidate_has_one_initial_loader_entry() {
     let known = binding
         .registry_bindings(&binding.default_registries())
         .unwrap();
-    assert_eq!(known["common/traditions"].load_entry, 0x100ce0474);
-    assert_eq!(known["common/tradition_categories"].load_entry, 0x100cd7d70);
+    assert_eq!(known["common/traditions"].load_entry, 0x100ce3384);
+    assert_eq!(known["common/tradition_categories"].load_entry, 0x100cdac80);
 }
 
 #[test]

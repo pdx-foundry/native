@@ -156,8 +156,8 @@ observe_fixture/<files-hash>/<request-hash>.json
 
 ## Supported build
 
-The target catalogue has one build: the exact M45-observe ARM64 executable (Stellaris 4.5 beta,
-Apple Silicon). An unknown build is refused; it never inherits the recipe of a different build.
+The target catalogue has one build: the exact M45-release ARM64 executable (Stellaris
+Cygnus v4.5.0 (8697), the full 4.5 release, Apple Silicon). An unknown build is refused; it never inherits the recipe of a different build.
 
 ## One-time setup for live games (Apple Silicon macOS)
 

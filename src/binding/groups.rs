@@ -1,8 +1,9 @@
 //! Typed engine bindings: the addresses and layouts that one binding group declares.
 use super::targets::BindingGroupId;
 
-/// SDK-483/517 read-entry and source joins on the exact M45-observe ARM64 slice. The
-/// retained implementation is in Git at dd33300; these bindings authorize observation only.
+/// SDK-483/517 read-entry and source joins, found on the M45-observe beta slice and moved to the
+/// exact M45-release ARM64 slice by symbol name. The retained implementation is in Git at
+/// dd33300; these bindings authorize observation only.
 pub(super) fn fixture(
     groups: &[BindingGroupId],
 ) -> Option<crate::protocol::observation::FixtureBinding> {
@@ -10,9 +11,9 @@ pub(super) fn fixture(
         .iter()
         .any(|group| matches!(group, BindingGroupId::M45CategoryFixture))
         .then(|| crate::protocol::observation::FixtureBinding {
-            registration_entry: 0x1004559bc,
-            load_entry: 0x100cd8258,
-            field_entry: 0x100cd5f2c,
+            registration_entry: 0x100456d24,
+            load_entry: 0x100cdb168,
+            field_entry: 0x100cd8e3c,
             reader_lexer_offset: 0x30,
             lexer_file_offset: 8,
             file_name_offset: 0x20,
@@ -30,13 +31,13 @@ pub(super) fn fixture(
             outcome_registries: vec![
                 crate::protocol::observation::FixtureOutcomeRegistryBinding {
                     registry: "common/traditions".into(),
-                    load_entry: 0x100ce090c,
-                    reader_entry: 0x100ce1bec,
-                    reader_return: 0x100ce097c,
-                    constructor_entry: 0x100cd9a20,
-                    member_entry: 0x100cda028,
-                    malformed_entry: 0x1025ae998,
-                    unexpected_entry: 0x1025ae720,
+                    load_entry: 0x100ce381c,
+                    reader_entry: 0x100ce4afc,
+                    reader_return: 0x100ce388c,
+                    constructor_entry: 0x100cdc930,
+                    member_entry: 0x100cdcf38,
+                    malformed_entry: 0x1025b274c,
+                    unexpected_entry: 0x1025b24d4,
                     fields: Vec::new(),
                 },
             ],

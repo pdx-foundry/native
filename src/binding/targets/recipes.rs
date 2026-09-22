@@ -29,7 +29,7 @@ pub(in crate::binding) struct DeclarationRecipe {
 pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
     &["common/traditions", "common/tradition_categories"];
 
-pub(super) const M45_OBSERVE: Recipe = Recipe {
+pub(super) const M45_RELEASE: Recipe = Recipe {
     groups: &[
         BindingGroupId::M45TemplateRegistryLayout,
         BindingGroupId::M45CategoryFixture,
@@ -56,8 +56,8 @@ pub(in crate::binding) struct DiscoveryRecipe {
     pub count: usize,
 }
 const M45_DISCOVERY: DiscoveryRecipe = DiscoveryRecipe {
-    start: 0x1005ea4c8,
-    end: 0x1005ed980,
+    start: 0x1005eb938,
+    end: 0x1005eedf0,
     offset: 96,
     stride: 48,
     count: 198,
