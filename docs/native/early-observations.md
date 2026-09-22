@@ -89,6 +89,9 @@ requested runtime is an explicit unavailable outcome and `OutsideMethod` gap.
 
 ### Milestone 2 string-reader transfer (2026-09-21)
 
+Timebox: one working day on 2026-09-21 for implementation and verification together; active
+hours were not logged.
+
 The frozen `registry-fields/v2` sweep found one string reader shared by 170 fields. The
 bounded experiment selected `CReader::Read(CString&, bool)` and the `CTraditionType`
 owner. The static root-dispatch trace derives the field token from `x8` and the
@@ -98,16 +101,36 @@ The loader candidate establishes the registry's exact `LoadFile` entry and owner
 The loader's unique direct call to its specialized `LoadFromReader` establishes the
 return instruction where the reader and owner are still live. The known tradition
 fixture passed after this change. Only then did the same method run on
-`common/ascension_perks`: two unfamiliar field questions returned the expected strings
-through `Game::observe_fixture`, joined to one owner, with complete observation and
-confirmed disposal (`fixture_transfer_string_reader`). No ascension-specific native
-field constant was added.
+`common/ascension_perks`: two known field names in an unfamiliar registry that shares the
+`CTraditionType` owner class returned the expected strings through `Game::observe_fixture`,
+joined to one owner, with complete observation and confirmed disposal
+(`fixture_transfer_string_reader`). No ascension-specific native field constant was added.
+The next transfer used `common/relics#portrait`, a name absent from the handwritten table
+and an owner class (`CRelic`) different from `CTraditionType`. The exact-build analysis
+selected that owner's constructor, member reader, loader boundary, token, and owner-relative
+storage. The live `fixture_transfer_relic_portrait` case returned the fixture string with a
+joined owner, complete observation, and confirmed disposal; no relic-specific field constant
+was added.
 
-The exact-build binding still supplies the shared owner constructor and member entry,
-parser diagnostic entry points, `CString` representation, reader/lexer source layout,
-and launch-thread observation window. Those are manual engine relationships on
-M45-observe. The retained exception claims only initial-load string storage for fields
-whose trace gives one nonconditional owner destination and token, when the registry
-uses the same owner class and the loader call boundary is unique. Its obstacle is
-deriving these object and source layouts on other builds. A future binding must replace
-or reverify them; the method reports unsupported fields and registries as unavailable.
+An attempted `common/federation_perks#icon` case joined the definition owner but reported
+`No exact-build storage binding for this field`. Its root trace does not meet the single,
+nonconditional owner-destination rule, so it was not counted as a transfer success.
+
+For transferred registries, exact-build analysis selects the owner constructor and member entry. The binding
+still supplies parser diagnostic entry points, `CString` representation, reader/lexer
+source layout, and the launch-thread observation window. Those are manual engine
+relationships on M45-observe. The retained exception claims only initial-load string storage for fields
+whose trace gives one nonconditional owner destination and token, when the loader,
+constructor, and member-reader boundaries are unique. Its obstacle is deriving these
+object and source layouts on other builds. A future binding must replace or reverify
+them; the method reports unsupported fields and registries as unavailable.
+
+### Manual category read-entry exception
+
+`InitialCategoryLoad` and `CategoryFieldReads` remain public, category-specific names.
+The M45 binding retains the `tree_template` and `traditions` token values for
+`common/tradition_categories`. This exception claims only that those two reader entries
+occur in the initial category-load window; it says nothing about storage or validation.
+The root-field analysis does not yet derive the read-entry hook and token selection as
+one general operation. Replace these names and token constants when that operation can
+select a field from the exact-build binding and pass an unfamiliar-category transfer.

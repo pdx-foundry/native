@@ -3,7 +3,7 @@ use std::fs;
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn tradition_fixture_bindings_come_from_reader_arguments() {
+fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = native.bound().analysis.as_ref().unwrap();
     let fields = analysis.fixture_string_fields("common/traditions").unwrap();
@@ -20,10 +20,30 @@ fn tradition_fixture_bindings_come_from_reader_arguments() {
         ]
     );
     assert_eq!(
-        analysis
-            .fixture_loader("common/traditions", "common/traditions")
-            .unwrap(),
-        Some((0x100ce090c, 0x100ce1bec, 0x100ce097c))
+        analysis.fixture_loader("common/traditions").unwrap(),
+        Some(FixtureLoader {
+            load_entry: 0x100ce090c,
+            reader_entry: 0x100ce1bec,
+            reader_return: 0x100ce097c,
+            constructor_entry: 0x100cd9a20,
+            member_entry: 0x100cda028,
+        })
+    );
+    assert_eq!(
+        analysis.fixture_loader("common/relics").unwrap(),
+        Some(FixtureLoader {
+            load_entry: 0x100ae3298,
+            reader_entry: 0x100ae5664,
+            reader_return: 0x100ae3308,
+            constructor_entry: 0x100ae14dc,
+            member_entry: 0x100ae1754,
+        })
+    );
+    let relic_fields = analysis.fixture_string_fields("common/relics").unwrap();
+    assert!(
+        relic_fields
+            .iter()
+            .any(|field| field.name == "portrait" && field.storage_offset == 728)
     );
 }
 

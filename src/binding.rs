@@ -358,19 +358,21 @@ impl ExecutionPlan {
                 )
             })?;
             let template = &bindings.outcome_registries[0];
-            let Some((load_entry, reader_entry, reader_return)) = analysis
-                .fixture_loader(&template.registry, fixture.registry())
+            let Some(loader) = analysis
+                .fixture_loader(fixture.registry())
                 .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?
             else {
                 return Err(crate::supervisor::SupervisorError(
-                    "Fixture registry has no verified shared-owner loader boundary".into(),
+                    "Fixture registry has no verified loader and owner boundary".into(),
                 ));
             };
             let mut selected = template.clone();
             selected.registry = fixture.registry().into();
-            selected.load_entry = load_entry;
-            selected.reader_entry = reader_entry;
-            selected.reader_return = reader_return;
+            selected.load_entry = loader.load_entry;
+            selected.reader_entry = loader.reader_entry;
+            selected.reader_return = loader.reader_return;
+            selected.constructor_entry = loader.constructor_entry;
+            selected.member_entry = loader.member_entry;
             bindings.outcome_registries.push(selected);
         }
         let fields = if fixture.field_questions.is_empty() {

@@ -33,6 +33,7 @@ use std::{
 const TRADITIONS: &str = "common/traditions";
 const CATEGORIES: &str = "common/tradition_categories";
 const ASCENSION_PERKS: &str = "common/ascension_perks";
+const RELICS: &str = "common/relics";
 const MAP_GALAXY: &str = "map/galaxy";
 const CIVICS: &str = "common/governments/civics";
 const GAME_SCENARIOS: &str = "common/game_scenarios";
@@ -144,6 +145,7 @@ enum Case {
     FixtureRefusal,
     FixtureOutcome(FixtureOutcomeCase),
     FixtureTransfer,
+    FixtureRelicPortrait,
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -251,6 +253,10 @@ fn cases() -> Vec<(String, Case)> {
         Case::FixtureTransfer,
     ));
     cases.push((
+        "fixture_transfer_relic_portrait".into(),
+        Case::FixtureRelicPortrait,
+    ));
+    cases.push((
         "fixture_field_reads_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
     ));
@@ -320,6 +326,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureRefusal => fixture_refusal(native).await,
         Case::FixtureOutcome(case) => fixture_outcome(case).await,
         Case::FixtureTransfer => fixture_transfer(native).await,
+        Case::FixtureRelicPortrait => fixture_relic_portrait(native).await,
         Case::StartupTimeout => startup_timeout(native).await,
         Case::Cancel => cancel(native).await,
         Case::DropWithoutClose => drop_without_close(native).await,
@@ -404,6 +411,53 @@ async fn fixture_transfer(native: &Native) -> Outcome {
             {
                 return Err(format!("transfer value: {answer:?}").into());
             }
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn fixture_relic_portrait(native: &Native) -> Outcome {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest, FixtureStorage};
+
+    let request = FixtureRequest::field_outcomes(
+        "common/relics/native_transfer.txt",
+        "native_transfer = {\n portrait = \"transfer_relic_portrait\"\n}\n",
+        [FixtureFieldQuestion::new(
+            RELICS,
+            "native_transfer",
+            "portrait",
+        )],
+    );
+    let mut game = native
+        .start_game(options().registries([RELICS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.completeness != Completeness::Complete {
+            return Err(format!("novel field was incomplete: {answer:?}").into());
+        }
+        let [outcome] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("novel field outcomes: {answer:?}").into());
+        };
+        if outcome.owner.is_none() {
+            return Err(format!("novel field owner: {answer:?}").into());
+        }
+        let FixtureStorage::String {
+            occurrences,
+            final_value,
+            completeness: Completeness::Complete,
+        } = &outcome.storage
+        else {
+            return Err(format!("novel field storage: {answer:?}").into());
+        };
+        if occurrences.len() != 1
+            || occurrences[0].value != "transfer_relic_portrait"
+            || final_value.as_deref() != Some("transfer_relic_portrait")
+        {
+            return Err(format!("novel field value: {answer:?}").into());
         }
         Ok(())
     }

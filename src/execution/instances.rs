@@ -27,7 +27,9 @@ struct OwnerReport {
 }
 
 pub(super) struct Reservation {
-    _host: HostReservation,
+    /// Hold the host-wide launch lock until this reservation is dropped.
+    #[expect(dead_code, reason = "the lock is held for its Drop")]
+    lock: HostReservation,
     report: OwnerReport,
 }
 impl Reservation {
@@ -44,7 +46,7 @@ impl Reservation {
             return Err(SupervisorError("Another Stellaris game is running".into()));
         }
         Ok(Self {
-            _host: host,
+            lock: host,
             report: OwnerReport {
                 attempt,
                 owner: binding::process_identity(std::process::id())?,

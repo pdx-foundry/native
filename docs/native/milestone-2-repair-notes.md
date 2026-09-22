@@ -7,8 +7,10 @@ offset to the shared-template registry layout. Both describe the same representa
 fixture binding now reads `M45_TEMPLATE_LAYOUT.string_tag_offset`; the layout has one owner in
 `src/binding/groups.rs`. The fixture field-token entries remain category-specific read-entry
 controls. Outcome field tokens and storage offsets come from verified reader analysis, and the
-worker receives those resolved bindings. Fixture path validation remains the public request
-boundary, while observation code applies the selected exact-build hooks.
+worker receives those resolved bindings. Public fixture validation bounds relative path syntax,
+file size and question shape; the exact-build binding selects the supported loader and owner
+hooks. The category read-entry names and tokens remain a recorded manual exception in
+`early-observations.md`.
 
 ## Transport and lifecycle
 

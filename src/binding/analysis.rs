@@ -23,6 +23,15 @@ struct Catalog {
     strings: BTreeMap<u64, String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FixtureLoader {
+    pub load_entry: u64,
+    pub reader_entry: u64,
+    pub reader_return: u64,
+    pub constructor_entry: u64,
+    pub member_entry: u64,
+}
+
 /// One fresh integrity check and the immutable analysis derived from this installation.
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Vec<u8>,
@@ -57,13 +66,11 @@ impl VerifiedAnalysis<'_> {
 }
 
 impl BoundAnalysis {
-    /// Locate the file reader return while its source and owner still exist. Only a loader
-    /// with the same definition owner as an established binding can reuse that binding.
+    /// Locate the file reader return and the matching owner's constructor and member reader.
     pub(crate) fn fixture_loader(
         &self,
-        template_registry: &str,
         registry: &str,
-    ) -> Result<Option<(u64, u64, u64)>, AnalysisError> {
+    ) -> Result<Option<FixtureLoader>, AnalysisError> {
         use crate::engine::analysis::{decode::decode_arm64, directories::Directory};
 
         let verified = self.verified()?;
@@ -77,13 +84,9 @@ impl BoundAnalysis {
                 _ => None,
             }
         };
-        let (Some(template), Some(selected)) = (candidate(template_registry), candidate(registry))
-        else {
+        let Some(selected) = candidate(registry) else {
             return Ok(None);
         };
-        if template.record.owner_candidate != selected.record.owner_candidate {
-            return Ok(None);
-        }
         let Some(address) = selected
             .record
             .address
@@ -118,7 +121,65 @@ impl BoundAnalysis {
                     .then_some((address, target, after.address))
                 })
                 .collect();
-        Ok(matches.first().copied().filter(|_| matches.len() == 1))
+        let Some((load_entry, reader_entry, reader_return)) =
+            matches.first().copied().filter(|_| matches.len() == 1)
+        else {
+            return Ok(None);
+        };
+        let owner = &selected.record.owner_candidate;
+        let member_name = format!("{owner}::ReadMember(CReader&, int)");
+        let mut members = verified
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == member_name);
+        let (Some(member), None) = (members.next(), members.next()) else {
+            return Ok(None);
+        };
+        let constructor_name = format!("{owner}::{owner}(int, CString const&)");
+        let constructors: Vec<_> = verified
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == constructor_name)
+            .map(|symbol| symbol.address)
+            .collect();
+        let Some(next_symbol) = verified
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.address > reader_entry)
+            .map(|symbol| symbol.address)
+            .min()
+        else {
+            return Ok(None);
+        };
+        let Some(length) = next_symbol.checked_sub(reader_entry) else {
+            return Ok(None);
+        };
+        if length == 0 || length > 16 * 1024 {
+            return Ok(None);
+        }
+        let reader_code = binary::code_range(&verified.executable, reader_entry, length)?;
+        let reader_rows =
+            decode_arm64(&reader_code, reader_entry).map_err(|_| AnalysisError::InvalidRange)?;
+        let called: std::collections::BTreeSet<_> = reader_rows
+            .iter()
+            .filter(|row| row.operation == "bl")
+            .filter_map(|row| row.operands.strip_prefix("#0x"))
+            .filter_map(|hex| u64::from_str_radix(hex, 16).ok())
+            .filter(|address| constructors.contains(address))
+            .collect();
+        let Some(&constructor_entry) = called.iter().next().filter(|_| called.len() == 1) else {
+            return Ok(None);
+        };
+        Ok(Some(FixtureLoader {
+            load_entry,
+            reader_entry,
+            reader_return,
+            constructor_entry,
+            member_entry: member.address,
+        }))
     }
 
     /// Derive string storage from the root dispatch's proven reader arguments.

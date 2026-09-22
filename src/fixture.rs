@@ -66,8 +66,7 @@ impl FixtureFieldQuestion {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FixtureRequest {
-    /// One UTF-8 `.txt` file under `common/traditions`,
-    /// `common/tradition_categories`, or `common/ascension_perks`, at most 64 KiB.
+    /// One UTF-8 `.txt` file under a bounded relative registry path, at most 64 KiB.
     /// Paths are relative to the game content root; values are the exact file contents.
     pub files: BTreeMap<String, String>,
     /// A nonempty set of the requested event kinds, with no duplicates.
@@ -97,7 +96,7 @@ impl FixtureRequest {
         }
     }
 
-    /// Request field outcomes for one traditions, tradition-categories, or ascension-perks file. Existing
+    /// Request field outcomes for one registry file. Existing
     /// registration and category-read selections are not added; callers may add registration
     /// entries, while category field reads require tradition categories.
     pub fn field_outcomes(
@@ -124,18 +123,20 @@ impl FixtureRequest {
             return Err(reject("Exactly one fixture file is supported"));
         }
         let (path, text) = self.files.first_key_value().unwrap();
-        let registry = if let Some(filename) = path.strip_prefix("common/tradition_categories/") {
-            ("common/tradition_categories", filename)
-        } else if let Some(filename) = path.strip_prefix("common/traditions/") {
-            ("common/traditions", filename)
-        } else if let Some(filename) = path.strip_prefix("common/ascension_perks/") {
-            ("common/ascension_perks", filename)
-        } else {
-            return Err(reject(
-                "Fixture files must be in a supported common registry",
-            ));
+        let Some((registry, filename)) = path.rsplit_once('/') else {
+            return Err(reject("Fixture files must be under a registry directory"));
         };
-        let filename = registry.1;
+        if registry.len() > 256
+            || registry.split('/').any(|part| {
+                part.is_empty()
+                    || part.len() > 128
+                    || !part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            })
+        {
+            return Err(reject("Fixture registry path has an invalid component"));
+        }
         let Some(stem) = filename.strip_suffix(".txt") else {
             return Err(reject("The fixture must have a .txt extension"));
         };
@@ -185,7 +186,7 @@ impl FixtureRequest {
                         byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b':')
                     })
             };
-            if question.registry != registry.0
+            if question.registry != registry
                 || !valid_name(&question.definition)
                 || !valid_name(&question.field)
             {
@@ -201,13 +202,13 @@ impl FixtureRequest {
             return Err(reject("Field outcomes use InitialFileLoad"));
         }
         if self.window == FixtureWindow::InitialCategoryLoad
-            && registry.0 != "common/tradition_categories"
+            && registry != "common/tradition_categories"
         {
             return Err(reject(
                 "InitialCategoryLoad requires a common/tradition_categories fixture",
             ));
         }
-        if registry.0 != "common/tradition_categories"
+        if registry != "common/tradition_categories"
             && self
                 .observations
                 .contains(&FixtureObservationKind::CategoryFieldReads)
@@ -477,6 +478,39 @@ mod tests {
             [question.clone()],
         );
         assert!(outcome.validate().is_ok());
+        let different_owner = FixtureRequest::field_outcomes(
+            "common/federation_perks/x.txt",
+            "sample = { icon = \"test\" }\n",
+            [FixtureFieldQuestion::new(
+                "common/federation_perks",
+                "sample",
+                "icon",
+            )],
+        );
+        assert!(different_owner.validate().is_ok());
+        assert!(
+            FixtureRequest::field_outcomes(
+                "map/galaxy/x.txt",
+                "sample = {}\n",
+                [FixtureFieldQuestion::new(
+                    "map/galaxy",
+                    "sample",
+                    "preview_icon"
+                )],
+            )
+            .validate()
+            .is_ok()
+        );
+        for path in [
+            "common//x.txt",
+            "common/../x.txt",
+            "common/federation_perks//x.txt",
+            "common/federation.perks/x.txt",
+        ] {
+            let mut invalid = different_owner.clone();
+            invalid.files = BTreeMap::from([(path.into(), "sample = {}\n".into())]);
+            assert!(invalid.validate().is_err(), "{path:?}");
+        }
         let mut tradition_outcome_with_registration = outcome.clone();
         tradition_outcome_with_registration.observations =
             vec![FixtureObservationKind::RegistrationEntries];
