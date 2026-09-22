@@ -49,6 +49,8 @@ pub(in crate::binding) fn modifiers(
         definition_sites,
         define,
         category_offset: recipe.modifier_category_offset,
+        string_object_size: recipe.string_object_size,
+        short_length_offset: recipe.short_string_length_offset,
         generation_sites,
         category_name,
         assign_literal,

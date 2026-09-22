@@ -1,120 +1,140 @@
 {
   "types": [
     {
+      "id": "d3b52243a924d8c9",
       "name": "agreement",
       "keywords": [
         "agreement"
       ]
     },
     {
+      "id": "35699745346d01d5",
       "name": "ambient_object",
       "keywords": [
         "ambient_object"
       ]
     },
     {
+      "id": "11dc2d9d9d7a92a5",
       "name": "archaeological_site",
       "keywords": [
         "archaeological_site"
       ]
     },
     {
+      "id": "b99e91b88a72f0c9",
       "name": "army",
       "keywords": [
         "army"
       ]
     },
     {
+      "id": "25453ebe741bae53",
       "name": "astral_rift",
       "keywords": [
         "astral_rift"
       ]
     },
     {
+      "id": "9ee8b41b5ee073ea",
       "name": "bypass",
       "keywords": [
         "bypass"
       ]
     },
     {
+      "id": "df2999a8f7dba6f6",
       "name": "colony",
       "keywords": [
         "colony"
       ]
     },
     {
+      "id": "dfcaad2394c11f8f",
       "name": "cosmic_storm",
       "keywords": [
         "storms"
       ]
     },
     {
+      "id": "66096de61014ff9a",
       "name": "cosmic_storm_influence_field",
       "keywords": [
         "storm_influence_field"
       ]
     },
     {
+      "id": "44b5e21fe5e593d7",
       "name": "country",
       "keywords": [
         "country"
       ]
     },
     {
+      "id": "c2bdd32188145ee1",
       "name": "country",
       "keywords": [
         "observer"
       ]
     },
     {
+      "id": "70aca2556abc81a4",
       "name": "dead_gameobject",
       "keywords": [
         "dead_gameobject"
       ]
     },
     {
+      "id": "d3c8f1e8c2dbd149",
       "name": "debris",
       "keywords": [
         "debris"
       ]
     },
     {
+      "id": "0011157fe12955bd",
       "name": "deposit",
       "keywords": [
         "deposit"
       ]
     },
     {
+      "id": "74623e53f7b0ff4f",
       "name": "design",
       "keywords": [
         "design"
       ]
     },
     {
+      "id": "62d3f8e4e896f7f7",
       "name": "dlc_recommendation",
       "keywords": [
         "dlc_recommendation"
       ]
     },
     {
+      "id": "c298950389c3efcf",
       "name": "espionage_asset",
       "keywords": [
         "espionage_asset"
       ]
     },
     {
+      "id": "8dbe31e3bea11d4c",
       "name": "espionage_operation",
       "keywords": [
         "espionage_operation"
       ]
     },
     {
+      "id": "49528f82af5a6957",
       "name": "exhibit",
       "keywords": [
         "exhibit"
       ]
     },
     {
+      "id": "ca28f39ce7bd8f99",
       "name": "federation",
       "keywords": [
         "alliance",
@@ -122,130 +142,152 @@
       ]
     },
     {
+      "id": "824da242282a19c5",
       "name": "first_contact",
       "keywords": [
         "first_contact"
       ]
     },
     {
+      "id": "6dafeb9bcf25b500",
       "name": "fleet",
       "keywords": [
         "fleet"
       ]
     },
     {
+      "id": "4067a9f60eda1fcf",
       "name": "galactic_community",
       "keywords": [
         "galactic_community"
       ]
     },
     {
+      "id": "5ab5fc854e81e429",
       "name": "galactic_object",
       "keywords": [
         "galactic_object"
       ]
     },
     {
+      "id": "b09e3ce96bcb18ba",
       "name": "leader",
       "keywords": [
         "leader"
       ]
     },
     {
+      "id": "8bb6b317643be13a",
       "name": "megastructure",
       "keywords": [
         "megastructure"
       ]
     },
     {
+      "id": "8bd99f27f3d0cfb9",
       "name": "mission",
       "keywords": [
         "mission"
       ]
     },
     {
+      "id": "f9f8e203aa587efa",
       "name": "no_scope",
       "keywords": [
         "no_scope"
       ]
     },
     {
+      "id": "37c52c03d3012e74",
       "name": "planet",
       "keywords": [
         "planet"
       ]
     },
     {
+      "id": "ef32cf484b6d5087",
       "name": "pop",
       "keywords": [
         "pop"
       ]
     },
     {
+      "id": "f8d05db7c8d3e2b2",
       "name": "pop job",
       "keywords": []
     },
     {
+      "id": "87fbe101af3061e9",
       "name": "pop_faction",
       "keywords": [
         "pop_faction"
       ]
     },
     {
+      "id": "1a26ff288266684f",
       "name": "pop_group",
       "keywords": [
         "pop_group"
       ]
     },
     {
+      "id": "a88e1da49bb109c5",
       "name": "sector",
       "keywords": [
         "sector"
       ]
     },
     {
+      "id": "69ead02b278522d1",
       "name": "ship",
       "keywords": [
         "ship"
       ]
     },
     {
+      "id": "431d271ac195067e",
       "name": "ship_growth_stage",
       "keywords": [
         "ship_growth_stage"
       ]
     },
     {
+      "id": "6746d8af11c99b62",
       "name": "situation",
       "keywords": [
         "situation"
       ]
     },
     {
+      "id": "43c74897fb1c97c8",
       "name": "species",
       "keywords": [
         "species"
       ]
     },
     {
+      "id": "e018d51ead1b8110",
       "name": "spy_network",
       "keywords": [
         "spynetwork"
       ]
     },
     {
+      "id": "a28a4564ee636659",
       "name": "starbase",
       "keywords": [
         "starbase"
       ]
     },
     {
+      "id": "3afa3575da6e4370",
       "name": "trait",
       "keywords": [
         "trait"
       ]
     },
     {
+      "id": "87aef3284d14374e",
       "name": "war",
       "keywords": [
         "war"
@@ -256,8 +298,14 @@
     {
       "keyword": "carrier",
       "scopes": [
-        "planet",
-        "ship"
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        },
+        {
+          "id": "69ead02b278522d1",
+          "name": "ship"
+        }
       ]
     }
   ]

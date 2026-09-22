@@ -24,12 +24,6 @@ pub const MODIFIER_METHOD: &str = "modifier-declarations/v1";
 /// Name and revision of the modifier-category method.
 pub const CATEGORY_METHOD: &str = "modifier-categories/v1";
 
-/// Size of the engine's string object that the category-name function fills.
-const STRING_OBJECT: u64 = 24;
-
-/// Offset of the length byte of a short string in that object.
-const SHORT_LENGTH: u64 = 0x17;
-
 /// Executable-derived input for the modifier and category methods.
 pub struct ModifierInput {
     pub tokens: BTreeMap<u64, String>,
@@ -38,6 +32,10 @@ pub struct ModifierInput {
     pub define: u64,
     /// Offset of the category argument from the stack pointer at the definition call.
     pub category_offset: u64,
+    /// Size of the engine's string object that the category-name function fills.
+    pub string_object_size: u64,
+    /// Offset of a short string's length byte in that object. Its characters precede it.
+    pub short_length_offset: u64,
     /// Call sites of the functions that add modifiers generated from content.
     pub generation_sites: usize,
     pub category_name: u64,
@@ -186,7 +184,7 @@ fn tags(categories: &BTreeMap<u64, Result<Option<String>, Unresolved>>, mask: u6
 /// it.
 fn category_name(input: &ModifierInput, mask: u64) -> Result<Option<String>, Unresolved> {
     let mut machine = Machine::new(&input.code, &input.data);
-    let object = machine.allocate(STRING_OBJECT);
+    let object = machine.allocate(input.string_object_size);
     machine.set_register(0, mask);
     machine.set_register(1, object);
 
@@ -216,9 +214,9 @@ fn category_name(input: &ModifierInput, mask: u64) -> Result<Option<String>, Unr
         return Ok(Some(text));
     }
     let length = machine
-        .read(object + SHORT_LENGTH, 1)
+        .read(object + input.short_length_offset, 1)
         .ok_or(Unresolved("short-string"))?;
-    if length >= SHORT_LENGTH {
+    if length >= input.short_length_offset {
         return Err(Unresolved("short-string"));
     }
     let bytes: Option<Vec<u8>> = (0..length)
@@ -283,6 +281,8 @@ mod tests {
             definition_sites,
             define: 0x800,
             category_offset: 4,
+            string_object_size: 24,
+            short_length_offset: 0x17,
             generation_sites: 2,
             category_name: 0x100,
             assign_literal: BTreeSet::from([0x900]),

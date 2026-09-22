@@ -72,6 +72,10 @@ Comparison with the SDK-488 inventory (M45-observe, frozen `runs/20260917-154455
 
 Keeping `pop job` whole corrects the SDK-535 scope lists as well. Before this change they split the name into `pop` and `job`, which invented a `job` scope and repeated `pop`.
 
+A scope type's identity is its bit, not its name: bits 2 and 19 are both named `country`. Each `ScopeDeclaration` has an opaque `ScopeId`, a hash of the bit that is valid within one build. Every scope reference carries the same identity: command and link scopes, link outputs, and `ScopeGroup` members. A reference also carries the display name, only for reading. Join references to declarations by `id`, never by name.
+
+**Not in SDK-536.** The ticket asked for the full modifier inventory with the SDK-488 count, so it was narrowed. The loaded inventory with its generated families is **SDK-564**, and the name templates are **SDK-540**. The scopes of the data-taking links `event_target:` and `parameter:` are **SDK-565**.
+
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
 
 ## Rust ports

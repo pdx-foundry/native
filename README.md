@@ -29,8 +29,9 @@ text. Runtime-composed names and unreadable documentation are gaps. `modifiers` 
 modifier definitions; modifier families that content generates are gaps. Category tags are
 intended-use tags, not where a modifier takes effect. `scopes` groups keywords only by the engine's
 keyword-to-scope map; a keyword that matches several types, such as `carrier`, is a group.
-`scope_links` gives declared input and output scopes and marks links that take data. See
-`examples/declarations.rs`.
+`scope_links` gives declared input and output scopes and marks links that take data. A scope
+reference carries an opaque `ScopeId`; join it to `scopes()` by that identity, because two scope
+types can share a display name. See `examples/declarations.rs`.
 
 ## Live questions
 

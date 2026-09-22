@@ -16,7 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
-use super::declarations::{ScopeOutcome, number, scope_mask};
+use super::declarations::{ScopeOutcome, ScopeType, number, scope_mask};
 use super::decode::Instruction;
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
 
@@ -59,7 +59,7 @@ pub struct ScopeInput {
 /// Scope types and the keywords that the engine maps to each.
 pub struct ScopeResult {
     /// Each named scope type in bit order, with its keywords in token order.
-    pub scopes: Vec<(String, Vec<String>)>,
+    pub scopes: Vec<(ScopeType, Vec<String>)>,
     /// Keywords that match several scope types at once, with those types' names, such as
     /// `carrier` (planet or ship).
     pub groups: Vec<(String, ScopeOutcome)>,
@@ -83,7 +83,7 @@ pub struct Link {
 /// The declared output scope of one link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Output {
-    Listed(Vec<String>),
+    Listed(Vec<ScopeType>),
     Various,
     Unresolved(&'static str),
 }
@@ -122,7 +122,11 @@ pub fn scopes(input: &ScopeInput) -> Result<ScopeResult, InputError> {
         .filter(|(_, name)| !name.is_empty())
     {
         let keywords = keywords.remove(&(1u64 << bit)).unwrap_or_default();
-        scopes.push((name.clone(), keywords));
+        let scope = ScopeType {
+            bit,
+            name: name.clone(),
+        };
+        scopes.push((scope, keywords));
     }
 
     let (groups, unnamed): (Vec<_>, Vec<_>) = keywords
@@ -349,6 +353,13 @@ fn data_prefixes(input: &ScopeInput) -> Vec<String> {
 mod tests {
     use super::*;
 
+    fn scope(bit: usize, name: &str) -> ScopeType {
+        ScopeType {
+            bit,
+            name: name.into(),
+        }
+    }
+
     fn row(address: u64, operation: &str, operands: &str) -> Instruction {
         Instruction {
             address,
@@ -448,16 +459,16 @@ mod tests {
         assert_eq!(
             result.scopes,
             vec![
-                ("planet".into(), vec!["capital_scope".into()]),
-                ("country".into(), vec!["owner".into(), "country".into()]),
-                ("ship".into(), vec![]),
+                (scope(1, "planet"), vec!["capital_scope".into()]),
+                (scope(2, "country"), vec!["owner".into(), "country".into()]),
+                (scope(3, "ship"), vec![]),
             ]
         );
         assert_eq!(
             result.groups,
             vec![(
                 "carrier".into(),
-                ScopeOutcome::Listed(vec!["planet".into(), "ship".into()])
+                ScopeOutcome::Listed(vec![scope(1, "planet"), scope(3, "ship")])
             )]
         );
         assert_eq!(result.unnamed_types, 0);
@@ -472,13 +483,13 @@ mod tests {
             vec![
                 Link {
                     name: "owner".into(),
-                    input: ScopeOutcome::Listed(vec!["country".into()]),
+                    input: ScopeOutcome::Listed(vec![scope(2, "country")]),
                     output: Output::Various,
                 },
                 Link {
                     name: "capital_scope".into(),
-                    input: ScopeOutcome::Listed(vec!["country".into(), "ship".into()]),
-                    output: Output::Listed(vec!["country".into()]),
+                    input: ScopeOutcome::Listed(vec![scope(2, "country"), scope(3, "ship")]),
+                    output: Output::Listed(vec![scope(2, "country")]),
                 },
             ]
         );
@@ -491,7 +502,7 @@ mod tests {
         let input = input();
         assert_eq!(
             output_names(&input, 0b1010),
-            Output::Listed(vec!["planet".into(), "ship".into()])
+            Output::Listed(vec![scope(1, "planet"), scope(3, "ship")])
         );
         assert_eq!(output_names(&input, 1), Output::Unresolved("scope-name"));
     }

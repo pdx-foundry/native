@@ -2,8 +2,8 @@
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 use pdx_native::{
     Answer, Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Error,
-    Field, GapKind, LinkData, ModifierDeclaration, Native, OutputScope, ReaderKind, ScopeGroup,
-    ScopeInventory, ScopeLink,
+    Field, GapKind, LinkData, ModifierDeclaration, Native, OutputScope, ReaderKind, ScopeId,
+    ScopeInventory, ScopeLink, ScopeReference,
 };
 use std::collections::BTreeMap;
 
@@ -100,18 +100,10 @@ fn direct_declarations_match_the_recorded_m45_boundary() {
         }
     }
     let effects = native.declarations(DeclarationKind::Effect).unwrap();
-    assert_eq!(
-        effects
-            .value
-            .iter()
-            .find(|item| item.name == "win")
-            .unwrap()
-            .scopes,
-        DeclaredScopes::Listed(vec!["country".into()])
-    );
-    assert!(
-        matches!(effects.value.iter().find(|item| item.name == "add_blocker").unwrap().scopes, DeclaredScopes::Listed(ref scopes) if scopes.contains(&"colony".into()))
-    );
+    let win = find(&effects.value, "win", |item| &item.name);
+    assert_eq!(listed_names(&win.scopes), ["country"]);
+    let add_blocker = find(&effects.value, "add_blocker", |item| &item.name);
+    assert!(listed_names(&add_blocker.scopes).contains(&"colony"));
     let triggers = native.declarations(DeclarationKind::Trigger).unwrap();
     assert_eq!(
         triggers
@@ -176,13 +168,21 @@ fn scopes_group_keywords_by_the_engine_map_only() {
     );
     let federation = find(&answer.value.types, "federation", |item| &item.name);
     assert_eq!(federation.keywords, ["alliance", "federation"]);
-    assert_eq!(
-        answer.value.groups,
-        [ScopeGroup {
-            keyword: "carrier".into(),
-            scopes: vec!["planet".into(), "ship".into()],
-        }]
-    );
+    let groups: Vec<_> = answer
+        .value
+        .groups
+        .iter()
+        .map(|group| (group.keyword.as_str(), reference_names(&group.scopes)))
+        .collect();
+    assert_eq!(groups, [("carrier", vec!["planet", "ship"])]);
+    let countries: Vec<_> = answer
+        .value
+        .types
+        .iter()
+        .filter(|scope| scope.name == "country")
+        .collect();
+    assert_eq!(countries.len(), 2);
+    assert_ne!(countries[0].id, countries[1].id);
     assert!(
         answer
             .value
@@ -217,14 +217,11 @@ fn scope_links_match_the_recorded_m45_boundary() {
         .count();
     assert_eq!(documented, 99);
     let capital = find(&answer.value, "capital_scope", |item| &item.name);
-    assert_eq!(
-        capital.input_scopes,
-        DeclaredScopes::Listed(vec!["country".into()])
-    );
-    assert_eq!(
-        capital.output_scope,
-        OutputScope::Listed(vec!["colony".into()])
-    );
+    assert_eq!(listed_names(&capital.input_scopes), ["country"]);
+    let OutputScope::Listed(output) = &capital.output_scope else {
+        panic!("capital_scope declares its output");
+    };
+    assert_eq!(reference_names(output), ["colony"]);
     let this = find(&answer.value, "this", |item| &item.name);
     assert_eq!(
         (&this.input_scopes, &this.output_scope),
@@ -237,6 +234,54 @@ fn scope_links_match_the_recorded_m45_boundary() {
         .filter_map(|gap| gap.subject.as_deref())
         .collect();
     assert_eq!(unresolved, ["event_target", "parameter"]);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn every_scope_reference_joins_to_one_declared_scope_type() {
+    let native = native();
+    let scopes = native.scopes().unwrap().value;
+    let types: BTreeMap<&ScopeId, &String> = scopes
+        .types
+        .iter()
+        .map(|scope| (&scope.id, &scope.name))
+        .collect();
+
+    let mut references = Vec::new();
+    for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
+        for declaration in native.declarations(kind).unwrap().value {
+            if let DeclaredScopes::Listed(scopes) = declaration.scopes {
+                references.extend(scopes);
+            }
+        }
+    }
+    for link in native.scope_links().unwrap().value {
+        if let DeclaredScopes::Listed(scopes) = link.input_scopes {
+            references.extend(scopes);
+        }
+        if let OutputScope::Listed(scopes) = link.output_scope {
+            references.extend(scopes);
+        }
+    }
+    for group in &scopes.groups {
+        references.extend(group.scopes.iter().cloned());
+    }
+
+    assert!(references.len() > 1000);
+    for reference in &references {
+        assert_eq!(types.get(&reference.id), Some(&&reference.name));
+    }
+}
+
+fn listed_names(scopes: &DeclaredScopes) -> Vec<&str> {
+    match scopes {
+        DeclaredScopes::Listed(scopes) => reference_names(scopes),
+        other => panic!("expected listed scopes, not {other:?}"),
+    }
+}
+
+fn reference_names(scopes: &[ScopeReference]) -> Vec<&str> {
+    scopes.iter().map(|scope| scope.name.as_str()).collect()
 }
 
 fn assert_declared<T>(answer: &Answer<Vec<T>>) {

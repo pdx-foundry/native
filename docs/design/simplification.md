@@ -94,7 +94,8 @@ pub struct Reader   { pub id: Option<ReaderId>, pub kind: ReaderKind }
 pub enum ReaderKind { Unknown /* extended as reader support lands */ }
 pub struct Declaration { pub name: String, pub description: String, pub usage: String,
                          pub scopes: DeclaredScopes, pub targets: DeclaredScopes }
-pub enum DeclaredScopes { Any, Listed(Vec<String>), Unresolved }
+pub enum DeclaredScopes { Any, Listed(Vec<ScopeReference>), Unresolved }
+pub struct ScopeReference { pub id: ScopeId, pub name: String } // SDK-536: join by id, not name
 ```
 
 ### Recorded answers cover static and live questions

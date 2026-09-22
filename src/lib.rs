@@ -24,7 +24,8 @@ pub use answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes,
     DeclaredTags, Disposal, Error, Field, Gap, GapKind, LinkData, ModifierCategory,
     ModifierDeclaration, Operation, OutputScope, Reader, ReaderId, ReaderKind, Registry,
-    ScopeDeclaration, ScopeGroup, ScopeInventory, ScopeLink, Source, Support,
+    ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory, ScopeLink, ScopeReference, Source,
+    Support,
 };
 pub use api::OpenError;
 pub use engine::operations::registry_items::GameReadiness;

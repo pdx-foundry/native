@@ -2,11 +2,12 @@
 use super::Native;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
-    Field, Gap, GapKind, Operation, Reader, ReaderId, ReaderKind, Registry, Source, Support,
+    Field, Gap, GapKind, Operation, Reader, ReaderId, ReaderKind, Registry, ScopeId,
+    ScopeReference, Source, Support,
 };
 use crate::binding::VerifiedAnalysis;
 use crate::engine::analysis::{
-    declarations::{self, DeclarationResult, ScopeOutcome, Site},
+    declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
     fields::{self, PathOutcome, RegistryFieldResult},
     readers,
@@ -252,7 +253,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
             } => {
                 let scopes = match scopes {
                     ScopeOutcome::Any => DeclaredScopes::Any,
-                    ScopeOutcome::Listed(names) => DeclaredScopes::Listed(names.clone()),
+                    ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
                     ScopeOutcome::Unresolved(link) => {
                         if *link != "scope-table" {
                             gaps.push(Gap {
@@ -322,6 +323,22 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
         gaps,
         source: Source::new(build, declarations::METHOD, Basis::Declared),
     }
+}
+
+/// The public identity of a scope type. It hides the engine's bit number.
+pub(super) fn scope_id(scope: &ScopeType) -> ScopeId {
+    let digest = Sha256::digest(format!("scope-type/{}", scope.bit).as_bytes());
+    ScopeId(format!("{digest:x}")[..16].to_owned())
+}
+
+pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
+    types
+        .iter()
+        .map(|scope| ScopeReference {
+            id: scope_id(scope),
+            name: scope.name.clone(),
+        })
+        .collect()
 }
 
 pub(crate) fn normalized_field(
@@ -440,7 +457,10 @@ mod declaration_tests {
                         name: "known".into(),
                         description: "description".into(),
                         usage: "".into(),
-                        scopes: ScopeOutcome::Listed(vec!["country".into()]),
+                        scopes: ScopeOutcome::Listed(vec![ScopeType {
+                            bit: 2,
+                            name: "country".into(),
+                        }]),
                     },
                 ),
                 (

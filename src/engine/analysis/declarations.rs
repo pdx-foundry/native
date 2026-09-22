@@ -62,8 +62,16 @@ pub enum Site {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScopeOutcome {
     Any,
-    Listed(Vec<String>),
+    Listed(Vec<ScopeType>),
     Unresolved(&'static str),
+}
+
+/// One scope type: its bit in the engine's scope-type mask, which identifies it, and the engine's
+/// display name, which two types can share.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeType {
+    pub bit: usize,
+    pub name: String,
 }
 
 /// Every direct site and any input-wide gap.
@@ -366,7 +374,10 @@ pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
         let Some(name) = names.get(index).filter(|name| !name.is_empty()) else {
             return ScopeOutcome::Unresolved("scope-name");
         };
-        listed.push(name.clone());
+        listed.push(ScopeType {
+            bit: index,
+            name: name.clone(),
+        });
     }
     ScopeOutcome::Listed(listed)
 }

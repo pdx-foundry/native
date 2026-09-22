@@ -75,7 +75,7 @@ fn recorded() -> tempfile::TempDir {
         json!({ "Ok": {
             "value": [
                 { "name": "always", "description": "Always succeeds", "usage": "", "scopes": "Any", "targets": "Unresolved" },
-                { "name": "win", "description": "Wins", "usage": "win = yes", "scopes": { "Listed": ["country"] }, "targets": "Unresolved" }
+                { "name": "win", "description": "Wins", "usage": "win = yes", "scopes": { "Listed": [{ "id": "country-id", "name": "country" }] }, "targets": "Unresolved" }
             ],
             "completeness": "Partial",
             "gaps": [
@@ -107,8 +107,13 @@ fn recorded() -> tempfile::TempDir {
         "scopes.json",
         json!({ "Ok": {
             "value": {
-                "types": [{ "name": "planet", "keywords": ["planet"] }],
-                "groups": [{ "keyword": "carrier", "scopes": ["planet", "ship"] }]
+                "types": [
+                    { "id": "planet-id", "name": "planet", "keywords": ["planet"] },
+                    { "id": "ship-id", "name": "ship", "keywords": ["ship"] }
+                ],
+                "groups": [{ "keyword": "carrier", "scopes": [
+                    { "id": "planet-id", "name": "planet" }, { "id": "ship-id", "name": "ship" }
+                ] }]
             },
             "completeness": "Complete",
             "gaps": [],
@@ -120,8 +125,10 @@ fn recorded() -> tempfile::TempDir {
         "scope_links.json",
         json!({ "Ok": {
             "value": [
-                { "name": "carrier", "input_scopes": { "Listed": ["colony"] },
-                  "output_scope": { "Listed": ["planet", "ship"] }, "data": "None" },
+                { "name": "carrier", "input_scopes": { "Listed": [{ "id": "colony-id", "name": "colony" }] },
+                  "output_scope": { "Listed": [
+                      { "id": "planet-id", "name": "planet" }, { "id": "ship-id", "name": "ship" }
+                  ] }, "data": "None" },
                 { "name": "event_target", "input_scopes": "Unresolved",
                   "output_scope": "Unresolved", "data": { "Prefix": "event_target:" } },
                 { "name": "prev", "input_scopes": "Any", "output_scope": "Various", "data": "None" }
@@ -149,10 +156,11 @@ fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded
 
     let links = native.scope_links().unwrap();
     assert_eq!(links.source.basis, Basis::Recorded);
-    assert_eq!(
-        links.value[0].output_scope,
-        OutputScope::Listed(vec!["planet".into(), "ship".into()])
-    );
+    let OutputScope::Listed(output) = &links.value[0].output_scope else {
+        panic!("carrier declares its output");
+    };
+    let output: Vec<_> = output.iter().map(|scope| scope.name.as_str()).collect();
+    assert_eq!(output, ["planet", "ship"]);
     assert_eq!(
         links.value[1].data,
         LinkData::Prefix("event_target:".into())
@@ -165,8 +173,11 @@ fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded
     ));
     let scopes = native.scopes().unwrap();
     assert_eq!(scopes.source.basis, Basis::Recorded);
-    assert_eq!(scopes.value.groups[0].keyword, "carrier");
-    assert_eq!(scopes.value.groups[0].scopes, ["planet", "ship"]);
+    let group = &scopes.value.groups[0];
+    assert_eq!(group.keyword, "carrier");
+    for (reference, scope) in group.scopes.iter().zip(&scopes.value.types) {
+        assert_eq!(reference.id, scope.id);
+    }
 }
 
 #[test]
@@ -177,10 +188,10 @@ fn declarations_read_recorded_values_and_missing_kind_is_not_recorded() {
     assert_eq!(effect.source.basis, Basis::Recorded);
     assert_eq!(effect.completeness, Completeness::Partial);
     assert_eq!(effect.value[0].scopes, DeclaredScopes::Any);
-    assert_eq!(
-        effect.value[1].scopes,
-        DeclaredScopes::Listed(vec!["country".into()])
-    );
+    let DeclaredScopes::Listed(scopes) = &effect.value[1].scopes else {
+        panic!("win lists its scopes");
+    };
+    assert_eq!(scopes[0].name, "country");
     assert!(matches!(
         native.declarations(DeclarationKind::Trigger),
         Err(Error::NotRecorded { .. })

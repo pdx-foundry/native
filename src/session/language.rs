@@ -2,7 +2,7 @@
 use std::collections::BTreeSet;
 
 use super::Native;
-use super::questions::error;
+use super::questions::{error, scope_id, scope_references};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredScopes, DeclaredTags, Error, Gap, GapKind,
     LinkData, ModifierCategory, ModifierDeclaration, Operation, OutputScope, ScopeDeclaration,
@@ -230,11 +230,12 @@ pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<
     let mut types: Vec<_> = result
         .scopes
         .iter()
-        .map(|(name, keywords)| {
+        .map(|(scope, keywords)| {
             let mut keywords = keywords.clone();
             keywords.sort();
             ScopeDeclaration {
-                name: name.clone(),
+                id: scope_id(scope),
+                name: scope.name.clone(),
                 keywords,
             }
         })
@@ -254,7 +255,7 @@ pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<
         match scopes {
             ScopeOutcome::Listed(scopes) => groups.push(ScopeGroup {
                 keyword: keyword.clone(),
-                scopes: scopes.clone(),
+                scopes: scope_references(scopes),
             }),
             ScopeOutcome::Any | ScopeOutcome::Unresolved(_) => gaps.push(gap(
                 GapKind::UnresolvedPath,
@@ -310,7 +311,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
     for link in &result.links {
         let input_scopes = match &link.input {
             ScopeOutcome::Any => DeclaredScopes::Any,
-            ScopeOutcome::Listed(names) => DeclaredScopes::Listed(names.clone()),
+            ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
             ScopeOutcome::Unresolved(reason) => {
                 if *reason != "scope-table" {
                     gaps.push(gap(
@@ -323,7 +324,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
             }
         };
         let output_scope = match &link.output {
-            Output::Listed(names) => OutputScope::Listed(names.clone()),
+            Output::Listed(types) => OutputScope::Listed(scope_references(types)),
             Output::Various => OutputScope::Various,
             Output::Unresolved(reason) => {
                 if *reason != "scope-table" {
@@ -395,18 +396,28 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::declarations::ScopeType;
+
+    fn scope(bit: usize, name: &str) -> ScopeType {
+        ScopeType {
+            bit,
+            name: name.into(),
+        }
+    }
 
     #[test]
-    fn keywords_that_match_several_types_are_groups_not_gaps() {
+    fn scope_types_keep_their_identity_when_names_repeat() {
         let result = ScopeResult {
             scopes: vec![
-                ("ship".into(), vec!["ship".into()]),
-                ("planet".into(), vec!["planet".into()]),
+                (scope(1, "planet"), vec!["planet".into()]),
+                (scope(2, "country"), vec!["country".into()]),
+                (scope(3, "ship"), vec!["ship".into()]),
+                (scope(19, "country"), vec!["observer".into()]),
             ],
             groups: vec![
                 (
                     "carrier".into(),
-                    ScopeOutcome::Listed(vec!["planet".into(), "ship".into()]),
+                    ScopeOutcome::Listed(vec![scope(1, "planet"), scope(3, "ship")]),
                 ),
                 ("unnamed".into(), ScopeOutcome::Unresolved("scope-name")),
             ],
@@ -416,15 +427,27 @@ mod tests {
             table_missing: false,
         };
         let answer = normalized_scopes(&result, BuildId("test".into()));
-        let names: Vec<_> = answer.value.types.iter().map(|scope| &scope.name).collect();
-        assert_eq!(names, ["planet", "ship"]);
-        assert_eq!(
-            answer.value.groups,
-            [ScopeGroup {
-                keyword: "carrier".into(),
-                scopes: vec!["planet".into(), "ship".into()],
-            }]
-        );
+        let types = &answer.value.types;
+
+        let names: Vec<_> = types.iter().map(|scope| scope.name.as_str()).collect();
+        assert_eq!(names, ["country", "country", "planet", "ship"]);
+        assert_ne!(types[0].id, types[1].id);
+        assert_eq!(types[1].keywords, ["observer"]);
+
+        let group = &answer.value.groups[0];
+        assert_eq!(group.keyword, "carrier");
+        let joined: Vec<_> = group
+            .scopes
+            .iter()
+            .map(|reference| {
+                types
+                    .iter()
+                    .find(|scope| scope.id == reference.id)
+                    .map(|scope| scope.name.as_str())
+            })
+            .collect();
+        assert_eq!(joined, [Some("planet"), Some("ship")]);
+
         assert_eq!(answer.completeness, Completeness::Partial);
         assert!(
             answer

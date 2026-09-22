@@ -5,7 +5,10 @@
     "usage": "win = yes",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -16,9 +19,18 @@
     "usage": "add_blocker = {\n\ttype = <key>\n\tblocked_deposit = none (default)/<deposit scope - copies the type to the blocked deposit but any flags or variables are lost>/random\n}",
     "scopes": {
       "Listed": [
-        "planet",
-        "ship",
-        "colony"
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        },
+        {
+          "id": "69ead02b278522d1",
+          "name": "ship"
+        },
+        {
+          "id": "df2999a8f7dba6f6",
+          "name": "colony"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -29,7 +41,10 @@
     "usage": "abort_special_project = { type = <project key> location = <target> }",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -40,7 +55,10 @@
     "usage": "set_country_flag = <key> (note: one can use e.g. my_flag@from to track relationships between objects)",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -51,7 +69,10 @@
     "usage": "add_experience = 200",
     "scopes": {
       "Listed": [
-        "leader"
+        {
+          "id": "b09e3ce96bcb18ba",
+          "name": "leader"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -69,7 +90,10 @@
     "usage": "accept_covenant = <patron_name>",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -80,7 +104,10 @@
     "usage": "activate_crisis_progression = <path_name>.",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -91,7 +118,10 @@
     "usage": "activate_fog_machine = <cloud_type>",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"

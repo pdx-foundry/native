@@ -310,8 +310,8 @@ pub struct Declaration {
 pub enum DeclaredScopes {
     /// Every scope or target is supported.
     Any,
-    /// The named scopes or targets, including an empty set.
-    Listed(Vec<String>),
+    /// These scope types, including an empty set.
+    Listed(Vec<ScopeReference>),
     /// The declaration could not be followed to its scope set.
     Unresolved,
 }
@@ -343,6 +343,21 @@ pub struct ModifierCategory {
     pub name: String,
 }
 
+/// Opaque identity of a scope type within one build. Two types can share a display name (two
+/// types are named `country`); they never share an identity. Keep it and compare it; do not
+/// parse it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ScopeId(pub(crate) String);
+
+/// A reference to one scope type in the answer of `Native::scopes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeReference {
+    /// The scope type. Join references to declarations by this identity.
+    pub id: ScopeId,
+    /// The type's display name, for reading only; it does not identify the type.
+    pub name: String,
+}
+
 /// The scope types that the engine declares, and the keywords that match several of them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeInventory {
@@ -358,13 +373,15 @@ pub struct ScopeInventory {
 pub struct ScopeGroup {
     /// The script keyword.
     pub keyword: String,
-    /// The engine names of the scope types that the keyword matches, in the engine's order.
-    pub scopes: Vec<String>,
+    /// The scope types that the keyword matches, in the engine's order.
+    pub scopes: Vec<ScopeReference>,
 }
 
 /// A scope type that the engine declares.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeDeclaration {
+    /// The scope type's identity. Scope references in other answers carry the same identity.
+    pub id: ScopeId,
     /// The engine's name for the scope type, as its documentation prints it. It can contain a
     /// space (`pop job`), and two types can share a name (two types are named `country`).
     pub name: String,
@@ -389,8 +406,8 @@ pub struct ScopeLink {
 /// The declared output scope of a link.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputScope {
-    /// One of these scopes. Most links list one; `carrier` lists two.
-    Listed(Vec<String>),
+    /// One of these scope types. Most links list one; `carrier` lists two.
+    Listed(Vec<ScopeReference>),
     /// The engine declares that the output depends on the context, such as for `prev`.
     Various,
     /// The declaration could not be followed to its output.

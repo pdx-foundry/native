@@ -29,6 +29,9 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub modifier_category_offset: u64,
     /// Offset of the token in an event target object.
     pub event_target_token_offset: u64,
+    /// The engine's string object: its size, and the offset of a short string's length byte.
+    pub string_object_size: u64,
+    pub short_string_length_offset: u64,
 }
 
 pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
@@ -51,6 +54,8 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     effect_scope_slot: 0x80,
     modifier_category_offset: 0x4,
     event_target_token_offset: 0x58,
+    string_object_size: 0x18,
+    short_string_length_offset: 0x17,
 };
 
 /// The literal initialization of the startup scheduling table (SDK-489). It ends before
