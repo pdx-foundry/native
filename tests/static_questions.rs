@@ -67,7 +67,7 @@ fn direct_declarations_match_the_recorded_m45_boundary() {
             gap.kind == GapKind::UnreadableInput && gap.detail == "scope name table not found"
         });
         for item in &answer.value {
-            assert_eq!(item.targets, DeclaredScopes::Listed(vec![]));
+            assert_eq!(item.targets, DeclaredScopes::Unresolved);
             assert!(!item.description.contains("Supported Scopes:"));
             assert!(!item.usage.contains("Supported Scopes:"));
             if item.scopes == DeclaredScopes::Unresolved && !global_scope_gap {
@@ -80,6 +80,14 @@ fn direct_declarations_match_the_recorded_m45_boundary() {
                 );
             }
         }
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnresolvedPath
+                    && gap.subject.is_none()
+                    && gap.detail == "target declarations are not followed by this method")
+        );
         let samples: Vec<Declaration> = expected(&format!("declaration-samples-{subject}.json"));
         assert_eq!(samples.len(), 10);
         for sample in samples {

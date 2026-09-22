@@ -42,6 +42,8 @@ SDK-535 ports effects and triggers to `Native::declarations`. The M45 direct-cal
 
 The static reader joins a registration token to its factory vtable and documentation string, then follows the factory's create method to the command vtable and supported-scope getter. It derives bit names from `NEventScope::GetScopeName` in this exact build. A zero getter mask means `Any`, as the live documentation shows for `if`; other masks list names in bit order. An unresolved link stays on the returned declaration as `DeclaredScopes::Unresolved` with a gap. The method does not establish registration timing or reachability, and does not read config files.
 
+Target getters are not followed in this revision. Every returned target set is `Unresolved`, with one subjectless target gap for the answer; absence of a `Supported Targets:` documentation line does not establish an empty target set.
+
 Modifier categories are intended-use tags, not demonstrated application contexts. Real object application and propagation through containers remain unqualified. The native documentation facility supplies observations; Atlas decides which rule claims the evidence supports.
 
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.

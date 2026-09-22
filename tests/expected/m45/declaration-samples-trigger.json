@@ -4,27 +4,21 @@
     "description": "Evaluates the triggers if the display_triggers of the limit are met",
     "usage": "if = { limit = { <display_triggers> } <triggers> }",
     "scopes": "Any",
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "else_if",
     "description": "Evaluates the enclosed triggers if the display_triggers of the preceding `if` or `else_if` is not met and its own display_trigger of the limit is met",
     "usage": "if = { limit = { <display_triggers> } <triggers> }\nelse_if = { limit = { <display_triggers> } <triggers> }",
     "scopes": "Any",
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "exists",
     "description": "Checks if a target scope exists",
     "usage": "exists = <target>",
     "scopes": "Unresolved",
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "has_civic",
@@ -36,9 +30,7 @@
         "dlc_recommendation"
       ]
     },
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "planet_size",
@@ -51,9 +43,7 @@
         "colony"
       ]
     },
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "is_ruler",
@@ -64,18 +54,14 @@
         "leader"
       ]
     },
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "always",
     "description": "Sets trigger to be either always true or false",
     "usage": "always = yes",
     "scopes": "Any",
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "has_country_flag",
@@ -86,9 +72,7 @@
         "country"
       ]
     },
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "acquired_specimen_count",
@@ -99,17 +83,13 @@
         "country"
       ]
     },
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   },
   {
     "name": "additional_crisis_strength",
     "description": "Checks the degree to which multiply_crisis_strength effect is increasing the strength of endgame crises",
     "usage": "additional_crisis_strength > 1.4",
     "scopes": "Any",
-    "targets": {
-      "Listed": []
-    }
+    "targets": "Unresolved"
   }
 ]
