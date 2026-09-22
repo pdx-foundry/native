@@ -343,6 +343,25 @@ pub struct ModifierCategory {
     pub name: String,
 }
 
+/// The scope types that the engine declares, and the keywords that match several of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeInventory {
+    /// Each scope type, sorted by name.
+    pub types: Vec<ScopeDeclaration>,
+    /// Keywords that match any one of several scope types, sorted by keyword.
+    pub groups: Vec<ScopeGroup>,
+}
+
+/// A keyword that matches any one of several scope types, such as `carrier` (a planet or a ship).
+/// It is not a name of each type: the types stay distinct scopes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeGroup {
+    /// The script keyword.
+    pub keyword: String,
+    /// The engine names of the scope types that the keyword matches, in the engine's order.
+    pub scopes: Vec<String>,
+}
+
 /// A scope type that the engine declares.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeDeclaration {

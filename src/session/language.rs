@@ -6,7 +6,7 @@ use super::questions::error;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredScopes, DeclaredTags, Error, Gap, GapKind,
     LinkData, ModifierCategory, ModifierDeclaration, Operation, OutputScope, ScopeDeclaration,
-    ScopeLink, Source,
+    ScopeGroup, ScopeInventory, ScopeLink, Source,
 };
 use crate::engine::analysis::{
     declarations::ScopeOutcome,
@@ -41,9 +41,10 @@ impl Native {
 
     /// Read the scope types and the script keywords that the engine resolves to each.
     ///
-    /// Keywords are grouped only by the engine's own keyword-to-scope map. Keywords created at
-    /// run time are outside this method.
-    pub fn scopes(&self) -> Result<Answer<Vec<ScopeDeclaration>>, Error> {
+    /// Keywords are grouped only by the engine's own keyword-to-scope map. A keyword that matches
+    /// several types, such as `carrier`, is a [`ScopeGroup`]. Keywords created at run time are
+    /// outside this method.
+    pub fn scopes(&self) -> Result<Answer<ScopeInventory>, Error> {
         self.answer("scopes", None, || {
             let operation = Operation::Scopes;
             let input = self
@@ -99,6 +100,11 @@ fn answer<T>(
     method: &str,
 ) -> Answer<Vec<T>> {
     value.sort_by(|left, right| name(left).cmp(name(right)));
+    declared(value, gaps, build, method)
+}
+
+/// A declared answer, complete exactly when every gap is outside the method.
+fn declared<T>(value: T, gaps: Vec<Gap>, build: BuildId, method: &str) -> Answer<T> {
     let completeness = if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
         Completeness::Complete
     } else {
@@ -220,11 +226,8 @@ pub(crate) fn normalized_categories(
     )
 }
 
-pub(crate) fn normalized_scopes(
-    result: &ScopeResult,
-    build: BuildId,
-) -> Answer<Vec<ScopeDeclaration>> {
-    let value = result
+pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<ScopeInventory> {
+    let mut types: Vec<_> = result
         .scopes
         .iter()
         .map(|(name, keywords)| {
@@ -236,6 +239,7 @@ pub(crate) fn normalized_scopes(
             }
         })
         .collect();
+    types.sort_by(|left, right| left.name.cmp(&right.name));
 
     let mut gaps = Vec::new();
     if result.table_missing {
@@ -245,17 +249,21 @@ pub(crate) fn normalized_scopes(
             "scope name table not found",
         ));
     }
-    for (keyword, types) in &result.combined {
-        let types = match types {
-            ScopeOutcome::Listed(names) => names.join(", "),
-            ScopeOutcome::Any | ScopeOutcome::Unresolved(_) => "several types".into(),
-        };
-        gaps.push(gap(
-            GapKind::OutsideMethod,
-            Some(keyword),
-            format!("the keyword resolves to more than one scope type ({types}), so it names no single scope"),
-        ));
+    let mut groups = Vec::new();
+    for (keyword, scopes) in &result.groups {
+        match scopes {
+            ScopeOutcome::Listed(scopes) => groups.push(ScopeGroup {
+                keyword: keyword.clone(),
+                scopes: scopes.clone(),
+            }),
+            ScopeOutcome::Any | ScopeOutcome::Unresolved(_) => gaps.push(gap(
+                GapKind::UnresolvedPath,
+                Some(keyword),
+                "the keyword matches several scope types that could not all be named",
+            )),
+        }
     }
+    groups.sort_by(|left, right| left.keyword.cmp(&right.keyword));
     if result.unnamed_types > 0 {
         gaps.push(gap(
             GapKind::UnresolvedPath,
@@ -292,7 +300,7 @@ pub(crate) fn normalized_scopes(
         "The search covers every literal token. Keywords created at run time are outside it.",
     ));
 
-    answer(value, gaps, |scope| &scope.name, build, SCOPE_METHOD)
+    declared(ScopeInventory { types, groups }, gaps, build, SCOPE_METHOD)
 }
 
 pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Vec<ScopeLink>> {
@@ -382,4 +390,48 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
     ));
 
     answer(value, gaps, |link| &link.name, build, LINK_METHOD)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keywords_that_match_several_types_are_groups_not_gaps() {
+        let result = ScopeResult {
+            scopes: vec![
+                ("ship".into(), vec!["ship".into()]),
+                ("planet".into(), vec!["planet".into()]),
+            ],
+            groups: vec![
+                (
+                    "carrier".into(),
+                    ScopeOutcome::Listed(vec!["planet".into(), "ship".into()]),
+                ),
+                ("unnamed".into(), ScopeOutcome::Unresolved("scope-name")),
+            ],
+            unnamed_types: 0,
+            unnamed_keywords: 0,
+            unresolved_tokens: 0,
+            table_missing: false,
+        };
+        let answer = normalized_scopes(&result, BuildId("test".into()));
+        let names: Vec<_> = answer.value.types.iter().map(|scope| &scope.name).collect();
+        assert_eq!(names, ["planet", "ship"]);
+        assert_eq!(
+            answer.value.groups,
+            [ScopeGroup {
+                keyword: "carrier".into(),
+                scopes: vec!["planet".into(), "ship".into()],
+            }]
+        );
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnresolvedPath
+                    && gap.subject.as_deref() == Some("unnamed"))
+        );
+    }
 }

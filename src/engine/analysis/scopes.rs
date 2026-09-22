@@ -60,9 +60,9 @@ pub struct ScopeInput {
 pub struct ScopeResult {
     /// Each named scope type in bit order, with its keywords in token order.
     pub scopes: Vec<(String, Vec<String>)>,
-    /// Keywords that map to several scope types at once, with those types' names. Such a keyword
-    /// names no single scope type.
-    pub combined: Vec<(String, ScopeOutcome)>,
+    /// Keywords that match several scope types at once, with those types' names, such as
+    /// `carrier` (planet or ship).
+    pub groups: Vec<(String, ScopeOutcome)>,
     /// Scope types that keywords map to but the name table does not name.
     pub unnamed_types: usize,
     /// Token values that map to a scope type but have no literal name.
@@ -125,10 +125,10 @@ pub fn scopes(input: &ScopeInput) -> Result<ScopeResult, InputError> {
         scopes.push((name.clone(), keywords));
     }
 
-    let (combined, unnamed): (Vec<_>, Vec<_>) = keywords
+    let (groups, unnamed): (Vec<_>, Vec<_>) = keywords
         .into_iter()
         .partition(|(scope_type, _)| !scope_type.is_power_of_two());
-    let combined = combined
+    let groups = groups
         .into_iter()
         .flat_map(|(scope_type, keywords)| {
             let types = scope_mask(scope_type, input.scope_names.as_deref());
@@ -140,7 +140,7 @@ pub fn scopes(input: &ScopeInput) -> Result<ScopeResult, InputError> {
 
     Ok(ScopeResult {
         scopes,
-        combined,
+        groups,
         unnamed_types: unnamed.len(),
         unnamed_keywords,
         unresolved_tokens,
@@ -454,7 +454,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            result.combined,
+            result.groups,
             vec![(
                 "carrier".into(),
                 ScopeOutcome::Listed(vec!["planet".into(), "ship".into()])

@@ -35,6 +35,8 @@ const EXPORTS: &[&str] = &[
     "ReaderKind",
     "Registry",
     "ScopeDeclaration",
+    "ScopeGroup",
+    "ScopeInventory",
     "ScopeLink",
     "Source",
     "Support",

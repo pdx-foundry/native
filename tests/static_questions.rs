@@ -2,8 +2,8 @@
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 use pdx_native::{
     Answer, Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Error,
-    Field, GapKind, LinkData, ModifierDeclaration, Native, OutputScope, ReaderKind,
-    ScopeDeclaration, ScopeLink,
+    Field, GapKind, LinkData, ModifierDeclaration, Native, OutputScope, ReaderKind, ScopeGroup,
+    ScopeInventory, ScopeLink,
 };
 use std::collections::BTreeMap;
 
@@ -162,19 +162,33 @@ fn modifier_categories_are_the_names_of_the_category_switch() {
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn scopes_group_keywords_by_the_engine_map_only() {
     let answer = native().scopes().unwrap();
-    assert_declared(&answer);
+    assert_eq!(answer.source.basis, Basis::Declared);
     assert_eq!(answer.completeness, Completeness::Complete);
-    assert_eq!(
-        answer.value,
-        expected::<Vec<ScopeDeclaration>>("scope-declarations.json")
-    );
-    let federation = find(&answer.value, "federation", |item| &item.name);
-    assert_eq!(federation.keywords, ["alliance", "federation"]);
     assert!(
         answer
             .gaps
             .iter()
-            .any(|gap| gap.subject.as_deref() == Some("carrier"))
+            .all(|gap| gap.kind == GapKind::OutsideMethod)
+    );
+    assert_eq!(
+        answer.value,
+        expected::<ScopeInventory>("scope-inventory.json")
+    );
+    let federation = find(&answer.value.types, "federation", |item| &item.name);
+    assert_eq!(federation.keywords, ["alliance", "federation"]);
+    assert_eq!(
+        answer.value.groups,
+        [ScopeGroup {
+            keyword: "carrier".into(),
+            scopes: vec!["planet".into(), "ship".into()],
+        }]
+    );
+    assert!(
+        answer
+            .value
+            .types
+            .iter()
+            .all(|scope| !scope.keywords.contains(&"carrier".into()))
     );
 }
 

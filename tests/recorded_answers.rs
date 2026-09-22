@@ -104,6 +104,19 @@ fn recorded() -> tempfile::TempDir {
     );
     write(
         root.path(),
+        "scopes.json",
+        json!({ "Ok": {
+            "value": {
+                "types": [{ "name": "planet", "keywords": ["planet"] }],
+                "groups": [{ "keyword": "carrier", "scopes": ["planet", "ship"] }]
+            },
+            "completeness": "Complete",
+            "gaps": [],
+            "source": source()
+        }}),
+    );
+    write(
+        root.path(),
         "scope_links.json",
         json!({ "Ok": {
             "value": [
@@ -150,7 +163,10 @@ fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded
         native.modifier_categories(),
         Err(Error::NotRecorded { .. })
     ));
-    assert!(matches!(native.scopes(), Err(Error::NotRecorded { .. })));
+    let scopes = native.scopes().unwrap();
+    assert_eq!(scopes.source.basis, Basis::Recorded);
+    assert_eq!(scopes.value.groups[0].keyword, "carrier");
+    assert_eq!(scopes.value.groups[0].scopes, ["planet", "ship"]);
 }
 
 #[test]
