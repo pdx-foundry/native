@@ -6,10 +6,11 @@
 | --- | --- | --- |
 | M45-old | `408a5700a202837f16041bf14b5da34ff4a9d939b98e62a8240dc68dd602ddf7` | Native ARM64 macOS 26.6.2 / 25G83, Apple Silicon; older Cygnus 4.5 beta ready-world experiments |
 | M45-observe | `3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216` | ARM64 macOS, Cygnus 4.5.0 (1434); reference, early observation, Atlas discovery/grammar experiments |
+| M45-release | `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd` | ARM64 macOS, Cygnus v4.5.0 (8697), the full 4.5 release from Steam; the catalogued target since 2026-09-22 |
 | W45 | `bd86b8c8187bd23b793b6680cc979945e696f97c0a6aa89b5ca4199a5739535f` | Windows 11 Home 10.0.26200 x64, Cygnus 4.5.0 (9e73), Steam build 25085736 |
 | W446 | `bc451c72d9654c8901f1bb0bee1dd78d76f415465c2fbf746e9f98ade333173a` | Same Windows host, Pegasus 4.4.6 (fdde), public build 24109497; 46,418,552-byte AMD64 PE |
 
-M45-observe ARM64 slice SHA-256 is `1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623`. Universal-image identity alone does not select process architecture. Original per-run manifests retain OS, LLDB/compiler, fixture/settings, source, and content identities; use these for the particular experiment rather than inferring them from another row.
+M45-observe ARM64 slice SHA-256 is `1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623`. M45-release ARM64 slice SHA-256 is `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9` (85,076,200 bytes). Universal-image identity alone does not select process architecture. Original per-run manifests retain OS, LLDB/compiler, fixture/settings, source, and content identities; use these for the particular experiment rather than inferring them from another row.
 
 The historical Intel 4.4.6 extraction baseline is separate: `typed-extraction/typed-extraction/reference-observation-prototype/baseline/` and the spike's `evidence/native-findings.md` retain its provenance. Intel and ARM64 observations are not interchangeable. No fresh Intel, Linux, or Windows early-parsing qualification was performed by this migration. Historical executables are not presumed retained merely because their hashes are recorded.
 
@@ -26,7 +27,9 @@ W45 uses a game-produced fixture hash `919df894628dcd1e21f636eb97eb8f20d9bb40b59
 ## Support and remaining gates
 
 Current support follows the target catalogue and Cargo tests, as specified by the
-[simplification decision](../design/simplification.md). Only M45-observe is catalogued. Windows
+[simplification decision](../design/simplification.md). Only M45-release is catalogued; it replaced
+M45-observe on 2026-09-22. Steam does not offer old open betas for download, so Native keeps
+full-release targets only. Windows
 work is deferred under the [roadmap](../roadmap.md); the decisions below describe the historical
 experiments and do not admit another build or platform.
 
@@ -42,3 +45,19 @@ criterion is superseded. A second ARM64 target was not established in the retain
 Partial wall intervals and run counts are not active human/agent labor measurements.
 
 Source: `sdk-testing` bundle, `sdk-testing/prototype/compatibility-harness/{apple-silicon,windows,windows-446}/`; Mac raw archive in `apple-silicon-baseline`; Windows raw archives in `linear-records/assets/3abce4f4-ee3d-4a66-bb4f-5ef058a2fb66` and `c7ff3152-650d-4148-bb86-a2b7ac72e306`. Local exported issue/comment records include SDK-476, SDK-485, SDK-445 and SDK-447–449. [Retrieval instructions](retrieval.md) explain nested archives.
+
+## Port from M45-observe to M45-release (2026-09-22)
+
+Both slices keep their symbols, so each pinned entry was moved by its mangled symbol name. Return
+addresses inside a function (`reader_return`) and the end of the scheduler table in
+`NNullObjAndDatabaseInitUtil::SetupDatabases` kept the same offset from the function start, and
+were checked in the disassembly. The scheduler table kept 198 rows, offset 96 and stride 48. The
+`CTraditionCategory::ReadMember` field tokens (16793 `tree_template`, 14263 `traditions`) and the
+declaration slots did not change. Every static test passed with the M45-observe expected output
+unchanged: 164 registries, the same fields, storage offsets and declarations. The structure offsets
+of the registry layout and of `CReader`/`CLexer` did not change: all 43 live cases passed on the
+release build.
+
+The live run also found a supervisor race that is not specific to the build. When the worker-loss
+fault kills the LLDB worker, Darwin can give `EPERM` for `kill` on the worker's process group while
+its only member is still exiting. Cleanup now waits for that exit within its one-second budget.

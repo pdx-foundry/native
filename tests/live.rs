@@ -1165,7 +1165,8 @@ async fn fixture_refusal(native: &Native) -> Outcome {
     let before = work_directories()?;
     let request = pdx_native::FixtureRequest::new("common/unsupported/fixture.txt", "x = {}");
     match native.start_game(options().fixture(request)).await {
-        Err(Error::FixtureRequest { reason }) if reason.contains("Fixture files") => {}
+        Err(Error::FixtureRequest { reason })
+            if reason.contains("requires a common/tradition_categories fixture") => {}
         Ok(mut game) => {
             let _ = game.close().await;
             return Err("unsupported fixture launched".into());

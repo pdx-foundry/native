@@ -212,21 +212,21 @@ Avoid adapter inheritance ("4.5 extends 4.4.6 except for these fields"). Prefer 
 groups referenced by a complete recipe. A recipe may reuse an unchanged group and replace a
 changed group.
 
-### M45-observe data sketch
+### M45-release data sketch
 
 Types and lookup boilerplate are abbreviated. The live layout lives in `binding/groups`;
 static discovery finds the initial loader symbol for each selected registry.
 
 ```rust
-const M45_OBSERVE: TargetRecord = TargetRecord {
-    executable: "3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216",
-    slice: "1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623",
+const M45_RELEASE: TargetRecord = TargetRecord {
+    executable: "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+    slice: "a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9",
     architecture: object::Architecture::Aarch64,
     format: object::BinaryFormat::MachO,
-    recipe: &M45_OBSERVE_RECIPE,
+    recipe: &M45_RELEASE_RECIPE,
 };
 
-const M45_OBSERVE_RECIPE: Recipe = Recipe {
+const M45_RELEASE_RECIPE: Recipe = Recipe {
     groups: &[BindingGroupId::M45TemplateRegistryLayout],
     default_registries: &["common/traditions", "common/tradition_categories"],
     strategy: StrategyId::MacSuspendedChildLoaderEntry,

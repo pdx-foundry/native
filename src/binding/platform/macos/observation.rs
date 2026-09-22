@@ -358,11 +358,20 @@ impl Observer {
             // SAFETY: group leader is our unreaped direct child, so this group ID cannot be reused.
             if unsafe { libc::kill(-(worker.id() as i32), libc::SIGKILL) } < 0 {
                 let error = std::io::Error::last_os_error();
-                if error.raw_os_error() == Some(libc::EPERM)
-                    && worker_exited(worker.id())?
-                    && group_members(worker.id(), Duration::from_secs(1))?.is_empty()
-                {
-                    return Ok(());
+                // Darwin gives EPERM for a group whose only members are already exiting. Give
+                // that exit the rest of the budget before it counts as a failure.
+                if error.raw_os_error() == Some(libc::EPERM) {
+                    loop {
+                        if worker_exited(worker.id())?
+                            && group_members(worker.id(), Duration::from_secs(1))?.is_empty()
+                        {
+                            return Ok(());
+                        }
+                        if Instant::now() >= deadline {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
                 }
                 if error.raw_os_error() != Some(libc::ESRCH) {
                     return Err(SupervisorError(format!(

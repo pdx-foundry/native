@@ -101,6 +101,10 @@ shapes, not as handwritten answers.
   The only supported target record is the exact beta executable. A verified copy of that
   installation must exist before Steam updates it (SDK-522), or live work stops until a new
   target record exists and its tests pass.
+  **Superseded, 2026-09-22:** Steam updated the installation to the full release, Cygnus v4.5.0
+  (8697). Its target record (M45-release) replaces the beta record. Steam offers old full releases
+  for download but not old open betas, so Native keeps full-release targets only. The beta ARM64
+  executable stays in `.local/executables`.
 
 ## Milestones
 
