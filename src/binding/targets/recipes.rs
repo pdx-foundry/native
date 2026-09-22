@@ -19,11 +19,16 @@ pub(in crate::binding) struct Recipe {
     pub declarations: Option<&'static DeclarationRecipe>,
 }
 
-/// Virtual slots used by the two command families on this exact build.
+/// Layout facts that the declaration methods need on this exact build.
 pub(in crate::binding) struct DeclarationRecipe {
+    /// Virtual slots used by the two command families.
     pub create_slot: u64,
     pub trigger_scope_slot: u64,
     pub effect_scope_slot: u64,
+    /// Stack offset of the category argument of the modifier definition call.
+    pub modifier_category_offset: u64,
+    /// Offset of the token in an event target object.
+    pub event_target_token_offset: u64,
 }
 
 pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
@@ -44,6 +49,8 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     create_slot: 0x10,
     trigger_scope_slot: 0x78,
     effect_scope_slot: 0x80,
+    modifier_category_offset: 0x4,
+    event_target_token_offset: 0x58,
 };
 
 /// The literal initialization of the startup scheduling table (SDK-489). It ends before

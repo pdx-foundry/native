@@ -55,6 +55,31 @@ impl VerifiedAnalysis<'_> {
             recipe,
         )
     }
+
+    fn modifier_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
+        binary::language::modifiers(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            recipe,
+        )
+    }
+
+    fn scope_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
+        binary::language::scopes(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            recipe,
+        )
+    }
+
     pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
         &self.catalog.candidates
     }
@@ -395,5 +420,19 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::declarations::DeclarationInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.declaration_input(kind, recipe)
+    }
+
+    pub(crate) fn modifier_input(
+        &self,
+    ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.modifier_input(recipe)
+    }
+
+    pub(crate) fn scope_input(
+        &self,
+    ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.scope_input(recipe)
     }
 }

@@ -1,9 +1,11 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 use pdx_native::{
-    Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error, Field, GapKind,
-    Native, ReaderKind,
+    Answer, Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Error,
+    Field, GapKind, LinkData, ModifierDeclaration, Native, OutputScope, ReaderKind,
+    ScopeDeclaration, ScopeLink,
 };
+use std::collections::BTreeMap;
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
@@ -122,6 +124,135 @@ fn direct_declarations_match_the_recorded_m45_boundary() {
     );
 }
 
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn modifier_declarations_match_the_recorded_m45_boundary() {
+    #[derive(serde::Deserialize)]
+    struct Expected {
+        count: usize,
+        gaps: BTreeMap<String, usize>,
+        samples: Vec<ModifierDeclaration>,
+    }
+    let expected: Expected = expected("modifier-declarations.json");
+    let answer = native().modifiers().unwrap();
+    assert_declared(&answer);
+
+    assert_eq!(answer.value.len(), expected.count);
+    assert_eq!(gap_counts(&answer), expected.gaps);
+    assert_eq!(expected.samples.len(), 10);
+    for sample in &expected.samples {
+        assert_eq!(find(&answer.value, &sample.name, |item| &item.name), sample);
+    }
+    for modifier in &answer.value {
+        assert_ne!(modifier.category_tags, DeclaredTags::Unresolved);
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn modifier_categories_are_the_names_of_the_category_switch() {
+    let answer = native().modifier_categories().unwrap();
+    assert_declared(&answer);
+    assert_eq!(answer.completeness, Completeness::Complete);
+    let names: Vec<_> = answer.value.iter().map(|item| item.name.clone()).collect();
+    assert_eq!(names, expected::<Vec<String>>("modifier-categories.json"));
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn scopes_group_keywords_by_the_engine_map_only() {
+    let answer = native().scopes().unwrap();
+    assert_declared(&answer);
+    assert_eq!(answer.completeness, Completeness::Complete);
+    assert_eq!(
+        answer.value,
+        expected::<Vec<ScopeDeclaration>>("scope-declarations.json")
+    );
+    let federation = find(&answer.value, "federation", |item| &item.name);
+    assert_eq!(federation.keywords, ["alliance", "federation"]);
+    assert!(
+        answer
+            .gaps
+            .iter()
+            .any(|gap| gap.subject.as_deref() == Some("carrier"))
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn scope_links_match_the_recorded_m45_boundary() {
+    #[derive(serde::Deserialize)]
+    struct Expected {
+        names: Vec<String>,
+        samples: Vec<ScopeLink>,
+    }
+    let expected: Expected = expected("scope-links.json");
+    let answer = native().scope_links().unwrap();
+    assert_declared(&answer);
+
+    let names: Vec<_> = answer.value.iter().map(|item| item.name.clone()).collect();
+    assert_eq!(names, expected.names);
+    for sample in &expected.samples {
+        assert_eq!(find(&answer.value, &sample.name, |item| &item.name), sample);
+    }
+
+    let documented = answer
+        .value
+        .iter()
+        .filter(|link| link.data == LinkData::None)
+        .count();
+    assert_eq!(documented, 99);
+    let capital = find(&answer.value, "capital_scope", |item| &item.name);
+    assert_eq!(
+        capital.input_scopes,
+        DeclaredScopes::Listed(vec!["country".into()])
+    );
+    assert_eq!(
+        capital.output_scope,
+        OutputScope::Listed(vec!["colony".into()])
+    );
+    let this = find(&answer.value, "this", |item| &item.name);
+    assert_eq!(
+        (&this.input_scopes, &this.output_scope),
+        (&DeclaredScopes::Any, &OutputScope::Various)
+    );
+    let unresolved: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind == GapKind::UnresolvedPath)
+        .filter_map(|gap| gap.subject.as_deref())
+        .collect();
+    assert_eq!(unresolved, ["event_target", "parameter"]);
+}
+
+fn assert_declared<T>(answer: &Answer<Vec<T>>) {
+    assert_eq!(answer.source.basis, Basis::Declared);
+    let complete = answer
+        .gaps
+        .iter()
+        .all(|gap| gap.kind == GapKind::OutsideMethod);
+    assert_eq!(
+        answer.completeness == Completeness::Complete,
+        complete,
+        "completeness follows the gaps"
+    );
+}
+
+fn gap_counts<T>(answer: &Answer<Vec<T>>) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for gap in &answer.gaps {
+        *counts.entry(format!("{:?}", gap.kind)).or_default() += 1;
+    }
+    counts
+}
+
+fn find<'a, T>(items: &'a [T], name: &str, key: impl Fn(&T) -> &String) -> &'a T {
+    items
+        .iter()
+        .find(|item| key(item) == name)
+        .unwrap_or_else(|| panic!("{name} is in the answer"))
+}
+
 fn native() -> Native {
     Native::open(
         std::env::var_os("STELLARIS_PATH")
@@ -222,6 +353,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let registries = real.registries().unwrap();
     let fields = real.registry_fields("common/traditions").unwrap();
     let effects = real.declarations(DeclarationKind::Effect).unwrap();
+    let links = real.scope_links().unwrap();
     let unknown = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
@@ -236,6 +368,9 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.declarations(DeclarationKind::Effect).unwrap();
     again.source.basis = effects.source.basis;
     assert_eq!(again, effects);
+    let mut again = recorded.scope_links().unwrap();
+    again.source.basis = links.source.basis;
+    assert_eq!(again, links);
     // Errors are recorded too.
     assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
     assert!(matches!(

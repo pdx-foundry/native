@@ -1,0 +1,253 @@
+[
+  {
+    "name": "agreement",
+    "keywords": [
+      "agreement"
+    ]
+  },
+  {
+    "name": "ambient_object",
+    "keywords": [
+      "ambient_object"
+    ]
+  },
+  {
+    "name": "archaeological_site",
+    "keywords": [
+      "archaeological_site"
+    ]
+  },
+  {
+    "name": "army",
+    "keywords": [
+      "army"
+    ]
+  },
+  {
+    "name": "astral_rift",
+    "keywords": [
+      "astral_rift"
+    ]
+  },
+  {
+    "name": "bypass",
+    "keywords": [
+      "bypass"
+    ]
+  },
+  {
+    "name": "colony",
+    "keywords": [
+      "colony"
+    ]
+  },
+  {
+    "name": "cosmic_storm",
+    "keywords": [
+      "storms"
+    ]
+  },
+  {
+    "name": "cosmic_storm_influence_field",
+    "keywords": [
+      "storm_influence_field"
+    ]
+  },
+  {
+    "name": "country",
+    "keywords": [
+      "country"
+    ]
+  },
+  {
+    "name": "country",
+    "keywords": [
+      "observer"
+    ]
+  },
+  {
+    "name": "dead_gameobject",
+    "keywords": [
+      "dead_gameobject"
+    ]
+  },
+  {
+    "name": "debris",
+    "keywords": [
+      "debris"
+    ]
+  },
+  {
+    "name": "deposit",
+    "keywords": [
+      "deposit"
+    ]
+  },
+  {
+    "name": "design",
+    "keywords": [
+      "design"
+    ]
+  },
+  {
+    "name": "dlc_recommendation",
+    "keywords": [
+      "dlc_recommendation"
+    ]
+  },
+  {
+    "name": "espionage_asset",
+    "keywords": [
+      "espionage_asset"
+    ]
+  },
+  {
+    "name": "espionage_operation",
+    "keywords": [
+      "espionage_operation"
+    ]
+  },
+  {
+    "name": "exhibit",
+    "keywords": [
+      "exhibit"
+    ]
+  },
+  {
+    "name": "federation",
+    "keywords": [
+      "alliance",
+      "federation"
+    ]
+  },
+  {
+    "name": "first_contact",
+    "keywords": [
+      "first_contact"
+    ]
+  },
+  {
+    "name": "fleet",
+    "keywords": [
+      "fleet"
+    ]
+  },
+  {
+    "name": "galactic_community",
+    "keywords": [
+      "galactic_community"
+    ]
+  },
+  {
+    "name": "galactic_object",
+    "keywords": [
+      "galactic_object"
+    ]
+  },
+  {
+    "name": "leader",
+    "keywords": [
+      "leader"
+    ]
+  },
+  {
+    "name": "megastructure",
+    "keywords": [
+      "megastructure"
+    ]
+  },
+  {
+    "name": "mission",
+    "keywords": [
+      "mission"
+    ]
+  },
+  {
+    "name": "no_scope",
+    "keywords": [
+      "no_scope"
+    ]
+  },
+  {
+    "name": "planet",
+    "keywords": [
+      "planet"
+    ]
+  },
+  {
+    "name": "pop",
+    "keywords": [
+      "pop"
+    ]
+  },
+  {
+    "name": "pop job",
+    "keywords": []
+  },
+  {
+    "name": "pop_faction",
+    "keywords": [
+      "pop_faction"
+    ]
+  },
+  {
+    "name": "pop_group",
+    "keywords": [
+      "pop_group"
+    ]
+  },
+  {
+    "name": "sector",
+    "keywords": [
+      "sector"
+    ]
+  },
+  {
+    "name": "ship",
+    "keywords": [
+      "ship"
+    ]
+  },
+  {
+    "name": "ship_growth_stage",
+    "keywords": [
+      "ship_growth_stage"
+    ]
+  },
+  {
+    "name": "situation",
+    "keywords": [
+      "situation"
+    ]
+  },
+  {
+    "name": "species",
+    "keywords": [
+      "species"
+    ]
+  },
+  {
+    "name": "spy_network",
+    "keywords": [
+      "spynetwork"
+    ]
+  },
+  {
+    "name": "starbase",
+    "keywords": [
+      "starbase"
+    ]
+  },
+  {
+    "name": "trait",
+    "keywords": [
+      "trait"
+    ]
+  },
+  {
+    "name": "war",
+    "keywords": [
+      "war"
+    ]
+  }
+]

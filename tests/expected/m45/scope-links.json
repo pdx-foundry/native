@@ -1,0 +1,262 @@
+{
+  "names": [
+    "alliance",
+    "archaeological_site",
+    "army_leader",
+    "assembling_species",
+    "associated_federation",
+    "astral_rift",
+    "attacker",
+    "aura_owner",
+    "background_colony",
+    "background_planet",
+    "branch_office_owner",
+    "built_species",
+    "capital_scope",
+    "capital_star",
+    "carrier",
+    "colony",
+    "contact_country",
+    "controller",
+    "creator",
+    "declining_species",
+    "defender",
+    "design",
+    "envoy_location_country",
+    "event_target",
+    "excavator_fleet",
+    "explorer",
+    "federation",
+    "federation_leader",
+    "first_damaging_country",
+    "fleet",
+    "founder_species",
+    "from",
+    "fromfrom",
+    "fromfromfrom",
+    "fromfromfromfrom",
+    "galactic_custodian",
+    "galactic_emperor",
+    "growing_species",
+    "heir",
+    "home_colony",
+    "home_planet",
+    "instigator",
+    "issuer",
+    "last_added_deposit",
+    "last_created_ambient_object",
+    "last_created_army",
+    "last_created_cosmic_storm",
+    "last_created_cosmic_storm_influence_field",
+    "last_created_country",
+    "last_created_design",
+    "last_created_fleet",
+    "last_created_leader",
+    "last_created_pop_faction",
+    "last_created_ship",
+    "last_created_species",
+    "last_created_system",
+    "leader",
+    "lock_country",
+    "mining_station",
+    "no_scope",
+    "observation_outpost",
+    "observation_outpost_owner",
+    "orbit",
+    "orbital_defence",
+    "orbital_station",
+    "overlord",
+    "owner",
+    "owner_main_species",
+    "owner_or_space_owner",
+    "owner_species",
+    "parameter",
+    "planet",
+    "planet_owner",
+    "pop_faction",
+    "prev",
+    "prevprev",
+    "prevprevprev",
+    "prevprevprevprev",
+    "research_station",
+    "reverse_first_contact",
+    "root",
+    "ruler",
+    "second_damaging_country",
+    "sector",
+    "sector_capital",
+    "ship",
+    "ship_growth_stage",
+    "solar_system",
+    "space_owner",
+    "spawner_planet",
+    "species",
+    "spynetwork",
+    "star",
+    "starbase",
+    "storm_influence_field",
+    "system_star",
+    "target",
+    "target_system",
+    "third_damaging_country",
+    "this",
+    "unhappiest_pop"
+  ],
+  "samples": [
+    {
+      "name": "owner",
+      "input_scopes": {
+        "Listed": [
+          "megastructure",
+          "planet",
+          "country",
+          "ship",
+          "pop_group",
+          "fleet",
+          "galactic_object",
+          "leader",
+          "army",
+          "bypass",
+          "pop_faction",
+          "starbase",
+          "deposit",
+          "sector",
+          "archaeological_site",
+          "first_contact",
+          "spy_network",
+          "espionage_operation",
+          "agreement",
+          "situation",
+          "debris",
+          "astral_rift",
+          "colony",
+          "mission"
+        ]
+      },
+      "output_scope": {
+        "Listed": [
+          "country"
+        ]
+      },
+      "data": "None"
+    },
+    {
+      "name": "this",
+      "input_scopes": "Any",
+      "output_scope": "Various",
+      "data": "None"
+    },
+    {
+      "name": "prev",
+      "input_scopes": "Any",
+      "output_scope": "Various",
+      "data": "None"
+    },
+    {
+      "name": "capital_scope",
+      "input_scopes": {
+        "Listed": [
+          "country"
+        ]
+      },
+      "output_scope": {
+        "Listed": [
+          "colony"
+        ]
+      },
+      "data": "None"
+    },
+    {
+      "name": "carrier",
+      "input_scopes": {
+        "Listed": [
+          "planet",
+          "ship",
+          "colony"
+        ]
+      },
+      "output_scope": {
+        "Listed": [
+          "planet",
+          "ship"
+        ]
+      },
+      "data": "None"
+    },
+    {
+      "name": "solar_system",
+      "input_scopes": {
+        "Listed": [
+          "megastructure",
+          "planet",
+          "country",
+          "ship",
+          "pop_group",
+          "fleet",
+          "galactic_object",
+          "leader",
+          "army",
+          "ambient_object",
+          "bypass",
+          "starbase",
+          "deposit",
+          "archaeological_site",
+          "first_contact",
+          "debris",
+          "astral_rift",
+          "colony"
+        ]
+      },
+      "output_scope": {
+        "Listed": [
+          "galactic_object"
+        ]
+      },
+      "data": "None"
+    },
+    {
+      "name": "alliance",
+      "input_scopes": {
+        "Listed": [
+          "country"
+        ]
+      },
+      "output_scope": {
+        "Listed": [
+          "federation"
+        ]
+      },
+      "data": "None"
+    },
+    {
+      "name": "army_leader",
+      "input_scopes": {
+        "Listed": [
+          "planet"
+        ]
+      },
+      "output_scope": {
+        "Listed": [
+          "leader"
+        ]
+      },
+      "data": "None"
+    },
+    {
+      "name": "event_target",
+      "input_scopes": "Unresolved",
+      "output_scope": "Unresolved",
+      "data": {
+        "Prefix": "event_target:"
+      }
+    },
+    {
+      "name": "parameter",
+      "input_scopes": "Unresolved",
+      "output_scope": "Unresolved",
+      "data": {
+        "Prefix": "parameter:"
+      }
+    }
+  ]
+}

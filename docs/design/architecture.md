@@ -62,12 +62,12 @@ src/
       macos/                       macOS ownership/access, the LLDB strategy and its worker
       unavailable/                 every other host: live operations are unsupported
     binary.rs                      thin object-crate integration and identity capture
-    binary/                        executable readers for the static methods, including declarations.rs
+    binary/                        executable readers for the static methods, including declarations.rs and language.rs
     machine.rs                     decoder/call-mechanism resolution
     machine/
       arm64.rs                     ARM64 registers and spawn preference
   engine/
-    analysis/                      decode, declarations, directories, discovery, fields, readers: bounded static methods
+    analysis/                      decode, declarations, directories, discovery, evaluate, fields, modifiers, readers, scopes: bounded static methods
     operations/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
       fixture.rs                   fixture observation reducer

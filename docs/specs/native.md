@@ -102,6 +102,8 @@ the state after the simplification effort:
 | `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations` | Implemented for effects and triggers | A declaration kind | Engine name, description, usage, and declared scopes from every direct registration call in executable text; each call is one site. Runtime names, unreadable documentation, and unexamined target sets make the answer partial. |
+| `modifiers`, `modifier_categories` | Implemented | — | Built-in modifiers with their declared category tags, from every direct definition call; category names from the engine's category switch. Generated modifier families are gaps. Tags are intended-use tags, not application contexts. |
+| `scopes`, `scope_links` | Implemented | — | Scope types with the keywords that the engine maps to each; documented links with declared input and output scopes, and the link prefixes that take data |
 | `defines`, `on_actions` | Planned | — | Engine declarations |
 | `Game::observe_fixture`: registration entries | M45-release only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
 | `Game::observe_fixture`: category reads | M45-release only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |

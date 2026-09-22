@@ -47,8 +47,8 @@ pub enum GapKind {
     UnreadableInput,
     /// A field exists on a path whose name could not be recovered.
     UnnamedField,
-    /// A registration site's command name is composed at run time and absent from the
-    /// executable's literal token table.
+    /// A registration site's name is composed at run time and absent from the executable's
+    /// literal token table.
     UnnamedDeclaration,
     /// A path through the reader could not be followed to its end.
     UnresolvedPath,
@@ -110,10 +110,32 @@ pub enum Operation {
     RegistryFields,
     /// `Native::declarations`
     Declarations,
+    /// `Native::modifiers`
+    Modifiers,
+    /// `Native::modifier_categories`
+    ModifierCategories,
+    /// `Native::scopes`
+    Scopes,
+    /// `Native::scope_links`
+    ScopeLinks,
     /// `Game::registry_items`
     RegistryItems,
     /// `Game::observe_fixture`
     ObserveFixture,
+}
+
+impl Operation {
+    /// Whether the operation reads engine declarations, which need a declaration recipe.
+    pub(crate) fn is_declaration(self) -> bool {
+        matches!(
+            self,
+            Self::Declarations
+                | Self::Modifiers
+                | Self::ModifierCategories
+                | Self::Scopes
+                | Self::ScopeLinks
+        )
+    }
 }
 
 /// Whether the game process that a session owned is gone. Only the independent supervisor can
@@ -292,6 +314,78 @@ pub enum DeclaredScopes {
     Listed(Vec<String>),
     /// The declaration could not be followed to its scope set.
     Unresolved,
+}
+
+/// A built-in modifier that the engine declares.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModifierDeclaration {
+    /// The modifier's script name.
+    pub name: String,
+    /// The intended-use category tags that the engine declares for the modifier. They are not
+    /// the objects or scopes where the modifier takes effect.
+    pub category_tags: DeclaredTags,
+}
+
+/// A declared set of category tags.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclaredTags {
+    /// The named tags, in the engine's order.
+    Listed(Vec<String>),
+    /// The declaration could not be followed to its tags.
+    Unresolved,
+}
+
+/// A modifier category name that the engine declares. A category is an intended-use tag, not an
+/// application context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModifierCategory {
+    /// The category name as the engine spells it, such as `Countries`.
+    pub name: String,
+}
+
+/// A scope type that the engine declares.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeDeclaration {
+    /// The engine's name for the scope type, as its documentation prints it. It can contain a
+    /// space (`pop job`), and two types can share a name (two types are named `country`).
+    pub name: String,
+    /// Script keywords that the engine resolves to this scope type, sorted. Two keywords in one
+    /// list are the same scope to the engine. Empty when no literal keyword resolves to it.
+    pub keywords: Vec<String>,
+}
+
+/// A scope link: a keyword that changes the current scope, such as `owner`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeLink {
+    /// The link keyword. For a link that takes data, the prefix without its colon.
+    pub name: String,
+    /// The scopes that the link declares it can be used from.
+    pub input_scopes: DeclaredScopes,
+    /// The scope that the link declares it changes to.
+    pub output_scope: OutputScope,
+    /// Whether the link takes data after its name.
+    pub data: LinkData,
+}
+
+/// The declared output scope of a link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OutputScope {
+    /// One of these scopes. Most links list one; `carrier` lists two.
+    Listed(Vec<String>),
+    /// The engine declares that the output depends on the context, such as for `prev`.
+    Various,
+    /// The declaration could not be followed to its output.
+    Unresolved,
+}
+
+/// What a link takes after its name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LinkData {
+    /// The link is a complete keyword.
+    None,
+    /// The link is this prefix followed by a value, such as `event_target:my_target`.
+    Prefix(String),
 }
 
 /// The shared reader behind a field. Two fields with one reader report the same `id`.

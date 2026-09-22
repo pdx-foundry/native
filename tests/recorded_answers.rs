@@ -1,7 +1,7 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
 use pdx_native::{
-    Basis, Completeness, DeclarationKind, DeclaredScopes, Disposal, Error, GameOptions, GapKind,
-    Native, ReaderKind, Support,
+    Basis, Completeness, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal, Error,
+    GameOptions, GapKind, LinkData, Native, OutputScope, ReaderKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -86,7 +86,71 @@ fn recorded() -> tempfile::TempDir {
             "source": source()
         }}),
     );
+    write(
+        root.path(),
+        "modifiers.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "blank_modifier", "category_tags": { "Listed": ["Pops"] } },
+                { "name": "unfollowed", "category_tags": "Unresolved" }
+            ],
+            "completeness": "Partial",
+            "gaps": [
+                { "kind": "UnnamedDeclaration", "subject": null, "detail": "generated family" },
+                { "kind": "UnresolvedPath", "subject": "unfollowed", "detail": "category tags" }
+            ],
+            "source": source()
+        }}),
+    );
+    write(
+        root.path(),
+        "scope_links.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "carrier", "input_scopes": { "Listed": ["colony"] },
+                  "output_scope": { "Listed": ["planet", "ship"] }, "data": "None" },
+                { "name": "event_target", "input_scopes": "Unresolved",
+                  "output_scope": "Unresolved", "data": { "Prefix": "event_target:" } },
+                { "name": "prev", "input_scopes": "Any", "output_scope": "Various", "data": "None" }
+            ],
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnresolvedPath", "subject": "event_target", "detail": "data link" }],
+            "source": source()
+        }}),
+    );
     root
+}
+
+#[test]
+fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded() {
+    let root = recorded();
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+
+    let modifiers = native.modifiers().unwrap();
+    assert_eq!(modifiers.source.basis, Basis::Recorded);
+    assert_eq!(
+        modifiers.value[0].category_tags,
+        DeclaredTags::Listed(vec!["Pops".into()])
+    );
+    assert_eq!(modifiers.value[1].category_tags, DeclaredTags::Unresolved);
+
+    let links = native.scope_links().unwrap();
+    assert_eq!(links.source.basis, Basis::Recorded);
+    assert_eq!(
+        links.value[0].output_scope,
+        OutputScope::Listed(vec!["planet".into(), "ship".into()])
+    );
+    assert_eq!(
+        links.value[1].data,
+        LinkData::Prefix("event_target:".into())
+    );
+    assert_eq!(links.value[2].output_scope, OutputScope::Various);
+
+    assert!(matches!(
+        native.modifier_categories(),
+        Err(Error::NotRecorded { .. })
+    ));
+    assert!(matches!(native.scopes(), Err(Error::NotRecorded { .. })));
 }
 
 #[test]

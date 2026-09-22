@@ -1,0 +1,97 @@
+{
+  "count": 571,
+  "gaps": {
+    "OutsideMethod": 1,
+    "UnnamedDeclaration": 73
+  },
+  "samples": [
+    {
+      "name": "blank_modifier",
+      "category_tags": {
+        "Listed": [
+          "Pops"
+        ]
+      }
+    },
+    {
+      "name": "add_base_country_intel",
+      "category_tags": {
+        "Listed": [
+          "Countries"
+        ]
+      }
+    },
+    {
+      "name": "artificial_ship_naval_cap_usage_mult",
+      "category_tags": {
+        "Listed": [
+          "Ships"
+        ]
+      }
+    },
+    {
+      "name": "catapult_range_base",
+      "category_tags": {
+        "Listed": [
+          "Orbital Stations",
+          "Space Stations",
+          "Military Ships",
+          "Civilian Ships",
+          "Science Ships",
+          "Transport Ships",
+          "Megastructures"
+        ]
+      }
+    },
+    {
+      "name": "senate_vote_council_member_speed_mult",
+      "category_tags": {
+        "Listed": [
+          "Galactic Community"
+        ]
+      }
+    },
+    {
+      "name": "terraforming_cost_mult",
+      "category_tags": {
+        "Listed": [
+          "Countries",
+          "Planets"
+        ]
+      }
+    },
+    {
+      "name": "starbase_shipyard_build_cost_mult",
+      "category_tags": {
+        "Listed": [
+          "Megastructures",
+          "Starbases"
+        ]
+      }
+    },
+    {
+      "name": "army_attack_damage_mult",
+      "category_tags": {
+        "Listed": [
+          "Armies"
+        ]
+      }
+    },
+    {
+      "name": "district_automated_workforce",
+      "category_tags": {
+        "Listed": [
+          "Colony"
+        ]
+      }
+    },
+    {
+      "name": "country_storm_location_intel_add",
+      "category_tags": {
+        "Listed": [
+          "Countries"
+        ]
+      }
+    }
+  ]
+}
