@@ -20,13 +20,10 @@ pub(crate) fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-/// Create a file and make it durable. An existing file is an error and stays unchanged.
+/// Create a file once. An existing file is an error and stays unchanged.
 pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), SupervisorError> {
     let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
     file.write_all(bytes)?;
-    file.sync_all()?;
-    #[cfg(unix)]
-    File::open(path.parent().unwrap())?.sync_all()?;
     Ok(())
 }
 
@@ -46,8 +43,6 @@ pub(crate) fn publish_json(path: &Path, value: &impl Serialize) -> Result<(), Su
     write_json(&pending, value)?;
     fs::hard_link(&pending, path)?;
     fs::remove_file(&pending)?;
-    #[cfg(unix)]
-    File::open(path.parent().unwrap())?.sync_all()?;
     Ok(())
 }
 

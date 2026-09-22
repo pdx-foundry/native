@@ -1,4 +1,4 @@
-//! Darwin ownership primitives. Policy and journal interpretation belong to execution.
+//! Darwin ownership primitives. Lifecycle policy belongs to execution.
 #![allow(unsafe_code)]
 use crate::supervisor::SupervisorError;
 use std::{
@@ -9,7 +9,7 @@ use std::{
         ffi::OsStrExt,
         fs::{MetadataExt, OpenOptionsExt},
     },
-    path::{Path, PathBuf},
+    path::Path,
     ptr,
     time::{Duration, Instant},
 };
@@ -131,7 +131,6 @@ pub(crate) fn conflicting_game(owned: Option<u32>) -> Result<bool, SupervisorErr
 }
 
 pub(crate) struct HostReservation {
-    pub root: PathBuf,
     _lock: File,
 }
 
@@ -177,24 +176,7 @@ pub(in crate::binding) fn acquire_at(root: &Path) -> Result<HostReservation, Sup
     lock.try_lock().map_err(|error| {
         SupervisorError(format!("Host reservation busy or unavailable: {error}"))
     })?;
-    Ok(HostReservation {
-        root: root.into(),
-        _lock: lock,
-    })
-}
-
-pub(crate) fn open_record(path: &Path) -> Result<File, SupervisorError> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
-        .open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.is_file() || metadata.nlink() != 1 || metadata.len() > 64 * 1024 {
-        return Err(SupervisorError(
-            "Unsafe or oversized reservation record".into(),
-        ));
-    }
-    Ok(file)
+    Ok(HostReservation { _lock: lock })
 }
 
 pub(crate) fn private_directory(path: &Path) -> Result<(), SupervisorError> {
@@ -260,7 +242,7 @@ impl OwnedGame {
 }
 impl Drop for OwnedGame {
     fn drop(&mut self) {
-        // Best effort only; the durable journal remains unresolved without explicit disposal.
+        // Best effort only; explicit disposal supplies the confirmed result.
         if !self.reaped {
             // SAFETY: unreaped direct-child identity is still retained.
             unsafe {

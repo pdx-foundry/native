@@ -136,10 +136,10 @@ impl Observer {
         let tool = discover()?;
         let source = work_directory.join("source");
         super::lifecycle::private_directory(&source)?;
-        let mut artifacts = BTreeMap::new();
+        let mut source_hashes = BTreeMap::new();
         for (name, bytes) in package {
             files::write_new(&source.join(name), bytes)?;
-            artifacts.insert(name.clone(), files::sha256(bytes));
+            source_hashes.insert(name.clone(), files::sha256(bytes));
         }
         files::write_new(&work_directory.join("raw-trace.jsonl"), b"")?;
         files::write_json(&work_directory.join("tool.json"), &tool)?;
@@ -152,14 +152,13 @@ impl Observer {
                 .ok_or_else(|| SupervisorError("Non-UTF8 executable path".into()))?
                 .into(),
             target: files::sha256(&fs::read(executable)?),
-            artifacts,
+            source_hashes,
             machine: machine.clone(),
             registries: registries.clone(),
             control_registry: fault.map(|fault| fault.registry.clone()),
             control: fixture_fault
                 .or_else(|| fault.map(|fault| fault.control))
-                .unwrap_or_default()
-                .wire_name(),
+                .unwrap_or_default(),
             fixture,
             fixture_fault: fixture_fault.is_some(),
             deadline_seconds: worker_deadline_seconds(startup_seconds),
@@ -246,9 +245,11 @@ impl Observer {
                 return Err(SupervisorError("Worker hello deadline elapsed".into()));
             }
         }
-        if self.request.control
-            == crate::protocol::session::ObservationControl::WorkerLoss.wire_name()
-            && self.output.join("worker-loss-ready").try_exists()?
+        if matches!(
+            self.request.control,
+            crate::protocol::session::ObservationControl::WorkerLoss
+                | crate::protocol::session::ObservationControl::WorkerLossBeforeActivation
+        ) && self.output.join("worker-loss-ready").try_exists()?
         {
             self.kill_group()?;
         }
@@ -330,7 +331,7 @@ impl Observer {
             || hello.game != self.request.game
             || hello.worker != pid
             || hello.target != self.request.target
-            || hello.artifacts != self.request.artifacts
+            || hello.source_hashes != self.request.source_hashes
             || hello.python != self.tool.python
             || hello.lldb != self.tool.lldb
             || hello.module != self.tool.module
@@ -427,6 +428,63 @@ impl Drop for Observer {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn test_observer(
+    root: &std::path::Path,
+    command: &mut Command,
+    game: u32,
+    registry: Option<&str>,
+) -> Observer {
+    let registries = registry
+        .map(|name| {
+            BTreeMap::from([(
+                name.into(),
+                observation::RegistryBinding {
+                    name: name.into(),
+                    directory: name.into(),
+                    load_entry: 0,
+                    directory_offset: 0,
+                    data_offset: 0,
+                    count_offset: 0,
+                    key_offset: 0,
+                    pointer_size: 8,
+                    string_tag_offset: 23,
+                },
+            )])
+        })
+        .unwrap_or_default();
+    Observer {
+        output: root.into(),
+        request: WorkerRequest {
+            version: observation::VERSION.into(),
+            attempt: "unit".into(),
+            game,
+            executable: "/not-used".into(),
+            target: "target".into(),
+            source_hashes: BTreeMap::new(),
+            machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
+            registries,
+            control_registry: None,
+            control: crate::protocol::session::ObservationControl::Normal,
+            fixture: None,
+            fixture_fault: false,
+            deadline_seconds: 1,
+        },
+        tool: Tool {
+            path: "/not-used".into(),
+            sha256: "unused".into(),
+            python: "python".into(),
+            lldb: "lldb".into(),
+            module: "module".into(),
+        },
+        worker: Some(command.process_group(0).spawn().unwrap()),
+        granted: false,
+        pause_generation: 0,
+        launched: Some(Instant::now()),
+        exited: None,
+    }
+}
+
 fn worker_exited(pid: u32) -> Result<bool, SupervisorError> {
     // SAFETY: initialized siginfo; WNOWAIT observes only our unreaped direct child.
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
@@ -501,36 +559,7 @@ mod tests {
     }
 
     fn observer(root: &Path, command: &mut Command) -> Observer {
-        Observer {
-            output: root.into(),
-            request: WorkerRequest {
-                version: observation::VERSION.into(),
-                attempt: "unit".into(),
-                game: 123,
-                executable: "/not-used".into(),
-                target: "target".into(),
-                artifacts: BTreeMap::new(),
-                machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
-                registries: BTreeMap::new(),
-                control_registry: None,
-                control: "normal".into(),
-                fixture: None,
-                fixture_fault: false,
-                deadline_seconds: 1,
-            },
-            tool: Tool {
-                path: "/not-used".into(),
-                sha256: "unused".into(),
-                python: "python".into(),
-                lldb: "lldb".into(),
-                module: "module".into(),
-            },
-            worker: Some(command.process_group(0).spawn().unwrap()),
-            granted: false,
-            pause_generation: 0,
-            launched: Some(Instant::now()),
-            exited: None,
-        }
+        test_observer(root, command, 123, None)
     }
 
     #[test]
@@ -606,7 +635,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
         let pid = observer.worker.as_ref().unwrap().id();
-        let hello = serde_json::json!({"version": observation::VERSION, "attempt":"unit", "game":123, "worker":pid, "target":"target", "artifacts":{}, "python":"python", "lldb":"lldb", "module":"module"});
+        let hello = serde_json::json!({"version": observation::VERSION, "attempt":"unit", "game":123, "worker":pid, "target":"target", "source_hashes":{}, "python":"python", "lldb":"lldb", "module":"module"});
         assert!(
             observer
                 .validate_hello(&serde_json::from_value(hello.clone()).unwrap(), pid)
@@ -621,12 +650,12 @@ mod tests {
             "module",
             "game",
             "worker",
-            "artifacts",
+            "source_hashes",
         ] {
             let mut changed = hello.clone();
             changed[field] = match field {
                 "game" | "worker" => serde_json::json!(0),
-                "artifacts" => serde_json::json!({"extra":"hash"}),
+                "source_hashes" => serde_json::json!({"extra":"hash"}),
                 _ => serde_json::json!("foreign"),
             };
             assert!(

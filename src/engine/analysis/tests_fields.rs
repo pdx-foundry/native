@@ -1,5 +1,5 @@
 //! The registry field method on small authored inputs.
-use pdx_native::internals::{
+use crate::engine::analysis::{
     discovery::{Symbol, candidates},
     fields::{self, FieldInput, Function, PathOutcome, ReaderJoin},
 };

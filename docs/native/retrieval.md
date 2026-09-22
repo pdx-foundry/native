@@ -3,8 +3,8 @@
 Run these commands from `/Users/jackson/Developer/pdx-native`. Python 3 standard library is enough for bundle verification and the selected Atlas replays. No game launch is needed.
 
 ```sh
-python3 tools/evidence.py
-python3 tools/evidence.py atlas-ownership --restore
+python3 tools/knowledge_bundles.py
+python3 tools/knowledge_bundles.py atlas-ownership --restore
 cd .local/evidence/restored/atlas-ownership/prototype/registry-ownership
 PYTHONDONTWRITEBYTECODE=1 python3 replay.py
 PYTHONDONTWRITEBYTECODE=1 python3 atlas_demo.py

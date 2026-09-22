@@ -1,6 +1,6 @@
 # Development policy
 
-Native is in rapid development. It has no consumers and no stable API. This policy records the
+Native is in rapid development. It has no stable API. This policy records the
 maintainer's standing authorization from SDK-521. It replaces the earlier routine approval gates.
 
 ## Work autonomously
@@ -18,16 +18,6 @@ security.
 A build is supported when it is in the target catalogue and its tests pass. A failed check is a
 reason to fix or narrow a claim, not to relabel it. Do not describe agent verification as a human
 review.
-
-## Recover a stale reservation
-
-1. Inspect the recorded process identities and the current process state.
-2. Deal with any owned process that still runs.
-3. Clear only the affected record, under the namespace lock.
-
-This is recovery by an agent during development, not automatic recovery by the library. Report
-disposal truthfully: clearing a record does not establish that Native reaped the original process.
-A short recovery note is sufficient. Another permission request is not necessary.
 
 ## Preserve acquired knowledge
 

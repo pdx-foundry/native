@@ -8,7 +8,8 @@ pub struct Answer<T> {
     pub value: T,
     /// Whether the stated search or window completed. Never complete game knowledge.
     pub completeness: Completeness,
-    /// What is missing. Empty when the answer is complete.
+    /// Missing answers within the method and declared limits outside it. A complete search may
+    /// still name limits outside its boundary.
     pub gaps: Vec<Gap>,
     /// Which build and method gave this answer.
     pub source: Source,
@@ -17,7 +18,8 @@ pub struct Answer<T> {
 /// Whether the method's stated search completed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Completeness {
-    /// The search or window completed. An empty value then means that nothing was found.
+    /// The stated search or window completed. An empty value then means that nothing was found
+    /// within that boundary.
     Complete,
     /// Part of the search did not complete; `gaps` says which part.
     Partial,
@@ -115,7 +117,8 @@ pub enum Operation {
 pub enum Disposal {
     /// The supervisor reaped the game process that it owned.
     Confirmed,
-    /// Disposal is not established. A new game is refused until this is resolved.
+    /// Disposal was not established for this session. A new game is refused while a conflicting
+    /// Stellaris process remains visible to the host reservation check.
     Unconfirmed(String),
     /// No game process was created: the start failed early, or the answers are recorded.
     NotApplicable,

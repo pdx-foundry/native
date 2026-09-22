@@ -21,9 +21,6 @@ pub use scheduler::{candidates, scheduler};
 
 use super::InputError;
 
-/// Name and revision of the method.
-pub const METHOD: &str = "registry-discovery/v1";
-
 /// Find the template candidates, recover the scheduling table, and join the two.
 pub fn discover(input: &StaticInput) -> Result<RegistryDiscovery, InputError> {
     let candidates = candidates(&input.symbols);

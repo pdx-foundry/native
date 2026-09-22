@@ -40,8 +40,8 @@ impl GameOptions {
     pub fn new(supervisor: Command) -> Self {
         Self {
             supervisor,
-            startup_seconds: 180,
-            idle_seconds: 180,
+            startup_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
+            idle_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
             fault: None,
             fixture: None,
             fixture_fault: None,
@@ -133,6 +133,12 @@ enum DriverCommand {
     },
 }
 
+#[derive(Debug)]
+enum GameBackend {
+    Live { recorder: Option<Arc<PathBuf>> },
+    Recorded(Arc<crate::recorded::Answers>),
+}
+
 /// An owned process paused at registry initialization, never a loaded world.
 /// Drop requests cleanup. Await close for independently confirmed disposal.
 #[derive(Debug)]
@@ -145,10 +151,7 @@ pub struct Game {
     /// Content directory of each observed registry, with its internal name.
     observed: std::collections::BTreeSet<String>,
     build: crate::BuildId,
-    /// Read every answer from this directory; no process exists.
-    recorded: Option<Arc<crate::recorded::Answers>>,
-    /// Write every answer to this directory as it is returned.
-    recorder: Option<Arc<PathBuf>>,
+    backend: GameBackend,
     /// Temporary work directory that Native made. Removed after a clean close.
     work: Option<PathBuf>,
     fixture: Option<crate::FixtureRequest>,
@@ -167,9 +170,12 @@ impl Game {
             reason: "Prepare a fixture with GameOptions::fixture before starting the game".into(),
         })?;
         let subject = fixture.recorded_subject();
-        if let Some(directory) = &self.recorded {
-            return directory.read("observe_fixture", Some(&subject));
-        }
+        let recorder = match &self.backend {
+            GameBackend::Recorded(directory) => {
+                return directory.read("observe_fixture", Some(&subject));
+            }
+            GameBackend::Live { recorder } => recorder.clone(),
+        };
         let answer = self.paused.fixture.clone().unwrap_or_else(|| {
             Err(Error::Observation {
                 operation: crate::Operation::ObserveFixture,
@@ -180,7 +186,7 @@ impl Game {
             Ok(()) => answer,
             Err(error) => Err(error),
         };
-        if let Some(directory) = &self.recorder {
+        if let Some(directory) = &recorder {
             crate::recorded::write(
                 directory,
                 &self.build,
@@ -211,8 +217,7 @@ impl Game {
             closing: false,
             observed: Default::default(),
             build: directory.build.clone(),
-            recorded: Some(directory),
-            recorder: None,
+            backend: GameBackend::Recorded(directory),
             work: None,
             fixture,
         }
@@ -233,11 +238,14 @@ impl Game {
         if self.closing || self.state.borrow().finished.is_some() {
             return Err(Error::Closed);
         }
-        if let Some(directory) = &self.recorded {
-            return directory.read("registry_items", Some(registry));
-        }
+        let recorder = match &self.backend {
+            GameBackend::Recorded(directory) => {
+                return directory.read("registry_items", Some(registry));
+            }
+            GameBackend::Live { recorder } => recorder.clone(),
+        };
         let answer = self.registry_items_from_game(registry).await;
-        if let Some(directory) = &self.recorder {
+        if let Some(directory) = &recorder {
             crate::recorded::write(
                 directory,
                 &self.build,
@@ -369,7 +377,7 @@ impl Game {
     /// was polled. Failed session cleanup returns `Error::Cleanup`, with the witnessed disposal.
     /// The temporary work directory is removed only after a clean, confirmed disposal.
     pub async fn close(&mut self) -> Result<Disposal, Error> {
-        if self.recorded.is_some() {
+        if matches!(self.backend, GameBackend::Recorded(_)) {
             self.closing = true;
             return Ok(Disposal::NotApplicable);
         }
@@ -459,8 +467,9 @@ pub(crate) async fn start(
                 closing: false,
                 observed: session.observed,
                 build: session.build,
-                recorded: None,
-                recorder: session.recorder,
+                backend: GameBackend::Live {
+                    recorder: session.recorder,
+                },
                 work: Some(session.work),
                 fixture: session.fixture,
             });
@@ -494,7 +503,9 @@ mod tests {
             ),
         }));
         let root = tempfile::tempdir().unwrap();
-        game.recorder = Some(Arc::new(root.path().into()));
+        game.backend = GameBackend::Live {
+            recorder: Some(Arc::new(root.path().into())),
+        };
         let lost_acknowledgement = std::thread::spawn(move || {
             let DriverCommand::Read { reply, .. } = commands.recv().unwrap();
             drop(reply);
@@ -527,7 +538,9 @@ mod tests {
         };
         game.paused.fixture = Some(Err(error.clone()));
         let root = tempfile::tempdir().unwrap();
-        game.recorder = Some(Arc::new(root.path().into()));
+        game.backend = GameBackend::Live {
+            recorder: Some(Arc::new(root.path().into())),
+        };
         let acknowledgements = std::thread::spawn(move || {
             for _ in 0..2 {
                 let DriverCommand::Read { question, reply } = commands.recv().unwrap();
@@ -575,8 +588,7 @@ mod tests {
                 closing: false,
                 observed: std::collections::BTreeSet::from(["common/traditions".into()]),
                 build: crate::BuildId("test".into()),
-                recorded: None,
-                recorder: None,
+                backend: GameBackend::Live { recorder: None },
                 work: None,
                 fixture: None,
             },
@@ -599,7 +611,7 @@ mod tests {
             match failure {
                 "reservation" => report.reservation_resolved = false,
                 "outcome" => {
-                    report.outcome = SessionOutcome::Failed("Disposal journal commit failed".into())
+                    report.outcome = SessionOutcome::Failed("Session bookkeeping failed".into())
                 }
                 _ => report.diagnostics.push("worker stop failed".into()),
             }
@@ -646,7 +658,9 @@ mod tests {
             &original,
         )
         .unwrap();
-        game.recorder = Some(Arc::new(root.path().into()));
+        game.backend = GameBackend::Live {
+            recorder: Some(Arc::new(root.path().into())),
+        };
         game.closing = true;
         assert!(matches!(
             game.registry_items("common/traditions").await,

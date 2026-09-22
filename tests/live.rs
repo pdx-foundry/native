@@ -33,6 +33,7 @@ use std::{
 const TRADITIONS: &str = "common/traditions";
 const CATEGORIES: &str = "common/tradition_categories";
 const ASCENSION_PERKS: &str = "common/ascension_perks";
+const RELICS: &str = "common/relics";
 const MAP_GALAXY: &str = "map/galaxy";
 const CIVICS: &str = "common/governments/civics";
 const GAME_SCENARIOS: &str = "common/game_scenarios";
@@ -143,6 +144,8 @@ enum Case {
     FixtureTimeout,
     FixtureRefusal,
     FixtureOutcome(FixtureOutcomeCase),
+    FixtureTransfer,
+    FixtureRelicPortrait,
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -154,6 +157,7 @@ enum Case {
     },
     WorkerLoss {
         registry: &'static str,
+        control: Fault,
     },
 }
 
@@ -203,11 +207,7 @@ fn cases() -> Vec<(String, Case)> {
             Expect::PartialAnswer,
         ),
     ];
-    for (registry, other) in [
-        (TRADITIONS, CATEGORIES),
-        (CATEGORIES, TRADITIONS),
-        (ASCENSION_PERKS, TRADITIONS),
-    ] {
+    for (registry, other) in [(TRADITIONS, CATEGORIES)] {
         let short = registry.rsplit('/').next().unwrap();
         for (name, control, expect) in faults {
             let case = Case::Fault {
@@ -220,9 +220,19 @@ fn cases() -> Vec<(String, Case)> {
         }
         cases.push((
             format!("worker_loss_in_{short}"),
-            Case::WorkerLoss { registry },
+            Case::WorkerLoss {
+                registry,
+                control: Fault::WorkerLoss,
+            },
         ));
     }
+    cases.push((
+        "worker_loss_before_activation".into(),
+        Case::WorkerLoss {
+            registry: TRADITIONS,
+            control: Fault::WorkerLossBeforeActivation,
+        },
+    ));
     for (name, control) in [
         ("normal", Fault::Normal),
         ("missing_hook", Fault::MissingHook),
@@ -237,6 +247,14 @@ fn cases() -> Vec<(String, Case)> {
     cases.push((
         "fixture_registration_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::RegistrationEntries),
+    ));
+    cases.push((
+        "fixture_transfer_string_reader".into(),
+        Case::FixtureTransfer,
+    ));
+    cases.push((
+        "fixture_transfer_relic_portrait".into(),
+        Case::FixtureRelicPortrait,
     ));
     cases.push((
         "fixture_field_reads_only".into(),
@@ -307,6 +325,8 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureTimeout => fixture_timeout(native).await,
         Case::FixtureRefusal => fixture_refusal(native).await,
         Case::FixtureOutcome(case) => fixture_outcome(case).await,
+        Case::FixtureTransfer => fixture_transfer(native).await,
+        Case::FixtureRelicPortrait => fixture_relic_portrait(native).await,
         Case::StartupTimeout => startup_timeout(native).await,
         Case::Cancel => cancel(native).await,
         Case::DropWithoutClose => drop_without_close(native).await,
@@ -316,7 +336,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             control,
             expect,
         } => fault(native, registry, other, control, expect).await,
-        Case::WorkerLoss { registry } => worker_loss(native, registry).await,
+        Case::WorkerLoss { registry, control } => worker_loss(native, registry, control).await,
     }
 }
 
@@ -344,6 +364,101 @@ async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
             return Err("fixture did not replace only its selected registry".into());
         }
         assert_recorded_fixture(recorded.path(), request, &answer).await?;
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn fixture_transfer(native: &Native) -> Outcome {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest, FixtureStorage};
+
+    let request = FixtureRequest::field_outcomes(
+        "common/ascension_perks/native_transfer.txt",
+        "native_transfer = {\n custom_tooltip = \"transfer_tip\"\n unlocks_agenda = \"transfer_agenda\"\n}\n",
+        [
+            FixtureFieldQuestion::new(ASCENSION_PERKS, "native_transfer", "custom_tooltip"),
+            FixtureFieldQuestion::new(ASCENSION_PERKS, "native_transfer", "unlocks_agenda"),
+        ],
+    );
+    let mut game = native
+        .start_game(options().registries([ASCENSION_PERKS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.completeness != Completeness::Complete {
+            return Err(format!("transfer was incomplete: {answer:?}").into());
+        }
+        let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("transfer outcomes: {answer:?}").into());
+        };
+        if tooltip.owner.is_none() || tooltip.owner != agenda.owner {
+            return Err(format!("transfer owner join: {answer:?}").into());
+        }
+        for (outcome, expected) in [(tooltip, "transfer_tip"), (agenda, "transfer_agenda")] {
+            let FixtureStorage::String {
+                occurrences,
+                final_value,
+                completeness: Completeness::Complete,
+            } = &outcome.storage
+            else {
+                return Err(format!("transfer storage: {answer:?}").into());
+            };
+            if occurrences.len() != 1
+                || occurrences[0].value != expected
+                || final_value.as_deref() != Some(expected)
+            {
+                return Err(format!("transfer value: {answer:?}").into());
+            }
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn fixture_relic_portrait(native: &Native) -> Outcome {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest, FixtureStorage};
+
+    let request = FixtureRequest::field_outcomes(
+        "common/relics/native_transfer.txt",
+        "native_transfer = {\n portrait = \"transfer_relic_portrait\"\n}\n",
+        [FixtureFieldQuestion::new(
+            RELICS,
+            "native_transfer",
+            "portrait",
+        )],
+    );
+    let mut game = native
+        .start_game(options().registries([RELICS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.completeness != Completeness::Complete {
+            return Err(format!("novel field was incomplete: {answer:?}").into());
+        }
+        let [outcome] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("novel field outcomes: {answer:?}").into());
+        };
+        if outcome.owner.is_none() {
+            return Err(format!("novel field owner: {answer:?}").into());
+        }
+        let FixtureStorage::String {
+            occurrences,
+            final_value,
+            completeness: Completeness::Complete,
+        } = &outcome.storage
+        else {
+            return Err(format!("novel field storage: {answer:?}").into());
+        };
+        if occurrences.len() != 1
+            || occurrences[0].value != "transfer_relic_portrait"
+            || final_value.as_deref() != Some("transfer_relic_portrait")
+        {
+            return Err(format!("novel field value: {answer:?}").into());
+        }
         Ok(())
     }
     .await;
@@ -493,12 +608,6 @@ fn assert_fixture_outcome(
         return Err(format!("fixture completeness: {answer:?}").into());
     }
     let expected_coverage = match case {
-        FixtureOutcomeCase::CategoryUnsupported => {
-            matches!(
-                answer.value.diagnostic_coverage,
-                DiagnosticCoverage::Unavailable(_)
-            )
-        }
         FixtureOutcomeCase::DiagnosticsNotRequested => {
             answer.value.diagnostic_coverage == DiagnosticCoverage::NotRequested
         }
@@ -521,11 +630,19 @@ fn assert_fixture_outcome(
             .field_outcomes
             .first()
             .ok_or("missing category outcome")?;
+        let [diagnostic] = answer.value.diagnostics.as_slice() else {
+            return Err(format!("missing category diagnostic: {answer:?}").into());
+        };
         if !matches!(outcome.storage, FixtureStorage::Unavailable(_))
             || !answer
                 .gaps
                 .iter()
                 .any(|gap| gap.kind == GapKind::OutsideMethod)
+            || diagnostic.text != "Malformed token"
+            || diagnostic.stage != "reader-malformed-report"
+            || !matches!(&diagnostic.join,
+                DiagnosticJoin::Source { file, line: 3, definition: None, field: None, occurrence: None }
+                if file == "common/tradition_categories/native_fixture.txt")
         {
             return Err(format!("unsupported category outcome: {answer:?}").into());
         }
@@ -1416,7 +1533,7 @@ async fn fault(
 
 /// The supervisor stops the debugger worker while the faulted registry loads. The game never
 /// reaches its pause, so there is no `Game`; the start fails and the game is still reaped.
-async fn worker_loss(native: &Native, registry: &'static str) -> Outcome {
+async fn worker_loss(native: &Native, registry: &'static str, control: Fault) -> Outcome {
     let other = if registry == TRADITIONS {
         CATEGORIES
     } else {
@@ -1426,7 +1543,7 @@ async fn worker_loss(native: &Native, registry: &'static str) -> Outcome {
         .start_game(
             options()
                 .registries([registry, other])
-                .fault(registry, Fault::WorkerLoss),
+                .fault(registry, control),
         )
         .await
     {

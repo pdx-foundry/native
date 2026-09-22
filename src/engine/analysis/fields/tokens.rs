@@ -204,15 +204,3 @@ fn recover_decoded(
     }
     (tokens, gaps)
 }
-
-pub(crate) fn recover_names(
-    rows: &[Instruction],
-    symbols: &[Symbol],
-    strings: &BTreeMap<u64, String>,
-) -> BTreeMap<i64, String> {
-    recover_decoded(rows, symbols, strings)
-        .0
-        .into_iter()
-        .filter_map(|(token, recovered)| (!recovered.ambiguous).then_some((token, recovered.name)))
-        .collect()
-}

@@ -23,8 +23,8 @@ class ProtocolTests(unittest.TestCase):
                        fields=[dict(token=16793, name='tree_template'), dict(token=14263, name='traditions')],
                        outcome_registries=[outcome]))
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
-                       artifacts={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
-                       registries={}, control_registry=None, control='normal', deadline_seconds=180,
+                       source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
+                       registries={}, control_registry=None, control=wire.CONTROL['normal'], deadline_seconds=180,
                        fixture=fixture, fixture_fault=False)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
         fixture['bindings']['fields'][0]['token'] = 'not an integer'

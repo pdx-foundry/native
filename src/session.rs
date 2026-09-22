@@ -4,14 +4,17 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) mod questions;
 
+#[derive(Debug)]
+enum Backend {
+    Live(Arc<Binding>),
+    Recorded(Arc<crate::recorded::Answers>),
+}
+
 /// A pinned installation. Static questions never start a game. `start_game` starts a game that
 /// an independent supervisor process owns.
 #[derive(Debug)]
 pub struct Native {
-    /// `None` only for recorded answers.
-    binding: Option<Arc<Binding>>,
-    /// Read every answer from this directory, and start no process.
-    recorded: Option<Arc<crate::recorded::Answers>>,
+    backend: Backend,
     /// Write every answer to this directory as it is returned.
     recorder: Option<Arc<std::path::PathBuf>>,
     /// The first executable change and the first default-content change seen by this context.
@@ -37,8 +40,7 @@ impl Native {
         directory: impl Into<std::path::PathBuf>,
     ) -> Result<Self, crate::Error> {
         Ok(Self {
-            binding: None,
-            recorded: Some(Arc::new(crate::recorded::Answers::open(directory.into())?)),
+            backend: Backend::Recorded(Arc::new(crate::recorded::Answers::open(directory.into())?)),
             recorder: None,
             target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
@@ -52,8 +54,7 @@ impl Native {
     }
     pub(crate) fn from_binding(binding: Binding) -> Self {
         Self {
-            binding: Some(Arc::new(binding)),
-            recorded: None,
+            backend: Backend::Live(Arc::new(binding)),
             recorder: None,
             target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
@@ -62,12 +63,16 @@ impl Native {
     /// The installation binding. Recorded answers have none; every public method answers from
     /// the recorded files before it reaches this.
     pub(crate) fn bound(&self) -> &Arc<Binding> {
-        self.binding
-            .as_ref()
-            .expect("recorded answers have no installation binding")
+        match &self.backend {
+            Backend::Live(binding) => binding,
+            Backend::Recorded(_) => panic!("recorded answers have no installation binding"),
+        }
     }
     pub(crate) fn recorded(&self) -> Option<&crate::recorded::Answers> {
-        self.recorded.as_deref()
+        match &self.backend {
+            Backend::Recorded(answers) => Some(answers),
+            Backend::Live(_) => None,
+        }
     }
     pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
         self.recorder.as_deref().map(|path| path.as_path())
@@ -118,11 +123,11 @@ impl Native {
         if let Some(fixture) = &options.fixture {
             fixture.validate()?;
         }
-        if let Some(directory) = &self.recorded {
-            return Ok(crate::Game::recorded(directory.clone(), options.fixture));
+        if let Backend::Recorded(answers) = &self.backend {
+            return Ok(crate::Game::recorded(answers.clone(), options.fixture));
         }
-        if !(1..=180).contains(&options.startup_seconds)
-            || !(1..=180).contains(&options.idle_seconds)
+        if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.startup_seconds)
+            || !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.idle_seconds)
         {
             return Err(Error::Startup {
                 reason: "Startup and idle budgets must be 1 to 180 seconds".into(),

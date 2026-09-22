@@ -1,10 +1,25 @@
 //! Bounded static methods. Each reads the executable and needs no game process.
 pub mod decode;
 pub mod directories;
+// The startup scheduler remains a bounded test method while shared-template candidates are used
+// by the current static API.
+#[allow(dead_code)]
 pub mod discovery;
 pub mod fields;
 pub mod readers;
-pub mod references;
+
+#[cfg(test)]
+#[path = "analysis/analysis_support.rs"]
+pub(crate) mod analysis_support;
+#[cfg(test)]
+#[path = "analysis/tests_decoder.rs"]
+mod tests_decoder;
+#[cfg(test)]
+#[path = "analysis/tests_discovery.rs"]
+mod tests_discovery;
+#[cfg(test)]
+#[path = "analysis/tests_fields.rs"]
+mod tests_fields;
 
 use crate::UnavailableReason;
 

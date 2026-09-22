@@ -23,6 +23,15 @@ struct Catalog {
     strings: BTreeMap<u64, String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FixtureLoader {
+    pub load_entry: u64,
+    pub reader_entry: u64,
+    pub reader_return: u64,
+    pub constructor_entry: u64,
+    pub member_entry: u64,
+}
+
 /// One fresh integrity check and the immutable analysis derived from this installation.
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Vec<u8>,
@@ -57,6 +66,180 @@ impl VerifiedAnalysis<'_> {
 }
 
 impl BoundAnalysis {
+    /// Locate the file reader return and the matching owner's constructor and member reader.
+    pub(crate) fn fixture_loader(
+        &self,
+        registry: &str,
+    ) -> Result<Option<FixtureLoader>, AnalysisError> {
+        use crate::engine::analysis::{decode::decode_arm64, directories::Directory};
+
+        let verified = self.verified()?;
+        let candidate = |name: &str| {
+            let mut matching = verified
+                .named_candidates()
+                .iter()
+                .filter(|candidate| candidate.directory == Directory::Named(name.into()));
+            match (matching.next(), matching.next()) {
+                (Some(candidate), None) => Some(candidate),
+                _ => None,
+            }
+        };
+        let Some(selected) = candidate(registry) else {
+            return Ok(None);
+        };
+        let Some(address) = selected
+            .record
+            .address
+            .strip_prefix("0x")
+            .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        else {
+            return Ok(None);
+        };
+        let expected_reader = format!(
+            "TSingleObjectGameDatabase<{}, {}, false>::LoadFromReader(CReader&, bool)",
+            selected.record.database, selected.record.owner_candidate
+        );
+        let code = binary::code_range(&verified.executable, address, 256)?;
+        let rows = decode_arm64(&code, address).map_err(|_| AnalysisError::InvalidRange)?;
+        let matches: Vec<_> =
+            rows.windows(3)
+                .filter_map(|window| {
+                    let [call, after, cleanup] = window else {
+                        return None;
+                    };
+                    let target = call
+                        .operands
+                        .strip_prefix("#0x")
+                        .and_then(|hex| u64::from_str_radix(hex, 16).ok())?;
+                    (call.operation == "bl"
+                        && after.operation == "mov"
+                        && after.operands == "x0,sp"
+                        && cleanup.operation == "bl"
+                        && verified.catalog.symbols.iter().any(|symbol| {
+                            symbol.address == target && symbol.name == expected_reader
+                        }))
+                    .then_some((address, target, after.address))
+                })
+                .collect();
+        let Some((load_entry, reader_entry, reader_return)) =
+            matches.first().copied().filter(|_| matches.len() == 1)
+        else {
+            return Ok(None);
+        };
+        let owner = &selected.record.owner_candidate;
+        let member_name = format!("{owner}::ReadMember(CReader&, int)");
+        let mut members = verified
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == member_name);
+        let (Some(member), None) = (members.next(), members.next()) else {
+            return Ok(None);
+        };
+        let constructor_name = format!("{owner}::{owner}(int, CString const&)");
+        let constructors: Vec<_> = verified
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == constructor_name)
+            .map(|symbol| symbol.address)
+            .collect();
+        let Some(next_symbol) = verified
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.address > reader_entry)
+            .map(|symbol| symbol.address)
+            .min()
+        else {
+            return Ok(None);
+        };
+        let Some(length) = next_symbol.checked_sub(reader_entry) else {
+            return Ok(None);
+        };
+        if length == 0 || length > 16 * 1024 {
+            return Ok(None);
+        }
+        let reader_code = binary::code_range(&verified.executable, reader_entry, length)?;
+        let reader_rows =
+            decode_arm64(&reader_code, reader_entry).map_err(|_| AnalysisError::InvalidRange)?;
+        let called: std::collections::BTreeSet<_> = reader_rows
+            .iter()
+            .filter(|row| row.operation == "bl")
+            .filter_map(|row| row.operands.strip_prefix("#0x"))
+            .filter_map(|hex| u64::from_str_radix(hex, 16).ok())
+            .filter(|address| constructors.contains(address))
+            .collect();
+        let Some(&constructor_entry) = called.iter().next().filter(|_| called.len() == 1) else {
+            return Ok(None);
+        };
+        Ok(Some(FixtureLoader {
+            load_entry,
+            reader_entry,
+            reader_return,
+            constructor_entry,
+            member_entry: member.address,
+        }))
+    }
+
+    /// Derive string storage from the root dispatch's proven reader arguments.
+    pub(crate) fn fixture_string_fields(
+        &self,
+        registry: &str,
+    ) -> Result<Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>, AnalysisError> {
+        use crate::engine::analysis::{
+            directories::Directory,
+            fields::{self, ReaderJoin, Value},
+        };
+
+        let verified = self.verified()?;
+        let mut matching = verified
+            .named_candidates()
+            .iter()
+            .filter(|candidate| candidate.directory == Directory::Named(registry.into()));
+        let (Some(candidate), None) = (matching.next(), matching.next()) else {
+            return Ok(Vec::new());
+        };
+        let input = verified.field_input(candidate.record.clone())?;
+        let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
+        Ok(result
+            .fields
+            .iter()
+            .filter_map(|field| {
+                if field.readers.len() != 1
+                    || field
+                        .paths
+                        .iter()
+                        .any(|&path| !result.paths[path].conditions.is_empty())
+                {
+                    return None;
+                }
+                let ReaderJoin::Joined { callee, arguments } = &field.readers[0] else {
+                    return None;
+                };
+                if callee != "CReader::Read(CString&, bool)"
+                    || arguments.get("x0") != Some(&Value::Reader(0))
+                    || arguments.get("x8") != Some(&Value::Constant(field.token))
+                {
+                    return None;
+                }
+                let Some(Value::Owner(offset)) = arguments.get("x1") else {
+                    return None;
+                };
+                let (Ok(token), Ok(storage_offset)) =
+                    (u64::try_from(field.token), u64::try_from(*offset))
+                else {
+                    return None;
+                };
+                Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
+                    token,
+                    name: field.name.clone(),
+                    storage_offset,
+                })
+            })
+            .collect())
+    }
+
     pub(super) fn new(layout: SchedulerLayout, installation: Installation) -> Self {
         Self {
             layout,
@@ -127,18 +310,6 @@ impl BoundAnalysis {
         let input = verified.field_input(candidate.record.clone())?;
         let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
         Ok(Some(crate::session::questions::normalized_fields(&result)))
-    }
-
-    pub(crate) fn reference_inputs(
-        &self,
-        owners: &[&str],
-    ) -> Result<Vec<crate::engine::analysis::references::ReferenceInput>, AnalysisError> {
-        let bytes = self.executable()?;
-        let input = binary::discovery::read(&bytes, &self.layout)?;
-        owners
-            .iter()
-            .map(|owner| binary::references::read(&bytes, &input, owner))
-            .collect()
     }
 }
 

@@ -125,7 +125,7 @@ pub(crate) fn reduce(
         .field_questions
         .iter()
         .any(|question| question.diagnostics);
-    if !request.field_questions.is_empty() && request.registry() == "common/traditions" {
+    if !request.field_questions.is_empty() && request.registry() != "common/tradition_categories" {
         hooks.extend(["fixture:constructor", "fixture:reader", "fixture:member"]);
         if diagnostics_requested {
             hooks.extend(["fixture:malformed", "fixture:unexpected"]);

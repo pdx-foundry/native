@@ -102,7 +102,9 @@ the state after the simplification effort:
 | `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations`, `defines`, `on_actions` | Planned | A declaration kind | Engine declarations with description, usage, and scopes |
-| `Game::observe_fixture` | Implemented | A fixture request prepared in `GameOptions` before launch | Separate registration entries and field reads naming file, line, owner, and stage |
+| `Game::observe_fixture`: registration entries | M45-observe only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
+| `Game::observe_fixture`: category reads | M45-observe only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
+| `Game::observe_fixture`: field outcomes | M45-observe only; initial file load for a registry with a verified loader and owner boundary | At most 32 named definition and field questions in one bounded relative text file | Source-correlated diagnostics and string storage where the exact-build binding supports the field; other dimensions report unavailable |
 
 Rules for the API:
 
@@ -124,13 +126,14 @@ Rules for the API:
 pub struct Answer<T> {
     pub value: T,
     pub completeness: Completeness,   // Complete | Partial
-    pub gaps: Vec<Gap>,               // typed; empty when Complete
+    pub gaps: Vec<Gap>,               // typed; OutsideMethod can accompany Complete
     pub source: Source,               // build id, Native version, method name, basis
 }
 pub enum Basis { Declared, StaticAnalysis, LiveObservation, Recorded }
 ```
 
 - `Complete` means the stated search or window completed. It is not complete game knowledge.
+  `OutsideMethod` describes an explicit boundary; other gaps make the bounded answer partial.
 - An empty `Complete` answer needs a completed search that found nothing. An access failure, a
   missing hook, or a lost record gives `Partial` with a gap, or an `Error`.
 - An unsupported operation does not mean that the game forbids a construct.
@@ -157,9 +160,10 @@ observation worker.
 - `close` returns disposal as confirmed, unconfirmed, or not applicable. Worker failure, caller
   loss, timeout, cancellation, and partial launch all end with a bounded cleanup attempt.
   Failed final cleanup returns `Error::Cleanup` with the witnessed disposal and retains the work
-  directory, including when the game is gone but its reservation journal could not be committed.
+  directory. A report-write failure is separate from whether the game was reaped.
 - One Native-owned game runs on a host at a time. A conflicting instance is refused with a reason.
-  The durable reservation journal is unchanged for now.
+  An OS lock excludes concurrent Native sessions; a process inventory checks for other Stellaris
+  instances. Old session files do not block a new launch after these checks pass.
 - A `Game` uses a temporary work directory, deleted on close and kept only on failure.
 - No blind retry of an operation whose completion is uncertain.
 
@@ -244,8 +248,10 @@ supervision failures that the public API cannot cause safely.
    dropped-record, worker-loss, timeout, and cancel cases. The ordinary profile and unrelated
    processes stay unchanged.
 6. **Supervisor without a game:** unit tests cover reservation ownership, worker-process cleanup,
-   pause witnesses and caller cancellation. A full fake-worker session test remains to be added;
-   the current end-to-end failure checks require the live game.
+   pause witnesses and caller cancellation. A fake-worker session test sends a complete paused
+   answer through the supervisor observation and cleanup path. It checks the final report,
+   worker reap, game disposal and reservation release. The real debugger attachment checks
+   require the live game.
 7. **Recorded answers:** a recorded run gives the same answers as the real run apart from `Basis`;
    a missing record gives `NotRecorded`; no process starts.
 8. **Shared-method transfer:** freeze a method, then apply it to unfamiliar cases with positive and
@@ -274,4 +280,4 @@ supervision failures that the public API cannot cause safely.
 - [Atlas map, SDK-470](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database):
   Atlas decisions and open extraction questions. SDK-475 (module boundary), SDK-476 (supported
   builds) and SDK-472 (first coverage) still apply. SDK-473 is amended as stated in section 8.
-- [Native evidence index](../native-evidence.md): where prototype knowledge is kept.
+- [Engine knowledge index](../engine-knowledge.md): where prototype knowledge is kept.

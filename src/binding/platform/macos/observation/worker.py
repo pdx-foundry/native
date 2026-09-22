@@ -18,7 +18,7 @@ sequence = 0
 finished = False
 entry_thread = None
 breakpoints = {}
-control = 'normal'
+control = protocol.CONTROL['normal']
 registry = None
 registry_owner = None
 registry_owners = {}
@@ -54,12 +54,12 @@ def emit(kind, **fields):
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
-    if request['fixture_fault'] and request['control'] == 'dropped-record' and kind == 'fixture':
+    if request['fixture_fault'] and request['control'] == protocol.CONTROL['dropped_record'] and kind == 'fixture':
         dropped = ('field-read', 1) if request['fixture']['field_reads'] else ('registration-entry', 2)
         event = fields['event']
         if (event['kind'], event.get('ordinal')) == dropped:
             return
-    if control == 'dropped-record' and kind == 'registry-entry' and fields['index'] == 0:
+    if control == protocol.CONTROL['dropped_record'] and kind == 'registry-entry' and fields['index'] == 0:
         return
     path = ROOT / 'raw-trace.jsonl'
     limit = protocol.MAX_TRACE - 256 * 1024 if kind == 'registry-entry' else protocol.MAX_TRACE
@@ -146,7 +146,7 @@ def registry_snapshot(frame):
         raise RuntimeError('registry receiver directory mismatch: ' + directory)
     emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
     returned_registries.append(registry['name'])
-    if control == 'access-failure':
+    if control == protocol.CONTROL['access_failure']:
         uint(process, 0)
         raise RuntimeError('access failure unexpectedly read zero')
     count = uint(process, owner + registry['count_offset'], 4)
@@ -165,13 +165,13 @@ def registry_snapshot(frame):
         keys.add(key)
         objects.add(obj)
         emit('registry-entry', name=registry['name'], owner=hex(owner), index=index, object=hex(obj), key=key, thread=thread)
-        if control == 'worker-loss' and index == 0:
+        if control == protocol.CONTROL['worker_loss'] and index == 0:
             emit('worker-loss-ready')
             (ROOT / 'worker-loss-ready').touch(exist_ok=False)
             return True
     if count != uint(process, owner + registry['count_offset'], 4) or data != uint(process, owner + registry['data_offset']):
         raise RuntimeError('registry changed during snapshot')
-    if control != 'missing-terminal':
+    if control != protocol.CONTROL['missing_terminal']:
         emit('registry-end', name=registry['name'], owner=hex(owner), count=count, producerLastSequence=sequence + 1, thread=thread)
     finished = True
     return True
@@ -183,7 +183,7 @@ def registry_callback(frame, name):
     selected = name.split(':', 1)[1]
     registry = request['registries'][selected]
     registry_owner = registry_owners.get(selected)
-    control = request['control'] if selected == request['control_registry'] else 'normal'
+    control = request['control'] if selected == request['control_registry'] else protocol.CONTROL['normal']
     try:
         if not is_return:
             result = registry_begin(frame)
@@ -201,7 +201,7 @@ def registry_callback(frame, name):
             finished = True
             safe_pause = False
             return True
-    if control == 'worker-loss':
+    if control == protocol.CONTROL['worker_loss']:
         return True
     finished = session_active.issubset(set(returned_registries))
     safe_pause = finished
@@ -220,7 +220,7 @@ class FixtureObserver:
         self.requested_definitions = {item['definition'] for item in config['questions']}
         self.question_by_token = {(item['definition'], item['token']): item for item in config['questions'] if item['token'] is not None}
         self.diagnostics_requested = any(item['diagnostics'] for item in config['questions'])
-        self.control = request['control'] if request['fixture_fault'] else 'normal'
+        self.control = request['control'] if request['fixture_fault'] else protocol.CONTROL['normal']
         self.registrations = 0
         self.field_count = 0
         self.loading = False
@@ -309,7 +309,7 @@ class FixtureObserver:
             return False
         breakpoints[name].SetEnabled(False)
         self.emit('registration-end', thread, count=3)
-        if self.control == 'worker-loss':
+        if self.control == protocol.CONTROL['worker_loss']:
             emit('worker-loss-ready')
             (ROOT / 'worker-loss-ready').touch(exist_ok=False)
             return True
@@ -341,7 +341,7 @@ class FixtureObserver:
         if hook.GetNumResolvedLocations() != 1:
             raise RuntimeError('fixture return hook unresolved')
         breakpoints['fixture:return'] = hook
-        if self.control == 'access-failure':
+        if self.control == protocol.CONTROL['access_failure']:
             uint(process, 0)
             raise RuntimeError('access failure unexpectedly read zero')
         return False
@@ -452,7 +452,7 @@ class FixtureObserver:
         self.field_count += 1
         self.emit('field-read', thread, file=file, line=line, field=self.fields[token],
             owner=hex(owner), ordinal=self.field_count)
-        if self.control == 'worker-loss' and not self.config['registration_entries']:
+        if self.control == protocol.CONTROL['worker_loss'] and not self.config['registration_entries']:
             emit('worker-loss-ready')
             (ROOT / 'worker-loss-ready').touch(exist_ok=False)
             return True
@@ -467,7 +467,7 @@ class FixtureObserver:
             if key.startswith('fixture:'):
                 hook.SetEnabled(False)
         self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
-        if self.control != 'missing-terminal':
+        if self.control != protocol.CONTROL['missing_terminal']:
             self.emit('end', thread, registrations=self.registrations, field_reads=self.field_count,
                 field_outcomes=len(self.questions), diagnostics=self.diagnostics,
                 producer_last_sequence=sequence + 1)
@@ -533,13 +533,18 @@ def run(debugger):
     global entry_thread, session_active, safe_pause
     import lldb
     import sys
-    artifacts = {name: sha(ROOT / 'source' / name) for name in request['artifacts']}
+    source_hashes = {name: sha(ROOT / 'source' / name) for name in request['source_hashes']}
     target_hash = sha(request['executable'])
-    if request['version'] != protocol.VERSION or artifacts != request['artifacts'] or target_hash != request['target']:
+    if request['version'] != protocol.VERSION or source_hashes != request['source_hashes'] or target_hash != request['target']:
         raise RuntimeError('worker package or target mismatch')
     atomic('hello', 'hello.json', dict(version=protocol.VERSION, attempt=request['attempt'],
-        game=request['game'], worker=os.getpid(), target=target_hash, artifacts=artifacts,
+        game=request['game'], worker=os.getpid(), target=target_hash, source_hashes=source_hashes,
         python=sys.version, lldb=lldb.SBDebugger.GetVersionString(), module=lldb.__file__))
+    if request['control'] == protocol.CONTROL['worker_loss_before_activation']:
+        emit('worker-loss-ready')
+        (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+        while True:
+            time.sleep(.1)
     debugger.SetAsync(True)
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
     hooks = [('registry:' + name, value['load_entry']) for name, value in request['registries'].items()]
@@ -549,11 +554,11 @@ def run(debugger):
         if request['fixture_fault']:
             controlled_hook = 'fixture:field' if request['fixture']['field_reads'] else 'fixture:registration'
     for name, address in hooks:
-        if name == controlled_hook and request['control'] == 'missing-hook':
+        if name == controlled_hook and request['control'] == protocol.CONTROL['missing_hook']:
             continue
         hook = target.BreakpointCreateBySBAddress(target.ResolveFileAddress(address))
         hook.SetScriptCallbackFunction('worker.callback')
-        if name == controlled_hook and request['control'] == 'late-hook':
+        if name == controlled_hook and request['control'] == protocol.CONTROL['late_hook']:
             hook.SetEnabled(False)
         breakpoints[name] = hook
     emit('hooks-requested')
