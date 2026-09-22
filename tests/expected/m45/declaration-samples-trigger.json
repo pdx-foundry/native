@@ -26,8 +26,14 @@
     "usage": "has_civic = my_test_civic_1",
     "scopes": {
       "Listed": [
-        "country",
-        "dlc_recommendation"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        },
+        {
+          "id": "62d3f8e4e896f7f7",
+          "name": "dlc_recommendation"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -38,9 +44,18 @@
     "usage": "planet_size < 20",
     "scopes": {
       "Listed": [
-        "planet",
-        "ship",
-        "colony"
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        },
+        {
+          "id": "69ead02b278522d1",
+          "name": "ship"
+        },
+        {
+          "id": "df2999a8f7dba6f6",
+          "name": "colony"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -51,7 +66,10 @@
     "usage": "is_ruler = yes/no",
     "scopes": {
       "Listed": [
-        "leader"
+        {
+          "id": "b09e3ce96bcb18ba",
+          "name": "leader"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -69,7 +87,10 @@
     "usage": "has_country_flag = <flag> (note: one can use e.g. my_flag@from to track relationships between objects)",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"
@@ -80,7 +101,10 @@
     "usage": "acquired_specimen_count > <num>",
     "scopes": {
       "Listed": [
-        "country"
+        {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+        }
       ]
     },
     "targets": "Unresolved"

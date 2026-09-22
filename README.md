@@ -18,11 +18,20 @@ let native = Native::open("/path/to/Stellaris")?;
 let registries = native.registries()?;                      // Answer<Vec<Registry>>
 let fields = native.registry_fields("common/traditions")?;  // Answer<Vec<Field>>
 let effects = native.declarations(DeclarationKind::Effect)?; // Answer<Vec<Declaration>>
+let modifiers = native.modifiers()?;                        // Answer<Vec<ModifierDeclaration>>
+let categories = native.modifier_categories()?;             // Answer<Vec<ModifierCategory>>
+let scopes = native.scopes()?;                              // Answer<ScopeInventory>
+let links = native.scope_links()?;                          // Answer<Vec<ScopeLink>>
 ```
 
 `declarations` covers direct calls to the effect or trigger registration function in executable
-text. Runtime-composed names and unreadable documentation are gaps. See
-`examples/declarations.rs`.
+text. Runtime-composed names and unreadable documentation are gaps. `modifiers` covers direct
+modifier definitions; modifier families that content generates are gaps. Category tags are
+intended-use tags, not where a modifier takes effect. `scopes` groups keywords only by the engine's
+keyword-to-scope map; a keyword that matches several types, such as `carrier`, is a group.
+`scope_links` gives declared input and output scopes and marks links that take data. A scope
+reference carries an opaque `ScopeId`; join it to `scopes()` by that identity, because two scope
+types can share a display name. See `examples/declarations.rs`.
 
 ## Live questions
 
@@ -150,6 +159,10 @@ registries.json
 registry_fields/common/traditions.json
 declarations/effect.json
 declarations/trigger.json
+modifiers.json
+modifier_categories.json
+scopes.json
+scope_links.json
 registry_items/common/traditions.json
 observe_fixture/<files-hash>/<request-hash>.json
 ```

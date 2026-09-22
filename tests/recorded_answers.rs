@@ -1,7 +1,7 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
 use pdx_native::{
-    Basis, Completeness, DeclarationKind, DeclaredScopes, Disposal, Error, GameOptions, GapKind,
-    Native, ReaderKind, Support,
+    Basis, Completeness, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal, Error,
+    GameOptions, GapKind, LinkData, Native, OutputScope, ReaderKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -75,7 +75,7 @@ fn recorded() -> tempfile::TempDir {
         json!({ "Ok": {
             "value": [
                 { "name": "always", "description": "Always succeeds", "usage": "", "scopes": "Any", "targets": "Unresolved" },
-                { "name": "win", "description": "Wins", "usage": "win = yes", "scopes": { "Listed": ["country"] }, "targets": "Unresolved" }
+                { "name": "win", "description": "Wins", "usage": "win = yes", "scopes": { "Listed": [{ "id": "country-id", "name": "country" }] }, "targets": "Unresolved" }
             ],
             "completeness": "Partial",
             "gaps": [
@@ -86,7 +86,98 @@ fn recorded() -> tempfile::TempDir {
             "source": source()
         }}),
     );
+    write(
+        root.path(),
+        "modifiers.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "blank_modifier", "category_tags": { "Listed": ["Pops"] } },
+                { "name": "unfollowed", "category_tags": "Unresolved" }
+            ],
+            "completeness": "Partial",
+            "gaps": [
+                { "kind": "UnnamedDeclaration", "subject": null, "detail": "generated family" },
+                { "kind": "UnresolvedPath", "subject": "unfollowed", "detail": "category tags" }
+            ],
+            "source": source()
+        }}),
+    );
+    write(
+        root.path(),
+        "scopes.json",
+        json!({ "Ok": {
+            "value": {
+                "types": [
+                    { "id": "planet-id", "name": "planet", "keywords": ["planet"] },
+                    { "id": "ship-id", "name": "ship", "keywords": ["ship"] }
+                ],
+                "groups": [{ "keyword": "carrier", "scopes": [
+                    { "id": "planet-id", "name": "planet" }, { "id": "ship-id", "name": "ship" }
+                ] }]
+            },
+            "completeness": "Complete",
+            "gaps": [],
+            "source": source()
+        }}),
+    );
+    write(
+        root.path(),
+        "scope_links.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "carrier", "input_scopes": { "Listed": [{ "id": "colony-id", "name": "colony" }] },
+                  "output_scope": { "Listed": [
+                      { "id": "planet-id", "name": "planet" }, { "id": "ship-id", "name": "ship" }
+                  ] }, "data": "None" },
+                { "name": "event_target", "input_scopes": "Unresolved",
+                  "output_scope": "Unresolved", "data": { "Prefix": "event_target:" } },
+                { "name": "prev", "input_scopes": "Any", "output_scope": "Various", "data": "None" }
+            ],
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnresolvedPath", "subject": "event_target", "detail": "data link" }],
+            "source": source()
+        }}),
+    );
     root
+}
+
+#[test]
+fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded() {
+    let root = recorded();
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+
+    let modifiers = native.modifiers().unwrap();
+    assert_eq!(modifiers.source.basis, Basis::Recorded);
+    assert_eq!(
+        modifiers.value[0].category_tags,
+        DeclaredTags::Listed(vec!["Pops".into()])
+    );
+    assert_eq!(modifiers.value[1].category_tags, DeclaredTags::Unresolved);
+
+    let links = native.scope_links().unwrap();
+    assert_eq!(links.source.basis, Basis::Recorded);
+    let OutputScope::Listed(output) = &links.value[0].output_scope else {
+        panic!("carrier declares its output");
+    };
+    let output: Vec<_> = output.iter().map(|scope| scope.name.as_str()).collect();
+    assert_eq!(output, ["planet", "ship"]);
+    assert_eq!(
+        links.value[1].data,
+        LinkData::Prefix("event_target:".into())
+    );
+    assert_eq!(links.value[2].output_scope, OutputScope::Various);
+
+    assert!(matches!(
+        native.modifier_categories(),
+        Err(Error::NotRecorded { .. })
+    ));
+    let scopes = native.scopes().unwrap();
+    assert_eq!(scopes.source.basis, Basis::Recorded);
+    let group = &scopes.value.groups[0];
+    assert_eq!(group.keyword, "carrier");
+    for (reference, scope) in group.scopes.iter().zip(&scopes.value.types) {
+        assert_eq!(reference.id, scope.id);
+    }
 }
 
 #[test]
@@ -97,10 +188,10 @@ fn declarations_read_recorded_values_and_missing_kind_is_not_recorded() {
     assert_eq!(effect.source.basis, Basis::Recorded);
     assert_eq!(effect.completeness, Completeness::Partial);
     assert_eq!(effect.value[0].scopes, DeclaredScopes::Any);
-    assert_eq!(
-        effect.value[1].scopes,
-        DeclaredScopes::Listed(vec!["country".into()])
-    );
+    let DeclaredScopes::Listed(scopes) = &effect.value[1].scopes else {
+        panic!("win lists its scopes");
+    };
+    assert_eq!(scopes[0].name, "country");
     assert!(matches!(
         native.declarations(DeclarationKind::Trigger),
         Err(Error::NotRecorded { .. })

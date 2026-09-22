@@ -46,12 +46,43 @@ Target getters are not followed in this revision. Every returned target set is `
 
 Modifier categories are intended-use tags, not demonstrated application contexts. Real object application and propagation through containers remain unqualified. The native documentation facility supplies observations; Atlas decides which rule claims the evidence supports.
 
+### Modifiers, categories, scopes and links (SDK-536)
+
+SDK-536 ports the other four inventories to static questions on M45-release. The prototype read them from the engine's documentation text in a live game; the port runs the same compiled engine code without a game. `engine/analysis/evaluate.rs` runs one compiled function for one known input and follows one path. A branch on an unknown value, an unsupported instruction or a jump outside the decoded code stops the run with a reason. It never guesses a path. The four methods use it.
+
+- **Modifiers** (`Native::modifiers`). Each built-in modifier is one direct call to `CPdxModifier<…>::AddDefinition`, with the token in `w0` and the category mask at `[sp,#4]` (recipe `modifier_category_offset`). The method runs the straight-line code between the previous call and the definition call. M45-release has 586 direct calls:
+  - 571 give distinct literal names.
+  - Four give a name a second time with the same tags (`bonus_automated_workforce_mult`, `district_automated_workforce`, `country_storm_location_intel_add`, `country_storm_movement_intel_add`).
+  - 11 pass a token that is not a literal: ten calls in `CShipClassModifierHelper::Init` compose the name from a string, and one call is inside `CModifier::TryAddDynamicModifier`.
+
+  61 calls to `TryAddDynamicModifier` and one call to `AddDynamicModifier` generate modifier families from content. Each of these 73 sites is an `UnnamedDeclaration` gap.
+- **Categories** (`Native::modifier_categories`). The method runs `GetModifierCategoryName` on each single bit, on all bits, and on each mask that a built-in modifier uses. The switch writes a name in one of three ways: a literal assignment, inline short-string bytes, or a 16-byte vector copy. A modifier's tags follow the rule in `CModifier::LogDefinitions`: the name of the whole mask when one exists, otherwise the name of each set bit.
+- **Scopes** (`Native::scopes`). Scope types are the bits of `NEventScope::GetScopeName`. The method runs `GetScopeTypeEnumFromToken` on every token value up to the largest literal token, which groups the keywords of each type. It does not use the config's alias groups. A keyword that maps to several bits is a `ScopeGroup`, not a keyword of each type. The same map serves `is_scope_type` (`CIsScopeTypeTrigger::Assign`), the context trigger and effect readers, the scripted-action and event-scope readers, and `TokenToEnum<EScopeType>`, so a group keyword is valid script.
+- **Links** (`Native::scope_links`). The method runs one iteration of the loop in `CEventTarget::GenerateEventTargetDocumentation` for each token. A token is a link when the loop body asks for its documentation. Input scopes come from `CEventTarget::GetSupportedScopes` on a target that holds the token (recipe `event_target_token_offset`). One case builds a second target and adds its scopes, and the method follows that call. The output comes from `CEventTarget::GetScopeType`, where 0 is `Various`. Links that take data are the literals ending in `:` in `CEventTarget::ParseForSpecialValues`. Their scopes are not followed and stay as gaps.
+
+Comparison with the SDK-488 inventory (M45-observe, frozen `runs/20260917-154455`), after the static result was produced:
+
+| Inventory | SDK-536 on M45-release | SDK-488 live | Difference |
+| --- | ---: | ---: | --- |
+| Modifiers | 571 | 45,578 | The 571 names equal the first 571 entries of the loaded table exactly, in the same set. The other 45,007 entries are generated from content or added at run time (73 generation sites; SDK-540 owns the templates). |
+| Modifier tags | 566 equal | — | Five differ: `terraforming_cost_mult`, `starbase_shipyard_build_cost_mult`, `starbase_shipyard_artificial_build_cost_mult`, `starbase_shipyard_space_fauna_build_cost_mult` and `gdf_ship_alloys_cost_mult`. Each loaded entry has `AI Economy` and content-chosen tags. Content registers the same name again: for example `common/economic_categories` `terraforming` has `generate_mult_modifiers` and `modifier_category = planet`. The static answer keeps the executable's declaration. |
+| Categories | 32 | 30 printed | The switch also names `Ship Components` (0x1000) and `Cosmic Storm Influence Field` (0x8000000). The live log did not print them, because no loaded modifier uses them alone. |
+| Scope links | 99 + 2 prefixes | 99 | The same 99 names, with equal input scopes and outputs, except `carrier`. M45-release declares its output as planet or ship (mask 0xa). The M45-observe beta and the 4.4.1 dump both printed `planet`, so the change came with the full 4.5 release. It agrees with colonies on ships in the Nomads release; the executable does not state the reason. `event_target:` and `parameter:` are the data prefixes. |
+| Scopes | 42 types, 41 names | 40 names across the logs | A log prints only the types that a documented command or link uses; the link log alone prints 34 of the 41 names, with `pop job` split into `pop` and `job`. Two types are named `country`: bit 2, keyword `country`, and bit 19, keyword `observer`. Bit 37, `pop job`, has no literal keyword. `alliance` and `federation` name one type. `carrier` maps to planet or ship (mask 0xa) and is the one `ScopeGroup`. |
+
+Keeping `pop job` whole corrects the SDK-535 scope lists as well. Before this change they split the name into `pop` and `job`, which invented a `job` scope and repeated `pop`.
+
+A scope type's identity is its bit, not its name: bits 2 and 19 are both named `country`. Each `ScopeDeclaration` has an opaque `ScopeId`, a hash of the bit that is valid within one build. Every scope reference carries the same identity: command and link scopes, link outputs, and `ScopeGroup` members. A reference also carries the display name, only for reading. Join references to declarations by `id`, never by name.
+
+**Not in SDK-536.** The ticket asked for the full modifier inventory with the SDK-488 count, so it was narrowed. The loaded inventory with its generated families is **SDK-564**, and the name templates are **SDK-540**. The scopes of the data-taking links `event_target:` and `parameter:` are **SDK-565**.
+
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
 
 ## Rust ports
 
-The Rust code in `src/engine/analysis` ports four of these methods: template registry discovery
+The Rust code in `src/engine/analysis` ports five of these methods: template registry discovery
 with the static scheduler table (SDK-489), registry names from the database constructors, and root
-fields with their reader joins (SDK-487), and effect and trigger declarations (SDK-535). The module comments describe each method. The methods
+fields with their reader joins (SDK-487), effect and trigger declarations (SDK-535), and modifier,
+category, scope and link declarations (SDK-536). The module comments describe each method. The methods
 read the executable only and receive no field or config seeds. The five shared-reader contracts
 above stay unresolved, so no registry has a complete field answer.

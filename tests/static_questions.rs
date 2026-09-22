@@ -1,9 +1,11 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 use pdx_native::{
-    Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error, Field, GapKind,
-    Native, ReaderKind,
+    Answer, Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Error,
+    Field, GapKind, LinkData, ModifierDeclaration, Native, OutputScope, ReaderKind, ScopeId,
+    ScopeInventory, ScopeLink, ScopeReference,
 };
+use std::collections::BTreeMap;
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
@@ -98,18 +100,10 @@ fn direct_declarations_match_the_recorded_m45_boundary() {
         }
     }
     let effects = native.declarations(DeclarationKind::Effect).unwrap();
-    assert_eq!(
-        effects
-            .value
-            .iter()
-            .find(|item| item.name == "win")
-            .unwrap()
-            .scopes,
-        DeclaredScopes::Listed(vec!["country".into()])
-    );
-    assert!(
-        matches!(effects.value.iter().find(|item| item.name == "add_blocker").unwrap().scopes, DeclaredScopes::Listed(ref scopes) if scopes.contains(&"colony".into()))
-    );
+    let win = find(&effects.value, "win", |item| &item.name);
+    assert_eq!(listed_names(&win.scopes), ["country"]);
+    let add_blocker = find(&effects.value, "add_blocker", |item| &item.name);
+    assert!(listed_names(&add_blocker.scopes).contains(&"colony"));
     let triggers = native.declarations(DeclarationKind::Trigger).unwrap();
     assert_eq!(
         triggers
@@ -120,6 +114,202 @@ fn direct_declarations_match_the_recorded_m45_boundary() {
             .scopes,
         DeclaredScopes::Any
     );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn modifier_declarations_match_the_recorded_m45_boundary() {
+    #[derive(serde::Deserialize)]
+    struct Expected {
+        count: usize,
+        gaps: BTreeMap<String, usize>,
+        samples: Vec<ModifierDeclaration>,
+    }
+    let expected: Expected = expected("modifier-declarations.json");
+    let answer = native().modifiers().unwrap();
+    assert_declared(&answer);
+
+    assert_eq!(answer.value.len(), expected.count);
+    assert_eq!(gap_counts(&answer), expected.gaps);
+    assert_eq!(expected.samples.len(), 10);
+    for sample in &expected.samples {
+        assert_eq!(find(&answer.value, &sample.name, |item| &item.name), sample);
+    }
+    for modifier in &answer.value {
+        assert_ne!(modifier.category_tags, DeclaredTags::Unresolved);
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn modifier_categories_are_the_names_of_the_category_switch() {
+    let answer = native().modifier_categories().unwrap();
+    assert_declared(&answer);
+    assert_eq!(answer.completeness, Completeness::Complete);
+    let names: Vec<_> = answer.value.iter().map(|item| item.name.clone()).collect();
+    assert_eq!(names, expected::<Vec<String>>("modifier-categories.json"));
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn scopes_group_keywords_by_the_engine_map_only() {
+    let answer = native().scopes().unwrap();
+    assert_eq!(answer.source.basis, Basis::Declared);
+    assert_eq!(answer.completeness, Completeness::Complete);
+    assert!(
+        answer
+            .gaps
+            .iter()
+            .all(|gap| gap.kind == GapKind::OutsideMethod)
+    );
+    assert_eq!(
+        answer.value,
+        expected::<ScopeInventory>("scope-inventory.json")
+    );
+    let federation = find(&answer.value.types, "federation", |item| &item.name);
+    assert_eq!(federation.keywords, ["alliance", "federation"]);
+    let groups: Vec<_> = answer
+        .value
+        .groups
+        .iter()
+        .map(|group| (group.keyword.as_str(), reference_names(&group.scopes)))
+        .collect();
+    assert_eq!(groups, [("carrier", vec!["planet", "ship"])]);
+    let countries: Vec<_> = answer
+        .value
+        .types
+        .iter()
+        .filter(|scope| scope.name == "country")
+        .collect();
+    assert_eq!(countries.len(), 2);
+    assert_ne!(countries[0].id, countries[1].id);
+    assert!(
+        answer
+            .value
+            .types
+            .iter()
+            .all(|scope| !scope.keywords.contains(&"carrier".into()))
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn scope_links_match_the_recorded_m45_boundary() {
+    #[derive(serde::Deserialize)]
+    struct Expected {
+        names: Vec<String>,
+        samples: Vec<ScopeLink>,
+    }
+    let expected: Expected = expected("scope-links.json");
+    let answer = native().scope_links().unwrap();
+    assert_declared(&answer);
+
+    let names: Vec<_> = answer.value.iter().map(|item| item.name.clone()).collect();
+    assert_eq!(names, expected.names);
+    for sample in &expected.samples {
+        assert_eq!(find(&answer.value, &sample.name, |item| &item.name), sample);
+    }
+
+    let documented = answer
+        .value
+        .iter()
+        .filter(|link| link.data == LinkData::None)
+        .count();
+    assert_eq!(documented, 99);
+    let capital = find(&answer.value, "capital_scope", |item| &item.name);
+    assert_eq!(listed_names(&capital.input_scopes), ["country"]);
+    let OutputScope::Listed(output) = &capital.output_scope else {
+        panic!("capital_scope declares its output");
+    };
+    assert_eq!(reference_names(output), ["colony"]);
+    let this = find(&answer.value, "this", |item| &item.name);
+    assert_eq!(
+        (&this.input_scopes, &this.output_scope),
+        (&DeclaredScopes::Any, &OutputScope::Various)
+    );
+    let unresolved: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind == GapKind::UnresolvedPath)
+        .filter_map(|gap| gap.subject.as_deref())
+        .collect();
+    assert_eq!(unresolved, ["event_target", "parameter"]);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn every_scope_reference_joins_to_one_declared_scope_type() {
+    let native = native();
+    let scopes = native.scopes().unwrap().value;
+    let types: BTreeMap<&ScopeId, &String> = scopes
+        .types
+        .iter()
+        .map(|scope| (&scope.id, &scope.name))
+        .collect();
+
+    let mut references = Vec::new();
+    for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
+        for declaration in native.declarations(kind).unwrap().value {
+            if let DeclaredScopes::Listed(scopes) = declaration.scopes {
+                references.extend(scopes);
+            }
+        }
+    }
+    for link in native.scope_links().unwrap().value {
+        if let DeclaredScopes::Listed(scopes) = link.input_scopes {
+            references.extend(scopes);
+        }
+        if let OutputScope::Listed(scopes) = link.output_scope {
+            references.extend(scopes);
+        }
+    }
+    for group in &scopes.groups {
+        references.extend(group.scopes.iter().cloned());
+    }
+
+    assert!(references.len() > 1000);
+    for reference in &references {
+        assert_eq!(types.get(&reference.id), Some(&&reference.name));
+    }
+}
+
+fn listed_names(scopes: &DeclaredScopes) -> Vec<&str> {
+    match scopes {
+        DeclaredScopes::Listed(scopes) => reference_names(scopes),
+        other => panic!("expected listed scopes, not {other:?}"),
+    }
+}
+
+fn reference_names(scopes: &[ScopeReference]) -> Vec<&str> {
+    scopes.iter().map(|scope| scope.name.as_str()).collect()
+}
+
+fn assert_declared<T>(answer: &Answer<Vec<T>>) {
+    assert_eq!(answer.source.basis, Basis::Declared);
+    let complete = answer
+        .gaps
+        .iter()
+        .all(|gap| gap.kind == GapKind::OutsideMethod);
+    assert_eq!(
+        answer.completeness == Completeness::Complete,
+        complete,
+        "completeness follows the gaps"
+    );
+}
+
+fn gap_counts<T>(answer: &Answer<Vec<T>>) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for gap in &answer.gaps {
+        *counts.entry(format!("{:?}", gap.kind)).or_default() += 1;
+    }
+    counts
+}
+
+fn find<'a, T>(items: &'a [T], name: &str, key: impl Fn(&T) -> &String) -> &'a T {
+    items
+        .iter()
+        .find(|item| key(item) == name)
+        .unwrap_or_else(|| panic!("{name} is in the answer"))
 }
 
 fn native() -> Native {
@@ -222,6 +412,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let registries = real.registries().unwrap();
     let fields = real.registry_fields("common/traditions").unwrap();
     let effects = real.declarations(DeclarationKind::Effect).unwrap();
+    let links = real.scope_links().unwrap();
     let unknown = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
@@ -236,6 +427,9 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.declarations(DeclarationKind::Effect).unwrap();
     again.source.basis = effects.source.basis;
     assert_eq!(again, effects);
+    let mut again = recorded.scope_links().unwrap();
+    again.source.basis = links.source.basis;
+    assert_eq!(again, links);
     // Errors are recorded too.
     assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
     assert!(matches!(

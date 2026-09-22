@@ -2,11 +2,12 @@
 use super::Native;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
-    Field, Gap, GapKind, Operation, Reader, ReaderId, ReaderKind, Registry, Source, Support,
+    Field, Gap, GapKind, Operation, Reader, ReaderId, ReaderKind, Registry, ScopeId,
+    ScopeReference, Source, Support,
 };
 use crate::binding::VerifiedAnalysis;
 use crate::engine::analysis::{
-    declarations::{self, DeclarationResult, ScopeOutcome, Site},
+    declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
     fields::{self, PathOutcome, RegistryFieldResult},
     readers,
@@ -15,7 +16,7 @@ use crate::{AnalysisError, UnavailableReason};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-fn error(operation: Operation, error: AnalysisError) -> Error {
+pub(super) fn error(operation: Operation, error: AnalysisError) -> Error {
     match error {
         AnalysisError::Unavailable { reasons }
             if reasons.contains(&UnavailableReason::TargetChanged) =>
@@ -41,7 +42,7 @@ impl Native {
 
     /// Answer from recorded files when they are the back end; otherwise run the method, and
     /// write the result when a recorder is set.
-    fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
+    pub(super) fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
         &self,
         question: &str,
         subject: Option<&str>,
@@ -67,19 +68,23 @@ impl Native {
         if operation == Operation::ObserveFixture && !self.bound().has_fixture_method() {
             return Support::Unsupported("this build has no fixture observation recipe".into());
         }
-        if operation == Operation::Declarations && !self.bound().has_declarations_method() {
+        if operation.is_declaration() && !self.bound().has_declarations_method() {
             return Support::Unsupported("this build has no declaration recipe".into());
         }
         match operation {
-            Operation::Registries | Operation::RegistryFields | Operation::Declarations => {
-                match &self.bound().analysis {
-                    Some(analysis) => match analysis.executable() {
-                        Ok(_) => Support::Supported,
-                        Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
-                    },
-                    None => Support::Unsupported("this build has no static analysis recipe".into()),
-                }
-            }
+            Operation::Registries
+            | Operation::RegistryFields
+            | Operation::Declarations
+            | Operation::Modifiers
+            | Operation::ModifierCategories
+            | Operation::Scopes
+            | Operation::ScopeLinks => match &self.bound().analysis {
+                Some(analysis) => match analysis.executable() {
+                    Ok(_) => Support::Supported,
+                    Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
+                },
+                None => Support::Unsupported("this build has no static analysis recipe".into()),
+            },
             Operation::RegistryItems | Operation::ObserveFixture => {
                 match self.selected_blocking_reasons() {
                     reasons if reasons.is_empty() => Support::Supported,
@@ -87,6 +92,28 @@ impl Native {
                 }
             }
         }
+    }
+
+    /// The bound analysis of a build whose declaration methods have been ported.
+    pub(super) fn declaration_analysis(
+        &self,
+        operation: Operation,
+    ) -> Result<&crate::binding::BoundAnalysis, Error> {
+        let analysis = self
+            .bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation,
+                reason: "this build has no static analysis recipe".into(),
+            })?;
+        if !analysis.has_declarations_method() {
+            return Err(Error::Unsupported {
+                operation,
+                reason: "this build has no declaration recipe".into(),
+            });
+        }
+        Ok(analysis)
     }
 
     fn verified_analysis(&self, operation: Operation) -> Result<VerifiedAnalysis<'_>, Error> {
@@ -109,21 +136,8 @@ impl Native {
     pub fn declarations(&self, kind: DeclarationKind) -> Result<Answer<Vec<Declaration>>, Error> {
         self.answer("declarations", Some(kind.subject()), || {
             let operation = Operation::Declarations;
-            let analysis = self
-                .bound()
-                .analysis
-                .as_ref()
-                .ok_or_else(|| Error::Unsupported {
-                    operation,
-                    reason: "this build has no static analysis recipe".into(),
-                })?;
-            if !analysis.has_declarations_method() {
-                return Err(Error::Unsupported {
-                    operation,
-                    reason: "this build has no declaration recipe".into(),
-                });
-            }
-            let input = analysis
+            let input = self
+                .declaration_analysis(operation)?
                 .declaration_input(kind)
                 .map_err(|failure| error(operation, failure))?;
             let result =
@@ -239,7 +253,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
             } => {
                 let scopes = match scopes {
                     ScopeOutcome::Any => DeclaredScopes::Any,
-                    ScopeOutcome::Listed(names) => DeclaredScopes::Listed(names.clone()),
+                    ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
                     ScopeOutcome::Unresolved(link) => {
                         if *link != "scope-table" {
                             gaps.push(Gap {
@@ -309,6 +323,22 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
         gaps,
         source: Source::new(build, declarations::METHOD, Basis::Declared),
     }
+}
+
+/// The public identity of a scope type. It hides the engine's bit number.
+pub(super) fn scope_id(scope: &ScopeType) -> ScopeId {
+    let digest = Sha256::digest(format!("scope-type/{}", scope.bit).as_bytes());
+    ScopeId(format!("{digest:x}")[..16].to_owned())
+}
+
+pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
+    types
+        .iter()
+        .map(|scope| ScopeReference {
+            id: scope_id(scope),
+            name: scope.name.clone(),
+        })
+        .collect()
 }
 
 pub(crate) fn normalized_field(
@@ -427,7 +457,10 @@ mod declaration_tests {
                         name: "known".into(),
                         description: "description".into(),
                         usage: "".into(),
-                        scopes: ScopeOutcome::Listed(vec!["country".into()]),
+                        scopes: ScopeOutcome::Listed(vec![ScopeType {
+                            bit: 2,
+                            name: "country".into(),
+                        }]),
                     },
                 ),
                 (

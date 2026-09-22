@@ -119,3 +119,4 @@ pub(in crate::binding) mod discovery;
 
 pub(super) mod declarations;
 pub(super) mod fields;
+pub(super) mod language;

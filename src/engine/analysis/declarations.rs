@@ -62,8 +62,16 @@ pub enum Site {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScopeOutcome {
     Any,
-    Listed(Vec<String>),
+    Listed(Vec<ScopeType>),
     Unresolved(&'static str),
+}
+
+/// One scope type: its bit in the engine's scope-type mask, which identifies it, and the engine's
+/// display name, which two types can share.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeType {
+    pub bit: usize,
+    pub name: String,
 }
 
 /// Every direct site and any input-wide gap.
@@ -117,7 +125,7 @@ fn target(row: &Instruction) -> Option<u64> {
     number(row.operands.as_str())
 }
 
-fn number(text: &str) -> Option<u64> {
+pub(crate) fn number(text: &str) -> Option<u64> {
     let text = text.strip_prefix('#').unwrap_or(text);
     if let Some(negative) = text.strip_prefix('-') {
         return number(negative).map(|value| 0u64.wrapping_sub(value));
@@ -346,10 +354,16 @@ fn scopes(input: &DeclarationInput, factory: u64) -> ScopeOutcome {
     let Some(mask) = constant_return(&rows) else {
         return ScopeOutcome::Unresolved("scope-mask");
     };
+    scope_mask(mask, input.scope_names.as_deref())
+}
+
+/// Scope names of a declared scope mask. Zero and all bits mean every scope. A name is kept as
+/// the engine spells it, even with a space (`pop job`); splitting it would invent a scope.
+pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
     if mask == 0 || mask == u64::MAX {
         return ScopeOutcome::Any;
     }
-    let Some(names) = &input.scope_names else {
+    let Some(names) = names else {
         return ScopeOutcome::Unresolved("scope-table");
     };
     let mut listed = Vec::new();
@@ -360,7 +374,10 @@ fn scopes(input: &DeclarationInput, factory: u64) -> ScopeOutcome {
         let Some(name) = names.get(index).filter(|name| !name.is_empty()) else {
             return ScopeOutcome::Unresolved("scope-name");
         };
-        listed.extend(name.split_whitespace().map(str::to_owned));
+        listed.push(ScopeType {
+            bit: index,
+            name: name.clone(),
+        });
     }
     ScopeOutcome::Listed(listed)
 }

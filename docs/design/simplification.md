@@ -50,6 +50,8 @@ native.supports(Operation::RegistryFields);             // Supported | Unsupport
 native.registries()?;                                   // Answer<Vec<Registry>>
 native.registry_fields("common/traditions")?;           // Answer<Vec<Field>>
 native.declarations(DeclarationKind::Effect)?;          // Answer<Vec<Declaration>>
+native.modifiers()?;  native.modifier_categories()?;    // SDK-536
+native.scopes()?;     native.scope_links()?;            // SDK-536
 
 // Implemented live questions. The consumer owns when a game runs; Native owns how.
 let mut game = native.start_game(GameOptions::new(supervisor_command)).await?;
@@ -92,7 +94,8 @@ pub struct Reader   { pub id: Option<ReaderId>, pub kind: ReaderKind }
 pub enum ReaderKind { Unknown /* extended as reader support lands */ }
 pub struct Declaration { pub name: String, pub description: String, pub usage: String,
                          pub scopes: DeclaredScopes, pub targets: DeclaredScopes }
-pub enum DeclaredScopes { Any, Listed(Vec<String>), Unresolved }
+pub enum DeclaredScopes { Any, Listed(Vec<ScopeReference>), Unresolved }
+pub struct ScopeReference { pub id: ScopeId, pub name: String } // SDK-536: join by id, not name
 ```
 
 ### Recorded answers cover static and live questions

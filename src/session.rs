@@ -2,6 +2,7 @@
 use crate::{OpenError, UnavailableReason, binding::Binding};
 use std::sync::{Arc, Mutex};
 
+mod language;
 pub(crate) mod questions;
 
 #[derive(Debug)]
