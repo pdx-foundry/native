@@ -62,7 +62,8 @@ pub(super) fn analysis(
     installation: super::installation::Installation,
 ) -> Result<super::BoundAnalysis, OpenError> {
     machine::static_methods(image.architecture)?;
-    let recipe = targets::lookup(image)?.discovery;
+    let target = targets::lookup(image)?;
+    let recipe = target.discovery;
     let layout = crate::engine::analysis::discovery::SchedulerLayout {
         start: recipe.start,
         end: recipe.end,
@@ -70,5 +71,9 @@ pub(super) fn analysis(
         stride: recipe.stride,
         count: recipe.count,
     };
-    Ok(super::BoundAnalysis::new(layout, installation))
+    Ok(super::BoundAnalysis::new(
+        layout,
+        target.declarations,
+        installation,
+    ))
 }

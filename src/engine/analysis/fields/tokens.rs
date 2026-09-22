@@ -87,7 +87,7 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>)
     };
     recover_decoded(&rows, &input.symbols, &input.strings)
 }
-fn recover_decoded(
+pub(super) fn recover_decoded(
     rows: &[Instruction],
     symbols: &[Symbol],
     strings: &BTreeMap<u64, String>,

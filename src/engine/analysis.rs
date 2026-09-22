@@ -1,4 +1,5 @@
 //! Bounded static methods. Each reads the executable and needs no game process.
+pub mod declarations;
 pub mod decode;
 pub mod directories;
 // The startup scheduler remains a bounded test method while shared-template candidates are used

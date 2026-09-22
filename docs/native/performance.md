@@ -1,5 +1,7 @@
 # SDK-559: static analysis and live-test costs
 
+The SDK-535 declaration reader is a separate static method. On the installed M45 build, one release example run measured 1.39 seconds for effects (including the first catalog read) and 0.75 seconds for triggers on the same `Native`. The SDK-559 registry timings below do not apply to it.
+
 Measured on 2026-09-21. The main fix is to optimize `sha2` and `cpp_demangle` in the dev
 profile. It reduces a first static registry query from about 60 seconds to 6.1–6.6 seconds
 in the isolated experiment. Native's own code remains unoptimized and debuggable. No query,

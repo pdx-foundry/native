@@ -16,6 +16,9 @@ const EXPORTS: &[&str] = &[
     "Basis",
     "BuildId",
     "Completeness",
+    "Declaration",
+    "DeclarationKind",
+    "DeclaredScopes",
     "Disposal",
     "Error",
     "Field",
@@ -571,6 +574,10 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
         ),
         (
             "fn f() { let _ = pdx_native::Operation::Registries; }",
+            true,
+        ),
+        (
+            "fn f() { let _ = pdx_native::Operation::Declarations; }",
             true,
         ),
         ("// pdx_native::internals\nfn f() {}", true),

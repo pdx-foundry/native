@@ -40,6 +40,29 @@ mod tokens;
 pub use records::*;
 
 use super::InputError;
+use std::collections::BTreeMap;
+
+/// Literal token identifiers shared with other static command readers.
+pub(crate) fn literal_token_names(
+    code: &[u8],
+    address: u64,
+    symbols: &[crate::engine::analysis::discovery::Symbol],
+    strings: &BTreeMap<u64, String>,
+) -> Result<BTreeMap<u64, String>, InputError> {
+    let mut rows = Vec::new();
+    for (index, chunk) in code.chunks(4096).enumerate() {
+        rows.extend(
+            super::decode::decode_arm64(chunk, address + (index * 4096) as u64)
+                .map_err(|error| InputError(error.to_string()))?,
+        );
+    }
+    let (tokens, _) = tokens::recover_decoded(&rows, symbols, strings);
+    Ok(tokens
+        .into_iter()
+        .filter(|(_, token)| !token.ambiguous)
+        .map(|(number, token)| (number as u32 as u64, token.name))
+        .collect())
+}
 
 /// Name and revision of the method, as stamped on its answers.
 pub const METHOD: &str = "registry-fields/v3";

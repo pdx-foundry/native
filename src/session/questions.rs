@@ -1,11 +1,12 @@
 //! Static questions: answered from the executable, with no game process.
 use super::Native;
 use crate::answer::{
-    Answer, Basis, BuildId, Completeness, Error, Field, Gap, GapKind, Operation, Reader, ReaderId,
-    ReaderKind, Registry, Source, Support,
+    Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
+    Field, Gap, GapKind, Operation, Reader, ReaderId, ReaderKind, Registry, Source, Support,
 };
 use crate::binding::VerifiedAnalysis;
 use crate::engine::analysis::{
+    declarations::{self, DeclarationResult, ScopeOutcome, Site},
     directories::{self, Directory},
     fields::{self, PathOutcome, RegistryFieldResult},
     readers,
@@ -66,14 +67,19 @@ impl Native {
         if operation == Operation::ObserveFixture && !self.bound().has_fixture_method() {
             return Support::Unsupported("this build has no fixture observation recipe".into());
         }
+        if operation == Operation::Declarations && !self.bound().has_declarations_method() {
+            return Support::Unsupported("this build has no declaration recipe".into());
+        }
         match operation {
-            Operation::Registries | Operation::RegistryFields => match &self.bound().analysis {
-                Some(analysis) => match analysis.executable() {
-                    Ok(_) => Support::Supported,
-                    Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
-                },
-                None => Support::Unsupported("this build has no static analysis recipe".into()),
-            },
+            Operation::Registries | Operation::RegistryFields | Operation::Declarations => {
+                match &self.bound().analysis {
+                    Some(analysis) => match analysis.executable() {
+                        Ok(_) => Support::Supported,
+                        Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
+                    },
+                    None => Support::Unsupported("this build has no static analysis recipe".into()),
+                }
+            }
             Operation::RegistryItems | Operation::ObserveFixture => {
                 match self.selected_blocking_reasons() {
                     reasons if reasons.is_empty() => Support::Supported,
@@ -93,6 +99,37 @@ impl Native {
                 reason: "this build has no static analysis recipe".into(),
             })?;
         analysis.verified().map_err(|e| error(operation, e))
+    }
+
+    /// Read effect or trigger declarations from direct registration calls in executable text.
+    ///
+    /// Each direct call is one site. A site with a runtime name or unreadable documentation
+    /// leaves a gap. Indirect registration, argument grammar, behavior, and actual scope
+    /// availability are outside this method.
+    pub fn declarations(&self, kind: DeclarationKind) -> Result<Answer<Vec<Declaration>>, Error> {
+        self.answer("declarations", Some(kind.subject()), || {
+            let operation = Operation::Declarations;
+            let analysis = self
+                .bound()
+                .analysis
+                .as_ref()
+                .ok_or_else(|| Error::Unsupported {
+                    operation,
+                    reason: "this build has no static analysis recipe".into(),
+                })?;
+            if !analysis.has_declarations_method() {
+                return Err(Error::Unsupported {
+                    operation,
+                    reason: "this build has no declaration recipe".into(),
+                });
+            }
+            let input = analysis
+                .declaration_input(kind)
+                .map_err(|failure| error(operation, failure))?;
+            let result =
+                declarations::analyze(&input).map_err(|error| Error::Method(error.to_string()))?;
+            Ok(normalized_declarations(&result, self.build()))
+        })
     }
 
     /// List the engine registries, each named by its content directory.
@@ -187,6 +224,86 @@ pub(crate) fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
         .iter()
         .map(|field| normalized_field(field, result))
         .collect()
+}
+
+fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer<Vec<Declaration>> {
+    let mut value = Vec::new();
+    let mut gaps = Vec::new();
+    for (_, site) in &result.sites {
+        match site {
+            Site::Declared {
+                name,
+                description,
+                usage,
+                scopes,
+            } => {
+                let scopes = match scopes {
+                    ScopeOutcome::Any => DeclaredScopes::Any,
+                    ScopeOutcome::Listed(names) => DeclaredScopes::Listed(names.clone()),
+                    ScopeOutcome::Unresolved(link) => {
+                        if *link != "scope-table" {
+                            gaps.push(Gap {
+                                kind: GapKind::UnresolvedPath,
+                                subject: Some(name.clone()),
+                                detail: format!("scope declaration not followed at {link}"),
+                            });
+                        }
+                        DeclaredScopes::Unresolved
+                    }
+                };
+                value.push(Declaration {
+                    name: name.clone(),
+                    description: description.clone(),
+                    usage: usage.clone(),
+                    scopes,
+                    targets: DeclaredScopes::Listed(Vec::new()),
+                });
+            }
+            Site::RuntimeToken { family } => gaps.push(Gap {
+                kind: GapKind::UnnamedDeclaration,
+                subject: None,
+                detail: format!(
+                    "registration of the {family} family composes its name at run time"
+                ),
+            }),
+            Site::Unreadable {
+                name: Some(name),
+                what,
+            } => gaps.push(Gap {
+                kind: GapKind::UnresolvedPath,
+                subject: Some(name.clone()),
+                detail: format!("{what} could not be read"),
+            }),
+            Site::Unreadable { name: None, .. } => gaps.push(Gap {
+                kind: GapKind::UnreadableInput,
+                subject: None,
+                detail: "registration token table could not be read".into(),
+            }),
+        }
+    }
+    if !result.table_gaps.is_empty() {
+        gaps.push(Gap {
+            kind: GapKind::UnreadableInput,
+            subject: None,
+            detail: "scope name table not found".into(),
+        });
+    }
+    gaps.push(Gap {
+        kind: GapKind::OutsideMethod,
+        subject: None,
+        detail: "The search covers every direct registration call in executable text. Indirect registration, argument grammar, behavior, and actual scope availability are outside it.".into(),
+    });
+    value.sort_by(|left, right| left.name.cmp(&right.name));
+    Answer {
+        value,
+        completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
+            Completeness::Complete
+        } else {
+            Completeness::Partial
+        },
+        gaps,
+        source: Source::new(build, declarations::METHOD, Basis::Declared),
+    }
 }
 
 pub(crate) fn normalized_field(
@@ -289,4 +406,89 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         });
     }
     gaps
+}
+
+#[cfg(test)]
+mod declaration_tests {
+    use super::*;
+
+    #[test]
+    fn omitted_sites_make_a_partial_answer_without_fabricated_text() {
+        let result = DeclarationResult {
+            sites: vec![
+                (
+                    1,
+                    Site::Declared {
+                        name: "known".into(),
+                        description: "description".into(),
+                        usage: "".into(),
+                        scopes: ScopeOutcome::Listed(vec!["country".into()]),
+                    },
+                ),
+                (
+                    2,
+                    Site::RuntimeToken {
+                        family: "effect".into(),
+                    },
+                ),
+                (
+                    3,
+                    Site::Unreadable {
+                        name: Some("missing".into()),
+                        what: "documentation",
+                    },
+                ),
+            ],
+            table_gaps: vec![],
+        };
+        let answer = normalized_declarations(&result, BuildId("test".into()));
+        assert_eq!(answer.value.len(), 1);
+        assert_eq!(answer.value[0].name, "known");
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnnamedDeclaration)
+        );
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnresolvedPath
+                    && gap.subject.as_deref() == Some("missing"))
+        );
+    }
+
+    #[test]
+    fn global_scope_gap_accounts_for_every_unresolved_scope() {
+        let result = DeclarationResult {
+            sites: vec![(
+                1,
+                Site::Declared {
+                    name: "known".into(),
+                    description: "description".into(),
+                    usage: "".into(),
+                    scopes: ScopeOutcome::Unresolved("scope-table"),
+                },
+            )],
+            table_gaps: vec!["scope-table"],
+        };
+        let answer = normalized_declarations(&result, BuildId("test".into()));
+        assert_eq!(answer.value[0].scopes, DeclaredScopes::Unresolved);
+        assert_eq!(
+            answer
+                .gaps
+                .iter()
+                .filter(|gap| gap.kind == GapKind::UnreadableInput)
+                .count(),
+            1
+        );
+        assert!(
+            !answer
+                .gaps
+                .iter()
+                .any(|gap| gap.subject.as_deref() == Some("known"))
+        );
+    }
 }

@@ -1,6 +1,118 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
-use pdx_native::{Basis, Completeness, Error, Field, GapKind, Native, ReaderKind};
+use pdx_native::{
+    Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error, Field, GapKind,
+    Native, ReaderKind,
+};
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn direct_declarations_match_the_recorded_m45_boundary() {
+    let native = native();
+    let gap_counts: serde_json::Value = expected("declaration-gaps.json");
+    for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
+        let subject = match kind {
+            DeclarationKind::Effect => "effect",
+            DeclarationKind::Trigger => "trigger",
+            _ => unreachable!("the test covers the M45 effect and trigger kinds"),
+        };
+        let answer = native.declarations(kind).unwrap();
+        assert_eq!(answer.source.basis, Basis::Declared);
+        let names: std::collections::BTreeSet<_> =
+            answer.value.iter().map(|item| item.name.clone()).collect();
+        let omitted: std::collections::BTreeSet<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| {
+                gap.kind == GapKind::UnresolvedPath
+                    && !names.contains(gap.subject.as_deref().unwrap_or(""))
+            })
+            .filter_map(|gap| gap.subject.clone())
+            .collect();
+        let accounted: Vec<_> = names.union(&omitted).cloned().collect();
+        assert_eq!(
+            omitted.into_iter().collect::<Vec<_>>(),
+            gap_counts[subject]["unreadable"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|name| name.as_str().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            accounted,
+            expected::<Vec<String>>(&format!("declarations-{subject}.json"))
+        );
+        assert_eq!(
+            answer
+                .gaps
+                .iter()
+                .filter(|gap| gap.kind == GapKind::UnnamedDeclaration)
+                .count(),
+            gap_counts[subject]["runtime_token_sites"].as_u64().unwrap() as usize
+        );
+        assert_eq!(
+            answer.completeness,
+            if answer
+                .gaps
+                .iter()
+                .all(|gap| gap.kind == GapKind::OutsideMethod)
+            {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            }
+        );
+        let global_scope_gap = answer.gaps.iter().any(|gap| {
+            gap.kind == GapKind::UnreadableInput && gap.detail == "scope name table not found"
+        });
+        for item in &answer.value {
+            assert_eq!(item.targets, DeclaredScopes::Listed(vec![]));
+            assert!(!item.description.contains("Supported Scopes:"));
+            assert!(!item.usage.contains("Supported Scopes:"));
+            if item.scopes == DeclaredScopes::Unresolved && !global_scope_gap {
+                assert!(
+                    answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.kind == GapKind::UnresolvedPath
+                            && gap.subject.as_deref() == Some(&item.name))
+                );
+            }
+        }
+        let samples: Vec<Declaration> = expected(&format!("declaration-samples-{subject}.json"));
+        assert_eq!(samples.len(), 10);
+        for sample in samples {
+            assert_eq!(
+                answer.value.iter().find(|item| item.name == sample.name),
+                Some(&sample)
+            );
+        }
+    }
+    let effects = native.declarations(DeclarationKind::Effect).unwrap();
+    assert_eq!(
+        effects
+            .value
+            .iter()
+            .find(|item| item.name == "win")
+            .unwrap()
+            .scopes,
+        DeclaredScopes::Listed(vec!["country".into()])
+    );
+    assert!(
+        matches!(effects.value.iter().find(|item| item.name == "add_blocker").unwrap().scopes, DeclaredScopes::Listed(ref scopes) if scopes.contains(&"colony".into()))
+    );
+    let triggers = native.declarations(DeclarationKind::Trigger).unwrap();
+    assert_eq!(
+        triggers
+            .value
+            .iter()
+            .find(|item| item.name == "if")
+            .unwrap()
+            .scopes,
+        DeclaredScopes::Any
+    );
+}
 
 fn native() -> Native {
     Native::open(
@@ -101,6 +213,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let real = native().record_answers_to(directory.path());
     let registries = real.registries().unwrap();
     let fields = real.registry_fields("common/traditions").unwrap();
+    let effects = real.declarations(DeclarationKind::Effect).unwrap();
     let unknown = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
@@ -112,6 +225,9 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.registry_fields("common/traditions").unwrap();
     again.source.basis = fields.source.basis;
     assert_eq!(again, fields);
+    let mut again = recorded.declarations(DeclarationKind::Effect).unwrap();
+    again.source.basis = effects.source.basis;
+    assert_eq!(again, effects);
     // Errors are recorded too.
     assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
     assert!(matches!(

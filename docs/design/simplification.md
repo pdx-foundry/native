@@ -49,6 +49,7 @@ native.supports(Operation::RegistryFields);             // Supported | Unsupport
 // Implemented static questions.
 native.registries()?;                                   // Answer<Vec<Registry>>
 native.registry_fields("common/traditions")?;           // Answer<Vec<Field>>
+native.declarations(DeclarationKind::Effect)?;          // Answer<Vec<Declaration>>
 
 // Implemented live questions. The consumer owns when a game runs; Native owns how.
 let mut game = native.start_game(GameOptions::new(supervisor_command)).await?;
@@ -59,7 +60,6 @@ game.close().await?;                                    // Disposal: Confirmed |
 let native = Native::from_recorded_answers("/path/to/recorded-answers")?;
 
 // Planned operations, not present yet.
-native.declarations(DeclarationKind::Effect)?;          // milestone 3
 native.defines()?;  native.on_actions()?;               // milestone 3
 ```
 
@@ -91,7 +91,8 @@ pub struct Field    { pub name: String, pub reader: Reader, pub conditional: boo
 pub struct Reader   { pub id: Option<ReaderId>, pub kind: ReaderKind }
 pub enum ReaderKind { Unknown /* extended as reader support lands */ }
 pub struct Declaration { pub name: String, pub description: String, pub usage: String,
-                         pub scopes: Vec<String>, pub targets: Vec<String> }
+                         pub scopes: DeclaredScopes, pub targets: DeclaredScopes }
+pub enum DeclaredScopes { Any, Listed(Vec<String>), Unresolved }
 ```
 
 ### Recorded answers cover static and live questions

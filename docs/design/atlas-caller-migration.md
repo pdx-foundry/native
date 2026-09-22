@@ -31,6 +31,8 @@ A confirmed process disposal can accompany a cleanup error, such as an unresolve
 
 ## Keep the answer whole
 
+`Native::declarations(DeclarationKind::{Effect, Trigger})` supplies declared command text and scopes for Atlas's command existence, declared scopes, and documentation routes.
+
 Atlas retains `value`, `completeness`, typed `gaps` and `Source`. The source contains the exact
 build, Native version, method and basis. This is the accepted amendment to SDK-473, recorded in
 [the Atlas map](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database).

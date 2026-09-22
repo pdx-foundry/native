@@ -38,14 +38,18 @@ SDK-509 owns custom/nested/late discovery; SDK-510 owns mounted selection and du
 
 SDK-488 accepted the bounded engine-produced inventory: 1,096 triggers, 1,074 effects, 99 scope links and 45,578 modifier entries, without config/historical dump seeds. Fourteen live parser-scope checks agree with declarations. `atlas-discovery/prototype/engine-command-discovery/` retains the native documentation boundary, logs, factory bindings, exact normalization, omission/missing-scope controls and offline replay. Frozen inventory precedes historical comparison.
 
+SDK-535 ports effects and triggers to `Native::declarations`. The M45 direct-call scan finds 1,067 effect sites and 1,091 trigger sites. It returns 761 named effects and 885 named triggers; 306 effect and 206 trigger sites compose names at run time. The remaining names in the live inventory are outside this direct-call boundary: effects `if`, `else`, `else_if`, `join_war_on_side`, `remove_building`, `remove_zone`, `weighted_random_owned_pop_group`; triggers `and`, `custom_progress`, `hidden_progress`, `num_proxy_war`, `simple_progress`. They are not silently counted as direct sites.
+
+The static reader joins a registration token to its factory vtable and documentation string, then follows the factory's create method to the command vtable and supported-scope getter. It derives bit names from `NEventScope::GetScopeName` in this exact build. A zero getter mask means `Any`, as the live documentation shows for `if`; other masks list names in bit order. An unresolved link stays on the returned declaration as `DeclaredScopes::Unresolved` with a gap. The method does not establish registration timing or reachability, and does not read config files.
+
 Modifier categories are intended-use tags, not demonstrated application contexts. Real object application and propagation through containers remain unqualified. The native documentation facility supplies observations; Atlas decides which rule claims the evidence supports.
 
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
 
 ## Rust ports
 
-The Rust code in `src/engine/analysis` ports three of these methods: template registry discovery
+The Rust code in `src/engine/analysis` ports four of these methods: template registry discovery
 with the static scheduler table (SDK-489), registry names from the database constructors, and root
-fields with their reader joins (SDK-487). The module comments describe each method. The methods
+fields with their reader joins (SDK-487), and effect and trigger declarations (SDK-535). The module comments describe each method. The methods
 read the executable only and receive no field or config seeds. The five shared-reader contracts
 above stay unresolved, so no registry has a complete field answer.

@@ -1,0 +1,126 @@
+[
+  {
+    "name": "win",
+    "description": "The scoped country wins the game",
+    "usage": "win = yes",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "add_blocker",
+    "description": "Adds a blocker to a colony carrier, with some control over what it is set to block (add_deposit will add a random planetary deposit to block)",
+    "usage": "add_blocker = {\n\ttype = <key>\n\tblocked_deposit = none (default)/<deposit scope - copies the type to the blocked deposit but any flags or variables are lost>/random\n}",
+    "scopes": {
+      "Listed": [
+        "planet",
+        "ship",
+        "colony"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "abort_special_project",
+    "description": "Aborts a specific special project for the country, removing it from the situation log",
+    "usage": "abort_special_project = { type = <project key> location = <target> }",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "set_country_flag",
+    "description": "Sets an arbitrarily-named flag on the scoped country",
+    "usage": "set_country_flag = <key> (note: one can use e.g. my_flag@from to track relationships between objects)",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "add_experience",
+    "description": "Adds a sum of experience points to the scoped leader",
+    "usage": "add_experience = 200",
+    "scopes": {
+      "Listed": [
+        "leader"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "abort_situation",
+    "description": "Destroys a situation in right hand side event target, firing on_abort (use to cancel and fire that effect)",
+    "usage": "abort_situation = <event target>",
+    "scopes": "Any",
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "accept_covenant",
+    "description": "Accepts covenant proposition with Shroud Patron.",
+    "usage": "accept_covenant = <patron_name>",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "activate_crisis_progression",
+    "description": "Activates crisis progression for the country",
+    "usage": "activate_crisis_progression = <path_name>.",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "activate_fog_machine",
+    "description": "Creates cloud effect at every star system controlled by the country",
+    "usage": "activate_fog_machine = <cloud_type>",
+    "scopes": {
+      "Listed": [
+        "country"
+      ]
+    },
+    "targets": {
+      "Listed": []
+    }
+  },
+  {
+    "name": "activate_gateway",
+    "description": "Activates the gateway associated with a megastructure.",
+    "usage": "activate_gateway = <target>",
+    "scopes": "Any",
+    "targets": {
+      "Listed": []
+    }
+  }
+]

@@ -12,12 +12,17 @@ Native is one Cargo package with no optional features. The
 No game starts. A registry is named by its content directory. See `examples/registries.rs`.
 
 ```rust
-use pdx_native::Native;
+use pdx_native::{DeclarationKind, Native};
 
 let native = Native::open("/path/to/Stellaris")?;
 let registries = native.registries()?;                      // Answer<Vec<Registry>>
 let fields = native.registry_fields("common/traditions")?;  // Answer<Vec<Field>>
+let effects = native.declarations(DeclarationKind::Effect)?; // Answer<Vec<Declaration>>
 ```
+
+`declarations` covers direct calls to the effect or trigger registration function in executable
+text. Runtime-composed names and unreadable documentation are gaps. See
+`examples/declarations.rs`.
 
 ## Live questions
 
@@ -143,6 +148,8 @@ A recorded answer always has `Basis::Recorded`. A question with no file gives `E
 build.json
 registries.json
 registry_fields/common/traditions.json
+declarations/effect.json
+declarations/trigger.json
 registry_items/common/traditions.json
 observe_fixture/<files-hash>/<request-hash>.json
 ```
