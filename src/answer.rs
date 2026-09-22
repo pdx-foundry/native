@@ -117,7 +117,8 @@ pub enum Operation {
 pub enum Disposal {
     /// The supervisor reaped the game process that it owned.
     Confirmed,
-    /// Disposal is not established. A new game is refused until this is resolved.
+    /// Disposal was not established for this session. A new game is refused while a conflicting
+    /// Stellaris process remains visible to the host reservation check.
     Unconfirmed(String),
     /// No game process was created: the start failed early, or the answers are recorded.
     NotApplicable,

@@ -102,7 +102,7 @@ the state after the simplification effort:
 | `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations`, `defines`, `on_actions` | Planned | A declaration kind | Engine declarations with description, usage, and scopes |
-| `Game::observe_fixture`: registration entries | M45-observe only; first three initial effect-registration calls | One file under `common/traditions` or `common/tradition_categories`, selected before launch | Entry identity and source location during the initial category-load window |
+| `Game::observe_fixture`: registration entries | M45-observe only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
 | `Game::observe_fixture`: category reads | M45-observe only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
 | `Game::observe_fixture`: field outcomes | M45-observe only; initial file load for a registry with a verified loader and owner boundary | At most 32 named definition and field questions in one bounded relative text file | Source-correlated diagnostics and string storage where the exact-build binding supports the field; other dimensions report unavailable |
 

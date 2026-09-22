@@ -23,11 +23,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut unknown_identities = 0;
     let mut known_kinds = 0;
     let mut unknown_kinds = 0;
+    let mut field_method: Option<String> = None;
 
     for registry in &registries.value {
         let query_started = Instant::now();
         match native.registry_fields(&registry.name) {
             Ok(answer) => {
+                match &field_method {
+                    Some(method) if method != &answer.source.method => {
+                        return Err("Registry field methods differ within one sweep".into());
+                    }
+                    None => field_method = Some(answer.source.method.clone()),
+                    _ => {}
+                }
                 success += 1;
                 let path_gaps = answer
                     .gaps
@@ -76,8 +84,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .map(|(id, fields)| (id, json!({ "count": fields.len(), "fields": fields })))
         .collect();
+    let field_method = field_method.ok_or("No registry field method was established")?;
     let output = json!({
-        "method": "registry-fields/v2",
+        "method": field_method,
         "build": native.build(),
         "elapsed_ms": started.elapsed().as_millis(),
         "registry_count": registries.value.len(),

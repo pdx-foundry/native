@@ -73,7 +73,7 @@ One result type:
 pub struct Answer<T> {
     pub value: T,
     pub completeness: Completeness,   // Complete | Partial
-    pub gaps: Vec<Gap>,               // typed; empty when Complete
+    pub gaps: Vec<Gap>,               // typed; Complete may retain limits outside the method
     pub source: Source,               // build id, Native version, method name, basis
 }
 pub enum Basis { Declared, StaticAnalysis, LiveObservation, Recorded }
