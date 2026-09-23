@@ -310,7 +310,7 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
         match path_context(&path, field, scope_object) {
             Err(reason) => return Output::Unresolved(reason),
             Ok(PathContext::ScopeObject) => various = true,
-            Ok(PathContext::Unchanged) => {}
+            Ok(PathContext::Unchanged | PathContext::Trapped) => {}
             Ok(PathContext::Selected(value)) => {
                 contexts.insert(value);
             }
@@ -369,7 +369,7 @@ fn join(input: &LocalizationInput, bit: usize) -> Join {
         match path_context(path, field, input.functions.scope_object) {
             Err(reason) => return Join::Unresolved(reason),
             Ok(PathContext::ScopeObject) => return Join::Unresolved("scope-object-recursion"),
-            Ok(PathContext::Unchanged) => {}
+            Ok(PathContext::Unchanged | PathContext::Trapped) => {}
             Ok(PathContext::Selected(value)) => {
                 contexts.insert(value);
             }
@@ -415,7 +415,10 @@ fn call(
 
 enum PathContext {
     Selected(u64),
+    /// The path returned without selecting a context.
     Unchanged,
+    /// The path does not return, so it gives no text.
+    Trapped,
     ScopeObject,
 }
 
@@ -428,6 +431,7 @@ fn path_context(
         Err(Unresolved(reason)) => Err(reason),
         Ok(Exit::Stopped(target)) if target == scope_object => Ok(PathContext::ScopeObject),
         Ok(Exit::Stopped(_)) => Err("stopped"),
+        Ok(Exit::Trapped) => Ok(PathContext::Trapped),
         Ok(Exit::Returned) => match path.machine.read(field, 4) {
             None => Err("context-unknown"),
             Some(UNCHANGED) => Ok(PathContext::Unchanged),
@@ -520,15 +524,15 @@ mod tests {
             (0x2408, "adrp", "x0,#0x5000"),
             (0x240c, "add", "x0,x0,#0x300"),
             (0x2410, "ret", ""),
-            // Link function: index 0 checks run-time state before one setter.
+            // Link function: index 0 checks run-time state; one side selects a context and the
+            // other traps.
             (0x3000, "cmp", "w2,#0"),
             (0x3004, "b.ne", "#0x3020"),
             (0x3008, "ldr", "x8,[x9]"),
             (0x300c, "cbz", "x8,#0x3018"),
             (0x3010, "mov", "x0,x1"),
             (0x3014, "b", "#0x4000"),
-            (0x3018, "mov", "x0,x1"),
-            (0x301c, "b", "#0x4000"),
+            (0x3018, "brk", "#0x1"),
             // Index 1 hands the text to the scope-object setter.
             (0x3020, "cmp", "w2,#1"),
             (0x3024, "b.ne", "#0x3030"),

@@ -128,6 +128,9 @@ pub enum Exit {
     Returned,
     /// The caller stopped the run at a call to this address.
     Stopped(u64),
+    /// The path reached a trap instruction, so it does not return. Only
+    /// [`Machine::run_paths`] reports it.
+    Trapped,
 }
 
 /// How one path of [`Machine::run_paths`] ended, with the machine state at its end.
@@ -247,7 +250,7 @@ impl<'a> Machine<'a> {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) => pc = target,
                 Flow::Unknown { reason, .. } => return Err(Unresolved(reason)),
-                Flow::IndirectCall(_) => return Err(Unresolved("instruction")),
+                Flow::IndirectCall(_) | Flow::Trap => return Err(Unresolved("instruction")),
                 Flow::Call(target) => match calls(target, self)? {
                     Call::Return(value) => {
                         self.returned_from_call(value);
@@ -363,6 +366,7 @@ impl<'a> Machine<'a> {
                     Err(unresolved) => return Walk::End(Err(unresolved)),
                 },
                 Flow::Return => return Walk::End(Ok(Exit::Returned)),
+                Flow::Trap => return Walk::End(Ok(Exit::Trapped)),
             }
         }
 
@@ -436,7 +440,7 @@ impl<'a> Machine<'a> {
                 self.assign(destination, value)?;
             }
             (
-                "add" | "sub" | "and" | "orr" | "eor" | "lsl" | "lsr" | "asr",
+                "add" | "sub" | "and" | "orr" | "eor" | "lsl" | "lsr" | "asr" | "mul",
                 [destination, left, right, rest @ ..],
             ) => {
                 let wide = destination.is_wide();
@@ -665,6 +669,7 @@ impl<'a> Machine<'a> {
             ("bl", [Operand::Immediate(target)]) => return Ok(Flow::Call(*target as u64)),
             ("blr", [register]) => return Ok(Flow::IndirectCall(self.operand(register)?)),
             ("ret", []) => return Ok(Flow::Return),
+            ("brk", [Operand::Immediate(_)]) => return Ok(Flow::Trap),
             _ => return Err(Unresolved("instruction")),
         }
         Ok(Flow::Next)
@@ -778,6 +783,7 @@ enum Flow {
     /// A call through a register, whose target may be unknown.
     IndirectCall(Option<u64>),
     Return,
+    Trap,
 }
 
 fn binary(mnemonic: &str, left: u64, right: u64, wide: bool) -> u64 {
@@ -788,6 +794,7 @@ fn binary(mnemonic: &str, left: u64, right: u64, wide: bool) -> u64 {
         "and" => left & right,
         "orr" => left | right,
         "eor" => left ^ right,
+        "mul" => left.wrapping_mul(right),
         "lsl" => left.wrapping_shl((right % bits) as u32),
         "lsr" => truncate(left, wide) >> (right % bits),
         _ => (sign_extend(truncate(left, wide), bits / 8, true) as i64 >> (right % bits)) as u64,
@@ -1520,6 +1527,34 @@ mod tests {
             Err(Unresolved("flags")),
             "a single run still refuses the unknown flags"
         );
+    }
+
+    #[test]
+    fn a_trap_ends_a_path_but_not_a_single_run() {
+        let code = rows(&[
+            (0x100, "mov", "w9,#6"),
+            (0x104, "mul", "w0,w9,w9"),
+            (0x108, "cbz", "x3,#0x110"),
+            (0x10c, "ret", ""),
+            (0x110, "brk", "#0x1"),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+        let mut ends: Vec<_> = paths
+            .iter()
+            .map(|path| (path.end, path.machine.register(0)))
+            .collect();
+        ends.sort_by_key(|(end, _)| format!("{end:?}"));
+
+        assert_eq!(
+            ends,
+            [
+                (Ok(Exit::Returned), Some(36)),
+                (Ok(Exit::Trapped), Some(36))
+            ]
+        );
+        let trap = rows(&[(0x100, "brk", "#0x1")]);
+        assert_eq!(returned(&trap, &data, 0), Err(Unresolved("instruction")));
     }
 
     #[test]
