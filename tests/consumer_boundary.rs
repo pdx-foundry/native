@@ -21,6 +21,8 @@ const EXPORTS: &[&str] = &[
     "DeclarationKind",
     "DeclaredScopes",
     "DeclaredTags",
+    "Define",
+    "DefineValueType",
     "Disposal",
     "EntryContext",
     "EntryScope",
@@ -549,6 +551,10 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
             "use pdx_native::{Native, supervisor::serve}; fn f() {}",
             true,
         ),
+        (
+            "use pdx_native::{Define, DefineValueType}; fn f() { let _ = pdx_native::DefineValueType::Integer; }",
+            true,
+        ),
         ("use pdx_native::{Native, internals};", false),
         ("use pdx_native as native; fn f() {}", false),
         ("extern crate pdx_native as native; fn f() {}", false),
@@ -607,6 +613,7 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
             "fn f() { let _ = pdx_native::Operation::Declarations; }",
             true,
         ),
+        ("fn f() { let _ = pdx_native::Operation::Defines; }", true),
         (
             "fn f() { let _ = pdx_native::Operation::ScopeLinks; }",
             true,

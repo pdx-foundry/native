@@ -2,6 +2,7 @@
 pub mod callbacks;
 pub mod declarations;
 pub mod decode;
+pub mod defines;
 pub mod directories;
 pub mod evaluate;
 pub mod families;

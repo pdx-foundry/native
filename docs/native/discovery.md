@@ -401,3 +401,21 @@ the scopes that their call sites supply. SDK-540 adds modifier families from dat
 generators. The module comments describe each method. The methods
 read the executable only and receive no field or config seeds. The five shared-reader contracts
 above stay unresolved, so no registry has a complete field answer.
+
+### Define read helpers (SDK-539)
+
+On the exact M45-release executable, `Native::defines()` found 2,385 compiled
+`NDefines` and `NUncheckedDefines` `ReadDefine` helpers. It followed 2,305 to a literal namespace,
+literal name and typed engine reader. The result is partial: 80 named helpers use a table-search
+loop that exceeds the bounded path search. They remain `UnresolvedReader` gaps, including
+`NGraphics.ORBIT_HSV`. There were no failed or unnamed helpers. Resolved types are 1,091
+fixed-point, 672 integer, 326 string, 172 float, 23 list, 13 vector and 8 boolean. The static
+query took about four seconds in a development test run.
+
+The method reads only executable code and literals. It classifies the target of each direct
+`GetValue`, `GetArrayValue` or `ReadDefinesValue` call. `GetValue` uses namespace and name
+arguments; `GetArrayValue` reads a named value from a namespace table. The source stamp is
+`defines/v1` with `StaticAnalysis`. The tracked parity test checks counts, gap types and small
+samples; it needs the exact executable through `STELLARIS_PATH`. Shipped define entries,
+defaults, comments, bounds and uses are not established here. SDK-504 owns the broader
+extraction question and Atlas owns the comparison with shipped content and config.

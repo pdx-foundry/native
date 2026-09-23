@@ -72,7 +72,8 @@ impl Native {
             return Support::Unsupported("this build has no declaration recipe".into());
         }
         match operation {
-            Operation::Registries
+            Operation::Defines
+            | Operation::Registries
             | Operation::RegistryFields
             | Operation::Declarations
             | Operation::Modifiers

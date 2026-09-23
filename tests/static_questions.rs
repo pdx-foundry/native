@@ -2,13 +2,55 @@
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
-    DeclaredTags, EntryContext, EntryScope, Error, Field, GapKind, LinkData,
+    DeclaredTags, Define, EntryContext, EntryScope, Error, Field, GapKind, LinkData,
     LocalizationContextReference, LocalizationDeclarations, LocalizationOutput,
-    ModifierDeclaration, ModifierFamily, NamePart, Native, OutputScope, ReaderKind, RuleKind,
-    ScopeId, ScopeInventory, ScopeLink, ScopeReference,
+    ModifierDeclaration, ModifierFamily, NamePart, Native, Operation, OutputScope, ReaderKind,
+    RuleKind, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn defines_match_the_recorded_m45_boundary() {
+    #[derive(serde::Deserialize)]
+    struct Expected {
+        count: usize,
+        gaps: BTreeMap<String, usize>,
+        types: BTreeMap<String, usize>,
+        samples: Vec<Define>,
+    }
+    let expected: Expected = expected("defines.json");
+    let native = native();
+    assert_eq!(
+        native.supports(Operation::Defines),
+        pdx_native::Support::Supported
+    );
+    let answer = native.defines().unwrap();
+    assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+    assert_eq!(answer.source.method, "defines/v1");
+    assert_eq!(answer.completeness, Completeness::Partial);
+    assert_eq!(answer.value.len(), expected.count);
+    assert_eq!(gap_counts(&answer), expected.gaps);
+    let mut types = BTreeMap::new();
+    for define in &answer.value {
+        let kind = format!("{:?}", define.value_type);
+        *types.entry(kind.clone()).or_insert(0usize) += 1;
+    }
+    assert_eq!(types, expected.types);
+    for sample in expected.samples {
+        assert!(
+            answer.value.contains(&sample),
+            "missing {}.{}",
+            sample.namespace,
+            sample.name
+        );
+    }
+    assert!(answer.gaps.iter().any(|gap| {
+        gap.subject.as_deref() == Some("NGraphics.ORBIT_HSV")
+            && gap.detail == "reader path exceeds the table-search limit"
+    }));
+}
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
@@ -815,6 +857,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let localization = real.localization_declarations().unwrap();
     let on_actions = real.on_actions().unwrap();
     let game_rules = real.game_rules().unwrap();
+    let defines = real.defines().unwrap();
     let unknown = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
@@ -841,6 +884,9 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.game_rules().unwrap();
     again.source.basis = game_rules.source.basis;
     assert_eq!(again, game_rules);
+    let mut again = recorded.defines().unwrap();
+    again.source.basis = defines.source.basis;
+    assert_eq!(again, defines);
     // Errors are recorded too.
     assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
     assert!(matches!(

@@ -26,6 +26,7 @@ let links = native.scope_links()?;                          // Answer<Vec<ScopeL
 let localization = native.localization_declarations()?;     // Answer<LocalizationDeclarations>
 let on_actions = native.on_actions()?;                      // Answer<Vec<OnAction>>
 let game_rules = native.game_rules()?;                      // Answer<Vec<GameRule>>
+let defines = native.defines()?;                            // Answer<Vec<Define>>
 ```
 
 `declarations` covers direct calls to the effect or trigger registration function in executable
@@ -48,6 +49,9 @@ name, each with the scopes that its call sites supply for `this`, `root` and the
 name that different call sites fire with different scopes keeps each `EntryContext`; a link that
 points back to its own scope, the engine's default, is `SelfLink`; a name whose call sites could
 not be followed has no entries and a gap. See `examples/declarations.rs`.
+`defines` reports the namespace, name and value type of each resolved executable read helper.
+Custom table searches that cannot be followed are named gaps. It does not read define files or
+return their example values, documentation or defaults.
 
 ## Live questions
 
@@ -183,6 +187,7 @@ scope_links.json
 localization_declarations.json
 on_actions.json
 game_rules.json
+defines.json
 registry_items/common/traditions.json
 observe_fixture/<files-hash>/<request-hash>.json
 ```

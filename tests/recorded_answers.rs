@@ -31,6 +31,17 @@ fn recorded() -> tempfile::TempDir {
     );
     write(
         root.path(),
+        "defines.json",
+        json!({ "Ok": {
+            "value": [{ "namespace": "NCamera", "name": "FOV", "value_type": "Float" }],
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnresolvedReader", "subject": "NGraphics.ORBIT_HSV",
+                "detail": "reader path exceeds the table-search limit" }],
+            "source": source()
+        }}),
+    );
+    write(
+        root.path(),
         "registry_items/common/traditions.json",
         json!({ "Ok": { "value": ["tr_example_adopt", "tr_example_finish"],
             "completeness": "Complete", "gaps": [], "source": source() } }),
@@ -208,6 +219,27 @@ fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded
     for (reference, scope) in group.scopes.iter().zip(&scopes.value.types) {
         assert_eq!(reference.id, scope.id);
     }
+}
+
+#[test]
+fn defines_read_recorded_names_types_gaps_and_basis() {
+    let root = recorded();
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let answer = native.defines().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(answer.value[0].namespace, "NCamera");
+    assert_eq!(answer.value[0].name, "FOV");
+    assert_eq!(
+        answer.value[0].value_type,
+        pdx_native::DefineValueType::Float
+    );
+    assert_eq!(
+        answer.gaps[0].subject.as_deref(),
+        Some("NGraphics.ORBIT_HSV")
+    );
+
+    fs::remove_file(root.path().join("defines.json")).unwrap();
+    assert!(matches!(native.defines(), Err(Error::NotRecorded { .. })));
 }
 
 #[test]

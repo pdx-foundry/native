@@ -1,0 +1,25 @@
+{
+  "count": 2305,
+  "gaps": {
+    "OutsideMethod": 1,
+    "UnresolvedReader": 80
+  },
+  "types": {
+    "Boolean": 8,
+    "FixedPoint": 1091,
+    "Float": 172,
+    "Integer": 672,
+    "List": 23,
+    "String": 326,
+    "Vector": 13
+  },
+  "samples": [
+    { "namespace": "NGameplay", "name": "ALLOW_EMPIRE_DESIGN_CHEATS", "value_type": "Boolean" },
+    { "namespace": "NAI", "name": "ABANDON_CONTRACT_CHANCE", "value_type": "FixedPoint" },
+    { "namespace": "NCamera", "name": "FOV", "value_type": "Float" },
+    { "namespace": "NInterface", "name": "MAX_WARGOAL_ITEMS", "value_type": "Integer" },
+    { "namespace": "NInterface", "name": "ADVISOR_ANNOYED_SOUNDS", "value_type": "List" },
+    { "namespace": "NAI", "name": "AFFECTED_BY_GRAVITY_STORM_FLAG", "value_type": "String" },
+    { "namespace": "NGameplay", "name": "PLANET_DESTROYER_OFFENSIVE_SHIP_OFFSET", "value_type": "Vector" }
+  ]
+}
