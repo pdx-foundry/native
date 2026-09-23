@@ -266,13 +266,21 @@ fn scope_links_match_the_recorded_m45_boundary() {
         (&this.input_scopes, &this.output_scope),
         (&DeclaredScopes::Any, &OutputScope::Various)
     );
-    let unresolved: Vec<_> = answer
-        .gaps
-        .iter()
-        .filter(|gap| gap.kind == GapKind::UnresolvedPath)
-        .filter_map(|gap| gap.subject.as_deref())
-        .collect();
-    assert_eq!(unresolved, ["event_target", "parameter"]);
+    for name in ["event_target", "parameter"] {
+        let link = find(&answer.value, name, |item| &item.name);
+        assert_eq!(link.data, LinkData::Prefix(format!("{name}:")));
+        assert_eq!(
+            (&link.input_scopes, &link.output_scope),
+            (&DeclaredScopes::Any, &OutputScope::Various)
+        );
+    }
+    assert!(
+        answer
+            .gaps
+            .iter()
+            .all(|gap| gap.kind == GapKind::OutsideMethod)
+    );
+    assert_eq!(answer.completeness, Completeness::Complete);
 }
 
 #[test]

@@ -409,16 +409,16 @@
     },
     {
       "name": "event_target",
-      "input_scopes": "Unresolved",
-      "output_scope": "Unresolved",
+      "input_scopes": "Any",
+      "output_scope": "Various",
       "data": {
         "Prefix": "event_target:"
       }
     },
     {
       "name": "parameter",
-      "input_scopes": "Unresolved",
-      "output_scope": "Unresolved",
+      "input_scopes": "Any",
+      "output_scope": "Various",
       "data": {
         "Prefix": "parameter:"
       }

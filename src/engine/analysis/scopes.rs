@@ -12,7 +12,15 @@
 //! stores; a link written as a plain keyword is one target with no chained part.
 //!
 //! Links that take data are the literal prefixes, such as `event_target:`, that the engine's
-//! special-value parser tests. Their scopes are not established by this method.
+//! special-value parser tests. The parser stores the value of a prefixed target in other fields
+//! and does not change its token. The scope-type argument reaches only the `@` form of an
+//! `event_target:` value, which names a dynamic flag. A prefixed text is not a literal name, so the
+//! target holds a token that no literal names; the lexer chooses which one. The method runs the
+//! supported-scope and output-scope functions on every such token value and keeps a scope set only
+//! when all of them agree.
+//!
+//! The parser's other forms are not links: `.` joins targets into a chain, and a trailing `?` sets
+//! an option that the target reads at run time.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
@@ -24,7 +32,7 @@ use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
 pub const SCOPE_METHOD: &str = "scope-declarations/v1";
 
 /// Name and revision of the scope-link method.
-pub const LINK_METHOD: &str = "scope-links/v1";
+pub const LINK_METHOD: &str = "scope-links/v2";
 
 /// How deeply a supported-scope function may ask for the scopes of another link.
 const LINK_DEPTH: usize = 4;
@@ -76,6 +84,8 @@ pub struct ScopeResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Link {
     pub name: String,
+    /// The prefix, such as `event_target:`, of a link that takes data after its name.
+    pub prefix: Option<String>,
     pub input: ScopeOutcome,
     pub output: Output,
 }
@@ -88,10 +98,9 @@ pub enum Output {
     Unresolved(&'static str),
 }
 
-/// Every link, every data prefix, and what could not be named or followed.
+/// Every link, including those that take data, and what could not be named or followed.
 pub struct LinkResult {
     pub links: Vec<Link>,
-    pub prefixes: Vec<String>,
     pub unnamed_links: usize,
     pub unresolved_tokens: usize,
     pub table_missing: bool,
@@ -164,6 +173,7 @@ pub fn links(input: &ScopeInput) -> Result<LinkResult, InputError> {
             Ok(true) => match input.tokens.get(&token) {
                 Some(name) => links.push(Link {
                     name: name.clone(),
+                    prefix: None,
                     input: input_scopes(input, token),
                     output: output_scope(input, token),
                 }),
@@ -179,9 +189,13 @@ pub fn links(input: &ScopeInput) -> Result<LinkResult, InputError> {
         ));
     }
 
+    let unnamed = unnamed_tokens(input)?;
+    for prefix in data_prefixes(input) {
+        links.push(prefix_link(input, prefix, &unnamed));
+    }
+
     Ok(LinkResult {
         links,
-        prefixes: data_prefixes(input),
         unnamed_links,
         unresolved_tokens,
         table_missing: input.scope_names.is_none(),
@@ -197,6 +211,72 @@ fn token_range(input: &ScopeInput) -> Result<std::ops::RangeInclusive<u64>, Inpu
         .max()
         .ok_or_else(|| InputError("the literal token table is empty".into()))?;
     Ok(0..=*last)
+}
+
+/// Every token value in the literal range that no literal names, and the first value after it,
+/// which stands for every token created at run time.
+fn unnamed_tokens(input: &ScopeInput) -> Result<Vec<u64>, InputError> {
+    let range = token_range(input)?;
+    let run_time = range.end() + 1;
+    let mut unnamed: Vec<_> = range
+        .filter(|token| !input.tokens.contains_key(token))
+        .collect();
+    unnamed.push(run_time);
+    Ok(unnamed)
+}
+
+/// A link that takes data. Its target holds whichever `unnamed` token the lexer gives the written
+/// text, so a scope set is declared only when every unnamed token declares the same one.
+fn prefix_link(input: &ScopeInput, prefix: String, unnamed: &[u64]) -> Link {
+    let name = prefix.trim_end_matches(':').to_owned();
+    let literal_prefix = input
+        .tokens
+        .values()
+        .any(|literal| literal.starts_with(&prefix));
+    if literal_prefix {
+        return Link {
+            name,
+            prefix: Some(prefix),
+            input: ScopeOutcome::Unresolved("literal-prefix"),
+            output: Output::Unresolved("literal-prefix"),
+        };
+    }
+
+    let inputs = unnamed
+        .iter()
+        .map(|&token| match input_scopes(input, token) {
+            ScopeOutcome::Unresolved(reason) => Err(reason),
+            scopes => Ok(scopes),
+        });
+    let outputs = unnamed
+        .iter()
+        .map(|&token| match output_scope(input, token) {
+            Output::Unresolved(reason) => Err(reason),
+            output => Ok(output),
+        });
+    Link {
+        name,
+        prefix: Some(prefix),
+        input: agreed(inputs).unwrap_or_else(ScopeOutcome::Unresolved),
+        output: agreed(outputs).unwrap_or_else(Output::Unresolved),
+    }
+}
+
+/// The one declaration that every token gives, or the reason there is none. The first unresolved
+/// declaration keeps its own reason.
+fn agreed<T: PartialEq>(
+    declarations: impl Iterator<Item = Result<T, &'static str>>,
+) -> Result<T, &'static str> {
+    let mut agreed = None;
+    for declaration in declarations {
+        let declaration = declaration?;
+        match &agreed {
+            None => agreed = Some(declaration),
+            Some(first) if *first != declaration => return Err("token-dependent"),
+            Some(_) => {}
+        }
+    }
+    agreed.ok_or("token-dependent")
 }
 
 fn scope_of_token(input: &ScopeInput, token: u64) -> Result<u64, Unresolved> {
@@ -483,18 +563,55 @@ mod tests {
             vec![
                 Link {
                     name: "owner".into(),
+                    prefix: None,
                     input: ScopeOutcome::Listed(vec![scope(2, "country")]),
                     output: Output::Various,
                 },
                 Link {
                     name: "capital_scope".into(),
+                    prefix: None,
                     input: ScopeOutcome::Listed(vec![scope(2, "country"), scope(3, "ship")]),
+                    output: Output::Listed(vec![scope(2, "country")]),
+                },
+                Link {
+                    name: "event_target".into(),
+                    prefix: Some("event_target:".into()),
+                    input: ScopeOutcome::Listed(vec![scope(2, "country")]),
                     output: Output::Listed(vec![scope(2, "country")]),
                 },
             ]
         );
-        assert_eq!(result.prefixes, vec!["event_target:".to_owned()]);
         assert_eq!(result.unnamed_links, 0);
+    }
+
+    /// Unnamed token 1 declares a varying output and unnamed tokens 0 and 5 declare a country, so
+    /// the output of a prefixed target depends on the lexer's token.
+    #[test]
+    fn a_prefix_link_declares_only_what_every_unnamed_token_declares() {
+        let mut input = input();
+        input.tokens.remove(&1);
+
+        let result = links(&input).unwrap();
+        let event_target = result.links.last().unwrap();
+        assert_eq!(
+            event_target.input,
+            ScopeOutcome::Listed(vec![scope(2, "country")])
+        );
+        assert_eq!(event_target.output, Output::Unresolved("token-dependent"));
+    }
+
+    #[test]
+    fn a_literal_with_the_prefix_leaves_the_prefix_link_unresolved() {
+        let mut input = input();
+        input.tokens.insert(5, "event_target:saved".into());
+
+        let result = links(&input).unwrap();
+        let event_target = result.links.last().unwrap();
+        assert_eq!(
+            event_target.input,
+            ScopeOutcome::Unresolved("literal-prefix")
+        );
+        assert_eq!(event_target.output, Output::Unresolved("literal-prefix"));
     }
 
     #[test]
