@@ -478,11 +478,11 @@ impl Assembly {
         names: Result<BTreeSet<String>, &'static str>,
         found: SiteContexts,
     ) {
-        let mut names = match names {
-            Ok(names) => names,
+        let (mut names, named) = match names {
+            Ok(names) => (names, true),
             Err(reason) => {
                 self.unnamed(Family::OnAction, reason);
-                BTreeSet::new()
+                (BTreeSet::new(), false)
             }
         };
         let mut attributed: BTreeMap<String, BTreeSet<Context>> = BTreeMap::new();
@@ -506,7 +506,7 @@ impl Assembly {
         }
 
         let reached_none = attributed.is_empty() && !unattributed;
-        if names.is_empty() {
+        if names.is_empty() && named {
             self.unnamed(Family::OnAction, "name-not-proved");
         }
         for name in names {

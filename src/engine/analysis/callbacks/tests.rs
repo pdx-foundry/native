@@ -955,3 +955,189 @@ fn without_the_string_constructor_no_name_is_given() {
     assert!(result.on_actions.is_empty());
     assert!(!result.unnamed.is_empty());
 }
+
+/// The load function spills the address of a cached list's field to a stack slot and stores the
+/// list through it on the equal edge. `between` runs after the spill.
+fn spilled_pulse(between: Rows<'_>) -> CallbacksResult {
+    let mut init = vec![
+        (0x4000, "sub", "sp,sp,#0x100"),
+        (0x4004, "add", "x8,x0,#0x28"),
+        (0x4008, "str", "x8,[sp,#0x30]"),
+    ];
+    init.extend_from_slice(between);
+    let end = init.last().map_or(0x4000, |(address, _, _)| *address);
+    init.extend(
+        (end + 4..0x4040)
+            .step_by(4)
+            .map(|address| (address, "nop", "")),
+    );
+    init.extend([
+        (0x4040, "mov", "x0,x20"),
+        (0x4044, "adrp", "x1,#0x5000"),
+        (0x4048, "bl", "#0x9300"),
+        (0x404c, "cbz", "w0,#0x4054"),
+        (0x4050, "ret", ""),
+        (0x4054, "ldr", "x8,[sp,#0x30]"),
+        (0x4058, "str", "x21,[x8]"),
+        (0x405c, "ret", ""),
+    ]);
+    let fire = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8000"),
+        (0x100c, "adrp", "x8,#0x6000"),
+        (0x1010, "add", "x8,x8,#0xf00"),
+        (0x1014, "ldr", "x8,[x8]"),
+        (0x1018, "ldr", "x1,[x8,#0x28]"),
+        (0x101c, "add", "x2,sp,#0x100"),
+        (0x1020, "bl", "#0x9010"),
+        (0x1024, "ret", ""),
+    ];
+    let mut program = Program::new().function(&init).function(&fire).site(
+        0x1000,
+        0x1020,
+        SiteCall::FireList { list: 1, scope: 2 },
+    );
+    program.pulse = Some(Pulse {
+        init: 0x4000,
+        string_compare: BTreeSet::from([STRCMP]),
+        instance: INSTANCE,
+    });
+    on_actions(&program.input())
+}
+
+#[test]
+fn a_spilled_field_address_joins_its_cached_list() {
+    let result = spilled_pulse(&[(0x400c, "mov", "x0,x19"), (0x4010, "bl", "#0x9900")]);
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(Slot::NotSet, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_call_that_receives_a_lower_stack_address_forgets_the_spill() {
+    let result = spilled_pulse(&[(0x400c, "add", "x0,sp,#0x10"), (0x4010, "bl", "#0x9900")]);
+
+    assert!(result.on_actions.is_empty());
+}
+
+#[test]
+fn a_rule_offset_in_a_register_names_the_rule() {
+    let mut lines = rule_function("x0,x19,x8");
+    lines[7] = (0x301c, "mov", "w8,#0xc0");
+    lines[6] = (0x3018, "nop", "");
+    let mut program = Program::new()
+        .function(&lines)
+        .site(0x3000, 0x3028, SCRIPTED_RULE);
+    program.rule_owners.insert(0x3000);
+    let result = analyze(&program.input(), Family::GameRule).unwrap();
+
+    assert!(!result.rules["can_b"].1.contexts.is_empty());
+}
+
+#[test]
+fn a_stack_pointer_move_keeps_the_objects_that_were_built_before_it() {
+    let lines = [
+        (0x1000, "stp", "x29,x30,[sp,#-0x10]!"),
+        (0x1004, "sub", "sp,sp,#0x200"),
+        (0x1008, "add", "x0,sp,#0x100"),
+        (0x100c, "bl", "#0x8000"),
+        (0x1010, "add", "x0,sp,#0x100"),
+        (0x1014, "bl", "#0x8100"),
+        (0x1018, "add", "x0,sp,#0x10"),
+        (0x101c, "adrp", "x1,#0x5000"),
+        (0x1020, "bl", "#0x9100"),
+        (0x1024, "sub", "sp,sp,#0x20"),
+        (0x1028, "add", "x1,sp,#0x30"),
+        (0x102c, "add", "x2,sp,#0x120"),
+        (0x1030, "bl", "#0x9000"),
+        (0x1034, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&lines)
+            .site(0x1000, 0x1030, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_site_without_a_literal_name_is_counted_once() {
+    let result = fire_country(&[(0x1020, "add", "x0,sp,#0x10"), (0x1024, "bl", "#0x9900")]);
+
+    assert_eq!(result.unnamed.len(), 1);
+}
+
+#[test]
+fn a_frame_register_keeps_its_objects_when_the_stack_pointer_moves_by_an_unknown_amount() {
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "mov", "x19,sp"),
+        (0x1008, "mov", "x9,sp"),
+        (0x100c, "sub", "x22,x9,x8"),
+        (0x1010, "mov", "sp,x22"),
+        (0x1014, "add", "x0,x19,#0x100"),
+        (0x1018, "bl", "#0x8000"),
+        (0x101c, "add", "x0,x19,#0x100"),
+        (0x1020, "bl", "#0x8100"),
+        (0x1024, "add", "x0,x19,#0x10"),
+        (0x1028, "adrp", "x1,#0x5000"),
+        (0x102c, "bl", "#0x9100"),
+        (0x1030, "add", "x1,x19,#0x10"),
+        (0x1034, "add", "x2,x19,#0x100"),
+        (0x1038, "bl", "#0x9000"),
+        (0x103c, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&lines)
+            .site(0x1000, 0x1038, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_field_address_formed_by_write_back_joins_its_cached_list() {
+    let mut init = vec![
+        (0x4000, "sub", "sp,sp,#0x100"),
+        (0x4004, "mov", "x8,x0"),
+        (0x4008, "str", "q0,[x8,#0x28]!"),
+        (0x400c, "str", "x8,[sp,#0x30]"),
+    ];
+    init.extend(
+        (0x4010..0x4040)
+            .step_by(4)
+            .map(|address| (address, "nop", "")),
+    );
+    init.extend([
+        (0x4040, "mov", "x0,x20"),
+        (0x4044, "adrp", "x1,#0x5000"),
+        (0x4048, "bl", "#0x9300"),
+        (0x404c, "cbz", "w0,#0x4054"),
+        (0x4050, "ret", ""),
+        (0x4054, "ldr", "x8,[sp,#0x30]"),
+        (0x4058, "str", "x21,[x8]"),
+        (0x405c, "ret", ""),
+    ]);
+    let mut program = Program::new().function(&init);
+    program.pulse = Some(Pulse {
+        init: 0x4000,
+        string_compare: BTreeSet::from([STRCMP]),
+        instance: INSTANCE,
+    });
+    let input = program.input();
+
+    assert_eq!(pulse_names(&input), BTreeMap::from([(0x28, ON_TEST)]));
+}

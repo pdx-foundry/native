@@ -9,10 +9,17 @@
 //! one object give both names, and a stack slot that the compiler reuses for another object
 //! keeps no stale name.
 //!
-//! Only these instructions keep facts: `adrp`, `add` and `sub` with an immediate, `mov` of a
-//! register or an immediate, and a 64-bit `ldr` from a constant or a loaded global. Any other
-//! instruction makes the registers that it may write unknown. A call makes `x0`–`x18` unknown
-//! and `x0` the result of that call. Memory other than stack `CString` objects is not tracked.
+//! Only these instructions keep facts: `adrp`, `add` and `sub` with an immediate or a register
+//! of known constants, `mov` of a register or an immediate, a 64-bit `ldr` from a constant or a
+//! loaded global, and 64-bit stores and loads of stack slots. Any other instruction makes the
+//! registers that it may write unknown. A call makes `x0`–`x18` unknown and `x0` the result of
+//! that call. Stack offsets are relative to the stack pointer at entry; the state also knows
+//! where the stack pointer is now, until it moves by an amount that is not known.
+//!
+//! A stack slot keeps the 64-bit value last stored to it on every path. A callee writes only
+//! inside the objects that it receives, and an object never starts above its address, so a call
+//! that receives a stack address forgets every slot at or above that address. Other memory is
+//! not tracked.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::analysis::decode::Instruction;
@@ -24,7 +31,7 @@ pub(super) const VALUE_LIMIT: usize = 16;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Fact {
     Constant(u64),
-    /// The stack pointer after the prologue, plus this offset.
+    /// The stack pointer at entry, plus this offset.
     Stack(i64),
     /// Argument register `n` at entry, plus this offset.
     Argument(usize, i64),
@@ -58,6 +65,10 @@ pub(super) struct State {
     registers: [Value; 31],
     /// Literal sets of stack strings by stack offset; `None` for a string whose text is unknown.
     strings: BTreeMap<i64, Value>,
+    /// 64-bit values stored to stack slots, by stack offset.
+    slots: BTreeMap<i64, Value>,
+    /// The stack pointer's offset from its value at entry, when it is known.
+    sp: Option<i64>,
 }
 
 impl State {
@@ -69,6 +80,8 @@ impl State {
         Self {
             registers,
             strings: BTreeMap::new(),
+            slots: BTreeMap::new(),
+            sp: Some(0),
         }
     }
 
@@ -76,6 +89,8 @@ impl State {
         Self {
             registers: std::array::from_fn(|_| None),
             strings: BTreeMap::new(),
+            slots: BTreeMap::new(),
+            sp: None,
         }
     }
 
@@ -116,7 +131,34 @@ impl State {
             };
             self.strings.insert(*offset, joined);
         }
+        // A slot that one path did not store holds an unknown value.
+        self.slots = self
+            .slots
+            .iter()
+            .filter_map(|(offset, mine)| {
+                let theirs = other.slots.get(offset)?;
+                Some((*offset, join_values(mine, theirs)))
+            })
+            .collect();
+        if self.sp != other.sp {
+            self.sp = None;
+        }
         *self != before
+    }
+
+    /// The stack offset in a register that holds exactly one.
+    fn stack_offset(&self, index: usize) -> Option<i64> {
+        match self
+            .registers
+            .get(index)?
+            .as_ref()?
+            .iter()
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [Fact::Stack(offset)] => Some(*offset),
+            _ => None,
+        }
     }
 
     fn set(&mut self, index: usize, value: Value) {
@@ -322,27 +364,24 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
                 state.set(destination, single(Fact::Constant(target as u64)));
             }
         }
+        ("add" | "sub", ["sp", source, amount, rest @ ..]) => {
+            state.sp = moved_stack(state, source, amount, rest, operation);
+        }
         ("add" | "sub", [destination, source, amount, rest @ ..]) => {
             let Some(destination) = register(destination) else {
                 return;
             };
-            let shift = match rest {
-                [] => 0,
-                ["lsl#12"] => 12,
-                _ => {
-                    state.clear(destination);
-                    return;
+            let value = amounts(state, amount, rest).and_then(|amounts| {
+                let mut joined = BTreeSet::new();
+                for amount in amounts {
+                    let amount = if operation == "sub" { -amount } else { amount };
+                    joined.extend(offset(state, source, amount)?);
                 }
-            };
-            let Some(amount) = immediate(amount) else {
-                state.clear(destination);
-                return;
-            };
-            let amount = amount << shift;
-            let amount = if operation == "sub" { -amount } else { amount };
-            let value = offset(state, source, amount);
+                (joined.len() <= VALUE_LIMIT).then_some(joined)
+            });
             state.set(destination, value);
         }
+        ("mov", ["sp", source]) => state.sp = moved_stack(state, source, "#0", &[], "add"),
         ("mov", [destination, source]) => {
             let Some(destination) = register(destination) else {
                 return;
@@ -360,8 +399,40 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
             let Some(destination) = register(destination) else {
                 return;
             };
-            let value = load(state, memory);
+            let value = match stack_address(state, memory) {
+                Some(slot) => state.slots.get(&slot).cloned().flatten(),
+                None => load(state, memory),
+            };
             state.set(destination, value);
+        }
+        ("ldp", [first, second, memory]) if first.starts_with('x') && memory.ends_with(']') => {
+            let slot = stack_address(state, memory);
+            for (index, destination) in [first, second].into_iter().enumerate() {
+                if let Some(destination) = register(destination) {
+                    let value = slot
+                        .and_then(|slot| state.slots.get(&(slot + 8 * index as i64)).cloned())
+                        .flatten();
+                    state.set(destination, value);
+                }
+            }
+        }
+        ("str" | "stp", [.., memory])
+            if memory.ends_with(']')
+                && operands[..operands.len() - 1]
+                    .iter()
+                    .all(|source| source.starts_with('x') || *source == "xzr")
+                && stack_address(state, memory).is_some() =>
+        {
+            let slot = stack_address(state, memory).expect("a stack slot");
+            let sources = &operands[..operands.len() - 1];
+            forget_stack(state, slot, 8 * sources.len() as i64, strings.object_size);
+            for (index, source) in sources.iter().enumerate() {
+                let value = match *source {
+                    "xzr" => single(Fact::Constant(0)),
+                    source => offset(state, source, 0),
+                };
+                state.slots.insert(slot + 8 * index as i64, value);
+            }
         }
         ("bl", [target]) => {
             let target = immediate(target).map(|target| target as u64);
@@ -428,10 +499,102 @@ fn call(address: u64, target: Option<u64>, strings: &StringFunctions, state: &mu
         _ => forget_objects(state, 0),
     }
 
+    let lowest = (0..=7)
+        .filter_map(|index| state.registers[index].as_ref())
+        .flatten()
+        .filter_map(|fact| match fact {
+            Fact::Stack(offset) => Some(*offset),
+            _ => None,
+        })
+        .min();
+    if let Some(lowest) = lowest {
+        state.slots.retain(|slot, _| *slot < lowest);
+    }
+
     for index in 0..=18 {
         state.clear(index);
     }
     state.set(0, single(Fact::Result(address)));
+}
+
+/// The known amounts of an `add` or `sub` operand: an immediate, or a register of constants,
+/// with an optional left shift.
+fn amounts(state: &State, amount: &str, rest: &[&str]) -> Option<Vec<i64>> {
+    let shift = match rest {
+        [] => 0,
+        [shift] => shift.strip_prefix("lsl#").and_then(immediate)?,
+        _ => return None,
+    };
+    let values: Vec<i64> = match immediate(amount) {
+        Some(value) if amount.starts_with('#') => vec![value],
+        _ => state
+            .registers
+            .get(register(amount)?)?
+            .as_ref()?
+            .iter()
+            .map(|fact| match fact {
+                Fact::Constant(value) => Some(*value as i64),
+                _ => None,
+            })
+            .collect::<Option<_>>()?,
+    };
+    Some(values.into_iter().map(|value| value << shift).collect())
+}
+
+/// Where the stack pointer is after it becomes `source` plus or minus an amount: known when
+/// `source` is the stack pointer or holds a stack offset, and the amount is known.
+fn moved_stack(
+    state: &State,
+    source: &str,
+    amount: &str,
+    rest: &[&str],
+    operation: &str,
+) -> Option<i64> {
+    let base = match source {
+        "sp" => state.sp?,
+        source => state.stack_offset(register(source)?)?,
+    };
+    match amounts(state, amount, rest)?.as_slice() {
+        [amount] if operation == "sub" => Some(base - amount),
+        [amount] => Some(base + amount),
+        _ => None,
+    }
+}
+
+/// The stack offset that a memory operand without writeback addresses.
+fn stack_address(state: &State, memory: &str) -> Option<i64> {
+    let inner = memory.strip_prefix('[')?.strip_suffix(']')?;
+    let mut parts = inner.split(',');
+    let base = parts.next()?;
+    let displacement = match parts.next() {
+        None => 0,
+        Some(text) => immediate(text)?,
+    };
+    if parts.next().is_some() {
+        return None;
+    }
+    let base = if base == "sp" {
+        state.sp?
+    } else {
+        state.stack_offset(register(base)?)?
+    };
+    Some(base + displacement)
+}
+
+/// A store of `width` bytes at a stack offset: slots and strings that it overlaps change.
+fn forget_stack(state: &mut State, address: i64, width: i64, object_size: i64) {
+    state
+        .slots
+        .retain(|slot, _| *slot + 8 <= address || *slot >= address + width);
+    let touched: Vec<i64> = state
+        .strings
+        .keys()
+        .copied()
+        .filter(|start| *start < address + width && address < *start + object_size)
+        .collect();
+    for start in touched {
+        state.strings.insert(start, None);
+    }
 }
 
 /// A call receives the objects in register `index` as its object: their text becomes unknown.
@@ -452,7 +615,7 @@ fn forget_objects(state: &mut State, index: usize) {
 
 fn offset(state: &State, source: &str, amount: i64) -> Value {
     if source == "sp" {
-        return single(Fact::Stack(amount));
+        return single(Fact::Stack(state.sp? + amount));
     }
     let source = register(source)?;
     let facts = state.registers.get(source)?.as_ref()?;
@@ -530,29 +693,50 @@ fn clear_written(operation: &str, operands: &[&str], strings: &StringFunctions, 
     {
         state.clear(second);
     }
-    // Pre- or post-index addressing writes the base register back.
+    if operation.starts_with("st") && !operation.contains("xr") {
+        forget_stored_strings(operation, operands, strings.object_size, state);
+    }
+    // Pre- or post-index addressing writes the base register back, moved by its offset.
     for (position, operand) in operands.iter().enumerate() {
-        let write_back = operand.ends_with("]!")
-            || (operand.ends_with(']')
-                && operands
-                    .get(position + 1)
-                    .is_some_and(|next| next.starts_with('#')));
-        if write_back
-            && let Some(base) = operand
-                .strip_prefix('[')
-                .and_then(|inner| inner.split([',', ']']).next())
-                .and_then(register)
-        {
-            state.clear(base);
+        let Some(inner) = operand.strip_prefix('[') else {
+            continue;
+        };
+        let (base, amount) = match inner.strip_suffix("]!") {
+            Some(pre) => {
+                let mut parts = pre.split(',');
+                (parts.next(), parts.next().and_then(immediate))
+            }
+            None => match operands.get(position + 1) {
+                Some(next) if next.starts_with('#') => (inner.strip_suffix(']'), immediate(next)),
+                _ => continue,
+            },
+        };
+        let Some(base) = base else {
+            continue;
+        };
+        if let Some(index) = register(base) {
+            let moved = amount.and_then(|amount| offset(state, base, amount));
+            state.set(index, moved);
         }
     }
-    if operation.starts_with("st") && !operation.contains("xr") {
-        forget_stored_strings(operands, strings.object_size, state);
+    // Pre- or post-index addressing on the stack pointer moves it.
+    for (position, operand) in operands.iter().enumerate() {
+        let Some(inner) = operand.strip_prefix("[sp") else {
+            continue;
+        };
+        if let Some(pre) = inner.strip_suffix("]!") {
+            let amount = pre.strip_prefix(',').and_then(immediate).unwrap_or(0);
+            state.sp = state.sp.map(|sp| sp + amount);
+        } else if inner == "]"
+            && let Some(post) = operands.get(position + 1).and_then(|next| immediate(next))
+        {
+            state.sp = state.sp.map(|sp| sp + post);
+        }
     }
 }
 
-/// A store into a stack string makes its text unknown.
-fn forget_stored_strings(operands: &[&str], object_size: i64, state: &mut State) {
+/// A store that the pass does not follow changes the slots and strings that it overlaps.
+fn forget_stored_strings(operation: &str, operands: &[&str], object_size: i64, state: &mut State) {
     let Some(memory) = operands.iter().find(|operand| operand.starts_with('[')) else {
         return;
     };
@@ -566,27 +750,41 @@ fn forget_stored_strings(operands: &[&str], object_size: i64, state: &mut State)
     };
     let displacement = parts.next().and_then(immediate).unwrap_or(0);
     let address = if base == "sp" {
-        Some(displacement)
+        state.sp.map(|sp| sp + displacement)
     } else {
-        register(base).and_then(|base| match state.registers[base].as_ref() {
-            Some(facts) if facts.len() == 1 => match facts.first() {
-                Some(Fact::Stack(offset)) => Some(offset + displacement),
-                _ => None,
-            },
-            _ => None,
-        })
+        register(base)
+            .and_then(|base| state.stack_offset(base))
+            .map(|offset| offset + displacement)
     };
-    let Some(address) = address else {
-        return;
+    if let Some(address) = address {
+        forget_stack(
+            state,
+            address,
+            store_width(operation, operands),
+            object_size,
+        );
+    }
+}
+
+/// The bytes that a store writes: its register width, twice for a pair. A form that the pass
+/// does not know writes at most 32 bytes, as a pair of vector registers does.
+fn store_width(operation: &str, operands: &[&str]) -> i64 {
+    let register_width = match operation {
+        "strb" | "sturb" | "stlrb" => return 1,
+        "strh" | "sturh" | "stlrh" => return 2,
+        _ => match operands.first().and_then(|first| first.chars().next()) {
+            Some('x' | 'd') => 8,
+            Some('w' | 's') => 4,
+            Some('q') => 16,
+            Some('h') => 2,
+            Some('b') => 1,
+            _ => return 32,
+        },
     };
-    let touched: Vec<i64> = state
-        .strings
-        .keys()
-        .copied()
-        .filter(|start| (*start..*start + object_size).contains(&address))
-        .collect();
-    for start in touched {
-        state.strings.insert(start, None);
+    if operation.starts_with("stp") || operation.starts_with("stnp") {
+        2 * register_width
+    } else {
+        register_width
     }
 }
 
