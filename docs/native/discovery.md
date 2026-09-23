@@ -202,13 +202,14 @@ later repair is its own commit in the SDK-538 pull request:
 | 2 | Revisions 1 (instructions) and 4 (stub name) | 293 / 255 | 223 / 54 | 166 rule-set functions add the rule offset from a register; `on_monthly_pulse`'s field address is formed by a write-back and spilled to a stack slot. |
 | 3 | A first form of revision 2 | 281 / 255 | 223 / 220 | 12 names were lost: a dynamic stack allocation made every stack fact unknown, and a store was taken as 32 bytes wide. |
 | 4–6 | Revisions 2 (stack offsets from the entry stack pointer, store widths, write-back) and 3 (unknown stack pointer in the evaluator) | 294 / 264 | 223 / 220 | 30 names had no context: a loop with an unknown exit used the whole path budget. |
-| 7 | Revision 5: loop limit | 294 / 282 | 223 / 220 | — |
+| 7 | Revision 5: loop limit | 294 / 282 | 223 / 220 | Code review: branches through a register did not reach the site; `bic` and other `b…` instructions kept their destination; a string that one path did not build kept the other path's text at a join; a scope function at the call depth, or one that passed the scope on, kept the slots; a decode failure of a rule site was counted as an on_action; rules of two families with one name would merge. |
+| 8 | Revision 6: code-review repairs | 294 / 281 | 223 / 220 | — |
 
 All repairs are evaluator or name-pass coverage; none is an interpretation of one name. The
 SDK-535/536/537 parity tests passed unchanged after each revision. The two questions take about
 1.0 s and 0.7 s.
 
-**Result on M45-release.** 294 on_actions; 282 have at least one context and 208 have at least one
+**Result on M45-release.** 294 on_actions; 281 have at least one context and 207 have at least one
 context with no unresolved scope. 18 names keep several contexts, such as `on_fleet_enter_orbit`,
 which a fleet enters with a megastructure, a planet, a starbase or an astral rift as from. 223 game
 rules (209 scripted, 14 weighted); 220 have a context and 204 a context with no unresolved scope.
@@ -240,7 +241,7 @@ scopes: the config writes `carrier` where the engine passes a `colony` or `plane
   (`on_add_to_imperial_council` or `on_remove_from_imperial_council`), a name that a wrapper that
   is not pinned receives (`CArmy::PerformBuildingOnAction`), or a name built at run time
   (`_queued`). One list site fires a list that an object holds.
-- 12 on_actions have no context: 7 reach the path limit, 2 stop at floating-point instructions, 2
+- 13 on_actions have no context: 8 reach the path limit, 2 stop at floating-point instructions, 2
   are not reached from their function entry, and `on_press_begin`'s command builds its own scope.
 - 50 on_actions have only unresolved contexts. Most reuse one scope for several firing calls: the
   first call receives the scope, and the method cannot show that the event system leaves its type

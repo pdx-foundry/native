@@ -127,7 +127,7 @@ pub(crate) fn normalized_game_rules(
     let value = result
         .rules
         .iter()
-        .map(|(name, (family, findings))| GameRule {
+        .map(|((name, family), findings)| GameRule {
             name: name.clone(),
             kind: match family {
                 RuleFamily::Scripted => RuleKind::Scripted,

@@ -223,7 +223,8 @@ pub enum Family {
 #[derive(Debug, Clone, Default)]
 pub struct CallbacksResult {
     pub on_actions: BTreeMap<String, Findings>,
-    pub rules: BTreeMap<String, (RuleFamily, Findings)>,
+    /// Rules by name and family; a scripted and a weighted rule can share a name.
+    pub rules: BTreeMap<(String, RuleFamily), Findings>,
     pub unnamed: Vec<Unnamed>,
     pub script_fired_sites: usize,
     /// Why the rule tables could not be read.
@@ -320,7 +321,7 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
             continue;
         }
         let Some(state) = states.get(&site.address) else {
-            assembly.unnamed(Family::OnAction, "site-not-decoded");
+            assembly.unnamed(family, "site-not-decoded");
             continue;
         };
         let code = code_for(&mut codes, &runner, input, site.function);
@@ -414,13 +415,13 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
     }
 
     for ((family, _), name) in &rule_names {
-        let entry = assembly
+        let findings = assembly
             .result
             .rules
-            .entry(name.clone())
-            .or_insert_with(|| (*family, Findings::default()));
-        if entry.1.contexts.is_empty() && entry.1.unresolved.is_empty() {
-            entry.1.unresolved.insert("no-site");
+            .entry((name.clone(), *family))
+            .or_default();
+        if findings.contexts.is_empty() && findings.unresolved.is_empty() {
+            findings.unresolved.insert("no-site");
         }
     }
     for (_, name) in pulse {
@@ -485,6 +486,12 @@ impl Assembly {
                 (BTreeSet::new(), false)
             }
         };
+        // A path that proves no name belongs to the site's name only when the name pass found
+        // exactly one.
+        let only = match names.len() {
+            1 if named => names.first().cloned(),
+            _ => None,
+        };
         let mut attributed: BTreeMap<String, BTreeSet<Context>> = BTreeMap::new();
         let mut unattributed = false;
         for (literal, context) in found.reached {
@@ -494,8 +501,7 @@ impl Assembly {
                     names.insert(name.clone());
                     Some(name)
                 }
-                None if names.len() == 1 => names.first().cloned(),
-                None => None,
+                None => only.clone(),
             };
             match name {
                 Some(name) => {
@@ -537,17 +543,12 @@ impl Assembly {
                 return;
             }
         };
-        let entry = self
-            .result
-            .rules
-            .entry(name)
-            .or_insert_with(|| (family, Findings::default()));
-        entry.1.unresolved.extend(found.unresolved);
+        let findings = self.result.rules.entry((name, family)).or_default();
+        findings.unresolved.extend(found.unresolved);
         if found.reached.is_empty() && found.unresolved.is_none() {
-            entry.1.unresolved.insert("site-not-reached");
+            findings.unresolved.insert("site-not-reached");
         }
-        entry
-            .1
+        findings
             .contexts
             .extend(found.reached.into_iter().map(|(_, context)| context));
     }

@@ -217,7 +217,8 @@ impl Runner<'_> {
     }
 
     /// Run a scope function on a copy of the machine, and keep its writes to the object's slots
-    /// where every path agrees.
+    /// where every path agrees. A path that passes the object itself to a call that the pass does
+    /// not follow, or that reaches the call depth, makes the slots unknown.
     fn follow(&self, target: u64, machine: &mut Machine<'_>, depth: usize) {
         let Some(object) = machine.register(0) else {
             self.unfollowed(machine);
@@ -230,10 +231,17 @@ impl Runner<'_> {
                 self.scopes.fresh_constructors.contains(&callee)
                     || self.scopes.setters.contains(&callee)
             });
-            if followed && depth < CALL_DEPTH {
-                self.follow(callee.expect("followed callee"), inner, depth + 1);
+            match callee {
+                Some(callee) if followed && depth < CALL_DEPTH => {
+                    self.follow(callee, inner, depth + 1);
+                    Ok(Call::Return(None))
+                }
+                _ if followed => Err(Unresolved("call-depth")),
+                _ if (0..=8).any(|index| inner.register(index) == Some(object)) => {
+                    Err(Unresolved("scope-passed-on"))
+                }
+                _ => Ok(Call::Return(None)),
             }
-            Ok(Call::Return(None))
         });
 
         let fresh = self.scopes.fresh_constructors.contains(&target);

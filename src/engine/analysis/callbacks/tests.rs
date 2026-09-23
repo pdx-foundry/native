@@ -15,6 +15,7 @@ const SET_COUNTRY: u64 = 0x8100;
 const SET_LEADER: u64 = 0x8200;
 const CLEAR: u64 = 0x8300;
 const COPY: u64 = 0x8400;
+const PASSES_ON: u64 = 0x8500;
 
 /// `on_test` is at 0x5000 and `on_other` at 0x5010.
 const ON_TEST: u64 = 0x5000;
@@ -53,6 +54,10 @@ fn scope_code() -> Vec<Instruction> {
         (CLEAR, "stp", "x0,x0,[x0,#0x30]"),
         (CLEAR + 4, "str", "x0,[x0,#0x40]"),
         (CLEAR + 8, "ret", ""),
+        (PASSES_ON, "mov", "w9,#0x4"),
+        (PASSES_ON + 4, "str", "x9,[x0,#0x8]"),
+        (PASSES_ON + 8, "bl", "#0x9900"),
+        (PASSES_ON + 12, "ret", ""),
     ])
 }
 
@@ -160,7 +165,7 @@ impl Program {
             scope_code: scope_code(),
             scope_functions: ScopeFunctions {
                 fresh_constructors: BTreeSet::from([FRESH]),
-                setters: BTreeSet::from([SET_COUNTRY, SET_LEADER, CLEAR]),
+                setters: BTreeSet::from([SET_COUNTRY, SET_LEADER, CLEAR, PASSES_ON]),
                 copies: BTreeSet::from([COPY]),
                 destructors: BTreeSet::new(),
                 readers: BTreeSet::new(),
@@ -818,6 +823,10 @@ fn rules(offset: &'static str, call: SiteCall, owned: bool) -> CallbacksResult {
     analyze(&program.input(), Family::GameRule).unwrap()
 }
 
+fn scripted<'r>(result: &'r CallbacksResult, name: &str) -> &'r Findings {
+    &result.rules[&(name.to_owned(), RuleFamily::Scripted)]
+}
+
 const SCRIPTED_RULE: SiteCall = SiteCall::Rule {
     family: RuleFamily::Scripted,
     rule: 0,
@@ -828,14 +837,13 @@ const SCRIPTED_RULE: SiteCall = SiteCall::Rule {
 fn a_rule_is_named_by_its_offset_in_the_rule_set() {
     let result = rules("x0,x0,#0xc0", SCRIPTED_RULE, true);
 
-    let (family, findings) = &result.rules["can_b"];
-    assert_eq!(*family, RuleFamily::Scripted);
+    let findings = scripted(&result, "can_b");
     assert_eq!(
         findings.contexts.iter().cloned().collect::<Vec<_>>(),
         [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
     );
     assert_eq!(
-        result.rules["can_a"].1.unresolved,
+        scripted(&result, "can_a").unresolved,
         BTreeSet::from(["no-site"])
     );
 }
@@ -849,8 +857,8 @@ fn a_weighted_rule_uses_its_own_array() {
     };
     let result = rules("x0,x0,#0x9cc0", weighted, true);
 
-    assert_eq!(result.rules["weight_c"].0, RuleFamily::Weighted);
-    assert!(!result.rules["weight_c"].1.contexts.is_empty());
+    let weight = &result.rules[&("weight_c".to_owned(), RuleFamily::Weighted)];
+    assert!(!weight.contexts.is_empty());
 }
 
 #[test]
@@ -858,7 +866,7 @@ fn a_rule_offset_that_is_not_a_rule_or_outside_the_rule_set_is_not_named() {
     let misaligned = rules("x0,x0,#0xc8", SCRIPTED_RULE, true);
     let outside = rules("x0,x0,#0xc0", SCRIPTED_RULE, false);
 
-    assert!(misaligned.rules["can_b"].1.contexts.is_empty());
+    assert!(scripted(&misaligned, "can_b").contexts.is_empty());
     assert_eq!(misaligned.unnamed[0].reason, "rule-offset");
     assert_eq!(outside.unnamed[0].reason, "rule-outside-the-rule-set");
 }
@@ -900,8 +908,7 @@ fn a_rule_forwarder_is_checked_with_a_probe_and_named_by_its_callers_constant() 
     let result = analyze(&program.input(), Family::GameRule).unwrap();
 
     assert_eq!(
-        result.rules["can_b"]
-            .1
+        scripted(&result, "can_b")
             .contexts
             .iter()
             .cloned()
@@ -927,7 +934,7 @@ fn a_wrong_rule_stride_names_nothing_that_exists() {
         result
             .rules
             .values()
-            .all(|(_, findings)| findings.contexts.is_empty())
+            .all(|findings| findings.contexts.is_empty())
     );
 }
 
@@ -1034,7 +1041,7 @@ fn a_rule_offset_in_a_register_names_the_rule() {
     program.rule_owners.insert(0x3000);
     let result = analyze(&program.input(), Family::GameRule).unwrap();
 
-    assert!(!result.rules["can_b"].1.contexts.is_empty());
+    assert!(!scripted(&result, "can_b").contexts.is_empty());
 }
 
 #[test]
@@ -1140,4 +1147,114 @@ fn a_field_address_formed_by_write_back_joins_its_cached_list() {
     let input = program.input();
 
     assert_eq!(pulse_names(&input), BTreeMap::from([(0x28, ON_TEST)]));
+}
+
+#[test]
+fn a_site_reached_only_through_a_jump_table_is_followed() {
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8000"),
+        (0x100c, "add", "x0,sp,#0x100"),
+        (0x1010, "bl", "#0x8100"),
+        (0x1014, "add", "x0,sp,#0x10"),
+        (0x1018, "adrp", "x1,#0x5000"),
+        (0x101c, "bl", "#0x9100"),
+        (0x1020, "adr", "x9,#0x102c"),
+        (0x1024, "br", "x9"),
+        (0x1028, "ret", ""),
+        (0x102c, "add", "x1,sp,#0x10"),
+        (0x1030, "add", "x2,sp,#0x100"),
+        (0x1034, "bl", "#0x9000"),
+        (0x1038, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&lines)
+            .site(0x1000, 0x1034, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn an_unfollowed_instruction_that_starts_with_b_clears_its_destination() {
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8000"),
+        (0x100c, "adrp", "x1,#0x5000"),
+        (0x1010, "bic", "x1,x1,x2"),
+        (0x1014, "add", "x0,sp,#0x10"),
+        (0x1018, "bl", "#0x9100"),
+        (0x101c, "add", "x1,sp,#0x10"),
+        (0x1020, "add", "x2,sp,#0x100"),
+        (0x1024, "bl", "#0x9000"),
+        (0x1028, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&lines)
+            .site(0x1000, 0x1024, FIRE)
+            .input(),
+    );
+
+    assert!(result.on_actions.is_empty());
+}
+
+#[test]
+fn a_string_that_only_one_branch_builds_names_only_that_branch() {
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8000"),
+        (0x100c, "add", "x0,sp,#0x100"),
+        (0x1010, "cbz", "x19,#0x1028"),
+        (0x1014, "bl", "#0x8100"),
+        (0x1018, "add", "x0,sp,#0x10"),
+        (0x101c, "adrp", "x1,#0x5000"),
+        (0x1020, "bl", "#0x9100"),
+        (0x1024, "b", "#0x1034"),
+        (0x1028, "bl", "#0x8200"),
+        (0x102c, "add", "x0,sp,#0x10"),
+        (0x1030, "bl", "#0x9900"),
+        (0x1034, "add", "x1,sp,#0x10"),
+        (0x1038, "add", "x2,sp,#0x100"),
+        (0x103c, "bl", "#0x9000"),
+        (0x1040, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&lines)
+            .site(0x1000, 0x103c, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])],
+        "the leader context belongs to a name that the method does not know"
+    );
+    assert!(
+        result
+            .unnamed
+            .iter()
+            .any(|unnamed| unnamed.reason == "name-not-a-literal")
+    );
+    assert!(
+        result.on_actions["on_test"]
+            .unresolved
+            .contains("context-not-attributed")
+    );
+}
+
+#[test]
+fn a_setter_that_passes_the_scope_to_an_unfollowed_call_leaves_it_unresolved() {
+    let result = fire_country(&[(0x1020, "add", "x0,sp,#0x100"), (0x1024, "bl", "#0x8500")]);
+
+    assert_eq!(contexts(&result, "on_test")[0].this, Slot::Unresolved);
 }

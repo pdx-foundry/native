@@ -104,7 +104,7 @@
     "on_entering_system": ["this=ship root=SelfLink from=[galactic_object,country,SelfLink]"],
     "on_entering_system_first_time": ["this=ship root=SelfLink from=[galactic_object,country,SelfLink]"],
     "on_entering_system_fleet": ["this=fleet root=SelfLink from=[galactic_object,SelfLink]"],
-    "on_entering_war": ["this=country root=SelfLink from=[country,SelfLink]"],
+    "on_entering_war": [],
     "on_exhibit_unlocked": ["this=country root=SelfLink from=[SelfLink]"],
     "on_fauna_capture_ended": ["this=fleet root=SelfLink from=[SelfLink]"],
     "on_fauna_captured": ["this=ship root=SelfLink from=[fleet,SelfLink]"],

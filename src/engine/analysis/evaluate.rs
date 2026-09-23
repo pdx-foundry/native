@@ -119,7 +119,8 @@ impl Code {
 
     /// Every instruction from which the instruction at `site` can be reached by the direct
     /// control flow of this code, including `site`. A branch through a register may go to any
-    /// instruction, so it can reach `site` whenever any instruction can.
+    /// instruction, such as a jump-table target on a path to `site`, so every such branch, and
+    /// every instruction that reaches one, can reach `site`.
     fn reaching(&self, site: u64) -> BTreeSet<u64> {
         let mut predecessors = BTreeMap::<u64, Vec<u64>>::new();
         let mut through_register = Vec::new();
@@ -135,18 +136,12 @@ impl Code {
         }
 
         let mut reaching = BTreeSet::from([site]);
-        let mut pending = vec![site];
+        reaching.extend(&through_register);
+        let mut pending: Vec<u64> = reaching.iter().copied().collect();
         while let Some(address) = pending.pop() {
             for &predecessor in predecessors.get(&address).into_iter().flatten() {
                 if reaching.insert(predecessor) {
                     pending.push(predecessor);
-                }
-            }
-            if reaching.len() == 1 {
-                for &branch in &through_register {
-                    if reaching.insert(branch) {
-                        pending.push(branch);
-                    }
                 }
             }
         }

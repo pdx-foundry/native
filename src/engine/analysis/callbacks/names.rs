@@ -5,9 +5,9 @@
 //! of facts; where paths join, the sets join, and a set that grows past [`VALUE_LIMIT`] becomes
 //! unknown. A stack `CString` holds the set of literals that it was built from. Building it again
 //! replaces the set; a call that receives it as its object, other than a known string function,
-//! makes it unknown; its destructor removes it. So two branches that build different names in
-//! one object give both names, and a stack slot that the compiler reuses for another object
-//! keeps no stale name.
+//! makes it unknown; its destructor removes it. Where paths join, a string that one path did not
+//! build becomes unknown. So two branches that build different names in one object give both
+//! names, and a stack slot that the compiler reuses for another object keeps no stale name.
 //!
 //! Only these instructions keep facts: `adrp`, `add` and `sub` with an immediate or a register
 //! of known constants, `mov` of a register or an immediate, a 64-bit `ldr` from a constant or a
@@ -124,12 +124,20 @@ impl State {
         for (mine, theirs) in self.registers.iter_mut().zip(&other.registers) {
             *mine = join_values(mine, theirs);
         }
-        for (offset, theirs) in &other.strings {
-            let joined = match self.strings.get(offset) {
-                Some(mine) => join_values(mine, theirs),
-                None => theirs.clone(),
+        // A string that one path did not build holds an unknown text: that path may have built
+        // it in a way that the pass does not follow.
+        let offsets: BTreeSet<i64> = self
+            .strings
+            .keys()
+            .chain(other.strings.keys())
+            .copied()
+            .collect();
+        for offset in offsets {
+            let joined = match (self.strings.get(&offset), other.strings.get(&offset)) {
+                (Some(mine), Some(theirs)) => join_values(mine, theirs),
+                _ => None,
             };
-            self.strings.insert(*offset, joined);
+            self.strings.insert(offset, joined);
         }
         // A slot that one path did not store holds an unknown value.
         self.slots = self
@@ -662,10 +670,13 @@ fn load(state: &State, memory: &str) -> Value {
 /// Make unknown every register that an instruction outside the followed forms may write.
 fn clear_written(operation: &str, operands: &[&str], strings: &StringFunctions, state: &mut State) {
     let writes_first = !(operation.starts_with("st") && !operation.contains("xr")
-        || operation.starts_with("b")
+        || operation.starts_with("b.")
         || matches!(
             operation,
-            "cmp"
+            "b" | "bl"
+                | "br"
+                | "blr"
+                | "cmp"
                 | "cmn"
                 | "tst"
                 | "ccmp"
