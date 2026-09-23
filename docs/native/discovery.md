@@ -58,7 +58,7 @@ SDK-536 ports the other four inventories to static questions on M45-release. The
   61 calls to `TryAddDynamicModifier` and one call to `AddDynamicModifier` generate modifier families from content. Each of these 73 sites is an `UnnamedDeclaration` gap.
 - **Categories** (`Native::modifier_categories`). The method runs `GetModifierCategoryName` on each single bit, on all bits, and on each mask that a built-in modifier uses. The switch writes a name in one of three ways: a literal assignment, inline short-string bytes, or a 16-byte vector copy. A modifier's tags follow the rule in `CModifier::LogDefinitions`: the name of the whole mask when one exists, otherwise the name of each set bit.
 - **Scopes** (`Native::scopes`). Scope types are the bits of `NEventScope::GetScopeName`. The method runs `GetScopeTypeEnumFromToken` on every token value up to the largest literal token, which groups the keywords of each type. It does not use the config's alias groups. A keyword that maps to several bits is a `ScopeGroup`, not a keyword of each type. The same map serves `is_scope_type` (`CIsScopeTypeTrigger::Assign`), the context trigger and effect readers, the scripted-action and event-scope readers, and `TokenToEnum<EScopeType>`, so a group keyword is valid script.
-- **Links** (`Native::scope_links`). The method runs one iteration of the loop in `CEventTarget::GenerateEventTargetDocumentation` for each token. A token is a link when the loop body asks for its documentation. Input scopes come from `CEventTarget::GetSupportedScopes` on a target that holds the token (recipe `event_target_token_offset`). One case builds a second target and adds its scopes, and the method follows that call. The output comes from `CEventTarget::GetScopeType`, where 0 is `Various`. Links that take data are the literals ending in `:` in `CEventTarget::ParseForSpecialValues`. Their scopes are not followed and stay as gaps.
+- **Links** (`Native::scope_links`). The method runs one iteration of the loop in `CEventTarget::GenerateEventTargetDocumentation` for each token. A token is a link when the loop body asks for its documentation. Input scopes come from `CEventTarget::GetSupportedScopes` on a target that holds the token (recipe `event_target_token_offset`). One case builds a second target and adds its scopes, and the method follows that call. The output comes from `CEventTarget::GetScopeType`, where 0 is `Various`. Links that take data are the literals ending in `:` in `CEventTarget::ParseForSpecialValues`. SDK-565 gives their scopes (below).
 
 Comparison with the SDK-488 inventory (M45-observe, frozen `runs/20260917-154455`), after the static result was produced:
 
@@ -67,14 +67,60 @@ Comparison with the SDK-488 inventory (M45-observe, frozen `runs/20260917-154455
 | Modifiers | 571 | 45,578 | The 571 names equal the first 571 entries of the loaded table exactly, in the same set. The other 45,007 entries are generated from content or added at run time (73 generation sites; SDK-540 owns the templates). |
 | Modifier tags | 566 equal | — | Five differ: `terraforming_cost_mult`, `starbase_shipyard_build_cost_mult`, `starbase_shipyard_artificial_build_cost_mult`, `starbase_shipyard_space_fauna_build_cost_mult` and `gdf_ship_alloys_cost_mult`. Each loaded entry has `AI Economy` and content-chosen tags. Content registers the same name again: for example `common/economic_categories` `terraforming` has `generate_mult_modifiers` and `modifier_category = planet`. The static answer keeps the executable's declaration. |
 | Categories | 32 | 30 printed | The switch also names `Ship Components` (0x1000) and `Cosmic Storm Influence Field` (0x8000000). The live log did not print them, because no loaded modifier uses them alone. |
-| Scope links | 99 + 2 prefixes | 99 | The same 99 names, with equal input scopes and outputs, except `carrier`. M45-release declares its output as planet or ship (mask 0xa). The M45-observe beta and the 4.4.1 dump both printed `planet`, so the change came with the full 4.5 release. It agrees with colonies on ships in the Nomads release; the executable does not state the reason. `event_target:` and `parameter:` are the data prefixes. |
+| Scope links | 99 + 2 prefixes | 99 | The same 99 names, with equal input scopes and outputs, except `carrier`. M45-release declares its output as planet or ship (mask 0xa). The M45-observe beta and the 4.4.1 dump both printed `planet`, so the change came with the full 4.5 release. It agrees with colonies on ships in the Nomads release; the executable does not state the reason. `event_target:` and `parameter:` are the data prefixes (SDK-565: `Any` input, `Various` output). |
 | Scopes | 42 types, 41 names | 40 names across the logs | A log prints only the types that a documented command or link uses; the link log alone prints 34 of the 41 names, with `pop job` split into `pop` and `job`. Two types are named `country`: bit 2, keyword `country`, and bit 19, keyword `observer`. Bit 37, `pop job`, has no literal keyword. `alliance` and `federation` name one type. `carrier` maps to planet or ship (mask 0xa) and is the one `ScopeGroup`. |
 
 Keeping `pop job` whole corrects the SDK-535 scope lists as well. Before this change they split the name into `pop` and `job`, which invented a `job` scope and repeated `pop`.
 
 A scope type's identity is its bit, not its name: bits 2 and 19 are both named `country`. Each `ScopeDeclaration` has an opaque `ScopeId`, a hash of the bit that is valid within one build. Every scope reference carries the same identity: command and link scopes, link outputs, and `ScopeGroup` members. A reference also carries the display name, only for reading. Join references to declarations by `id`, never by name.
 
-**Not in SDK-536.** The ticket asked for the full modifier inventory with the SDK-488 count, so it was narrowed. The loaded inventory with its generated families is **SDK-564**, and the name templates are **SDK-540**. The scopes of the data-taking links `event_target:` and `parameter:` are **SDK-565**.
+**Not in SDK-536.** The ticket asked for the full modifier inventory with the SDK-488 count, so it was narrowed. The loaded inventory with its generated families is **SDK-564**, and the name templates are **SDK-540**. The scopes of the data-taking links `event_target:` and `parameter:` are **SDK-565**, in the next section.
+
+### Scopes of the data-taking links (SDK-565)
+
+`CEventTarget::ParseForSpecialValues(EScopeType, CString const&)` is at `0x1004f7ca8` on
+M45-release. `CEventTarget(CToken)` calls it with scope type 0; `CEventTarget(CToken, EScopeType,
+CString const&)` passes its own. The function does these steps, in this order:
+
+1. It returns at once when the target's token (`+0x58`) is in a compiled list of literal tokens.
+2. It compares the target's text (`+0x68`) with `event_target:` and then with `parameter:`. These
+   are the only two literal prefixes.
+3. `event_target:V` sets `+0x188`. When `V` contains `@`, the function calls `ReadAsDynamicFlag`
+   with a new sub-target at `+0x50`; this is the only use of the scope-type argument. Otherwise it
+   removes a trailing `?` (`+0x189`), keeps `CPdxIntegerFlags::CreateFlagIndex` of the part before
+   the first `.` at `+0x180`, and makes the rest a chained target at `+0x178`.
+4. `parameter:N` keeps `CStaticLexer::AddDynamicToken` of the part before the first `.` at `+0x184`,
+   and makes the rest a chained target.
+5. Other text: it removes a trailing `?`, gives the part before the first `.` its own token
+   (`FindTok`), and makes the rest a chained target.
+
+Neither prefix branch writes the token. `GetSupportedScopes()` and `GetScopeType(int, char const*)`
+switch on the token only; the second ignores its `char*`. `ValidateScope` and `CheckScopeSupport`
+read scopes only through these two functions. A supported mask of 0 skips the check, and an output
+of 0 skips the check of the next target in the chain. `FindTok` gives 12 to text that is not a
+literal, and no literal name starts with a prefix, so a prefixed target holds a token that no
+literal names.
+
+The method does not choose that token. It runs both functions on every token value that no literal
+names, up to the largest literal and one value after it. It keeps a result only when all of the
+values agree. When they do not agree, the result is `token-dependent`; when a literal starts with
+the prefix, it is `literal-prefix`.
+
+**Result on M45-release.** `event_target:` and `parameter:` both declare `Any` input and `Various`
+output. `scope_links()` has no gap other than `OutsideMethod`, so it is `Complete`. The scope-type
+argument does not change the scopes of a link.
+
+Forms that are not links:
+
+| Form | Reason |
+| --- | --- |
+| `A.B` | A chain of targets. Each part is parsed as its own target, and `ValidateScope` checks each part in turn. |
+| trailing `?` | An option on the target and on its chain (`+0x189`, passed to the chained constructor). `CEventTarget::GetScope` reads it at run time. |
+| `@` in an `event_target:` value | The dynamic-flag form of the value (`ReadAsDynamicFlag`, as in `has_country_flag = name@target`). It names the saved target and is not a link. |
+| `value:`, `trigger:` and other value prefixes | `CVariableValue::ReadTriggerModifierOrScriptValue` splits them on `:` and reads a number, not a scope. Their rules belong to SDK-550. |
+
+Which saved target or parameter a value names, and whether it exists in a running game, belong
+to SDK-543 and SDK-550.
 
 ### Localization contexts, commands and links (SDK-537)
 

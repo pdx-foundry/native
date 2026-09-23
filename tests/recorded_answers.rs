@@ -145,12 +145,12 @@ fn recorded() -> tempfile::TempDir {
                   "output_scope": { "Listed": [
                       { "id": "planet-id", "name": "planet" }, { "id": "ship-id", "name": "ship" }
                   ] }, "data": "None" },
-                { "name": "event_target", "input_scopes": "Unresolved",
-                  "output_scope": "Unresolved", "data": { "Prefix": "event_target:" } },
+                { "name": "event_target", "input_scopes": "Any",
+                  "output_scope": "Various", "data": { "Prefix": "event_target:" } },
                 { "name": "prev", "input_scopes": "Any", "output_scope": "Various", "data": "None" }
             ],
-            "completeness": "Partial",
-            "gaps": [{ "kind": "UnresolvedPath", "subject": "event_target", "detail": "data link" }],
+            "completeness": "Complete",
+            "gaps": [],
             "source": source()
         }}),
     );

@@ -36,7 +36,8 @@ gives the name templates that one registry's database generator registers for ea
 not joined to a registry and is counted as a gap. Category tags are intended-use tags, not where a
 modifier takes effect. `scopes` groups keywords only by the engine's
 keyword-to-scope map; a keyword that matches several types, such as `carrier`, is a group.
-`scope_links` gives declared input and output scopes and marks links that take data. A scope
+`scope_links` gives declared input and output scopes for each link, including the links that take
+data, such as `event_target:`, and marks those links. A scope
 reference carries an opaque `ScopeId`; join it to `scopes()` by that identity, because two scope
 types can share a display name. `localization_declarations` gives the localization contexts (such
 as `Country` or `Dead Fleet`), the commands and links that each context declares, each link's

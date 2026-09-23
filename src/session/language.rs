@@ -58,11 +58,11 @@ impl Native {
         })
     }
 
-    /// Read the scope links that the engine documents, with their declared input and output
-    /// scopes, and the link prefixes that take data.
+    /// Read the scope links that the engine documents and the link prefixes that take data, such
+    /// as `event_target:`, each with its declared input and output scopes.
     ///
-    /// Declared scopes are what the engine states. Whether a link gives a useful target in a
-    /// running game, and variable or parameter syntax, are outside this method.
+    /// Declared scopes are what the engine states. Which saved target or parameter a value names,
+    /// and whether a link gives a useful target in a running game, are outside this method.
     pub fn scope_links(&self) -> Result<Answer<Vec<ScopeLink>>, Error> {
         self.answer("scope_links", None, || {
             let operation = Operation::ScopeLinks;
@@ -342,22 +342,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
             name: link.name.clone(),
             input_scopes,
             output_scope,
-            data: LinkData::None,
-        });
-    }
-
-    for prefix in &result.prefixes {
-        let name = prefix.trim_end_matches(':');
-        gaps.push(gap(
-            GapKind::UnresolvedPath,
-            Some(name),
-            "the scopes of a link that takes data are not followed by this method",
-        ));
-        value.push(ScopeLink {
-            name: name.to_owned(),
-            input_scopes: DeclaredScopes::Unresolved,
-            output_scope: OutputScope::Unresolved,
-            data: LinkData::Prefix(prefix.clone()),
+            data: link.prefix.clone().map_or(LinkData::None, LinkData::Prefix),
         });
     }
 
@@ -388,7 +373,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
     gaps.push(gap(
         GapKind::OutsideMethod,
         None,
-        "The search covers every literal token that the engine's link documentation prints, and the data prefixes of its special-value parser. Variables, other dynamic target syntax, and actual scope availability are outside it.",
+        "The search covers every literal token that the engine's link documentation prints, and the data prefixes of its special-value parser. The parser's other forms are not links: `.` joins links into a chain, a trailing `?` sets a run-time option, and `@` in an event_target value names a dynamic flag. Which target or parameter a value names, value prefixes such as `value:`, and actual scope availability are outside it.",
     ));
 
     answer(value, gaps, |link| &link.name, build, LINK_METHOD)
