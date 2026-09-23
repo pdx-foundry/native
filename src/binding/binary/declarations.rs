@@ -3,18 +3,20 @@ use std::collections::{BTreeMap, BTreeSet};
 use object::{Object, ObjectSection, SectionKind};
 
 use crate::engine::analysis::{
-    declarations::{DeclarationInput, Function, ScopeSlots},
+    declarations::{CALLER_DEPTH, Composition, DeclarationInput, Function, ScopeSlots},
     decode::decode_arm64,
     discovery::Symbol,
     evaluate::ReadOnlyData,
+    families::StringLayout,
     fields::literal_token_names,
 };
 use crate::{AnalysisError, DeclarationKind};
 
 use super::super::targets::DeclarationRecipe;
 
-/// Read every direct registration call in executable text, including calls in compiler outlined
-/// regions that have no reliable symbol boundary.
+/// Read every registration call in executable text, including tail calls and calls in compiler
+/// outlined regions that have no reliable symbol boundary, with the code that composes run-time
+/// tokens.
 pub(in crate::binding) fn read(
     bytes: &[u8],
     symbols: &[Symbol],
@@ -23,20 +25,34 @@ pub(in crate::binding) fn read(
     kind: DeclarationKind,
     recipe: &DeclarationRecipe,
 ) -> Result<DeclarationInput, AnalysisError> {
-    let registrar_name = match kind {
-        DeclarationKind::Effect => "CEffectDatabase::RegisterEffectEntry(int, CEffectEntryBase*)",
-        DeclarationKind::Trigger => {
-            "CTriggerDatabase::RegisterTriggerEntry(int, CTriggerEntryBase*)"
-        }
+    let (database, registrar_name, helper_class) = match kind {
+        DeclarationKind::Effect => (
+            "CEffectDatabase",
+            "CEffectDatabase::RegisterEffectEntry(int, CEffectEntryBase*)",
+            "CEffectRegistryHelper",
+        ),
+        DeclarationKind::Trigger => (
+            "CTriggerDatabase",
+            "CTriggerDatabase::RegisterTriggerEntry(int, CTriggerEntryBase*)",
+            "CTriggerRegistryHelper",
+        ),
     };
     let register_entry = unique(symbols, registrar_name)?;
     let operator_new = operator_new(symbols)?;
     let text = Text::read(bytes, symbols)?;
     let tokens = text.token_names(symbols, strings)?;
     let scope_names = text.scope_names(symbols, strings);
-    let registrars: Vec<_> = text
-        .direct_calls(register_entry)
+    let entry_calls: Vec<u64> = text
+        .calls_into(&BTreeSet::from([register_entry]))
         .into_iter()
+        .map(|(at, _)| at)
+        .collect();
+    let entry_helpers = entry_helpers(symbols, &text, helper_class, &entry_calls);
+    let helper_calls = text.calls_into(&entry_helpers);
+    let registrars: Vec<_> = entry_calls
+        .iter()
+        .copied()
+        .chain(helper_calls.into_iter().map(|(at, _)| at))
         .map(|at| text.window_ending_at(at, 1024))
         .collect::<Result<_, _>>()?;
     if registrars.is_empty() {
@@ -61,10 +77,10 @@ pub(in crate::binding) fn read(
         DeclarationKind::Trigger => recipe.trigger_scope_slot,
     };
     Ok(DeclarationInput {
-        kind,
         tokens,
         registrars,
         register_entry: BTreeSet::from([register_entry]),
+        entry_helpers,
         operator_new,
         functions,
         pointers: pointers.clone(),
@@ -74,10 +90,96 @@ pub(in crate::binding) fn read(
             supported_scopes: scope_slot,
         },
         scope_names,
-        symbols_by_address: symbols
-            .iter()
-            .map(|symbol| (symbol.address, symbol.name.clone()))
-            .collect(),
+        composition: composition(bytes, symbols, &text, &entry_calls, database, recipe)?,
+    })
+}
+
+/// Registry helper constructors that take the token and the documentation text and insert the
+/// entry themselves, with no call to the register function: the compiler inlined it.
+fn entry_helpers(
+    symbols: &[Symbol],
+    text: &Text,
+    class: &str,
+    entry_calls: &[u64],
+) -> BTreeSet<u64> {
+    let prefix = format!("{class}<");
+    let suffix = format!(">::{class}(int, char const*)");
+    symbols
+        .iter()
+        .filter(|symbol| symbol.name.starts_with(&prefix) && symbol.name.ends_with(&suffix))
+        .map(|symbol| symbol.address)
+        .filter(|&start| {
+            let end = start + text.function_length(start);
+            !entry_calls.iter().any(|call| (start..end).contains(call))
+        })
+        .collect()
+}
+
+/// The functions that contain a call to the register function, their callers up to
+/// `CALLER_DEPTH`, and the functions that compose names and documentation.
+fn composition(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    text: &Text,
+    entry_calls: &[u64],
+    database: &str,
+    recipe: &DeclarationRecipe,
+) -> Result<Composition, AnalysisError> {
+    let enclosing = |address: u64| text.starts.range(..=address).next_back().copied();
+    let mut starts: BTreeSet<u64> = entry_calls.iter().filter_map(|&at| enclosing(at)).collect();
+    let mut callers = BTreeMap::<u64, Vec<(u64, u64)>>::new();
+    let mut level = starts.clone();
+    for _ in 0..CALLER_DEPTH {
+        let mut next = BTreeSet::new();
+        for (at, callee) in text.calls_into(&level) {
+            let Some(caller) = enclosing(at) else {
+                continue;
+            };
+            callers.entry(callee).or_default().push((at, caller));
+            if starts.insert(caller) {
+                next.insert(caller);
+            }
+        }
+        level = next;
+    }
+    let composers: BTreeSet<u64> = symbols
+        .iter()
+        .filter(|symbol| {
+            symbol.name.ends_with("::GenerateTokenName(char const*)")
+                || symbol
+                    .name
+                    .ends_with("::GenerateDocumentation(char const*, char const*)")
+        })
+        .map(|symbol| symbol.address)
+        .collect();
+    starts.extend(&composers);
+    let bodies = starts
+        .into_iter()
+        .map(|start| {
+            let (address, code) = text.function(start)?;
+            Ok((
+                start,
+                Function {
+                    address,
+                    code: code.to_vec(),
+                },
+            ))
+        })
+        .collect::<Result<_, AnalysisError>>()?;
+    Ok(Composition {
+        bodies,
+        callers,
+        composers,
+        dynamic_token: addresses(
+            symbols,
+            "CStaticLexer::AddDynamicToken(CString const&, bool)",
+        ),
+        create_database: addresses(symbols, &format!("{database}::CreateInstance()")),
+        strings: super::families::string_functions(symbols),
+        layout: StringLayout {
+            flag_byte: recipe.short_string_length_offset,
+        },
+        data: read_only_data(bytes)?,
     })
 }
 
@@ -237,6 +339,21 @@ impl<'a> Text<'a> {
             .map(|(index, word)| (self.address + (index * 4) as u64, u32::from_le_bytes(*word)))
             .filter(|(at, word)| call_or_jump_target(*word, *at) == Some(target))
             .map(|(at, _)| at)
+            .collect()
+    }
+
+    /// Every direct `bl` or `b` to one of `targets`, with its target, in address order.
+    pub fn calls_into(&self, targets: &BTreeSet<u64>) -> Vec<(u64, u64)> {
+        self.code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, word)| {
+                let at = self.address + (index * 4) as u64;
+                let target = call_or_jump_target(u32::from_le_bytes(*word), at)?;
+                targets.contains(&target).then_some((at, target))
+            })
             .collect()
     }
 

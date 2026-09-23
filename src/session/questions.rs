@@ -133,11 +133,13 @@ impl Native {
         analysis.verified().map_err(|e| error(operation, e))
     }
 
-    /// Read effect or trigger declarations from direct registration calls in executable text.
+    /// Read effect or trigger declarations from the registration calls in executable text.
     ///
-    /// Each direct call is one site. A site with a runtime name or unreadable documentation
-    /// leaves a gap. Indirect registration, argument grammar, behavior, and actual scope
-    /// availability are outside this method.
+    /// A call with a literal token is one declaration. A call whose name the code composes at run
+    /// time gives one declaration for each chain of callers that establishes the name. A call that
+    /// cannot be followed, or unreadable documentation, leaves a gap. Registration through a
+    /// function pointer, argument grammar, behavior, and actual scope availability are outside
+    /// this method.
     pub fn declarations(&self, kind: DeclarationKind) -> Result<Answer<Vec<Declaration>>, Error> {
         self.answer("declarations", Some(kind.subject()), || {
             let operation = Operation::Declarations;
@@ -278,11 +280,11 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                     targets: DeclaredScopes::Unresolved,
                 });
             }
-            Site::RuntimeToken { family } => gaps.push(Gap {
+            Site::RuntimeToken { obstacle } => gaps.push(Gap {
                 kind: GapKind::UnnamedDeclaration,
                 subject: None,
                 detail: format!(
-                    "registration of the {family} family composes its name at run time"
+                    "a registration composes its name at run time and was not followed at {obstacle}"
                 ),
             }),
             Site::Unreadable {
@@ -315,7 +317,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
     gaps.push(Gap {
         kind: GapKind::OutsideMethod,
         subject: None,
-        detail: "The search covers every direct registration call in executable text. Indirect registration, argument grammar, behavior, and actual scope availability are outside it.".into(),
+        detail: format!("The search covers every call and tail call in executable text to the register function or to a registry helper constructor, and follows run-time names through up to {} callers. Registration through a function pointer, argument grammar, behavior, and actual scope availability are outside it.", declarations::CALLER_DEPTH),
     });
     value.sort_by(|left, right| left.name.cmp(&right.name));
     Answer {
@@ -468,12 +470,7 @@ mod declaration_tests {
                         }]),
                     },
                 ),
-                (
-                    2,
-                    Site::RuntimeToken {
-                        family: "effect".into(),
-                    },
-                ),
+                (2, Site::RuntimeToken { obstacle: "token" }),
                 (
                     3,
                     Site::Unreadable {

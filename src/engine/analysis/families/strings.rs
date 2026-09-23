@@ -111,6 +111,17 @@ impl Node {
         !self.parts.contains(&Part::Unresolved)
     }
 
+    /// The text when every part is a literal: `None` for the item key or an unresolved part.
+    pub fn literal_text(&self) -> Option<String> {
+        self.parts
+            .iter()
+            .map(|part| match part {
+                Part::Literal(text) => Some(text.as_str()),
+                Part::ItemKey | Part::Unresolved => None,
+            })
+            .collect()
+    }
+
     /// The real text, with `key` for the item key. `None` when a part is unresolved.
     fn text(&self, key: &str) -> Option<String> {
         self.parts
@@ -224,7 +235,7 @@ impl Model<'_> {
 
     /// The node of the text at `address`: its label, else a literal from read-only data. Only
     /// read-only data is a literal: text that code writes elsewhere has no known origin.
-    fn text_node(&self, machine: &Machine, address: Option<u64>, arena: &mut Arena) -> u64 {
+    pub fn text_node(&self, machine: &Machine, address: Option<u64>, arena: &mut Arena) -> u64 {
         let Some(address) = address else {
             return arena.add(Node::unresolved());
         };

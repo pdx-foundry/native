@@ -54,7 +54,7 @@ fn defines_match_the_recorded_m45_boundary() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn direct_declarations_match_the_recorded_m45_boundary() {
+fn declarations_match_the_recorded_m45_inventory() {
     let native = native();
     let gap_counts: serde_json::Value = expected("declaration-gaps.json");
     for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
@@ -96,8 +96,27 @@ fn direct_declarations_match_the_recorded_m45_boundary() {
                 .iter()
                 .filter(|gap| gap.kind == GapKind::UnnamedDeclaration)
                 .count(),
-            gap_counts[subject]["runtime_token_sites"].as_u64().unwrap() as usize
+            gap_counts[subject]["unnamed_registrations"]
+                .as_u64()
+                .unwrap() as usize
         );
+        let recovered: Value = expected("declaration-recovered.json");
+        assert_eq!(
+            answer.value.len() as u64,
+            recovered[subject]["sdk_488_live_inventory"]
+                .as_u64()
+                .unwrap()
+        );
+        for entry in recovered[subject]["recovered"].as_array().unwrap() {
+            let sample: Declaration = serde_json::from_value(entry["declaration"].clone()).unwrap();
+            assert_eq!(
+                answer.value.iter().find(|item| item.name == sample.name),
+                Some(&sample),
+                "{} ({})",
+                sample.name,
+                entry["mechanism"]
+            );
+        }
         assert_eq!(
             answer.completeness,
             if answer

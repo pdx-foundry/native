@@ -118,7 +118,7 @@ pub(in crate::binding) fn key_storage(
     })
 }
 
-fn string_functions(symbols: &[Symbol]) -> StringFunctions {
+pub(super) fn string_functions(symbols: &[Symbol]) -> StringFunctions {
     let named = |name: &str| addresses(symbols, name);
     let formatters: BTreeMap<u64, u64> = symbols
         .iter()
