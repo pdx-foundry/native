@@ -32,18 +32,26 @@ pub struct ModifierInput {
     pub define: u64,
     /// Offset of the category argument from the stack pointer at the definition call.
     pub category_offset: u64,
+    /// Call sites of the functions that add modifiers generated from content.
+    pub generation_sites: usize,
+    pub categories: CategoryInput,
+}
+
+/// The engine's category-name function and what running it needs.
+pub struct CategoryInput {
+    pub category_name: u64,
     /// Size of the engine's string object that the category-name function fills.
     pub string_object_size: u64,
     /// Offset of a short string's length byte in that object. Its characters precede it.
     pub short_length_offset: u64,
-    /// Call sites of the functions that add modifiers generated from content.
-    pub generation_sites: usize,
-    pub category_name: u64,
     /// Functions that assign a literal of a given length to a string.
     pub assign_literal: BTreeSet<u64>,
     pub code: Code,
     pub data: ReadOnlyData,
 }
+
+/// The name of each category mask, or `Ok(None)` when the switch has none for it.
+pub type CategoryNames = BTreeMap<u64, Result<Option<String>, Unresolved>>;
 
 /// One direct definition call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +72,7 @@ pub enum Tags {
 /// each single bit, the mask of every bit, and each mask that a definition uses.
 pub struct ModifierResult {
     pub sites: Vec<DefinitionSite>,
-    pub categories: BTreeMap<u64, Result<Option<String>, Unresolved>>,
+    pub categories: CategoryNames,
     pub generation_sites: usize,
 }
 
@@ -80,16 +88,10 @@ pub fn analyze(input: &ModifierInput) -> Result<ModifierResult, InputError> {
         .map(|rows| definition_arguments(input, rows))
         .collect();
 
-    let masks: BTreeSet<u64> = (0..32)
-        .map(|bit| 1u64 << bit)
-        .chain([u64::from(u32::MAX)])
-        .chain(arguments.iter().filter_map(|(_, mask)| mask.ok()))
-        .collect();
-
-    let categories: BTreeMap<_, _> = masks
-        .into_iter()
-        .map(|mask| (mask, category_name(input, mask)))
-        .collect();
+    let categories = category_names(
+        &input.categories,
+        arguments.iter().filter_map(|(_, mask)| mask.ok()),
+    );
 
     let sites = arguments
         .into_iter()
@@ -101,6 +103,21 @@ pub fn analyze(input: &ModifierInput) -> Result<ModifierResult, InputError> {
         categories,
         generation_sites: input.generation_sites,
     })
+}
+
+/// Name each single category bit, the mask of every bit, and each of `masks`.
+pub fn category_names(
+    input: &CategoryInput,
+    masks: impl IntoIterator<Item = u64>,
+) -> CategoryNames {
+    (0..32)
+        .map(|bit| 1u64 << bit)
+        .chain([u64::from(u32::MAX)])
+        .chain(masks)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|mask| (mask, category_name(input, mask)))
+        .collect()
 }
 
 type Argument = Result<u64, Unresolved>;
@@ -143,7 +160,7 @@ fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> (Argumen
 /// A token that is not a literal constant, or that has no literal name, is composed at run time.
 fn definition_site(
     input: &ModifierInput,
-    categories: &BTreeMap<u64, Result<Option<String>, Unresolved>>,
+    categories: &CategoryNames,
     token: Argument,
     mask: Argument,
 ) -> DefinitionSite {
@@ -164,7 +181,8 @@ fn definition_site(
 }
 
 /// The engine's documentation rule: the whole mask's name, or else the name of each set bit.
-fn tags(categories: &BTreeMap<u64, Result<Option<String>, Unresolved>>, mask: u64) -> Tags {
+/// `categories` must name `mask` and each single bit.
+pub fn tags(categories: &CategoryNames, mask: u64) -> Tags {
     match categories.get(&mask) {
         Some(Ok(Some(name))) => return Tags::Listed(vec![name.clone()]),
         Some(Err(_)) | None => return Tags::Unresolved("category-name"),
@@ -184,7 +202,7 @@ fn tags(categories: &BTreeMap<u64, Result<Option<String>, Unresolved>>, mask: u6
 
 /// Run the category-name switch for one mask. `Ok(None)` means that the switch has no name for
 /// it.
-fn category_name(input: &ModifierInput, mask: u64) -> Result<Option<String>, Unresolved> {
+fn category_name(input: &CategoryInput, mask: u64) -> Result<Option<String>, Unresolved> {
     let mut machine = Machine::new(&input.code, &input.data);
     let object = machine.allocate(input.string_object_size);
     machine.set_register(0, mask);
@@ -283,13 +301,15 @@ mod tests {
             definition_sites,
             define: 0x800,
             category_offset: 4,
-            string_object_size: 24,
-            short_length_offset: 0x17,
             generation_sites: 2,
-            category_name: 0x100,
-            assign_literal: BTreeSet::from([0x900]),
-            code: category_switch(),
-            data: ReadOnlyData::new(vec![(0x1010, b"Ships\0".to_vec())]),
+            categories: CategoryInput {
+                category_name: 0x100,
+                string_object_size: 24,
+                short_length_offset: 0x17,
+                assign_literal: BTreeSet::from([0x900]),
+                code: category_switch(),
+                data: ReadOnlyData::new(vec![(0x1010, b"Ships\0".to_vec())]),
+            },
         }
     }
 
@@ -305,7 +325,7 @@ mod tests {
 
     #[test]
     fn category_names_come_from_both_string_forms() {
-        let input = input(vec![site("#7", "#1")]);
+        let input = input(vec![site("#7", "#1")]).categories;
         assert_eq!(category_name(&input, 1), Ok(Some("Pops".into())));
         assert_eq!(category_name(&input, 2), Ok(Some("Ships".into())));
         assert_eq!(category_name(&input, 3), Ok(Some("All".into())));

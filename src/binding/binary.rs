@@ -119,5 +119,6 @@ pub(in crate::binding) mod discovery;
 
 pub(super) mod callbacks;
 pub(super) mod declarations;
+pub(super) mod families;
 pub(super) mod fields;
 pub(super) mod language;

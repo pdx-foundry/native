@@ -114,6 +114,8 @@ pub enum Operation {
     Modifiers,
     /// `Native::modifier_categories`
     ModifierCategories,
+    /// `Native::modifier_families`
+    ModifierFamilies,
     /// `Native::scopes`
     Scopes,
     /// `Native::scope_links`
@@ -138,6 +140,7 @@ impl Operation {
             Self::Declarations
                 | Self::Modifiers
                 | Self::ModifierCategories
+                | Self::ModifierFamilies
                 | Self::Scopes
                 | Self::ScopeLinks
                 | Self::LocalizationDeclarations
@@ -341,6 +344,83 @@ pub enum DeclaredTags {
     /// The named tags, in the engine's order.
     Listed(Vec<String>),
     /// The declaration could not be followed to its tags.
+    Unresolved,
+}
+
+/// Modifiers that the engine generates for each item of one registry, such as one build-speed
+/// modifier for each building.
+///
+/// # Example
+///
+/// ```
+/// # use pdx_native::{DeclaredTags, GenerationCondition, ModifierFamily, NamePart};
+/// let family = ModifierFamily {
+///     name: vec![
+///         NamePart::Literal("planet_".into()),
+///         NamePart::ItemKey,
+///         NamePart::Literal("_build_speed_mult".into()),
+///     ],
+///     category_tags: DeclaredTags::Listed(vec!["Colony".into()]),
+///     condition: GenerationCondition::Always,
+///     name_limit: None,
+/// };
+/// assert_eq!(
+///     family.name_for("building_foundry").as_deref(),
+///     Some("planet_building_foundry_build_speed_mult"),
+/// );
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModifierFamily {
+    /// The parts of each generated name, in order. At least one part is the item key.
+    pub name: Vec<NamePart>,
+    /// The intended-use category tags of each generated modifier, by the rule of
+    /// `Native::modifiers`. They are the tags of this registration; a later registration of the
+    /// same name can change the loaded tags.
+    pub category_tags: DeclaredTags,
+    /// Whether every item of the registry generates the family.
+    pub condition: GenerationCondition,
+    /// The longest name in bytes that the engine keeps, when a fixed-size buffer builds the name.
+    /// The name for a key that would be longer is not established.
+    pub name_limit: Option<usize>,
+}
+
+impl ModifierFamily {
+    /// The modifier name that the family gives the item named `key`, or `None` when the name
+    /// would be longer than `name_limit`.
+    pub fn name_for(&self, key: &str) -> Option<String> {
+        let name: String = self
+            .name
+            .iter()
+            .map(|part| match part {
+                NamePart::Literal(text) => text.as_str(),
+                NamePart::ItemKey => key,
+            })
+            .collect();
+        match self.name_limit {
+            Some(limit) if name.len() > limit => None,
+            _ => Some(name),
+        }
+    }
+}
+
+/// One part of a generated modifier name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum NamePart {
+    /// This text.
+    Literal(String),
+    /// The key of the item, such as `building_foundry`.
+    ItemKey,
+}
+
+/// Whether every item of a registry generates a modifier family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum GenerationCondition {
+    /// Every item generates it.
+    Always,
+    /// Some items may not generate it, such as when the engine checks an item field first, or the
+    /// method could not follow every path. A gap names the family.
     Unresolved,
 }
 

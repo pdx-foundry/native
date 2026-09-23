@@ -4,8 +4,8 @@ use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
     DeclaredTags, EntryContext, EntryScope, Error, Field, GapKind, LinkData,
     LocalizationContextReference, LocalizationDeclarations, LocalizationOutput,
-    ModifierDeclaration, Native, OutputScope, ReaderKind, RuleKind, ScopeId, ScopeInventory,
-    ScopeLink, ScopeReference,
+    ModifierDeclaration, ModifierFamily, NamePart, Native, OutputScope, ReaderKind, RuleKind,
+    ScopeId, ScopeInventory, ScopeLink, ScopeReference,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -141,6 +141,42 @@ fn modifier_declarations_match_the_recorded_m45_boundary() {
     for modifier in &answer.value {
         assert_ne!(modifier.category_tags, DeclaredTags::Unresolved);
     }
+}
+
+/// Templates checked by hand against the M45-release disassembly of each database generator.
+/// The five of buildings, districts and bypass also matched every registration of two SDK-498
+/// live runs with renamed private content.
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn modifier_families_match_the_recorded_m45_generators() {
+    let native = native();
+    let expected: BTreeMap<String, Value> = expected("modifier-families.json");
+    assert_eq!(expected.len(), 7);
+    for (registry, expected) in &expected {
+        let answer = native.modifier_families(registry).unwrap();
+        assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert_eq!(&compact_families(&answer), expected, "{registry}");
+    }
+
+    let bypass = native.modifier_families("common/bypass").unwrap();
+    let names: Vec<_> = bypass
+        .value
+        .iter()
+        .map(|family| family.name_for("lgate"))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            Some("lgate_empire_windup_mult".into()),
+            Some("lgate_megastructure_bypass_windup_mult".into()),
+            Some("lgate_ship_windup_mult".into()),
+        ]
+    );
+    assert!(matches!(
+        native.modifier_families("common/not_a_registry"),
+        Err(Error::UnknownRegistry { .. })
+    ));
 }
 
 #[test]
@@ -618,6 +654,38 @@ fn assert_declared<T>(answer: &Answer<Vec<T>>) {
         complete,
         "completeness follows the gaps"
     );
+}
+
+/// Each family as its template, and every gap but the method boundary.
+fn compact_families(answer: &Answer<Vec<ModifierFamily>>) -> Value {
+    let families: Vec<_> = answer
+        .value
+        .iter()
+        .map(|family| {
+            let template: String = family
+                .name
+                .iter()
+                .map(|part| match part {
+                    NamePart::Literal(text) => text.as_str(),
+                    NamePart::ItemKey => "{key}",
+                    other => panic!("unexpected part {other:?}"),
+                })
+                .collect();
+            json!({
+                "template": template,
+                "category_tags": family.category_tags,
+                "condition": family.condition,
+                "name_limit": family.name_limit,
+            })
+        })
+        .collect();
+    let gaps: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind != GapKind::OutsideMethod)
+        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+        .collect();
+    json!({ "families": families, "gaps": gaps })
 }
 
 fn gap_counts<T>(answer: &Answer<Vec<T>>) -> BTreeMap<String, usize> {

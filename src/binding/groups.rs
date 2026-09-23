@@ -58,6 +58,16 @@ pub(super) struct RegistryLayout {
     string_tag_offset: u64,
 }
 
+impl RegistryLayout {
+    /// Where a template database holds its items, for static methods that run its code.
+    pub(super) fn database(self) -> crate::engine::analysis::families::DatabaseLayout {
+        crate::engine::analysis::families::DatabaseLayout {
+            items_offset: self.data_offset,
+            count_offset: self.count_offset,
+        }
+    }
+}
+
 const M45_TEMPLATE_LAYOUT: RegistryLayout = RegistryLayout {
     directory_offset: 0x10,
     data_offset: 0x48,

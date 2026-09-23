@@ -7,11 +7,14 @@ use std::{
 
 use super::{binary, installation::Installation};
 use crate::engine::analysis::discovery::{SchedulerLayout, Symbol};
+use crate::engine::analysis::families::{DatabaseLayout, FamilyInput};
 use crate::{AnalysisError, UnavailableReason};
 
 pub(crate) struct BoundAnalysis {
     layout: SchedulerLayout,
     declarations: Option<&'static super::targets::DeclarationRecipe>,
+    /// Where a template database holds its items, when the build has a template layout.
+    database: Option<DatabaseLayout>,
     installation: Installation,
     /// The first change that a read saw. It stays, even when the original bytes come back.
     invalidated: Mutex<Option<UnavailableReason>>,
@@ -67,6 +70,42 @@ impl VerifiedAnalysis<'_> {
             &self.catalog.strings,
             recipe,
         )
+    }
+
+    /// The family input of the registry named `registry`, or `None` when no one template
+    /// registry has that name.
+    fn family_input(
+        &self,
+        registry: &str,
+        recipe: &super::targets::DeclarationRecipe,
+        database: DatabaseLayout,
+    ) -> Result<Option<FamilyInput>, AnalysisError> {
+        use crate::engine::analysis::directories::Directory;
+
+        let named = Directory::Named(registry.into());
+        let mut matching = self
+            .named_candidates()
+            .iter()
+            .filter(|candidate| candidate.directory == named);
+        let (Some(candidate), None) = (matching.next(), matching.next()) else {
+            return Ok(None);
+        };
+
+        let databases: Vec<&str> = self
+            .named_candidates()
+            .iter()
+            .filter(|candidate| matches!(candidate.directory, Directory::Named(_)))
+            .map(|candidate| candidate.record.database.as_str())
+            .collect();
+        binary::families::read(
+            &self.executable,
+            &self.catalog.symbols,
+            &candidate.record,
+            &databases,
+            recipe,
+            database,
+        )
+        .map(Some)
     }
 
     fn scope_input(
@@ -311,11 +350,13 @@ impl BoundAnalysis {
     pub(super) fn new(
         layout: SchedulerLayout,
         declarations: Option<&'static super::targets::DeclarationRecipe>,
+        database: Option<DatabaseLayout>,
         installation: Installation,
     ) -> Self {
         Self {
             layout,
             declarations,
+            database,
             installation,
             invalidated: Mutex::new(None),
             catalog: OnceLock::new(),
@@ -455,6 +496,17 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.modifier_input(recipe)
+    }
+
+    /// The family input of the registry named `registry`, or `None` when no one template
+    /// registry has that name.
+    pub(crate) fn family_input(
+        &self,
+        registry: &str,
+    ) -> Result<Option<FamilyInput>, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        let database = self.database.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.family_input(registry, recipe, database)
     }
 
     pub(crate) fn scope_input(

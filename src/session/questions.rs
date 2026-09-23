@@ -77,6 +77,7 @@ impl Native {
             | Operation::Declarations
             | Operation::Modifiers
             | Operation::ModifierCategories
+            | Operation::ModifierFamilies
             | Operation::Scopes
             | Operation::ScopeLinks
             | Operation::LocalizationDeclarations

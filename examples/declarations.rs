@@ -31,6 +31,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|category| &category.name)
         .collect();
     println!("  {names:?}");
+    let families = timed(
+        "Building modifier families",
+        || native.modifier_families("common/buildings"),
+        Vec::len,
+    )?;
+    for family in &families.value {
+        let example = family.name_for("building_foundry");
+        println!("  {example:?}: {:?}", family.category_tags);
+    }
     let scopes = timed("Scopes", || native.scopes(), |scopes| scopes.types.len())?;
     for scope in scopes.value.types.iter().take(5) {
         println!("  {}: {:?}", scope.name, scope.keywords);

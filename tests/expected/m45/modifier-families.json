@@ -1,0 +1,178 @@
+{
+  "common/buildings": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Always",
+        "name_limit": null,
+        "template": "planet_{key}_build_speed_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnnamedDeclaration",
+        null,
+        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/bypass": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Always",
+        "name_limit": 127,
+        "template": "{key}_empire_windup_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Megastructures"
+          ]
+        },
+        "condition": "Always",
+        "name_limit": 127,
+        "template": "{key}_megastructure_bypass_windup_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Ships"
+          ]
+        },
+        "condition": "Always",
+        "name_limit": 127,
+        "template": "{key}_ship_windup_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnnamedDeclaration",
+        null,
+        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/districts": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Always",
+        "name_limit": null,
+        "template": "planet_{key}_build_speed_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnnamedDeclaration",
+        null,
+        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/megastructures": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Megastructures"
+          ]
+        },
+        "condition": "Always",
+        "name_limit": null,
+        "template": "megastructure_{key}_build_speed_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnnamedDeclaration",
+        null,
+        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/situations": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_max_progress_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_max_progress_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/situations",
+        "the method could not establish that every item generates {key}_max_progress_add"
+      ],
+      [
+        "UnresolvedPath",
+        "common/situations",
+        "the method could not establish that every item generates {key}_max_progress_mult"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/traditions": {
+    "families": [],
+    "gaps": [
+      [
+        "UnnamedDeclaration",
+        null,
+        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/zones": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Always",
+        "name_limit": null,
+        "template": "planet_{key}_build_speed_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnnamedDeclaration",
+        null,
+        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+      ]
+    ]
+  }
+}

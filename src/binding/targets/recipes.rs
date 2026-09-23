@@ -30,6 +30,8 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub effect_scope_slot: u64,
     /// Stack offset of the category argument of the modifier definition call.
     pub modifier_category_offset: u64,
+    /// Stack offset of the category argument of the call that registers a generated modifier.
+    pub dynamic_modifier_category_offset: u64,
     /// Offset of the token in an event target object.
     pub event_target_token_offset: u64,
     /// The engine's string object: its size, and the offset of a short string's length byte.
@@ -60,6 +62,7 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     trigger_scope_slot: 0x78,
     effect_scope_slot: 0x80,
     modifier_category_offset: 0x4,
+    dynamic_modifier_category_offset: 0x0,
     event_target_token_offset: 0x58,
     string_object_size: 0x18,
     short_string_length_offset: 0x17,

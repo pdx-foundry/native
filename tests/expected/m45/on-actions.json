@@ -585,7 +585,7 @@
     ["UnresolvedPath", "on_war_beginning", "some entry scopes of a call site could not be established"],
     ["UnresolvedPath", "on_war_ended", "a call site has more paths than the method follows (path-limit)"],
     ["UnresolvedPath", "on_war_lost", "a call site has more paths than the method follows (path-limit)"],
-    ["UnresolvedPath", "on_war_participant_leaves_early", "a path to a call site could not be followed (instruction)"],
+    ["UnresolvedPath", "on_war_participant_leaves_early", "a call site has more paths than the method follows (path-limit)"],
     ["UnresolvedPath", "on_war_won", "a call site has more paths than the method follows (path-limit)"],
     ["UnresolvedPath", "on_waystation_lost", "a call site has more paths than the method follows (path-limit)"],
     ["UnresolvedPath", "on_waystation_lost", "some entry scopes of a call site could not be established"],
