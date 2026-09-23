@@ -1,5 +1,5 @@
-//! Print every effect and trigger declaration with its declared scopes, one per line, then the
-//! answer's gaps. Give a name part to print only the declarations whose name contains it.
+//! Print every effect and trigger declaration with its declared scopes and targets, one per line,
+//! then the answer's gaps. Give a name part to print only the declarations whose name contains it.
 //!
 //! usage: declaration-list <installation> [name-part]
 use pdx_native::{Declaration, DeclarationKind, DeclaredScopes, Native};

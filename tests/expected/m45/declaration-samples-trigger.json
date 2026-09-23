@@ -4,21 +4,35 @@
     "description": "Evaluates the triggers if the display_triggers of the limit are met",
     "usage": "if = { limit = { <display_triggers> } <triggers> }",
     "scopes": "Any",
-    "targets": "Unresolved"
+    "targets": {
+      "Listed": [
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        }
+      ]
+    }
   },
   {
     "name": "else_if",
     "description": "Evaluates the enclosed triggers if the display_triggers of the preceding `if` or `else_if` is not met and its own display_trigger of the limit is met",
     "usage": "if = { limit = { <display_triggers> } <triggers> }\nelse_if = { limit = { <display_triggers> } <triggers> }",
     "scopes": "Any",
-    "targets": "Unresolved"
+    "targets": {
+      "Listed": [
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        }
+      ]
+    }
   },
   {
     "name": "exists",
     "description": "Checks if a target scope exists",
     "usage": "exists = <target>",
-    "scopes": "Unresolved",
-    "targets": "Unresolved"
+    "scopes": "Any",
+    "targets": "Any"
   },
   {
     "name": "has_civic",
@@ -36,7 +50,14 @@
         }
       ]
     },
-    "targets": "Unresolved"
+    "targets": {
+      "Listed": [
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        }
+      ]
+    }
   },
   {
     "name": "planet_size",
@@ -58,7 +79,7 @@
         }
       ]
     },
-    "targets": "Unresolved"
+    "targets": "Any"
   },
   {
     "name": "is_ruler",
@@ -72,14 +93,21 @@
         }
       ]
     },
-    "targets": "Unresolved"
+    "targets": "Any"
   },
   {
     "name": "always",
     "description": "Sets trigger to be either always true or false",
     "usage": "always = yes",
     "scopes": "Any",
-    "targets": "Unresolved"
+    "targets": {
+      "Listed": [
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        }
+      ]
+    }
   },
   {
     "name": "has_country_flag",
@@ -93,7 +121,14 @@
         }
       ]
     },
-    "targets": "Unresolved"
+    "targets": {
+      "Listed": [
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        }
+      ]
+    }
   },
   {
     "name": "acquired_specimen_count",
@@ -107,13 +142,20 @@
         }
       ]
     },
-    "targets": "Unresolved"
+    "targets": {
+      "Listed": [
+        {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+        }
+      ]
+    }
   },
   {
     "name": "additional_crisis_strength",
     "description": "Checks the degree to which multiply_crisis_strength effect is increasing the strength of endgame crises",
     "usage": "additional_crisis_strength > 1.4",
     "scopes": "Any",
-    "targets": "Unresolved"
+    "targets": "Any"
   }
 ]

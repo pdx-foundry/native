@@ -31,8 +31,10 @@ let defines = native.defines()?;                            // Answer<Vec<Define
 
 `declarations` covers every call and tail call to the effect or trigger registration function or
 to a registry helper constructor in executable text. It follows names composed at run time, such as
-the script-list commands, through their callers. A registration that it cannot follow, and
-unreadable documentation, are gaps. `modifiers` covers direct
+the script-list commands, through their callers. Each declaration has the scopes and the targets
+that its command declares. A declared target set is the engine's value, not a demonstrated argument
+constraint: most commands inherit the base mask (`planet`) whether or not they take a target. A
+registration that it cannot follow, and unreadable documentation, are gaps. `modifiers` covers direct
 modifier definitions; modifier families that content generates are gaps. `modifier_families`
 gives the name templates that one registry's database generator registers for each item, such as
 `{key}_ship_windup_mult`; apply `ModifierFamily::name_for` to item keys. Other generating code is

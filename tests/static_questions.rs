@@ -132,28 +132,55 @@ fn declarations_match_the_recorded_m45_inventory() {
         let global_scope_gap = answer.gaps.iter().any(|gap| {
             gap.kind == GapKind::UnreadableInput && gap.detail == "scope name table not found"
         });
+        let has_gap = |name: &str, set: &str| {
+            answer.gaps.iter().any(|gap| {
+                gap.kind == GapKind::UnresolvedPath
+                    && gap.subject.as_deref() == Some(name)
+                    && gap
+                        .detail
+                        .starts_with(&format!("{set} declaration not followed at "))
+            })
+        };
+        let mut target_sets = BTreeMap::new();
         for item in &answer.value {
-            assert_eq!(item.targets, DeclaredScopes::Unresolved);
             assert!(!item.description.contains("Supported Scopes:"));
             assert!(!item.usage.contains("Supported Scopes:"));
-            if item.scopes == DeclaredScopes::Unresolved && !global_scope_gap {
-                assert!(
-                    answer
-                        .gaps
-                        .iter()
-                        .any(|gap| gap.kind == GapKind::UnresolvedPath
-                            && gap.subject.as_deref() == Some(&item.name))
+            if !global_scope_gap {
+                assert_eq!(
+                    item.scopes == DeclaredScopes::Unresolved,
+                    has_gap(&item.name, "scope"),
+                    "{}",
+                    item.name
+                );
+                assert_eq!(
+                    item.targets == DeclaredScopes::Unresolved,
+                    has_gap(&item.name, "target"),
+                    "{}",
+                    item.name
                 );
             }
+            let set = match item.targets {
+                DeclaredScopes::Any => "any",
+                DeclaredScopes::Listed(_) => "listed",
+                DeclaredScopes::Unresolved => "unresolved",
+            };
+            *target_sets.entry(set.to_owned()).or_insert(0u64) += 1;
         }
-        assert!(
-            answer
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == GapKind::UnresolvedPath
-                    && gap.subject.is_none()
-                    && gap.detail == "target declarations are not followed by this method")
+        assert_eq!(
+            serde_json::to_value(&target_sets).unwrap(),
+            gap_counts[subject]["target_sets"]
         );
+        assert_eq!(
+            unresolved(&answer.value, |item| &item.targets),
+            gap_counts[subject]["unresolved_targets"]
+        );
+        assert_eq!(
+            unresolved(&answer.value, |item| &item.scopes),
+            gap_counts[subject]["unresolved_scopes"]
+        );
+        assert!(answer.gaps.iter().all(|gap| gap.subject.is_some()
+            || gap.kind == GapKind::OutsideMethod
+            || gap.kind == GapKind::UnreadableInput));
         let samples: Vec<Declaration> = expected(&format!("declaration-samples-{subject}.json"));
         assert_eq!(samples.len(), 10);
         for sample in samples {
@@ -176,6 +203,39 @@ fn declarations_match_the_recorded_m45_inventory() {
             .find(|item| item.name == "if")
             .unwrap()
             .scopes,
+        DeclaredScopes::Any
+    );
+    // Target getters: a zero mask, overrides, and the base class's mask 2 (planet), which most
+    // commands inherit whether or not they take a target.
+    let target_names = |value: &[Declaration], name: &str| {
+        listed_names(&find(value, name, |item| &item.name).targets)
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        find(&effects.value, "tooltip", |item| &item.name).targets,
+        DeclaredScopes::Any
+    );
+    assert_eq!(target_names(&effects.value, "set_owner"), ["planet"]);
+    assert_eq!(
+        target_names(&effects.value, "steal_planet_output"),
+        ["country", "ship"]
+    );
+    assert_eq!(
+        target_names(&triggers.value, "has_casus_belli"),
+        ["country"]
+    );
+    assert_eq!(
+        target_names(&triggers.value, "is_default_species"),
+        ["species"]
+    );
+    assert_eq!(
+        target_names(&triggers.value, "is_background_planet"),
+        ["planet", "colony"]
+    );
+    assert_eq!(
+        find(&triggers.value, "exists", |item| &item.name).targets,
         DeclaredScopes::Any
     );
 }
@@ -358,8 +418,10 @@ fn every_scope_reference_joins_to_one_declared_scope_type() {
     let mut references = Vec::new();
     for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
         for declaration in native.declarations(kind).unwrap().value {
-            if let DeclaredScopes::Listed(scopes) = declaration.scopes {
-                references.extend(scopes);
+            for set in [declaration.scopes, declaration.targets] {
+                if let DeclaredScopes::Listed(scopes) = set {
+                    references.extend(scopes);
+                }
             }
         }
     }
@@ -698,6 +760,15 @@ fn context_names(references: &[LocalizationContextReference]) -> Vec<&str> {
     references
         .iter()
         .map(|reference| reference.name.as_str())
+        .collect()
+}
+
+/// The names of the declarations whose `set` is unresolved, in answer order.
+fn unresolved(value: &[Declaration], set: fn(&Declaration) -> &DeclaredScopes) -> Value {
+    value
+        .iter()
+        .filter(|item| *set(item) == DeclaredScopes::Unresolved)
+        .map(|item| Value::from(item.name.as_str()))
         .collect()
 }
 

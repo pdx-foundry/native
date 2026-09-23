@@ -1,10 +1,77 @@
 {
   "effect": {
     "unnamed_registrations": 0,
-    "unreadable": []
+    "unreadable": [],
+    "target_sets": {
+      "any": 3,
+      "listed": 1067,
+      "unresolved": 4
+    },
+    "unresolved_targets": [
+      "pop_change_ethic",
+      "pop_force_add_ethic",
+      "remove_random_starbase_building",
+      "remove_random_starbase_module"
+    ],
+    "unresolved_scopes": [
+      "add_stage_clues",
+      "add_stage_modifier",
+      "add_variable",
+      "astral_rift_event",
+      "ceiling_variable",
+      "change_variable",
+      "clear_variable",
+      "divide_variable",
+      "export_trigger_value_to_variable",
+      "finish_astral_rift",
+      "floor_variable",
+      "modulo_variable",
+      "multiply_variable",
+      "pop_change_ethic",
+      "pop_force_add_ethic",
+      "remove_astral_rift_flag",
+      "remove_random_starbase_building",
+      "remove_random_starbase_module",
+      "remove_stage_modifier",
+      "round_variable",
+      "round_variable_to_closest",
+      "set_astral_rift_flag",
+      "set_next_astral_rift_event",
+      "set_saved_date",
+      "set_variable",
+      "set_variable_to_random_value",
+      "subtract_variable"
+    ]
   },
   "trigger": {
     "unnamed_registrations": 0,
-    "unreadable": []
+    "unreadable": [],
+    "target_sets": {
+      "any": 165,
+      "listed": 927,
+      "unresolved": 4
+    },
+    "unresolved_targets": [
+      "has_relation_flag",
+      "is_war_participant",
+      "pop_ethic_amount",
+      "reverse_has_relation_flag"
+    ],
+    "unresolved_scopes": [
+      "astral_rift_relative_difficulty",
+      "check_variable",
+      "check_variable_arithmetic",
+      "has_astral_rift_flag",
+      "has_relation_flag",
+      "has_stage_modifier",
+      "is_current_stage_difficulty",
+      "is_site_current_stage_score",
+      "is_site_current_stage_score_no_die",
+      "is_site_last_die_result",
+      "is_variable_set",
+      "is_war_participant",
+      "pop_ethic_amount",
+      "reverse_has_relation_flag"
+    ]
   }
 }

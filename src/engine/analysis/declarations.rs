@@ -16,7 +16,7 @@ mod composition;
 pub use composition::{CALLER_DEPTH, Composition};
 
 /// Name and revision of this static method.
-pub const METHOD: &str = "command-declarations/v2";
+pub const METHOD: &str = "command-declarations/v3";
 
 /// A bounded executable code range.
 #[derive(Debug, Clone)]
@@ -30,6 +30,8 @@ pub struct Function {
 pub struct ScopeSlots {
     pub create: u64,
     pub supported_scopes: u64,
+    /// The getter of the scope types that the command's target argument accepts.
+    pub supported_targets: u64,
 }
 
 /// Executable-derived input for one command kind.
@@ -59,6 +61,7 @@ pub enum Site {
         description: String,
         usage: String,
         scopes: ScopeOutcome,
+        targets: ScopeOutcome,
     },
     /// The code composes the token at run time, and the method stopped at `obstacle`.
     RuntimeToken { obstacle: &'static str },
@@ -229,11 +232,13 @@ fn declared(input: &DeclarationInput, name: String, factory: u64, documentation:
         };
     };
     let (description, usage) = split_documentation(documentation);
+    let (scopes, targets) = declared_sets(input, factory);
     Site::Declared {
         name,
         description,
         usage,
-        scopes: scopes(input, factory),
+        scopes,
+        targets,
     }
 }
 
@@ -383,12 +388,35 @@ fn register_values(rows: &[Instruction]) -> BTreeMap<&str, u64> {
     values
 }
 
-fn vtable_store(rows: &[Instruction]) -> Option<u64> {
+/// The vtable that the code stores in the new object: at `[x19]`, or a copy of `x19`, when a
+/// constructor call intervenes, otherwise at `[x0]`. A post-indexed store writes at the base
+/// address too. A vtable address can come through a pointer in `pointers`, as a load from the
+/// global offset table does.
+fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u64> {
     let mut values = BTreeMap::<&str, u64>::new();
+    let mut result = BTreeSet::from(["[x19]".to_owned()]);
     let mut object_vtable = None;
     let mut result_vtable = None;
     for row in rows {
         let args: Vec<_> = row.operands.split(',').collect();
+        let stored = match (row.operation.as_str(), args.as_slice()) {
+            ("stp", [first, _, base]) | ("str", [first, base]) => Some((*first, *base, false)),
+            ("stp", [first, _, base, _]) | ("str", [first, base, _]) => Some((*first, *base, true)),
+            _ => None,
+        };
+        if let Some((first, base, post_indexed)) = stored.filter(|(_, base, _)| base.ends_with(']'))
+        {
+            let value = values.get(first).copied();
+            if result.contains(base) {
+                result_vtable = value.or(result_vtable);
+            } else if base == "[x0]" {
+                object_vtable = value.or(object_vtable);
+            }
+            if post_indexed {
+                result.remove(base);
+            }
+            continue;
+        }
         match (row.operation.as_str(), args.as_slice()) {
             ("adrp", [reg, value]) => {
                 if let Some(value) = number(value) {
@@ -403,23 +431,30 @@ fn vtable_store(rows: &[Instruction]) -> Option<u64> {
                     values.insert(dst, value);
                 }
             }
-            ("stp", [first, _, "[x19]"]) => {
-                if let Some(value) = values.get(first) {
-                    result_vtable = Some(*value);
-                }
+            ("mov", [dst, "x19"]) => {
+                result.insert(format!("[{dst}]"));
+                continue;
             }
-            ("str", [reg, "[x19]"]) => {
-                if let Some(value) = values.get(reg) {
-                    result_vtable = Some(*value);
-                }
-            }
-            ("stp", [first, _, "[x0]"]) | ("str", [first, "[x0]"]) => {
-                if let Some(value) = values.get(first) {
-                    object_vtable = Some(*value);
-                }
+            ("ldr", [reg, base, offset]) if base.starts_with('[') && offset.ends_with(']') => {
+                match values
+                    .get(&base[1..])
+                    .zip(number(&offset[..offset.len() - 1]))
+                    .and_then(|(base, offset)| pointers.get(&base.checked_add(offset)?))
+                {
+                    Some(value) => values.insert(reg, *value),
+                    None => values.remove(reg),
+                };
             }
             ("ldr", [reg, ..]) => {
                 values.remove(reg);
+            }
+            _ => {}
+        }
+        // A copy of `x19` stops being the object when the code writes its register.
+        match (row.operation.as_str(), args.first()) {
+            ("bl" | "blr", _) => result.retain(|base| !caller_saved(base)),
+            (_, Some(destination)) if !matches!(*destination, "x19" | "w19") => {
+                result.remove(&format!("[{}]", destination.replacen('w', "x", 1)));
             }
             _ => {}
         }
@@ -427,61 +462,89 @@ fn vtable_store(rows: &[Instruction]) -> Option<u64> {
     result_vtable.or(object_vtable)
 }
 
-fn scopes(input: &DeclarationInput, factory: u64) -> ScopeOutcome {
-    let Some(create) = input.pointers.get(&(factory + input.slots.create)) else {
-        return ScopeOutcome::Unresolved("factory-create");
-    };
-    let Some(rows) = create_rows(input, *create, 0) else {
-        return ScopeOutcome::Unresolved("create-body");
-    };
+/// Whether `[xN]` names a register that a call can change.
+fn caller_saved(base: &str) -> bool {
+    base.trim_start_matches("[x")
+        .trim_end_matches(']')
+        .parse::<u8>()
+        .is_ok_and(|index| index <= 18)
+}
+
+/// The supported scopes and the supported targets of the command that `factory` creates. Both
+/// getters are slots of the same command vtable.
+fn declared_sets(input: &DeclarationInput, factory: u64) -> (ScopeOutcome, ScopeOutcome) {
+    match command_vtable(input, factory) {
+        Ok(command) => (
+            getter_mask(input, command, input.slots.supported_scopes, SCOPE_LINKS),
+            getter_mask(input, command, input.slots.supported_targets, TARGET_LINKS),
+        ),
+        Err(link) => (
+            ScopeOutcome::Unresolved(link),
+            ScopeOutcome::Unresolved(link),
+        ),
+    }
+}
+
+/// The vtable of the command object that the factory's create method builds.
+fn command_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, &'static str> {
+    let create = input
+        .pointers
+        .get(&(factory + input.slots.create))
+        .ok_or("factory-create")?;
+    let rows = create_rows(input, *create, 0).ok_or("create-body")?;
     if !rows.iter().any(|row| {
         row.operation == "bl"
             && target(row).is_some_and(|target| input.operator_new.contains(&target))
     }) {
-        return ScopeOutcome::Unresolved("create-object");
+        return Err("create-object");
     }
     let end = rows
         .iter()
         .position(|row| row.operation == "ret")
         .unwrap_or(rows.len());
-    let command = vtable_store(&rows[..end])
-        .filter(|address| {
-            input
-                .pointers
-                .contains_key(&(address + input.slots.supported_scopes))
-        })
+    let is_command = |address: &u64| {
+        [input.slots.supported_scopes, input.slots.supported_targets]
+            .iter()
+            .all(|slot| input.pointers.contains_key(&(address + slot)))
+    };
+    vtable_store(&rows[..end], &input.pointers)
+        .filter(is_command)
         .or_else(|| {
             rows[..end]
                 .iter()
                 .filter(|row| row.operation == "bl")
                 .filter_map(target)
                 .filter_map(|address| create_rows(input, address, 0))
-                .filter_map(|body| vtable_store(&body))
-                .find(|address| {
-                    input
-                        .pointers
-                        .contains_key(&(address + input.slots.supported_scopes))
-                })
-        });
-    let Some(command) = command else {
-        return ScopeOutcome::Unresolved("command-vtable");
-    };
-    let Some(getter) = input
+                .filter_map(|body| vtable_store(&body, &input.pointers))
+                .find(is_command)
+        })
+        .ok_or("command-vtable")
+}
+
+/// The links where the method stops at a getter: its body, then its mask.
+type GetterLinks = (&'static str, &'static str);
+const SCOPE_LINKS: GetterLinks = ("scope-getter", "scope-mask");
+const TARGET_LINKS: GetterLinks = ("target-getter", "target-mask");
+
+/// The mask that the getter in `slot` of the command vtable returns, as scope names.
+fn getter_mask(
+    input: &DeclarationInput,
+    command: u64,
+    slot: u64,
+    (getter, mask): GetterLinks,
+) -> ScopeOutcome {
+    let Some(rows) = input
         .pointers
-        .get(&(command + input.slots.supported_scopes))
+        .get(&(command + slot))
+        .and_then(|address| input.functions.get(address))
+        .and_then(|body| decode(body).ok())
     else {
-        return ScopeOutcome::Unresolved("scope-getter");
+        return ScopeOutcome::Unresolved(getter);
     };
-    let Some(getter_body) = input.functions.get(getter) else {
-        return ScopeOutcome::Unresolved("scope-getter");
-    };
-    let Ok(rows) = decode(getter_body) else {
-        return ScopeOutcome::Unresolved("scope-getter");
-    };
-    let Some(mask) = constant_return(&rows) else {
-        return ScopeOutcome::Unresolved("scope-mask");
-    };
-    scope_mask(mask, input.scope_names.as_deref())
+    match constant_return(&rows) {
+        Some(value) => scope_mask(value, input.scope_names.as_deref()),
+        None => ScopeOutcome::Unresolved(mask),
+    }
 }
 
 /// Scope names of a declared scope mask. Zero and all bits mean every scope. A name is kept as

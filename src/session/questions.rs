@@ -257,29 +257,14 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                 description,
                 usage,
                 scopes,
-            } => {
-                let scopes = match scopes {
-                    ScopeOutcome::Any => DeclaredScopes::Any,
-                    ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
-                    ScopeOutcome::Unresolved(link) => {
-                        if *link != "scope-table" {
-                            gaps.push(Gap {
-                                kind: GapKind::UnresolvedPath,
-                                subject: Some(name.clone()),
-                                detail: format!("scope declaration not followed at {link}"),
-                            });
-                        }
-                        DeclaredScopes::Unresolved
-                    }
-                };
-                value.push(Declaration {
-                    name: name.clone(),
-                    description: description.clone(),
-                    usage: usage.clone(),
-                    scopes,
-                    targets: DeclaredScopes::Unresolved,
-                });
-            }
+                targets,
+            } => value.push(Declaration {
+                name: name.clone(),
+                description: description.clone(),
+                usage: usage.clone(),
+                scopes: declared_scopes(scopes, name, "scope", &mut gaps),
+                targets: declared_scopes(targets, name, "target", &mut gaps),
+            }),
             Site::RuntimeToken { obstacle } => gaps.push(Gap {
                 kind: GapKind::UnnamedDeclaration,
                 subject: None,
@@ -310,11 +295,6 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
         });
     }
     gaps.push(Gap {
-        kind: GapKind::UnresolvedPath,
-        subject: None,
-        detail: "target declarations are not followed by this method".into(),
-    });
-    gaps.push(Gap {
         kind: GapKind::OutsideMethod,
         subject: None,
         detail: format!("The search covers every call and tail call in executable text to the register function or to a registry helper constructor, and follows run-time names through up to {} callers. Registration through a function pointer, argument grammar, behavior, and actual scope availability are outside it.", declarations::CALLER_DEPTH),
@@ -329,6 +309,30 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
         },
         gaps,
         source: Source::new(build, declarations::METHOD, Basis::Declared),
+    }
+}
+
+/// A declared scope or target set. An unresolved set has a gap on its declaration, except when
+/// the scope name table is missing, which is one gap for the answer.
+fn declared_scopes(
+    outcome: &ScopeOutcome,
+    name: &str,
+    set: &str,
+    gaps: &mut Vec<Gap>,
+) -> DeclaredScopes {
+    match outcome {
+        ScopeOutcome::Any => DeclaredScopes::Any,
+        ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
+        ScopeOutcome::Unresolved(link) => {
+            if *link != "scope-table" {
+                gaps.push(Gap {
+                    kind: GapKind::UnresolvedPath,
+                    subject: Some(name.into()),
+                    detail: format!("{set} declaration not followed at {link}"),
+                });
+            }
+            DeclaredScopes::Unresolved
+        }
     }
 }
 
@@ -468,6 +472,7 @@ mod declaration_tests {
                             bit: 2,
                             name: "country".into(),
                         }]),
+                        targets: ScopeOutcome::Any,
                     },
                 ),
                 (2, Site::RuntimeToken { obstacle: "token" }),
@@ -510,12 +515,14 @@ mod declaration_tests {
                     description: "description".into(),
                     usage: "".into(),
                     scopes: ScopeOutcome::Unresolved("scope-table"),
+                    targets: ScopeOutcome::Unresolved("scope-table"),
                 },
             )],
             table_gaps: vec!["scope-table"],
         };
         let answer = normalized_declarations(&result, BuildId("test".into()));
         assert_eq!(answer.value[0].scopes, DeclaredScopes::Unresolved);
+        assert_eq!(answer.value[0].targets, DeclaredScopes::Unresolved);
         assert_eq!(
             answer
                 .gaps
@@ -530,5 +537,58 @@ mod declaration_tests {
                 .iter()
                 .any(|gap| gap.subject.as_deref() == Some("known"))
         );
+    }
+
+    #[test]
+    fn each_target_set_is_on_its_declaration() {
+        let declared = |name: &str, targets| Site::Declared {
+            name: name.into(),
+            description: "description".into(),
+            usage: "".into(),
+            scopes: ScopeOutcome::Any,
+            targets,
+        };
+        let country = ScopeType {
+            bit: 2,
+            name: "country".into(),
+        };
+        let result = DeclarationResult {
+            sites: vec![
+                (1, declared("any", ScopeOutcome::Any)),
+                (
+                    2,
+                    declared("listed", ScopeOutcome::Listed(vec![country.clone()])),
+                ),
+                (
+                    3,
+                    declared("unfollowed", ScopeOutcome::Unresolved("target-mask")),
+                ),
+            ],
+            table_gaps: vec![],
+        };
+        let answer = normalized_declarations(&result, BuildId("test".into()));
+        let targets: Vec<_> = answer.value.iter().map(|item| &item.targets).collect();
+        assert_eq!(
+            targets,
+            [
+                &DeclaredScopes::Any,
+                &DeclaredScopes::Listed(scope_references(&[country])),
+                &DeclaredScopes::Unresolved,
+            ]
+        );
+        let unresolved: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.kind == GapKind::UnresolvedPath)
+            .map(|gap| (gap.subject.as_deref(), gap.detail.as_str()))
+            .collect();
+        assert_eq!(
+            unresolved,
+            [(
+                Some("unfollowed"),
+                "target declaration not followed at target-mask"
+            )]
+        );
+        assert_eq!(answer.completeness, Completeness::Partial);
     }
 }

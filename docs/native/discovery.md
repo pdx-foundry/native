@@ -40,7 +40,7 @@ SDK-488 accepted the bounded engine-produced inventory: 1,096 triggers, 1,074 ef
 
 SDK-535 ported effects and triggers to `Native::declarations` (`command-declarations/v1`). Its M45 direct-call scan found 1,067 effect sites and 1,091 trigger sites. It returned 761 named effects and 885 named triggers. 306 effect and 206 trigger sites composed their names at run time. Seven effects and five triggers of the live inventory were outside the direct-call boundary.
 
-SDK-562 (`command-declarations/v2`) recovers all of them. On M45-release it returns 1,074 effects and 1,096 triggers with no unnamed registration. The names are the same as in the SDK-488 live inventory. The documentation of every recovered command is equal to the live log, and so is each scope set that the method resolves. The SDK-488 logs are from M45-observe. Of the names that SDK-535 already had, two trigger descriptions (`is_original_owner`, `original_owner`) changed their wording in the release build ("planet" became "colony carrier"). The 87 scope sets that stay `Unresolved` are all on names from SDK-535. Three registration mechanisms were outside the v1 boundary:
+SDK-562 (`command-declarations/v2`) recovers all of them. On M45-release it returns 1,074 effects and 1,096 triggers with no unnamed registration. The names are the same as in the SDK-488 live inventory. The documentation of every recovered command is equal to the live log, and so is each scope set that the method resolves. The SDK-488 logs are from M45-observe. Of the names that SDK-535 already had, two trigger descriptions (`is_original_owner`, `original_owner`) changed their wording in the release build ("planet" became "colony carrier"). The 87 scope sets that stay `Unresolved` are all on names from SDK-535 (SDK-568 resolves 46 of them, below). Three registration mechanisms were outside the v1 boundary:
 
 | Mechanism | M45-release names | How the method reads it |
 | --- | --- | --- |
@@ -56,9 +56,63 @@ The recovered declarations are recorded in `tests/expected/m45/declaration-recov
 
 The static reader joins a registration token to its factory vtable and documentation string, then follows the factory's create method to the command vtable and supported-scope getter. It derives bit names from `NEventScope::GetScopeName` in this exact build. A zero getter mask means `Any`, as the live documentation shows for `if`; other masks list names in bit order. An unresolved link stays on the returned declaration as `DeclaredScopes::Unresolved` with a gap. The method does not establish registration timing or reachability, and does not read config files.
 
-Target getters are not followed in this revision. Every returned target set is `Unresolved`, with one subjectless target gap for the answer; absence of a `Supported Targets:` documentation line does not establish an empty target set.
-
 Modifier categories are intended-use tags, not demonstrated application contexts. Real object application and propagation through containers remain unqualified. The native documentation facility supplies observations; Atlas decides which rule claims the evidence supports.
+
+### Declared target sets (SDK-568)
+
+`command-declarations/v3` also reads the target getter, `GetSupportedScopeTargets`. It is the slot
+after the supported-scope getter in the same command vtable: `+0x88` for effects and `+0x80` for
+triggers on M45-release (recipe `effect_target_slot`, `trigger_target_slot`). The method reads its
+constant mask with the scope rule: zero is `Any`, and other masks list names in bit order. A
+getter that the method cannot follow is `Unresolved` on its declaration with a `target declaration
+not followed at …` gap; the answer has no subjectless target gap.
+
+Two defects of the create-method reading were found and fixed, and they change the scope sets too:
+
+- The create methods of 24 declarations load the command vtable through the global offset table (`adrp`, then `ldr
+  x8, [x8, #off]`, then `add x8, x8, #0x10`), for example the eight `CSetSpeciesRightsEffect<…>`
+  effects and their `has_`/`former_` triggers. The method dropped the load and took a vtable from
+  the constructor call, which was the `CPdxArray<CEffect*, int>` vtable of a member. Its slot at
+  `+0x80` was an unrelated function, so the scope set stopped at `scope-mask` by chance. A load
+  through a known pointer now gives the vtable, and a command vtable must hold both getter slots.
+- The create methods of 22 declarations store the vtable through a copy of the object register with a post-index
+  store (`mov x8, x19` then `str x9, [x8], #0x68`), for example `exists`, `is_surveyed` and
+  `set_name`. The copy is now the object until it changes.
+
+Result on M45-release, compared after the answer was produced with the `effects.log` and
+`triggers.log` that the release build wrote on 2026-09-22 (it has the release wording of
+`is_original_owner`):
+
+| Kind | Target `Any` | Target listed | Target `Unresolved` | Scope `Unresolved` (was) |
+| --- | --- | --- | --- | --- |
+| Effects | 3 | 1,067 | 4 | 27 (40) |
+| Triggers | 165 | 927 | 4 | 14 (47) |
+
+- **Scopes.** Every resolved scope set, with the 46 new ones, equals the `Supported Scopes:` line of
+  its command in the dump.
+- **Targets.** The dump has no `Supported Targets:` line, and the executable has no such string.
+  `CEffectDatabase::GenerateDocumentation` calls only the supported-scope getter (`+0x80`), so the
+  documentation cannot show a target set on this build. Every resolved target set is a difference
+  from the dump for that reason. No other comparison source exists.
+- **Mask 2 (`planet`).** `CEffect::GetSupportedScopeTargets` returns 2, and so do many trigger
+  classes' own getters (`CIfTrigger`). 834 effects and 752 triggers declare it, including commands
+  that take a country target (`set_owner`, `end_all_treaties_with`) and commands that take no target
+  (`if`). `CEventTargetEffect::Read`, which reads the target of `set_owner`, does not call the
+  getter. The method found no engine code that uses a target set, so a declared set is the engine's
+  value and not an argument constraint.
+- **Mask `0xfffc`** (bits 2 to 15, `country` to `war`) is the value of `CIntEffect`, `CBoolEffect`,
+  `CValueEffect` and the matching triggers: 229 effects and 163 triggers.
+- **Overrides** name one argument type: `has_casus_belli`, `intel` and eight other triggers and two
+  effects (`transfer_resources_to_empire`) declare `country`; `is_default_species` declares
+  `species`; `is_background_planet` declares `planet, colony`; `steal_planet_output` and
+  `transfer_resource_stockpile` declare `country, ship`. A zero mask (`tooltip`, `exists`, and 166
+  others) is `Any`, by the scope rule; no engine consumer establishes what zero means for targets.
+- **Not followed.** Eight commands still stop at `command-vtable`: effects `pop_change_ethic`,
+  `pop_force_add_ethic`, `remove_random_starbase_building`, `remove_random_starbase_module`, and
+  triggers `has_relation_flag`, `is_war_participant`, `pop_ethic_amount`,
+  `reverse_has_relation_flag`. Both sets are `Unresolved` with their gaps.
+
+The unresolved names and the counts are recorded in `tests/expected/m45/declaration-gaps.json`.
 
 ### Modifiers, categories, scopes and links (SDK-536)
 
