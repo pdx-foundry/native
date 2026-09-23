@@ -315,7 +315,9 @@ Post-freeze revision 1: the first run gave both situation families as paths-disa
 key, the generator copies the key in place into a stack string, and that copy labels the object.
 The model then made the object a long string, but the object's own label stayed. The short-key run
 therefore read the bare key. The model now removes that label. A regression test fails without the
-change.
+change. Post-freeze revision 2, from review: a `memmove` or `memcpy` of
+unknown length now makes the strings that it receives unresolved, as another call does. The M45
+result did not change.
 
 **Match rate.** A development script (`.local/sdk-540/measure.py`, `results.json`) applies the
 answer to item keys and compares with the loaded inventory (`modifiers.log`) of the two SDK-498

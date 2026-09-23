@@ -211,7 +211,9 @@ impl Model<'_> {
                 .and_then(|text| text_length(machine, text));
             Call::Return(length)
         } else if functions.copies.contains(&target) {
-            copy(machine);
+            if !copy(machine) {
+                self.forget_arguments(machine, arena);
+            }
             Call::Return(machine.register(0))
         } else {
             self.forget_arguments(machine, arena);
@@ -386,17 +388,18 @@ fn text_length(machine: &Machine, address: u64) -> Option<u64> {
     })?
 }
 
-/// `memmove` and `memcpy` copy each byte, known or not, and the source's label.
-fn copy(machine: &mut Machine) {
+/// `memmove` and `memcpy` copy each byte, known or not, and the source's label. `false` when the
+/// copy's extent is unknown, so any string that it receives may have changed.
+fn copy(machine: &mut Machine) -> bool {
     let (Some(destination), Some(source), Some(length)) = (
         machine.register(0),
         machine.register(1),
         machine.register(2),
     ) else {
-        return;
+        return false;
     };
     if length > TEXT_LIMIT {
-        return;
+        return false;
     }
 
     for offset in 0..length {
@@ -409,4 +412,5 @@ fn copy(machine: &mut Machine) {
         Some(node) => machine.label(destination, node),
         None => machine.unlabel(destination),
     }
+    true
 }

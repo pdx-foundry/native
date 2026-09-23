@@ -816,6 +816,26 @@ mod tests {
         assert_eq!(only_site(&input), Err(Unresolved("name")));
     }
 
+    /// Post-freeze revision 2: a copy of unknown length into a string may change it.
+    #[test]
+    fn a_copy_of_unknown_length_leaves_the_name_unresolved() {
+        let mut generator = concatenating_generator();
+        patch(&mut generator, 0x458, "b", "#0x4a0");
+        generator.extend(rows(
+            0x4a0,
+            &[
+                ("ldr", "x0,[sp,#0x50]"),
+                ("ldr", "x2,[x27]"),
+                ("ldr", "x2,[x2,#0x300]"),
+                ("bl", &format!("#{COPY:#x}")),
+                ("mov", "w8,#0x40000000"),
+                ("b", "#0x45c"),
+            ],
+        ));
+        let input = family_input(&[constructor(0x10), generator], &[0x464], Some(CONSTRUCTOR));
+        assert_eq!(only_site(&input), Err(Unresolved("name")));
+    }
+
     #[test]
     fn a_name_without_the_item_key_is_not_a_family() {
         let mut generator = concatenating_generator();
