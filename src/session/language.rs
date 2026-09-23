@@ -19,7 +19,8 @@ impl Native {
     ///
     /// Each direct call is one modifier. Modifiers that content generates at run time, such as
     /// one per resource or job, are not listed: each call site that generates them is an
-    /// [`GapKind::UnnamedDeclaration`] gap. Category tags are intended-use tags; where a modifier
+    /// [`GapKind::UnnamedDeclaration`] gap. [`Native::modifier_families`] gives the name templates
+    /// of a registry's generated modifiers. Category tags are intended-use tags; where a modifier
     /// takes effect is outside this method.
     pub fn modifiers(&self) -> Result<Answer<Vec<ModifierDeclaration>>, Error> {
         self.answer("modifiers", None, || {
@@ -171,7 +172,7 @@ pub(crate) fn normalized_modifiers(
     gaps.push(gap(
         GapKind::OutsideMethod,
         None,
-        "The search covers every direct modifier definition call in executable text. Generated modifier families and where a modifier takes effect are outside it.",
+        "The search covers every direct modifier definition call in executable text. Generated modifier families, whose templates modifier_families gives for each registry, and where a modifier takes effect are outside it.",
     ));
 
     answer(

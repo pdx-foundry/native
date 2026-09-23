@@ -241,8 +241,11 @@ scopes: the config writes `carrier` where the engine passes a `colony` or `plane
   (`on_add_to_imperial_council` or `on_remove_from_imperial_council`), a name that a wrapper that
   is not pinned receives (`CArmy::PerformBuildingOnAction`), or a name built at run time
   (`_queued`). One list site fires a list that an object holds.
-- 13 on_actions have no context: 8 reach the path limit, 2 stop at floating-point instructions, 2
-  are not reached from their function entry, and `on_press_begin`'s command builds its own scope.
+- 13 on_actions have no context: 9 reach the path limit, 1 stops at a floating-point instruction,
+  2 are not reached from their function entry, and `on_press_begin`'s command builds its own scope.
+  (SDK-540 added float immediates, `scvtf`, `fmul` and `fcvtzs` to the evaluator.
+  `on_war_participant_leaves_early` then went past its floating-point stop and reached the path
+  limit. It still has no context.)
 - 50 on_actions have only unresolved contexts. Most reuse one scope for several firing calls: the
   first call receives the scope, and the method cannot show that the event system leaves its type
   and links unchanged, so the later sites are unresolved (the pulse lists after
@@ -251,6 +254,91 @@ scopes: the config writes `carrier` where the engine passes a `colony` or `plane
 - 3 declared rules have no call site that the method follows, and 11 have only unresolved contexts.
 - What the event system does with a self-linked root or from, the prev chain, events and their
   `push_scope`, pre_triggers, and on_actions that content defines are not tested (SDK-496).
+
+### Modifier families (SDK-540)
+
+SDK-540 reads the modifier names that a registry's database generator registers for each item, as
+`Native::modifier_families(registry)`. The SDK-498 prototype traced five templates by hand
+([brief](modifier-family-prototype.md)). This method finds them in the executable, with three
+other registries.
+
+**Mechanism.** Each `<Database>::GenerateModifiers()` loops over the database's pointer array
+(`+0x48`, count `+0x54`, from the template registry layout) and calls
+`CModifier::TryAddDynamicModifier` with the name in `x1` and the category mask at `[sp]` (recipe
+`dynamic_modifier_category_offset`). The method runs the generator on a zeroed database that holds
+one item. The item's memory is unknown, except its key. A string model (`families/strings.rs`)
+follows `CString::CString(char const*)`, both `operator+=`, `PdxStrFmt<N>` (`%s` from 8-byte stack
+slots; the name keeps at most N−1 bytes), the string allocator, `operator new[]`, `strlen`,
+`memmove` and `memcpy`. It writes the real text, so the code takes the branches that it takes for
+that text. It also labels each text address with the parts of the text. A call outside the model
+that receives a string makes that string unresolved. A call that never returns
+(`__stack_chk_fail`, `_Unwind_Resume`, the `__throw_` functions) ends its path; the path does not
+count for the condition.
+
+- **Key storage.** The item constructor `<Item>::<Item>(int, CString const&)` copies the key argument
+  inline. The method runs it with a labelled long key and finds the buffer pointer in the item.
+  Buildings, districts, megastructures, situations and zones store the key at `+0x10`. Bypass stores
+  its id at `+0x10` and the key at `+0x18`. The constructors and generators copy string objects
+  through `q` registers from temporaries that are not fully written, so a copied flag byte can be
+  unknown. The model reads a string by its labels, not by the flag byte.
+- **Two key forms.** The engine branches on the key's form. The generator runs with a 32-byte key
+  (in a buffer) and with an 8-byte key (in place), and both runs must give the same name and mask.
+- **Condition.** A family is `Always` when no path fails, some path returns, and every returned
+  path reaches the call. A branch on an unknown item field makes a path that skips the call.
+- **Evaluator.** `fmov` with a float immediate, `scvtf`, `fmul` and `fcvtzs` (the generators grow
+  an array by ×1.5), the link register on `bl` and `blr` (so the model knows the call site), and
+  `Machine::reserve` (memory that no path has written).
+
+**Result on M45-release** (about 0.8 s for each registry):
+
+| Registry | Template | Tags | Condition | Limit |
+| --- | --- | --- | --- | --- |
+| `common/buildings` | `planet_{key}_build_speed_mult` | Colony | Always | — |
+| `common/districts` | `planet_{key}_build_speed_mult` | Colony | Always | — |
+| `common/zones` | `planet_{key}_build_speed_mult` | Colony | Always | — |
+| `common/megastructures` | `megastructure_{key}_build_speed_mult` | Megastructures | Always | — |
+| `common/bypass` | `{key}_empire_windup_mult` | Countries | Always | 127 |
+| `common/bypass` | `{key}_ship_windup_mult` | Ships | Always | 127 |
+| `common/bypass` | `{key}_megastructure_bypass_windup_mult` | Megastructures | Always | 127 |
+| `common/situations` | `{key}_max_progress_add` | Countries | Unresolved | — |
+| `common/situations` | `{key}_max_progress_mult` | Countries | Unresolved | — |
+
+The nine calls include the five hook sites of the prototype (`0x1000df770`, `0x100431bdc`,
+`0x1000fefec`, `0x1000ff05c`, `0x1000ff0c4`). In both situation runs, one returned path skips both
+calls. That path is the item gate `ldrb w8,[x23,#0x508]; cbz` before the calls. No path fails. In
+bypass, only the stack-check path is ignored. Every answer is partial: 64 sites are not joined to a
+registry. They are the other 53 `TryAddDynamicModifier` and `AddDynamicModifier` calls and the 11
+runtime-token `AddDefinition` calls. SDK-566 owns them.
+
+**Freeze and revision.** The method was frozen (`bf44567`) before its first run on the executable.
+Post-freeze revision 1: the first run gave both situation families as paths-disagree. With a short
+key, the generator copies the key in place into a stack string, and that copy labels the object.
+The model then made the object a long string, but the object's own label stayed. The short-key run
+therefore read the bare key. The model now removes that label. A regression test fails without the
+change.
+
+**Match rate.** A development script (`.local/sdk-540/measure.py`, `results.json`) applies the
+answer to item keys and compares with the loaded inventory (`modifiers.log`) of the two SDK-498
+live runs on the same build:
+
+- Keys that the SDK-498 hooks observed (buildings 499, districts 148, bypass 11): in each run,
+  680 of 680 observed registrations equal the returned template applied to the observed key. All
+  680 names are loaded with the returned tags, including the renamed `sdk498_*` items.
+- Keys from the top-level definitions of the installed content files (not engine observations):
+  megastructures 164 of 164 and zones 146 of 146 are loaded with the returned tags. For situations,
+  1 of 90 is loaded for each family, which agrees with the item gate and the `Unresolved`
+  condition.
+- The 45,585 loaded names are 571 static (they join `modifiers()`), 992 explained and 44,022
+  unexplained. No loaded name comes from the templates of two registries. The district
+  `sdk498_district_*_max_add` and `*_max_mult` names stay unexplained. No name is assigned by
+  similarity. SDK-564 returns the loaded inventory and owns the classification of each entry.
+- Live `registry_items` returns `Unsupported` for all six registries: each initial loader runs
+  after the session pauses. The live layout reads every key at `+0x10`; bypass keys are at `+0x18`.
+  SDK-567 tracks this latent difference.
+
+**Not in SDK-540.** Generator classes and shared helpers (SDK-566); the classification of each
+loaded entry (SDK-564); a condition named by its item field; engine behavior for a name longer than
+the formatter keeps; tags that a later registration of the same name gives.
 
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
 
@@ -261,6 +349,7 @@ with the static scheduler table (SDK-489), registry names from the database cons
 fields with their reader joins (SDK-487), effect and trigger declarations (SDK-535), and modifier,
 category, scope and link declarations (SDK-536). SDK-537 adds a method that no prototype had:
 localization contexts, commands and links. SDK-538 adds another: on_actions and game rules with
-the scopes that their call sites supply. The module comments describe each method. The methods
+the scopes that their call sites supply. SDK-540 adds modifier families from database
+generators. The module comments describe each method. The methods
 read the executable only and receive no field or config seeds. The five shared-reader contracts
 above stay unresolved, so no registry has a complete field answer.

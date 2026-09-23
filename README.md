@@ -20,6 +20,7 @@ let fields = native.registry_fields("common/traditions")?;  // Answer<Vec<Field>
 let effects = native.declarations(DeclarationKind::Effect)?; // Answer<Vec<Declaration>>
 let modifiers = native.modifiers()?;                        // Answer<Vec<ModifierDeclaration>>
 let categories = native.modifier_categories()?;             // Answer<Vec<ModifierCategory>>
+let families = native.modifier_families("common/bypass")?;  // Answer<Vec<ModifierFamily>>
 let scopes = native.scopes()?;                              // Answer<ScopeInventory>
 let links = native.scope_links()?;                          // Answer<Vec<ScopeLink>>
 let localization = native.localization_declarations()?;     // Answer<LocalizationDeclarations>
@@ -29,8 +30,11 @@ let game_rules = native.game_rules()?;                      // Answer<Vec<GameRu
 
 `declarations` covers direct calls to the effect or trigger registration function in executable
 text. Runtime-composed names and unreadable documentation are gaps. `modifiers` covers direct
-modifier definitions; modifier families that content generates are gaps. Category tags are
-intended-use tags, not where a modifier takes effect. `scopes` groups keywords only by the engine's
+modifier definitions; modifier families that content generates are gaps. `modifier_families`
+gives the name templates that one registry's database generator registers for each item, such as
+`{key}_ship_windup_mult`; apply `ModifierFamily::name_for` to item keys. Other generating code is
+not joined to a registry and is counted as a gap. Category tags are intended-use tags, not where a
+modifier takes effect. `scopes` groups keywords only by the engine's
 keyword-to-scope map; a keyword that matches several types, such as `carrier`, is a group.
 `scope_links` gives declared input and output scopes and marks links that take data. A scope
 reference carries an opaque `ScopeId`; join it to `scopes()` by that identity, because two scope
@@ -172,6 +176,7 @@ declarations/effect.json
 declarations/trigger.json
 modifiers.json
 modifier_categories.json
+modifier_families/common/bypass.json
 scopes.json
 scope_links.json
 localization_declarations.json

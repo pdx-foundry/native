@@ -17,7 +17,9 @@ use super::super::targets::DeclarationRecipe;
 use super::declarations::{Text, addresses, read_only_data, unique};
 
 const DEFINE_MODIFIER: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::AddDefinition(int, ModifierType, CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, bool, CFixedPoint, bool)";
-const GENERATE_MODIFIER: [&str; 2] = [
+/// The functions that register a modifier generated from content. The first registers a name
+/// that may exist already.
+pub(super) const GENERATE_MODIFIER: [&str; 2] = [
     "CModifier::TryAddDynamicModifier(ModifierType&, CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, CFixedPoint, bool)",
     "CModifier::AddDynamicModifier(CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, CFixedPoint, bool)",
 ];
@@ -42,10 +44,7 @@ pub(in crate::binding) fn modifiers(
         definition_sites.push(straight_line_before(&text, call)?);
     }
 
-    let mut generation_sites = 0;
-    for name in GENERATE_MODIFIER {
-        generation_sites += text.direct_calls(unique(symbols, name)?).len();
-    }
+    let generation_sites = generation_calls(&text, symbols)?.len();
 
     Ok(ModifierInput {
         tokens: text.token_names(symbols, strings)?,
@@ -62,6 +61,16 @@ pub(in crate::binding) fn modifiers(
             data: read_only_data(bytes)?,
         },
     })
+}
+
+/// Every direct call to a function that registers a generated modifier, in address order.
+pub(super) fn generation_calls(text: &Text, symbols: &[Symbol]) -> Result<Vec<u64>, AnalysisError> {
+    let mut calls = Vec::new();
+    for name in GENERATE_MODIFIER {
+        calls.extend(text.direct_calls(unique(symbols, name)?));
+    }
+    calls.sort();
+    Ok(calls)
 }
 
 /// Read the scope-name table and the link, scope and special-value functions.
@@ -138,7 +147,7 @@ fn straight_line_before(
     Ok(rows[start..].to_vec())
 }
 
-fn code(text: &Text, functions: &[u64]) -> Result<Code, AnalysisError> {
+pub(super) fn code(text: &Text, functions: &[u64]) -> Result<Code, AnalysisError> {
     let ranges: Vec<_> = functions
         .iter()
         .map(|&start| text.function(start))

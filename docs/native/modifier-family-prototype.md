@@ -8,6 +8,9 @@ from [Validate modifier grammars and generated modifier families](https://linear
 complete family extraction or a complete shared modifier grammar.** Keep the prototype issue
 open for the remaining reader work and human review. No production API changed.
 
+**Implemented 2026-09-23:** `Native::modifier_families` (SDK-540) recovers these templates and three
+more registries from the executable. See [discovery](discovery.md#modifier-families-sdk-540).
+
 ## Target and experiment
 
 Fresh analysis and two live runs used **M45-release**, Cygnus 4.5.0 (8697), macOS ARM64:

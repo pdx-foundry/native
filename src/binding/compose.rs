@@ -74,6 +74,7 @@ pub(super) fn analysis(
     Ok(super::BoundAnalysis::new(
         layout,
         target.declarations,
+        groups::registry_layout(target.groups).map(groups::RegistryLayout::database),
         installation,
     ))
 }

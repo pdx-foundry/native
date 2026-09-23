@@ -3,6 +3,7 @@ use crate::{OpenError, UnavailableReason, binding::Binding};
 use std::sync::{Arc, Mutex};
 
 mod callbacks;
+mod families;
 mod language;
 mod localization;
 pub(crate) mod questions;

@@ -1,8 +1,8 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
 use pdx_native::{
     Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal,
-    EntryScope, Error, GameOptions, GapKind, LinkData, LocalizationOutput, Native, OutputScope,
-    ReaderKind, RuleKind, Support,
+    EntryScope, Error, GameOptions, GapKind, GenerationCondition, LinkData, LocalizationOutput,
+    Native, OutputScope, ReaderKind, RuleKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -105,6 +105,21 @@ fn recorded() -> tempfile::TempDir {
     );
     write(
         root.path(),
+        "modifier_families/common/bypass.json",
+        json!({ "Ok": {
+            "value": [{
+                "name": ["ItemKey", { "Literal": "_ship_windup_mult" }],
+                "category_tags": { "Listed": ["Ships"] },
+                "condition": "Always",
+                "name_limit": 24
+            }],
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnnamedDeclaration", "subject": null, "detail": "unjoined sites" }],
+            "source": source()
+        }}),
+    );
+    write(
+        root.path(),
         "scopes.json",
         json!({ "Ok": {
             "value": {
@@ -154,6 +169,20 @@ fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded
         DeclaredTags::Listed(vec!["Pops".into()])
     );
     assert_eq!(modifiers.value[1].category_tags, DeclaredTags::Unresolved);
+
+    let families = native.modifier_families("common/bypass/").unwrap();
+    assert_eq!(families.source.basis, Basis::Recorded);
+    let family = &families.value[0];
+    assert_eq!(family.condition, GenerationCondition::Always);
+    assert_eq!(
+        family.name_for("lgate").as_deref(),
+        Some("lgate_ship_windup_mult")
+    );
+    assert_eq!(family.name_for("a_long_bypass_key"), None);
+    assert!(matches!(
+        native.modifier_families("common/buildings"),
+        Err(Error::NotRecorded { .. })
+    ));
 
     let links = native.scope_links().unwrap();
     assert_eq!(links.source.basis, Basis::Recorded);
