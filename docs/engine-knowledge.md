@@ -17,6 +17,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
 | Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |
 | Static analysis, references, registries | [Discovery methods](native/discovery.md) | Compiler patterns, token paths, scheduler table, owner joins, engine documentation commands, localization tables, on_action and game rule call sites |
+| Modifier generation and shared readers | [Modifier prototype brief](native/modifier-family-prototype.md) | Five release-build templates, two live content mutations, implementation seams and explicit grammar gaps |
 | Builds and adaptation between them | [Targets](native/targets.md) | Exact executable hashes, Mac and Windows adaptation results |
 
 A finding is **demonstrated** on its original build only. A **candidate** lacks a required join or a
