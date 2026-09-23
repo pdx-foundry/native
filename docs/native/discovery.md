@@ -231,8 +231,8 @@ The 18 engine-only on_actions include `on_leaving_system_fleet`, `on_colony_tran
 `on_fleet_went_mia` and `on_waystation_lost`. Most config-only on_actions are fired by script
 content (`fire_on_action`), are templated, or are fired at a site that this method cannot name.
 The 16 engine-only rules include `can_jump_drive` and `can_scavenge_debris`; the config-only rule is
-`can_build_military_station_around`. Of 222 shared on_actions with an established context, `this`
-agrees with the config's `replace_scopes` for 186 and from for 183. Most differences are names, not
+`can_build_military_station_around`. Of 221 shared on_actions with an established context, `this`
+agrees with the config's `replace_scopes` for 185 and from for 182. Most differences are names, not
 scopes: the config writes `carrier` where the engine passes a `colony` or `planet` scope type.
 
 **Limits.**
