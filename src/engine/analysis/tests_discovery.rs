@@ -12,7 +12,7 @@ fn input() -> StaticInput {
         ],
         code: [0x910003f3u32, 0xb0000008,0xf9003268,0xd0000009,0xf9003669,0xa9077e7f,0xa9087e7f].into_iter().flat_map(u32::to_le_bytes).collect(),
         layout:SchedulerLayout{start:0x1000,end:0x101c,offset:96,stride:48,count:1},
-        pointers:BTreeMap::new(),global_bindings:BTreeMap::new(),strings:BTreeMap::from([(0x2000,"example".into())]),vtables:BTreeMap::new(),
+        pointers:BTreeMap::new(),global_bindings:BTreeMap::new(),bound_slots:Default::default(),strings:BTreeMap::from([(0x2000,"example".into())]),vtables:BTreeMap::new(),
     }
 }
 #[test]

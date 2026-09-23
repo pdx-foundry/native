@@ -76,6 +76,90 @@ A scope type's identity is its bit, not its name: bits 2 and 19 are both named `
 
 **Not in SDK-536.** The ticket asked for the full modifier inventory with the SDK-488 count, so it was narrowed. The loaded inventory with its generated families is **SDK-564**, and the name templates are **SDK-540**. The scopes of the data-taking links `event_target:` and `parameter:` are **SDK-565**.
 
+### Localization contexts, commands and links (SDK-537)
+
+SDK-537 reads the localization language (the `[Root.GetName]` bracket commands) statically on
+M45-release as `Native::localization_declarations`. No prototype had read it from the engine
+before; SDK-500 holds the open question.
+
+**Mechanism.** `CGameApplication::PrintScriptingDocumentation` writes `localizations.log` from
+`CGameText::GenerateDocumentation`. A *context* is an `ECURRENT_POINTER` value: the kind of object
+that a text statement points at. The `CGameText` constructor fills three function tables, indexed
+by context: the link-row getter at `+0x318`, the link function at `+0x498`, and the command-row
+getter at `+0x618` (a fourth table at `+0x798` holds the property getters). A row getter such as
+`GetCountryPromotionTargets(int&)` writes a count and returns 16-byte rows of a name pointer and an
+index. A link function such as `PromoteCountry(void const*, CGameText&, int)` dispatches on the
+index and reaches a setter that writes the new context to `CGameText+0x8`. The scope join is
+`CGameText::SetScopeObject`, which switches on the scope-type value (`1 << bit`, the bits of
+`Native::scopes`) and selects one context. This differs from the SDK-535 registration method: there
+is no registration call and no factory.
+
+**Method** (`engine/analysis/localization.rs`, `localization-declarations/v1`). It runs the
+constructor, each row getter and each context-name call with the evaluator, and follows each link
+with the new `Machine::run_paths`, which continues both sides of a decision on an unknown value and
+reports every path's end. A decision on unknown flags splits the flag states that remain possible
+on the path, so later decisions on the same flags stay consistent. A link's output is the set of
+contexts that its paths leave; `Various` when a path hands the text to `SetScopeObject`; `Unchanged`
+when every path returns without a new context; `Unresolved` when any path cannot be followed or
+when some paths change the context and others do not. A context that a link or a scope type
+selects is in the answer even when its tables are empty, so every reference joins. A call that the method does not follow makes
+the context unknown until a setter writes it. Code never loads writable data: the rows are read
+from the initial image, and the pointer slots that the fixup chain binds to another image are
+unknown.
+
+**Transfer test.** The method extension was frozen in its own commit before it ran on any
+executable. Each later repair is its own commit in the SDK-537 pull request; the counts are link
+rows (context, name):
+
+| Run | After | Link rows: listed / various / unchanged / unresolved | Cause of the next repair |
+| --- | --- | --- | --- |
+| 1 | Freeze | — (the reader panicked) | A section shorter than 8 bytes gave an invalid pointer range. |
+| 2 | Revision 1: reader repair | 45 / 14 / 0 / 43 | 5 conditional selects on unknown flags; 11 virtual calls (`blr`); 26 calls to text helpers that the reader did not decode; 1 link that selects nothing. |
+| 3 | Revision 2: fork on unknown flags | 50 / 14 / 0 / 38 | |
+| 4 | Revision 3: an unknown indirect call is an unknown call (the same commit adds the public API, which does not change the method) | 61 / 14 / 0 / 27 | |
+| 5–7 | Revisions 4–6: follow every function that takes `CGameText&`; `mul` and traps; `ubfx`, `bfi` and multiply-add | 61 / 14 / 0 / 27 | The 24 dead-object links move from "unknown call" to "unsupported instruction" to the path limit. |
+| 8 | Revision 7: a link that selects nothing is `Unchanged` | 61 / 14 / 1 / 26 | Code review: a link whose paths both select a context and leave it unchanged was reported as listed; forks kept one sample flag state for each outcome; bound slots were guessed from the top bit; a stop at a resolved indirect call was unresolved; a selected context without tables could be referenced but absent. |
+| 9 | Revision 8: code-review repairs | 60 / 14 / 1 / 27 | — |
+
+The contexts, the 245 command rows and the scope join were the same from run 2 onward: they
+transferred with no change. Only link outputs needed repairs, all of them evaluator coverage, not
+per-link interpretation. The run takes about 0.9 s.
+
+**Result on M45-release.** 48 contexts; 151 command names in 245 command rows; 102 link rows. 28 contexts join scope types (`Ship (and Starbase)` joins
+`ship` and `starbase`; `System` joins `galactic_object`); 20 are `Missing`: `Base Scope`, the 12
+dead-object contexts, `Diplomacy`, `Building`, `Job Swap Data`, `Pop Category Swap Data`,
+`Patron Relation`, `Specimen` and `Timeline Event`. Their commands and links stay in the answer.
+The 14 `Various` rows are the 12 `Base Scope` promotions (`This`, `Root`, `From`, `Prev` in three
+spellings) and `Target` from `Espionage Operation` and `Situation`.
+
+**Comparison with the engine dump** (`localizations.log`, same build, 519 lines, after the result
+was produced):
+
+| Part | Answer | Dump | Difference |
+| --- | ---: | ---: | --- |
+| Documented contexts | 44 | 44 | Same names. |
+| Command rows in them | 234 | 234 | Same names in each context. |
+| Link rows in them | 99 | 99 | Same names in each context. |
+| Other contexts | 4 | 0 | `GenerateDocumentation` skips contexts 3, 13, 31 and 32 (mask `0xfffe7fffdff7`), but their tables are filled: `Diplomacy` (4 commands, 3 links), `Building` (1), `Job Swap Data` (3) and `Pop Category Swap Data` (3). |
+| Unscoped forms in the prose | gap | 5 names | `GetYear` and `LastKilledCountryName` are also `Base Scope` rows and `GetDate` a `Timeline Event` row. `GetMidGameDate` and `GetLateGameDate` are in no table; the unscoped forms are an `OutsideMethod` gap. |
+
+The dump prints no outputs and no scope join, so those are not compared with it.
+
+**Limits.** 27 link rows stay `Unresolved`, each with a gap:
+
+- 24 links find a saved or dead object by a run-time identifier through a hash-table probe whose
+  exit depends on run-time data, so the paths reach the 64-path limit: `EVENT_TARGET_0` to
+  `EVENT_TARGET_9` from `Timeline Event` and from `Specimen`, `Target` and `Owner` from
+  `Dead Situation`, `MainAttacker` and `MainDefender` from `Dead War`.
+- `Planet` and `Ship` from `Colony` return on a path after a carrier lookup that the method does not
+  follow, so the context is unknown on that path.
+- `Planet` from `Deposit` selects planet or ship on some paths and returns without a new context on
+  another.
+
+`Third_party` from `Diplomacy` is `Unchanged`: `PromoteAction` handles indexes 0 and 1 and returns
+for index 2. Whether a command gives useful text at run time, argument forms, formatting, scripted
+localization and fallback between `Base Scope` and a typed context are not tested (SDK-500).
+
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
 
 ## Rust ports
@@ -83,6 +167,7 @@ Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/d
 The Rust code in `src/engine/analysis` ports five of these methods: template registry discovery
 with the static scheduler table (SDK-489), registry names from the database constructors, and root
 fields with their reader joins (SDK-487), effect and trigger declarations (SDK-535), and modifier,
-category, scope and link declarations (SDK-536). The module comments describe each method. The methods
+category, scope and link declarations (SDK-536). SDK-537 adds a method that no prototype had:
+localization contexts, commands and links. The module comments describe each method. The methods
 read the executable only and receive no field or config seeds. The five shared-reader contracts
 above stay unresolved, so no registry has a complete field answer.

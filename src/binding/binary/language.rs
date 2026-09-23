@@ -1,11 +1,14 @@
 //! Read the inputs of the modifier, category, scope and scope-link methods from executable text.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+use object::{Object, ObjectSection, SectionKind};
 
 use crate::AnalysisError;
 use crate::engine::analysis::{
     decode::decode_arm64,
     discovery::Symbol,
-    evaluate::Code,
+    evaluate::{Code, ReadOnlyData},
+    localization::{LocalizationFunctions, LocalizationInput},
     modifiers::ModifierInput,
     scopes::{ScopeFunctions, ScopeInput},
 };
@@ -147,4 +150,210 @@ fn is_control_transfer(operation: &str) -> bool {
             operation,
             "b" | "bl" | "blr" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
         )
+}
+
+const SCOPE_OBJECT: &str = "CGameText::SetScopeObject(CScopeObjectReference const&)";
+const LINK_FUNCTION: &str = "(void const*, CGameText&, int)";
+
+/// Read the text object's constructor, the functions that its tables can name, the setters, and
+/// the data that holds names and rows.
+///
+/// The functions are found by their signatures: row getters take `int&`, link functions take
+/// `(void const*, CGameText&, int)`, and setters are the text object's `Set` members and every
+/// other function that takes the text object. The method decides which of them a context uses.
+/// A function that does not decode is left out, so a run that reaches it is unresolved.
+pub(in crate::binding) fn localization(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    strings: &BTreeMap<u64, String>,
+    pointers: &BTreeMap<u64, u64>,
+    bound_slots: &BTreeSet<u64>,
+    recipe: &DeclarationRecipe,
+) -> Result<LocalizationInput, AnalysisError> {
+    let text = Text::read(bytes, symbols)?;
+    let scope_object = unique(symbols, SCOPE_OBJECT)?;
+    let context_name = unique(
+        symbols,
+        "CGameText::GetStringForCurrentPointer(ECURRENT_POINTER)",
+    )?;
+    let constructors = addresses(symbols, "CGameText::CGameText()");
+    let text_constructor = *constructors.first().ok_or(AnalysisError::InvalidRange)?;
+    let setters = matching(symbols, |name| {
+        let takes_text = name.contains("CGameText&") && !name.ends_with(LINK_FUNCTION);
+        (name.starts_with("CGameText::Set") || takes_text) && name != SCOPE_OBJECT
+    });
+    let row_getters = matching(symbols, |name| {
+        name.ends_with("PromotionTargets(int&)") || name.ends_with("PropertyTargets(int&)")
+    });
+    let link_functions = matching(symbols, |name| name.ends_with(LINK_FUNCTION));
+
+    let run_code = decoded(
+        &text,
+        constructors
+            .iter()
+            .chain(&row_getters)
+            .chain(&link_functions)
+            .chain(&setters)
+            .chain([&context_name]),
+    );
+    let scope_object_code = decoded(&text, setters.iter().chain([&scope_object]));
+    let fixups = Fixups {
+        pointers,
+        bound_slots,
+    };
+    let data = loaded_data(bytes, &fixups, |segment, kind| {
+        is_read_only(kind) || segment == "__DATA_CONST"
+    })?;
+    let rows = loaded_data(bytes, &fixups, |segment, kind| {
+        is_read_only(kind) || segment == "__DATA_CONST" || segment == "__DATA"
+    })?;
+
+    Ok(LocalizationInput {
+        functions: LocalizationFunctions {
+            text_constructor,
+            context_name,
+            string_from_literal: addresses(symbols, "CString::CString(char const*)"),
+            scope_object,
+            setters,
+            scope_object_getters: matching(symbols, |name| {
+                name.starts_with("CScopeObjectReference::Get")
+            }),
+        },
+        layout: recipe.game_text,
+        code: run_code,
+        scope_object_code,
+        data,
+        rows,
+        scope_names: text.scope_names(symbols, strings),
+    })
+}
+
+fn matching(symbols: &[Symbol], select: impl Fn(&str) -> bool) -> BTreeSet<u64> {
+    symbols
+        .iter()
+        .filter(|symbol| !symbol.name.contains(".cold.") && select(&symbol.name))
+        .map(|symbol| symbol.address)
+        .collect()
+}
+
+/// Decode each function on its own and keep the ones that decode completely.
+fn decoded<'a>(text: &Text, starts: impl IntoIterator<Item = &'a u64>) -> Code {
+    let mut rows = Vec::new();
+    for &start in starts {
+        let Ok((address, code)) = text.function(start) else {
+            continue;
+        };
+        let function: Result<Vec<_>, _> = code
+            .chunks(4096)
+            .enumerate()
+            .map(|(index, chunk)| decode_arm64(chunk, address + (index * 4096) as u64))
+            .collect();
+        if let Ok(function) = function {
+            rows.extend(function.into_iter().flatten());
+        }
+    }
+    Code::from_rows(rows)
+}
+
+fn is_read_only(kind: SectionKind) -> bool {
+    matches!(
+        kind,
+        SectionKind::ReadOnlyData | SectionKind::ReadOnlyString
+    )
+}
+
+/// The chained-fixup facts that the loaded-data views need.
+struct Fixups<'a> {
+    /// Rebased pointer locations and their targets.
+    pointers: &'a BTreeMap<u64, u64>,
+    /// Every pointer location that the loader binds to another image.
+    bound_slots: &'a BTreeSet<u64>,
+}
+
+/// The bytes of the selected sections as the loader leaves them: each rebased pointer holds its
+/// target. A pointer slot that the loader binds to another image, whose value is not known here,
+/// is left out, so it reads as unknown.
+fn loaded_data(
+    bytes: &[u8],
+    fixups: &Fixups,
+    select: impl Fn(&str, SectionKind) -> bool,
+) -> Result<ReadOnlyData, AnalysisError> {
+    let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
+    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
+    let mut sections = Vec::new();
+
+    for section in file.sections() {
+        let segment = section
+            .segment_name()
+            .map_err(|_| AnalysisError::InvalidRange)?
+            .unwrap_or_default();
+        if !select(segment, section.kind()) {
+            continue;
+        }
+
+        let Ok(data) = section.data() else {
+            continue;
+        };
+        sections.extend(resolved_runs(section.address(), data, fixups));
+    }
+
+    Ok(ReadOnlyData::new(sections))
+}
+
+/// Split `data` into runs of known bytes, with rebased pointers resolved and bound slots removed.
+fn resolved_runs(start: u64, data: &[u8], fixups: &Fixups) -> Vec<(u64, Vec<u8>)> {
+    let mut bytes = data.to_vec();
+    let end = start + data.len() as u64;
+
+    for (&address, &target) in fixups.pointers.range(start..end) {
+        if address + 8 > end {
+            continue;
+        }
+
+        let offset = (address - start) as usize;
+        bytes[offset..offset + 8].copy_from_slice(&target.to_le_bytes());
+    }
+
+    let mut runs = Vec::new();
+    let mut run_start = 0;
+    for &address in fixups.bound_slots.range(start..end) {
+        if fixups.pointers.contains_key(&address) {
+            continue;
+        }
+
+        let offset = (address - start) as usize;
+        if offset > run_start {
+            runs.push((start + run_start as u64, bytes[run_start..offset].to_vec()));
+        }
+        run_start = run_start.max(offset + 8);
+    }
+    if run_start < bytes.len() {
+        runs.push((start + run_start as u64, bytes[run_start..].to_vec()));
+    }
+    runs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loaded_data_resolves_rebases_and_drops_only_bound_slots() {
+        let mut data = Vec::new();
+        data.extend(0x8000_0000_0000_0001u64.to_le_bytes()); // rebase, encoded
+        data.extend(0x8000_0000_0000_0002u64.to_le_bytes()); // bind, encoded
+        data.extend(u64::MAX.to_le_bytes()); // ordinary data with its top bit set
+        let pointers = BTreeMap::from([(0x1000, 0x1_0000_4000)]);
+        let bound_slots = BTreeSet::from([0x1008]);
+        let fixups = Fixups {
+            pointers: &pointers,
+            bound_slots: &bound_slots,
+        };
+
+        let view = ReadOnlyData::new(resolved_runs(0x1000, &data, &fixups));
+
+        assert_eq!(view.read(0x1000, 8), Some(0x1_0000_4000));
+        assert_eq!(view.read(0x1008, 8), None);
+        assert_eq!(view.read(0x1010, 8), Some(u64::MAX));
+    }
 }

@@ -1,10 +1,12 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 use pdx_native::{
-    Answer, Basis, Completeness, Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Error,
-    Field, GapKind, LinkData, ModifierDeclaration, Native, OutputScope, ReaderKind, ScopeId,
-    ScopeInventory, ScopeLink, ScopeReference,
+    Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
+    DeclaredTags, Error, Field, GapKind, LinkData, LocalizationContextReference,
+    LocalizationDeclarations, LocalizationOutput, ModifierDeclaration, Native, OutputScope,
+    ReaderKind, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
 };
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 #[test]
@@ -273,6 +275,137 @@ fn every_scope_reference_joins_to_one_declared_scope_type() {
     }
 }
 
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn localization_declarations_match_the_recorded_m45_inventory() {
+    let native = native();
+    let answer = native.localization_declarations().unwrap();
+    assert_eq!(answer.source.basis, Basis::Declared);
+    assert_eq!(
+        answer.completeness == Completeness::Complete,
+        answer
+            .gaps
+            .iter()
+            .all(|gap| gap.kind == GapKind::OutsideMethod),
+        "completeness follows the gaps"
+    );
+
+    let localization = &answer.value;
+    let contexts: BTreeMap<_, _> = localization
+        .contexts
+        .iter()
+        .map(|context| (context.name.as_str(), context))
+        .collect();
+    assert_eq!(
+        contexts.len(),
+        localization.contexts.len(),
+        "context names are unique on this build, so the expected output can name them"
+    );
+    assert_references_join(localization);
+
+    let scopes = native.scopes().unwrap().value;
+    for context in &localization.contexts {
+        if let ContextScopes::Joined(references) = &context.scopes {
+            for reference in references {
+                let scope = scopes
+                    .types
+                    .iter()
+                    .find(|scope| scope.id == reference.id)
+                    .expect("a joined scope is a scope type of Native::scopes");
+                assert_eq!(scope.name, reference.name);
+            }
+        }
+    }
+
+    assert_eq!(
+        compact_localization(&answer),
+        expected::<Value>("localization-declarations.json")
+    );
+}
+
+/// Every context reference names a context of the same answer by id and name.
+fn assert_references_join(localization: &LocalizationDeclarations) {
+    let assert_joins = |reference: &LocalizationContextReference| {
+        let context = localization
+            .contexts
+            .iter()
+            .find(|context| context.id == reference.id)
+            .expect("a reference joins a context by id");
+        assert_eq!(context.name, reference.name);
+    };
+
+    for command in &localization.commands {
+        command.contexts.iter().for_each(assert_joins);
+    }
+    for link in &localization.links {
+        link.input_contexts.iter().for_each(assert_joins);
+        if let LocalizationOutput::Listed(outputs) = &link.output {
+            outputs.iter().for_each(assert_joins);
+        }
+    }
+}
+
+/// The whole answer with context references written as names, one entry for each row.
+fn compact_localization(answer: &Answer<LocalizationDeclarations>) -> Value {
+    let localization = &answer.value;
+    let contexts: serde_json::Map<_, _> = localization
+        .contexts
+        .iter()
+        .map(|context| {
+            let scopes = match &context.scopes {
+                ContextScopes::Joined(scopes) => json!({ "Joined": reference_names(scopes) }),
+                ContextScopes::Partial(scopes) => json!({ "Partial": reference_names(scopes) }),
+                ContextScopes::Missing => json!("Missing"),
+            };
+            (
+                context.name.clone(),
+                json!({ "id": context.id, "scopes": scopes }),
+            )
+        })
+        .collect();
+    let commands: serde_json::Map<_, _> = localization
+        .commands
+        .iter()
+        .map(|command| {
+            (
+                command.name.clone(),
+                json!(context_names(&command.contexts)),
+            )
+        })
+        .collect();
+    let links: Vec<_> = localization
+        .links
+        .iter()
+        .map(|link| {
+            let output = match &link.output {
+                LocalizationOutput::Listed(outputs) => json!({ "Listed": context_names(outputs) }),
+                other => json!(other),
+            };
+            json!([link.name, context_names(&link.input_contexts), output])
+        })
+        .collect();
+    let gaps: Vec<_> = answer
+        .gaps
+        .iter()
+        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+        .collect();
+
+    json!({
+        "completeness": answer.completeness,
+        "contexts": contexts,
+        "commands": commands,
+        "links": links,
+        "gaps": gaps,
+    })
+}
+
+fn context_names(references: &[LocalizationContextReference]) -> Vec<&str> {
+    references
+        .iter()
+        .map(|reference| reference.name.as_str())
+        .collect()
+}
+
 fn listed_names(scopes: &DeclaredScopes) -> Vec<&str> {
     match scopes {
         DeclaredScopes::Listed(scopes) => reference_names(scopes),
@@ -413,6 +546,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let fields = real.registry_fields("common/traditions").unwrap();
     let effects = real.declarations(DeclarationKind::Effect).unwrap();
     let links = real.scope_links().unwrap();
+    let localization = real.localization_declarations().unwrap();
     let unknown = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
@@ -430,6 +564,9 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.scope_links().unwrap();
     again.source.basis = links.source.basis;
     assert_eq!(again, links);
+    let mut again = recorded.localization_declarations().unwrap();
+    again.source.basis = localization.source.basis;
+    assert_eq!(again, localization);
     // Errors are recorded too.
     assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
     assert!(matches!(

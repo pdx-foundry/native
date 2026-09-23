@@ -78,7 +78,8 @@ impl Native {
             | Operation::Modifiers
             | Operation::ModifierCategories
             | Operation::Scopes
-            | Operation::ScopeLinks => match &self.bound().analysis {
+            | Operation::ScopeLinks
+            | Operation::LocalizationDeclarations => match &self.bound().analysis {
                 Some(analysis) => match analysis.executable() {
                     Ok(_) => Support::Supported,
                     Err(reason) => Support::Unsupported(error(operation, reason).to_string()),

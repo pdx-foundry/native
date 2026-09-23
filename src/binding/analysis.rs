@@ -23,6 +23,7 @@ struct Catalog {
     symbols: Vec<Symbol>,
     strings: BTreeMap<u64, String>,
     pointers: BTreeMap<u64, u64>,
+    bound_slots: std::collections::BTreeSet<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +77,20 @@ impl VerifiedAnalysis<'_> {
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.strings,
+            recipe,
+        )
+    }
+
+    fn localization_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
+        binary::language::localization(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            &self.catalog.pointers,
+            &self.catalog.bound_slots,
             recipe,
         )
     }
@@ -407,6 +422,7 @@ impl BoundAnalysis {
             symbols: input.symbols,
             strings: input.strings,
             pointers: input.pointers,
+            bound_slots: input.bound_slots,
         })
     }
 
@@ -434,5 +450,12 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.scope_input(recipe)
+    }
+
+    pub(crate) fn localization_input(
+        &self,
+    ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.localization_input(recipe)
     }
 }

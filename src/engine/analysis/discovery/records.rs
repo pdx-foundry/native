@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One symbol of the executable. A native name locates code; it is never a public identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +39,9 @@ pub struct StaticInput {
     pub pointers: BTreeMap<u64, u64>,
     /// Imported or chained global locations and their exact demangled binding names.
     pub global_bindings: BTreeMap<u64, String>,
+    /// Every pointer location that the loader binds to another image, named or not.
+    #[serde(default)]
+    pub bound_slots: BTreeSet<u64>,
     /// Literal strings keyed by their file addresses.
     pub strings: BTreeMap<u64, String>,
     /// Vtable address points with executable-derived owner adjustments and dispatch slots.

@@ -118,6 +118,8 @@ pub enum Operation {
     Scopes,
     /// `Native::scope_links`
     ScopeLinks,
+    /// `Native::localization_declarations`
+    LocalizationDeclarations,
     /// `Game::registry_items`
     RegistryItems,
     /// `Game::observe_fixture`
@@ -134,6 +136,7 @@ impl Operation {
                 | Self::ModifierCategories
                 | Self::Scopes
                 | Self::ScopeLinks
+                | Self::LocalizationDeclarations
         )
     }
 }
@@ -422,6 +425,97 @@ pub enum LinkData {
     None,
     /// The link is this prefix followed by a value, such as `event_target:my_target`.
     Prefix(String),
+}
+
+/// The localization ("localisation") language that the engine declares: the contexts of bracket
+/// commands such as `[Root.GetName]`, the commands and links of each context, and the scope types
+/// that select each context.
+///
+/// Commands and links name their contexts by [`LocalizationContextReference`]. Join a reference
+/// to [`LocalizationDeclarations::contexts`] by `id`, and a context's scopes to
+/// `Native::scopes` by [`ScopeReference::id`]; never join by name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalizationDeclarations {
+    /// Each context, sorted by name.
+    pub contexts: Vec<LocalizationContext>,
+    /// Each command name, sorted, with the contexts that declare it.
+    pub commands: Vec<LocalizationCommand>,
+    /// Each link, sorted by name. A name with different outputs has one row per output.
+    pub links: Vec<LocalizationLink>,
+}
+
+/// Opaque identity of a localization context within one build. Keep it and compare it; do not
+/// parse it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct LocalizationContextId(pub(crate) String);
+
+/// A reference to one context in [`LocalizationDeclarations::contexts`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalizationContextReference {
+    /// The context. Join references to contexts by this identity.
+    pub id: LocalizationContextId,
+    /// The context's display name, for reading only.
+    pub name: String,
+}
+
+/// The kind of object that a localization statement points at, such as a country or a dead
+/// fleet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalizationContext {
+    /// The context's identity.
+    pub id: LocalizationContextId,
+    /// The engine's name for the context, such as `Ship (and Starbase)` or `Base Scope`. Empty
+    /// when the name could not be read; a gap then names the context's identity.
+    pub name: String,
+    /// The scope types that select this context.
+    pub scopes: ContextScopes,
+}
+
+/// Which scope types select a localization context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ContextScopes {
+    /// Every scope type was followed; these select the context.
+    Joined(Vec<ScopeReference>),
+    /// Every scope type was followed; none selects the context, such as for a dead object.
+    Missing,
+    /// Some scope types could not be followed. These select the context; others may too. The
+    /// list can be empty.
+    Partial(Vec<ScopeReference>),
+}
+
+/// A localization command, such as `GetName`: text that the current context gives.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalizationCommand {
+    /// The command name.
+    pub name: String,
+    /// The contexts that declare the command, sorted by name.
+    pub contexts: Vec<LocalizationContextReference>,
+}
+
+/// A localization link, such as `Owner`: a name that changes the current context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalizationLink {
+    /// The link name.
+    pub name: String,
+    /// The contexts that declare the link with this output, sorted by name.
+    pub input_contexts: Vec<LocalizationContextReference>,
+    /// The context that the link changes to.
+    pub output: LocalizationOutput,
+}
+
+/// The context that a localization link changes to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LocalizationOutput {
+    /// One of these contexts, sorted by name. Most links list one.
+    Listed(Vec<LocalizationContextReference>),
+    /// The engine selects the context from the object at run time, such as for `Root`.
+    Various,
+    /// Every path through the link returns without changing the context: the engine declares
+    /// the link but does not follow it.
+    Unchanged,
+    /// The link could not be followed to its output, or it changes the context on some paths and
+    /// not on others; a gap names it.
+    Unresolved,
 }
 
 /// The shared reader behind a field. Two fields with one reader report the same `id`.

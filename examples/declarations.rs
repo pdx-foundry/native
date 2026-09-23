@@ -45,6 +45,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             link.name, link.input_scopes, link.output_scope, link.data
         );
     }
+    let localization = timed(
+        "Localization",
+        || native.localization_declarations(),
+        |localization| localization.commands.len() + localization.links.len(),
+    )?;
+    for context in localization.value.contexts.iter().take(5) {
+        println!("  context {}: {:?}", context.name, context.scopes);
+    }
+    for link in localization.value.links.iter().take(5) {
+        let inputs: Vec<_> = link
+            .input_contexts
+            .iter()
+            .map(|input| &input.name)
+            .collect();
+        println!("  {}: {inputs:?} -> {:?}", link.name, link.output);
+    }
     Ok(())
 }
 

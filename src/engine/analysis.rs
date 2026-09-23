@@ -8,6 +8,7 @@ pub mod evaluate;
 #[allow(dead_code)]
 pub mod discovery;
 pub mod fields;
+pub mod localization;
 pub mod modifiers;
 pub mod readers;
 pub mod scopes;
