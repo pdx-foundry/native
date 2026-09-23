@@ -31,6 +31,9 @@ const STEP_LIMIT: usize = 20_000;
 /// The most paths that one [`Machine::run_paths`] follows.
 pub const PATH_LIMIT: usize = 64;
 
+/// The most times that one path of [`Machine::run_paths_to`] arrives at one loop head.
+pub const LOOP_LIMIT: u32 = 4;
+
 /// Every NZCV state.
 const ALL_FLAG_STATES: u16 = u16::MAX;
 
@@ -150,6 +153,22 @@ impl Code {
         reaching
     }
 
+    /// The targets of backward direct branches among `addresses`.
+    fn loop_heads(&self, addresses: &BTreeSet<u64>) -> BTreeSet<u64> {
+        addresses
+            .iter()
+            .filter_map(|&address| {
+                let successors = self.rows.get(&address)?.successors(address)?;
+                Some(
+                    successors
+                        .into_iter()
+                        .filter(move |&target| target <= address),
+                )
+            })
+            .flatten()
+            .collect()
+    }
+
     /// Build code from rows that are already decoded.
     pub fn from_rows(rows: impl IntoIterator<Item = Instruction>) -> Self {
         Self {
@@ -229,13 +248,16 @@ pub struct Machine<'a> {
     labels: BTreeMap<u64, u64>,
     /// Known values that this path stored to an unknown address.
     unknown_stores: Vec<u64>,
+    /// How often this path arrived at each loop head of a [`Machine::run_paths_to`] run.
+    loop_visits: BTreeMap<u64, u32>,
 }
 
-/// The instruction that [`Machine::run_paths_to`] must arrive at, and every instruction from
-/// which it can.
+/// The instruction that [`Machine::run_paths_to`] must arrive at, every instruction from which
+/// it can, and the loop heads among them: the targets of backward branches.
 struct Site {
     address: u64,
     reaching: BTreeSet<u64>,
+    loop_heads: BTreeSet<u64>,
 }
 
 impl<'a> Machine<'a> {
@@ -254,6 +276,7 @@ impl<'a> Machine<'a> {
             protected: Vec::new(),
             labels: BTreeMap::new(),
             unknown_stores: Vec::new(),
+            loop_visits: BTreeMap::new(),
         }
     }
 
@@ -416,9 +439,11 @@ impl<'a> Machine<'a> {
         site: u64,
         calls: &mut PathCalls<'_, 'a>,
     ) -> Vec<Path<'a>> {
+        let reaching = self.code.reaching(site);
         let site = Site {
             address: site,
-            reaching: self.code.reaching(site),
+            loop_heads: self.code.loop_heads(&reaching),
+            reaching,
         };
         self.follow(entry, Some(&site), calls)
     }
@@ -474,6 +499,13 @@ impl<'a> Machine<'a> {
                 }
                 if !site.reaching.contains(&pc) {
                     return Walk::Leaves;
+                }
+                if site.loop_heads.contains(&pc) {
+                    let visits = self.loop_visits.entry(pc).or_default();
+                    *visits += 1;
+                    if *visits > LOOP_LIMIT {
+                        return Walk::End(Err(Unresolved("loop-limit")));
+                    }
                 }
             }
 
@@ -2233,6 +2265,30 @@ mod tests {
 
         assert_eq!(machine.register(0), None);
         assert_eq!(machine.register(1), Some(7));
+    }
+
+    #[test]
+    fn a_path_that_loops_too_often_ends_so_that_other_paths_reach_the_site() {
+        let code = rows(&[
+            (0x100, "cbz", "x3,#0x110"),
+            (0x104, "ldr", "x3,[x3]"),
+            (0x108, "cbnz", "x4,#0x100"),
+            (0x10c, "b", "#0x100"),
+            (0x110, "mov", "x1,#1"),
+            (0x114, "bl", "#0x900"),
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data)
+            .run_paths_to(0x100, 0x114, &mut |_, _| Ok(Call::Return(None)));
+
+        assert!(paths.iter().any(|path| path.end == Ok(Exit::Reached)));
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.end == Err(Unresolved("loop-limit")))
+        );
+        assert!(paths.len() < PATH_LIMIT);
     }
 
     #[test]
