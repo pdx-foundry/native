@@ -27,7 +27,8 @@ use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
 
 mod strings;
 
-use strings::{Arena, Effect, ITEM_KEY, Model, Node};
+use strings::ITEM_KEY;
+pub(super) use strings::{Arena, Effect, Model, Node};
 pub use strings::{Part, StringFunctions, StringLayout};
 
 /// Name and revision of the modifier-family method.

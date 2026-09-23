@@ -1,0 +1,333 @@
+{
+  "effect": {
+    "sdk_488_live_inventory": 1074,
+    "recovered": [
+      {
+        "mechanism": "registry helper constructor",
+        "declaration": {
+          "description": "Executes enclosed effects if limit criteria are met",
+          "name": "if",
+          "scopes": "Any",
+          "targets": "Unresolved",
+          "usage": "if = { limit = { <triggers> } <effects> }"
+        }
+      },
+      {
+        "mechanism": "registry helper constructor",
+        "declaration": {
+          "description": "Executes enclosed effects if limit criteria of preceding 'if' or 'else_if' is not met",
+          "name": "else",
+          "scopes": "Any",
+          "targets": "Unresolved",
+          "usage": "if = { limit = { <triggers> } <effects> }\nelse = { <effects> }"
+        }
+      },
+      {
+        "mechanism": "registry helper constructor",
+        "declaration": {
+          "description": "Executes enclosed effects if limit criteria of preceding 'if' or 'else_if' is not met, and its own limit is met",
+          "name": "else_if",
+          "scopes": "Any",
+          "targets": "Unresolved",
+          "usage": "if = { limit = { <triggers> } <effects> }\nelse_if = { limit = { <triggers> } <effects> }"
+        }
+      },
+      {
+        "mechanism": "tail call",
+        "declaration": {
+          "description": "Joins the war on the specified side.",
+          "name": "join_war_on_side",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "join_war_on_side = { war = <target> side = attackers/defenders/<country> }"
+        }
+      },
+      {
+        "mechanism": "tail call",
+        "declaration": {
+          "description": "Removes a single instance of a specific building from the scoped colony",
+          "name": "remove_building",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "37c52c03d3012e74",
+                "name": "planet"
+              },
+              {
+                "id": "69ead02b278522d1",
+                "name": "ship"
+              },
+              {
+                "id": "df2999a8f7dba6f6",
+                "name": "colony"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "\tremove_building = <building_type_key>"
+        }
+      },
+      {
+        "mechanism": "tail call",
+        "declaration": {
+          "description": "Removes a zone from the district of the colony",
+          "name": "remove_zone",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "37c52c03d3012e74",
+                "name": "planet"
+              },
+              {
+                "id": "69ead02b278522d1",
+                "name": "ship"
+              },
+              {
+                "id": "df2999a8f7dba6f6",
+                "name": "colony"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "\tremove_zone = {\n\t\tdistrict = <district_type_key/district_slot_index>\n\t\tzone = <zone_type_key>\n\t\tzone_slot = <zone_slot_index>\n\t\tall = <yes/no>\n\t}"
+        }
+      },
+      {
+        "mechanism": "script list, second caller of a list helper",
+        "declaration": {
+          "description": "Weighted random on owned popgroups based on the popgroup size. Supports the same scopes as the owned_pop_group script list",
+          "name": "weighted_random_owned_pop_group",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "37c52c03d3012e74",
+                "name": "planet"
+              },
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              },
+              {
+                "id": "69ead02b278522d1",
+                "name": "ship"
+              },
+              {
+                "id": "5ab5fc854e81e429",
+                "name": "galactic_object"
+              },
+              {
+                "id": "87fbe101af3061e9",
+                "name": "pop_faction"
+              },
+              {
+                "id": "a88e1da49bb109c5",
+                "name": "sector"
+              },
+              {
+                "id": "df2999a8f7dba6f6",
+                "name": "colony"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": ""
+        }
+      },
+      {
+        "mechanism": "script list",
+        "declaration": {
+          "description": "Iterate through each army that is owned by the country - executes the enclosed effects on all of them for which the limit triggers return true",
+          "name": "every_owned_army",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "every_owned_army = { limit = { <triggers> } <effects> }"
+        }
+      },
+      {
+        "mechanism": "script list",
+        "declaration": {
+          "description": "Iterate through each army that is owned by the country - executes the enclosed effects on one of them for which the limit triggers return true. Picks the specific object randomly.",
+          "name": "random_owned_army",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "random_owned_army = {\n\tlimit = { <triggers> }\n\tweights = { (optional - adds weights to affect the chance a specific object is selected)\n\t\tbase = float\n\t\tmodifier = { <add/factor = float> <triggers> }\n\t}\n\t<effects>\n}"
+        }
+      },
+      {
+        "mechanism": "script list",
+        "declaration": {
+          "description": "Iterate through each army that is owned by the country - executes the enclosed effects on one of them for which the limit triggers return true. Picks the specific object according to the order specified (position 0, order_by = trigger:num_pops would run the effects on the X with the most pops)",
+          "name": "ordered_owned_army",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "ordered_owned_army = {\n\tlimit = { <triggers> }\n\tposition = <integer, starting with 0>\n\torder_by = <variable>/trigger:<trigger>\n\tinverse = yes/no (default: no - if yes, then 0 is lowest rather than highest)\n\t<effects>\n}"
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "sdk_488_live_inventory": 1096,
+    "recovered": [
+      {
+        "mechanism": "registry helper constructor",
+        "declaration": {
+          "description": "all inside trigger must be true",
+          "name": "and",
+          "scopes": "Any",
+          "targets": "Unresolved",
+          "usage": ""
+        }
+      },
+      {
+        "mechanism": "registry helper constructor",
+        "declaration": {
+          "description": "Adjusts progress of triggers inside it",
+          "name": "custom_progress",
+          "scopes": "Any",
+          "targets": "Unresolved",
+          "usage": "custom_progress = {\n\t...\n\tcurrent_val_coeff = 0.5\n\tfinal_val_coeff = 0.5\n\tmode = <normal/simplified/clamped>\n}"
+        }
+      },
+      {
+        "mechanism": "registry helper constructor",
+        "declaration": {
+          "description": "Nullifies progress of triggers inside it and returns progress '0 of 0'",
+          "name": "hidden_progress",
+          "scopes": "Any",
+          "targets": "Unresolved",
+          "usage": "hidden_progress = {\n\t<triggers>\n}"
+        }
+      },
+      {
+        "mechanism": "registry helper constructor",
+        "declaration": {
+          "description": "Hides the progress of the triggers inside and returns progresses '0 of 1' or '1 of 1'",
+          "name": "simple_progress",
+          "scopes": "Any",
+          "targets": "Unresolved",
+          "usage": "simple_progress = {\n\t<triggers>\n}"
+        }
+      },
+      {
+        "mechanism": "tail call",
+        "declaration": {
+          "description": "Checks the number of started proxy wars by the scoped country",
+          "name": "num_proxy_war",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "num_proxy_war >=< <value>"
+        }
+      },
+      {
+        "mechanism": "script list",
+        "declaration": {
+          "description": "Iterate through each army that is owned by the country - checks whether the enclosed triggers return true for any of them",
+          "name": "any_owned_army",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "any_owned_army = { <triggers> }"
+        }
+      },
+      {
+        "mechanism": "script list",
+        "declaration": {
+          "description": "Iterate through each army that is owned by the country - checks whether the enclosed triggers return true for X/all of them",
+          "name": "count_owned_army",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "count_owned_army = {\n\tcount = <num/all/variable>\n\tlimit = { <triggers> }\n}"
+        }
+      },
+      {
+        "mechanism": "script list, list initializer",
+        "declaration": {
+          "description": "Sums all pop amounts - checks whether the enclosed triggers return true for X/all of them",
+          "name": "count_owned_pop_amount",
+          "scopes": {
+            "Listed": [
+              {
+                "id": "37c52c03d3012e74",
+                "name": "planet"
+              },
+              {
+                "id": "44b5e21fe5e593d7",
+                "name": "country"
+              },
+              {
+                "id": "69ead02b278522d1",
+                "name": "ship"
+              },
+              {
+                "id": "5ab5fc854e81e429",
+                "name": "galactic_object"
+              },
+              {
+                "id": "87fbe101af3061e9",
+                "name": "pop_faction"
+              },
+              {
+                "id": "a88e1da49bb109c5",
+                "name": "sector"
+              },
+              {
+                "id": "df2999a8f7dba6f6",
+                "name": "colony"
+              }
+            ]
+          },
+          "targets": "Unresolved",
+          "usage": "count_owned_pop_amount = {\n\tcount = <num/all/variable>\n\tlimit = { <triggers> }\n}"
+        }
+      }
+    ]
+  }
+}

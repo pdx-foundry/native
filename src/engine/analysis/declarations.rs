@@ -1,15 +1,22 @@
-//! Direct command registration sites and their documented declarations.
-//! A direct branch in executable text is one site. An unresolved site remains a gap.
+//! Command registration sites and their documented declarations.
+//!
+//! A registration site is a call or tail call to the database's register function, or to a
+//! registry helper constructor that inserts its entry itself. At most sites the token and the
+//! entry's documentation are literals next to the call. Where the code composes the token at run
+//! time, `composition` runs the registering function from each chain of its callers and reads the
+//! composed name and documentation at the call. A site that cannot be followed remains a gap.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     InputError,
     decode::{Instruction, decode_arm64},
 };
-use crate::DeclarationKind;
+mod composition;
+
+pub use composition::{CALLER_DEPTH, Composition};
 
 /// Name and revision of this static method.
-pub const METHOD: &str = "command-declarations/v1";
+pub const METHOD: &str = "command-declarations/v2";
 
 /// A bounded executable code range.
 #[derive(Debug, Clone)]
@@ -27,20 +34,24 @@ pub struct ScopeSlots {
 
 /// Executable-derived input for one command kind.
 pub struct DeclarationInput {
-    pub kind: DeclarationKind,
     pub tokens: BTreeMap<u64, String>,
+    /// Code that ends at each call or tail call to a registration function.
     pub registrars: Vec<Function>,
+    /// The database's register function: the token in `w1`, the entry in `x2`.
     pub register_entry: BTreeSet<u64>,
+    /// Registry helper constructors that insert their entry themselves: the token in `w1`, the
+    /// documentation text in `x2`.
+    pub entry_helpers: BTreeSet<u64>,
     pub operator_new: BTreeSet<u64>,
     pub functions: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
     pub strings: BTreeMap<u64, String>,
     pub slots: ScopeSlots,
     pub scope_names: Option<Vec<String>>,
-    pub symbols_by_address: BTreeMap<u64, String>,
+    pub composition: Composition,
 }
 
-/// One directly registered command site.
+/// One registration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Site {
     Declared {
@@ -49,9 +60,8 @@ pub enum Site {
         usage: String,
         scopes: ScopeOutcome,
     },
-    RuntimeToken {
-        family: String,
-    },
+    /// The code composes the token at run time, and the method stopped at `obstacle`.
+    RuntimeToken { obstacle: &'static str },
     Unreadable {
         name: Option<String>,
         what: &'static str,
@@ -74,31 +84,49 @@ pub struct ScopeType {
     pub name: String,
 }
 
-/// Every direct site and any input-wide gap.
+/// Every registration, by the address of its registration call, and any input-wide gap. A call
+/// that the code reaches from several callers has one registration for each.
 pub struct DeclarationResult {
     pub sites: Vec<(u64, Site)>,
     pub table_gaps: Vec<&'static str>,
 }
 
-/// Analyze each direct registration call. The input reader owns executable layout.
+/// The kind of registration function that a call reaches.
+#[derive(Debug, Clone, Copy)]
+enum Registrar {
+    Entry,
+    Helper(u64),
+}
+
+/// Analyze each registration call. The input reader owns executable layout.
 pub fn analyze(input: &DeclarationInput) -> Result<DeclarationResult, InputError> {
+    let mut composer = composition::Composer::new(input);
     let mut sites = Vec::new();
     for registrar in &input.registrars {
         let rows = decode(registrar)?;
-        let Some(row) = rows.last() else {
+        let Some((row, rows)) = rows.split_last() else {
             continue;
         };
-        if row.operation != "bl"
-            || !target(row).is_some_and(|target| input.register_entry.contains(&target))
-        {
+        let Some(registrar) = registrar_of(input, row) else {
             continue;
+        };
+        let site = match registrar {
+            Registrar::Entry => site(input, rows),
+            Registrar::Helper(helper) => helper_site(input, rows, helper),
+        };
+        match (site, registrar) {
+            (Site::RuntimeToken { .. }, Registrar::Entry) => sites.extend(
+                composer
+                    .registrations(row.address)
+                    .into_iter()
+                    .map(|site| (row.address, site)),
+            ),
+            (site, _) => sites.push((row.address, site)),
         }
-        sites.push((row.address, site(input, &rows[..rows.len() - 1])));
     }
     sites.sort_by_key(|(address, _)| *address);
-    sites.dedup_by_key(|(address, _)| *address);
     if sites.is_empty() {
-        return Err(InputError("no direct registration sites".into()));
+        return Err(InputError("no registration sites".into()));
     }
     Ok(DeclarationResult {
         sites,
@@ -108,6 +136,21 @@ pub fn analyze(input: &DeclarationInput) -> Result<DeclarationResult, InputError
             Vec::new()
         },
     })
+}
+
+/// The registration function that `row` calls or tail-calls.
+fn registrar_of(input: &DeclarationInput, row: &Instruction) -> Option<Registrar> {
+    if !matches!(row.operation.as_str(), "bl" | "b") {
+        return None;
+    }
+    let target = target(row)?;
+    if input.register_entry.contains(&target) {
+        Some(Registrar::Entry)
+    } else if input.entry_helpers.contains(&target) {
+        Some(Registrar::Helper(target))
+    } else {
+        None
+    }
 }
 
 fn decode(function: &Function) -> Result<Vec<Instruction>, InputError> {
@@ -138,38 +181,9 @@ pub(crate) fn number(text: &str) -> Option<u64> {
 }
 
 fn site(input: &DeclarationInput, rows: &[Instruction]) -> Site {
-    let mut token = None;
-    let site_start = rows
-        .iter()
-        .rposition(|row| {
-            row.operation == "bl"
-                && target(row).is_some_and(|address| input.register_entry.contains(&address))
-        })
-        .map_or(0, |index| index + 1);
-    for row in rows[site_start.max(rows.len().saturating_sub(64))..]
-        .iter()
-        .rev()
-    {
-        if let Some(value) = row.operands.strip_prefix("w1,#")
-            && matches!(row.operation.as_str(), "mov" | "movz")
-        {
-            token = number(value);
-            break;
-        }
-        if row.operands.starts_with("w1,") && !matches!(row.operation.as_str(), "movk") {
-            break;
-        }
-    }
-    let Some(token) = token else {
-        return Site::RuntimeToken {
-            family: family(input, rows),
-        };
-    };
-    let Some(name) = input.tokens.get(&token).cloned() else {
-        return Site::Unreadable {
-            name: None,
-            what: "token-table",
-        };
+    let name = match literal_name(input, rows) {
+        Ok(name) => name,
+        Err(site) => return site,
     };
     let Some(new_index) = rows.iter().rposition(|row| {
         row.operation == "bl"
@@ -186,6 +200,28 @@ fn site(input: &DeclarationInput, rows: &[Instruction]) -> Site {
             what: "entry-shape",
         };
     };
+    declared(input, name, factory, documentation)
+}
+
+/// A call to a registry helper constructor: the documentation is the text in `x2`, and the
+/// helper builds the entry with its own factory.
+fn helper_site(input: &DeclarationInput, rows: &[Instruction], helper: u64) -> Site {
+    let name = match literal_name(input, rows) {
+        Ok(name) => name,
+        Err(site) => return site,
+    };
+    let documentation = register_values(rows).get("x2").copied();
+    let (Some(factory), Some(documentation)) = (helper_factory(input, helper), documentation)
+    else {
+        return Site::Unreadable {
+            name: Some(name),
+            what: "entry-shape",
+        };
+    };
+    declared(input, name, factory, documentation)
+}
+
+fn declared(input: &DeclarationInput, name: String, factory: u64, documentation: u64) -> Site {
     let Some(documentation) = input.strings.get(&documentation) else {
         return Site::Unreadable {
             name: Some(name),
@@ -193,24 +229,75 @@ fn site(input: &DeclarationInput, rows: &[Instruction]) -> Site {
         };
     };
     let (description, usage) = split_documentation(documentation);
-    let scopes = scopes(input, factory);
     Site::Declared {
         name,
         description,
         usage,
-        scopes,
+        scopes: scopes(input, factory),
     }
 }
 
-fn family(input: &DeclarationInput, rows: &[Instruction]) -> String {
-    rows.iter()
+/// The name of the literal token in `w1`, set since the previous registration call. A token that
+/// the code computes is a `RuntimeToken`.
+fn literal_name(input: &DeclarationInput, rows: &[Instruction]) -> Result<String, Site> {
+    let site_start = rows
+        .iter()
+        .rposition(|row| registrar_of(input, row).is_some())
+        .map_or(0, |index| index + 1);
+    let mut token = None;
+    for row in rows[site_start.max(rows.len().saturating_sub(64))..]
+        .iter()
         .rev()
-        .filter(|row| row.operation == "bl")
-        .filter_map(target)
-        .filter_map(|address| input.symbols_by_address.get(&address))
-        .find(|name| name.contains("Entry<"))
-        .map(|_| "scripted command".to_owned())
-        .unwrap_or_else(|| format!("unknown {} command", input.kind.subject()))
+    {
+        if let Some(value) = row.operands.strip_prefix("w1,#")
+            && matches!(row.operation.as_str(), "mov" | "movz")
+        {
+            token = number(value);
+            break;
+        }
+        if (row.operands.starts_with("w1,") || row.operands.starts_with("x1,"))
+            && !matches!(row.operation.as_str(), "movk" | "str" | "stp" | "stur")
+        {
+            break;
+        }
+    }
+    let token = token.ok_or(Site::RuntimeToken { obstacle: "token" })?;
+    input.tokens.get(&token).cloned().ok_or(Site::Unreadable {
+        name: None,
+        what: "token-table",
+    })
+}
+
+/// The entry factory of a registry helper constructor: the object that it allocates holds the
+/// factory vtable and then the documentation argument from `x2`.
+fn helper_factory(input: &DeclarationInput, helper: u64) -> Option<u64> {
+    let rows = decode(input.functions.get(&helper)?).ok()?;
+    let new_index = rows.iter().position(|row| {
+        row.operation == "bl"
+            && target(row).is_some_and(|target| input.operator_new.contains(&target))
+    })?;
+    let mut documentation = BTreeSet::from(["x2"]);
+    for row in &rows[..new_index] {
+        if let ("mov", [destination, source]) = (
+            row.operation.as_str(),
+            row.operands.split(',').collect::<Vec<_>>().as_slice(),
+        ) && documentation.contains(source)
+        {
+            documentation.insert(*destination);
+        }
+    }
+    rows.iter()
+        .enumerate()
+        .skip(new_index + 1)
+        .find_map(|(index, row)| {
+            let args: Vec<_> = row.operands.split(',').collect();
+            match (row.operation.as_str(), args.as_slice()) {
+                ("stp", [factory, second, "[x0]"]) if documentation.contains(second) => {
+                    register_values(&rows[..index]).get(factory).copied()
+                }
+                _ => None,
+            }
+        })
 }
 
 /// First line is the description. One terminal newline is formatting, not usage.
@@ -254,6 +341,46 @@ fn object_stores(rows: &[Instruction], since: usize) -> Option<(u64, u64)> {
         }
     }
     factory.zip(documentation)
+}
+
+/// The address that each register holds at the end of `rows`, when an `adrp` and `add` pair set
+/// it. Any other write to a register, and a call for the caller-saved registers, forgets its
+/// value.
+fn register_values(rows: &[Instruction]) -> BTreeMap<&str, u64> {
+    let mut values = BTreeMap::<&str, u64>::new();
+    for row in rows {
+        let args: Vec<_> = row.operands.split(',').collect();
+        match (row.operation.as_str(), args.as_slice()) {
+            ("adrp", [reg, value]) => match number(value) {
+                Some(value) => {
+                    values.insert(reg, value);
+                }
+                None => {
+                    values.remove(reg);
+                }
+            },
+            ("add", [dst, base, offset]) => {
+                match values
+                    .get(base)
+                    .and_then(|base| base.checked_add(number(offset)?))
+                {
+                    Some(value) => values.insert(dst, value),
+                    None => values.remove(dst),
+                };
+            }
+            ("bl" | "blr", _) => values.retain(|reg, _| {
+                !reg.strip_prefix('x')
+                    .and_then(|index| index.parse::<u8>().ok())
+                    .is_some_and(|index| index <= 18)
+            }),
+            (operation, [destination, ..]) if !operation.starts_with("st") => {
+                let register = destination.replacen('w', "x", 1);
+                values.retain(|reg, _| **reg != register);
+            }
+            _ => {}
+        }
+    }
+    values
 }
 
 fn vtable_store(rows: &[Instruction]) -> Option<u64> {
@@ -427,34 +554,4 @@ fn constant_return(rows: &[Instruction]) -> Option<u64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn documentation_split_preserves_usage_without_terminal_newline() {
-        assert_eq!(
-            split_documentation("desc\nl1\nl2\n"),
-            ("desc".into(), "l1\nl2".into())
-        );
-        assert_eq!(split_documentation("desc"), ("desc".into(), "".into()));
-        assert_eq!(split_documentation("desc\n"), ("desc".into(), "".into()));
-    }
-
-    #[test]
-    fn constant_getter_ends_at_return() {
-        let row = |operation: &str, operands: &str| Instruction {
-            address: 0,
-            bytes: [0; 4],
-            operation: operation.into(),
-            operands: operands.into(),
-        };
-        assert_eq!(
-            constant_return(&[row("mov", "x0,#0"), row("ret", "")]),
-            Some(0)
-        );
-        assert_eq!(
-            constant_return(&[row("ldr", "x0,[x1]"), row("ret", "")]),
-            None
-        );
-    }
-}
+mod tests;

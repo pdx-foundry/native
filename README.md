@@ -29,8 +29,10 @@ let game_rules = native.game_rules()?;                      // Answer<Vec<GameRu
 let defines = native.defines()?;                            // Answer<Vec<Define>>
 ```
 
-`declarations` covers direct calls to the effect or trigger registration function in executable
-text. Runtime-composed names and unreadable documentation are gaps. `modifiers` covers direct
+`declarations` covers every call and tail call to the effect or trigger registration function or
+to a registry helper constructor in executable text. It follows names composed at run time, such as
+the script-list commands, through their callers. A registration that it cannot follow, and
+unreadable documentation, are gaps. `modifiers` covers direct
 modifier definitions; modifier families that content generates are gaps. `modifier_families`
 gives the name templates that one registry's database generator registers for each item, such as
 `{key}_ship_windup_mult`; apply `ModifierFamily::name_for` to item keys. Other generating code is
