@@ -38,6 +38,12 @@ const ALL_FLAG_STATES: u16 = u16::MAX;
 /// executable data.
 const STACK_TOP: u64 = 0x7fff_0000_0000;
 
+/// How far below the present stack pointer the stack moves when code sets it to an unknown
+/// value, such as after a dynamic stack allocation. The new stack is memory that no path has
+/// written, so a load from it is unknown until the code stores there, and addresses taken before
+/// the move keep pointing at the old frame.
+const DYNAMIC_STACK: u64 = 0x10_0000;
+
 /// First address of scratch objects that a caller allocates.
 const OBJECT_BASE: u64 = 0x7ffe_0000_0000;
 
@@ -1103,7 +1109,10 @@ impl<'a> Machine<'a> {
         match register.name {
             Name::Zero => {}
             Name::StackPointer => {
-                self.stack_pointer = value.ok_or(Unresolved("stack-pointer"))?;
+                self.stack_pointer = match value {
+                    Some(value) => value,
+                    None => self.stack_pointer - DYNAMIC_STACK,
+                };
             }
             Name::General(index) => self.registers[index] = value,
             Name::Vector(_) => return Err(Unresolved("destination")),
@@ -2203,6 +2212,27 @@ mod tests {
         assert_eq!(machine.register(2), Some(0x1234));
         assert_eq!(machine.read(stored, 8), Some(0x1234));
         assert_eq!(machine.read(stored + 8, 8), Some(0x55));
+    }
+
+    #[test]
+    fn an_unknown_stack_pointer_moves_the_stack_to_memory_that_no_path_wrote() {
+        let code = rows(&[
+            (0x100, "mov", "x9,#7"),
+            (0x104, "str", "x9,[sp,#-0x10]"),
+            (0x108, "sub", "x19,sp,#0x10"),
+            (0x10c, "mov", "sp,x3"),
+            (0x110, "ldr", "x0,[sp,#-0x10]"),
+            (0x114, "ldr", "x1,[x19]"),
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.register(0), None);
+        assert_eq!(machine.register(1), Some(7));
     }
 
     #[test]
