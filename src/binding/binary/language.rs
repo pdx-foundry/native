@@ -167,6 +167,7 @@ pub(in crate::binding) fn localization(
     symbols: &[Symbol],
     strings: &BTreeMap<u64, String>,
     pointers: &BTreeMap<u64, u64>,
+    bound_slots: &BTreeSet<u64>,
     recipe: &DeclarationRecipe,
 ) -> Result<LocalizationInput, AnalysisError> {
     let text = Text::read(bytes, symbols)?;
@@ -196,10 +197,14 @@ pub(in crate::binding) fn localization(
             .chain([&context_name]),
     );
     let scope_object_code = decoded(&text, setters.iter().chain([&scope_object]));
-    let data = loaded_data(bytes, pointers, |segment, kind| {
+    let fixups = Fixups {
+        pointers,
+        bound_slots,
+    };
+    let data = loaded_data(bytes, &fixups, |segment, kind| {
         is_read_only(kind) || segment == "__DATA_CONST"
     })?;
-    let rows = loaded_data(bytes, pointers, |segment, kind| {
+    let rows = loaded_data(bytes, &fixups, |segment, kind| {
         is_read_only(kind) || segment == "__DATA_CONST" || segment == "__DATA"
     })?;
 
@@ -257,12 +262,20 @@ fn is_read_only(kind: SectionKind) -> bool {
     )
 }
 
+/// The chained-fixup facts that the loaded-data views need.
+struct Fixups<'a> {
+    /// Rebased pointer locations and their targets.
+    pointers: &'a BTreeMap<u64, u64>,
+    /// Every pointer location that the loader binds to another image.
+    bound_slots: &'a BTreeSet<u64>,
+}
+
 /// The bytes of the selected sections as the loader leaves them: each rebased pointer holds its
 /// target. A pointer slot that the loader binds to another image, whose value is not known here,
 /// is left out, so it reads as unknown.
 fn loaded_data(
     bytes: &[u8],
-    pointers: &BTreeMap<u64, u64>,
+    fixups: &Fixups,
     select: impl Fn(&str, SectionKind) -> bool,
 ) -> Result<ReadOnlyData, AnalysisError> {
     let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
@@ -281,26 +294,18 @@ fn loaded_data(
         let Ok(data) = section.data() else {
             continue;
         };
-        let has_fixups = segment.starts_with("__DATA");
-        sections.extend(resolved_runs(section.address(), data, pointers, has_fixups));
+        sections.extend(resolved_runs(section.address(), data, fixups));
     }
 
     Ok(ReadOnlyData::new(sections))
 }
 
 /// Split `data` into runs of known bytes, with rebased pointers resolved and bound slots removed.
-/// In chained fixups of this format, a slot whose top bit is set is a bind.
-fn resolved_runs(
-    start: u64,
-    data: &[u8],
-    pointers: &BTreeMap<u64, u64>,
-    has_fixups: bool,
-) -> Vec<(u64, Vec<u8>)> {
+fn resolved_runs(start: u64, data: &[u8], fixups: &Fixups) -> Vec<(u64, Vec<u8>)> {
     let mut bytes = data.to_vec();
-    let mut unknown = BTreeSet::new();
     let end = start + data.len() as u64;
 
-    for (&address, &target) in pointers.range(start..end) {
+    for (&address, &target) in fixups.pointers.range(start..end) {
         if address + 8 > end {
             continue;
         }
@@ -309,26 +314,46 @@ fn resolved_runs(
         bytes[offset..offset + 8].copy_from_slice(&target.to_le_bytes());
     }
 
-    if has_fixups {
-        for offset in (0..data.len().saturating_sub(7)).step_by(8) {
-            let address = start + offset as u64;
-            let bound = data[offset + 7] & 0x80 != 0 && !pointers.contains_key(&address);
-            if bound && address.is_multiple_of(8) {
-                unknown.insert(offset);
-            }
-        }
-    }
-
     let mut runs = Vec::new();
     let mut run_start = 0;
-    for &offset in &unknown {
+    for &address in fixups.bound_slots.range(start..end) {
+        if fixups.pointers.contains_key(&address) {
+            continue;
+        }
+
+        let offset = (address - start) as usize;
         if offset > run_start {
             runs.push((start + run_start as u64, bytes[run_start..offset].to_vec()));
         }
-        run_start = offset + 8;
+        run_start = run_start.max(offset + 8);
     }
     if run_start < bytes.len() {
         runs.push((start + run_start as u64, bytes[run_start..].to_vec()));
     }
     runs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loaded_data_resolves_rebases_and_drops_only_bound_slots() {
+        let mut data = Vec::new();
+        data.extend(0x8000_0000_0000_0001u64.to_le_bytes()); // rebase, encoded
+        data.extend(0x8000_0000_0000_0002u64.to_le_bytes()); // bind, encoded
+        data.extend(u64::MAX.to_le_bytes()); // ordinary data with its top bit set
+        let pointers = BTreeMap::from([(0x1000, 0x1_0000_4000)]);
+        let bound_slots = BTreeSet::from([0x1008]);
+        let fixups = Fixups {
+            pointers: &pointers,
+            bound_slots: &bound_slots,
+        };
+
+        let view = ReadOnlyData::new(resolved_runs(0x1000, &data, &fixups));
+
+        assert_eq!(view.read(0x1000, 8), Some(0x1_0000_4000));
+        assert_eq!(view.read(0x1008, 8), None);
+        assert_eq!(view.read(0x1010, 8), Some(u64::MAX));
+    }
 }

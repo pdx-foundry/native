@@ -97,11 +97,15 @@ is no registration call and no factory.
 **Method** (`engine/analysis/localization.rs`, `localization-declarations/v1`). It runs the
 constructor, each row getter and each context-name call with the evaluator, and follows each link
 with the new `Machine::run_paths`, which continues both sides of a decision on an unknown value and
-reports every path's end. A link's output is the set of contexts that its paths leave; `Various`
-when a path hands the text to `SetScopeObject`; `Unchanged` when every path returns without a new
-context; `Unresolved` when any path cannot be followed. A call that the method does not follow makes
+reports every path's end. A decision on unknown flags splits the flag states that remain possible
+on the path, so later decisions on the same flags stay consistent. A link's output is the set of
+contexts that its paths leave; `Various` when a path hands the text to `SetScopeObject`; `Unchanged`
+when every path returns without a new context; `Unresolved` when any path cannot be followed or
+when some paths change the context and others do not. A context that a link or a scope type
+selects is in the answer even when its tables are empty, so every reference joins. A call that the method does not follow makes
 the context unknown until a setter writes it. Code never loads writable data: the rows are read
-from the initial image, and bound pointer slots are unknown.
+from the initial image, and the pointer slots that the fixup chain binds to another image are
+unknown.
 
 **Transfer test.** The method extension was frozen in its own commit before it ran on any
 executable. Each later repair is its own commit in the SDK-537 pull request; the counts are link
@@ -114,20 +118,19 @@ rows (context, name):
 | 3 | Revision 2: fork on unknown flags | 50 / 14 / 0 / 38 | |
 | 4 | Revision 3: an unknown indirect call is an unknown call (the same commit adds the public API, which does not change the method) | 61 / 14 / 0 / 27 | |
 | 5–7 | Revisions 4–6: follow every function that takes `CGameText&`; `mul` and traps; `ubfx`, `bfi` and multiply-add | 61 / 14 / 0 / 27 | The 24 dead-object links move from "unknown call" to "unsupported instruction" to the path limit. |
-| 8 | Revision 7: a link that selects nothing is `Unchanged` | 61 / 14 / 1 / 26 | — |
+| 8 | Revision 7: a link that selects nothing is `Unchanged` | 61 / 14 / 1 / 26 | Code review: a link whose paths both select a context and leave it unchanged was reported as listed; forks kept one sample flag state for each outcome; bound slots were guessed from the top bit; a stop at a resolved indirect call was unresolved; a selected context without tables could be referenced but absent. |
+| 9 | Revision 8: code-review repairs | 60 / 14 / 1 / 27 | — |
 
 The contexts, the 245 command rows and the scope join were the same from run 2 onward: they
 transferred with no change. Only link outputs needed repairs, all of them evaluator coverage, not
 per-link interpretation. The run takes about 0.9 s.
 
-**Result on M45-release.** 48 contexts; 151 command names in 245 command rows; 59 link rows by
-(name, output) covering 102 link rows. 28 contexts join scope types (`Ship (and Starbase)` joins
+**Result on M45-release.** 48 contexts; 151 command names in 245 command rows; 102 link rows. 28 contexts join scope types (`Ship (and Starbase)` joins
 `ship` and `starbase`; `System` joins `galactic_object`); 20 are `Missing`: `Base Scope`, the 12
 dead-object contexts, `Diplomacy`, `Building`, `Job Swap Data`, `Pop Category Swap Data`,
 `Patron Relation`, `Specimen` and `Timeline Event`. Their commands and links stay in the answer.
 The 14 `Various` rows are the 12 `Base Scope` promotions (`This`, `Root`, `From`, `Prev` in three
-spellings) and `Target` from `Espionage Operation` and `Situation`. `Planet` from `Deposit` lists two
-outputs, planet or ship, as the carrier link does in SDK-536.
+spellings) and `Target` from `Espionage Operation` and `Situation`.
 
 **Comparison with the engine dump** (`localizations.log`, same build, 519 lines, after the result
 was produced):
@@ -142,7 +145,7 @@ was produced):
 
 The dump prints no outputs and no scope join, so those are not compared with it.
 
-**Limits.** 26 link rows stay `Unresolved`, each with a gap:
+**Limits.** 27 link rows stay `Unresolved`, each with a gap:
 
 - 24 links find a saved or dead object by a run-time identifier through a hash-table probe whose
   exit depends on run-time data, so the paths reach the 64-path limit: `EVENT_TARGET_0` to
@@ -150,6 +153,8 @@ The dump prints no outputs and no scope join, so those are not compared with it.
   `Dead Situation`, `MainAttacker` and `MainDefender` from `Dead War`.
 - `Planet` and `Ship` from `Colony` return on a path after a carrier lookup that the method does not
   follow, so the context is unknown on that path.
+- `Planet` from `Deposit` selects planet or ship on some paths and returns without a new context on
+  another.
 
 `Third_party` from `Diplomacy` is `Unchanged`: `PromoteAction` handles indexes 0 and 1 and returns
 for index 2. Whether a command gives useful text at run time, argument forms, formatting, scripted

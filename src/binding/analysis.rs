@@ -23,6 +23,7 @@ struct Catalog {
     symbols: Vec<Symbol>,
     strings: BTreeMap<u64, String>,
     pointers: BTreeMap<u64, u64>,
+    bound_slots: std::collections::BTreeSet<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +90,7 @@ impl VerifiedAnalysis<'_> {
             &self.catalog.symbols,
             &self.catalog.strings,
             &self.catalog.pointers,
+            &self.catalog.bound_slots,
             recipe,
         )
     }
@@ -420,6 +422,7 @@ impl BoundAnalysis {
             symbols: input.symbols,
             strings: input.strings,
             pointers: input.pointers,
+            bound_slots: input.bound_slots,
         })
     }
 

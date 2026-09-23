@@ -89,7 +89,7 @@ pub struct LocalizationInput {
     pub scope_names: Option<Vec<String>>,
 }
 
-/// Every context with a table entry, and the scope join.
+/// Every context with a table entry or selected by a link or a scope type, and the scope join.
 pub struct LocalizationResult {
     /// Contexts in engine order.
     pub contexts: Vec<Context>,
@@ -152,7 +152,7 @@ impl Entries {
 /// Read every context's commands and links, and the scope join.
 pub fn analyze(input: &LocalizationInput) -> Result<LocalizationResult, InputError> {
     let tables = tables(input)?;
-    let contexts = tables
+    let mut contexts = tables
         .into_iter()
         .filter(|(_, entries)| !entries.is_empty())
         .map(|(value, entries)| context(input, value, entries))
@@ -161,11 +161,45 @@ pub fn analyze(input: &LocalizationInput) -> Result<LocalizationResult, InputErr
         return Err(InputError("the text constructor fills no context".into()));
     }
 
+    let joins = joins(input);
+    for value in selected_without_tables(&contexts, &joins) {
+        contexts.push(Context {
+            value,
+            name: context_name(input, value),
+            commands: Ok(Vec::new()),
+            links: Ok(Vec::new()),
+        });
+    }
+    contexts.sort_by_key(|context| context.value);
+
     Ok(LocalizationResult {
         contexts,
-        joins: joins(input),
+        joins,
         scope_table_missing: input.scope_names.is_none(),
     })
+}
+
+/// Contexts that a link output or a scope type selects but that have no table entry, so that
+/// every reference in the result names a context of the result.
+fn selected_without_tables(contexts: &[Context], joins: &[(ScopeType, Join)]) -> BTreeSet<u64> {
+    let outputs = contexts
+        .iter()
+        .filter_map(|context| context.links.as_ref().ok())
+        .flatten()
+        .filter_map(|(_, output)| match output {
+            Output::Contexts(values) => Some(values.iter().copied()),
+            _ => None,
+        })
+        .flatten();
+    let joined = joins.iter().filter_map(|(_, join)| match join {
+        Join::Context(value) => Some(*value),
+        _ => None,
+    });
+
+    outputs
+        .chain(joined)
+        .filter(|value| !contexts.iter().any(|context| context.value == *value))
+        .collect()
 }
 
 /// Run the constructor and read each context's three table entries.
@@ -308,23 +342,26 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
 
     let mut contexts = BTreeSet::new();
     let mut various = false;
+    let mut unchanged = false;
     for path in paths {
         match path_context(&path, field, scope_object) {
             Err(reason) => return Output::Unresolved(reason),
             Ok(PathContext::ScopeObject) => various = true,
-            Ok(PathContext::Unchanged | PathContext::Trapped) => {}
+            Ok(PathContext::Unchanged) => unchanged = true,
+            Ok(PathContext::Trapped) => {}
             Ok(PathContext::Selected(value)) => {
                 contexts.insert(value);
             }
         }
     }
 
-    if various {
-        Output::Various
-    } else if contexts.is_empty() {
-        Output::Unchanged
-    } else {
-        Output::Contexts(contexts)
+    let changed = various || !contexts.is_empty();
+    match (changed, unchanged) {
+        (true, true) => Output::Unresolved("some-paths-leave-the-context-unchanged"),
+        (false, true) => Output::Unchanged,
+        (false, false) => Output::Unresolved("no-path-returns"),
+        (true, false) if various => Output::Various,
+        (true, false) => Output::Contexts(contexts),
     }
 }
 
@@ -516,7 +553,7 @@ mod tests {
             (0x2208, "adrp", "x0,#0x5000"),
             (0x220c, "add", "x0,x0,#0x100"),
             (0x2210, "ret", ""),
-            (0x2300, "mov", "w8,#6"),
+            (0x2300, "mov", "w8,#7"),
             (0x2304, "str", "w8,[x0]"),
             (0x2308, "adrp", "x0,#0x5000"),
             (0x230c, "add", "x0,x0,#0x200"),
@@ -556,9 +593,16 @@ mod tests {
             (0x3058, "bl", "#0x7000"),
             (0x305c, "ret", ""),
             // Index 5 calls a setter and returns.
-            (0x3060, "mov", "x0,x1"),
-            (0x3064, "bl", "#0x4000"),
-            (0x3068, "ret", ""),
+            (0x3060, "cmp", "w2,#5"),
+            (0x3064, "b.ne", "#0x3074"),
+            (0x3068, "mov", "x0,x1"),
+            (0x306c, "bl", "#0x4000"),
+            (0x3070, "ret", ""),
+            // Index 6 selects a context on one side of a run-time check and returns on the other.
+            (0x3074, "cbz", "x10,#0x3080"),
+            (0x3078, "mov", "x0,x1"),
+            (0x307c, "b", "#0x4000"),
+            (0x3080, "ret", ""),
             // Context names.
             (0x4800, "adrp", "x9,#0x8000"),
             (0x4804, "ldr", "x1,[x9,x0,lsl#3]"),
@@ -567,7 +611,8 @@ mod tests {
     }
 
     /// The scope-object setter: scope bit 2 selects context 1 through a reference getter; bit 3
-    /// reaches two contexts on a run-time check; bit 0 selects nothing.
+    /// reaches two contexts on a run-time check; bit 4 selects context 5, which has no table
+    /// entry; bit 0 selects nothing.
     fn scope_object() -> Vec<Instruction> {
         instructions(&[
             (0x9000, "ldr", "x8,[x1,#0x8]"),
@@ -582,7 +627,11 @@ mod tests {
             (0x9024, "cbz", "x10,#0x902c"),
             (0x9028, "b", "#0x4000"),
             (0x902c, "b", "#0x4200"),
-            (0x9030, "ret", ""),
+            (0x9030, "cmp", "x8,#0x10"),
+            (0x9034, "b.ne", "#0x9040"),
+            (0x9038, "mov", "w8,#5"),
+            (0x903c, "str", "w8,[x0,#0x8]"),
+            (0x9040, "ret", ""),
         ])
     }
 
@@ -601,6 +650,7 @@ mod tests {
             (0x6060, "Indirect"),
             (0x6070, "Lost"),
             (0x6080, "Owner"),
+            (0x6090, "Mixed"),
             (0x6100, "Base Scope"),
             (0x6110, "Country"),
         ];
@@ -625,6 +675,7 @@ mod tests {
                     row(0x6060, 3),
                     row(0x6070, 4),
                     row(0x6080, 5),
+                    row(0x6090, 6),
                 ]
                 .concat(),
             ),
@@ -650,6 +701,7 @@ mod tests {
                 String::new(),
                 "country".into(),
                 "split".into(),
+                "hidden".into(),
             ]),
         }
     }
@@ -680,7 +732,7 @@ mod tests {
             .iter()
             .map(|context| context.value)
             .collect();
-        assert_eq!(values, [0, 1, 2]);
+        assert_eq!(values, [0, 1, 2, 5]);
         assert_eq!(context(&result, 0).name.as_deref(), Some("Base Scope"));
         assert_eq!(context(&result, 1).name.as_deref(), Some("Country"));
         assert_eq!(context(&result, 0).commands, Ok(vec!["GetYear".into()]));
@@ -713,6 +765,11 @@ mod tests {
         let country = context(&result, 1);
 
         assert_eq!(link(country, "Broken"), &Output::Unchanged);
+        assert_eq!(
+            link(country, "Mixed"),
+            &Output::Unresolved("some-paths-leave-the-context-unchanged"),
+            "a link that may leave the context unchanged has no definite output"
+        );
         assert_eq!(
             link(country, "Indirect"),
             &Output::Unresolved("context-unknown"),
@@ -748,7 +805,14 @@ mod tests {
                 ("zero", Join::NoContext),
                 ("country", Join::Context(1)),
                 ("split", Join::Unresolved("several-contexts")),
+                ("hidden", Join::Context(5)),
             ]
+        );
+        let hidden = context(&result, 5);
+        assert_eq!(
+            (&hidden.commands, &hidden.links),
+            (&Ok(Vec::new()), &Ok(Vec::new())),
+            "a selected context without table entries is still a context of the result"
         );
         assert!(!result.scope_table_missing);
     }

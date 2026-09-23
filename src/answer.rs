@@ -513,7 +513,8 @@ pub enum LocalizationOutput {
     /// Every path through the link returns without changing the context: the engine declares
     /// the link but does not follow it.
     Unchanged,
-    /// The link could not be followed to its output; a gap names it.
+    /// The link could not be followed to its output, or it changes the context on some paths and
+    /// not on others; a gap names it.
     Unresolved,
 }
 

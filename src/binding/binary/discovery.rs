@@ -2,7 +2,7 @@ use crate::AnalysisError;
 use crate::engine::analysis::discovery::{SchedulerLayout, StaticInput, Symbol, VtableWitness};
 use object::read::macho::{MachHeader, MachOFile64};
 use object::{Object, ObjectSection, ObjectSegment, ObjectSymbol, SymbolIndex};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn bad() -> AnalysisError {
     AnalysisError::InvalidRange
@@ -59,6 +59,7 @@ fn exact_binding_name(raw: &str, import_addend: i64, pointer_addend: u8) -> Opti
 struct Fixups {
     pointers: BTreeMap<u64, u64>,
     bindings: BTreeMap<u64, String>,
+    bound: BTreeSet<u64>,
 }
 
 fn fixups(
@@ -107,6 +108,7 @@ fn fixups(
         .ok_or_else(bad)?;
     let mut pointers = BTreeMap::new();
     let mut bindings = BTreeMap::new();
+    let mut bound = BTreeSet::new();
     for (i, segment) in segments.iter().enumerate() {
         let offset = u32_at(payload, starts + 4 + 4 * i)? as usize;
         if offset == 0 {
@@ -154,6 +156,7 @@ fn fixups(
                 let address = segment.address() + relative;
                 let next = (pointer >> 51) & 0xfff;
                 if pointer >> 63 == 1 {
+                    bound.insert(address);
                     let ordinal = (pointer & 0xffffff) as usize;
                     if ordinal >= import_count {
                         return Err(bad());
@@ -188,7 +191,11 @@ fn fixups(
             }
         }
     }
-    Ok(Fixups { pointers, bindings })
+    Ok(Fixups {
+        pointers,
+        bindings,
+        bound,
+    })
 }
 
 fn indirect_stubs(
@@ -364,6 +371,7 @@ pub(in crate::binding) fn read(
         layout: layout.clone(),
         pointers: fixups.pointers,
         global_bindings: fixups.bindings,
+        bound_slots: fixups.bound,
         strings,
         vtables,
     })

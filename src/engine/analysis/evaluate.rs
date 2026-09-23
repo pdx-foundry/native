@@ -26,6 +26,9 @@ const STEP_LIMIT: usize = 20_000;
 /// The most paths that one [`Machine::run_paths`] follows.
 pub const PATH_LIMIT: usize = 64;
 
+/// Every NZCV state.
+const ALL_FLAG_STATES: u16 = u16::MAX;
+
 /// The stack pointer at entry. It is outside every mapped section, so stack loads never read
 /// executable data.
 const STACK_TOP: u64 = 0x7fff_0000_0000;
@@ -147,9 +150,10 @@ pub struct Path<'a> {
 
 enum Walk {
     End(Result<Exit, Unresolved>),
-    /// Continue each branch at its address, with its flags when the decision was on flags.
+    /// Continue each branch at its address, with the flag states that remain possible on it
+    /// when the decision was on unknown flags.
     Fork {
-        branches: Vec<(Option<Flags>, u64)>,
+        branches: Vec<(Option<u16>, u64)>,
         steps: usize,
     },
 }
@@ -163,6 +167,9 @@ pub struct Machine<'a> {
     vectors: [Option<u128>; 32],
     stack_pointer: u64,
     flags: Option<Flags>,
+    /// While `flags` is unknown, the flag states that this path has not excluded: bit `n` is
+    /// the state `Flags::from_bits(n)`.
+    possible_flags: u16,
     memory: BTreeMap<u64, Option<u8>>,
     next_object: u64,
 }
@@ -177,6 +184,7 @@ impl<'a> Machine<'a> {
             vectors: [None; 32],
             stack_pointer: STACK_TOP,
             flags: None,
+            possible_flags: ALL_FLAG_STATES,
             memory: BTreeMap::new(),
             next_object: OBJECT_BASE,
         }
@@ -273,9 +281,9 @@ impl<'a> Machine<'a> {
     ///
     /// Unlike [`Machine::run`], a branch or conditional select on an unknown value continues on
     /// both sides, and a `b` to an address outside the decoded code is a tail call that goes to
-    /// `calls`: when it returns, the path returns. A decision on unknown flags continues with
-    /// flags that make the condition hold on one side and fail on the other, so a later decision
-    /// on the same flags agrees with it.
+    /// `calls`: when it returns, the path returns. A decision on unknown flags splits the flag
+    /// states that remain possible into those where the condition holds and those where it
+    /// fails, so a later decision on the same flags follows every state that is still possible.
     ///
     /// `calls` receives the target of each call and tail call; see [`PathCalls`]. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
@@ -295,10 +303,10 @@ impl<'a> Machine<'a> {
                         continue;
                     }
 
-                    for (flags, pc) in branches.into_iter().rev() {
+                    for (states, pc) in branches.into_iter().rev() {
                         let mut branch = machine.clone();
-                        if flags.is_some() {
-                            branch.flags = flags;
+                        if let Some(states) = states {
+                            branch.possible_flags = states;
                         }
                         pending.push((branch, pc, steps));
                     }
@@ -320,12 +328,9 @@ impl<'a> Machine<'a> {
             let flow = match self.step(operation) {
                 Ok(flow) => flow,
                 Err(Unresolved("flags")) if let Some(condition) = operation.condition() => {
+                    let (holding, failing) = condition.split(self.possible_flags);
                     return Walk::Fork {
-                        branches: condition
-                            .outcomes()
-                            .into_iter()
-                            .map(|flags| (Some(flags), pc))
-                            .collect(),
+                        branches: vec![(Some(holding), pc), (Some(failing), pc)],
                         steps: steps - 1,
                     };
                 }
@@ -357,7 +362,12 @@ impl<'a> Machine<'a> {
                         self.returned_from_call(value);
                         pc += 4;
                     }
-                    Ok(Call::Stop) => return Walk::End(Err(Unresolved("stopped-at-unknown-call"))),
+                    Ok(Call::Stop) => {
+                        return Walk::End(match target {
+                            Some(target) => Ok(Exit::Stopped(target)),
+                            None => Err(Unresolved("stopped-at-unknown-call")),
+                        });
+                    }
                     Err(unresolved) => return Walk::End(Err(unresolved)),
                 },
                 Flow::Return => return Walk::End(Ok(Exit::Returned)),
@@ -386,7 +396,7 @@ impl<'a> Machine<'a> {
     fn returned_from_call(&mut self, value: Option<u64>) {
         self.registers[0] = value;
         self.registers[1..=18].fill(None);
-        self.flags = None;
+        self.set_flags(None);
     }
 
     fn step(&mut self, operation: &Operation) -> Result<Flow, Unresolved> {
@@ -503,9 +513,10 @@ impl<'a> Machine<'a> {
                 let wide = left.is_wide();
                 let left = self.operand(left)?;
                 let right = self.modified(right, rest)?;
-                self.flags = left
-                    .zip(right)
-                    .map(|(left, right)| Flags::compare(mnemonic, left, right, wide));
+                self.set_flags(
+                    left.zip(right)
+                        .map(|(left, right)| Flags::compare(mnemonic, left, right, wide)),
+                );
             }
             (
                 "ccmp" | "ccmn",
@@ -521,11 +532,12 @@ impl<'a> Machine<'a> {
                     let left = self.operand(left)?;
                     let right = self.operand(right)?;
                     let kind = if mnemonic == "ccmp" { "cmp" } else { "cmn" };
-                    self.flags = left
-                        .zip(right)
-                        .map(|(left, right)| Flags::compare(kind, left, right, wide));
+                    self.set_flags(
+                        left.zip(right)
+                            .map(|(left, right)| Flags::compare(kind, left, right, wide)),
+                    );
                 } else {
-                    self.flags = Some(Flags::from_bits(*fallback as u8));
+                    self.set_flags(Some(Flags::from_bits(*fallback as u8)));
                 }
             }
             (
@@ -719,9 +731,22 @@ impl<'a> Machine<'a> {
         Ok(Flow::Next)
     }
 
+    /// Set the flags. Unknown flags may again be in any state.
+    fn set_flags(&mut self, flags: Option<Flags>) {
+        self.flags = flags;
+        self.possible_flags = ALL_FLAG_STATES;
+    }
+
     fn holds(&self, condition: Condition) -> Result<bool, Unresolved> {
-        let flags = self.flags.ok_or(Unresolved("flags"))?;
-        Ok(condition.holds(flags))
+        if let Some(flags) = self.flags {
+            return Ok(condition.holds(flags));
+        }
+
+        match condition.split(self.possible_flags) {
+            (_, 0) => Ok(true),
+            (0, _) => Ok(false),
+            _ => Err(Unresolved("flags")),
+        }
     }
 
     fn operand(&self, operand: &Operand) -> Result<Option<u64>, Unresolved> {
@@ -1010,17 +1035,19 @@ impl Condition {
         })
     }
 
-    /// Flags that make the condition hold, and flags that make it fail, when each exists.
-    fn outcomes(self) -> Vec<Flags> {
-        let all: Vec<_> = (0..16).map(Flags::from_bits).collect();
-        [true, false]
-            .into_iter()
-            .filter_map(|wanted| {
-                all.iter()
-                    .copied()
-                    .find(|flags| self.holds(*flags) == wanted)
-            })
-            .collect()
+    /// Split a set of flag states into the states where the condition holds and the states
+    /// where it fails.
+    fn split(self, states: u16) -> (u16, u16) {
+        (0..16u8).filter(|bits| states & (1 << bits) != 0).fold(
+            (0, 0),
+            |(holding, failing), bits| {
+                if self.holds(Flags::from_bits(bits)) {
+                    (holding | 1 << bits, failing)
+                } else {
+                    (holding, failing | 1 << bits)
+                }
+            },
+        )
     }
 
     fn holds(self, flags: Flags) -> bool {
@@ -1637,6 +1664,29 @@ mod tests {
     }
 
     #[test]
+    fn a_later_decision_on_the_same_flags_follows_every_remaining_state() {
+        let code = rows(&[
+            (0x100, "cmp", "x3,x4"),
+            (0x104, "b.ge", "#0x118"),
+            (0x108, "b.eq", "#0x114"),
+            (0x10c, "mov", "x0,#1"),
+            (0x110, "ret", ""),
+            (0x114, "mov", "x0,#2"),
+            (0x118, "b.lt", "#0x124"),
+            (0x11c, "mov", "x0,#3"),
+            (0x120, "ret", ""),
+            (0x124, "mov", "x0,#4"),
+            (0x128, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+
+        // `ge` false with `eq` true is possible (Z set, N and V differ), so 0x114 is reached,
+        // and there `lt` must hold. Where `ge` held, `lt` cannot hold. So exactly three paths.
+        assert_eq!(returned_values(&paths), [Some(1), Some(3), Some(4)]);
+    }
+
+    #[test]
     fn paths_keep_known_branches_on_one_side() {
         let code = rows(&[
             (0x100, "cbz", "x0,#0x10c"),
@@ -1707,6 +1757,14 @@ mod tests {
 
         assert_eq!(targets, [None, Some(0x900)]);
         assert_eq!(returned_values(&paths), [Some(7)]);
+
+        let stopped = Machine::new(&code, &data).run_paths(0x100, &mut |target, _| {
+            Ok(match target {
+                Some(_) => Call::Stop,
+                None => Call::Return(None),
+            })
+        });
+        assert_eq!(stopped[0].end, Ok(Exit::Stopped(0x900)));
         assert_eq!(
             returned(&code, &data, 0),
             Err(Unresolved("instruction")),

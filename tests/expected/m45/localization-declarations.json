@@ -237,8 +237,7 @@
   ["Owner", ["Dead Situation"], "Unresolved"],
   ["PREV", ["Base Scope"], "Various"],
   ["Planet", ["Archaeological Site", "Megastructure"], {"Listed": ["Planet"]}],
-  ["Planet", ["Deposit"], {"Listed": ["Planet", "Ship (and Starbase)"]}],
-  ["Planet", ["Colony"], "Unresolved"],
+  ["Planet", ["Colony", "Deposit"], "Unresolved"],
   ["Prev", ["Base Scope"], "Various"],
   ["ROOT", ["Base Scope"], "Various"],
   ["Recipient", ["Diplomacy"], {"Listed": ["Country"]}],
@@ -262,6 +261,7 @@
   ["this", ["Base Scope"], "Various"]
  ],
  "gaps": [
+  ["UnresolvedPath", "Planet", "from context Deposit: the link function could not be followed (some-paths-leave-the-context-unchanged)"],
   ["UnresolvedPath", "EVENT_TARGET_0", "from context Timeline Event: the link function could not be followed (path-limit)"],
   ["UnresolvedPath", "EVENT_TARGET_1", "from context Timeline Event: the link function could not be followed (path-limit)"],
   ["UnresolvedPath", "EVENT_TARGET_2", "from context Timeline Event: the link function could not be followed (path-limit)"],

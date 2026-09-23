@@ -140,17 +140,12 @@ fn contexts(
 
     for (scope, join) in &result.joins {
         match join {
-            Join::Context(value) if names.contains_key(value) => {
+            Join::Context(value) => {
                 selecting.entry(*value).or_default().push(ScopeReference {
                     id: scope_id(scope),
                     name: scope.name.clone(),
                 });
             }
-            Join::Context(_) => gaps.push(gap(
-                GapKind::OutsideMethod,
-                Some(&scope.name),
-                "this scope type selects a context that declares no commands or links",
-            )),
             Join::NoContext => {}
             Join::Unresolved(reason) => {
                 unresolved = true;
