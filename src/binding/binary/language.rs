@@ -300,7 +300,11 @@ fn resolved_runs(
     let mut unknown = BTreeSet::new();
     let end = start + data.len() as u64;
 
-    for (&address, &target) in pointers.range(start..end.saturating_sub(7)) {
+    for (&address, &target) in pointers.range(start..end) {
+        if address + 8 > end {
+            continue;
+        }
+
         let offset = (address - start) as usize;
         bytes[offset..offset + 8].copy_from_slice(&target.to_le_bytes());
     }
