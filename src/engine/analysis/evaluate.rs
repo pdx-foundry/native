@@ -285,6 +285,14 @@ impl<'a> Machine<'a> {
         address
     }
 
+    /// Reserve `length` bytes of scratch memory that no path has written, and return their
+    /// address. A load from them is unknown until the code stores there.
+    pub fn reserve(&mut self, length: u64) -> u64 {
+        let address = self.next_object;
+        self.next_object += length.next_multiple_of(16) + 16;
+        address
+    }
+
     /// Set general register `index` (`x0` is 0).
     pub fn set_register(&mut self, index: usize, value: u64) {
         self.registers[index] = Some(value);
@@ -389,7 +397,7 @@ impl<'a> Machine<'a> {
         for _ in 0..STEP_LIMIT {
             let code = self.code;
             let operation = code.rows.get(&pc).ok_or(Unresolved("outside-code"))?;
-            match self.step(operation)? {
+            match self.step(pc, operation)? {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) => pc = target,
                 Flow::Unknown { reason, .. } => return Err(Unresolved(reason)),
@@ -509,7 +517,7 @@ impl<'a> Machine<'a> {
             let Some(operation) = code.rows.get(&pc) else {
                 return Walk::End(Err(Unresolved("outside-code")));
             };
-            let flow = match self.step(operation) {
+            let flow = match self.step(pc, operation) {
                 Ok(flow) => flow,
                 Err(Unresolved("flags")) if let Some(condition) = operation.condition() => {
                     let (holding, failing) = condition.split(self.possible_flags);
@@ -583,7 +591,8 @@ impl<'a> Machine<'a> {
         self.set_flags(None);
     }
 
-    fn step(&mut self, operation: &Operation) -> Result<Flow, Unresolved> {
+    /// Run the instruction at `pc`.
+    fn step(&mut self, pc: u64, operation: &Operation) -> Result<Flow, Unresolved> {
         let Operation { mnemonic, operands } = operation;
         let operands = operands.as_slice();
         let mnemonic = &ordered_access(mnemonic).to_owned();
@@ -748,6 +757,90 @@ impl<'a> Machine<'a> {
                         self.assign(&Operand::Register(*destination), value)?;
                     }
                 }
+            }
+            (
+                "fmov",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        ..
+                    }),
+                    Operand::Float(value),
+                ],
+            ) => {
+                self.vectors[*index] = Some(float_bits(*value, *bytes)?);
+            }
+            (
+                "scvtf",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        ..
+                    }),
+                    source @ Operand::Register(Register {
+                        name: Name::General(_) | Name::Zero,
+                        wide,
+                        ..
+                    }),
+                ],
+            ) => {
+                let bytes = *bytes;
+                let value = self.operand(source)?.map(|value| {
+                    let integer = sign_extend(value, if *wide { 8 } else { 4 }, true) as i64;
+                    float_bits(integer as f64, bytes)
+                });
+                self.vectors[*index] = value.transpose()?;
+            }
+            (
+                "fmul",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(left),
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(right),
+                        ..
+                    }),
+                ],
+            ) => {
+                let bytes = *bytes;
+                let value = self.vectors[*left]
+                    .zip(self.vectors[*right])
+                    .map(|(left, right)| match bytes {
+                        4 => Ok(u128::from(
+                            (f32::from_bits(left as u32) * f32::from_bits(right as u32)).to_bits(),
+                        )),
+                        8 => Ok(u128::from(
+                            (f64::from_bits(left as u64) * f64::from_bits(right as u64)).to_bits(),
+                        )),
+                        _ => Err(Unresolved("float-width")),
+                    });
+                self.vectors[*index] = value.transpose()?;
+            }
+            (
+                "fcvtzs",
+                [
+                    destination,
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        ..
+                    }),
+                ],
+            ) => {
+                let wide = destination.is_wide();
+                let value = self.vectors[*index]
+                    .map(|bits| truncated_integer(bits, *bytes, wide))
+                    .transpose()?;
+                self.assign(destination, value)?;
             }
             (
                 "dup",
@@ -1072,8 +1165,17 @@ impl<'a> Machine<'a> {
                 let target = self.operand(register)?.ok_or(Unresolved("branch-value"))?;
                 return Ok(Flow::Jump(target));
             }
-            ("bl", [Operand::Immediate(target)]) => return Ok(Flow::Call(*target as u64)),
-            ("blr", [register]) => return Ok(Flow::IndirectCall(self.operand(register)?)),
+            // A call puts its return address in the link register, so a `calls` closure can tell
+            // call sites apart: the site is `x30 - 4`.
+            ("bl", [Operand::Immediate(target)]) => {
+                self.registers[30] = Some(pc + 4);
+                return Ok(Flow::Call(*target as u64));
+            }
+            ("blr", [register]) => {
+                let target = self.operand(register)?;
+                self.registers[30] = Some(pc + 4);
+                return Ok(Flow::IndirectCall(target));
+            }
             ("ret", []) => return Ok(Flow::Return),
             ("brk", [Operand::Immediate(_)]) => return Ok(Flow::Trap),
             _ => return Err(Unresolved("instruction")),
@@ -1262,6 +1364,30 @@ fn replicate(value: u64, lane: u64, bytes: u64) -> u128 {
     };
     let lane_value = u128::from(value & lane_mask);
     (0..bytes / lane).fold(0, |vector, index| vector | lane_value << (index * lane * 8))
+}
+
+/// The bits of `value` as a float of `bytes` bytes, rounded to nearest as the processor does.
+fn float_bits(value: f64, bytes: u64) -> Result<u128, Unresolved> {
+    match bytes {
+        4 => Ok(u128::from((value as f32).to_bits())),
+        8 => Ok(u128::from(value.to_bits())),
+        _ => Err(Unresolved("float-width")),
+    }
+}
+
+/// `fcvtzs`: the float in the low `bytes` bytes of `bits`, truncated toward zero to a signed
+/// integer. Out-of-range values saturate and NaN gives zero, as on the processor.
+fn truncated_integer(bits: u128, bytes: u64, wide: bool) -> Result<u64, Unresolved> {
+    let value = match bytes {
+        4 => f64::from(f32::from_bits(bits as u32)),
+        8 => f64::from_bits(bits as u64),
+        _ => return Err(Unresolved("float-width")),
+    };
+    Ok(if wide {
+        value as i64 as u64
+    } else {
+        value as i32 as u32 as u64
+    })
 }
 
 /// The plain load or store of an acquire or release access. Their ordering does not change the
@@ -1563,6 +1689,8 @@ fn split(text: &str) -> Vec<&str> {
 enum Operand {
     Register(Register),
     Immediate(i64),
+    /// A floating-point immediate, such as the `#1.50000000` of `fmov s8,#1.50000000`.
+    Float(f64),
     Shift(Shift, u64),
     Extend(&'static str, u64),
     Condition(Condition),
@@ -1575,6 +1703,9 @@ impl Operand {
             return Memory::parse(inner).map(Self::Memory);
         }
         if let Some(value) = text.strip_prefix('#') {
+            if value.contains('.') {
+                return value.parse().ok().map(Self::Float);
+            }
             return immediate(value).map(Self::Immediate);
         }
         for (prefix, kind) in [
@@ -1924,7 +2055,7 @@ mod tests {
         let data = ReadOnlyData::default();
         let branch = rows(&[(0x100, "cbz", "x3,#0x100")]);
         assert_eq!(returned(&branch, &data, 0), Err(Unresolved("branch-value")));
-        let unknown = rows(&[(0x100, "fmov", "s0,#1.5")]);
+        let unknown = rows(&[(0x100, "fmla", "s0,s1,s2")]);
         assert_eq!(returned(&unknown, &data, 0), Err(Unresolved("instruction")));
         let store = rows(&[
             (0x100, "str", "x0,[sp]"),
@@ -2213,6 +2344,69 @@ mod tests {
         assert_eq!(machine.register(14), Some((-10i64) as u64));
         assert_eq!(machine.register(15), Some(11));
         assert_eq!(machine.register(16), Some(0x2a));
+    }
+
+    /// The growth rule of an engine array: capacity times 1.5, truncated toward zero.
+    #[test]
+    fn float_growth_is_exact() {
+        let code = rows(&[
+            (0x100, "fmov", "s8,#1.50000000"),
+            (0x104, "scvtf", "s0,w0"),
+            (0x108, "fmul", "s0,s0,s8"),
+            (0x10c, "fcvtzs", "w0,s0"),
+            (0x110, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        assert_eq!(returned(&code, &data, 3), Ok(Some(4)));
+        assert_eq!(returned(&code, &data, 0), Ok(Some(0)));
+        // -1 times 1.5 truncates toward zero to -1; a product above the range saturates.
+        assert_eq!(
+            returned(&code, &data, u32::MAX as u64),
+            Ok(Some(u32::MAX as u64))
+        );
+        assert_eq!(returned(&code, &data, 0x7fff_ffff), Ok(Some(0x7fff_ffff)));
+    }
+
+    #[test]
+    fn a_call_puts_its_return_address_in_the_link_register() {
+        let code = rows(&[
+            (0x100, "bl", "#0x900"),
+            (0x104, "blr", "x8"),
+            (0x108, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine.set_register(8, 0x800);
+        let mut sites = Vec::new();
+        machine
+            .run(0x100, &mut |_, machine| {
+                sites.push(machine.register(30).map(|link| link - 4));
+                Ok(Call::Return(None))
+            })
+            .unwrap_err();
+        assert_eq!(sites, [Some(0x100)]);
+
+        let mut sites = Vec::new();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, machine| {
+            sites.push(machine.register(30).map(|link| link - 4));
+            Ok(Call::Return(None))
+        });
+        assert_eq!(paths.len(), 1);
+        assert_eq!(sites, [Some(0x100), Some(0x104)]);
+    }
+
+    #[test]
+    fn reserved_memory_is_unknown_until_stored() {
+        let code = rows(&[]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let reserved = machine.reserve(0x40);
+        let allocated = machine.allocate(8);
+        assert!(allocated >= reserved + 0x40);
+        assert_eq!(machine.read(reserved + 0x10, 8), None);
+        assert_eq!(machine.read(allocated, 8), Some(0));
+        machine.write(reserved + 0x10, 8, 7);
+        assert_eq!(machine.read(reserved + 0x10, 8), Some(7));
     }
 
     #[test]
