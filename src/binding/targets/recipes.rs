@@ -1,5 +1,6 @@
 //! Recipes: which binding groups, live strategy and static layout make up one build's
 //! operations. A recipe is host-neutral data.
+use crate::engine::analysis::callbacks::{CallbackLayout, RuleArray};
 use crate::engine::analysis::localization::TextLayout;
 
 #[derive(Debug, Clone, Copy)]
@@ -36,6 +37,8 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub short_string_length_offset: u64,
     /// The localization text object and scope-object reference.
     pub game_text: TextLayout,
+    /// The scope object and the rule set that the callback method reads.
+    pub callbacks: CallbackLayout,
 }
 
 pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
@@ -67,6 +70,21 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         property_targets: 0x618,
         context_count: 0x30,
         scope_reference_type_offset: 0x8,
+    },
+    callbacks: CallbackLayout {
+        scope_type_offset: 0x8,
+        scope_root_offset: 0x30,
+        scope_from_offset: 0x38,
+        scope_prev_offset: 0x40,
+        scripted_rules: RuleArray {
+            base: 0,
+            stride: 0xc0,
+        },
+        weighted_rules: RuleArray {
+            base: 0x9cc0,
+            stride: 0x40,
+        },
+        declaration_token_offset: 0,
     },
 };
 

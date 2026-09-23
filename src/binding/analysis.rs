@@ -95,6 +95,18 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
+    fn callbacks_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
+        binary::callbacks::callbacks(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            recipe,
+        )
+    }
+
     pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
         &self.catalog.candidates
     }
@@ -457,5 +469,12 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.localization_input(recipe)
+    }
+
+    pub(crate) fn callbacks_input(
+        &self,
+    ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.callbacks_input(recipe)
     }
 }

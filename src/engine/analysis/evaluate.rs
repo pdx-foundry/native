@@ -15,7 +15,12 @@
 //! localization promotion that tests a database pointer. It follows both sides of a branch on an
 //! unknown value and reports every path's end, so the caller can require that the paths agree.
 //! It still chooses no path.
-use std::collections::BTreeMap;
+//!
+//! [`Machine::run_paths_to`] follows only the paths that can still arrive at one instruction, and
+//! ends each path when it arrives there, before that instruction runs. A caller reads the
+//! arguments of a call site this way. The caller can protect memory ranges from a store to an
+//! unknown address, and keep its own facts about each path in labels that follow that path.
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::decode::{Instruction, decode_arm64};
@@ -103,6 +108,42 @@ impl Code {
         Ok(Self::from_rows(rows))
     }
 
+    /// Every instruction from which the instruction at `site` can be reached by the direct
+    /// control flow of this code, including `site`. A branch through a register may go to any
+    /// instruction, so it can reach `site` whenever any instruction can.
+    fn reaching(&self, site: u64) -> BTreeSet<u64> {
+        let mut predecessors = BTreeMap::<u64, Vec<u64>>::new();
+        let mut through_register = Vec::new();
+        for (&address, operation) in &self.rows {
+            match operation.successors(address) {
+                Some(successors) => {
+                    for successor in successors {
+                        predecessors.entry(successor).or_default().push(address);
+                    }
+                }
+                None => through_register.push(address),
+            }
+        }
+
+        let mut reaching = BTreeSet::from([site]);
+        let mut pending = vec![site];
+        while let Some(address) = pending.pop() {
+            for &predecessor in predecessors.get(&address).into_iter().flatten() {
+                if reaching.insert(predecessor) {
+                    pending.push(predecessor);
+                }
+            }
+            if reaching.len() == 1 {
+                for &branch in &through_register {
+                    if reaching.insert(branch) {
+                        pending.push(branch);
+                    }
+                }
+            }
+        }
+        reaching
+    }
+
     /// Build code from rows that are already decoded.
     pub fn from_rows(rows: impl IntoIterator<Item = Instruction>) -> Self {
         Self {
@@ -134,6 +175,8 @@ pub enum Exit {
     /// The path reached a trap instruction, so it does not return. Only
     /// [`Machine::run_paths`] reports it.
     Trapped,
+    /// The path arrived at the site given to [`Machine::run_paths_to`]. The site did not run.
+    Reached,
 }
 
 /// What [`Machine::run_paths`] does at each call: it receives the target, or `None` for a call
@@ -150,6 +193,8 @@ pub struct Path<'a> {
 
 enum Walk {
     End(Result<Exit, Unresolved>),
+    /// The path can no longer arrive at the site of [`Machine::run_paths_to`].
+    Leaves,
     /// Continue each branch at its address, with the flag states that remain possible on it
     /// when the decision was on unknown flags.
     Fork {
@@ -172,6 +217,19 @@ pub struct Machine<'a> {
     possible_flags: u16,
     memory: BTreeMap<u64, Option<u8>>,
     next_object: u64,
+    /// Ranges `(start, end)` that a store to an unknown address leaves known.
+    protected: Vec<(u64, u64)>,
+    /// Facts that the caller keeps about this path.
+    labels: BTreeMap<u64, u64>,
+    /// Known values that this path stored to an unknown address.
+    unknown_stores: Vec<u64>,
+}
+
+/// The instruction that [`Machine::run_paths_to`] must arrive at, and every instruction from
+/// which it can.
+struct Site {
+    address: u64,
+    reaching: BTreeSet<u64>,
 }
 
 impl<'a> Machine<'a> {
@@ -187,6 +245,9 @@ impl<'a> Machine<'a> {
             possible_flags: ALL_FLAG_STATES,
             memory: BTreeMap::new(),
             next_object: OBJECT_BASE,
+            protected: Vec::new(),
+            labels: BTreeMap::new(),
+            unknown_stores: Vec::new(),
         }
     }
 
@@ -221,6 +282,51 @@ impl<'a> Machine<'a> {
             self.memory
                 .insert(address + offset, Some((value >> (offset * 8)) as u8));
         }
+    }
+
+    /// Keep `length` bytes at `address` known when this path stores to an unknown address. The
+    /// caller protects only memory that it has shown no unknown address can reach.
+    pub fn protect(&mut self, address: u64, length: u64) {
+        self.protected.push((address, address + length));
+    }
+
+    /// Stop protecting the range that starts at `address`.
+    pub fn release(&mut self, address: u64) {
+        self.protected.retain(|(start, _)| *start != address);
+    }
+
+    /// Record the caller's fact `value` under `key` for this path.
+    pub fn label(&mut self, key: u64, value: u64) {
+        self.labels.insert(key, value);
+    }
+
+    /// The caller's fact under `key` on this path.
+    pub fn labelled(&self, key: u64) -> Option<u64> {
+        self.labels.get(&key).copied()
+    }
+
+    /// Remove the caller's fact under `key` on this path.
+    pub fn unlabel(&mut self, key: u64) {
+        self.labels.remove(&key);
+    }
+
+    /// Every fact that the caller keeps on this path.
+    pub fn labels(&self) -> &BTreeMap<u64, u64> {
+        &self.labels
+    }
+
+    /// Known values that this path stored to an unknown address.
+    pub fn unknown_stores(&self) -> &[u64] {
+        &self.unknown_stores
+    }
+
+    /// Every known eight-byte value at an eight-byte aligned address, by address.
+    pub fn known_words(&self) -> Vec<(u64, u64)> {
+        self.memory
+            .keys()
+            .filter(|address| address.is_multiple_of(8))
+            .filter_map(|&address| Some((address, self.read(address, 8)?)))
+            .collect()
     }
 
     /// Make `width` bytes at `address` unknown, such as a field that a call may have written.
@@ -288,12 +394,42 @@ impl<'a> Machine<'a> {
     /// `calls` receives the target of each call and tail call; see [`PathCalls`]. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
     pub fn run_paths(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
+        self.follow(entry, None, calls)
+    }
+
+    /// Execute from `entry` along every path that can arrive at the instruction at `site`, as
+    /// [`Machine::run_paths`] does.
+    ///
+    /// A path ends as [`Exit::Reached`] when it arrives at `site`, before `site` runs, so the
+    /// registers hold the arguments of a call there. A path that can no longer arrive, by the
+    /// direct branches of the decoded code, is dropped and counts toward no limit. A branch
+    /// through a register may go anywhere, so every instruction before one can arrive.
+    pub fn run_paths_to(
+        self,
+        entry: u64,
+        site: u64,
+        calls: &mut PathCalls<'_, 'a>,
+    ) -> Vec<Path<'a>> {
+        let site = Site {
+            address: site,
+            reaching: self.code.reaching(site),
+        };
+        self.follow(entry, Some(&site), calls)
+    }
+
+    fn follow(
+        self,
+        entry: u64,
+        site: Option<&Site>,
+        calls: &mut PathCalls<'_, 'a>,
+    ) -> Vec<Path<'a>> {
         let mut pending = vec![(self, entry, 0)];
         let mut ended = Vec::new();
 
         while let Some((mut machine, pc, steps)) = pending.pop() {
-            match machine.walk(pc, steps, calls) {
+            match machine.walk(pc, steps, site, calls) {
                 Walk::End(end) => ended.push(Path { end, machine }),
+                Walk::Leaves => {}
                 Walk::Fork { branches, steps } => {
                     if ended.len() + pending.len() + branches.len() > PATH_LIMIT {
                         ended.push(Path {
@@ -318,8 +454,23 @@ impl<'a> Machine<'a> {
     }
 
     /// Follow one path until it ends or reaches a branch on an unknown value.
-    fn walk(&mut self, mut pc: u64, mut steps: usize, calls: &mut PathCalls<'_, 'a>) -> Walk {
+    fn walk(
+        &mut self,
+        mut pc: u64,
+        mut steps: usize,
+        site: Option<&Site>,
+        calls: &mut PathCalls<'_, 'a>,
+    ) -> Walk {
         while steps < STEP_LIMIT {
+            if let Some(site) = site {
+                if pc == site.address {
+                    return Walk::End(Ok(Exit::Reached));
+                }
+                if !site.reaching.contains(&pc) {
+                    return Walk::Leaves;
+                }
+            }
+
             steps += 1;
             let code = self.code;
             let Some(operation) = code.rows.get(&pc) else {
@@ -592,7 +743,7 @@ impl<'a> Machine<'a> {
                 ],
             ) => match self.address(memory, rest)? {
                 Some(address) => self.store_bytes(address, *bytes, self.vectors[*index]),
-                None => self.forget_memory(),
+                None => self.store_to_unknown(&halves(self.vectors[*index])),
             },
             (
                 "ldp",
@@ -635,7 +786,11 @@ impl<'a> Machine<'a> {
                     self.store_bytes(address, *bytes, self.vectors[*first]);
                     self.store_bytes(address + bytes, *bytes, self.vectors[*second]);
                 }
-                None => self.forget_memory(),
+                None => {
+                    let mut values = halves(self.vectors[*first]).to_vec();
+                    values.extend(halves(self.vectors[*second]));
+                    self.store_to_unknown(&values);
+                }
             },
             (load, [destination, Operand::Memory(memory), rest @ ..])
                 if load.starts_with("ldr") || load.starts_with("ldur") =>
@@ -665,7 +820,7 @@ impl<'a> Machine<'a> {
                 let value = self.operand(source)?;
                 match self.address(memory, rest)? {
                     Some(address) => self.store(address, width, value),
-                    None => self.forget_memory(),
+                    None => self.store_to_unknown(&[value]),
                 }
             }
             ("stp", [first, second, Operand::Memory(memory), rest @ ..]) => {
@@ -677,7 +832,7 @@ impl<'a> Machine<'a> {
                         self.store(address, width, first);
                         self.store(address + width, width, second);
                     }
-                    None => self.forget_memory(),
+                    None => self.store_to_unknown(&[first, second]),
                 }
             }
             ("b", [Operand::Immediate(target)]) => return Ok(Flow::Jump(*target as u64)),
@@ -821,10 +976,18 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// A store to an unknown address may overwrite any byte, so no written byte stays known.
-    fn forget_memory(&mut self) {
-        for byte in self.memory.values_mut() {
-            *byte = None;
+    /// A store to an unknown address may overwrite any byte, so no written byte stays known,
+    /// except in a protected range. A known value stored there is kept in `unknown_stores`.
+    fn store_to_unknown(&mut self, values: &[Option<u64>]) {
+        self.unknown_stores.extend(values.iter().flatten());
+        let protected = &self.protected;
+        for (address, byte) in self.memory.iter_mut() {
+            if !protected
+                .iter()
+                .any(|(start, end)| (*start..*end).contains(address))
+            {
+                *byte = None;
+            }
         }
     }
 
@@ -901,6 +1064,14 @@ fn replicate(value: u64, lane: u64, bytes: u64) -> u128 {
     };
     let lane_value = u128::from(value & lane_mask);
     (0..bytes / lane).fold(0, |vector, index| vector | lane_value << (index * lane * 8))
+}
+
+/// The two 64-bit halves of a vector value.
+fn halves(value: Option<u128>) -> [Option<u64>; 2] {
+    [
+        value.map(|value| value as u64),
+        value.map(|value| (value >> 64) as u64),
+    ]
 }
 
 fn truncate(value: u64, wide: bool) -> u64 {
@@ -1084,6 +1255,28 @@ struct Operation {
 }
 
 impl Operation {
+    /// The instructions that can run next by direct control flow, or `None` for a branch through
+    /// a register. A call continues after itself.
+    fn successors(&self, address: u64) -> Option<Vec<u64>> {
+        let next = address + 4;
+        let target = self
+            .operands
+            .iter()
+            .rev()
+            .find_map(|operand| match operand {
+                Operand::Immediate(target) => Some(*target as u64),
+                _ => None,
+            });
+        Some(match self.mnemonic.as_str() {
+            "b" => target.into_iter().collect(),
+            "br" => return None,
+            "ret" | "brk" => Vec::new(),
+            "cbz" | "cbnz" | "tbz" | "tbnz" => target.into_iter().chain([next]).collect(),
+            branch if branch.starts_with("b.") => target.into_iter().chain([next]).collect(),
+            _ => vec![next],
+        })
+    }
+
     /// The condition that the instruction tests, when it tests one.
     fn condition(&self) -> Option<Condition> {
         if let Some(suffix) = self.mnemonic.strip_prefix("b.") {
@@ -1701,6 +1894,54 @@ mod tests {
         let paths = machine.run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
 
         assert_eq!(returned_values(&paths), [Some(2)]);
+    }
+
+    #[test]
+    fn paths_to_a_site_stop_before_it_and_drop_paths_that_cannot_reach_it() {
+        let code = rows(&[
+            (0x100, "cbz", "x3,#0x110"),
+            (0x104, "mov", "x1,#1"),
+            (0x108, "bl", "#0x900"),
+            (0x10c, "ret", ""),
+            (0x110, "mov", "x1,#2"),
+            (0x114, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data)
+            .run_paths_to(0x100, 0x108, &mut |_, _| Ok(Call::Return(None)));
+
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].end, Ok(Exit::Reached));
+        assert_eq!(paths[0].machine.register(1), Some(1));
+    }
+
+    #[test]
+    fn a_store_to_an_unknown_address_keeps_protected_bytes_and_records_its_value() {
+        let code = rows(&[
+            (0x100, "mov", "x9,#0x55"),
+            (0x104, "str", "x9,[x3]"),
+            (0x108, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let protected = machine.allocate(8);
+        let other = machine.allocate(8);
+        machine.write(protected, 8, 7);
+        machine.write(other, 8, 9);
+        machine.protect(protected, 8);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.read(protected, 8), Some(7));
+        assert_eq!(machine.read(other, 8), None);
+        assert_eq!(machine.unknown_stores(), [0x55]);
+
+        machine.release(protected);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+        assert_eq!(machine.read(protected, 8), None);
     }
 
     #[test]

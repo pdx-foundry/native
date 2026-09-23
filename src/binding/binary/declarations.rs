@@ -105,6 +105,18 @@ fn branch_target(word: u32, address: u64) -> Option<u64> {
     if word >> 26 != 0b100101 {
         return None;
     }
+    immediate_target(word, address)
+}
+
+/// The target of a `bl` or of a `b`, which a tail call uses.
+fn call_or_jump_target(word: u32, address: u64) -> Option<u64> {
+    if word >> 26 != 0b100101 && word >> 26 != 0b000101 {
+        return None;
+    }
+    immediate_target(word, address)
+}
+
+fn immediate_target(word: u32, address: u64) -> Option<u64> {
     let signed = ((word << 6) as i32 >> 6) as i64;
     address.checked_add_signed(signed * 4)
 }
@@ -210,6 +222,20 @@ impl<'a> Text<'a> {
             .enumerate()
             .map(|(index, word)| (self.address + (index * 4) as u64, u32::from_le_bytes(*word)))
             .filter(|(at, word)| branch_target(*word, *at) == Some(target))
+            .map(|(at, _)| at)
+            .collect()
+    }
+
+    /// The address of every direct `bl` or `b` to `target`, in address order: calls and tail
+    /// calls.
+    pub fn branches_to(&self, target: u64) -> Vec<u64> {
+        self.code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .map(|(index, word)| (self.address + (index * 4) as u64, u32::from_le_bytes(*word)))
+            .filter(|(at, word)| call_or_jump_target(*word, *at) == Some(target))
             .map(|(at, _)| at)
             .collect()
     }

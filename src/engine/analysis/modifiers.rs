@@ -134,7 +134,7 @@ fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> (Argumen
                 .ok_or(Unresolved("category-mask"));
             (token, mask)
         }
-        Ok(Exit::Returned | Exit::Trapped) | Err(_) => {
+        Ok(Exit::Returned | Exit::Trapped | Exit::Reached) | Err(_) => {
             (Err(Unresolved("site")), Err(Unresolved("site")))
         }
     }
