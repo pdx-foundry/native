@@ -55,6 +55,7 @@ native.modifier_families("common/bypass")?;             // SDK-540
 native.scopes()?;     native.scope_links()?;            // SDK-536
 native.localization_declarations()?;                    // SDK-537
 native.on_actions()?; native.game_rules()?;             // SDK-538
+native.defines()?;                                      // SDK-539
 
 // Implemented live questions. The consumer owns when a game runs; Native owns how.
 let mut game = native.start_game(GameOptions::new(supervisor_command)).await?;
@@ -64,8 +65,6 @@ game.close().await?;                                    // Disposal: Confirmed |
 // Tests without a game.
 let native = Native::from_recorded_answers("/path/to/recorded-answers")?;
 
-// Planned operations, not present yet.
-native.defines()?;                                      // milestone 3
 ```
 
 **SDK-532:** fixture observation is now implemented. Prepare `GameOptions::fixture(request)`

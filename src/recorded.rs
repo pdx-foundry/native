@@ -7,7 +7,7 @@
 //! Layout: `build.json`, `registries.json`, `registry_fields/<registry>.json`,
 //! `registry_items/<registry>.json` and `modifier_families/<registry>.json`, where `<registry>` is
 //! the content directory, such as `common/traditions`. The language
-//! questions use `<question>.json`, such as `on_actions.json` and `game_rules.json`, and
+//! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json` and `defines.json`, and
 //! `declarations/<kind>.json`. Fixture answers use
 //! `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys, not provenance.
 use crate::answer::{Answer, Basis, BuildId, Error};

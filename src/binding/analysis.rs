@@ -173,6 +173,20 @@ impl VerifiedAnalysis<'_> {
 }
 
 impl BoundAnalysis {
+    pub(crate) fn defines_input(
+        &self,
+    ) -> Result<crate::engine::analysis::defines::DefineInput, AnalysisError> {
+        if self.declarations.is_none() {
+            return Err(AnalysisError::InvalidRange);
+        }
+        let verified = self.verified()?;
+        binary::defines::read(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &verified.catalog.strings,
+        )
+    }
+
     /// Locate the file reader return and the matching owner's constructor and member reader.
     pub(crate) fn fixture_loader(
         &self,

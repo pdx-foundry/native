@@ -104,6 +104,8 @@ impl Source {
 /// A question that Native can be asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Operation {
+    /// Whether this build can return define names and engine read types.
+    Defines,
     /// `Native::registries`
     Registries,
     /// `Native::registry_fields`
@@ -132,12 +134,48 @@ pub enum Operation {
     ObserveFixture,
 }
 
+/// One define whose name and value type the executable reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Define {
+    /// The engine namespace, such as `NGameplay`.
+    pub namespace: String,
+    /// The name within the namespace.
+    pub name: String,
+    /// The form requested by the engine reader.
+    pub value_type: DefineValueType,
+}
+
+/// Broad value form requested by a define read site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum DefineValueType {
+    /// A boolean value.
+    Boolean,
+    /// A signed or unsigned integer value.
+    Integer,
+    /// A fixed-point value.
+    FixedPoint,
+    /// A floating-point value.
+    Float,
+    /// A string value.
+    String,
+    /// A fixed-size vector.
+    Vector,
+    /// A variable-length array.
+    List,
+    /// A color value.
+    Color,
+    /// A game date.
+    Date,
+}
+
 impl Operation {
     /// Whether the operation reads engine declarations, which need a declaration recipe.
     pub(crate) fn is_declaration(self) -> bool {
         matches!(
             self,
-            Self::Declarations
+            Self::Defines
+                | Self::Declarations
                 | Self::Modifiers
                 | Self::ModifierCategories
                 | Self::ModifierFamilies
