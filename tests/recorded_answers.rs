@@ -1,8 +1,8 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
 use pdx_native::{
     Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal,
-    Error, GameOptions, GapKind, LinkData, LocalizationOutput, Native, OutputScope, ReaderKind,
-    Support,
+    EntryScope, Error, GameOptions, GapKind, LinkData, LocalizationOutput, Native, OutputScope,
+    ReaderKind, RuleKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -385,4 +385,93 @@ async fn live_questions_need_no_supervisor_and_start_no_process() {
         game.registry_items("common/traditions").await,
         Err(Error::Closed)
     ));
+}
+
+#[test]
+fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
+    let root = recorded();
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    assert!(matches!(
+        native.on_actions(),
+        Err(Error::NotRecorded { .. })
+    ));
+    assert!(matches!(
+        native.game_rules(),
+        Err(Error::NotRecorded { .. })
+    ));
+
+    let country = json!({ "Scope": { "id": "country-id", "name": "country" } });
+    let fleet = json!({ "Scope": { "id": "fleet-id", "name": "fleet" } });
+    let planet = json!({ "Scope": { "id": "planet-id", "name": "planet" } });
+    write(
+        root.path(),
+        "on_actions.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "on_fleet_enter_orbit", "entries": [
+                    { "this": fleet, "root": "SelfLink", "from": [planet, "SelfLink"] },
+                    { "this": fleet, "root": "SelfLink", "from": ["Unresolved"] }
+                ] },
+                { "name": "on_game_start", "entries": [
+                    { "this": "NotSet", "root": "SelfLink", "from": ["SelfLink"] }
+                ] },
+                { "name": "on_press_begin", "entries": [] }
+            ],
+            "completeness": "Partial",
+            "gaps": [
+                { "kind": "UnresolvedPath", "subject": "on_press_begin",
+                  "detail": "a call site passes a command that builds its own scope" },
+                { "kind": "UnnamedDeclaration", "subject": null,
+                  "detail": "31 call sites could not be named" }
+            ],
+            "source": source()
+        }}),
+    );
+    write(
+        root.path(),
+        "game_rules.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "can_colonize_planet", "kind": "Scripted", "entries": [
+                    { "this": planet, "root": country, "from": ["SelfLink"] }
+                ] },
+                { "name": "leader_election_weight", "kind": "Weighted", "entries": [] }
+            ],
+            "completeness": "Partial",
+            "gaps": [
+                { "kind": "UnresolvedPath", "subject": "leader_election_weight",
+                  "detail": "no followed call site" }
+            ],
+            "source": source()
+        }}),
+    );
+
+    let answer = native.on_actions().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(answer.completeness, Completeness::Partial);
+    let orbit = &answer.value[0];
+    assert_eq!(orbit.entries.len(), 2, "alternatives stay separate");
+    assert!(
+        matches!(&orbit.entries[0].from[0], EntryScope::Scope(scope) if scope.name == "planet")
+    );
+    assert_eq!(orbit.entries[1].from, [EntryScope::Unresolved]);
+    let start = &answer.value[1].entries[0];
+    assert_eq!(
+        (&start.this, &start.root, start.from.as_slice()),
+        (
+            &EntryScope::NotSet,
+            &EntryScope::SelfLink,
+            &[EntryScope::SelfLink][..]
+        )
+    );
+    assert!(answer.value[2].entries.is_empty());
+    assert_eq!(answer.gaps[0].subject.as_deref(), Some("on_press_begin"));
+
+    let rules = native.game_rules().unwrap().value;
+    assert_eq!(rules[0].kind, RuleKind::Scripted);
+    assert!(
+        matches!(&rules[0].entries[0].root, EntryScope::Scope(scope) if scope.name == "country")
+    );
+    assert_eq!(rules[1].kind, RuleKind::Weighted);
+    assert!(rules[1].entries.is_empty());
 }

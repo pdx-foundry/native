@@ -160,6 +160,97 @@ The dump prints no outputs and no scope join, so those are not compared with it.
 for index 2. Whether a command gives useful text at run time, argument forms, formatting, scripted
 localization and fallback between `Base Scope` and a typed context are not tested (SDK-500).
 
+### On_actions, game rules and their entry scopes (SDK-538)
+
+SDK-538 reads the callbacks that the engine calls by name on M45-release as `Native::on_actions`
+and `Native::game_rules`, with the scopes that each call site supplies. No prototype had read them
+from the engine; SDK-496 holds the open question. The engine has no documentation dump for either.
+
+**Mechanism.** Engine code fires an on_action with
+`COnActionDatabase::PerformEvent(CString const&, CEventScope&, …)`. Nearly every call site builds
+the name as a stack `CString` from a text literal. A deferred command,
+`COnActionCommand(CString const&, CEventScope const&, …)`, fires later from `Execute`.
+`COnActionDatabase::Init` caches 14 pulse lists in database fields after a `strcmp` of each list
+name, and `CGameState::MonthlyUpdate` and `YearlyUpdate` fire them with
+`PerformEvent(COnActionList const*, …)`. A scope is a `CEventScope`: its type is one `EScopeType`
+bit at `+0x08` (the bits of `Native::scopes`), and root, from and prev links are at `+0x30`,
+`+0x38` and `+0x40`. The fresh constructors write type 0 and point every link back to the scope
+itself; `IsFromFromSet` tests the type of the linked scope, not the pointer. Typed setters, such
+as `CScopeObjectReference::SetCountry`, write one type constant. A game rule is a member of the
+rule set: `CGameRules::CanColonizePlanet` builds a scope and calls
+`CScriptedRule::Evaluate(this + 20 * 0xc0, scope, …)`. Weighted rules start at `this + 0x9cc0`,
+`0x40` apart. `__GLOBAL__sub_I_game_rules.cpp` fills the rule declaration tables, and
+`FindRuleDeclarationByEnum` returns the row, with its token, for a rule's enumeration.
+
+**Method** (`engine/analysis/callbacks.rs`, `callbacks/v1`). Each direct call or tail call to an
+anchor, or to one of five checked forwarders, is a site. A name pass runs a dataflow over the whole
+function: it gives every literal that the name string can hold at the site (joined at branches,
+replaced when the string is built again), a lookup's or a cached list's name, or the rule's offset
+in the rule set. A context pass runs the new `Machine::run_paths_to` from the function entry: it
+follows only paths that can reach the site, runs the scope constructors and setters on a copy, and
+reads the scope at the site. A scope object stays known until its address reaches a call that the
+method does not follow or other memory; from then on, every such call makes its slots unknown.
+Rule names come from running the initializer and the declaration lookup. A self-link is reported
+as `SelfLink`. Different contexts for one name stay separate.
+
+**Transfer test.** The method was frozen in its own commit before it ran on any executable. Each
+later repair is its own commit in the SDK-538 pull request:
+
+| Run | After | On_actions: names / with entries | Game rules: names / with entries | Cause of the next repair |
+| --- | --- | --- | --- | --- |
+| 1 | Freeze | 278 / 232 | 0 / 0 | 43 names stopped at unsupported instructions; the rule initializer stopped at `dup`; no pulse list joined, because the `strcmp` stub keeps its raw name `_strcmp`. |
+| 2 | Revisions 1 (instructions) and 4 (stub name) | 293 / 255 | 223 / 54 | 166 rule-set functions add the rule offset from a register; `on_monthly_pulse`'s field address is formed by a write-back and spilled to a stack slot. |
+| 3 | A first form of revision 2 | 281 / 255 | 223 / 220 | 12 names were lost: a dynamic stack allocation made every stack fact unknown, and a store was taken as 32 bytes wide. |
+| 4–6 | Revisions 2 (stack offsets from the entry stack pointer, store widths, write-back) and 3 (unknown stack pointer in the evaluator) | 294 / 264 | 223 / 220 | 30 names had no context: a loop with an unknown exit used the whole path budget. |
+| 7 | Revision 5: loop limit | 294 / 282 | 223 / 220 | — |
+
+All repairs are evaluator or name-pass coverage; none is an interpretation of one name. The
+SDK-535/536/537 parity tests passed unchanged after each revision. The two questions take about
+1.0 s and 0.7 s.
+
+**Result on M45-release.** 294 on_actions; 282 have at least one context and 208 have at least one
+context with no unresolved scope. 18 names keep several contexts, such as `on_fleet_enter_orbit`,
+which a fleet enters with a megastructure, a planet, a starbase or an astral rift as from. 223 game
+rules (209 scripted, 14 weighted); 220 have a context and 204 a context with no unresolved scope.
+These call sites were checked by hand in the disassembly before the expected files were made:
+`on_game_start` and `on_monthly_pulse` (a new scope with no type), `on_leader_level_up` (country,
+from leader), `on_planet_returned` (planet, from country, fromfrom country),
+`can_colonize_planet` (planet, root country), `can_orbital_bombard` (fleet, from planet) and
+`leader_election_weight` (weighted, leader).
+
+**Comparison with the config** (`on_actions.cwt` and `game_rules.cwt` of the config fork, after the
+result was produced; the comparison is not part of Native):
+
+| | Both | Engine only | Config only |
+| --- | ---: | ---: | ---: |
+| On_actions | 276 | 18 | 114 |
+| Game rules | 207 | 16 | 1 |
+
+The 18 engine-only on_actions include `on_leaving_system_fleet`, `on_colony_transfer`,
+`on_fleet_went_mia` and `on_waystation_lost`. Most config-only on_actions are fired by script
+content (`fire_on_action`), are templated, or are fired at a site that this method cannot name.
+The 16 engine-only rules include `can_jump_drive` and `can_scavenge_debris`; the config-only rule is
+`can_build_military_station_around`. Of 222 shared on_actions with an established context, `this`
+agrees with the config's `replace_scopes` for 186 and from for 183. Most differences are names, not
+scopes: the config writes `carrier` where the engine passes a `colony` or `planet` scope type.
+
+**Limits.**
+
+- 31 sites fire a name that is not one text literal: a conditional select between two literals
+  (`on_add_to_imperial_council` or `on_remove_from_imperial_council`), a name that a wrapper that
+  is not pinned receives (`CArmy::PerformBuildingOnAction`), or a name built at run time
+  (`_queued`). One list site fires a list that an object holds.
+- 12 on_actions have no context: 7 reach the path limit, 2 stop at floating-point instructions, 2
+  are not reached from their function entry, and `on_press_begin`'s command builds its own scope.
+- 50 on_actions have only unresolved contexts. Most reuse one scope for several firing calls: the
+  first call receives the scope, and the method cannot show that the event system leaves its type
+  and links unchanged, so the later sites are unresolved (the pulse lists after
+  `on_yearly_pulse`, `on_leader_death`, `on_planet_surveyed`). Some fill the scope with a helper
+  whose type depends on a run-time value (`CDepositHolderRefCaster::FillEventScope`).
+- 3 declared rules have no call site that the method follows, and 11 have only unresolved contexts.
+- What the event system does with a self-linked root or from, the prev chain, events and their
+  `push_scope`, pre_triggers, and on_actions that content defines are not tested (SDK-496).
+
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
 
 ## Rust ports
@@ -168,6 +259,7 @@ The Rust code in `src/engine/analysis` ports five of these methods: template reg
 with the static scheduler table (SDK-489), registry names from the database constructors, and root
 fields with their reader joins (SDK-487), effect and trigger declarations (SDK-535), and modifier,
 category, scope and link declarations (SDK-536). SDK-537 adds a method that no prototype had:
-localization contexts, commands and links. The module comments describe each method. The methods
+localization contexts, commands and links. SDK-538 adds another: on_actions and game rules with
+the scopes that their call sites supply. The module comments describe each method. The methods
 read the executable only and receive no field or config seeds. The five shared-reader contracts
 above stay unresolved, so no registry has a complete field answer.

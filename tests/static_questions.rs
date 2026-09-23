@@ -2,9 +2,10 @@
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
-    DeclaredTags, Error, Field, GapKind, LinkData, LocalizationContextReference,
-    LocalizationDeclarations, LocalizationOutput, ModifierDeclaration, Native, OutputScope,
-    ReaderKind, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
+    DeclaredTags, EntryContext, EntryScope, Error, Field, GapKind, LinkData,
+    LocalizationContextReference, LocalizationDeclarations, LocalizationOutput,
+    ModifierDeclaration, Native, OutputScope, ReaderKind, RuleKind, ScopeId, ScopeInventory,
+    ScopeLink, ScopeReference,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -323,6 +324,195 @@ fn localization_declarations_match_the_recorded_m45_inventory() {
     );
 }
 
+/// Call sites checked by hand in the M45-release disassembly, before the expected files were
+/// generated.
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
+    let answer = native().on_actions().unwrap();
+    assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+    let entries = |name: &str| -> Vec<String> {
+        find(&answer.value, name, |on_action| &on_action.name)
+            .entries
+            .iter()
+            .map(entry)
+            .collect()
+    };
+    let fresh = "this=NotSet root=SelfLink from=[SelfLink]";
+
+    // CGameState::OnNewGameStarted passes a new scope with nothing set.
+    assert_eq!(entries("on_game_start"), [fresh]);
+    // CGameState::MonthlyUpdate fires the cached list at database offset 0x28.
+    assert_eq!(entries("on_monthly_pulse"), [fresh]);
+    // CLeader::LevelUp links the leader as from of a country scope.
+    assert!(
+        entries("on_leader_level_up")
+            .contains(&"this=country root=SelfLink from=[leader,SelfLink]".into())
+    );
+    // CPlanet::SetController links two country scopes as from and fromfrom.
+    assert!(
+        entries("on_planet_returned")
+            .contains(&"this=planet root=SelfLink from=[country,country,SelfLink]".into())
+    );
+    // The fleet enters orbit of different objects; each stays its own context.
+    let orbit = entries("on_fleet_enter_orbit");
+    for from in ["megastructure", "planet", "starbase"] {
+        let context = format!("this=fleet root=SelfLink from=[{from},SelfLink]");
+        assert!(orbit.contains(&context), "{context}");
+    }
+    // CWar::OnEnd loads the name long before the call.
+    assert!(!entries("on_war_ended").is_empty());
+    // The country command builds its own scope, so the name has no entry and a gap.
+    assert!(entries("on_press_begin").is_empty());
+
+    for on_action in answer
+        .value
+        .iter()
+        .filter(|on_action| on_action.entries.is_empty())
+    {
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.subject.as_deref() == Some(on_action.name.as_str())),
+            "{} has a gap",
+            on_action.name
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn game_rules_supply_the_scopes_that_hand_checked_call_sites_build() {
+    let answer = native().game_rules().unwrap();
+    let rule = |name: &str| find(&answer.value, name, |rule| &rule.name);
+
+    // CGameRules::CanColonizePlanet sets the country as root and the planet as this.
+    let colonize = rule("can_colonize_planet");
+    assert_eq!(colonize.kind, RuleKind::Scripted);
+    assert_eq!(
+        colonize.entries.iter().map(entry).collect::<Vec<_>>(),
+        ["this=planet root=country from=[SelfLink]"]
+    );
+    // CGameRules::CanOrbitalBombard links the planet as from of the fleet.
+    assert!(
+        rule("can_orbital_bombard")
+            .entries
+            .iter()
+            .map(entry)
+            .any(|context| context == "this=fleet root=SelfLink from=[planet,SelfLink]")
+    );
+    // A weighted rule lives in its own array of the rule set.
+    let election = rule("leader_election_weight");
+    assert_eq!(election.kind, RuleKind::Weighted);
+    assert_eq!(
+        election.entries.iter().map(entry).collect::<Vec<_>>(),
+        ["this=leader root=SelfLink from=[SelfLink]"]
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn callbacks_match_the_recorded_m45_inventory() {
+    let native = native();
+    let on_actions = native.on_actions().unwrap();
+    let game_rules = native.game_rules().unwrap();
+    let scopes = native.scopes().unwrap().value;
+
+    for answer in [
+        &compact_callbacks(&on_actions),
+        &compact_callbacks(&game_rules),
+    ] {
+        assert_eq!(
+            answer["completeness"] == json!(Completeness::Complete),
+            answer["gaps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|gap| gap[0] == json!(GapKind::OutsideMethod)),
+            "completeness follows the gaps"
+        );
+    }
+    let entries = on_actions
+        .value
+        .iter()
+        .flat_map(|on_action| &on_action.entries)
+        .chain(game_rules.value.iter().flat_map(|rule| &rule.entries));
+    for context in entries {
+        for scope in std::iter::once(&context.this)
+            .chain([&context.root])
+            .chain(&context.from)
+        {
+            if let EntryScope::Scope(reference) = scope {
+                let declared = scopes
+                    .types
+                    .iter()
+                    .find(|scope| scope.id == reference.id)
+                    .expect("an entry scope joins a scope type of Native::scopes");
+                assert_eq!(declared.name, reference.name);
+            }
+        }
+    }
+
+    assert_eq!(
+        compact_callbacks(&on_actions),
+        expected::<Value>("on-actions.json")
+    );
+    assert_eq!(
+        compact_callbacks(&game_rules),
+        expected::<Value>("game-rules.json")
+    );
+}
+
+/// An entry context as one line: scope names, or the kind of an entry that is not a scope.
+fn entry(context: &EntryContext) -> String {
+    let scope = |scope: &EntryScope| match scope {
+        EntryScope::Scope(reference) => reference.name.clone(),
+        other => format!("{other:?}"),
+    };
+    let from: Vec<_> = context.from.iter().map(scope).collect();
+    format!(
+        "this={} root={} from=[{}]",
+        scope(&context.this),
+        scope(&context.root),
+        from.join(",")
+    )
+}
+
+/// A callback answer with one entry list for each name. Game rules carry their kind.
+fn compact_callbacks<T: serde::Serialize>(answer: &Answer<Vec<T>>) -> Value {
+    let names: serde_json::Map<_, _> = serde_json::to_value(&answer.value)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| {
+            let entries: Vec<_> =
+                serde_json::from_value::<Vec<EntryContext>>(item["entries"].clone())
+                    .unwrap()
+                    .iter()
+                    .map(entry)
+                    .collect();
+            let value = match item.get("kind") {
+                Some(kind) => json!([kind, entries]),
+                None => json!(entries),
+            };
+            (item["name"].as_str().unwrap().to_owned(), value)
+        })
+        .collect();
+    let gaps: Vec<_> = answer
+        .gaps
+        .iter()
+        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+        .collect();
+
+    json!({
+        "completeness": answer.completeness,
+        "names": names,
+        "gaps": gaps,
+    })
+}
+
 /// Every context reference names a context of the same answer by id and name.
 fn assert_references_join(localization: &LocalizationDeclarations) {
     let assert_joins = |reference: &LocalizationContextReference| {
@@ -547,6 +737,8 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let effects = real.declarations(DeclarationKind::Effect).unwrap();
     let links = real.scope_links().unwrap();
     let localization = real.localization_declarations().unwrap();
+    let on_actions = real.on_actions().unwrap();
+    let game_rules = real.game_rules().unwrap();
     let unknown = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
@@ -567,6 +759,12 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.localization_declarations().unwrap();
     again.source.basis = localization.source.basis;
     assert_eq!(again, localization);
+    let mut again = recorded.on_actions().unwrap();
+    again.source.basis = on_actions.source.basis;
+    assert_eq!(again, on_actions);
+    let mut again = recorded.game_rules().unwrap();
+    again.source.basis = game_rules.source.basis;
+    assert_eq!(again, game_rules);
     // Errors are recorded too.
     assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
     assert!(matches!(

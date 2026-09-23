@@ -279,6 +279,9 @@ fn describe(reason: &str) -> String {
     let text = match reason {
         "path-limit" => "a call site has more paths than the method follows",
         "step-limit" => "a path to a call site is longer than the method follows",
+        "loop-limit" => {
+            "a path to a call site goes around a loop more often than the method follows"
+        }
         "left-the-site" => "a path to a call site could not be followed to it",
         "site-not-reached" => "no path from the function entry reaches a call site",
         "context-not-attributed" => {
@@ -301,4 +304,103 @@ fn describe(reason: &str) -> String {
         _ => "a path to a call site could not be followed",
     };
     format!("{text} ({reason})")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+    use crate::engine::analysis::callbacks::Unnamed;
+
+    fn build() -> BuildId {
+        BuildId("test".into())
+    }
+
+    fn names() -> Option<Vec<String>> {
+        Some(vec!["".into(), "".into(), "country".into()])
+    }
+
+    fn result(findings: Findings) -> CallbacksResult {
+        let mut result = CallbacksResult::default();
+        result.on_actions.insert("on_test".into(), findings);
+        result
+    }
+
+    #[test]
+    fn a_followed_context_with_named_scopes_is_complete() {
+        let findings = Findings {
+            contexts: BTreeSet::from([Context {
+                this: Slot::Scope(2),
+                root: Slot::SelfLink,
+                from: vec![Slot::SelfLink],
+            }]),
+            unresolved: BTreeSet::new(),
+        };
+        let answer = normalized_on_actions(&result(findings), &names(), build());
+
+        assert_eq!(answer.completeness, Completeness::Complete);
+        assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+        let entry = &answer.value[0].entries[0];
+        assert!(matches!(&entry.this, EntryScope::Scope(scope) if scope.name == "country"));
+        assert_eq!(entry.from, [EntryScope::SelfLink]);
+    }
+
+    #[test]
+    fn a_name_without_entries_has_a_gap_and_the_answer_is_partial() {
+        let answer = normalized_on_actions(&result(Findings::default()), &names(), build());
+
+        assert!(answer.value[0].entries.is_empty());
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.subject.as_deref() == Some("on_test"))
+        );
+    }
+
+    #[test]
+    fn a_scope_bit_without_a_name_is_unresolved_with_a_gap() {
+        let findings = Findings {
+            contexts: BTreeSet::from([Context {
+                this: Slot::Scope(1),
+                root: Slot::SelfLink,
+                from: vec![Slot::SelfLink],
+            }]),
+            unresolved: BTreeSet::new(),
+        };
+        let answer = normalized_on_actions(&result(findings), &names(), build());
+
+        assert_eq!(answer.value[0].entries[0].this, EntryScope::Unresolved);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnreadableInput
+                    && gap.subject.as_deref() == Some("on_test"))
+        );
+    }
+
+    #[test]
+    fn unnamed_sites_are_counted_by_reason_and_family() {
+        let mut result = CallbacksResult::default();
+        for (family, reason) in [
+            (Family::OnAction, "name-not-a-literal"),
+            (Family::OnAction, "name-not-a-literal"),
+            (Family::GameRule, "rule-unknown"),
+        ] {
+            result.unnamed.push(Unnamed { family, reason });
+        }
+        let answer = normalized_on_actions(&result, &names(), build());
+
+        let unnamed: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.kind == GapKind::UnnamedDeclaration)
+            .map(|gap| gap.detail.as_str())
+            .collect();
+        assert_eq!(unnamed.len(), 1);
+        assert!(unnamed[0].starts_with("2 call sites"));
+    }
 }

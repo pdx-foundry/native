@@ -67,7 +67,7 @@ src/
     machine/
       arm64.rs                     ARM64 registers and spawn preference
   engine/
-    analysis/                      decode, declarations, directories, discovery, evaluate, fields, localization, modifiers, readers, scopes: bounded static methods
+    analysis/                      callbacks, decode, declarations, directories, discovery, evaluate, fields, localization, modifiers, readers, scopes: bounded static methods
     operations/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
       fixture.rs                   fixture observation reducer

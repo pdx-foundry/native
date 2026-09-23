@@ -23,6 +23,8 @@ let categories = native.modifier_categories()?;             // Answer<Vec<Modifi
 let scopes = native.scopes()?;                              // Answer<ScopeInventory>
 let links = native.scope_links()?;                          // Answer<Vec<ScopeLink>>
 let localization = native.localization_declarations()?;     // Answer<LocalizationDeclarations>
+let on_actions = native.on_actions()?;                      // Answer<Vec<OnAction>>
+let game_rules = native.game_rules()?;                      // Answer<Vec<GameRule>>
 ```
 
 `declarations` covers direct calls to the effect or trigger registration function in executable
@@ -36,7 +38,11 @@ types can share a display name. `localization_declarations` gives the localizati
 as `Country` or `Dead Fleet`), the commands and links that each context declares, each link's
 output context, and the scope types that select each context; a context that no scope type selects
 is `Missing`, and its commands stay in the answer. Join context references by their
-`LocalizationContextId`. See `examples/declarations.rs`.
+`LocalizationContextId`. `on_actions` and `game_rules` give the callbacks that the engine calls by
+name, each with the scopes that its call sites supply for `this`, `root` and the `from` chain. A
+name that different call sites fire with different scopes keeps each `EntryContext`; a link that
+points back to its own scope, the engine's default, is `SelfLink`; a name whose call sites could
+not be followed has no entries and a gap. See `examples/declarations.rs`.
 
 ## Live questions
 
@@ -169,6 +175,8 @@ modifier_categories.json
 scopes.json
 scope_links.json
 localization_declarations.json
+on_actions.json
+game_rules.json
 registry_items/common/traditions.json
 observe_fixture/<files-hash>/<request-hash>.json
 ```
