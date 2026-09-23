@@ -19,7 +19,7 @@
 //! greatest depth is a gap: the method never names a registration from a partial run.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{DeclarationInput, Function, Site, declared_sets, decode, split_documentation, target};
+use super::{DeclarationInput, Function, Site, decode, scopes, split_documentation, target};
 use crate::engine::analysis::{
     decode::Instruction,
     evaluate::{Call, Code, Exit, Machine, PATH_LIMIT, ReadOnlyData, Unresolved},
@@ -220,13 +220,11 @@ impl<'a> Composer<'a> {
             return Err(Unresolved("paths-disagree"));
         };
         let (description, usage) = split_documentation(&documentation);
-        let (scopes, targets) = declared_sets(input, factory);
         Ok(Site::Declared {
             name,
             description,
             usage,
-            scopes,
-            targets,
+            scopes: scopes(input, factory),
         })
     }
 }

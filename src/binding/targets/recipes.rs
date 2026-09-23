@@ -24,13 +24,10 @@ pub(in crate::binding) struct Recipe {
 
 /// Layout facts that the declaration methods need on this exact build.
 pub(in crate::binding) struct DeclarationRecipe {
-    /// Virtual slots used by the two command families: the factory's create method, and the
-    /// command's supported-scope and supported-target getters.
+    /// Virtual slots used by the two command families.
     pub create_slot: u64,
     pub trigger_scope_slot: u64,
     pub effect_scope_slot: u64,
-    pub trigger_target_slot: u64,
-    pub effect_target_slot: u64,
     /// Stack offset of the category argument of the modifier definition call.
     pub modifier_category_offset: u64,
     /// Stack offset of the category argument of the call that registers a generated modifier.
@@ -64,8 +61,6 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     create_slot: 0x10,
     trigger_scope_slot: 0x78,
     effect_scope_slot: 0x80,
-    trigger_target_slot: 0x80,
-    effect_target_slot: 0x88,
     modifier_category_offset: 0x4,
     dynamic_modifier_category_offset: 0x0,
     event_target_token_offset: 0x58,

@@ -72,9 +72,9 @@ pub(in crate::binding) fn read(
             },
         );
     }
-    let (scope_slot, target_slot) = match kind {
-        DeclarationKind::Effect => (recipe.effect_scope_slot, recipe.effect_target_slot),
-        DeclarationKind::Trigger => (recipe.trigger_scope_slot, recipe.trigger_target_slot),
+    let scope_slot = match kind {
+        DeclarationKind::Effect => recipe.effect_scope_slot,
+        DeclarationKind::Trigger => recipe.trigger_scope_slot,
     };
     Ok(DeclarationInput {
         tokens,
@@ -88,7 +88,6 @@ pub(in crate::binding) fn read(
         slots: ScopeSlots {
             create: recipe.create_slot,
             supported_scopes: scope_slot,
-            supported_targets: target_slot,
         },
         scope_names,
         composition: composition(bytes, symbols, &text, &entry_calls, database, recipe)?,

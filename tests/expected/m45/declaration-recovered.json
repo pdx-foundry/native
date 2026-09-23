@@ -8,14 +8,6 @@
           "description": "Executes enclosed effects if limit criteria are met",
           "name": "if",
           "scopes": "Any",
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
-              }
-            ]
-          },
           "usage": "if = { limit = { <triggers> } <effects> }"
         }
       },
@@ -25,14 +17,6 @@
           "description": "Executes enclosed effects if limit criteria of preceding 'if' or 'else_if' is not met",
           "name": "else",
           "scopes": "Any",
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
-              }
-            ]
-          },
           "usage": "if = { limit = { <triggers> } <effects> }\nelse = { <effects> }"
         }
       },
@@ -42,14 +26,6 @@
           "description": "Executes enclosed effects if limit criteria of preceding 'if' or 'else_if' is not met, and its own limit is met",
           "name": "else_if",
           "scopes": "Any",
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
-              }
-            ]
-          },
           "usage": "if = { limit = { <triggers> } <effects> }\nelse_if = { limit = { <triggers> } <effects> }"
         }
       },
@@ -63,14 +39,6 @@
               {
                 "id": "44b5e21fe5e593d7",
                 "name": "country"
-              }
-            ]
-          },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
               }
             ]
           },
@@ -98,14 +66,6 @@
               }
             ]
           },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
-              }
-            ]
-          },
           "usage": "\tremove_building = <building_type_key>"
         }
       },
@@ -127,14 +87,6 @@
               {
                 "id": "df2999a8f7dba6f6",
                 "name": "colony"
-              }
-            ]
-          },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
               }
             ]
           },
@@ -178,14 +130,6 @@
               }
             ]
           },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
-              }
-            ]
-          },
           "usage": ""
         }
       },
@@ -199,14 +143,6 @@
               {
                 "id": "44b5e21fe5e593d7",
                 "name": "country"
-              }
-            ]
-          },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
               }
             ]
           },
@@ -226,14 +162,6 @@
               }
             ]
           },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
-              }
-            ]
-          },
           "usage": "random_owned_army = {\n\tlimit = { <triggers> }\n\tweights = { (optional - adds weights to affect the chance a specific object is selected)\n\t\tbase = float\n\t\tmodifier = { <add/factor = float> <triggers> }\n\t}\n\t<effects>\n}"
         }
       },
@@ -247,14 +175,6 @@
               {
                 "id": "44b5e21fe5e593d7",
                 "name": "country"
-              }
-            ]
-          },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
               }
             ]
           },
@@ -272,66 +192,6 @@
           "description": "all inside trigger must be true",
           "name": "and",
           "scopes": "Any",
-          "targets": {
-            "Listed": [
-              {
-                "id": "44b5e21fe5e593d7",
-                "name": "country"
-              },
-              {
-                "id": "69ead02b278522d1",
-                "name": "ship"
-              },
-              {
-                "id": "ef32cf484b6d5087",
-                "name": "pop"
-              },
-              {
-                "id": "1a26ff288266684f",
-                "name": "pop_group"
-              },
-              {
-                "id": "6dafeb9bcf25b500",
-                "name": "fleet"
-              },
-              {
-                "id": "5ab5fc854e81e429",
-                "name": "galactic_object"
-              },
-              {
-                "id": "b09e3ce96bcb18ba",
-                "name": "leader"
-              },
-              {
-                "id": "b99e91b88a72f0c9",
-                "name": "army"
-              },
-              {
-                "id": "35699745346d01d5",
-                "name": "ambient_object"
-              },
-              {
-                "id": "43c74897fb1c97c8",
-                "name": "species"
-              },
-              {
-                "id": "9ee8b41b5ee073ea",
-                "name": "bypass"
-              },
-              {
-                "id": "74623e53f7b0ff4f",
-                "name": "design"
-              },
-              {
-                "id": "87fbe101af3061e9",
-                "name": "pop_faction"
-              },
-              {
-                "id": "87aef3284d14374e",
-                "name": "war"
-              }
-            ]
-          },
           "usage": ""
         }
       },
@@ -341,66 +201,6 @@
           "description": "Adjusts progress of triggers inside it",
           "name": "custom_progress",
           "scopes": "Any",
-          "targets": {
-            "Listed": [
-              {
-                "id": "44b5e21fe5e593d7",
-                "name": "country"
-              },
-              {
-                "id": "69ead02b278522d1",
-                "name": "ship"
-              },
-              {
-                "id": "ef32cf484b6d5087",
-                "name": "pop"
-              },
-              {
-                "id": "1a26ff288266684f",
-                "name": "pop_group"
-              },
-              {
-                "id": "6dafeb9bcf25b500",
-                "name": "fleet"
-              },
-              {
-                "id": "5ab5fc854e81e429",
-                "name": "galactic_object"
-              },
-              {
-                "id": "b09e3ce96bcb18ba",
-                "name": "leader"
-              },
-              {
-                "id": "b99e91b88a72f0c9",
-                "name": "army"
-              },
-              {
-                "id": "35699745346d01d5",
-                "name": "ambient_object"
-              },
-              {
-                "id": "43c74897fb1c97c8",
-                "name": "species"
-              },
-              {
-                "id": "9ee8b41b5ee073ea",
-                "name": "bypass"
-              },
-              {
-                "id": "74623e53f7b0ff4f",
-                "name": "design"
-              },
-              {
-                "id": "87fbe101af3061e9",
-                "name": "pop_faction"
-              },
-              {
-                "id": "87aef3284d14374e",
-                "name": "war"
-              }
-            ]
-          },
           "usage": "custom_progress = {\n\t...\n\tcurrent_val_coeff = 0.5\n\tfinal_val_coeff = 0.5\n\tmode = <normal/simplified/clamped>\n}"
         }
       },
@@ -410,66 +210,6 @@
           "description": "Nullifies progress of triggers inside it and returns progress '0 of 0'",
           "name": "hidden_progress",
           "scopes": "Any",
-          "targets": {
-            "Listed": [
-              {
-                "id": "44b5e21fe5e593d7",
-                "name": "country"
-              },
-              {
-                "id": "69ead02b278522d1",
-                "name": "ship"
-              },
-              {
-                "id": "ef32cf484b6d5087",
-                "name": "pop"
-              },
-              {
-                "id": "1a26ff288266684f",
-                "name": "pop_group"
-              },
-              {
-                "id": "6dafeb9bcf25b500",
-                "name": "fleet"
-              },
-              {
-                "id": "5ab5fc854e81e429",
-                "name": "galactic_object"
-              },
-              {
-                "id": "b09e3ce96bcb18ba",
-                "name": "leader"
-              },
-              {
-                "id": "b99e91b88a72f0c9",
-                "name": "army"
-              },
-              {
-                "id": "35699745346d01d5",
-                "name": "ambient_object"
-              },
-              {
-                "id": "43c74897fb1c97c8",
-                "name": "species"
-              },
-              {
-                "id": "9ee8b41b5ee073ea",
-                "name": "bypass"
-              },
-              {
-                "id": "74623e53f7b0ff4f",
-                "name": "design"
-              },
-              {
-                "id": "87fbe101af3061e9",
-                "name": "pop_faction"
-              },
-              {
-                "id": "87aef3284d14374e",
-                "name": "war"
-              }
-            ]
-          },
           "usage": "hidden_progress = {\n\t<triggers>\n}"
         }
       },
@@ -479,66 +219,6 @@
           "description": "Hides the progress of the triggers inside and returns progresses '0 of 1' or '1 of 1'",
           "name": "simple_progress",
           "scopes": "Any",
-          "targets": {
-            "Listed": [
-              {
-                "id": "44b5e21fe5e593d7",
-                "name": "country"
-              },
-              {
-                "id": "69ead02b278522d1",
-                "name": "ship"
-              },
-              {
-                "id": "ef32cf484b6d5087",
-                "name": "pop"
-              },
-              {
-                "id": "1a26ff288266684f",
-                "name": "pop_group"
-              },
-              {
-                "id": "6dafeb9bcf25b500",
-                "name": "fleet"
-              },
-              {
-                "id": "5ab5fc854e81e429",
-                "name": "galactic_object"
-              },
-              {
-                "id": "b09e3ce96bcb18ba",
-                "name": "leader"
-              },
-              {
-                "id": "b99e91b88a72f0c9",
-                "name": "army"
-              },
-              {
-                "id": "35699745346d01d5",
-                "name": "ambient_object"
-              },
-              {
-                "id": "43c74897fb1c97c8",
-                "name": "species"
-              },
-              {
-                "id": "9ee8b41b5ee073ea",
-                "name": "bypass"
-              },
-              {
-                "id": "74623e53f7b0ff4f",
-                "name": "design"
-              },
-              {
-                "id": "87fbe101af3061e9",
-                "name": "pop_faction"
-              },
-              {
-                "id": "87aef3284d14374e",
-                "name": "war"
-              }
-            ]
-          },
           "usage": "simple_progress = {\n\t<triggers>\n}"
         }
       },
@@ -555,7 +235,6 @@
               }
             ]
           },
-          "targets": "Any",
           "usage": "num_proxy_war >=< <value>"
         }
       },
@@ -572,66 +251,6 @@
               }
             ]
           },
-          "targets": {
-            "Listed": [
-              {
-                "id": "44b5e21fe5e593d7",
-                "name": "country"
-              },
-              {
-                "id": "69ead02b278522d1",
-                "name": "ship"
-              },
-              {
-                "id": "ef32cf484b6d5087",
-                "name": "pop"
-              },
-              {
-                "id": "1a26ff288266684f",
-                "name": "pop_group"
-              },
-              {
-                "id": "6dafeb9bcf25b500",
-                "name": "fleet"
-              },
-              {
-                "id": "5ab5fc854e81e429",
-                "name": "galactic_object"
-              },
-              {
-                "id": "b09e3ce96bcb18ba",
-                "name": "leader"
-              },
-              {
-                "id": "b99e91b88a72f0c9",
-                "name": "army"
-              },
-              {
-                "id": "35699745346d01d5",
-                "name": "ambient_object"
-              },
-              {
-                "id": "43c74897fb1c97c8",
-                "name": "species"
-              },
-              {
-                "id": "9ee8b41b5ee073ea",
-                "name": "bypass"
-              },
-              {
-                "id": "74623e53f7b0ff4f",
-                "name": "design"
-              },
-              {
-                "id": "87fbe101af3061e9",
-                "name": "pop_faction"
-              },
-              {
-                "id": "87aef3284d14374e",
-                "name": "war"
-              }
-            ]
-          },
           "usage": "any_owned_army = { <triggers> }"
         }
       },
@@ -645,14 +264,6 @@
               {
                 "id": "44b5e21fe5e593d7",
                 "name": "country"
-              }
-            ]
-          },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
               }
             ]
           },
@@ -693,14 +304,6 @@
               {
                 "id": "df2999a8f7dba6f6",
                 "name": "colony"
-              }
-            ]
-          },
-          "targets": {
-            "Listed": [
-              {
-                "id": "37c52c03d3012e74",
-                "name": "planet"
               }
             ]
           },

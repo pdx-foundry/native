@@ -3,36 +3,19 @@
     "name": "if",
     "description": "Evaluates the triggers if the display_triggers of the limit are met",
     "usage": "if = { limit = { <display_triggers> } <triggers> }",
-    "scopes": "Any",
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
-    }
+    "scopes": "Any"
   },
   {
     "name": "else_if",
     "description": "Evaluates the enclosed triggers if the display_triggers of the preceding `if` or `else_if` is not met and its own display_trigger of the limit is met",
     "usage": "if = { limit = { <display_triggers> } <triggers> }\nelse_if = { limit = { <display_triggers> } <triggers> }",
-    "scopes": "Any",
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
-    }
+    "scopes": "Any"
   },
   {
     "name": "exists",
     "description": "Checks if a target scope exists",
     "usage": "exists = <target>",
-    "scopes": "Any",
-    "targets": "Any"
+    "scopes": "Any"
   },
   {
     "name": "has_civic",
@@ -47,14 +30,6 @@
         {
           "id": "62d3f8e4e896f7f7",
           "name": "dlc_recommendation"
-        }
-      ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
         }
       ]
     }
@@ -78,8 +53,7 @@
           "name": "colony"
         }
       ]
-    },
-    "targets": "Any"
+    }
   },
   {
     "name": "is_ruler",
@@ -92,22 +66,13 @@
           "name": "leader"
         }
       ]
-    },
-    "targets": "Any"
+    }
   },
   {
     "name": "always",
     "description": "Sets trigger to be either always true or false",
     "usage": "always = yes",
-    "scopes": "Any",
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
-    }
+    "scopes": "Any"
   },
   {
     "name": "has_country_flag",
@@ -118,14 +83,6 @@
         {
           "id": "44b5e21fe5e593d7",
           "name": "country"
-        }
-      ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
         }
       ]
     }
@@ -141,21 +98,12 @@
           "name": "country"
         }
       ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
     }
   },
   {
     "name": "additional_crisis_strength",
     "description": "Checks the degree to which multiply_crisis_strength effect is increasing the strength of endgame crises",
     "usage": "additional_crisis_strength > 1.4",
-    "scopes": "Any",
-    "targets": "Any"
+    "scopes": "Any"
   }
 ]

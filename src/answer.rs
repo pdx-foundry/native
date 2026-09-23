@@ -351,14 +351,12 @@ pub struct Declaration {
     pub usage: String,
     /// Scopes the command declares that it supports.
     pub scopes: DeclaredScopes,
-    /// Targets the command declares that it supports.
-    pub targets: DeclaredScopes,
 }
 
-/// A declared scope or target set.
+/// A declared scope set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeclaredScopes {
-    /// Every scope or target is supported.
+    /// Every scope is supported.
     Any,
     /// These scope types, including an empty set.
     Listed(Vec<ScopeReference>),

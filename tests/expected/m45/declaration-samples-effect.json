@@ -10,66 +10,6 @@
           "name": "country"
         }
       ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "44b5e21fe5e593d7",
-          "name": "country"
-        },
-        {
-          "id": "69ead02b278522d1",
-          "name": "ship"
-        },
-        {
-          "id": "ef32cf484b6d5087",
-          "name": "pop"
-        },
-        {
-          "id": "1a26ff288266684f",
-          "name": "pop_group"
-        },
-        {
-          "id": "6dafeb9bcf25b500",
-          "name": "fleet"
-        },
-        {
-          "id": "5ab5fc854e81e429",
-          "name": "galactic_object"
-        },
-        {
-          "id": "b09e3ce96bcb18ba",
-          "name": "leader"
-        },
-        {
-          "id": "b99e91b88a72f0c9",
-          "name": "army"
-        },
-        {
-          "id": "35699745346d01d5",
-          "name": "ambient_object"
-        },
-        {
-          "id": "43c74897fb1c97c8",
-          "name": "species"
-        },
-        {
-          "id": "9ee8b41b5ee073ea",
-          "name": "bypass"
-        },
-        {
-          "id": "74623e53f7b0ff4f",
-          "name": "design"
-        },
-        {
-          "id": "87fbe101af3061e9",
-          "name": "pop_faction"
-        },
-        {
-          "id": "87aef3284d14374e",
-          "name": "war"
-        }
-      ]
     }
   },
   {
@@ -91,14 +31,6 @@
           "name": "colony"
         }
       ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
     }
   },
   {
@@ -110,14 +42,6 @@
         {
           "id": "44b5e21fe5e593d7",
           "name": "country"
-        }
-      ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
         }
       ]
     }
@@ -133,14 +57,6 @@
           "name": "country"
         }
       ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
     }
   },
   {
@@ -154,81 +70,13 @@
           "name": "leader"
         }
       ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "44b5e21fe5e593d7",
-          "name": "country"
-        },
-        {
-          "id": "69ead02b278522d1",
-          "name": "ship"
-        },
-        {
-          "id": "ef32cf484b6d5087",
-          "name": "pop"
-        },
-        {
-          "id": "1a26ff288266684f",
-          "name": "pop_group"
-        },
-        {
-          "id": "6dafeb9bcf25b500",
-          "name": "fleet"
-        },
-        {
-          "id": "5ab5fc854e81e429",
-          "name": "galactic_object"
-        },
-        {
-          "id": "b09e3ce96bcb18ba",
-          "name": "leader"
-        },
-        {
-          "id": "b99e91b88a72f0c9",
-          "name": "army"
-        },
-        {
-          "id": "35699745346d01d5",
-          "name": "ambient_object"
-        },
-        {
-          "id": "43c74897fb1c97c8",
-          "name": "species"
-        },
-        {
-          "id": "9ee8b41b5ee073ea",
-          "name": "bypass"
-        },
-        {
-          "id": "74623e53f7b0ff4f",
-          "name": "design"
-        },
-        {
-          "id": "87fbe101af3061e9",
-          "name": "pop_faction"
-        },
-        {
-          "id": "87aef3284d14374e",
-          "name": "war"
-        }
-      ]
     }
   },
   {
     "name": "abort_situation",
     "description": "Destroys a situation in right hand side event target, firing on_abort (use to cancel and fire that effect)",
     "usage": "abort_situation = <event target>",
-    "scopes": "Any",
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
-    }
+    "scopes": "Any"
   },
   {
     "name": "accept_covenant",
@@ -239,14 +87,6 @@
         {
           "id": "44b5e21fe5e593d7",
           "name": "country"
-        }
-      ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
         }
       ]
     }
@@ -262,14 +102,6 @@
           "name": "country"
         }
       ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
     }
   },
   {
@@ -283,80 +115,12 @@
           "name": "country"
         }
       ]
-    },
-    "targets": {
-      "Listed": [
-        {
-          "id": "37c52c03d3012e74",
-          "name": "planet"
-        }
-      ]
     }
   },
   {
     "name": "activate_gateway",
     "description": "Activates the gateway associated with a megastructure.",
     "usage": "activate_gateway = <target>",
-    "scopes": "Any",
-    "targets": {
-      "Listed": [
-        {
-          "id": "44b5e21fe5e593d7",
-          "name": "country"
-        },
-        {
-          "id": "69ead02b278522d1",
-          "name": "ship"
-        },
-        {
-          "id": "ef32cf484b6d5087",
-          "name": "pop"
-        },
-        {
-          "id": "1a26ff288266684f",
-          "name": "pop_group"
-        },
-        {
-          "id": "6dafeb9bcf25b500",
-          "name": "fleet"
-        },
-        {
-          "id": "5ab5fc854e81e429",
-          "name": "galactic_object"
-        },
-        {
-          "id": "b09e3ce96bcb18ba",
-          "name": "leader"
-        },
-        {
-          "id": "b99e91b88a72f0c9",
-          "name": "army"
-        },
-        {
-          "id": "35699745346d01d5",
-          "name": "ambient_object"
-        },
-        {
-          "id": "43c74897fb1c97c8",
-          "name": "species"
-        },
-        {
-          "id": "9ee8b41b5ee073ea",
-          "name": "bypass"
-        },
-        {
-          "id": "74623e53f7b0ff4f",
-          "name": "design"
-        },
-        {
-          "id": "87fbe101af3061e9",
-          "name": "pop_faction"
-        },
-        {
-          "id": "87aef3284d14374e",
-          "name": "war"
-        }
-      ]
-    }
+    "scopes": "Any"
   }
 ]

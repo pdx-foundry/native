@@ -30,8 +30,6 @@ pub struct Function {
 pub struct ScopeSlots {
     pub create: u64,
     pub supported_scopes: u64,
-    /// The getter of the scope types that the command's target argument accepts.
-    pub supported_targets: u64,
 }
 
 /// Executable-derived input for one command kind.
@@ -61,7 +59,6 @@ pub enum Site {
         description: String,
         usage: String,
         scopes: ScopeOutcome,
-        targets: ScopeOutcome,
     },
     /// The code composes the token at run time, and the method stopped at `obstacle`.
     RuntimeToken { obstacle: &'static str },
@@ -232,13 +229,11 @@ fn declared(input: &DeclarationInput, name: String, factory: u64, documentation:
         };
     };
     let (description, usage) = split_documentation(documentation);
-    let (scopes, targets) = declared_sets(input, factory);
     Site::Declared {
         name,
         description,
         usage,
-        scopes,
-        targets,
+        scopes: scopes(input, factory),
     }
 }
 
@@ -470,18 +465,23 @@ fn caller_saved(base: &str) -> bool {
         .is_ok_and(|index| index <= 18)
 }
 
-/// The supported scopes and the supported targets of the command that `factory` creates. Both
-/// getters are slots of the same command vtable.
-fn declared_sets(input: &DeclarationInput, factory: u64) -> (ScopeOutcome, ScopeOutcome) {
-    match command_vtable(input, factory) {
-        Ok(command) => (
-            getter_mask(input, command, input.slots.supported_scopes, SCOPE_LINKS),
-            getter_mask(input, command, input.slots.supported_targets, TARGET_LINKS),
-        ),
-        Err(link) => (
-            ScopeOutcome::Unresolved(link),
-            ScopeOutcome::Unresolved(link),
-        ),
+/// The supported scopes of the command that `factory` creates.
+fn scopes(input: &DeclarationInput, factory: u64) -> ScopeOutcome {
+    let command = match command_vtable(input, factory) {
+        Ok(command) => command,
+        Err(link) => return ScopeOutcome::Unresolved(link),
+    };
+    let Some(rows) = input
+        .pointers
+        .get(&(command + input.slots.supported_scopes))
+        .and_then(|address| input.functions.get(address))
+        .and_then(|body| decode(body).ok())
+    else {
+        return ScopeOutcome::Unresolved("scope-getter");
+    };
+    match constant_return(&rows) {
+        Some(mask) => scope_mask(mask, input.scope_names.as_deref()),
+        None => ScopeOutcome::Unresolved("scope-mask"),
     }
 }
 
@@ -503,9 +503,9 @@ fn command_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, &'stati
         .position(|row| row.operation == "ret")
         .unwrap_or(rows.len());
     let is_command = |address: &u64| {
-        [input.slots.supported_scopes, input.slots.supported_targets]
-            .iter()
-            .all(|slot| input.pointers.contains_key(&(address + slot)))
+        input
+            .pointers
+            .contains_key(&(address + input.slots.supported_scopes))
     };
     vtable_store(&rows[..end], &input.pointers)
         .filter(is_command)
@@ -519,32 +519,6 @@ fn command_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, &'stati
                 .find(is_command)
         })
         .ok_or("command-vtable")
-}
-
-/// The links where the method stops at a getter: its body, then its mask.
-type GetterLinks = (&'static str, &'static str);
-const SCOPE_LINKS: GetterLinks = ("scope-getter", "scope-mask");
-const TARGET_LINKS: GetterLinks = ("target-getter", "target-mask");
-
-/// The mask that the getter in `slot` of the command vtable returns, as scope names.
-fn getter_mask(
-    input: &DeclarationInput,
-    command: u64,
-    slot: u64,
-    (getter, mask): GetterLinks,
-) -> ScopeOutcome {
-    let Some(rows) = input
-        .pointers
-        .get(&(command + slot))
-        .and_then(|address| input.functions.get(address))
-        .and_then(|body| decode(body).ok())
-    else {
-        return ScopeOutcome::Unresolved(getter);
-    };
-    match constant_return(&rows) {
-        Some(value) => scope_mask(value, input.scope_names.as_deref()),
-        None => ScopeOutcome::Unresolved(mask),
-    }
 }
 
 /// Scope names of a declared scope mask. Zero and all bits mean every scope. A name is kept as

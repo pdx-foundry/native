@@ -17,7 +17,6 @@ const UNKNOWN_CALLER: u64 = 0x8000;
 
 const CREATE: u64 = 0xa000;
 const SCOPE_GETTER: u64 = 0xa100;
-const TARGET_GETTER: u64 = 0xa200;
 
 const FACTORY: u64 = 0x30010;
 const VTABLE: u64 = 0x31010;
@@ -175,7 +174,6 @@ fn input(
         slots: ScopeSlots {
             create: 0x10,
             supported_scopes: 0x80,
-            supported_targets: 0x88,
         },
         scope_names: Some(vec!["none".into()]),
         composition,
@@ -207,7 +205,6 @@ fn declared(name: &str, description: &str, usage: &str) -> Site {
         description: description.into(),
         usage: usage.into(),
         scopes: ScopeOutcome::Unresolved("factory-create"),
-        targets: ScopeOutcome::Unresolved("factory-create"),
     }
 }
 
@@ -438,17 +435,16 @@ fn constant_getter(address: u64, mask: u32) -> Function {
         .function()
 }
 
-/// `win` with a create method, a command vtable at `VTABLE`, and the two getters.
-fn followed(create: Function, target_getter: Function) -> Vec<Site> {
+/// `win` with a create method, a command vtable at `VTABLE`, and its scope getter.
+fn followed(create: Function, scope_getter: Function) -> Vec<Site> {
     let mut input = input(
         vec![win_registrar()],
-        vec![create, constant_getter(SCOPE_GETTER, 0b100), target_getter],
+        vec![create, scope_getter],
         composition(vec![], BTreeMap::new()),
     );
     input.pointers = BTreeMap::from([
         (FACTORY + 0x10, CREATE),
         (VTABLE + 0x80, SCOPE_GETTER),
-        (VTABLE + 0x88, TARGET_GETTER),
         (VTABLE_POINTER, VTABLE - 0x10),
     ]);
     input.scope_names = Some(vec!["none".into(), "planet".into(), "country".into()]);
@@ -462,30 +458,29 @@ fn scope(bit: usize, name: &str) -> ScopeType {
     }
 }
 
-fn win(targets: ScopeOutcome) -> Site {
+fn win(scopes: ScopeOutcome) -> Site {
     Site::Declared {
         name: "win".into(),
         description: "Wins the game".into(),
         usage: "win = yes".into(),
-        scopes: ScopeOutcome::Listed(vec![scope(2, "country")]),
-        targets,
+        scopes,
     }
 }
 
 #[test]
-fn a_zero_target_mask_is_any() {
+fn a_zero_scope_mask_is_any() {
     let create = create(|body| body.address(8, VTABLE).store(8, 19));
     assert_eq!(
-        followed(create, constant_getter(TARGET_GETTER, 0)),
+        followed(create, constant_getter(SCOPE_GETTER, 0)),
         [win(ScopeOutcome::Any)]
     );
 }
 
 #[test]
-fn a_multi_bit_target_mask_lists_each_scope_in_bit_order() {
+fn a_multi_bit_scope_mask_lists_each_scope_in_bit_order() {
     let create = create(|body| body.address(8, VTABLE).store(8, 19));
     assert_eq!(
-        followed(create, constant_getter(TARGET_GETTER, 0b110)),
+        followed(create, constant_getter(SCOPE_GETTER, 0b110)),
         [win(ScopeOutcome::Listed(vec![
             scope(1, "planet"),
             scope(2, "country")
@@ -494,15 +489,15 @@ fn a_multi_bit_target_mask_lists_each_scope_in_bit_order() {
 }
 
 #[test]
-fn a_target_getter_that_reads_the_command_is_unresolved_on_its_declaration() {
+fn a_scope_getter_that_reads_the_command_is_unresolved_on_its_declaration() {
     let create = create(|body| body.address(8, VTABLE).store(8, 19));
-    let getter = Assembly::at(TARGET_GETTER)
+    let getter = Assembly::at(SCOPE_GETTER)
         .word(0xf9400400) // ldr x0, [x0, #8]
         .ret()
         .function();
     assert_eq!(
         followed(create, getter),
-        [win(ScopeOutcome::Unresolved("target-mask"))]
+        [win(ScopeOutcome::Unresolved("scope-mask"))]
     );
 }
 
@@ -510,7 +505,7 @@ fn a_target_getter_that_reads_the_command_is_unresolved_on_its_declaration() {
 fn a_command_vtable_loaded_through_a_pointer_is_followed() {
     let create = create(|body| body.load(8, VTABLE_POINTER).add(8, 0x10).store(8, 19));
     assert_eq!(
-        followed(create, constant_getter(TARGET_GETTER, 0b10)),
+        followed(create, constant_getter(SCOPE_GETTER, 0b10)),
         [win(ScopeOutcome::Listed(vec![scope(1, "planet")]))]
     );
 }
@@ -528,7 +523,7 @@ fn a_vtable_stored_through_a_copy_of_the_command_register_is_followed() {
             .word(0xf900010a) // str x10, [x8]: after the add, x8 is a member
     });
     assert_eq!(
-        followed(create, constant_getter(TARGET_GETTER, 0)),
+        followed(create, constant_getter(SCOPE_GETTER, 0)),
         [win(ScopeOutcome::Any)]
     );
 }

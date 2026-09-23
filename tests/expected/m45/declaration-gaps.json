@@ -2,17 +2,6 @@
   "effect": {
     "unnamed_registrations": 0,
     "unreadable": [],
-    "target_sets": {
-      "any": 3,
-      "listed": 1067,
-      "unresolved": 4
-    },
-    "unresolved_targets": [
-      "pop_change_ethic",
-      "pop_force_add_ethic",
-      "remove_random_starbase_building",
-      "remove_random_starbase_module"
-    ],
     "unresolved_scopes": [
       "add_stage_clues",
       "add_stage_modifier",
@@ -46,17 +35,6 @@
   "trigger": {
     "unnamed_registrations": 0,
     "unreadable": [],
-    "target_sets": {
-      "any": 165,
-      "listed": 927,
-      "unresolved": 4
-    },
-    "unresolved_targets": [
-      "has_relation_flag",
-      "is_war_participant",
-      "pop_ethic_amount",
-      "reverse_has_relation_flag"
-    ],
     "unresolved_scopes": [
       "astral_rift_relative_difficulty",
       "check_variable",
