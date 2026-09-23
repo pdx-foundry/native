@@ -118,6 +118,8 @@ pub enum Output {
     Contexts(BTreeSet<u64>),
     /// The engine selects the context from the run-time object.
     Various,
+    /// Every path returns without changing the context.
+    Unchanged,
     Unresolved(&'static str),
 }
 
@@ -320,7 +322,7 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
     if various {
         Output::Various
     } else if contexts.is_empty() {
-        Output::Unresolved("no-path-selects-a-context")
+        Output::Unchanged
     } else {
         Output::Contexts(contexts)
     }
@@ -538,7 +540,7 @@ mod tests {
             (0x3024, "b.ne", "#0x3030"),
             (0x3028, "mov", "x0,x1"),
             (0x302c, "b", "#0x9000"),
-            // Index 2 reaches a setter that selects no context.
+            // Index 2 reaches a setter that leaves the context unchanged.
             (0x3030, "cmp", "w2,#2"),
             (0x3034, "b.ne", "#0x3040"),
             (0x3038, "mov", "x0,x1"),
@@ -706,14 +708,11 @@ mod tests {
     }
 
     #[test]
-    fn links_that_cannot_be_followed_stay_unresolved() {
+    fn unfollowed_links_are_unresolved_and_links_that_select_nothing_are_unchanged() {
         let result = analyze(&input()).unwrap();
         let country = context(&result, 1);
 
-        assert_eq!(
-            link(country, "Broken"),
-            &Output::Unresolved("no-path-selects-a-context")
-        );
+        assert_eq!(link(country, "Broken"), &Output::Unchanged);
         assert_eq!(
             link(country, "Indirect"),
             &Output::Unresolved("context-unknown"),

@@ -65,6 +65,7 @@ fn context_id(value: u64) -> LocalizationContextId {
 enum Target {
     Contexts(Vec<u64>),
     Various,
+    Unchanged,
     Unresolved,
 }
 
@@ -239,6 +240,7 @@ fn links(
             let target = match output {
                 Output::Contexts(values) => Target::Contexts(values.iter().copied().collect()),
                 Output::Various => Target::Various,
+                Output::Unchanged => Target::Unchanged,
                 Output::Unresolved(reason) => {
                     gaps.push(gap(
                         GapKind::UnresolvedPath,
@@ -268,6 +270,7 @@ fn links(
                     LocalizationOutput::Listed(sorted_references(values, reference))
                 }
                 Target::Various => LocalizationOutput::Various,
+                Target::Unchanged => LocalizationOutput::Unchanged,
                 Target::Unresolved => LocalizationOutput::Unresolved,
             },
         })
