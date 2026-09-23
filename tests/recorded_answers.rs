@@ -1,7 +1,8 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
 use pdx_native::{
-    Basis, Completeness, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal, Error,
-    GameOptions, GapKind, LinkData, Native, OutputScope, ReaderKind, Support,
+    Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal,
+    Error, GameOptions, GapKind, LinkData, LocalizationOutput, Native, OutputScope, ReaderKind,
+    Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -178,6 +179,72 @@ fn language_declarations_read_recorded_values_and_missing_files_are_not_recorded
     for (reference, scope) in group.scopes.iter().zip(&scopes.value.types) {
         assert_eq!(reference.id, scope.id);
     }
+}
+
+#[test]
+fn localization_declarations_read_recorded_joins_and_outputs() {
+    let root = recorded();
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    assert!(matches!(
+        native.localization_declarations(),
+        Err(Error::NotRecorded { .. })
+    ));
+
+    let country = json!({ "id": "country-context", "name": "Country" });
+    let dead_country = json!({ "id": "dead-country-context", "name": "Dead Country" });
+    let planet = json!({ "id": "planet-context", "name": "Planet" });
+    write(
+        root.path(),
+        "localization_declarations.json",
+        json!({ "Ok": {
+            "value": {
+                "contexts": [
+                    { "id": "country-context", "name": "Country",
+                      "scopes": { "Joined": [{ "id": "country-id", "name": "country" }] } },
+                    { "id": "dead-country-context", "name": "Dead Country", "scopes": "Missing" },
+                    { "id": "planet-context", "name": "Planet", "scopes": { "Partial": [] } }
+                ],
+                "commands": [{ "name": "GetName", "contexts": [country, dead_country] }],
+                "links": [
+                    { "name": "Owner", "input_contexts": [planet], "output": { "Listed": [country] } },
+                    { "name": "Root", "input_contexts": [country], "output": "Various" },
+                    { "name": "Third_party", "input_contexts": [country], "output": "Unchanged" },
+                    { "name": "MainAttacker", "input_contexts": [dead_country], "output": "Unresolved" }
+                ]
+            },
+            "completeness": "Partial",
+            "gaps": [
+                { "kind": "UnresolvedPath", "subject": "planet", "detail": "scope join" },
+                { "kind": "UnresolvedPath", "subject": "MainAttacker", "detail": "dead object" }
+            ],
+            "source": source()
+        }}),
+    );
+
+    let answer = native.localization_declarations().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    let localization = answer.value;
+    let scopes: Vec<_> = localization
+        .contexts
+        .iter()
+        .map(|context| &context.scopes)
+        .collect();
+    assert!(matches!(scopes[0], ContextScopes::Joined(joined) if joined[0].name == "country"));
+    assert_eq!(scopes[1], &ContextScopes::Missing);
+    assert_eq!(scopes[2], &ContextScopes::Partial(Vec::new()));
+
+    let dead = &localization.commands[0].contexts[1];
+    assert_eq!(
+        dead.id, localization.contexts[1].id,
+        "a missing join keeps its command"
+    );
+    let outputs: Vec<_> = localization.links.iter().map(|link| &link.output).collect();
+    assert!(
+        matches!(outputs[0], LocalizationOutput::Listed(listed) if listed[0].name == "Country")
+    );
+    assert_eq!(outputs[1], &LocalizationOutput::Various);
+    assert_eq!(outputs[2], &LocalizationOutput::Unchanged);
+    assert_eq!(outputs[3], &LocalizationOutput::Unresolved);
 }
 
 #[test]

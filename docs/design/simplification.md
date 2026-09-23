@@ -52,6 +52,7 @@ native.registry_fields("common/traditions")?;           // Answer<Vec<Field>>
 native.declarations(DeclarationKind::Effect)?;          // Answer<Vec<Declaration>>
 native.modifiers()?;  native.modifier_categories()?;    // SDK-536
 native.scopes()?;     native.scope_links()?;            // SDK-536
+native.localization_declarations()?;                    // SDK-537
 
 // Implemented live questions. The consumer owns when a game runs; Native owns how.
 let mut game = native.start_game(GameOptions::new(supervisor_command)).await?;

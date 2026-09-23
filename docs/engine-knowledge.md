@@ -16,7 +16,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | ARM64 loader-entry attachment, registration and field reads, where to read registry items |
 | The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
 | Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |
-| Static analysis, references, registries | [Discovery methods](native/discovery.md) | Compiler patterns, token paths, scheduler table, owner joins, engine documentation commands |
+| Static analysis, references, registries | [Discovery methods](native/discovery.md) | Compiler patterns, token paths, scheduler table, owner joins, engine documentation commands, localization tables |
 | Builds and adaptation between them | [Targets](native/targets.md) | Exact executable hashes, Mac and Windows adaptation results |
 
 A finding is **demonstrated** on its original build only. A **candidate** lacks a required join or a

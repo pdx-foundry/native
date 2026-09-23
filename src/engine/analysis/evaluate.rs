@@ -133,6 +133,11 @@ pub enum Exit {
     Trapped,
 }
 
+/// What [`Machine::run_paths`] does at each call: it receives the target, or `None` for a call
+/// through a register whose value is unknown.
+pub type PathCalls<'c, 'a> =
+    dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved> + 'c;
+
 /// How one path of [`Machine::run_paths`] ended, with the machine state at its end.
 #[derive(Debug, Clone)]
 pub struct Path<'a> {
@@ -272,14 +277,9 @@ impl<'a> Machine<'a> {
     /// flags that make the condition hold on one side and fail on the other, so a later decision
     /// on the same flags agrees with it.
     ///
-    /// `calls` receives the target of each call and tail call, or `None` for a call through a
-    /// register whose value is unknown. At most [`PATH_LIMIT`] paths are followed; a path that would
+    /// `calls` receives the target of each call and tail call; see [`PathCalls`]. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
-    pub fn run_paths(
-        self,
-        entry: u64,
-        calls: &mut dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved>,
-    ) -> Vec<Path<'a>> {
+    pub fn run_paths(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
         let mut pending = vec![(self, entry, 0)];
         let mut ended = Vec::new();
 
@@ -310,12 +310,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Follow one path until it ends or reaches a branch on an unknown value.
-    fn walk(
-        &mut self,
-        mut pc: u64,
-        mut steps: usize,
-        calls: &mut dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved>,
-    ) -> Walk {
+    fn walk(&mut self, mut pc: u64, mut steps: usize, calls: &mut PathCalls<'_, 'a>) -> Walk {
         while steps < STEP_LIMIT {
             steps += 1;
             let code = self.code;
@@ -376,7 +371,7 @@ impl<'a> Machine<'a> {
     fn tail_call(
         &mut self,
         target: u64,
-        calls: &mut dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved>,
+        calls: &mut PathCalls<'_, 'a>,
     ) -> Result<Exit, Unresolved> {
         match calls(Some(target), self)? {
             Call::Return(value) => {

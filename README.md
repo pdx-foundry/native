@@ -22,6 +22,7 @@ let modifiers = native.modifiers()?;                        // Answer<Vec<Modifi
 let categories = native.modifier_categories()?;             // Answer<Vec<ModifierCategory>>
 let scopes = native.scopes()?;                              // Answer<ScopeInventory>
 let links = native.scope_links()?;                          // Answer<Vec<ScopeLink>>
+let localization = native.localization_declarations()?;     // Answer<LocalizationDeclarations>
 ```
 
 `declarations` covers direct calls to the effect or trigger registration function in executable
@@ -31,7 +32,11 @@ intended-use tags, not where a modifier takes effect. `scopes` groups keywords o
 keyword-to-scope map; a keyword that matches several types, such as `carrier`, is a group.
 `scope_links` gives declared input and output scopes and marks links that take data. A scope
 reference carries an opaque `ScopeId`; join it to `scopes()` by that identity, because two scope
-types can share a display name. See `examples/declarations.rs`.
+types can share a display name. `localization_declarations` gives the localization contexts (such
+as `Country` or `Dead Fleet`), the commands and links that each context declares, each link's
+output context, and the scope types that select each context; a context that no scope type selects
+is `Missing`, and its commands stay in the answer. Join context references by their
+`LocalizationContextId`. See `examples/declarations.rs`.
 
 ## Live questions
 
@@ -163,6 +168,7 @@ modifiers.json
 modifier_categories.json
 scopes.json
 scope_links.json
+localization_declarations.json
 registry_items/common/traditions.json
 observe_fixture/<files-hash>/<request-hash>.json
 ```
