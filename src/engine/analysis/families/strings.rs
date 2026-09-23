@@ -272,6 +272,8 @@ impl Model<'_> {
             capacity | 1 << 63,
         );
         machine.label(buffer, node);
+        // The object now holds a long string, so a short string's label on it is stale.
+        machine.unlabel(object);
         Ok(Call::Return(Some(object)))
     }
 

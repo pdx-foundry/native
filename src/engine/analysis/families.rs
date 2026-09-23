@@ -56,6 +56,9 @@ const FOUND_KEY: u64 = u64::MAX;
 pub struct FamilyInput {
     /// The registry's database generator, when it has one.
     pub generator: Option<Generator>,
+    /// Calls that register a generated modifier outside every named registry's database
+    /// generator. The method does not follow them; they may generate this registry's modifiers.
+    pub unjoined_sites: usize,
     /// The function that registers a generated modifier: the name in `x1`, the category mask on
     /// the stack.
     pub registration: u64,
@@ -556,6 +559,55 @@ mod tests {
         .collect()
     }
 
+    /// `{key}_build_speed_mult`, with the key object at item `+0x10` copied inline into a stack
+    /// string first: a short key into the object itself, a long key into a new buffer.
+    fn copying_generator() -> Rows {
+        rows(
+            GENERATOR,
+            &[
+                ("sub", "sp,sp,#0x80"),
+                ("ldr", "x8,[x0,#0x48]"),
+                ("ldr", "x19,[x8]"),
+                ("ldr", "x8,[x19,#0x10]!"),
+                ("ldrsb", "w9,[x19,#0x17]"),
+                ("cmp", "w9,#0"),
+                ("csel", "x28,x8,x19,lt"),
+                ("mov", "x0,x28"),
+                ("bl", &format!("#{LENGTH:#x}")),
+                ("mov", "x21,x0"),
+                ("cmp", "x0,#0x16"),
+                ("b.hi", "#0x43c"),
+                ("strb", "w21,[sp,#0x57]"),
+                ("add", "x24,sp,#0x40"),
+                ("b", "#0x454"),
+                // 0x43c: a long key gets a buffer.
+                ("add", "x1,x21,#1"),
+                ("bl", &format!("#{ALLOCATE:#x}")),
+                ("mov", "x24,x0"),
+                ("str", "x0,[sp,#0x40]"),
+                ("str", "x21,[sp,#0x48]"),
+                ("nop", ""),
+                // 0x454
+                ("mov", "x0,x24"),
+                ("mov", "x1,x28"),
+                ("mov", "x2,x21"),
+                ("bl", &format!("#{COPY:#x}")),
+                ("strb", "wzr,[x24,x21]"),
+                ("add", "x0,sp,#0x40"),
+                ("adrp", "x1,#0x5000"),
+                ("add", "x1,x1,#0x10"),
+                ("bl", &format!("#{APPEND_TEXT:#x}")),
+                ("mov", "w8,#0x100"),
+                ("str", "w8,[sp]"),
+                ("add", "x1,sp,#0x40"),
+                // 0x484: the registration.
+                ("bl", &format!("#{REGISTER:#x}")),
+                ("add", "sp,sp,#0x80"),
+                ("ret", ""),
+            ],
+        )
+    }
+
     fn family_input(parts: &[Rows], sites: &[u64], constructor: Option<u64>) -> FamilyInput {
         let code = Code::from_rows(
             parts
@@ -575,6 +627,7 @@ mod tests {
         )]);
 
         FamilyInput {
+            unjoined_sites: 0,
             generator: Some(Generator {
                 function: GENERATOR,
                 sites: sites.to_vec(),
@@ -663,6 +716,26 @@ mod tests {
             Some(CONSTRUCTOR),
         );
         assert_eq!(only_site(&other_directive), Err(Unresolved("name")));
+    }
+
+    /// Post-freeze revision 1: a short key copied into a stack string and then appended to must
+    /// not keep the short string's label, or the two key forms disagree.
+    #[test]
+    fn an_inline_copy_of_either_key_form_is_the_item_key() {
+        let input = family_input(
+            &[constructor(0x10), copying_generator()],
+            &[0x484],
+            Some(CONSTRUCTOR),
+        );
+        assert_eq!(
+            only_site(&input),
+            Ok(Family {
+                parts: vec![Part::ItemKey, literal("_build_speed_mult")],
+                limit: None,
+                mask: 0x100,
+                condition: Condition::Always,
+            })
+        );
     }
 
     #[test]
