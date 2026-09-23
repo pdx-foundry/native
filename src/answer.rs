@@ -120,6 +120,10 @@ pub enum Operation {
     ScopeLinks,
     /// `Native::localization_declarations`
     LocalizationDeclarations,
+    /// `Native::on_actions`
+    OnActions,
+    /// `Native::game_rules`
+    GameRules,
     /// `Game::registry_items`
     RegistryItems,
     /// `Game::observe_fixture`
@@ -137,6 +141,8 @@ impl Operation {
                 | Self::Scopes
                 | Self::ScopeLinks
                 | Self::LocalizationDeclarations
+                | Self::OnActions
+                | Self::GameRules
         )
     }
 }
@@ -515,6 +521,67 @@ pub enum LocalizationOutput {
     Unchanged,
     /// The link could not be followed to its output, or it changes the context on some paths and
     /// not on others; a gap names it.
+    Unresolved,
+}
+
+/// An on_action that the engine fires by name, with the scopes that its call sites supply.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OnAction {
+    /// The on_action name.
+    pub name: String,
+    /// Each distinct context that a followed call site supplies. Empty when no call site of the
+    /// name could be followed; a gap with this name as its subject then says why.
+    pub entries: Vec<EntryContext>,
+}
+
+/// A game rule that the engine evaluates, with the scopes that its call sites supply.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameRule {
+    /// The rule name.
+    pub name: String,
+    /// Whether the rule evaluates a trigger or computes a weight.
+    pub kind: RuleKind,
+    /// Each distinct context that a followed call site supplies. Empty when no call site of the
+    /// rule could be followed; a gap with this name as its subject then says why.
+    pub entries: Vec<EntryContext>,
+}
+
+/// The kind of a game rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RuleKind {
+    /// The rule is a trigger that allows or refuses something.
+    Scripted,
+    /// The rule computes a weight.
+    Weighted,
+}
+
+/// The scopes that one or more call sites supply when the engine enters a callback. Each
+/// context is one alternative; the engine does not merge them.
+///
+/// Join each [`ScopeReference`] to `Native::scopes` by `id`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryContext {
+    /// The scope that `this` is.
+    pub this: EntryScope,
+    /// The scope that `root` links to.
+    pub root: EntryScope,
+    /// `from`, `fromfrom` and so on, in order. The chain ends after the first entry that is not
+    /// [`EntryScope::Scope`].
+    pub from: Vec<EntryScope>,
+}
+
+/// One scope that a call site supplies.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum EntryScope {
+    /// A scope of this type.
+    Scope(ScopeReference),
+    /// A scope object with no scope type.
+    NotSet,
+    /// The link points back to the scope that holds it. This is the engine's default link; what
+    /// script sees through it is outside this answer.
+    SelfLink,
+    /// The scope could not be established.
     Unresolved,
 }
 

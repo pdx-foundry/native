@@ -15,7 +15,12 @@
 //! localization promotion that tests a database pointer. It follows both sides of a branch on an
 //! unknown value and reports every path's end, so the caller can require that the paths agree.
 //! It still chooses no path.
-use std::collections::BTreeMap;
+//!
+//! [`Machine::run_paths_to`] follows only the paths that can still arrive at one instruction, and
+//! ends each path when it arrives there, before that instruction runs. A caller reads the
+//! arguments of a call site this way. The caller can protect memory ranges from a store to an
+//! unknown address, and keep its own facts about each path in labels that follow that path.
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::decode::{Instruction, decode_arm64};
@@ -26,12 +31,21 @@ const STEP_LIMIT: usize = 20_000;
 /// The most paths that one [`Machine::run_paths`] follows.
 pub const PATH_LIMIT: usize = 64;
 
+/// The most times that one path of [`Machine::run_paths_to`] arrives at one loop head.
+pub const LOOP_LIMIT: u32 = 4;
+
 /// Every NZCV state.
 const ALL_FLAG_STATES: u16 = u16::MAX;
 
 /// The stack pointer at entry. It is outside every mapped section, so stack loads never read
 /// executable data.
 const STACK_TOP: u64 = 0x7fff_0000_0000;
+
+/// How far below the present stack pointer the stack moves when code sets it to an unknown
+/// value, such as after a dynamic stack allocation. The new stack is memory that no path has
+/// written, so a load from it is unknown until the code stores there, and addresses taken before
+/// the move keep pointing at the old frame.
+const DYNAMIC_STACK: u64 = 0x10_0000;
 
 /// First address of scratch objects that a caller allocates.
 const OBJECT_BASE: u64 = 0x7ffe_0000_0000;
@@ -103,6 +117,53 @@ impl Code {
         Ok(Self::from_rows(rows))
     }
 
+    /// Every instruction from which the instruction at `site` can be reached by the direct
+    /// control flow of this code, including `site`. A branch through a register may go to any
+    /// instruction, such as a jump-table target on a path to `site`, so every such branch, and
+    /// every instruction that reaches one, can reach `site`.
+    fn reaching(&self, site: u64) -> BTreeSet<u64> {
+        let mut predecessors = BTreeMap::<u64, Vec<u64>>::new();
+        let mut through_register = Vec::new();
+        for (&address, operation) in &self.rows {
+            match operation.successors(address) {
+                Some(successors) => {
+                    for successor in successors {
+                        predecessors.entry(successor).or_default().push(address);
+                    }
+                }
+                None => through_register.push(address),
+            }
+        }
+
+        let mut reaching = BTreeSet::from([site]);
+        reaching.extend(&through_register);
+        let mut pending: Vec<u64> = reaching.iter().copied().collect();
+        while let Some(address) = pending.pop() {
+            for &predecessor in predecessors.get(&address).into_iter().flatten() {
+                if reaching.insert(predecessor) {
+                    pending.push(predecessor);
+                }
+            }
+        }
+        reaching
+    }
+
+    /// The targets of backward direct branches among `addresses`.
+    fn loop_heads(&self, addresses: &BTreeSet<u64>) -> BTreeSet<u64> {
+        addresses
+            .iter()
+            .filter_map(|&address| {
+                let successors = self.rows.get(&address)?.successors(address)?;
+                Some(
+                    successors
+                        .into_iter()
+                        .filter(move |&target| target <= address),
+                )
+            })
+            .flatten()
+            .collect()
+    }
+
     /// Build code from rows that are already decoded.
     pub fn from_rows(rows: impl IntoIterator<Item = Instruction>) -> Self {
         Self {
@@ -134,6 +195,8 @@ pub enum Exit {
     /// The path reached a trap instruction, so it does not return. Only
     /// [`Machine::run_paths`] reports it.
     Trapped,
+    /// The path arrived at the site given to [`Machine::run_paths_to`]. The site did not run.
+    Reached,
 }
 
 /// What [`Machine::run_paths`] does at each call: it receives the target, or `None` for a call
@@ -150,6 +213,8 @@ pub struct Path<'a> {
 
 enum Walk {
     End(Result<Exit, Unresolved>),
+    /// The path can no longer arrive at the site of [`Machine::run_paths_to`].
+    Leaves,
     /// Continue each branch at its address, with the flag states that remain possible on it
     /// when the decision was on unknown flags.
     Fork {
@@ -172,6 +237,22 @@ pub struct Machine<'a> {
     possible_flags: u16,
     memory: BTreeMap<u64, Option<u8>>,
     next_object: u64,
+    /// Ranges `(start, end)` that a store to an unknown address leaves known.
+    protected: Vec<(u64, u64)>,
+    /// Facts that the caller keeps about this path.
+    labels: BTreeMap<u64, u64>,
+    /// Known values that this path stored to an unknown address.
+    unknown_stores: Vec<u64>,
+    /// How often this path arrived at each loop head of a [`Machine::run_paths_to`] run.
+    loop_visits: BTreeMap<u64, u32>,
+}
+
+/// The instruction that [`Machine::run_paths_to`] must arrive at, every instruction from which
+/// it can, and the loop heads among them: the targets of backward branches.
+struct Site {
+    address: u64,
+    reaching: BTreeSet<u64>,
+    loop_heads: BTreeSet<u64>,
 }
 
 impl<'a> Machine<'a> {
@@ -187,6 +268,10 @@ impl<'a> Machine<'a> {
             possible_flags: ALL_FLAG_STATES,
             memory: BTreeMap::new(),
             next_object: OBJECT_BASE,
+            protected: Vec::new(),
+            labels: BTreeMap::new(),
+            unknown_stores: Vec::new(),
+            loop_visits: BTreeMap::new(),
         }
     }
 
@@ -221,6 +306,51 @@ impl<'a> Machine<'a> {
             self.memory
                 .insert(address + offset, Some((value >> (offset * 8)) as u8));
         }
+    }
+
+    /// Keep `length` bytes at `address` known when this path stores to an unknown address. The
+    /// caller protects only memory that it has shown no unknown address can reach.
+    pub fn protect(&mut self, address: u64, length: u64) {
+        self.protected.push((address, address + length));
+    }
+
+    /// Stop protecting the range that starts at `address`.
+    pub fn release(&mut self, address: u64) {
+        self.protected.retain(|(start, _)| *start != address);
+    }
+
+    /// Record the caller's fact `value` under `key` for this path.
+    pub fn label(&mut self, key: u64, value: u64) {
+        self.labels.insert(key, value);
+    }
+
+    /// The caller's fact under `key` on this path.
+    pub fn labelled(&self, key: u64) -> Option<u64> {
+        self.labels.get(&key).copied()
+    }
+
+    /// Remove the caller's fact under `key` on this path.
+    pub fn unlabel(&mut self, key: u64) {
+        self.labels.remove(&key);
+    }
+
+    /// Every fact that the caller keeps on this path.
+    pub fn labels(&self) -> &BTreeMap<u64, u64> {
+        &self.labels
+    }
+
+    /// Known values that this path stored to an unknown address.
+    pub fn unknown_stores(&self) -> &[u64] {
+        &self.unknown_stores
+    }
+
+    /// Every known eight-byte value at an eight-byte aligned address, by address.
+    pub fn known_words(&self) -> Vec<(u64, u64)> {
+        self.memory
+            .keys()
+            .filter(|address| address.is_multiple_of(8))
+            .filter_map(|&address| Some((address, self.read(address, 8)?)))
+            .collect()
     }
 
     /// Make `width` bytes at `address` unknown, such as a field that a call may have written.
@@ -288,12 +418,44 @@ impl<'a> Machine<'a> {
     /// `calls` receives the target of each call and tail call; see [`PathCalls`]. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
     pub fn run_paths(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
+        self.follow(entry, None, calls)
+    }
+
+    /// Execute from `entry` along every path that can arrive at the instruction at `site`, as
+    /// [`Machine::run_paths`] does.
+    ///
+    /// A path ends as [`Exit::Reached`] when it arrives at `site`, before `site` runs, so the
+    /// registers hold the arguments of a call there. A path that can no longer arrive, by the
+    /// direct branches of the decoded code, is dropped and counts toward no limit. A branch
+    /// through a register may go anywhere, so every instruction before one can arrive.
+    pub fn run_paths_to(
+        self,
+        entry: u64,
+        site: u64,
+        calls: &mut PathCalls<'_, 'a>,
+    ) -> Vec<Path<'a>> {
+        let reaching = self.code.reaching(site);
+        let site = Site {
+            address: site,
+            loop_heads: self.code.loop_heads(&reaching),
+            reaching,
+        };
+        self.follow(entry, Some(&site), calls)
+    }
+
+    fn follow(
+        self,
+        entry: u64,
+        site: Option<&Site>,
+        calls: &mut PathCalls<'_, 'a>,
+    ) -> Vec<Path<'a>> {
         let mut pending = vec![(self, entry, 0)];
         let mut ended = Vec::new();
 
         while let Some((mut machine, pc, steps)) = pending.pop() {
-            match machine.walk(pc, steps, calls) {
+            match machine.walk(pc, steps, site, calls) {
                 Walk::End(end) => ended.push(Path { end, machine }),
+                Walk::Leaves => {}
                 Walk::Fork { branches, steps } => {
                     if ended.len() + pending.len() + branches.len() > PATH_LIMIT {
                         ended.push(Path {
@@ -318,8 +480,30 @@ impl<'a> Machine<'a> {
     }
 
     /// Follow one path until it ends or reaches a branch on an unknown value.
-    fn walk(&mut self, mut pc: u64, mut steps: usize, calls: &mut PathCalls<'_, 'a>) -> Walk {
+    fn walk(
+        &mut self,
+        mut pc: u64,
+        mut steps: usize,
+        site: Option<&Site>,
+        calls: &mut PathCalls<'_, 'a>,
+    ) -> Walk {
         while steps < STEP_LIMIT {
+            if let Some(site) = site {
+                if pc == site.address {
+                    return Walk::End(Ok(Exit::Reached));
+                }
+                if !site.reaching.contains(&pc) {
+                    return Walk::Leaves;
+                }
+                if site.loop_heads.contains(&pc) {
+                    let visits = self.loop_visits.entry(pc).or_default();
+                    *visits += 1;
+                    if *visits > LOOP_LIMIT {
+                        return Walk::End(Err(Unresolved("loop-limit")));
+                    }
+                }
+            }
+
             steps += 1;
             let code = self.code;
             let Some(operation) = code.rows.get(&pc) else {
@@ -402,6 +586,7 @@ impl<'a> Machine<'a> {
     fn step(&mut self, operation: &Operation) -> Result<Flow, Unresolved> {
         let Operation { mnemonic, operands } = operation;
         let operands = operands.as_slice();
+        let mnemonic = &ordered_access(mnemonic).to_owned();
         match (mnemonic.as_str(), operands) {
             ("nop", []) => {}
             (
@@ -455,6 +640,167 @@ impl<'a> Machine<'a> {
                     .zip(right)
                     .map(|(left, right)| binary(mnemonic, left, right, wide));
                 self.assign(destination, value)?;
+            }
+            ("adds" | "subs", [destination, left, right, rest @ ..]) => {
+                let wide = destination.is_wide();
+                let left = self.operand(left)?;
+                let right = self.modified(right, rest)?;
+                let (kind, operation) = if mnemonic == "adds" {
+                    ("cmn", "add")
+                } else {
+                    ("cmp", "sub")
+                };
+                self.set_flags(
+                    left.zip(right)
+                        .map(|(left, right)| Flags::compare(kind, left, right, wide)),
+                );
+                let value = left
+                    .zip(right)
+                    .map(|(left, right)| binary(operation, left, right, wide));
+                self.assign(destination, value)?;
+            }
+            ("udiv" | "sdiv", [destination, left, right]) => {
+                let wide = destination.is_wide();
+                let value = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| divide(mnemonic == "sdiv", left, right, wide));
+                self.assign(destination, value)?;
+            }
+            ("smulh" | "umulh", [destination, left, right]) => {
+                let value = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| {
+                        if mnemonic == "smulh" {
+                            ((i128::from(left as i64) * i128::from(right as i64)) >> 64) as u64
+                        } else {
+                            ((u128::from(left) * u128::from(right)) >> 64) as u64
+                        }
+                    });
+                self.assign(destination, value)?;
+            }
+            ("smull" | "umull", [destination, left, right]) => {
+                let kind = if mnemonic == "smull" { "sxtw" } else { "uxtw" };
+                let value = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| extend(kind, left).wrapping_mul(extend(kind, right)));
+                self.assign(destination, value)?;
+            }
+            (
+                "sbfiz" | "ubfiz",
+                [
+                    destination,
+                    source,
+                    Operand::Immediate(lsb),
+                    Operand::Immediate(width),
+                ],
+            ) => {
+                let wide = destination.is_wide();
+                let value = self.operand(source)?.map(|value| {
+                    let field = value & low_bits(*width as u64);
+                    let unused = 64 - *width as u32;
+                    let field = if mnemonic == "sbfiz" {
+                        (((field << unused) as i64) >> unused) as u64
+                    } else {
+                        field
+                    };
+                    truncate(field << lsb, wide)
+                });
+                self.assign(destination, value)?;
+            }
+            ("mvn" | "neg", [destination, source, rest @ ..]) => {
+                let value = self.modified(source, rest)?.map(|value| {
+                    if mnemonic == "mvn" {
+                        !value
+                    } else {
+                        value.wrapping_neg()
+                    }
+                });
+                self.assign(destination, value)?;
+            }
+            ("cinc" | "cneg", [destination, source, Operand::Condition(condition)]) => {
+                let value = self.operand(source)?;
+                let value = if self.holds(*condition)? {
+                    value.map(|value| {
+                        if mnemonic == "cinc" {
+                            value.wrapping_add(1)
+                        } else {
+                            value.wrapping_neg()
+                        }
+                    })
+                } else {
+                    value
+                };
+                self.assign(destination, value)?;
+            }
+            ("fmov", [Operand::Register(destination), Operand::Register(source)]) => {
+                let value = match source.name {
+                    Name::Vector(index) => self.vectors[index]
+                        .map(|value| value & u128::from(low_bits(source.bytes * 8))),
+                    _ => self.read_register(*source).map(u128::from),
+                };
+                match destination.name {
+                    Name::Vector(index) => self.vectors[index] = value,
+                    _ => {
+                        let value = value.map(|value| value as u64);
+                        self.assign(&Operand::Register(*destination), value)?;
+                    }
+                }
+            }
+            (
+                "dup",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        lane,
+                        ..
+                    }),
+                    source @ Operand::Register(Register {
+                        name: Name::General(_) | Name::Zero,
+                        ..
+                    }),
+                ],
+            ) => {
+                let value = self.operand(source)?;
+                self.vectors[*index] = value.map(|value| replicate(value, *lane, *bytes));
+            }
+            (
+                "ext",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(low),
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(high),
+                        ..
+                    }),
+                    Operand::Immediate(start),
+                ],
+            ) => {
+                let bits = *bytes as u32 * 8;
+                let start = *start as u32 * 8;
+                let mask = u128::MAX >> (128 - bits);
+                self.vectors[*index] =
+                    self.vectors[*low]
+                        .zip(self.vectors[*high])
+                        .map(|(low, high)| {
+                            let low = (low & mask) >> start;
+                            let high = if start == 0 {
+                                0
+                            } else {
+                                (high & mask) << (bits - start)
+                            };
+                            (low | high) & mask
+                        });
             }
             (
                 "ubfx",
@@ -592,7 +938,7 @@ impl<'a> Machine<'a> {
                 ],
             ) => match self.address(memory, rest)? {
                 Some(address) => self.store_bytes(address, *bytes, self.vectors[*index]),
-                None => self.forget_memory(),
+                None => self.store_to_unknown(&halves(self.vectors[*index])),
             },
             (
                 "ldp",
@@ -635,7 +981,11 @@ impl<'a> Machine<'a> {
                     self.store_bytes(address, *bytes, self.vectors[*first]);
                     self.store_bytes(address + bytes, *bytes, self.vectors[*second]);
                 }
-                None => self.forget_memory(),
+                None => {
+                    let mut values = halves(self.vectors[*first]).to_vec();
+                    values.extend(halves(self.vectors[*second]));
+                    self.store_to_unknown(&values);
+                }
             },
             (load, [destination, Operand::Memory(memory), rest @ ..])
                 if load.starts_with("ldr") || load.starts_with("ldur") =>
@@ -665,7 +1015,7 @@ impl<'a> Machine<'a> {
                 let value = self.operand(source)?;
                 match self.address(memory, rest)? {
                     Some(address) => self.store(address, width, value),
-                    None => self.forget_memory(),
+                    None => self.store_to_unknown(&[value]),
                 }
             }
             ("stp", [first, second, Operand::Memory(memory), rest @ ..]) => {
@@ -677,7 +1027,7 @@ impl<'a> Machine<'a> {
                         self.store(address, width, first);
                         self.store(address + width, width, second);
                     }
-                    None => self.forget_memory(),
+                    None => self.store_to_unknown(&[first, second]),
                 }
             }
             ("b", [Operand::Immediate(target)]) => return Ok(Flow::Jump(*target as u64)),
@@ -786,7 +1136,10 @@ impl<'a> Machine<'a> {
         match register.name {
             Name::Zero => {}
             Name::StackPointer => {
-                self.stack_pointer = value.ok_or(Unresolved("stack-pointer"))?;
+                self.stack_pointer = match value {
+                    Some(value) => value,
+                    None => self.stack_pointer - DYNAMIC_STACK,
+                };
             }
             Name::General(index) => self.registers[index] = value,
             Name::Vector(_) => return Err(Unresolved("destination")),
@@ -821,10 +1174,18 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// A store to an unknown address may overwrite any byte, so no written byte stays known.
-    fn forget_memory(&mut self) {
-        for byte in self.memory.values_mut() {
-            *byte = None;
+    /// A store to an unknown address may overwrite any byte, so no written byte stays known,
+    /// except in a protected range. A known value stored there is kept in `unknown_stores`.
+    fn store_to_unknown(&mut self, values: &[Option<u64>]) {
+        self.unknown_stores.extend(values.iter().flatten());
+        let protected = &self.protected;
+        for (address, byte) in self.memory.iter_mut() {
+            if !protected
+                .iter()
+                .any(|(start, end)| (*start..*end).contains(address))
+            {
+                *byte = None;
+            }
         }
     }
 
@@ -901,6 +1262,44 @@ fn replicate(value: u64, lane: u64, bytes: u64) -> u128 {
     };
     let lane_value = u128::from(value & lane_mask);
     (0..bytes / lane).fold(0, |vector, index| vector | lane_value << (index * lane * 8))
+}
+
+/// The plain load or store of an acquire or release access. Their ordering does not change the
+/// value that one path reads or writes.
+fn ordered_access(mnemonic: &str) -> &str {
+    match mnemonic {
+        "ldar" | "ldapr" => "ldr",
+        "ldarb" | "ldaprb" => "ldrb",
+        "ldarh" | "ldaprh" => "ldrh",
+        "stlr" => "str",
+        "stlrb" => "strb",
+        "stlrh" => "strh",
+        other => other,
+    }
+}
+
+/// Integer division as the processor does it: division by zero gives zero, and the signed
+/// quotient is truncated toward zero.
+fn divide(signed: bool, left: u64, right: u64, wide: bool) -> u64 {
+    let (left, right) = (truncate(left, wide), truncate(right, wide));
+    if right == 0 {
+        return 0;
+    }
+    if !signed {
+        return left / right;
+    }
+    let bytes = if wide { 8 } else { 4 };
+    let left = sign_extend(left, bytes, true) as i64;
+    let right = sign_extend(right, bytes, true) as i64;
+    truncate(left.wrapping_div(right) as u64, wide)
+}
+
+/// The two 64-bit halves of a vector value.
+fn halves(value: Option<u128>) -> [Option<u64>; 2] {
+    [
+        value.map(|value| value as u64),
+        value.map(|value| (value >> 64) as u64),
+    ]
 }
 
 fn truncate(value: u64, wide: bool) -> u64 {
@@ -1084,6 +1483,28 @@ struct Operation {
 }
 
 impl Operation {
+    /// The instructions that can run next by direct control flow, or `None` for a branch through
+    /// a register. A call continues after itself.
+    fn successors(&self, address: u64) -> Option<Vec<u64>> {
+        let next = address + 4;
+        let target = self
+            .operands
+            .iter()
+            .rev()
+            .find_map(|operand| match operand {
+                Operand::Immediate(target) => Some(*target as u64),
+                _ => None,
+            });
+        Some(match self.mnemonic.as_str() {
+            "b" => target.into_iter().collect(),
+            "br" => return None,
+            "ret" | "brk" => Vec::new(),
+            "cbz" | "cbnz" | "tbz" | "tbnz" => target.into_iter().chain([next]).collect(),
+            branch if branch.starts_with("b.") => target.into_iter().chain([next]).collect(),
+            _ => vec![next],
+        })
+    }
+
     /// The condition that the instruction tests, when it tests one.
     fn condition(&self) -> Option<Condition> {
         if let Some(suffix) = self.mnemonic.strip_prefix("b.") {
@@ -1701,6 +2122,168 @@ mod tests {
         let paths = machine.run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
 
         assert_eq!(returned_values(&paths), [Some(2)]);
+    }
+
+    #[test]
+    fn paths_to_a_site_stop_before_it_and_drop_paths_that_cannot_reach_it() {
+        let code = rows(&[
+            (0x100, "cbz", "x3,#0x110"),
+            (0x104, "mov", "x1,#1"),
+            (0x108, "bl", "#0x900"),
+            (0x10c, "ret", ""),
+            (0x110, "mov", "x1,#2"),
+            (0x114, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data)
+            .run_paths_to(0x100, 0x108, &mut |_, _| Ok(Call::Return(None)));
+
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].end, Ok(Exit::Reached));
+        assert_eq!(paths[0].machine.register(1), Some(1));
+    }
+
+    #[test]
+    fn a_store_to_an_unknown_address_keeps_protected_bytes_and_records_its_value() {
+        let code = rows(&[
+            (0x100, "mov", "x9,#0x55"),
+            (0x104, "str", "x9,[x3]"),
+            (0x108, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let protected = machine.allocate(8);
+        let other = machine.allocate(8);
+        machine.write(protected, 8, 7);
+        machine.write(other, 8, 9);
+        machine.protect(protected, 8);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.read(protected, 8), Some(7));
+        assert_eq!(machine.read(other, 8), None);
+        assert_eq!(machine.unknown_stores(), [0x55]);
+
+        machine.release(protected);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+        assert_eq!(machine.read(protected, 8), None);
+    }
+
+    #[test]
+    fn flag_setting_division_multiply_and_bitfield_instructions_compute_their_values() {
+        let code = rows(&[
+            (0x100, "mov", "x1,#10"),
+            (0x104, "subs", "x2,x1,#10"),
+            (0x108, "cset", "w3,eq"),
+            (0x10c, "mov", "w4,#-7"),
+            (0x110, "mov", "w5,#2"),
+            (0x114, "sdiv", "w6,w4,w5"),
+            (0x118, "udiv", "x7,x1,xzr"),
+            (0x11c, "smull", "x8,w4,w5"),
+            (0x120, "mov", "x9,#-1"),
+            (0x124, "umulh", "x10,x9,x9"),
+            (0x128, "mov", "w11,#5"),
+            (0x12c, "sbfiz", "x12,x11,#3,#3"),
+            (0x130, "ubfiz", "x13,x11,#3,#3"),
+            (0x134, "neg", "x14,x1"),
+            (0x138, "cinc", "x15,x1,eq"),
+            (0x13c, "ldarb", "w16,[x17]"),
+            (0x140, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let byte = machine.allocate(1);
+        machine.write(byte, 1, 0x2a);
+        machine.set_register(17, byte);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.register(2), Some(0));
+        assert_eq!(machine.register(3), Some(1));
+        assert_eq!(machine.register(6), Some((-3i32) as u32 as u64));
+        assert_eq!(machine.register(7), Some(0));
+        assert_eq!(machine.register(8), Some((-14i64) as u64));
+        assert_eq!(machine.register(10), Some(u64::MAX - 1));
+        assert_eq!(machine.register(12), Some((-24i64) as u64));
+        assert_eq!(machine.register(13), Some(40));
+        assert_eq!(machine.register(14), Some((-10i64) as u64));
+        assert_eq!(machine.register(15), Some(11));
+        assert_eq!(machine.register(16), Some(0x2a));
+    }
+
+    #[test]
+    fn register_moves_between_general_and_vector_registers_keep_their_bits() {
+        let code = rows(&[
+            (0x100, "mov", "x1,#0x1234"),
+            (0x104, "fmov", "d0,x1"),
+            (0x108, "fmov", "x2,d0"),
+            (0x10c, "dup", "v1.2d,x1"),
+            (0x110, "mov", "x3,#0x55"),
+            (0x114, "dup", "v2.2d,x3"),
+            (0x118, "ext", "v3.16b,v1.16b,v2.16b,#8"),
+            (0x11c, "str", "q3,[x4]"),
+            (0x120, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let stored = machine.allocate(16);
+        machine.set_register(4, stored);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.register(2), Some(0x1234));
+        assert_eq!(machine.read(stored, 8), Some(0x1234));
+        assert_eq!(machine.read(stored + 8, 8), Some(0x55));
+    }
+
+    #[test]
+    fn an_unknown_stack_pointer_moves_the_stack_to_memory_that_no_path_wrote() {
+        let code = rows(&[
+            (0x100, "mov", "x9,#7"),
+            (0x104, "str", "x9,[sp,#-0x10]"),
+            (0x108, "sub", "x19,sp,#0x10"),
+            (0x10c, "mov", "sp,x3"),
+            (0x110, "ldr", "x0,[sp,#-0x10]"),
+            (0x114, "ldr", "x1,[x19]"),
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.register(0), None);
+        assert_eq!(machine.register(1), Some(7));
+    }
+
+    #[test]
+    fn a_path_that_loops_too_often_ends_so_that_other_paths_reach_the_site() {
+        let code = rows(&[
+            (0x100, "cbz", "x3,#0x110"),
+            (0x104, "ldr", "x3,[x3]"),
+            (0x108, "cbnz", "x4,#0x100"),
+            (0x10c, "b", "#0x100"),
+            (0x110, "mov", "x1,#1"),
+            (0x114, "bl", "#0x900"),
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data)
+            .run_paths_to(0x100, 0x114, &mut |_, _| Ok(Call::Return(None)));
+
+        assert!(paths.iter().any(|path| path.end == Ok(Exit::Reached)));
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.end == Err(Unresolved("loop-limit")))
+        );
+        assert!(paths.len() < PATH_LIMIT);
     }
 
     #[test]

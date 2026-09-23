@@ -79,7 +79,9 @@ impl Native {
             | Operation::ModifierCategories
             | Operation::Scopes
             | Operation::ScopeLinks
-            | Operation::LocalizationDeclarations => match &self.bound().analysis {
+            | Operation::LocalizationDeclarations
+            | Operation::OnActions
+            | Operation::GameRules => match &self.bound().analysis {
                 Some(analysis) => match analysis.executable() {
                     Ok(_) => Support::Supported,
                     Err(reason) => Support::Unsupported(error(operation, reason).to_string()),

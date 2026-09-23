@@ -61,6 +61,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect();
         println!("  {}: {inputs:?} -> {:?}", link.name, link.output);
     }
+    let on_actions = timed("On_actions", || native.on_actions(), Vec::len)?;
+    for on_action in on_actions.value.iter().take(5) {
+        println!("  {}: {:?}", on_action.name, on_action.entries);
+    }
+    let game_rules = timed("Game rules", || native.game_rules(), Vec::len)?;
+    for rule in game_rules.value.iter().take(5) {
+        println!("  {} ({:?}): {:?}", rule.name, rule.kind, rule.entries);
+    }
     Ok(())
 }
 
