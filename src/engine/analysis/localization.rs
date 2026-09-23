@@ -269,7 +269,7 @@ fn context_name(input: &LocalizationInput, value: u64) -> Option<String> {
 
     let mut literals = BTreeSet::new();
     let paths = machine.run_paths(input.functions.context_name, &mut |target, machine| {
-        if !input.functions.string_from_literal.contains(&target) {
+        if !target.is_some_and(|target| input.functions.string_from_literal.contains(&target)) {
             return Err(Unresolved("name-call"));
         }
 
@@ -297,7 +297,7 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
 
     let scope_object = input.functions.scope_object;
     let paths = machine.run_paths(promote, &mut |target, machine| {
-        if target == scope_object {
+        if target == Some(scope_object) {
             return Ok(Call::Stop);
         }
 
@@ -357,7 +357,7 @@ fn join(input: &LocalizationInput, bit: usize) -> Join {
 
     let getters = &input.functions.scope_object_getters;
     let paths = machine.run_paths(input.functions.scope_object, &mut |target, machine| {
-        if getters.contains(&target) {
+        if target.is_some_and(|target| getters.contains(&target)) {
             return Ok(Call::Return(Some(object)));
         }
 
@@ -384,17 +384,18 @@ fn join(input: &LocalizationInput, bit: usize) -> Join {
 }
 
 /// A call from a link function or the scope-object setter. A known setter runs on a copy of the
-/// machine and its context is kept; any other call may change the context, so it becomes unknown.
+/// machine and its context is kept; any other call, including one through a register whose
+/// target is unknown, may change the context, so the context becomes unknown.
 fn call(
     input: &LocalizationInput,
     field: u64,
-    target: u64,
+    target: Option<u64>,
     machine: &mut Machine<'_>,
 ) -> Result<Call, Unresolved> {
-    if !input.functions.setters.contains(&target) {
+    let Some(target) = target.filter(|target| input.functions.setters.contains(target)) else {
         machine.forget(field, 4);
         return Ok(Call::Return(None));
-    }
+    };
 
     let mut setter = machine.clone();
     let exit = setter.run(target, &mut |_, setter| {
@@ -538,7 +539,7 @@ mod tests {
             (0x3034, "b.ne", "#0x3040"),
             (0x3038, "mov", "x0,x1"),
             (0x303c, "b", "#0x4100"),
-            // Index 3 makes an indirect call.
+            // Index 3 makes an indirect call and returns.
             (0x3040, "cmp", "w2,#3"),
             (0x3044, "b.ne", "#0x3050"),
             (0x3048, "blr", "x8"),
@@ -711,7 +712,8 @@ mod tests {
         );
         assert_eq!(
             link(country, "Indirect"),
-            &Output::Unresolved("instruction")
+            &Output::Unresolved("context-unknown"),
+            "an indirect call may change the context"
         );
         assert_eq!(
             link(country, "Lost"),

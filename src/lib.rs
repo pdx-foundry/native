@@ -21,8 +21,10 @@ mod work_directory;
 pub mod supervisor;
 
 pub use answer::{
-    Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes,
-    DeclaredTags, Disposal, Error, Field, Gap, GapKind, LinkData, ModifierCategory,
+    Answer, Basis, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
+    DeclaredScopes, DeclaredTags, Disposal, Error, Field, Gap, GapKind, LinkData,
+    LocalizationCommand, LocalizationContext, LocalizationContextId, LocalizationContextReference,
+    LocalizationDeclarations, LocalizationLink, LocalizationOutput, ModifierCategory,
     ModifierDeclaration, Operation, OutputScope, Reader, ReaderId, ReaderKind, Registry,
     ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory, ScopeLink, ScopeReference, Source,
     Support,

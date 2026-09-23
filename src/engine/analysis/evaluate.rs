@@ -247,6 +247,7 @@ impl<'a> Machine<'a> {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) => pc = target,
                 Flow::Unknown { reason, .. } => return Err(Unresolved(reason)),
+                Flow::IndirectCall(_) => return Err(Unresolved("instruction")),
                 Flow::Call(target) => match calls(target, self)? {
                     Call::Return(value) => {
                         self.returned_from_call(value);
@@ -266,12 +267,15 @@ impl<'a> Machine<'a> {
     /// both sides, and a `b` to an address outside the decoded code is a tail call that goes to
     /// `calls`: when it returns, the path returns. A decision on unknown flags continues with
     /// flags that make the condition hold on one side and fail on the other, so a later decision
-    /// on the same flags agrees with it. At most [`PATH_LIMIT`] paths are followed; a path that would
+    /// on the same flags agrees with it.
+    ///
+    /// `calls` receives the target of each call and tail call, or `None` for a call through a
+    /// register whose value is unknown. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
     pub fn run_paths(
         self,
         entry: u64,
-        calls: &mut dyn FnMut(u64, &mut Machine<'a>) -> Result<Call, Unresolved>,
+        calls: &mut dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved>,
     ) -> Vec<Path<'a>> {
         let mut pending = vec![(self, entry, 0)];
         let mut ended = Vec::new();
@@ -307,7 +311,7 @@ impl<'a> Machine<'a> {
         &mut self,
         mut pc: u64,
         mut steps: usize,
-        calls: &mut dyn FnMut(u64, &mut Machine<'a>) -> Result<Call, Unresolved>,
+        calls: &mut dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved>,
     ) -> Walk {
         while steps < STEP_LIMIT {
             steps += 1;
@@ -342,12 +346,20 @@ impl<'a> Machine<'a> {
                         steps,
                     };
                 }
-                Flow::Call(target) => match calls(target, self) {
+                Flow::Call(target) => match calls(Some(target), self) {
                     Ok(Call::Return(value)) => {
                         self.returned_from_call(value);
                         pc += 4;
                     }
                     Ok(Call::Stop) => return Walk::End(Ok(Exit::Stopped(target))),
+                    Err(unresolved) => return Walk::End(Err(unresolved)),
+                },
+                Flow::IndirectCall(target) => match calls(target, self) {
+                    Ok(Call::Return(value)) => {
+                        self.returned_from_call(value);
+                        pc += 4;
+                    }
+                    Ok(Call::Stop) => return Walk::End(Err(Unresolved("stopped-at-unknown-call"))),
                     Err(unresolved) => return Walk::End(Err(unresolved)),
                 },
                 Flow::Return => return Walk::End(Ok(Exit::Returned)),
@@ -360,9 +372,9 @@ impl<'a> Machine<'a> {
     fn tail_call(
         &mut self,
         target: u64,
-        calls: &mut dyn FnMut(u64, &mut Machine<'a>) -> Result<Call, Unresolved>,
+        calls: &mut dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved>,
     ) -> Result<Exit, Unresolved> {
-        match calls(target, self)? {
+        match calls(Some(target), self)? {
             Call::Return(value) => {
                 self.returned_from_call(value);
                 Ok(Exit::Returned)
@@ -651,6 +663,7 @@ impl<'a> Machine<'a> {
                 return Ok(Flow::Jump(target));
             }
             ("bl", [Operand::Immediate(target)]) => return Ok(Flow::Call(*target as u64)),
+            ("blr", [register]) => return Ok(Flow::IndirectCall(self.operand(register)?)),
             ("ret", []) => return Ok(Flow::Return),
             _ => return Err(Unresolved("instruction")),
         }
@@ -762,6 +775,8 @@ enum Flow {
         reason: &'static str,
     },
     Call(u64),
+    /// A call through a register, whose target may be unknown.
+    IndirectCall(Option<u64>),
     Return,
 }
 
@@ -1562,13 +1577,27 @@ mod tests {
     }
 
     #[test]
-    fn paths_end_unresolved_at_an_indirect_call() {
-        let code = rows(&[(0x100, "blr", "x8"), (0x104, "ret", "")]);
+    fn paths_give_an_indirect_call_to_the_caller_with_its_target_when_known() {
+        let code = rows(&[
+            (0x100, "blr", "x8"),
+            (0x104, "adrp", "x9,#0x900"),
+            (0x108, "blr", "x9"),
+            (0x10c, "ret", ""),
+        ]);
         let data = ReadOnlyData::default();
-        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+        let mut targets = Vec::new();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |target, _| {
+            targets.push(target);
+            Ok(Call::Return(Some(7)))
+        });
 
-        assert_eq!(paths.len(), 1);
-        assert_eq!(paths[0].end, Err(Unresolved("instruction")));
+        assert_eq!(targets, [None, Some(0x900)]);
+        assert_eq!(returned_values(&paths), [Some(7)]);
+        assert_eq!(
+            returned(&code, &data, 0),
+            Err(Unresolved("instruction")),
+            "a single run still refuses an indirect call"
+        );
     }
 
     #[test]

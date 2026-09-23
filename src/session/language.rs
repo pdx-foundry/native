@@ -83,7 +83,7 @@ impl Native {
     }
 }
 
-fn gap(kind: GapKind, subject: Option<&str>, detail: impl Into<String>) -> Gap {
+pub(super) fn gap(kind: GapKind, subject: Option<&str>, detail: impl Into<String>) -> Gap {
     Gap {
         kind,
         subject: subject.map(str::to_owned),
@@ -104,7 +104,7 @@ fn answer<T>(
 }
 
 /// A declared answer, complete exactly when every gap is outside the method.
-fn declared<T>(value: T, gaps: Vec<Gap>, build: BuildId, method: &str) -> Answer<T> {
+pub(super) fn declared<T>(value: T, gaps: Vec<Gap>, build: BuildId, method: &str) -> Answer<T> {
     let completeness = if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
         Completeness::Complete
     } else {
