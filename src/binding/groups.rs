@@ -45,20 +45,23 @@ pub(super) fn fixture(
 }
 
 // Exact M45 disassembly: each PostReadInit traverses +0x48 pointers / +0x54 count.
-// Tradition tab completion reads each object's CString at +0x10. The category constructor
-// establishes the same key storage. A CString holds short text in place; bit 7 of the byte at
-// +23 says that it holds a pointer to the text.
+// Tradition tab completion reads each object's CString at +0x10. Each item class establishes
+// its own key storage through constructor analysis. A CString holds short text in place; bit 7
+// of the byte at +23 says that it holds a pointer to the text.
 #[derive(Clone, Copy)]
 pub(super) struct RegistryLayout {
     directory_offset: u64,
     data_offset: u64,
     count_offset: u64,
-    key_offset: u64,
     pointer_size: u64,
     string_tag_offset: u64,
 }
 
 impl RegistryLayout {
+    pub(super) fn string_tag_offset(self) -> u64 {
+        self.string_tag_offset
+    }
+
     /// Where a template database holds its items, for static methods that run its code.
     pub(super) fn database(self) -> crate::engine::analysis::families::DatabaseLayout {
         crate::engine::analysis::families::DatabaseLayout {
@@ -72,7 +75,6 @@ const M45_TEMPLATE_LAYOUT: RegistryLayout = RegistryLayout {
     directory_offset: 0x10,
     data_offset: 0x48,
     count_offset: 0x54,
-    key_offset: 0x10,
     pointer_size: 8,
     string_tag_offset: 23,
 };
@@ -88,7 +90,12 @@ pub(super) fn registry_binding(
     layout: RegistryLayout,
     directory: &str,
     load_entry: u64,
+    key_offset: Result<u64, String>,
 ) -> crate::protocol::observation::RegistryBinding {
+    let (key_offset, key_unavailable) = match key_offset {
+        Ok(offset) => (Some(offset), None),
+        Err(reason) => (None, Some(reason)),
+    };
     crate::protocol::observation::RegistryBinding {
         name: directory.into(),
         directory: directory.into(),
@@ -96,7 +103,8 @@ pub(super) fn registry_binding(
         directory_offset: layout.directory_offset,
         data_offset: layout.data_offset,
         count_offset: layout.count_offset,
-        key_offset: layout.key_offset,
+        key_offset,
+        key_unavailable,
         pointer_size: layout.pointer_size,
         string_tag_offset: layout.string_tag_offset,
     }

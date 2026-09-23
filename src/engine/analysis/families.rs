@@ -72,6 +72,39 @@ pub struct FamilyInput {
     pub data: ReadOnlyData,
 }
 
+/// Constructor code and string behavior needed to locate an item's key independently of
+/// modifier generation.
+pub struct KeyStorageInput {
+    pub constructors: Vec<u64>,
+    pub strings: StringFunctions,
+    pub layout: StringLayout,
+    pub code: Code,
+    pub data: ReadOnlyData,
+}
+
+/// The key's offset in an item. Every constructor body must establish the same place.
+pub fn item_key_offset(input: &KeyStorageInput) -> Result<u64, Unresolved> {
+    if input.constructors.is_empty() {
+        return Err(Unresolved("constructor"));
+    }
+    let offsets: BTreeSet<_> = input
+        .constructors
+        .iter()
+        .map(|&constructor| {
+            key_offset(
+                &input.code,
+                &input.data,
+                &input.strings,
+                input.layout,
+                constructor,
+            )
+        })
+        .collect::<Result<_, _>>()?;
+    (offsets.len() == 1)
+        .then(|| *offsets.first().expect("one offset"))
+        .ok_or(Unresolved("key-storage-ambiguous"))
+}
+
 /// A database's `GenerateModifiers` function.
 pub struct Generator {
     pub function: u64,
@@ -120,7 +153,13 @@ pub enum Condition {
 pub fn analyze(input: &FamilyInput) -> Option<FamilyResult> {
     let generator = input.generator.as_ref()?;
     let key_offset = match generator.constructor {
-        Some(constructor) => key_offset(input, constructor),
+        Some(constructor) => key_offset(
+            &input.code,
+            &input.data,
+            &input.strings,
+            input.layout,
+            constructor,
+        ),
         None => Err(Unresolved("constructor")),
     };
     let Ok(offset) = key_offset else {
@@ -193,16 +232,27 @@ fn write_key(machine: &mut Machine, layout: StringLayout, object: u64, form: Key
 }
 
 /// Run the item constructor with a long key, and find where it stores the key's buffer pointer.
-fn key_offset(input: &FamilyInput, constructor: u64) -> Result<u64, Unresolved> {
-    let mut machine = Machine::new(&input.code, &input.data);
+fn key_offset(
+    code: &Code,
+    data: &ReadOnlyData,
+    strings: &StringFunctions,
+    layout: StringLayout,
+    constructor: u64,
+) -> Result<u64, Unresolved> {
+    let mut machine = Machine::new(code, data);
     let item = machine.reserve(ITEM_SPAN);
-    let key = machine.allocate(input.layout.flag_byte + 1);
-    write_key(&mut machine, input.layout, key, KeyForm::Long);
+    let key = machine.allocate(layout.flag_byte + 1);
+    write_key(&mut machine, layout, key, KeyForm::Long);
     machine.set_register(0, item);
     machine.set_register(1, 0);
     machine.set_register(2, key);
 
-    let model = model(input, KeyForm::Long);
+    let model = Model {
+        functions: strings,
+        layout,
+        data,
+        key: LONG_KEY,
+    };
     let mut arena = Arena::default();
     let paths = machine.run_paths(constructor, &mut |target, machine| {
         if let Some(offset) = stored_key(machine, item) {
@@ -218,7 +268,7 @@ fn key_offset(input: &FamilyInput, constructor: u64) -> Result<u64, Unresolved> 
             .machine
             .labelled(FOUND_KEY)
             .or_else(|| stored_key(&path.machine, item));
-        match (found, ending(input, &path.end)) {
+        match (found, ending(strings, &path.end)) {
             (Some(offset), _) => {
                 offsets.insert(offset);
             }
@@ -280,11 +330,11 @@ enum Ending {
     Failed,
 }
 
-fn ending(input: &FamilyInput, end: &Result<Exit, Unresolved>) -> Ending {
+fn ending(strings: &StringFunctions, end: &Result<Exit, Unresolved>) -> Ending {
     match end {
         Ok(Exit::Returned) => Ending::Returned,
         Ok(Exit::Trapped) => Ending::Ignored,
-        Ok(Exit::Stopped(target)) if input.strings.never_return.contains(target) => Ending::Ignored,
+        Ok(Exit::Stopped(target)) if strings.never_return.contains(target) => Ending::Ignored,
         Ok(Exit::Stopped(_) | Exit::Reached) | Err(_) => Ending::Failed,
     }
 }
@@ -332,7 +382,7 @@ fn generator_paths(
     paths
         .into_iter()
         .map(|path| PathSummary {
-            ending: ending(input, &path.end),
+            ending: ending(&input.strings, &path.end),
             reached: generator
                 .sites
                 .iter()
@@ -889,5 +939,24 @@ mod tests {
             analyze(&no_constructor).unwrap().key_offset,
             Err(Unresolved("constructor"))
         );
+    }
+
+    #[test]
+    fn live_key_storage_uses_each_item_constructors_offset() {
+        let input = family_input(&[constructor(0x18)], &[], None);
+        let key = KeyStorageInput {
+            constructors: vec![CONSTRUCTOR],
+            strings: input.strings,
+            layout: input.layout,
+            code: input.code,
+            data: input.data,
+        };
+        assert_eq!(item_key_offset(&key), Ok(0x18));
+
+        let missing = KeyStorageInput {
+            constructors: Vec::new(),
+            ..key
+        };
+        assert_eq!(item_key_offset(&missing), Err(Unresolved("constructor")));
     }
 }

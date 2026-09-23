@@ -45,6 +45,23 @@ pub(crate) struct VerifiedAnalysis<'a> {
 }
 
 impl VerifiedAnalysis<'_> {
+    /// Establish the key's item-relative offset from the selected registry's constructor.
+    pub(in crate::binding) fn registry_key_offset(
+        &self,
+        candidate: &NamedCandidate,
+        string_tag_offset: u64,
+    ) -> Result<u64, String> {
+        let input = binary::families::key_storage(
+            &self.executable,
+            &self.catalog.symbols,
+            &candidate.record,
+            string_tag_offset,
+        )
+        .map_err(|error| format!("item key storage analysis failed: {error}"))?;
+        crate::engine::analysis::families::item_key_offset(&input)
+            .map_err(|reason| format!("item key storage was not established at {}", reason.0))
+    }
+
     pub(in crate::binding) fn declaration_input(
         &self,
         kind: crate::DeclarationKind,

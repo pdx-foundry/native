@@ -381,8 +381,16 @@ live runs on the same build:
   `sdk498_district_*_max_add` and `*_max_mult` names stay unexplained. No name is assigned by
   similarity. SDK-564 returns the loaded inventory and owns the classification of each entry.
 - Live `registry_items` returns `Unsupported` for all six registries: each initial loader runs
-  after the session pauses. The live layout reads every key at `+0x10`; bypass keys are at `+0x18`.
-  SDK-567 tracks this latent difference.
+  after the session pauses. SDK-567 removed the shared `+0x10` key offset. A constructor probe now
+  establishes the key storage of each selected registry before the worker can read its items.
+  On M45-release it established 148 of 164 named registries. `common/bypass` and
+  `common/map_modes` use `+0x18`; the other established keys use `+0x10`. Eleven registries have
+  no matching constructor symbol and five constructor runs do not establish key storage. Those
+  16 refuse an item read with a reason if their loader runs; no item name is read from an
+  unestablished offset. An authored constructor test covers `+0x18`. On M45-release,
+  `common/map_modes` returned eight live keys equal to its eight top-level source keys in one
+  session; another session paused before its loader ran and returned `Unsupported`. The method
+  gives no name from an unestablished offset in either case.
 
 **Not in SDK-540.** Generator classes and shared helpers (SDK-566); the classification of each
 loaded entry (SDK-564); a condition named by its item field; engine behavior for a name longer than

@@ -146,6 +146,8 @@ def registry_snapshot(frame):
         raise RuntimeError('registry receiver directory mismatch: ' + directory)
     emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
     returned_registries.append(registry['name'])
+    if registry['key_offset'] is None:
+        raise UnsupportedKeyLayout(registry['key_unavailable'] or 'item key storage was not established')
     if control == protocol.CONTROL['access_failure']:
         uint(process, 0)
         raise RuntimeError('access failure unexpectedly read zero')

@@ -37,6 +37,7 @@ const RELICS: &str = "common/relics";
 const MAP_GALAXY: &str = "map/galaxy";
 const CIVICS: &str = "common/governments/civics";
 const GAME_SCENARIOS: &str = "common/game_scenarios";
+const MAP_MODES: &str = "common/map_modes";
 /// Item counts of the catalogued M45 build.
 const ITEM_COUNTS: [(&str, usize); 3] =
     [(TRADITIONS, 234), (CATEGORIES, 33), (ASCENSION_PERKS, 49)];
@@ -135,6 +136,7 @@ enum Case {
     InvalidSelection,
     OutsideCommon,
     LateOnly,
+    NonstandardKey,
     RecordedRoundTrip,
     Fixture(Fault),
     FixtureOutsideSelection,
@@ -183,6 +185,7 @@ fn cases() -> Vec<(String, Case)> {
         ("invalid_selection".to_owned(), Case::InvalidSelection),
         ("outside_common".to_owned(), Case::OutsideCommon),
         ("late_only".to_owned(), Case::LateOnly),
+        ("nonstandard_key".to_owned(), Case::NonstandardKey),
         ("recorded_round_trip".to_owned(), Case::RecordedRoundTrip),
         ("startup_timeout".to_owned(), Case::StartupTimeout),
         ("cancel".to_owned(), Case::Cancel),
@@ -310,6 +313,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::InvalidSelection => invalid_selection(native).await,
         Case::OutsideCommon => outside_common(native).await,
         Case::LateOnly => late_only(native).await,
+        Case::NonstandardKey => nonstandard_key(native).await,
         Case::RecordedRoundTrip => recorded_round_trip(native).await,
         Case::Fixture(control) => fixture_case(control, None).await,
         Case::FixtureOutsideSelection => fixture_outside_selection(native).await,
@@ -1424,6 +1428,26 @@ async fn late_only(native: &Native) -> Outcome {
         match game.registry_items(GAME_SCENARIOS).await {
             Err(Error::Unsupported { reason, .. }) if reason.contains("initial loader") => Ok(()),
             other => Err(format!("late-only registry: {other:?}").into()),
+        }
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn nonstandard_key(native: &Native) -> Outcome {
+    let mut game = native
+        .start_game(options().registries([MAP_MODES, TRADITIONS]))
+        .await?;
+    let mut result = async {
+        match game.registry_items(MAP_MODES).await {
+            Ok(answer) => {
+                complete(&answer, MAP_MODES)?;
+                source_keys_match(&answer, MAP_MODES)?;
+                Ok(())
+            }
+            Err(Error::Unsupported { reason, .. }) if reason.contains("initial loader") => Ok(()),
+            other => Err(format!("map modes with nonstandard key: {other:?}").into()),
         }
     }
     .await;

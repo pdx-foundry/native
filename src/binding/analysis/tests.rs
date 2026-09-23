@@ -126,6 +126,52 @@ fn every_m45_named_candidate_has_one_initial_loader_entry() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn m45_registry_keys_follow_their_item_constructors() {
+    let installation =
+        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let selected = ["common/bypass".into(), "common/traditions".into()];
+    let bindings = binding.registry_bindings(&selected).unwrap();
+    assert_eq!(bindings["common/bypass"].key_offset, Some(0x18));
+    assert_eq!(bindings["common/traditions"].key_offset, Some(0x10));
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn m45_registry_key_storage_sweep() {
+    let installation =
+        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let verified = binding.analysis.as_ref().unwrap().verified().unwrap();
+    let names: Vec<String> = verified
+        .named_candidates()
+        .iter()
+        .filter_map(|candidate| match &candidate.directory {
+            crate::engine::analysis::directories::Directory::Named(name) => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
+    let bindings = binding.registry_bindings(&names).unwrap();
+    let mut established = 0;
+    let mut refused = std::collections::BTreeMap::<String, usize>::new();
+    for registry in bindings.values() {
+        match (registry.key_offset, registry.key_unavailable.as_deref()) {
+            (Some(offset), None) => {
+                established += 1;
+                if offset != 0x10 {
+                    println!("{}: key offset {offset:#x}", registry.name);
+                }
+            }
+            (None, Some(reason)) => *refused.entry(reason.into()).or_default() += 1,
+            other => panic!("invalid key binding: {other:?}"),
+        }
+    }
+    println!("established={established}, refused={refused:?}");
+    assert_eq!(established + refused.values().sum::<usize>(), names.len());
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn repeated_public_and_binding_queries_agree() {
     use crate::Native;
     let installation =

@@ -18,21 +18,46 @@ fn initial_loader_requires_one_named_candidate_with_an_address() {
     };
     let known = candidate("common/traditions", Some("0x1234"));
     assert_eq!(
-        super::initial_loader(std::slice::from_ref(&known), "common/traditions"),
+        super::initial_loader(
+            super::named_candidate(std::slice::from_ref(&known), "common/traditions").unwrap(),
+            "common/traditions"
+        ),
         Ok(0x1234)
     );
-    assert!(super::initial_loader(&[], "common/traditions").is_err());
-    assert!(super::initial_loader(&[known.clone(), known], "common/traditions").is_err());
+    assert!(super::named_candidate(&[], "common/traditions").is_err());
+    assert!(super::named_candidate(&[known.clone(), known], "common/traditions").is_err());
     assert!(
-        super::initial_loader(&[candidate("common/traditions", None)], "common/traditions")
-            .is_err()
+        super::initial_loader(&candidate("common/traditions", None), "common/traditions").is_err()
     );
     assert!(
         super::initial_loader(
-            &[candidate("common/traditions", Some("invalid"))],
+            &candidate("common/traditions", Some("invalid")),
             "common/traditions"
         )
         .is_err()
+    );
+}
+
+#[test]
+fn registry_binding_keeps_the_established_key_offset_or_refusal() {
+    let layout = super::groups::registry_layout(&[
+        super::targets::BindingGroupId::M45TemplateRegistryLayout,
+    ])
+    .unwrap();
+    let bypass = super::groups::registry_binding(layout, "common/bypass", 0x1234, Ok(0x18));
+    assert_eq!(bypass.key_offset, Some(0x18));
+    assert_eq!(bypass.key_unavailable, None);
+
+    let unknown = super::groups::registry_binding(
+        layout,
+        "common/unknown",
+        0x1234,
+        Err("item key storage was not established".into()),
+    );
+    assert_eq!(unknown.key_offset, None);
+    assert_eq!(
+        unknown.key_unavailable.as_deref(),
+        Some("item key storage was not established")
     );
 }
 
@@ -159,6 +184,7 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
                     plan.operation().registry_layout.unwrap(),
                     name,
                     0x5678,
+                    Ok(0x10),
                 ),
             )
         })
@@ -306,6 +332,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         operation.registry_layout.unwrap(),
         "common/traditions",
         0x5678,
+        Ok(0x10),
     );
     let registries = std::collections::BTreeMap::from([("common/traditions".into(), registry)]);
     operation.machine.architecture = "synthetic-machine".into();

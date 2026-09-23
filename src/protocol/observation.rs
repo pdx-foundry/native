@@ -107,7 +107,8 @@ pub(crate) struct RegistryBinding {
     pub directory_offset: u64,
     pub data_offset: u64,
     pub count_offset: u64,
-    pub key_offset: u64,
+    pub key_offset: Option<u64>,
+    pub key_unavailable: Option<String>,
     pub pointer_size: u64,
     pub string_tag_offset: u64,
 }

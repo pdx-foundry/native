@@ -530,6 +530,40 @@ mod tests {
     }
 
     #[test]
+    fn an_unestablished_key_layout_refuses_item_names() {
+        let (mut records, owner, names) = session(&[]);
+        records.retain(|record| {
+            !matches!(
+                &record.event,
+                WorkerEvent::RegistrySnapshot { name, .. } | WorkerEvent::RegistryEnd { name, .. }
+                    if name == TRADITIONS
+            )
+        });
+        let pause = records
+            .iter()
+            .position(|record| matches!(record.event, WorkerEvent::SessionPaused { .. }))
+            .unwrap();
+        let mut unsupported = records[pause].clone();
+        unsupported.event = WorkerEvent::RegistryUnsupported {
+            name: TRADITIONS.into(),
+            reason: "item key storage was not established".into(),
+        };
+        records.insert(pause, unsupported);
+        for (index, record) in records.iter_mut().enumerate() {
+            record.seq = index as u64 + 1;
+        }
+
+        assert_eq!(
+            readiness(&records, &owner, &names),
+            Some(GameReadiness::PausedAfterRegistryInitialization)
+        );
+        let items = reduce(TRADITIONS, &records, &owner);
+        assert_eq!(items.observed, Observed::Unsupported);
+        assert!(items.items.is_empty());
+        assert!(items.diagnostics[0].contains("item key storage was not established"));
+    }
+
+    #[test]
     fn a_pause_with_no_returned_loaders_keeps_the_selected_registry_unsupported() {
         let (mut records, mut owner, _) = session(&["first"]);
         records.retain(|record| registry_name(&record.event).is_none());
