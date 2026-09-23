@@ -139,7 +139,11 @@ pub struct Path<'a> {
 
 enum Walk {
     End(Result<Exit, Unresolved>),
-    Fork { taken: u64, next: u64, steps: usize },
+    /// Continue each branch at its address, with its flags when the decision was on flags.
+    Fork {
+        branches: Vec<(Option<Flags>, u64)>,
+        steps: usize,
+    },
 }
 
 /// Register and memory state of one run.
@@ -258,9 +262,11 @@ impl<'a> Machine<'a> {
 
     /// Execute from `entry` along every path, and report how each path ended.
     ///
-    /// Unlike [`Machine::run`], a conditional branch on an unknown value continues on both sides,
-    /// and a `b` to an address outside the decoded code is a tail call that goes to `calls`: when
-    /// it returns, the path returns. At most [`PATH_LIMIT`] paths are followed; a path that would
+    /// Unlike [`Machine::run`], a branch or conditional select on an unknown value continues on
+    /// both sides, and a `b` to an address outside the decoded code is a tail call that goes to
+    /// `calls`: when it returns, the path returns. A decision on unknown flags continues with
+    /// flags that make the condition hold on one side and fail on the other, so a later decision
+    /// on the same flags agrees with it. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
     pub fn run_paths(
         self,
@@ -273,8 +279,8 @@ impl<'a> Machine<'a> {
         while let Some((mut machine, pc, steps)) = pending.pop() {
             match machine.walk(pc, steps, calls) {
                 Walk::End(end) => ended.push(Path { end, machine }),
-                Walk::Fork { taken, next, steps } => {
-                    if ended.len() + pending.len() + 2 > PATH_LIMIT {
+                Walk::Fork { branches, steps } => {
+                    if ended.len() + pending.len() + branches.len() > PATH_LIMIT {
                         ended.push(Path {
                             end: Err(Unresolved("path-limit")),
                             machine,
@@ -282,8 +288,13 @@ impl<'a> Machine<'a> {
                         continue;
                     }
 
-                    pending.push((machine.clone(), next, steps));
-                    pending.push((machine, taken, steps));
+                    for (flags, pc) in branches.into_iter().rev() {
+                        let mut branch = machine.clone();
+                        if flags.is_some() {
+                            branch.flags = flags;
+                        }
+                        pending.push((branch, pc, steps));
+                    }
                 }
             }
         }
@@ -306,6 +317,16 @@ impl<'a> Machine<'a> {
             };
             let flow = match self.step(operation) {
                 Ok(flow) => flow,
+                Err(Unresolved("flags")) if let Some(condition) = operation.condition() => {
+                    return Walk::Fork {
+                        branches: condition
+                            .outcomes()
+                            .into_iter()
+                            .map(|flags| (Some(flags), pc))
+                            .collect(),
+                        steps: steps - 1,
+                    };
+                }
                 Err(unresolved) => return Walk::End(Err(unresolved)),
             };
 
@@ -317,8 +338,7 @@ impl<'a> Machine<'a> {
                 Flow::Jump(target) => pc = target,
                 Flow::Unknown { target, .. } => {
                     return Walk::Fork {
-                        taken: target,
-                        next: pc + 4,
+                        branches: vec![(None, target), (None, pc + 4)],
                         steps,
                     };
                 }
@@ -592,13 +612,7 @@ impl<'a> Machine<'a> {
             (branch, [Operand::Immediate(target)]) if branch.starts_with("b.") => {
                 let condition =
                     Condition::parse(&branch[2..]).ok_or(Unresolved("branch-condition"))?;
-                let Some(flags) = self.flags else {
-                    return Ok(Flow::Unknown {
-                        target: *target as u64,
-                        reason: "flags",
-                    });
-                };
-                if condition.holds(flags) {
+                if self.holds(condition)? {
                     return Ok(Flow::Jump(*target as u64));
                 }
             }
@@ -921,6 +935,19 @@ impl Condition {
         })
     }
 
+    /// Flags that make the condition hold, and flags that make it fail, when each exists.
+    fn outcomes(self) -> Vec<Flags> {
+        let all: Vec<_> = (0..16).map(Flags::from_bits).collect();
+        [true, false]
+            .into_iter()
+            .filter_map(|wanted| {
+                all.iter()
+                    .copied()
+                    .find(|flags| self.holds(*flags) == wanted)
+            })
+            .collect()
+    }
+
     fn holds(self, flags: Flags) -> bool {
         let Flags {
             negative,
@@ -955,6 +982,18 @@ struct Operation {
 }
 
 impl Operation {
+    /// The condition that the instruction tests, when it tests one.
+    fn condition(&self) -> Option<Condition> {
+        if let Some(suffix) = self.mnemonic.strip_prefix("b.") {
+            return Condition::parse(suffix);
+        }
+
+        self.operands.iter().find_map(|operand| match operand {
+            Operand::Condition(condition) => Some(*condition),
+            _ => None,
+        })
+    }
+
     /// An operand that does not parse makes the whole row unsupported, so it can never be read as
     /// a different instruction.
     fn parse(row: &Instruction) -> Self {
@@ -1444,6 +1483,28 @@ mod tests {
         let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
 
         assert_eq!(returned_values(&paths), [Some(1), Some(2), Some(3)]);
+    }
+
+    #[test]
+    fn paths_split_a_select_on_unknown_flags_and_keep_later_decisions_consistent() {
+        let code = rows(&[
+            (0x100, "cmp", "x3,#0"),
+            (0x104, "cset", "w0,eq"),
+            (0x108, "b.eq", "#0x114"),
+            (0x10c, "add", "x0,x0,#0x10"),
+            (0x110, "ret", ""),
+            (0x114, "add", "x0,x0,#0x20"),
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+
+        assert_eq!(returned_values(&paths), [Some(0x10), Some(0x21)]);
+        assert_eq!(
+            returned(&code, &data, 0),
+            Err(Unresolved("flags")),
+            "a single run still refuses the unknown flags"
+        );
     }
 
     #[test]
