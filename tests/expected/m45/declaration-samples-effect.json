@@ -10,8 +10,7 @@
           "name": "country"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "add_blocker",
@@ -32,8 +31,7 @@
           "name": "colony"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "abort_special_project",
@@ -46,8 +44,7 @@
           "name": "country"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "set_country_flag",
@@ -60,8 +57,7 @@
           "name": "country"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "add_experience",
@@ -74,15 +70,13 @@
           "name": "leader"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "abort_situation",
     "description": "Destroys a situation in right hand side event target, firing on_abort (use to cancel and fire that effect)",
     "usage": "abort_situation = <event target>",
-    "scopes": "Any",
-    "targets": "Unresolved"
+    "scopes": "Any"
   },
   {
     "name": "accept_covenant",
@@ -95,8 +89,7 @@
           "name": "country"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "activate_crisis_progression",
@@ -109,8 +102,7 @@
           "name": "country"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "activate_fog_machine",
@@ -123,14 +115,12 @@
           "name": "country"
         }
       ]
-    },
-    "targets": "Unresolved"
+    }
   },
   {
     "name": "activate_gateway",
     "description": "Activates the gateway associated with a megastructure.",
     "usage": "activate_gateway = <target>",
-    "scopes": "Any",
-    "targets": "Unresolved"
+    "scopes": "Any"
   }
 ]

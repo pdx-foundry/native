@@ -277,7 +277,6 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                     description: description.clone(),
                     usage: usage.clone(),
                     scopes,
-                    targets: DeclaredScopes::Unresolved,
                 });
             }
             Site::RuntimeToken { obstacle } => gaps.push(Gap {
@@ -309,11 +308,6 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
             detail: "scope name table not found".into(),
         });
     }
-    gaps.push(Gap {
-        kind: GapKind::UnresolvedPath,
-        subject: None,
-        detail: "target declarations are not followed by this method".into(),
-    });
     gaps.push(Gap {
         kind: GapKind::OutsideMethod,
         subject: None,

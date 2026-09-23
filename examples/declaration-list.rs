@@ -27,10 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         for declaration in matching {
             println!(
-                "{}  scopes: {}  targets: {}",
+                "{}  scopes: {}",
                 declaration.name,
-                scopes(&declaration.scopes),
-                scopes(&declaration.targets)
+                scopes(&declaration.scopes)
             );
         }
         for gap in &answer.gaps {

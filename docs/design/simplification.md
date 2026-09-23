@@ -95,7 +95,7 @@ pub struct Field    { pub name: String, pub reader: Reader, pub conditional: boo
 pub struct Reader   { pub id: Option<ReaderId>, pub kind: ReaderKind }
 pub enum ReaderKind { Unknown /* extended as reader support lands */ }
 pub struct Declaration { pub name: String, pub description: String, pub usage: String,
-                         pub scopes: DeclaredScopes, pub targets: DeclaredScopes }
+                         pub scopes: DeclaredScopes } // SDK-568: no targets; see discovery.md
 pub enum DeclaredScopes { Any, Listed(Vec<ScopeReference>), Unresolved }
 pub struct ScopeReference { pub id: ScopeId, pub name: String } // SDK-536: join by id, not name
 ```

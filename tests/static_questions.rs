@@ -133,27 +133,35 @@ fn declarations_match_the_recorded_m45_inventory() {
             gap.kind == GapKind::UnreadableInput && gap.detail == "scope name table not found"
         });
         for item in &answer.value {
-            assert_eq!(item.targets, DeclaredScopes::Unresolved);
             assert!(!item.description.contains("Supported Scopes:"));
             assert!(!item.usage.contains("Supported Scopes:"));
-            if item.scopes == DeclaredScopes::Unresolved && !global_scope_gap {
-                assert!(
+            if !global_scope_gap {
+                assert_eq!(
+                    item.scopes == DeclaredScopes::Unresolved,
                     answer
                         .gaps
                         .iter()
                         .any(|gap| gap.kind == GapKind::UnresolvedPath
-                            && gap.subject.as_deref() == Some(&item.name))
+                            && gap.subject.as_deref() == Some(&item.name)
+                            && gap.detail.starts_with("scope declaration not followed at ")),
+                    "{}",
+                    item.name
                 );
             }
         }
-        assert!(
-            answer
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == GapKind::UnresolvedPath
-                    && gap.subject.is_none()
-                    && gap.detail == "target declarations are not followed by this method")
+        let unresolved: Vec<_> = answer
+            .value
+            .iter()
+            .filter(|item| item.scopes == DeclaredScopes::Unresolved)
+            .map(|item| item.name.as_str())
+            .collect();
+        assert_eq!(
+            serde_json::to_value(unresolved).unwrap(),
+            gap_counts[subject]["unresolved_scopes"]
         );
+        assert!(answer.gaps.iter().all(|gap| gap.subject.is_some()
+            || gap.kind == GapKind::OutsideMethod
+            || gap.kind == GapKind::UnreadableInput));
         let samples: Vec<Declaration> = expected(&format!("declaration-samples-{subject}.json"));
         assert_eq!(samples.len(), 10);
         for sample in samples {
@@ -176,6 +184,16 @@ fn declarations_match_the_recorded_m45_inventory() {
             .find(|item| item.name == "if")
             .unwrap()
             .scopes,
+        DeclaredScopes::Any
+    );
+    // A command vtable loaded through the global offset table, and one stored through a copy of
+    // the object register.
+    assert_eq!(
+        listed_names(&find(&effects.value, "set_citizenship_type", |item| &item.name).scopes),
+        ["pop", "pop_group", "leader", "species"]
+    );
+    assert_eq!(
+        find(&triggers.value, "exists", |item| &item.name).scopes,
         DeclaredScopes::Any
     );
 }

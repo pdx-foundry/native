@@ -86,14 +86,13 @@ fn recorded() -> tempfile::TempDir {
         "declarations/effect.json",
         json!({ "Ok": {
             "value": [
-                { "name": "always", "description": "Always succeeds", "usage": "", "scopes": "Any", "targets": "Unresolved" },
-                { "name": "win", "description": "Wins", "usage": "win = yes", "scopes": { "Listed": [{ "id": "country-id", "name": "country" }] }, "targets": "Unresolved" }
+                { "name": "always", "description": "Always succeeds", "usage": "", "scopes": "Any" },
+                { "name": "win", "description": "Wins", "usage": "win = yes", "scopes": { "Listed": [{ "id": "country-id", "name": "country" }] } }
             ],
             "completeness": "Partial",
             "gaps": [
                 { "kind": "UnnamedDeclaration", "subject": null, "detail": "runtime token" },
-            { "kind": "UnresolvedPath", "subject": "missing", "detail": "documentation" },
-            { "kind": "UnresolvedPath", "subject": null, "detail": "target declarations are not followed by this method" }
+            { "kind": "UnresolvedPath", "subject": "missing", "detail": "documentation" }
             ],
             "source": source()
         }}),

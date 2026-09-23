@@ -8,7 +8,6 @@
           "description": "Executes enclosed effects if limit criteria are met",
           "name": "if",
           "scopes": "Any",
-          "targets": "Unresolved",
           "usage": "if = { limit = { <triggers> } <effects> }"
         }
       },
@@ -18,7 +17,6 @@
           "description": "Executes enclosed effects if limit criteria of preceding 'if' or 'else_if' is not met",
           "name": "else",
           "scopes": "Any",
-          "targets": "Unresolved",
           "usage": "if = { limit = { <triggers> } <effects> }\nelse = { <effects> }"
         }
       },
@@ -28,7 +26,6 @@
           "description": "Executes enclosed effects if limit criteria of preceding 'if' or 'else_if' is not met, and its own limit is met",
           "name": "else_if",
           "scopes": "Any",
-          "targets": "Unresolved",
           "usage": "if = { limit = { <triggers> } <effects> }\nelse_if = { limit = { <triggers> } <effects> }"
         }
       },
@@ -45,7 +42,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "join_war_on_side = { war = <target> side = attackers/defenders/<country> }"
         }
       },
@@ -70,7 +66,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "\tremove_building = <building_type_key>"
         }
       },
@@ -95,7 +90,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "\tremove_zone = {\n\t\tdistrict = <district_type_key/district_slot_index>\n\t\tzone = <zone_type_key>\n\t\tzone_slot = <zone_slot_index>\n\t\tall = <yes/no>\n\t}"
         }
       },
@@ -136,7 +130,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": ""
         }
       },
@@ -153,7 +146,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "every_owned_army = { limit = { <triggers> } <effects> }"
         }
       },
@@ -170,7 +162,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "random_owned_army = {\n\tlimit = { <triggers> }\n\tweights = { (optional - adds weights to affect the chance a specific object is selected)\n\t\tbase = float\n\t\tmodifier = { <add/factor = float> <triggers> }\n\t}\n\t<effects>\n}"
         }
       },
@@ -187,7 +178,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "ordered_owned_army = {\n\tlimit = { <triggers> }\n\tposition = <integer, starting with 0>\n\torder_by = <variable>/trigger:<trigger>\n\tinverse = yes/no (default: no - if yes, then 0 is lowest rather than highest)\n\t<effects>\n}"
         }
       }
@@ -202,7 +192,6 @@
           "description": "all inside trigger must be true",
           "name": "and",
           "scopes": "Any",
-          "targets": "Unresolved",
           "usage": ""
         }
       },
@@ -212,7 +201,6 @@
           "description": "Adjusts progress of triggers inside it",
           "name": "custom_progress",
           "scopes": "Any",
-          "targets": "Unresolved",
           "usage": "custom_progress = {\n\t...\n\tcurrent_val_coeff = 0.5\n\tfinal_val_coeff = 0.5\n\tmode = <normal/simplified/clamped>\n}"
         }
       },
@@ -222,7 +210,6 @@
           "description": "Nullifies progress of triggers inside it and returns progress '0 of 0'",
           "name": "hidden_progress",
           "scopes": "Any",
-          "targets": "Unresolved",
           "usage": "hidden_progress = {\n\t<triggers>\n}"
         }
       },
@@ -232,7 +219,6 @@
           "description": "Hides the progress of the triggers inside and returns progresses '0 of 1' or '1 of 1'",
           "name": "simple_progress",
           "scopes": "Any",
-          "targets": "Unresolved",
           "usage": "simple_progress = {\n\t<triggers>\n}"
         }
       },
@@ -249,7 +235,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "num_proxy_war >=< <value>"
         }
       },
@@ -266,7 +251,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "any_owned_army = { <triggers> }"
         }
       },
@@ -283,7 +267,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "count_owned_army = {\n\tcount = <num/all/variable>\n\tlimit = { <triggers> }\n}"
         }
       },
@@ -324,7 +307,6 @@
               }
             ]
           },
-          "targets": "Unresolved",
           "usage": "count_owned_pop_amount = {\n\tcount = <num/all/variable>\n\tlimit = { <triggers> }\n}"
         }
       }
