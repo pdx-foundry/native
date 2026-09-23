@@ -553,6 +553,7 @@ impl<'a> Machine<'a> {
     fn step(&mut self, operation: &Operation) -> Result<Flow, Unresolved> {
         let Operation { mnemonic, operands } = operation;
         let operands = operands.as_slice();
+        let mnemonic = &ordered_access(mnemonic).to_owned();
         match (mnemonic.as_str(), operands) {
             ("nop", []) => {}
             (
@@ -606,6 +607,167 @@ impl<'a> Machine<'a> {
                     .zip(right)
                     .map(|(left, right)| binary(mnemonic, left, right, wide));
                 self.assign(destination, value)?;
+            }
+            ("adds" | "subs", [destination, left, right, rest @ ..]) => {
+                let wide = destination.is_wide();
+                let left = self.operand(left)?;
+                let right = self.modified(right, rest)?;
+                let (kind, operation) = if mnemonic == "adds" {
+                    ("cmn", "add")
+                } else {
+                    ("cmp", "sub")
+                };
+                self.set_flags(
+                    left.zip(right)
+                        .map(|(left, right)| Flags::compare(kind, left, right, wide)),
+                );
+                let value = left
+                    .zip(right)
+                    .map(|(left, right)| binary(operation, left, right, wide));
+                self.assign(destination, value)?;
+            }
+            ("udiv" | "sdiv", [destination, left, right]) => {
+                let wide = destination.is_wide();
+                let value = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| divide(mnemonic == "sdiv", left, right, wide));
+                self.assign(destination, value)?;
+            }
+            ("smulh" | "umulh", [destination, left, right]) => {
+                let value = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| {
+                        if mnemonic == "smulh" {
+                            ((i128::from(left as i64) * i128::from(right as i64)) >> 64) as u64
+                        } else {
+                            ((u128::from(left) * u128::from(right)) >> 64) as u64
+                        }
+                    });
+                self.assign(destination, value)?;
+            }
+            ("smull" | "umull", [destination, left, right]) => {
+                let kind = if mnemonic == "smull" { "sxtw" } else { "uxtw" };
+                let value = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| extend(kind, left).wrapping_mul(extend(kind, right)));
+                self.assign(destination, value)?;
+            }
+            (
+                "sbfiz" | "ubfiz",
+                [
+                    destination,
+                    source,
+                    Operand::Immediate(lsb),
+                    Operand::Immediate(width),
+                ],
+            ) => {
+                let wide = destination.is_wide();
+                let value = self.operand(source)?.map(|value| {
+                    let field = value & low_bits(*width as u64);
+                    let unused = 64 - *width as u32;
+                    let field = if mnemonic == "sbfiz" {
+                        (((field << unused) as i64) >> unused) as u64
+                    } else {
+                        field
+                    };
+                    truncate(field << lsb, wide)
+                });
+                self.assign(destination, value)?;
+            }
+            ("mvn" | "neg", [destination, source, rest @ ..]) => {
+                let value = self.modified(source, rest)?.map(|value| {
+                    if mnemonic == "mvn" {
+                        !value
+                    } else {
+                        value.wrapping_neg()
+                    }
+                });
+                self.assign(destination, value)?;
+            }
+            ("cinc" | "cneg", [destination, source, Operand::Condition(condition)]) => {
+                let value = self.operand(source)?;
+                let value = if self.holds(*condition)? {
+                    value.map(|value| {
+                        if mnemonic == "cinc" {
+                            value.wrapping_add(1)
+                        } else {
+                            value.wrapping_neg()
+                        }
+                    })
+                } else {
+                    value
+                };
+                self.assign(destination, value)?;
+            }
+            ("fmov", [Operand::Register(destination), Operand::Register(source)]) => {
+                let value = match source.name {
+                    Name::Vector(index) => self.vectors[index]
+                        .map(|value| value & u128::from(low_bits(source.bytes * 8))),
+                    _ => self.read_register(*source).map(u128::from),
+                };
+                match destination.name {
+                    Name::Vector(index) => self.vectors[index] = value,
+                    _ => {
+                        let value = value.map(|value| value as u64);
+                        self.assign(&Operand::Register(*destination), value)?;
+                    }
+                }
+            }
+            (
+                "dup",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        lane,
+                        ..
+                    }),
+                    source @ Operand::Register(Register {
+                        name: Name::General(_) | Name::Zero,
+                        ..
+                    }),
+                ],
+            ) => {
+                let value = self.operand(source)?;
+                self.vectors[*index] = value.map(|value| replicate(value, *lane, *bytes));
+            }
+            (
+                "ext",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(low),
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(high),
+                        ..
+                    }),
+                    Operand::Immediate(start),
+                ],
+            ) => {
+                let bits = *bytes as u32 * 8;
+                let start = *start as u32 * 8;
+                let mask = u128::MAX >> (128 - bits);
+                self.vectors[*index] =
+                    self.vectors[*low]
+                        .zip(self.vectors[*high])
+                        .map(|(low, high)| {
+                            let low = (low & mask) >> start;
+                            let high = if start == 0 {
+                                0
+                            } else {
+                                (high & mask) << (bits - start)
+                            };
+                            (low | high) & mask
+                        });
             }
             (
                 "ubfx",
@@ -1064,6 +1226,36 @@ fn replicate(value: u64, lane: u64, bytes: u64) -> u128 {
     };
     let lane_value = u128::from(value & lane_mask);
     (0..bytes / lane).fold(0, |vector, index| vector | lane_value << (index * lane * 8))
+}
+
+/// The plain load or store of an acquire or release access. Their ordering does not change the
+/// value that one path reads or writes.
+fn ordered_access(mnemonic: &str) -> &str {
+    match mnemonic {
+        "ldar" | "ldapr" => "ldr",
+        "ldarb" | "ldaprb" => "ldrb",
+        "ldarh" | "ldaprh" => "ldrh",
+        "stlr" => "str",
+        "stlrb" => "strb",
+        "stlrh" => "strh",
+        other => other,
+    }
+}
+
+/// Integer division as the processor does it: division by zero gives zero, and the signed
+/// quotient is truncated toward zero.
+fn divide(signed: bool, left: u64, right: u64, wide: bool) -> u64 {
+    let (left, right) = (truncate(left, wide), truncate(right, wide));
+    if right == 0 {
+        return 0;
+    }
+    if !signed {
+        return left / right;
+    }
+    let bytes = if wide { 8 } else { 4 };
+    let left = sign_extend(left, bytes, true) as i64;
+    let right = sign_extend(right, bytes, true) as i64;
+    truncate(left.wrapping_div(right) as u64, wide)
 }
 
 /// The two 64-bit halves of a vector value.
@@ -1942,6 +2134,75 @@ mod tests {
             .run(0x100, &mut |_, _| Ok(Call::Return(None)))
             .unwrap();
         assert_eq!(machine.read(protected, 8), None);
+    }
+
+    #[test]
+    fn flag_setting_division_multiply_and_bitfield_instructions_compute_their_values() {
+        let code = rows(&[
+            (0x100, "mov", "x1,#10"),
+            (0x104, "subs", "x2,x1,#10"),
+            (0x108, "cset", "w3,eq"),
+            (0x10c, "mov", "w4,#-7"),
+            (0x110, "mov", "w5,#2"),
+            (0x114, "sdiv", "w6,w4,w5"),
+            (0x118, "udiv", "x7,x1,xzr"),
+            (0x11c, "smull", "x8,w4,w5"),
+            (0x120, "mov", "x9,#-1"),
+            (0x124, "umulh", "x10,x9,x9"),
+            (0x128, "mov", "w11,#5"),
+            (0x12c, "sbfiz", "x12,x11,#3,#3"),
+            (0x130, "ubfiz", "x13,x11,#3,#3"),
+            (0x134, "neg", "x14,x1"),
+            (0x138, "cinc", "x15,x1,eq"),
+            (0x13c, "ldarb", "w16,[x17]"),
+            (0x140, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let byte = machine.allocate(1);
+        machine.write(byte, 1, 0x2a);
+        machine.set_register(17, byte);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.register(2), Some(0));
+        assert_eq!(machine.register(3), Some(1));
+        assert_eq!(machine.register(6), Some((-3i32) as u32 as u64));
+        assert_eq!(machine.register(7), Some(0));
+        assert_eq!(machine.register(8), Some((-14i64) as u64));
+        assert_eq!(machine.register(10), Some(u64::MAX - 1));
+        assert_eq!(machine.register(12), Some((-24i64) as u64));
+        assert_eq!(machine.register(13), Some(40));
+        assert_eq!(machine.register(14), Some((-10i64) as u64));
+        assert_eq!(machine.register(15), Some(11));
+        assert_eq!(machine.register(16), Some(0x2a));
+    }
+
+    #[test]
+    fn register_moves_between_general_and_vector_registers_keep_their_bits() {
+        let code = rows(&[
+            (0x100, "mov", "x1,#0x1234"),
+            (0x104, "fmov", "d0,x1"),
+            (0x108, "fmov", "x2,d0"),
+            (0x10c, "dup", "v1.2d,x1"),
+            (0x110, "mov", "x3,#0x55"),
+            (0x114, "dup", "v2.2d,x3"),
+            (0x118, "ext", "v3.16b,v1.16b,v2.16b,#8"),
+            (0x11c, "str", "q3,[x4]"),
+            (0x120, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let stored = machine.allocate(16);
+        machine.set_register(4, stored);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.register(2), Some(0x1234));
+        assert_eq!(machine.read(stored, 8), Some(0x1234));
+        assert_eq!(machine.read(stored + 8, 8), Some(0x55));
     }
 
     #[test]
