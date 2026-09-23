@@ -197,7 +197,8 @@ pub(in crate::binding) fn callbacks(
 
     let pulse = Pulse {
         init: unique(symbols, "COnActionDatabase::Init()")?,
-        string_compare: addresses(symbols, "strcmp"),
+        // An import stub keeps its raw name when it does not demangle.
+        string_compare: addresses(symbols, "_strcmp"),
         instance: unique(symbols, "COnActionDatabase::_pInstance")?,
     };
 
