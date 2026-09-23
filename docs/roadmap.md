@@ -81,10 +81,14 @@ coverage by evidence, not by agreement with the config.
 ## Ordering principle
 
 Coverage grows with each **shared method**, not with each file. The known risk is method transfer:
-the frozen reference matcher failed on both unfamiliar resolver shapes, and five shared-reader
-contracts block the council agenda completeness result. Each method is frozen and then tested on
-held-out cases. The registry sweep measures the automatic rate; its failures return as new reader
-shapes, not as handwritten answers.
+the reference matcher failed on both unfamiliar resolver shapes, and five shared-reader contracts
+block the council agenda completeness result. A method has no branch on a registry, a command or a
+build; an unfamiliar shape is a typed gap, and a repair lands in the shared module. Each method
+ticket ends with one run over every discovered registry and records its counts and failure shapes.
+The registry sweep runs the method set unchanged at a recorded commit and measures the automatic
+rate; its failures return as new reader shapes, not as handwritten answers. The
+[development policy](development-policy.md#keep-engine-knowledge-in-its-home) states the rule
+(amended 2026-09-23; it replaces the per-ticket freeze and held-out tests).
 
 ## Decisions taken with this roadmap
 
@@ -118,9 +122,9 @@ and private-directory cleanup. This work has no Linear tickets.
 | --- | --- | --- | --- | --- |
 | 1 | Scoreboard | Preserve the beta installation. Claim ledger from the `.cwt` files with owner and documentation-provenance tags. The ledger work is done in the Atlas repository. | Every config line maps to a claim; a coverage percentage exists | SDK-522, SDK-523, SDK-525 |
 | 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas. In Atlas: the first rule snapshot, then the `.cwt` comparison tool that reads it. | Rust results equal retained results (164 named template registries that agree with every live-observed directory; 10 agenda fields); the tradition snapshot raises coverage above the baseline and is compared with the config | SDK-527 to SDK-534, SDK-558, SDK-524 |
-| 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | The five `script-docs` logs and the config name lists are replaced | SDK-535 to SDK-540 |
-| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method is frozen, then tested on held-out cases. | Council agenda completeness passes; held-out rate recorded per method | SDK-541 to SDK-550 |
-| 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; frozen methods over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
+| 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | Each of the five `script-docs` logs and each config name list has an engine-derived answer in the snapshot, with its gaps in the ledger; the per-area coverage figures are recorded | SDK-535 to SDK-540, SDK-562, SDK-564 to SDK-568; Atlas: SDK-570 |
+| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method ticket ends with one run over every registry. | Council agenda completeness passes; full-registry counts and failure shapes recorded per method | SDK-541 to SDK-550, SDK-569 |
+| 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; the method set, unchanged at a recorded commit, over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
 | 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
 
@@ -129,8 +133,8 @@ that ticket is done. The blocking relations in Linear are the authority for what
 
 ## Not yet ticketed
 
-- Atlas-side rule work after the tradition snapshot (SDK-558): snapshot assembly for milestones 3
-  to 6, the run driver and rule composition of the registry sweep (SDK-553), the policy overlay
+- Atlas-side rule work after the tradition snapshot (SDK-558): snapshot assembly for milestones 4
+  to 6 (milestone 3 is SDK-570), the run driver and rule composition of the registry sweep (SDK-553), the policy overlay
   (severity, subtype naming, alias factoring) keyed to rule identities, and the authored remainder
   of the documentation. These get the `Atlas` repository label.
 - Installation discovery without a location hint (specification user story 2). It does not block

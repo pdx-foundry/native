@@ -62,8 +62,8 @@ a rule.
     does not abandon its game process.
 15. As a Native maintainer, I want an exact build check before each native operation, so that a
     game update cannot silently reuse stale assumptions.
-16. As a Native maintainer, I want frozen methods tested on unfamiliar cases, so that reuse is
-    demonstrated and not inferred from training examples.
+16. As a Native maintainer, I want methods with no per-registry or per-command branch, run over
+    every registry, so that reuse is demonstrated and not inferred from training examples.
 17. As an offline tool maintainer, I want Native used only when rules are produced, so that
     ordinary builds and authoring need neither native tooling nor a game.
 
@@ -181,9 +181,12 @@ inside Native. Do not build a handwritten answer table for each command or field
 
 An unfamiliar instruction shape, unresolved callee, clobbered value, or unproved owner narrows or
 stops an answer and becomes a gap. Engine-only discovery runs without config or a field list. A
-method is frozen before it is tested on an unfamiliar case. Cases used during development are no
-longer held-out tests. A manual exception records its claim, conditions, obstacle, and removal
-route; it is never presented as automatic extraction.
+method has no branch on a registry, a command or a build: a fact the executable states is derived,
+a per-build fact lives in the binding authority, and a fact no method reaches is a manual exception.
+A manual exception records its claim, conditions, obstacle, and removal route; it is never
+presented as automatic extraction. Transfer is measured by running a method over every registry,
+not by freezing it; the [development policy](../development-policy.md#keep-engine-knowledge-in-its-home)
+states the rule and its measurement (amended 2026-09-23).
 
 ### 6. Atlas's first consumer path
 
@@ -206,7 +209,7 @@ prove the support. There are no separate qualification records. A new patch does
 support; it needs a target record and passing tests.
 
 Begin with the pinned Apple Silicon Stellaris 4.5 beta. Keep one copy of that executable
-(SDK-522); static methods and held-out tests need the exact file. Maintain one supported stable
+(SDK-522); static methods and their parity tests need the exact file. Maintain one supported stable
 release at a time.
 
 **Amendment, 2026-09-22 (Jackson):** the 4.5 full release, Cygnus v4.5.0 (8697), replaces the
@@ -266,8 +269,11 @@ supervision failures that the public API cannot cause safely.
    require the live game.
 7. **Recorded answers:** a recorded run gives the same answers as the real run apart from `Basis`;
    a missing record gives `NotRecorded`; no process starts.
-8. **Shared-method transfer:** freeze a method, then apply it to unfamiliar cases with positive and
-   negative controls. Record failures; do not silently update the baseline.
+8. **Shared-method transfer:** a method ticket ends with one run over every discovered registry,
+   recording complete, partial and failed counts and each failure shape. The registry sweep runs
+   the method set unchanged at a recorded commit; its failures become follow-up tickets, not fixes
+   inside the sweep. A locality gate (SDK-569) checks that method, session and operation code
+   has no registry, command or build branch (amended 2026-09-23).
 9. **Atlas integration:** carry a tradition field through Native answers, Atlas claims, a
    snapshot, and an offline consumer. Include invalid input and an absent answer.
 10. **Update portability:** run the frozen Atlas flow on a second Apple Silicon executable.

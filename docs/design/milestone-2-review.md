@@ -191,3 +191,8 @@ Milestone 3 declaration work can proceed in parallel. It depends only on the sta
 Held-out transfer tests (Testing Decision 8) as a general framework wait for the first
 milestone 4 method. R1 and R3 carry the small transfer checks that are necessary now. The update
 rehearsal (Testing Decision 10) stays last, as the roadmap says.
+
+**Superseded, 2026-09-23:** the held-out framework is not built. The
+[development policy](../development-policy.md#keep-engine-knowledge-in-its-home) replaces the
+per-ticket freeze with a locality rule on method code and one run over every registry at the end
+of each method ticket. The R1 and R3 results stay as findings.
