@@ -1,5 +1,7 @@
 //! Recipes: which binding groups, live strategy and static layout make up one build's
 //! operations. A recipe is host-neutral data.
+use crate::engine::analysis::localization::TextLayout;
+
 #[derive(Debug, Clone, Copy)]
 pub(in crate::binding) enum BindingGroupId {
     M45TemplateRegistryLayout,
@@ -32,6 +34,8 @@ pub(in crate::binding) struct DeclarationRecipe {
     /// The engine's string object: its size, and the offset of a short string's length byte.
     pub string_object_size: u64,
     pub short_string_length_offset: u64,
+    /// The localization text object and scope-object reference.
+    pub game_text: TextLayout,
 }
 
 pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
@@ -56,6 +60,14 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     event_target_token_offset: 0x58,
     string_object_size: 0x18,
     short_string_length_offset: 0x17,
+    game_text: TextLayout {
+        context_offset: 0x8,
+        promotion_targets: 0x318,
+        promote: 0x498,
+        property_targets: 0x618,
+        context_count: 0x30,
+        scope_reference_type_offset: 0x8,
+    },
 };
 
 /// The literal initialization of the startup scheduling table (SDK-489). It ends before

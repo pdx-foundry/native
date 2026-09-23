@@ -5,11 +5,16 @@
 //! scope type of a token, and the name of a modifier category. This module runs such code for one
 //! concrete input and reports how the run ended and what it computed.
 //!
-//! It is not a general emulator. It follows one path with known register and memory values. A
-//! branch on an unknown value, an unsupported instruction, a jump outside the decoded code, or the
-//! step bound ends the run as [`Unresolved`]; nothing is guessed. A store to an unknown address
-//! makes every written byte unknown, because it may overwrite any of them.
+//! It is not a general emulator. [`Machine::run`] follows one path with known register and memory
+//! values. A branch on an unknown value, an unsupported instruction, a jump outside the decoded
+//! code, or the step bound ends the run as [`Unresolved`]; nothing is guessed. A store to an
+//! unknown address makes every written byte unknown, because it may overwrite any of them.
 //! Calls are not entered. The caller decides what each call returns, or stops the run there.
+//!
+//! [`Machine::run_paths`] is for code that checks run-time state before its answer, such as a
+//! localization promotion that tests a database pointer. It follows both sides of a branch on an
+//! unknown value and reports every path's end, so the caller can require that the paths agree.
+//! It still chooses no path.
 use std::collections::BTreeMap;
 
 use super::InputError;
@@ -17,6 +22,9 @@ use super::decode::{Instruction, decode_arm64};
 
 /// The most instructions that one run may execute.
 const STEP_LIMIT: usize = 20_000;
+
+/// The most paths that one [`Machine::run_paths`] follows.
+pub const PATH_LIMIT: usize = 64;
 
 /// The stack pointer at entry. It is outside every mapped section, so stack loads never read
 /// executable data.
@@ -32,19 +40,29 @@ pub struct Unresolved(pub &'static str);
 /// Read-only bytes that code can load: jump tables and string literals.
 #[derive(Debug, Clone, Default)]
 pub struct ReadOnlyData {
-    sections: Vec<(u64, Vec<u8>)>,
+    /// Sections by start address.
+    sections: BTreeMap<u64, Vec<u8>>,
 }
 
 impl ReadOnlyData {
     /// Sections must not overlap.
     pub fn new(sections: Vec<(u64, Vec<u8>)>) -> Self {
-        Self { sections }
+        Self {
+            sections: sections.into_iter().collect(),
+        }
     }
 
     fn byte(&self, address: u64) -> Option<u8> {
-        self.sections.iter().find_map(|(start, bytes)| {
-            let offset = usize::try_from(address.checked_sub(*start)?).ok()?;
-            bytes.get(offset).copied()
+        let (start, bytes) = self.sections.range(..=address).next_back()?;
+        let offset = usize::try_from(address - start).ok()?;
+        bytes.get(offset).copied()
+    }
+
+    /// Load `width` little-endian bytes, at most eight, when every byte is mapped.
+    pub fn read(&self, address: u64, width: u64) -> Option<u64> {
+        (0..width.min(8)).try_fold(0u64, |value, offset| {
+            let byte = self.byte(address.checked_add(offset)?)?;
+            Some(value | u64::from(byte) << (offset * 8))
         })
     }
 
@@ -112,6 +130,18 @@ pub enum Exit {
     Stopped(u64),
 }
 
+/// How one path of [`Machine::run_paths`] ended, with the machine state at its end.
+#[derive(Debug, Clone)]
+pub struct Path<'a> {
+    pub end: Result<Exit, Unresolved>,
+    pub machine: Machine<'a>,
+}
+
+enum Walk {
+    End(Result<Exit, Unresolved>),
+    Fork { taken: u64, next: u64, steps: usize },
+}
+
 /// Register and memory state of one run.
 #[derive(Debug, Clone)]
 pub struct Machine<'a> {
@@ -173,6 +203,13 @@ impl<'a> Machine<'a> {
         }
     }
 
+    /// Make `width` bytes at `address` unknown, such as a field that a call may have written.
+    pub fn forget(&mut self, address: u64, width: u64) {
+        for offset in 0..width {
+            self.memory.insert(address + offset, None);
+        }
+    }
+
     /// Load `width` little-endian bytes, when every byte is known.
     pub fn read(&self, address: u64, width: u64) -> Option<u64> {
         self.read_bytes(address, width.min(8))
@@ -205,11 +242,10 @@ impl<'a> Machine<'a> {
             match self.step(operation)? {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) => pc = target,
+                Flow::Unknown { reason, .. } => return Err(Unresolved(reason)),
                 Flow::Call(target) => match calls(target, self)? {
                     Call::Return(value) => {
-                        self.registers[0] = value;
-                        self.registers[1..=18].fill(None);
-                        self.flags = None;
+                        self.returned_from_call(value);
                         pc += 4;
                     }
                     Call::Stop => return Ok(Exit::Stopped(target)),
@@ -220,11 +256,133 @@ impl<'a> Machine<'a> {
         Err(Unresolved("step-limit"))
     }
 
+    /// Execute from `entry` along every path, and report how each path ended.
+    ///
+    /// Unlike [`Machine::run`], a conditional branch on an unknown value continues on both sides,
+    /// and a `b` to an address outside the decoded code is a tail call that goes to `calls`: when
+    /// it returns, the path returns. At most [`PATH_LIMIT`] paths are followed; a path that would
+    /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
+    pub fn run_paths(
+        self,
+        entry: u64,
+        calls: &mut dyn FnMut(u64, &mut Machine<'a>) -> Result<Call, Unresolved>,
+    ) -> Vec<Path<'a>> {
+        let mut pending = vec![(self, entry, 0)];
+        let mut ended = Vec::new();
+
+        while let Some((mut machine, pc, steps)) = pending.pop() {
+            match machine.walk(pc, steps, calls) {
+                Walk::End(end) => ended.push(Path { end, machine }),
+                Walk::Fork { taken, next, steps } => {
+                    if ended.len() + pending.len() + 2 > PATH_LIMIT {
+                        ended.push(Path {
+                            end: Err(Unresolved("path-limit")),
+                            machine,
+                        });
+                        continue;
+                    }
+
+                    pending.push((machine.clone(), next, steps));
+                    pending.push((machine, taken, steps));
+                }
+            }
+        }
+
+        ended
+    }
+
+    /// Follow one path until it ends or reaches a branch on an unknown value.
+    fn walk(
+        &mut self,
+        mut pc: u64,
+        mut steps: usize,
+        calls: &mut dyn FnMut(u64, &mut Machine<'a>) -> Result<Call, Unresolved>,
+    ) -> Walk {
+        while steps < STEP_LIMIT {
+            steps += 1;
+            let code = self.code;
+            let Some(operation) = code.rows.get(&pc) else {
+                return Walk::End(Err(Unresolved("outside-code")));
+            };
+            let flow = match self.step(operation) {
+                Ok(flow) => flow,
+                Err(unresolved) => return Walk::End(Err(unresolved)),
+            };
+
+            match flow {
+                Flow::Next => pc += 4,
+                Flow::Jump(target) if !code.rows.contains_key(&target) => {
+                    return Walk::End(self.tail_call(target, calls));
+                }
+                Flow::Jump(target) => pc = target,
+                Flow::Unknown { target, .. } => {
+                    return Walk::Fork {
+                        taken: target,
+                        next: pc + 4,
+                        steps,
+                    };
+                }
+                Flow::Call(target) => match calls(target, self) {
+                    Ok(Call::Return(value)) => {
+                        self.returned_from_call(value);
+                        pc += 4;
+                    }
+                    Ok(Call::Stop) => return Walk::End(Ok(Exit::Stopped(target))),
+                    Err(unresolved) => return Walk::End(Err(unresolved)),
+                },
+                Flow::Return => return Walk::End(Ok(Exit::Returned)),
+            }
+        }
+
+        Walk::End(Err(Unresolved("step-limit")))
+    }
+
+    fn tail_call(
+        &mut self,
+        target: u64,
+        calls: &mut dyn FnMut(u64, &mut Machine<'a>) -> Result<Call, Unresolved>,
+    ) -> Result<Exit, Unresolved> {
+        match calls(target, self)? {
+            Call::Return(value) => {
+                self.returned_from_call(value);
+                Ok(Exit::Returned)
+            }
+            Call::Stop => Ok(Exit::Stopped(target)),
+        }
+    }
+
+    /// A called function returned `value`; caller-saved registers and flags are unknown.
+    fn returned_from_call(&mut self, value: Option<u64>) {
+        self.registers[0] = value;
+        self.registers[1..=18].fill(None);
+        self.flags = None;
+    }
+
     fn step(&mut self, operation: &Operation) -> Result<Flow, Unresolved> {
         let Operation { mnemonic, operands } = operation;
         let operands = operands.as_slice();
         match (mnemonic.as_str(), operands) {
             ("nop", []) => {}
+            (
+                "movi",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        lane,
+                        ..
+                    }),
+                    Operand::Immediate(value),
+                    rest @ ..,
+                ],
+            ) => {
+                let shift = match rest {
+                    [] => 0,
+                    [Operand::Shift(Shift::Left, amount)] => *amount,
+                    _ => return Err(Unresolved("movi-shift")),
+                };
+                self.vectors[*index] = Some(replicate((*value as u64) << shift, *lane, *bytes));
+            }
             ("mov" | "movz", [destination, source]) => {
                 let value = self.operand(source)?;
                 self.assign(destination, value)?;
@@ -434,12 +592,23 @@ impl<'a> Machine<'a> {
             (branch, [Operand::Immediate(target)]) if branch.starts_with("b.") => {
                 let condition =
                     Condition::parse(&branch[2..]).ok_or(Unresolved("branch-condition"))?;
-                if self.holds(condition)? {
+                let Some(flags) = self.flags else {
+                    return Ok(Flow::Unknown {
+                        target: *target as u64,
+                        reason: "flags",
+                    });
+                };
+                if condition.holds(flags) {
                     return Ok(Flow::Jump(*target as u64));
                 }
             }
             ("cbz" | "cbnz", [register, Operand::Immediate(target)]) => {
-                let value = self.operand(register)?.ok_or(Unresolved("branch-value"))?;
+                let Some(value) = self.operand(register)? else {
+                    return Ok(Flow::Unknown {
+                        target: *target as u64,
+                        reason: "branch-value",
+                    });
+                };
                 if (value == 0) == (mnemonic == "cbz") {
                     return Ok(Flow::Jump(*target as u64));
                 }
@@ -452,7 +621,12 @@ impl<'a> Machine<'a> {
                     Operand::Immediate(target),
                 ],
             ) => {
-                let value = self.operand(register)?.ok_or(Unresolved("branch-value"))?;
+                let Some(value) = self.operand(register)? else {
+                    return Ok(Flow::Unknown {
+                        target: *target as u64,
+                        reason: "branch-value",
+                    });
+                };
                 let set = value >> bit & 1 == 1;
                 if set == (mnemonic == "tbnz") {
                     return Ok(Flow::Jump(*target as u64));
@@ -568,6 +742,11 @@ impl<'a> Machine<'a> {
 enum Flow {
     Next,
     Jump(u64),
+    /// A conditional branch to `target` whose condition is unknown.
+    Unknown {
+        target: u64,
+        reason: &'static str,
+    },
     Call(u64),
     Return,
 }
@@ -596,6 +775,18 @@ fn extend(kind: &str, value: u64) -> u64 {
         "uxtw" => value as u32 as u64,
         _ => value,
     }
+}
+
+/// `value` repeated in each `lane`-byte lane of a `bytes`-byte view. Bytes above the view are
+/// zero, as a write to a 64-bit vector view clears the upper half.
+fn replicate(value: u64, lane: u64, bytes: u64) -> u128 {
+    let lane_mask = if lane >= 8 {
+        u64::MAX
+    } else {
+        (1 << (lane * 8)) - 1
+    };
+    let lane_value = u128::from(value & lane_mask);
+    (0..bytes / lane).fold(0, |vector, index| vector | lane_value << (index * lane * 8))
 }
 
 fn truncate(value: u64, wide: bool) -> u64 {
@@ -895,8 +1086,10 @@ impl Shift {
 struct Register {
     name: Name,
     wide: bool,
-    /// Width in bytes of a vector register view. Only loads and stores use vector registers.
+    /// Width in bytes of a vector register view. Loads, stores and `movi` use vector registers.
     bytes: u64,
+    /// Width in bytes of one lane of an arranged vector view such as `v0.4s`, else `bytes`.
+    lane: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -916,6 +1109,7 @@ impl Register {
             "wzr" => (Name::Zero, false),
             "fp" => (Name::General(29), true),
             "lr" => (Name::General(30), true),
+            _ if text.starts_with('v') => return Self::arranged_vector(&text[1..]),
             _ if text.starts_with(['q', 'd', 's', 'h', 'b']) => {
                 let bytes = match text.as_bytes()[0] {
                     b'q' => 16,
@@ -930,6 +1124,7 @@ impl Register {
                     name: Name::Vector(number),
                     wide: false,
                     bytes,
+                    lane: bytes,
                 });
             }
             _ => {
@@ -939,10 +1134,36 @@ impl Register {
                 (Name::General(number), wide)
             }
         };
+        let bytes = if wide { 8 } else { 4 };
         Some(Self {
             name,
             wide,
-            bytes: if wide { 8 } else { 4 },
+            bytes,
+            lane: bytes,
+        })
+    }
+
+    /// `text` is the part after `v`, such as `0.2d` or `31.16b`.
+    fn arranged_vector(text: &str) -> Option<Self> {
+        let (number, arrangement) = text.split_once('.')?;
+        let number = number.parse::<usize>().ok()?;
+        (number <= 31).then_some(())?;
+        let (bytes, lane) = match arrangement {
+            "2d" => (16, 8),
+            "4s" => (16, 4),
+            "8h" => (16, 2),
+            "16b" => (16, 1),
+            "1d" => (8, 8),
+            "2s" => (8, 4),
+            "4h" => (8, 2),
+            "8b" => (8, 1),
+            _ => return None,
+        };
+        Some(Self {
+            name: Name::Vector(number),
+            wide: false,
+            bytes,
+            lane,
         })
     }
 }
@@ -1157,6 +1378,144 @@ mod tests {
         );
         let spin = rows(&[(0x100, "b", "#0x100")]);
         assert_eq!(returned(&spin, &data, 0), Err(Unresolved("step-limit")));
+    }
+
+    #[test]
+    fn decoded_movi_fills_every_lane() {
+        let words: [u32; 5] = [
+            0x6f07e7e0, // movi v0.2d,#0xffffffffffffffff
+            0x3d800020, // str q0,[x1]
+            0x6f00e400, // movi v0.2d,#0
+            0x3d800420, // str q0,[x1,#0x10]
+            0xd65f03c0, // ret
+        ];
+        let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+        let code = Code::decode(&[(0x100, &bytes)]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let object = machine.allocate(32);
+        machine.set_register(1, object);
+
+        assert_eq!(
+            machine.run(0x100, &mut |_, _| Ok(Call::Return(None))),
+            Ok(Exit::Returned)
+        );
+        assert_eq!(machine.read(object, 8), Some(u64::MAX));
+        assert_eq!(machine.read(object + 8, 8), Some(u64::MAX));
+        assert_eq!(machine.read(object + 16, 8), Some(0));
+        assert_eq!(machine.read(object + 24, 8), Some(0));
+    }
+
+    #[test]
+    fn movi_replicates_a_shifted_lane_and_clears_above_a_half_view() {
+        assert_eq!(
+            replicate(0x2a << 8, 4, 16),
+            0x2a00_0000_2a00_0000_2a00_0000_2a00
+        );
+        assert_eq!(replicate(0xff, 1, 8), 0xffff_ffff_ffff_ffff);
+    }
+
+    fn returned_values(paths: &[Path<'_>]) -> Vec<Option<u64>> {
+        let mut values: Vec<_> = paths
+            .iter()
+            .map(|path| {
+                assert_eq!(path.end, Ok(Exit::Returned));
+                path.machine.register(0)
+            })
+            .collect();
+        values.sort();
+        values
+    }
+
+    #[test]
+    fn paths_follow_both_sides_of_an_unknown_branch() {
+        let code = rows(&[
+            (0x100, "cbz", "x3,#0x10c"),
+            (0x104, "mov", "x0,#1"),
+            (0x108, "ret", ""),
+            (0x10c, "cmp", "x4,#7"),
+            (0x110, "b.eq", "#0x11c"),
+            (0x114, "mov", "x0,#2"),
+            (0x118, "ret", ""),
+            (0x11c, "mov", "x0,#3"),
+            (0x120, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+
+        assert_eq!(returned_values(&paths), [Some(1), Some(2), Some(3)]);
+    }
+
+    #[test]
+    fn paths_keep_known_branches_on_one_side() {
+        let code = rows(&[
+            (0x100, "cbz", "x0,#0x10c"),
+            (0x104, "mov", "x0,#1"),
+            (0x108, "ret", ""),
+            (0x10c, "mov", "x0,#2"),
+            (0x110, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine.set_register(0, 0);
+        let paths = machine.run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+
+        assert_eq!(returned_values(&paths), [Some(2)]);
+    }
+
+    #[test]
+    fn paths_stop_at_the_path_limit() {
+        let code = rows(&[(0x100, "cbz", "x3,#0x100"), (0x104, "b", "#0x100")]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+
+        assert!(paths.len() <= PATH_LIMIT);
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.end == Err(Unresolved("path-limit")))
+        );
+    }
+
+    #[test]
+    fn a_jump_outside_the_code_is_a_tail_call_for_paths_only() {
+        let code = rows(&[(0x100, "b", "#0x900")]);
+        let data = ReadOnlyData::default();
+
+        let stopped = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Stop));
+        assert_eq!(stopped.len(), 1);
+        assert_eq!(stopped[0].end, Ok(Exit::Stopped(0x900)));
+
+        let returned =
+            Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(Some(5))));
+        assert_eq!(returned_values(&returned), [Some(5)]);
+
+        let refused = Machine::new(&code, &data)
+            .run_paths(0x100, &mut |_, _| Err(Unresolved("unknown-callee")));
+        assert_eq!(refused[0].end, Err(Unresolved("unknown-callee")));
+
+        assert_eq!(
+            Machine::new(&code, &data).run(0x100, &mut |_, _| Ok(Call::Stop)),
+            Err(Unresolved("outside-code"))
+        );
+    }
+
+    #[test]
+    fn paths_end_unresolved_at_an_indirect_call() {
+        let code = rows(&[(0x100, "blr", "x8"), (0x104, "ret", "")]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].end, Err(Unresolved("instruction")));
+    }
+
+    #[test]
+    fn a_single_run_still_refuses_an_unknown_condition() {
+        let code = rows(&[(0x100, "b.eq", "#0x100")]);
+        let data = ReadOnlyData::default();
+
+        assert_eq!(returned(&code, &data, 0), Err(Unresolved("flags")));
     }
 
     #[test]

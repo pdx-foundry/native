@@ -80,6 +80,19 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
+    fn localization_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
+        binary::language::localization(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            &self.catalog.pointers,
+            recipe,
+        )
+    }
+
     pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
         &self.catalog.candidates
     }
@@ -434,5 +447,12 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.scope_input(recipe)
+    }
+
+    pub(crate) fn localization_input(
+        &self,
+    ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.localization_input(recipe)
     }
 }
