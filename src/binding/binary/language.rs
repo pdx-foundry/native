@@ -153,13 +153,15 @@ fn is_control_transfer(operation: &str) -> bool {
 }
 
 const SCOPE_OBJECT: &str = "CGameText::SetScopeObject(CScopeObjectReference const&)";
+const LINK_FUNCTION: &str = "(void const*, CGameText&, int)";
 
 /// Read the text object's constructor, the functions that its tables can name, the setters, and
 /// the data that holds names and rows.
 ///
 /// The functions are found by their signatures: row getters take `int&`, link functions take
-/// `(void const*, CGameText&, int)`. The method decides which of them a context uses. A function
-/// that does not decode is left out, so a run that reaches it is unresolved.
+/// `(void const*, CGameText&, int)`, and setters are the text object's `Set` members and every
+/// other function that takes the text object. The method decides which of them a context uses.
+/// A function that does not decode is left out, so a run that reaches it is unresolved.
 pub(in crate::binding) fn localization(
     bytes: &[u8],
     symbols: &[Symbol],
@@ -176,15 +178,13 @@ pub(in crate::binding) fn localization(
     let constructors = addresses(symbols, "CGameText::CGameText()");
     let text_constructor = *constructors.first().ok_or(AnalysisError::InvalidRange)?;
     let setters = matching(symbols, |name| {
-        (name.starts_with("CGameText::Set") && name != SCOPE_OBJECT)
-            || name.contains("GameTextSetDeadScopeObject<")
+        let takes_text = name.contains("CGameText&") && !name.ends_with(LINK_FUNCTION);
+        (name.starts_with("CGameText::Set") || takes_text) && name != SCOPE_OBJECT
     });
     let row_getters = matching(symbols, |name| {
         name.ends_with("PromotionTargets(int&)") || name.ends_with("PropertyTargets(int&)")
     });
-    let link_functions = matching(symbols, |name| {
-        name.ends_with("(void const*, CGameText&, int)")
-    });
+    let link_functions = matching(symbols, |name| name.ends_with(LINK_FUNCTION));
 
     let run_code = decoded(
         &text,
