@@ -42,8 +42,11 @@ installation. 161 registries returned `Complete`. A follow-up run established pr
 | `common/map_modes` | Unsupported: item key layout is not established |
 | `common/game_scenarios` | Unsupported: initial loader did not run before the pause |
 
-The complete command prints one row for every name returned by `registries()`. The worker
-checks key uniqueness, nonempty keys and control characters; it does not statically prove the
-key offset for each element type. SDK-551 covers custom, nested-definition and late loaders
-outside this template method. The live tests check the new result and failure cases, recorded
-answers, and process disposal.
+These are historical M45-observe results. On M45-release, SDK-567 derives the key offset from
+each selected registry's item constructor before the worker reads keys. The method established
+148 of 164 named registries; 16 with unresolved key storage refuse item reads. Both
+`common/bypass` and `common/map_modes` have keys at `+0x18`. On M45-release, one selected
+`common/map_modes` session returned eight complete live keys equal to its top-level source keys;
+another paused before its loader ran and returned `Unsupported`. The worker also checks key
+uniqueness, nonempty keys and control characters. SDK-551 covers custom, nested-definition and
+late loaders outside this template method.

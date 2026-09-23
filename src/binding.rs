@@ -13,7 +13,10 @@ mod tests;
 
 use crate::{OpenError, UnavailableReason};
 
-fn initial_loader(candidates: &[NamedCandidate], directory: &str) -> Result<u64, String> {
+fn named_candidate<'a>(
+    candidates: &'a [NamedCandidate],
+    directory: &str,
+) -> Result<&'a NamedCandidate, String> {
     use crate::engine::analysis::directories::Directory;
     let mut matches = candidates.iter().filter(
         |candidate| matches!(&candidate.directory, Directory::Named(name) if name == directory),
@@ -21,6 +24,10 @@ fn initial_loader(candidates: &[NamedCandidate], directory: &str) -> Result<u64,
     let (Some(candidate), None) = (matches.next(), matches.next()) else {
         return Err(format!("{directory}: no unique static registry candidate"));
     };
+    Ok(candidate)
+}
+
+fn initial_loader(candidate: &NamedCandidate, directory: &str) -> Result<u64, String> {
     candidate
         .record
         .initial_loader
@@ -99,10 +106,13 @@ impl Binding {
         directories
             .iter()
             .map(|directory| {
-                let address = initial_loader(verified.named_candidates(), directory)?;
+                let candidate = named_candidate(verified.named_candidates(), directory)?;
+                let address = initial_loader(candidate, directory)?;
+                let key_offset =
+                    verified.registry_key_offset(candidate, layout.string_tag_offset());
                 Ok((
                     directory.clone(),
-                    groups::registry_binding(layout, directory, address),
+                    groups::registry_binding(layout, directory, address, key_offset),
                 ))
             })
             .collect()

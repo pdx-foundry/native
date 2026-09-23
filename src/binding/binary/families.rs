@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::AnalysisError;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
-    families::{DatabaseLayout, FamilyInput, Generator, StringFunctions, StringLayout},
+    families::{
+        DatabaseLayout, FamilyInput, Generator, KeyStorageInput, StringFunctions, StringLayout,
+    },
 };
 
 use super::super::targets::DeclarationRecipe;
@@ -88,6 +90,31 @@ pub(in crate::binding) fn read(
         },
         code: code(&text, &functions)?,
         data: read_only_data(bytes)?,
+    })
+}
+
+/// Read only the item constructors needed by live registry key reads.
+pub(in crate::binding) fn key_storage(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    record: &CandidateRecord,
+    string_tag_offset: u64,
+) -> Result<KeyStorageInput, AnalysisError> {
+    let owner = &record.owner_candidate;
+    let constructors: Vec<_> =
+        addresses(symbols, &format!("{owner}::{owner}(int, CString const&)"))
+            .into_iter()
+            .collect();
+    let text = Text::read(bytes, symbols)?;
+
+    Ok(KeyStorageInput {
+        code: code(&text, &constructors)?,
+        data: read_only_data(bytes)?,
+        strings: string_functions(symbols),
+        layout: StringLayout {
+            flag_byte: string_tag_offset,
+        },
+        constructors,
     })
 }
 
