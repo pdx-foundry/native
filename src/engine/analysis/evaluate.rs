@@ -451,6 +451,55 @@ impl<'a> Machine<'a> {
                     .map(|(left, right)| binary(mnemonic, left, right, wide));
                 self.assign(destination, value)?;
             }
+            (
+                "ubfx",
+                [
+                    destination,
+                    source,
+                    Operand::Immediate(lsb),
+                    Operand::Immediate(width),
+                ],
+            ) => {
+                let value = self
+                    .operand(source)?
+                    .map(|value| (value >> *lsb) & low_bits(*width as u64));
+                self.assign(destination, value)?;
+            }
+            (
+                "bfi",
+                [
+                    destination,
+                    source,
+                    Operand::Immediate(lsb),
+                    Operand::Immediate(width),
+                ],
+            ) => {
+                let field = low_bits(*width as u64) << *lsb;
+                let value = self
+                    .operand(destination)?
+                    .zip(self.operand(source)?)
+                    .map(|(prior, source)| (prior & !field) | ((source << *lsb) & field));
+                self.assign(destination, value)?;
+            }
+            ("madd" | "msub" | "smaddl" | "umaddl", [destination, left, right, addend]) => {
+                let widen = |value: u64| match mnemonic.as_str() {
+                    "smaddl" => extend("sxtw", value),
+                    "umaddl" => extend("uxtw", value),
+                    _ => value,
+                };
+                let product = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| widen(left).wrapping_mul(widen(right)));
+                let value = product.zip(self.operand(addend)?).map(|(product, addend)| {
+                    if mnemonic == "msub" {
+                        addend.wrapping_sub(product)
+                    } else {
+                        addend.wrapping_add(product)
+                    }
+                });
+                self.assign(destination, value)?;
+            }
             ("sxtb" | "sxth" | "sxtw" | "uxtb" | "uxth", [destination, source]) => {
                 let value = self.operand(source)?.map(|value| extend(mnemonic, value));
                 self.assign(destination, value)?;
@@ -810,6 +859,15 @@ fn extend(kind: &str, value: u64) -> u64 {
         "uxth" => value as u16 as u64,
         "uxtw" => value as u32 as u64,
         _ => value,
+    }
+}
+
+/// A mask of the low `width` bits.
+fn low_bits(width: u64) -> u64 {
+    if width >= 64 {
+        u64::MAX
+    } else {
+        (1 << width) - 1
     }
 }
 
@@ -1527,6 +1585,32 @@ mod tests {
             Err(Unresolved("flags")),
             "a single run still refuses the unknown flags"
         );
+    }
+
+    #[test]
+    fn bitfield_and_multiply_add_instructions_compute_their_values() {
+        let code = rows(&[
+            (0x100, "mov", "w8,#0x1234"),
+            (0x104, "ubfx", "w9,w8,#8,#8"),
+            (0x108, "mov", "w10,#0xffff"),
+            (0x10c, "bfi", "w10,w9,#4,#8"),
+            (0x110, "mov", "x11,#100"),
+            (0x114, "mov", "w12,#-2"),
+            (0x118, "mov", "w13,#3"),
+            (0x11c, "smaddl", "x14,w12,w13,x11"),
+            (0x120, "msub", "x15,x13,x13,x11"),
+            (0x124, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.register(9), Some(0x12));
+        assert_eq!(machine.register(10), Some(0xf12f));
+        assert_eq!(machine.register(14), Some(94));
+        assert_eq!(machine.register(15), Some(91));
     }
 
     #[test]
