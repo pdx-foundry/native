@@ -756,7 +756,8 @@ def run(debugger):
                 fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
             else:
                 emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')
-    if not session_active:
+    # An active modifier hook is enough: its documentation point owns the pause.
+    if not session_active and not modifier_active:
         return
     emit('hooks-active-before-resume', hooks=state)
     deadline = time.monotonic() + 15

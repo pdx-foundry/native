@@ -159,6 +159,7 @@ enum Case {
     },
     LoadedModifiers,
     LoadedModifiersWorkerLoss,
+    LoadedModifiersMissingRegistryHook,
     WorkerLoss {
         registry: &'static str,
         control: Fault,
@@ -188,6 +189,10 @@ fn cases() -> Vec<(String, Case)> {
         (
             "loaded_modifiers_worker_loss".to_owned(),
             Case::LoadedModifiersWorkerLoss,
+        ),
+        (
+            "loaded_modifiers_missing_registry_hook".to_owned(),
+            Case::LoadedModifiersMissingRegistryHook,
         ),
         ("invalid_selection".to_owned(), Case::InvalidSelection),
         ("outside_common".to_owned(), Case::OutsideCommon),
@@ -319,6 +324,9 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::Normal => normal(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
+        Case::LoadedModifiersMissingRegistryHook => {
+            loaded_modifiers_missing_registry_hook(native).await
+        }
         Case::InvalidSelection => invalid_selection(native).await,
         Case::OutsideCommon => outside_common(native).await,
         Case::LateOnly => late_only(native).await,
@@ -1525,6 +1533,35 @@ fn engine_log_agrees(loaded: &[pdx_native::LoadedModifier]) -> Outcome {
         }
     }
     Ok(())
+}
+
+/// The only selected registry has no hook; the modifier hook alone still owns the pause.
+async fn loaded_modifiers_missing_registry_hook(native: &Native) -> Outcome {
+    let mut game = native
+        .start_game(
+            options()
+                .registries([TRADITIONS])
+                .fault(TRADITIONS, Fault::MissingHook)
+                .loaded_modifiers(),
+        )
+        .await?;
+    let readiness = game.readiness();
+    let mut result = async {
+        if readiness != GameReadiness::PausedAfterContentLoad {
+            return Err(format!("readiness: {readiness:?}").into());
+        }
+        let loaded = game.loaded_modifiers().await?;
+        if loaded.value.modifiers.len() != LOADED_MODIFIERS {
+            return Err(format!("{} loaded modifiers", loaded.value.modifiers.len()).into());
+        }
+        match game.registry_items(TRADITIONS).await {
+            Err(Error::Observation { .. }) => Ok(()),
+            other => Err(format!("a registry without its hook: {other:?}").into()),
+        }
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
 }
 
 async fn loaded_modifiers_worker_loss(native: &Native) -> Outcome {

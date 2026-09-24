@@ -158,7 +158,9 @@ impl Native {
         }
         if !reasons.is_empty() {
             return Err(Error::Unsupported {
-                operation: if options.fixture.is_some() {
+                operation: if options.loaded_modifiers {
+                    Operation::LoadedModifiers
+                } else if options.fixture.is_some() {
                     Operation::ObserveFixture
                 } else {
                     Operation::RegistryItems
