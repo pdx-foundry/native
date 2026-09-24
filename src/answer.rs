@@ -200,6 +200,9 @@ impl Source {
 }
 
 /// A question that Native can be asked.
+///
+/// [`Operation::name`] gives each operation's stable snake_case name, which `Display` also writes.
+/// [`Operation::ALL`] lists every operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Operation {
     /// Whether this build can return define names and engine read types.
@@ -270,6 +273,46 @@ pub enum DefineValueType {
 }
 
 impl Operation {
+    /// Every operation once, in declaration order.
+    pub const ALL: &'static [Operation] = &[
+        Self::Defines,
+        Self::Registries,
+        Self::RegistryFields,
+        Self::Declarations,
+        Self::Modifiers,
+        Self::ModifierCategories,
+        Self::ModifierFamilies,
+        Self::Scopes,
+        Self::ScopeLinks,
+        Self::LocalizationDeclarations,
+        Self::OnActions,
+        Self::GameRules,
+        Self::RegistryItems,
+        Self::ObserveFixture,
+        Self::LoadedModifiers,
+    ];
+
+    /// The operation's stable snake_case name, such as `registry_fields`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Defines => "defines",
+            Self::Registries => "registries",
+            Self::RegistryFields => "registry_fields",
+            Self::Declarations => "declarations",
+            Self::Modifiers => "modifiers",
+            Self::ModifierCategories => "modifier_categories",
+            Self::ModifierFamilies => "modifier_families",
+            Self::Scopes => "scopes",
+            Self::ScopeLinks => "scope_links",
+            Self::LocalizationDeclarations => "localization_declarations",
+            Self::OnActions => "on_actions",
+            Self::GameRules => "game_rules",
+            Self::RegistryItems => "registry_items",
+            Self::ObserveFixture => "observe_fixture",
+            Self::LoadedModifiers => "loaded_modifiers",
+        }
+    }
+
     /// Whether the operation reads engine declarations, which need a declaration recipe.
     pub(crate) fn is_declaration(self) -> bool {
         matches!(
@@ -285,6 +328,56 @@ impl Operation {
                 | Self::OnActions
                 | Self::GameRules
         )
+    }
+}
+
+impl std::fmt::Display for Operation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+#[cfg(test)]
+mod operation_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    /// The number of variants. A new variant fails to compile here until it is counted.
+    fn variant_count(operation: Operation) -> usize {
+        match operation {
+            Operation::Defines
+            | Operation::Registries
+            | Operation::RegistryFields
+            | Operation::Declarations
+            | Operation::Modifiers
+            | Operation::ModifierCategories
+            | Operation::ModifierFamilies
+            | Operation::Scopes
+            | Operation::ScopeLinks
+            | Operation::LocalizationDeclarations
+            | Operation::OnActions
+            | Operation::GameRules
+            | Operation::RegistryItems
+            | Operation::ObserveFixture
+            | Operation::LoadedModifiers => 15,
+        }
+    }
+
+    #[test]
+    fn all_lists_every_operation_once_with_a_unique_name() {
+        assert_eq!(Operation::ALL.len(), variant_count(Operation::Defines));
+        // Distinct names also mean distinct operations, so the list holds each variant once.
+        let names: HashSet<&str> = Operation::ALL.iter().map(|op| op.name()).collect();
+        assert_eq!(names.len(), Operation::ALL.len());
+        assert_eq!(Operation::RegistryFields.to_string(), "registry_fields");
+    }
+
+    #[test]
+    fn serde_form_is_the_variant_name() {
+        assert_eq!(
+            serde_json::to_value(Operation::RegistryFields).unwrap(),
+            "RegistryFields"
+        );
     }
 }
 
