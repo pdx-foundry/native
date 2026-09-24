@@ -187,8 +187,6 @@ pub struct FamilyResult {
     /// How many registered names, or generation calls that a root reaches, could not be
     /// followed, by reason.
     pub failures: BTreeMap<&'static str, usize>,
-    /// Whether the engine runs the item roots for every item, when the registry has one.
-    pub item_call: Option<Result<(), NotEstablished>>,
 }
 
 /// The names that one chain of calls registers.
@@ -204,14 +202,14 @@ pub struct Family {
 }
 
 /// Whether every item generates the family, from the most to the least established.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Condition {
     Always,
     /// A path skips the registration, or a path could not be followed.
     Unresolved,
     /// Only an item root registers it, and that the engine runs that root for every item is not
-    /// established: see [`FamilyResult::item_call`].
-    ItemRoot,
+    /// established, for this reason.
+    ItemRoot(NotEstablished),
 }
 
 /// Follow every root of the registry. `None` when it has no root.
@@ -232,7 +230,6 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
             key_offset,
             families: Vec::new(),
             failures: BTreeMap::new(),
-            item_call: None,
         });
     };
 
@@ -242,11 +239,13 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
         .filter(|root| root.receiver == Receiver::Item)
         .map(|root| root.function)
         .collect();
-    let item_call = (!item_roots.is_empty()).then(|| match &registry.loading {
-        Some(loading) => loading::every_item(input, loading, &item_roots),
-        None => Err(NotEstablished::NoLoader),
-    });
-    let every_item = matches!(item_call, Some(Ok(())));
+    // Why the engine's call of the item roots for every item is not established, when the
+    // registry has an item root.
+    let not_established = match &registry.loading {
+        _ if item_roots.is_empty() => None,
+        Some(loading) => loading::every_item(input, loading, &item_roots).err(),
+        None => Some(NotEstablished::NoLoader),
+    };
 
     let mut families: BTreeMap<Template, Condition> = BTreeMap::new();
     let mut failures = BTreeMap::new();
@@ -256,12 +255,14 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
             .map(|form| root_paths(input, registry, root, offset, form))
             .collect();
 
-        let (root_families, root_failures) = root_families(root, every_item, &runs);
+        let (root_families, root_failures) = root_families(root, not_established.as_ref(), &runs);
         for family in root_families {
             let condition = families
                 .entry((family.parts, family.limit, family.mask))
-                .or_insert(family.condition);
-            *condition = (*condition).min(family.condition);
+                .or_insert_with(|| family.condition.clone());
+            if family.condition < *condition {
+                *condition = family.condition;
+            }
         }
         for reason in root_failures {
             *failures.entry(reason).or_default() += 1;
@@ -281,7 +282,6 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
         key_offset,
         families,
         failures,
-        item_call,
     })
 }
 
@@ -597,10 +597,11 @@ impl<'a> DefinitionTable<'a> {
 
 /// The families of one root from its runs with each key form, and the reason of each name or
 /// generation call that could not be followed.
-/// `every_item` says that the engine runs an item root for every item.
+/// `not_established` says why the engine's call of an item root for every item is not
+/// established.
 fn root_families(
     root: &Root,
-    every_item: bool,
+    not_established: Option<&NotEstablished>,
     runs: &[Vec<PathSummary>],
 ) -> (Vec<Family>, Vec<&'static str>) {
     let mut failures = Vec::new();
@@ -640,7 +641,7 @@ fn root_families(
                     parts,
                     limit,
                     mask,
-                    condition: condition(root, every_item, runs, calls, name),
+                    condition: condition(root, not_established, runs, calls, name),
                 }),
                 Err(Unresolved(reason)) => failures.push(reason),
             }
@@ -655,13 +656,15 @@ fn root_families(
 /// `calls` before it assumed any text.
 fn condition(
     root: &Root,
-    every_item: bool,
+    not_established: Option<&NotEstablished>,
     runs: &[Vec<PathSummary>],
     calls: &[u64],
     name: &Node,
 ) -> Condition {
-    if root.receiver == Receiver::Item && !every_item {
-        return Condition::ItemRoot;
+    if root.receiver == Receiver::Item
+        && let Some(reason) = not_established
+    {
+        return Condition::ItemRoot(reason.clone());
     }
 
     let always = runs.iter().all(|paths| {
@@ -1461,7 +1464,7 @@ mod tests {
                 parts: vec![literal("pop_"), Part::ItemKey, literal("_max_add")],
                 limit: None,
                 mask: Some(2),
-                condition: Condition::ItemRoot,
+                condition: Condition::ItemRoot(NotEstablished::NoLoader),
             })
         );
 
@@ -1535,7 +1538,7 @@ mod tests {
                 parts: vec![literal("pop_"), Part::ItemKey, literal("_max_add")],
                 limit: None,
                 mask: Some(2),
-                condition: Condition::ItemRoot,
+                condition: Condition::ItemRoot(NotEstablished::NoLoader),
             })
         );
     }
@@ -1641,7 +1644,7 @@ mod tests {
         let templates: Vec<_> = result
             .families
             .iter()
-            .map(|family| (family.parts.clone(), family.condition))
+            .map(|family| (family.parts.clone(), family.condition.clone()))
             .collect();
         assert_eq!(
             templates,
@@ -1702,7 +1705,6 @@ mod tests {
         let mut every_item = item_fixture(generator_method(), &[METHOD, HELPER, SIZE]);
         every_item.registry.loading = Some(loading());
         let result = every_item.analyze().unwrap();
-        assert_eq!(result.item_call, Some(Ok(())));
         assert_eq!(result.families[0].condition, Condition::Always);
 
         let gated_root = rows(
@@ -1737,14 +1739,15 @@ mod tests {
         gated.input.definitions = Some(definitions());
         gated.registry.loading = Some(loading());
         let result = gated.analyze().unwrap();
-        assert_eq!(result.item_call, Some(Ok(())));
         assert_eq!(result.families[0].condition, Condition::Unresolved);
 
         let mut no_loading = item_fixture(generator_method(), &[METHOD, HELPER, SIZE]);
         no_loading.registry.loading = None;
         let result = no_loading.analyze().unwrap();
-        assert_eq!(result.item_call, Some(Err(NotEstablished::NoLoader)));
-        assert_eq!(result.families[0].condition, Condition::ItemRoot);
+        assert_eq!(
+            result.families[0].condition,
+            Condition::ItemRoot(NotEstablished::NoLoader)
+        );
     }
 
     /// A template that a database root establishes for every item stays `Always` when an item
@@ -1766,7 +1769,7 @@ mod tests {
             .unwrap()
             .families
             .iter()
-            .map(|family| family.condition)
+            .map(|family| family.condition.clone())
             .collect();
         assert_eq!(conditions, [Condition::Always]);
 
@@ -1776,7 +1779,7 @@ mod tests {
             item_only
                 .families
                 .iter()
-                .all(|family| family.condition == Condition::ItemRoot)
+                .all(|family| family.condition == Condition::ItemRoot(NotEstablished::NoLoader))
         );
     }
 

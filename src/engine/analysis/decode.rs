@@ -83,3 +83,68 @@ pub fn decode_arm64(bytes: &[u8], address: u64) -> Result<Vec<Instruction>, Deco
         })
         .collect()
 }
+
+/// The destination register and page of an `adrp` word at `address`.
+pub fn adrp(word: u32, address: u64) -> Option<(usize, u64)> {
+    if word & 0x9f00_0000 != 0x9000_0000 {
+        return None;
+    }
+    let immediate = (word >> 29 & 0b11) | (word >> 5 & 0x7_ffff) << 2;
+    let pages = ((immediate << 11) as i32 >> 11) as i64;
+    Some((
+        (word & 0x1f) as usize,
+        (address & !0xfff).wrapping_add_signed(pages << 12),
+    ))
+}
+
+/// The destination register, source register and addend of a 64-bit `add` of an immediate,
+/// with its optional `lsl #12`. Register 31 is the stack pointer.
+pub fn add_immediate(word: u32) -> Option<(usize, usize, u64)> {
+    if word & 0xff80_0000 != 0x9100_0000 {
+        return None;
+    }
+    let shift = if word & 0x0040_0000 != 0 { 12 } else { 0 };
+    Some((
+        (word & 0x1f) as usize,
+        (word >> 5 & 0x1f) as usize,
+        u64::from(word >> 10 & 0xfff) << shift,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pinned decoder's reading of one word.
+    fn decoded(word: u32, address: u64) -> (String, String) {
+        let row = decode_arm64(&word.to_le_bytes(), address)
+            .unwrap()
+            .remove(0);
+        (row.operation, row.operands)
+    }
+
+    #[test]
+    fn adrp_gives_the_page_forward_and_backward() {
+        assert_eq!(
+            decoded(0x9000_0028, 0x1004),
+            ("adrp".into(), "x8,#0x5000".into())
+        );
+        assert_eq!(adrp(0x9000_0028, 0x1004), Some((8, 0x5000)));
+        assert_eq!(
+            decoded(0x90ff_ffe1, 0x5000),
+            ("adrp".into(), "x1,#0x1000".into())
+        );
+        assert_eq!(adrp(0x90ff_ffe1, 0x5000), Some((1, 0x1000)));
+        assert_eq!(adrp(0x9100_4108, 0x1000), None);
+    }
+
+    #[test]
+    fn add_immediate_reads_the_shift_and_refuses_add_with_tags() {
+        assert_eq!(decoded(0x9100_4108, 0).0, "add");
+        assert_eq!(add_immediate(0x9100_4108), Some((8, 8, 0x10)));
+        assert_eq!(decoded(0x9140_07e0, 0).0, "add");
+        assert_eq!(add_immediate(0x9140_07e0), Some((0, 31, 0x1000)));
+        assert_eq!(decoded(0x9181_0020, 0).0, "addg");
+        assert_eq!(add_immediate(0x9181_0020), None);
+    }
+}
