@@ -123,3 +123,4 @@ pub(super) mod defines;
 pub(super) mod families;
 pub(super) mod fields;
 pub(super) mod language;
+pub(super) mod modifier_table;

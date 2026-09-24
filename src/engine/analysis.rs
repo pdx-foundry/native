@@ -12,6 +12,7 @@ pub mod families;
 pub mod discovery;
 pub mod fields;
 pub mod localization;
+pub mod modifier_table;
 pub mod modifiers;
 pub mod readers;
 pub mod scopes;

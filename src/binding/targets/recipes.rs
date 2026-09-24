@@ -9,7 +9,6 @@ use crate::engine::analysis::localization::TextLayout;
 pub(in crate::binding) enum BindingGroupId {
     M45TemplateRegistryLayout,
     M45CategoryFixture,
-    M45ModifierTable,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -53,7 +52,6 @@ pub(super) const M45_RELEASE: Recipe = Recipe {
     groups: &[
         BindingGroupId::M45TemplateRegistryLayout,
         BindingGroupId::M45CategoryFixture,
-        BindingGroupId::M45ModifierTable,
     ],
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,

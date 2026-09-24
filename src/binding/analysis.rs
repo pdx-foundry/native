@@ -61,6 +61,23 @@ impl VerifiedAnalysis<'_> {
         }
     }
 
+    /// Derive the loaded arrays from the executable readers before authorizing live access.
+    /// `string_tag_offset` is the bound CString length/long-form flag byte offset.
+    pub(in crate::binding) fn modifier_table_layout(
+        &self,
+        string_tag_offset: u64,
+    ) -> Result<crate::engine::analysis::modifier_table::Layout, String> {
+        let input = binary::modifier_table::read(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.pointers,
+            string_tag_offset,
+        )
+        .map_err(|error| format!("modifier table input: {error}"))?;
+        crate::engine::analysis::modifier_table::derive(&input)
+            .map_err(|reason| format!("modifier table layout was not established: {}", reason.0))
+    }
+
     /// Establish the key's item-relative offset from the selected registry's constructor.
     pub(in crate::binding) fn registry_key_offset(
         &self,

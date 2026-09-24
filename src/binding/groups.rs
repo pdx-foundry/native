@@ -86,42 +86,6 @@ pub(super) fn registry_layout(groups: &[BindingGroupId]) -> Option<RegistryLayou
         .then_some(M45_TEMPLATE_LAYOUT)
 }
 
-// Exact M45-release disassembly. `CModifier::LogDefinitions()` walks
-// `CPdxModifier<…>::_Definitions`, a `CPdxArray` (data +0x8, count +0x14) of 0x98-byte
-// definitions. It names each one with `CStaticLexer::GetString(token at +0x78)` and tags it with
-// the mask at +0x84. `GetString(i)` returns element `i` of the lexer's lookup, a
-// `CPdxArray<CString>` of 0x28-byte elements in unnamed globals at 0x103796d70. It first rebuilds
-// the lookup when the lookup's count differs from the size at 0x103796d88.
-#[derive(Clone, Copy)]
-pub(super) struct ModifierTableLayout {
-    array_data_offset: u64,
-    array_count_offset: u64,
-    definition_stride: u64,
-    token_offset: u64,
-    mask_offset: u64,
-    lookup: u64,
-    lookup_size: u64,
-    lookup_stride: u64,
-}
-
-const M45_MODIFIER_TABLE: ModifierTableLayout = ModifierTableLayout {
-    array_data_offset: 0x8,
-    array_count_offset: 0x14,
-    definition_stride: 0x98,
-    token_offset: 0x78,
-    mask_offset: 0x84,
-    lookup: 0x103796d70,
-    lookup_size: 0x103796d88,
-    lookup_stride: 0x28,
-};
-
-pub(super) fn modifier_table(groups: &[BindingGroupId]) -> Option<ModifierTableLayout> {
-    groups
-        .iter()
-        .any(|group| matches!(group, BindingGroupId::M45ModifierTable))
-        .then_some(M45_MODIFIER_TABLE)
-}
-
 /// The engine locations that `modifier_table_binding` joins with the layouts.
 pub(super) struct ModifierTableSymbols {
     pub documentation_entry: u64,
@@ -131,7 +95,7 @@ pub(super) struct ModifierTableSymbols {
 }
 
 pub(super) fn modifier_table_binding(
-    table: ModifierTableLayout,
+    table: crate::engine::analysis::modifier_table::Layout,
     registry: RegistryLayout,
     symbols: ModifierTableSymbols,
 ) -> crate::protocol::observation::ModifierTableBinding {

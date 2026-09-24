@@ -125,10 +125,7 @@ impl Binding {
         registries: &[String],
     ) -> Result<crate::protocol::observation::ModifierTableBinding, String> {
         let operation = self.operation.as_ref();
-        let (Some(table), Some(layout)) = (
-            operation.and_then(|operation| operation.modifier_table),
-            operation.and_then(|operation| operation.registry_layout),
-        ) else {
+        let Some(layout) = operation.and_then(|operation| operation.registry_layout) else {
             return Err("this build has no loaded modifier table layout".into());
         };
         let verified = self
@@ -137,6 +134,7 @@ impl Binding {
             .ok_or("this build has no static registry analysis")?
             .verified()
             .map_err(|error| error.to_string())?;
+        let table = verified.modifier_table_layout(layout.string_tag_offset())?;
         let mut instances = std::collections::BTreeMap::new();
         for directory in registries {
             let candidate = named_candidate(verified.named_candidates(), directory)?;
@@ -171,7 +169,7 @@ impl Binding {
     pub(crate) fn has_modifier_table_method(&self) -> bool {
         self.operation
             .as_ref()
-            .is_some_and(|operation| operation.modifier_table.is_some())
+            .is_some_and(|operation| operation.registry_layout.is_some())
             && self.has_declarations_method()
     }
 
