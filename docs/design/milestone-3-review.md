@@ -8,7 +8,9 @@ claims visible, and shared methods are replacing case-specific work. The recorde
 is 26.33% (15,278 of 58,032 claims). That result belongs to the measured revision; it is not a
 fresh measurement of the current code.
 
-Before shared-reader implementation starts, complete the [start checklist](#91-before-shared-reader-implementation):
+The [start checklist](#91-before-shared-reader-implementation) was completed in
+[SDK-596](https://linear.app/unnamed-system/issue/SDK-596), merged in
+[PR #44](https://github.com/pdx-foundry/native/pull/44). It covered:
 
 1. Define exactly what Milestone 4 must prove, and assign its acceptance test.
 2. Give the Atlas integration work an owner and ticket. Native answers must reach Atlas's
@@ -17,6 +19,11 @@ Before shared-reader implementation starts, complete the [start checklist](#91-b
 4. Fix duplicate modifier registrations, which can currently hide uncertainty.
 5. Record the current field and reader population on M45-release **before changing field discovery**.
 6. Put the shortcut guard and jump-table repair ahead of the first shared-reader methods.
+
+Every remaining action has a Linear ticket or an explicit retained/conditional disposition in
+[section 8](#8-linear). Start with SDK-569 and the SDK-579 → SDK-563 dependency chain, then
+the first shared-reader methods with SDK-597 alongside. Preparation completion does not mean
+that those implementation tickets are complete.
 
 The main delivery risk is that static answers could look complete while required fixture checks
 remain impossible. Numeric storage, runtime weight evaluation and scope availability need
@@ -29,7 +36,7 @@ fixture criteria, full-inventory measurements and Atlas integration checks pass.
 
 ## Review basis
 
-Status: agreed recommendation, revision 6, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests; implementation remains outstanding. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked.
+Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
 
 The findings of `docs/design/native-dx.md` are already ticketed (SDK-579 to SDK-595) and are not repeated; they appear only as dependencies.
 
@@ -177,21 +184,44 @@ No cuts. Optional: bump the pin to `ccb681a` (doc-only; removes the local path).
 
 ## 8. Linear
 
-These are proposed tracker changes, not a record that Linear has been updated. Assign each new
-ticket to a person and use the repository label to show where its work belongs.
+**Reconciled, 2026-09-24.** Linear holds delivery status, ownership, acceptance criteria and
+dependencies. This report retains the evidence, accepted decisions and finding-to-ticket index.
+The preparation pass is Done; the remaining actions below are tracked, not implemented.
+New tickets SDK-601 to SDK-605 and expanded delivery tickets are assigned to Jackson, with
+repository labels. Optional and conditional work is scheduled alongside M4, without becoming
+a new start or exit gate.
 
-| Item | Concrete action | When |
-| --- | --- | --- |
-| Milestone 4 description | Replace freeze and held-out wording with the current development policy. Include both parts of section 3, the method-wide measurements, and the Atlas integration requirement. | Before shared-reader implementation. |
-| SDK-563 | Move the jump-table repair from Milestone 5 to Milestone 4, ahead of SDK-541. Keep M1 before its field-list changes. | Schedule now; implement after M1. |
-| R6 and SDK-577 | Create and assign the Atlas composition ticket with the four R6 acceptance cases. Move SDK-577 alongside it and identify which repairs serve those cases. | Assign now; deliver alongside SDK-541 and SDK-542. |
-| SDK-542, SDK-544, SDK-550 | Add the observation capability, owner and fixture check from R3. | Before shared-reader implementation. |
-| SDK-545, SDK-549 | Create and assign the R3 observation dependencies and add explicit blocking relations. | Assign now; deliver before the dependent ticket can complete. |
-| SDK-548, SDK-553 | State that recordings support reproduction, while credited coverage and rates come from the live run. Preserve the current coverage policy. | Before either measurement is reported. |
-| SDK-569 | Expand the scanner and negative controls to R2's scope. Include G2's decision and N10's removal dependency. | Before the first shared-reader methods. |
-| SDK-574, SDK-571 | Assign a milestone and owner. SDK-574 concerns worker pause coordination; SDK-571 remains a reproduce-first hang investigation. Link either as a blocker only where the affected live check requires it. | During preparation for live work. |
-| 755 gaps without an owner | Group by failure shape, then create one follow-up per shape or record an explicit accepted-gap note. Keep the ticket mapping in docs, as agreed in G1. | Triage with R6; do not require all gaps to be solved before M4. |
-| Roadmap and specification | Record section 3's acceptance target. Correct the M3 sentence: the snapshot contains loaded-modifier counts; the recorded answer retains the names. | Before shared-reader implementation. |
+| Finding or action | Linear home and disposition |
+| --- | --- |
+| M1, R1; gate wording, roadmap/specification corrections; preparation checklist | [SDK-596](https://linear.app/unnamed-system/issue/SDK-596), Done in PR #44. Includes the explicit M45-release 164-registry assertion. |
+| R2, N10, G2 production validation and synthetic >164 test | [SDK-569](https://linear.app/unnamed-system/issue/SDK-569), including the failing shortcut controls before removal. |
+| R3 parser diagnostics and expansion observations | [SDK-542](https://linear.app/unnamed-system/issue/SDK-542) and [SDK-550](https://linear.app/unnamed-system/issue/SDK-550); the latter remains blocked by the former. |
+| R3 bounded numeric storage experiment and remaining required fixture cases | [SDK-544](https://linear.app/unnamed-system/issue/SDK-544). |
+| R3 runtime weight and scope-availability observations | [SDK-598](https://linear.app/unnamed-system/issue/SDK-598) blocks SDK-545; [SDK-599](https://linear.app/unnamed-system/issue/SDK-599) blocks SDK-549. |
+| R4 CString layout and worker flag helper | [SDK-601](https://linear.app/unnamed-system/issue/SDK-601), alongside SDK-579; distinct from SDK-580's larger anchor move. |
+| R5 council agenda public-API test and M4 acceptance checks | [SDK-600](https://linear.app/unnamed-system/issue/SDK-600), with SDK-541 to SDK-550 retaining their own fixture criteria. |
+| R6, A9/G1, Atlas R7/A10; carried M2 A5 | [SDK-597](https://linear.app/unnamed-system/issue/SDK-597): four integration cases, category owners and stable published gap reasons. |
+| The 755 gaps without owners | SDK-597 explicitly requires a follow-up per failure shape or an accepted-gap note, with ticket mappings in docs. This triage is still open; solving every gap is not an integration prerequisite. |
+| Native R7 and carried M2 R6 identity cleanup | [SDK-574](https://linear.app/unnamed-system/issue/SDK-574) owns serde ReaderKind on the worker wire; [SDK-581](https://linear.app/unnamed-system/issue/SDK-581) owns the FieldGap enum and normalization. |
+| Jump-table repair | [SDK-563](https://linear.app/unnamed-system/issue/SDK-563), moved to M4; blocked by SDK-579 and completed preparation, and blocking SDK-541. |
+| Atlas display-name identity repair | [SDK-577](https://linear.app/unnamed-system/issue/SDK-577), assigned in M4 alongside SDK-597. |
+| Live hang investigation and pause coordination | [SDK-571](https://linear.app/unnamed-system/issue/SDK-571) and SDK-574 now have a person and M4 assignment. Reproduce the hang first; block only affected live checks. |
+| N11 conditional scheduler removal | [SDK-602](https://linear.app/unnamed-system/issue/SDK-602): replace the live code window and pass parity before deleting; preserve candidates and recovered/failed cases. |
+| N12/N13 and carried M2 N9; missing churn/files-per-operation measurements | [SDK-603](https://linear.app/unnamed-system/issue/SDK-603): preserve distinct old findings before removing duplicate artifacts; retain the historical measurement scope. |
+| A7/A8 and carried M2 A2/A6; optional pdxscript pin bump | [SDK-604](https://linear.app/unnamed-system/issue/SDK-604): check references before removal; record a disposition for the optional doc-only bump. |
+| Carried M2 R4 backend dispatch | [SDK-605](https://linear.app/unnamed-system/issue/SDK-605): finish dispatch at the existing Live/Recorded boundary; no new backend framework. |
+| Developer inspection, diagnostics, reporting and authoring guidance | [SDK-579](https://linear.app/unnamed-system/issue/SDK-579), SDK-581, [SDK-588](https://linear.app/unnamed-system/issue/SDK-588) and [SDK-589](https://linear.app/unnamed-system/issue/SDK-589). SDK-588 remains open after the baseline for stop diagnostics and cross-run diffs. |
+| Long evaluator step function | [SDK-593](https://linear.app/unnamed-system/issue/SDK-593) now includes the bounded instruction-family split with unchanged behavior. |
+| Conditional shared type parser | [SDK-594](https://linear.app/unnamed-system/issue/SDK-594) requires checking for a demonstrated common shape; retaining separate parsers is a valid documented outcome. |
+| Shared Rust/Python hook names | SDK-574 includes generation from the protocol authority with the next live change. |
+| Prepared-operation design and modifier contexts | [SDK-547](https://linear.app/unnamed-system/issue/SDK-547) begins with its own bounded design. SDK-598 separately owns weight observations. |
+| Live measurement credit; full inventories and failure shapes | [SDK-548](https://linear.app/unnamed-system/issue/SDK-548), [SDK-553](https://linear.app/unnamed-system/issue/SDK-553), SDK-597 and SDK-600 retain live-only credit and method acceptance requirements. Recordings remain reproduction inputs. |
+
+Retained decisions are constraints, not missing implementation tickets: the category read-entry
+exception (M2 N5) stays under SDK-569's documented removal route; hidden `internals` (M2 N6)
+and its consumer boundary stay under SDK-579. Keep the live candidate code, symbol-keyed reader
+tables, callback forwarders, evaluator/family methods and profiling tools. [SDK-580](https://linear.app/unnamed-system/issue/SDK-580)
+owns the later build-anchor move. No broad rewrite or deletion is implied by the line counts.
 
 ## 9. Order of work
 
@@ -200,7 +230,7 @@ mean finishing every repair below.** Preparation establishes the target, ownersh
 the first implementation work removes the known obstacles to shared-reader methods. Checkboxes
 remain open until the stated result exists.
 
-**Preparation started, 2026-09-24 ([SDK-596](https://linear.app/unnamed-system/issue/SDK-596)).**
+**Preparation complete, 2026-09-24 ([SDK-596](https://linear.app/unnamed-system/issue/SDK-596), PR #44 merged as `61d299e`).**
 The following delivery tickets are assigned to Jackson in Milestone 4:
 
 | Responsibility | Ticket |
@@ -306,11 +336,11 @@ not run; preparation changes no live operation.
 
 ## 10. Deferred
 
-- SDK-547 waits for its own design; its first bounded form is the dependency that R3 names for SDK-545.
+- SDK-547 waits for its own design; SDK-598 separately supplies the runtime weight observations blocking SDK-545.
 - SDK-550 waits for SDK-542.
 - Sharing type parsing between `readers.rs` and `binary/defines.rs`: only when SDK-594 shows a common shape; not a prerequisite.
 - Generating hook names from the protocol for Rust and Python (agent-reported duplication): with the next live operation.
-- `git log --stat` churn and files touched per operation: not obtained; add from a shell before the report is filed.
+- `git log --stat` churn and files touched per operation: not obtained in the original review; SDK-603 tracks the historical measurement follow-up.
 
 ## What is solid
 
