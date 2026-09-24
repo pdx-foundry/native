@@ -1,14 +1,15 @@
 //! Live tests: each case starts the real game through the public API and checks the answers
 //! and the cleanup.
 //!
-//! The cases are ignored by default. To run them, name the installation and pass `--ignored`:
+//! The cases are ignored by default. To run them, name the installation and use the `cargo live`
+//! alias for `cargo test --release --test live -- --ignored`:
 //!
 //! ```text
-//! STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
-//! STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored missing_hook
+//! STELLARIS_PATH=/path/to/Stellaris cargo live
+//! STELLARIS_PATH=/path/to/Stellaris cargo live missing_hook
 //! ```
 //!
-//! A word after `--ignored` selects the cases whose name contains it. A case takes about 35
+//! A word after `cargo live` selects the cases whose name contains it. A case takes about 35
 //! seconds; the full set takes longer as cases are added.
 //!
 //! This file has its own `main` (`harness = false` in `Cargo.toml`) for two reasons. The

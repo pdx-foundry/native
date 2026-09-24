@@ -11,8 +11,10 @@ A milestone that meets its exit gate proves one slice. The review asks if the me
 what work gives the next ten results from unfamiliar cases? Hold each finding and each
 recommendation against that question.
 
-Repositories: `~/Developer/pdx-native` (holds the specification, design and roadmap),
-`~/Developer/pdx-atlas`, `~/Developer/pdxscript-rs`. The review is read-only until step 5. Run
+Repositories: `~/Developer/pdx-foundry/native` (holds the specification, design and roadmap),
+`~/Developer/pdx-foundry/atlas`, and `pdxscript-rs`. `pdxscript-rs` has no local checkout: Atlas
+takes it from `https://github.com/pdx-foundry/pdxscript-rs.git` at the `rev` in Atlas's
+`Cargo.toml`. Clone it at that revision to review it. The review is read-only until step 5. Run
 default builds, tests and lints only; the ignored live tests start a game.
 
 The **product core**: Native is a deep module that answers questions about Stellaris with no

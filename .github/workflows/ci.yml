@@ -10,10 +10,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # Installs the toolchain and components that rust-toolchain.toml names.
+      - run: rustup toolchain install
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --locked
+      # Warnings fail the build, so a broken intra-doc link fails CI.
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
       - run: python -m unittest discover -s tools/observation -p 'test_*.py'

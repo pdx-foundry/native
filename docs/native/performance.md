@@ -39,6 +39,27 @@ baseline answer: 164 names, `Partial`, with the existing outside-method gap.
 phase totals and repeated-query results. Raw logs and the temporary source copies are retained
 at `.local/sdk-559/`. These are investigation outputs, not a new Native result or evidence API.
 
+**Retention check, 2026-09-24 (SDK-590).** Keep `.local/sdk-559/`, `.local/sdk-560-*` and
+`.local/sdk-561-*`. The maintainer decides their removal with this check in hand. No other copy
+of them was found. The [knowledge inventory](source-inventory.json) (2026-09-18) and
+`.local/preserved-development/` (2026-09-20) are older than these measurements and do not include
+them. The second local copy that the [preservation guide](preservation.md) names,
+`~/Documents/PDX/evidence/native-2026-09-18/`, is not on this machine now; a search of the home
+folder did not find it or its archives. The bundles in `.local/evidence/bundles/` still pass
+`tools/knowledge_bundles.py`. The retained directories hold:
+
+- **Measurements.** The tracked summaries are [sdk-559.json](performance/sdk-559.json),
+  [sdk-560.md](performance/sdk-560.md), [sdk-561.md](performance/sdk-561.md) and this page. The
+  raw logs and the phase files of each run are only in `.local`.
+- **Source.** The instrumented copies are Native source with the probes that
+  `tools/profiling/instrument.py` and `span.rs` add. The SDK-559 baseline commit `3d3810bf` is in
+  Git; the base commits of the other copies were not checked. The SDK-559 run drivers
+  (`baseline.sh`, `static-runs.py`, `phase-runs.py`, `optimization-runs.py`, `final-checks.py`,
+  `instrument-live.py`) are not tracked and have no other copy.
+- **Dependencies.** About 2.0 GB is Cargo `target/` output inside the source copies. It is a
+  build output, so it is disposable, and each copy's `Cargo.lock` can build it again. The other
+  files are about 11 MB in 939 files.
+
 ## The exact command
 
 ```sh
@@ -243,7 +264,7 @@ Cargo settings changes can trigger a rebuild.
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-STELLARIS_PATH="$STELLARIS_PATH" cargo test --test static_questions -- --ignored
+STELLARIS_PATH="$STELLARIS_PATH" cargo parity
 STELLARIS_PATH="$STELLARIS_PATH" cargo test --lib binding::analysis::tests -- --ignored
 python3 tools/observation/test_protocol.py
 ```

@@ -2,8 +2,8 @@
 
 Native is a new library with no consumers and an unstable API. Agents may make necessary development
 changes without routine approval. Preserve the untracked knowledge acquired by prototypes and probes.
-For API changes, cleanup, or reservation recovery, follow the
-[development policy](docs/development-policy.md).
+The [development policy](docs/development-policy.md) says how to work autonomously, where each
+engine fact lives, and how to preserve acquired knowledge before a cleanup.
 
 Native is a simple engine API, not an evidence archive. Read the [simplification decision](docs/design/simplification.md)
 before you add an operation. Do not add replay paths, evidence descriptors, artifact hashes, qualification

@@ -1,6 +1,6 @@
 # Local retrieval of the prototype bundles
 
-Run these commands from `/Users/jackson/Developer/pdx-native`. Python 3 standard library is enough for bundle verification and the selected Atlas replays. No game launch is needed.
+Run these commands from `/Users/jackson/Developer/pdx-foundry/native`. Python 3 standard library is enough for bundle verification and the selected Atlas replays. No game launch is needed.
 
 ```sh
 python3 tools/knowledge_bundles.py

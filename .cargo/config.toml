@@ -1,0 +1,5 @@
+# Short names for the ignored test suites. Both need STELLARIS_PATH.
+# A word after the alias selects cases by name, for example `cargo live missing_hook`.
+[alias]
+parity = ["test", "--release", "--test", "static_questions", "--", "--ignored"]
+live = ["test", "--release", "--test", "live", "--", "--ignored"]

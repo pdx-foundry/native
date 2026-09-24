@@ -250,15 +250,20 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ATLAS_CALLER_PATH=/path/to/pdx-atlas cargo test --test consumer_boundary -- --ignored
-STELLARIS_PATH=/path/to/Stellaris cargo test --release --test static_questions -- --ignored
-STELLARIS_PATH=/path/to/Stellaris cargo test --release --test live -- --ignored
+STELLARIS_PATH=/path/to/Stellaris cargo parity
+STELLARIS_PATH=/path/to/Stellaris cargo live
 cargo run --release --example registry-items-report -- /path/to/Stellaris
-cargo doc --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 ```
+
+`rust-toolchain.toml` pins the Rust toolchain. Local builds and CI use the same version.
 
 The default tests need no game. The static parity tests read the executable of the exact supported
 build and start no game. The live test command runs registry, fixture and loaded-modifier controls one case after
-the other, and takes several minutes; a word after `--ignored` selects cases by name.
+the other, and takes several minutes; a word after `cargo live` selects cases by name.
+`cargo parity` and `cargo live` are aliases in `.cargo/config.toml` for
+`cargo test --release --test static_questions -- --ignored` and
+`cargo test --release --test live -- --ignored`.
 The Atlas boundary check scans the frozen caller's Rust source for unsupported Native imports,
 hidden hooks, platform or build branches, and native constants.
 Run the live suite separately from the default tests: lifecycle unit tests briefly create a
