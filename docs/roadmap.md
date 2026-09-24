@@ -134,7 +134,7 @@ log scope link and localization entry is in it, and the ledger keeps its gaps. W
 on config revision `8574760`, coverage is 15,278 of 58,032 Atlas-owned claims (26.33%); the
 language areas give 14,137 of 31,751 (44.52%), from effects 25.97% to scopes and links 91.15%. No
 on_action or game-rule entry scope is established: each followed call site supplies a self link or
-an unresolved scope. See Atlas's [language snapshot measurement](https://github.com/pdx-foundry/atlas/blob/main/docs/coverage/language-snapshot.md).
+an unresolved scope. See Atlas's [language snapshot measurement](https://github.com/pdx-foundry/atlas/blob/9c39c807ed062f65c893789edb16677b7ea843a1/docs/coverage/language-snapshot.md).
 
 Milestone 3 needs only the static context (SDK-527), so its first tickets are unblocked as soon as
 that ticket is done. The blocking relations in Linear are the authority for what can start.
