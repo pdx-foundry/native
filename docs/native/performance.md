@@ -243,7 +243,7 @@ Cargo settings changes can trigger a rebuild.
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-STELLARIS_PATH="$STELLARIS_PATH" cargo test --test static_questions -- --ignored
+STELLARIS_PATH="$STELLARIS_PATH" cargo parity
 STELLARIS_PATH="$STELLARIS_PATH" cargo test --lib binding::analysis::tests -- --ignored
 python3 tools/observation/test_protocol.py
 ```
