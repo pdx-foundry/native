@@ -31,8 +31,12 @@ const EXPORTS: &[&str] = &[
     "Gap",
     "GameRule",
     "GapKind",
+    "GeneratedName",
     "GenerationCondition",
     "LinkData",
+    "LoadedContent",
+    "LoadedModifier",
+    "LoadedModifiers",
     "LocalizationCommand",
     "LocalizationContext",
     "LocalizationContextId",
@@ -188,7 +192,7 @@ impl Checker {
                     let name = ident.to_string();
                     if matches!(
                         name.as_str(),
-                        "fault" | "fixture_fault" | "ObservationControl"
+                        "fault" | "fixture_fault" | "modifier_fault" | "ObservationControl"
                     ) {
                         self.reject("hidden test hook", &name);
                     }
@@ -275,7 +279,7 @@ impl<'ast> Visit<'ast> for Checker {
     fn visit_expr_method_call(&mut self, expression: &'ast ExprMethodCall) {
         if matches!(
             expression.method.to_string().as_str(),
-            "fault" | "fixture_fault"
+            "fault" | "fixture_fault" | "modifier_fault"
         ) {
             self.reject("hidden test hook", expression.method.to_string());
         }
@@ -364,7 +368,7 @@ fn check_path(checker: &mut Checker, path: &syn::Path) {
         checker.reject("hidden test hook", "ObservationControl");
     }
     for name in &segments {
-        if matches!(name.as_str(), "fault" | "fixture_fault") {
+        if matches!(name.as_str(), "fault" | "fixture_fault" | "modifier_fault") {
             checker.reject("hidden test hook", name);
         }
     }
@@ -555,6 +559,10 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
             "use pdx_native::{Define, DefineValueType}; fn f() { let _ = pdx_native::DefineValueType::Integer; }",
             true,
         ),
+        (
+            "use pdx_native::{GeneratedName, LoadedContent, LoadedModifier, LoadedModifiers};",
+            true,
+        ),
         ("use pdx_native::{Native, internals};", false),
         ("use pdx_native as native; fn f() {}", false),
         ("extern crate pdx_native as native; fn f() {}", false),
@@ -591,6 +599,8 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
         ("use std::env::{consts as host};", false),
         ("fn f() { x.fault(); }", false),
         ("fn f() { x.fixture_fault(); }", false),
+        ("fn f() { x.modifier_fault(y); }", false),
+        ("fn f() { let _ = GameOptions::modifier_fault; }", false),
         ("unsafe trait T {}", false),
         ("unsafe impl Send for T {}", false),
         ("impl T { unsafe fn f() {} }", false),
