@@ -179,7 +179,8 @@ observation worker.
 - One Native-owned game runs on a host at a time. A conflicting instance is refused with a reason.
   An OS lock excludes concurrent Native sessions; a process inventory checks for other Stellaris
   instances. Old session files do not block a new launch after these checks pass.
-- A `Game` uses a temporary work directory, deleted on close and kept only on failure.
+- A `Game` uses a temporary work directory. `close` deletes it only after a clean, confirmed
+  disposal with no read error; otherwise it is kept, and the error names its path.
 - No blind retry of an operation whose completion is uncertain.
 
 ### 5. Shared native methods
