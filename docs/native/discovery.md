@@ -550,6 +550,25 @@ archives that failed to mount with "unsupported" in the SDK-488 run. Native's se
 cannot change the modifier table, and the prototype's failures do not explain any difference. The
 answer states its content as `LoadedContent::Installation`, or the fixture's registry and files.
 
+**Config probe (development check, outside Native).** A throwaway script
+(`.local/sdk-564/cwt/compare.py`) compared the recorded answer with `config/modifiers.cwt` of
+cwtools-stellaris-config at `8574760`, to look for a modifier that the config knows and the table
+lacks. It compared names only. None is missing:
+
+- All 572 literal names are loaded. Two differ only by case: the config and the content write
+  `biological_logistic_growth_mult` and `lithoid_logistic_growth_mult`; the table holds
+  `BIOLOGICAL_logistic_growth_mult` and `LITHOID_logistic_growth_mult`. A generated name keeps the
+  case of its item key (206 loaded names contain upper case; no two differ only by case).
+  `CStaticLexer::AddDynamicToken` compares lower-cased characters when it looks a token up; that
+  content reads resolve the lower-case spelling through the same lookup is not established here.
+- The 179 templates, expanded over the installed content keys of each `<type>` and the values of
+  each enum, give 37,565 names; 51 are absent. 29 come from expanding a subtype over its whole type
+  (archetypes with `uses_modifiers = no` or `robotic = yes`, leader classes without
+  `leader_capacity`, patrons without `add_modifier = yes`) and 3 from the script taking
+  `random_list` as a planet class. The other 11 are `job_<job>_automated_workforce_mult` for the
+  exactly 11 jobs with `can_be_automated = no`. The engine gates that family on the job field;
+  the config template has no condition.
+
 **Not in SDK-564.** Modifiers that the engine adds after the documentation point, such as during a
 game; the generation sites outside database generators (SDK-566); where a modifier takes effect.
 
