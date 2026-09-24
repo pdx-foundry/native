@@ -181,7 +181,9 @@ Each question returns `Answer<T>`:
 
 - `value`: what was established. A partial answer keeps each established part.
 - `completeness`: `Complete` or `Partial`. `Complete` with an empty value means that nothing was found.
-- `gaps`: what is missing, each with a typed `GapKind`. Empty when the answer is complete.
+- `gaps`: what is missing, each with a reason (`GapKind`) and, when known, a typed
+  `GapSubject`. A subject names a registry, field, answer item, localization link, context,
+  scope type, or fixture file. Context and scope subjects include stable IDs as well as names.
 - `source`: the build, the Native version, the method, and the basis (such as `StaticAnalysis`).
 
 A question that could not be answered returns `Error`, never an empty answer. To check an answer,
@@ -193,6 +195,9 @@ ask the question again.
 `Native::from_recorded_answers(dir)?` reads those files and starts no process; consumer code stays
 the same. Each file holds one `Result<Answer<T>, Error>`, so you can write a failure case by hand.
 A recorded answer always has `Basis::Recorded`. A question with no file gives `Error::NotRecorded`.
+Named gap subjects use an object such as `{"kind":"registry","name":"common/traditions"}`;
+context and scope subjects also have an `id`. Older recordings with a string subject must be
+updated to this format.
 `build.json` holds the original serialized `BuildId`, including for error-only recordings.
 `native.build()` returns that identity; answers from another build return `Error::Recorded`.
 

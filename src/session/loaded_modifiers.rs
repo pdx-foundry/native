@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::Native;
 use super::families::{public_family, unjoined_sites, unjoined_summary};
-use super::language::gap;
+use super::language::registry_gap;
 use super::questions::error;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredTags, Error, Gap, GapKind, GeneratedName,
@@ -91,7 +91,7 @@ impl Native {
 
         let mut gaps = Vec::new();
         if unreadable > 0 {
-            gaps.push(gap(
+            gaps.push(registry_gap(
                 GapKind::UnresolvedPath,
                 None,
                 format!(
@@ -102,7 +102,7 @@ impl Native {
         let mut families = BTreeMap::new();
         for (registry, result) in results {
             if let Err(reason) = result.key_offset {
-                gaps.push(gap(
+                gaps.push(registry_gap(
                     GapKind::UnresolvedPath,
                     Some(&registry),
                     format!(
@@ -112,7 +112,7 @@ impl Native {
                 ));
             }
             for (reason, count) in &result.failures {
-                gaps.push(gap(
+                gaps.push(registry_gap(
                     GapKind::UnresolvedPath,
                     Some(&registry),
                     format!(
@@ -131,7 +131,7 @@ impl Native {
         }
         for (registry, join) in &index.joins.registries {
             if join.unnamed_input {
-                gaps.push(gap(
+                gaps.push(registry_gap(
                     GapKind::UnnamedDeclaration,
                     Some(registry),
                     "names that combine this registry's keys with the keys of content that Native does not name as a registry are unexplained",
@@ -139,7 +139,7 @@ impl Native {
             }
         }
         if let Some(summary) = unjoined_summary(&unjoined_sites(&index.joins)) {
-            gaps.push(gap(
+            gaps.push(registry_gap(
                 GapKind::UnnamedDeclaration,
                 None,
                 format!("{summary}; the names that they add are unexplained"),
@@ -197,7 +197,7 @@ impl JoinTables {
             let keys = match observed.registries.get(registry) {
                 Some(RegistryKeys::Keys(keys)) => keys,
                 Some(RegistryKeys::Unavailable(reason)) => {
-                    gaps.push(gap(
+                    gaps.push(registry_gap(
                         GapKind::IncompleteObservation,
                         Some(registry),
                         format!(
@@ -207,7 +207,7 @@ impl JoinTables {
                     continue;
                 }
                 None => {
-                    gaps.push(gap(
+                    gaps.push(registry_gap(
                         GapKind::IncompleteObservation,
                         Some(registry),
                         "the registry's loaded item keys were not read; its families explain no name",
@@ -258,14 +258,14 @@ impl JoinTables {
             .collect();
 
         for mask in unresolved_masks {
-            gaps.push(gap(
+            gaps.push(registry_gap(
                 GapKind::UnresolvedPath,
                 None,
                 format!("the category tags of mask {mask:#x} could not be followed"),
             ));
         }
         if unexplained > 0 {
-            gaps.push(gap(
+            gaps.push(registry_gap(
                 GapKind::UnnamedDeclaration,
                 None,
                 format!(
@@ -273,7 +273,7 @@ impl JoinTables {
                 ),
             ));
         }
-        gaps.push(gap(
+        gaps.push(registry_gap(
             GapKind::OutsideMethod,
             None,
             "The table is read where the engine documents its modifiers, after content loads. Modifiers added later, such as during a game, and where a modifier takes effect are outside it.",
@@ -482,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn a_registry_without_loaded_keys_explains_nothing_and_has_a_gap() {
+    fn a_registry_without_loaded_keys_explains_nothing_and_has_a_registry_gap() {
         let mut observed = observed();
         observed.registries.insert(
             "common/districts".into(),
@@ -498,7 +498,7 @@ mod tests {
                     .gaps
                     .iter()
                     .any(|gap| gap.kind == GapKind::IncompleteObservation
-                        && gap.subject.as_deref() == Some(registry))
+                        && gap.subject.as_ref().map(|subject| subject.name()) == Some(registry))
             );
             assert!(!answer.value.registry_items.contains_key(registry));
         }

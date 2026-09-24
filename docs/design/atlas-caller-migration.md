@@ -36,6 +36,10 @@ A confirmed process disposal can accompany a cleanup error, such as an unresolve
 Atlas retains `value`, `completeness`, typed `gaps` and `Source`. The source contains the exact
 build, Native version, method and basis. This is the accepted amendment to SDK-473, recorded in
 [the Atlas map](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database).
+Each named gap has a `GapSubject` kind. Atlas attaches it by that kind and uses the context or
+scope ID where supplied; it does not infer the kind from a name. Recorded answers use objects
+such as `{"kind":"localization_link","name":"Planet"}` in `subject`, or `null` for a
+gap without an identifiable subject. Context and scope subjects also carry `id`.
 Claims no longer require Native capture hashes or artifact references. Re-run the question to check it.
 
 A partial list keeps its established items; a missing item in that list proves no absence.

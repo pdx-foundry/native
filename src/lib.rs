@@ -23,7 +23,7 @@ pub mod supervisor;
 pub use answer::{
     Answer, Basis, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
     DeclaredScopes, DeclaredTags, Define, DefineValueType, Disposal, EntryContext, EntryScope,
-    Error, Field, GameRule, Gap, GapKind, GeneratedName, GenerationCondition, LinkData,
+    Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName, GenerationCondition, LinkData,
     LoadedContent, LoadedModifier, LoadedModifiers, LocalizationCommand, LocalizationContext,
     LocalizationContextId, LocalizationContextReference, LocalizationDeclarations,
     LocalizationLink, LocalizationOutput, ModifierCategory, ModifierDeclaration, ModifierFamily,

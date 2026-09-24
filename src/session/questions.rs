@@ -2,7 +2,7 @@
 use super::Native;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
-    Field, Gap, GapKind, Operation, Reader, ReaderId, ReaderKind, Registry, ScopeId,
+    Field, Gap, GapKind, GapSubject, Operation, Reader, ReaderId, ReaderKind, Registry, ScopeId,
     ScopeReference, Source, Support,
 };
 use crate::binding::VerifiedAnalysis;
@@ -268,7 +268,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                         if *link != "scope-table" {
                             gaps.push(Gap {
                                 kind: GapKind::UnresolvedPath,
-                                subject: Some(name.clone()),
+                                subject: Some(GapSubject::answer_item(name.clone())),
                                 detail: format!("scope declaration not followed at {link}"),
                             });
                         }
@@ -294,7 +294,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                 what,
             } => gaps.push(Gap {
                 kind: GapKind::UnresolvedPath,
-                subject: Some(name.clone()),
+                subject: Some(GapSubject::answer_item(name.clone())),
                 detail: format!("{what} could not be read"),
             }),
             Site::Unreadable { name: None, .. } => gaps.push(Gap {
@@ -371,7 +371,7 @@ pub(crate) fn normalized_field(
 fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
     let mut gaps = vec![Gap {
         kind: GapKind::OutsideMethod,
-        subject: Some(registry.into()),
+        subject: Some(GapSubject::registry(registry)),
         detail: "Nested grammar, accepted occurrences, and runtime behavior are outside this bounded reader classification.".into(),
     }];
     let field_of = |path: usize| {
@@ -400,7 +400,7 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         seen.insert((kind as u8, Some(field.name.clone())));
         gaps.push(Gap {
             kind,
-            subject: Some(field.name.clone()),
+            subject: Some(GapSubject::field(field.name.clone())),
             detail: detail.into(),
         });
     }
@@ -424,7 +424,10 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         if seen.insert((kind as u8, subject.clone())) {
             gaps.push(Gap {
                 kind,
-                subject: subject.or_else(|| Some(registry.into())),
+                subject: Some(match subject {
+                    Some(field) => GapSubject::field(field),
+                    None => GapSubject::registry(registry),
+                }),
                 detail: detail.into(),
             });
         }
@@ -440,7 +443,7 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
     if unnamed > 0 {
         gaps.push(Gap {
             kind: GapKind::UnnamedField,
-            subject: Some(registry.into()),
+            subject: Some(GapSubject::registry(registry)),
             detail: format!("{unnamed} reader paths have no recovered field name."),
         });
     }
@@ -493,7 +496,7 @@ mod declaration_tests {
                 .gaps
                 .iter()
                 .any(|gap| gap.kind == GapKind::UnresolvedPath
-                    && gap.subject.as_deref() == Some("missing"))
+                    && gap.subject == Some(GapSubject::answer_item("missing")))
         );
     }
 
@@ -525,7 +528,7 @@ mod declaration_tests {
             !answer
                 .gaps
                 .iter()
-                .any(|gap| gap.subject.as_deref() == Some("known"))
+                .any(|gap| gap.subject.as_ref().map(|subject| subject.name()) == Some("known"))
         );
     }
 }

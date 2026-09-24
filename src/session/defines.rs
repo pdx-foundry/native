@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::Native;
 use super::questions::error;
 use crate::answer::{
-    Answer, Basis, Completeness, Define, DefineValueType, Error, Gap, GapKind, Operation, Source,
+    Answer, Basis, Completeness, Define, DefineValueType, Error, Gap, GapKind, GapSubject,
+    Operation, Source,
 };
 use crate::engine::analysis::defines::{self, SiteOutcome};
 
@@ -38,7 +39,7 @@ fn normalize(outcomes: Vec<SiteOutcome>, build: crate::BuildId) -> Answer<Vec<De
             }
             SiteOutcome::Unresolved { subject, reason } => gaps.push(Gap {
                 kind: GapKind::UnresolvedReader,
-                subject,
+                subject: subject.map(GapSubject::answer_item),
                 detail: reason.into(),
             }),
         }
@@ -48,7 +49,7 @@ fn normalize(outcomes: Vec<SiteOutcome>, build: crate::BuildId) -> Answer<Vec<De
         if types.len() != 1 {
             gaps.push(Gap {
                 kind: GapKind::UnresolvedReader,
-                subject: Some(format!("{namespace}.{name}")),
+                subject: Some(GapSubject::answer_item(format!("{namespace}.{name}"))),
                 detail: "the engine reads this define with conflicting value types".into(),
             });
             continue;

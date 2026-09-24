@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 
 use super::Native;
-use super::language::gap;
+use super::language::registry_gap;
 use super::questions::error;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredTags, Error, GapKind, GenerationCondition,
@@ -128,7 +128,7 @@ fn normalized_families(
 
     if let Some(result) = result {
         if let Err(reason) = result.key_offset {
-            gaps.push(gap(
+            gaps.push(registry_gap(
                 GapKind::UnresolvedPath,
                 subject,
                 format!(
@@ -138,7 +138,7 @@ fn normalized_families(
             ));
         }
         for (reason, count) in &result.failures {
-            gaps.push(gap(
+            gaps.push(registry_gap(
                 GapKind::UnresolvedPath,
                 subject,
                 format!(
@@ -151,7 +151,7 @@ fn normalized_families(
             let public = public_family(family, categories);
             let template = template(&public);
             if public.category_tags == DeclaredTags::Unresolved {
-                gaps.push(gap(
+                gaps.push(registry_gap(
                     GapKind::UnresolvedPath,
                     subject,
                     format!("category tags of {template} could not be followed"),
@@ -159,12 +159,12 @@ fn normalized_families(
             }
             match family.condition {
                 Condition::Always => {}
-                Condition::Unresolved => gaps.push(gap(
+                Condition::Unresolved => gaps.push(registry_gap(
                     GapKind::UnresolvedPath,
                     subject,
                     format!("the method could not establish that every item generates {template}"),
                 )),
-                Condition::ItemRoot => gaps.push(gap(
+                Condition::ItemRoot => gaps.push(registry_gap(
                     GapKind::UnresolvedPath,
                     subject,
                     format!(
@@ -177,20 +177,20 @@ fn normalized_families(
     }
 
     if unnamed_input {
-        gaps.push(gap(
+        gaps.push(registry_gap(
             GapKind::UnnamedDeclaration,
             subject,
             "names that combine this registry's keys with the keys of content that Native does not name as a registry are not returned",
         ));
     }
     if let Some(summary) = unjoined_summary(unjoined) {
-        gaps.push(gap(
+        gaps.push(registry_gap(
             GapKind::UnnamedDeclaration,
             None,
             format!("{summary}; some may generate this registry's modifiers"),
         ));
     }
-    gaps.push(gap(
+    gaps.push(registry_gap(
         GapKind::OutsideMethod,
         subject,
         "The search covers the registry's database generator and post-read code. Where a modifier takes effect, the tags that a later registration of the same name gives, the tags of a declared modifier after content registers it again, and names longer than a fixed-size buffer keeps are outside it.",
@@ -252,6 +252,7 @@ fn template(family: &ModifierFamily) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::GapSubject;
     use crate::engine::analysis::evaluate::Unresolved;
 
     fn categories() -> CategoryNames {
@@ -355,7 +356,7 @@ mod tests {
                 .gaps
                 .iter()
                 .filter(|gap| gap.kind != GapKind::OutsideMethod)
-                .all(|gap| gap.subject.as_deref() == Some("common/x"))
+                .all(|gap| gap.subject.as_ref().map(|subject| subject.name()) == Some("common/x"))
         );
     }
 
@@ -379,7 +380,10 @@ mod tests {
 
         let matrix = answer(None, true, &[]);
         assert_eq!(matrix.completeness, Completeness::Partial);
-        assert_eq!(matrix.gaps[0].subject.as_deref(), Some("common/x"));
+        assert_eq!(
+            matrix.gaps[0].subject,
+            Some(GapSubject::registry("common/x"))
+        );
 
         let missing_key = FamilyResult {
             key_offset: Err(Unresolved("key-storage")),

@@ -5,8 +5,8 @@ use super::Native;
 use super::questions::{error, scope_id, scope_references};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredScopes, DeclaredTags, Error, Gap, GapKind,
-    LinkData, ModifierCategory, ModifierDeclaration, Operation, OutputScope, ScopeDeclaration,
-    ScopeGroup, ScopeInventory, ScopeLink, Source,
+    GapSubject, LinkData, ModifierCategory, ModifierDeclaration, Operation, OutputScope,
+    ScopeDeclaration, ScopeGroup, ScopeInventory, ScopeLink, Source,
 };
 use crate::engine::analysis::{
     declarations::ScopeOutcome,
@@ -85,9 +85,25 @@ impl Native {
 }
 
 pub(super) fn gap(kind: GapKind, subject: Option<&str>, detail: impl Into<String>) -> Gap {
+    gap_for_subject(kind, subject.map(GapSubject::answer_item), detail)
+}
+
+pub(super) fn registry_gap(
+    kind: GapKind,
+    registry: Option<&str>,
+    detail: impl Into<String>,
+) -> Gap {
+    gap_for_subject(kind, registry.map(GapSubject::registry), detail)
+}
+
+pub(super) fn gap_for_subject(
+    kind: GapKind,
+    subject: Option<GapSubject>,
+    detail: impl Into<String>,
+) -> Gap {
     Gap {
         kind,
-        subject: subject.map(str::to_owned),
+        subject,
         detail: detail.into(),
     }
 }
@@ -440,7 +456,7 @@ mod tests {
                 .gaps
                 .iter()
                 .any(|gap| gap.kind == GapKind::UnresolvedPath
-                    && gap.subject.as_deref() == Some("unnamed"))
+                    && gap.subject.as_ref().map(|subject| subject.name()) == Some("unnamed"))
         );
     }
 }

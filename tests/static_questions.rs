@@ -47,7 +47,7 @@ fn defines_match_the_recorded_m45_boundary() {
         );
     }
     assert!(answer.gaps.iter().any(|gap| {
-        gap.subject.as_deref() == Some("NGraphics.ORBIT_HSV")
+        gap.subject.as_ref().map(|subject| subject.name()) == Some("NGraphics.ORBIT_HSV")
             && gap.detail == "reader path exceeds the table-search limit"
     }));
 }
@@ -72,9 +72,18 @@ fn declarations_match_the_recorded_m45_inventory() {
             .iter()
             .filter(|gap| {
                 gap.kind == GapKind::UnresolvedPath
-                    && !names.contains(gap.subject.as_deref().unwrap_or(""))
+                    && !names.contains(
+                        gap.subject
+                            .as_ref()
+                            .map(|subject| subject.name())
+                            .unwrap_or(""),
+                    )
             })
-            .filter_map(|gap| gap.subject.clone())
+            .filter_map(|gap| {
+                gap.subject
+                    .as_ref()
+                    .map(|subject| subject.name().to_owned())
+            })
             .collect();
         let accounted: Vec<_> = names.union(&omitted).cloned().collect();
         assert_eq!(
@@ -142,7 +151,8 @@ fn declarations_match_the_recorded_m45_inventory() {
                         .gaps
                         .iter()
                         .any(|gap| gap.kind == GapKind::UnresolvedPath
-                            && gap.subject.as_deref() == Some(&item.name)
+                            && gap.subject.as_ref().map(|subject| subject.name())
+                                == Some(&item.name)
                             && gap.detail.starts_with("scope declaration not followed at ")),
                     "{}",
                     item.name
@@ -507,7 +517,8 @@ fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
             answer
                 .gaps
                 .iter()
-                .any(|gap| gap.subject.as_deref() == Some(on_action.name.as_str())),
+                .any(|gap| gap.subject.as_ref().map(|subject| subject.name())
+                    == Some(on_action.name.as_str())),
             "{} has a gap",
             on_action.name
         );
@@ -868,10 +879,8 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
             };
             if let Some(kind) = expected_gap {
                 assert!(
-                    answer
-                        .gaps
-                        .iter()
-                        .any(|gap| gap.kind == kind && gap.subject.as_deref() == Some(&field.name)),
+                    answer.gaps.iter().any(|gap| gap.kind == kind
+                        && gap.subject.as_ref().map(|subject| subject.name()) == Some(&field.name)),
                     "{registry}: {}",
                     field.name
                 );

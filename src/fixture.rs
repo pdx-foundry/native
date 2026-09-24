@@ -599,8 +599,8 @@ mod tests {
     #[tokio::test]
     async fn recorded_fixture_results_round_trip_without_a_supervisor() {
         use crate::{
-            Answer, Basis, BuildId, Completeness, Disposal, GameOptions, Gap, GapKind, Native,
-            Operation, Source, Support,
+            Answer, Basis, BuildId, Completeness, Disposal, GameOptions, Gap, GapKind, GapSubject,
+            Native, Operation, Source, Support,
         };
         let request = FixtureRequest::new(FILE, "category = {}\n");
         let build = BuildId("authored-build".into());
@@ -621,7 +621,7 @@ mod tests {
         partial.completeness = Completeness::Partial;
         partial.gaps.push(Gap {
             kind: GapKind::IncompleteObservation,
-            subject: Some(FILE.into()),
+            subject: Some(GapSubject::fixture_file(FILE)),
             detail: "Terminal missing".into(),
         });
         let error = Error::Observation {
