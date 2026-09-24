@@ -177,10 +177,11 @@ pub struct Game {
     observed: std::collections::BTreeSet<String>,
     build: crate::BuildId,
     backend: GameBackend,
-    /// Temporary work directory that Native made. Removed after a clean, confirmed close when no
-    /// read returned an error; otherwise kept for inspection.
+    /// Temporary work directory that Native made. `close` removes it only after a clean,
+    /// confirmed session with no read error; otherwise it is kept for inspection.
     work: Option<PathBuf>,
-    /// A read returned an error other than `Error::Closed`, so `close` keeps the work directory.
+    /// A read returned an error, other than `Error::Closed` after the caller began to close, so
+    /// `close` keeps the work directory.
     read_failed: bool,
     fixture: Option<crate::FixtureRequest>,
     /// The joined loaded modifier answer, when the session reads the table.
@@ -441,20 +442,24 @@ impl Game {
         })
     }
 
-    /// Record a read error so that `close` keeps the work directory, and name the directory in the
-    /// error. A recorded answer holds the error without the directory. `Error::Closed` is
-    /// returned unchanged: the session is over and the read added nothing to inspect.
+    /// Record a read error so that `close` keeps the work directory. The error is returned
+    /// unchanged, so a recorded answer replays it exactly; `work_directory` gives the path.
+    /// `Error::Closed` after the caller began to close adds nothing to inspect. `Error::Closed`
+    /// because the supervisor ended the session does.
     fn keep_on_error<T>(&mut self, result: Result<T, Error>) -> Result<T, Error> {
-        result.map_err(|error| {
-            if error == Error::Closed {
-                return error;
-            }
+        if let Err(error) = &result
+            && !(self.closing && *error == Error::Closed)
+        {
             self.read_failed = true;
-            match &self.work {
-                Some(work) => name_kept_work(error, work),
-                None => error,
-            }
-        })
+        }
+        result
+    }
+
+    /// The temporary work directory of a live session, or `None` for recorded answers. `close`
+    /// removes it only after a clean, confirmed session with no read error; otherwise it stays for
+    /// inspection.
+    pub fn work_directory(&self) -> Option<&Path> {
+        self.work.as_deref()
     }
 
     /// Tell the supervisor that the caller got an answer, and wait for its acknowledgement. The
@@ -493,8 +498,9 @@ impl Game {
     ///
     /// Repeated calls give the same result. Cleanup continues if this future is dropped after it
     /// was polled. Failed session cleanup returns `Error::Cleanup`, with the witnessed disposal.
-    /// The temporary work directory is removed only after a clean, confirmed disposal with no
-    /// read error. An error from `close` names the kept directory.
+    /// The temporary work directory is removed only after a clean, confirmed disposal of a
+    /// session that the caller ended, with no read error. An error from `close` names the kept
+    /// directory; after a read error, `work_directory` gives it.
     pub async fn close(&mut self) -> Result<Disposal, Error> {
         if matches!(self.backend, GameBackend::Recorded(_)) {
             self.closing = true;
@@ -536,7 +542,13 @@ impl Game {
                 disposal: finished.disposal,
             });
         }
+        // A session that the supervisor ended (time out, worker or caller loss) is kept.
+        let caller_ended = matches!(
+            finished.outcome,
+            SessionOutcome::Completed | SessionOutcome::Cancelled
+        );
         if finished.disposal == Disposal::Confirmed
+            && caller_ended
             && !self.read_failed
             && let Some(work) = self.work.take()
         {
@@ -871,13 +883,13 @@ mod tests {
                 diagnostics: vec!["access failed".into()],
             },
         );
-        let expected = format!("access failed; work directory kept at {}", work.display());
         assert!(matches!(
             game.registry_items("common/traditions").await,
-            Err(Error::Observation { reason, .. }) if reason == expected
+            Err(Error::Observation { reason, .. }) if reason == "access failed"
         ));
         assert!(commands.try_recv().is_err());
-        // A recorded answer replays without this session's directory.
+        assert_eq!(game.work_directory(), Some(work.as_path()));
+        // The recorded answer replays the same error.
         let recorded = crate::recorded::Answers::open(recording).unwrap();
         assert!(matches!(
             recorded.read::<Vec<String>>("registry_items", Some("common/traditions")),
@@ -886,6 +898,29 @@ mod tests {
         state.send_modify(|state| state.finished = Some(Ok(finished())));
         assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
         assert!(work.exists());
+        assert_eq!(game.work_directory(), Some(work.as_path()));
+    }
+
+    #[tokio::test]
+    async fn a_session_the_supervisor_ended_keeps_the_work_directory() {
+        for outcome in [SessionOutcome::TimedOut, SessionOutcome::WorkerLost] {
+            let (mut game, _commands, state) = game();
+            let root = tempfile::tempdir().unwrap();
+            let work = root.path().join("session");
+            std::fs::create_dir(&work).unwrap();
+            game.work = Some(work.clone());
+            let report = Finished {
+                outcome,
+                ..finished()
+            };
+            state.send_modify(|state| state.finished = Some(Ok(report)));
+            assert_eq!(
+                game.registry_items("common/traditions").await,
+                Err(Error::Closed)
+            );
+            assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
+            assert!(work.exists());
+        }
     }
 
     #[tokio::test]

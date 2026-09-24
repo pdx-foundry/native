@@ -86,8 +86,10 @@ let items = game.registry_items("common/traditions").await?;  // Answer<Vec<Stri
 let disposal = game.close().await?;                           // Disposal::Confirmed
 ```
 
-Always call `close`, also after a question fails. `native.supports(operation)` checks the
-build and host method without starting a game; `start_game` checks the selected content.
+Always call `close`, also after a question fails. After a failed question, `close` keeps the
+session's work directory for inspection; `game.work_directory()` gives its path.
+`native.supports(operation)` checks the build and host method without starting a game;
+`start_game` checks the selected content.
 `GameOptions::registries` selects the directories to observe before launch. Without it, the
 M45 session observes traditions and tradition categories. A listed but unselected registry
 returns `Unsupported`; a selected loader that does not run before the pause gives a precise
