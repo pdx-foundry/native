@@ -29,7 +29,7 @@ fixture criteria, full-inventory measurements and Atlas integration checks pass.
 
 ## Review basis
 
-Status: agreed recommendation, revision 5, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 adds the summary and expands the action plan; it does not re-run the review or mark any action complete. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked.
+Status: agreed recommendation, revision 6, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests; implementation remains outstanding. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked.
 
 The findings of `docs/design/native-dx.md` are already ticketed (SDK-579 to SDK-595) and are not repeated; they appear only as dependencies.
 
@@ -160,10 +160,19 @@ Keep: the category read-entry exception as the one recorded manual exception; `r
 
 No cuts. Optional: bump the pin to `ccb681a` (doc-only; removes the local path).
 
-## 7. Changes to guarantees (decide each separately)
+## 7. Agreed decisions
 
-- **G1. Gap owners.** The Milestone 2 review cut ticket numbers from the snapshot; SDK-570 reintroduced them as required owners. Hold the M2 position: a gap carries a reason and an owner category; the ticket mapping lives in docs. If Jackson prefers ticket owners, record that reversal here and drop A9.
-- **G2. Registry count on the wire.** `protocol/session.rs:93-112` fixes 164 as a protocol limit. Proposed: the bound becomes the length of the bound build's `registries()` answer, supplied at session start. Lost: a constant wire bound. Acceptable because the count is a build fact. Check: a synthetic target with a different count passes the handshake.
+- **G1. Gap owners — agreed, 2026-09-24.** A published gap carries a reason and an owner category; the ticket mapping lives in docs. Remove the ticket-number owners reintroduced by SDK-570 through A9. This loses a direct ticket reference in the snapshot, but keeps changes to the work plan from changing the published engine knowledge.
+- **G2. Registry count — agreed, 2026-09-24.** Production and tests have different responsibilities. Production must adapt to supported builds; tests must detect unexpected changes to discovery on a known build.
+
+  **Production:** replace the fixed `164` selection limit in `protocol/session.rs:93-112` with validation against the bound build's discovered registries. The supervisor derives or verifies this information from the installation it opens; a caller-supplied count is not the authority. Keep duplicate and unknown-name checks and the separate transport message-size limit. The removed guarantee is a constant registry-count limit across builds, not bounded message transport.
+
+  **Tests:** the parity test for the exact supported M45-release build must explicitly assert **164 registries**, alongside the existing expected registry identities. This count is a regression expectation, not a production limit. An unexpected count must fail; do not automatically replace the expected count with the latest discovery result. A synthetic target with more than 164 valid registries must also pass session admission, proving that production no longer imposes M45's count on other builds. Keep rejection tests for duplicates and unknown names.
+
+  Jackson's clarification: "Production shouldn’t have a fixed limit because we need to adapt to supported builds. But we should also assert in tests that the number currently is 164. That way we can detect regressions in registry discovery."
+
+  **Effect on R2:** build-specific counts and names in test expectations are valid. The shortcut guard must reject case-specific production behavior without banning the constants that make regression tests useful.
+
 - Withdrawn in revision 3: crediting recorded answers. The coverage policy stays as it is (crack 8).
 
 ## 8. Linear
@@ -181,7 +190,7 @@ ticket to a person and use the repository label to show where its work belongs.
 | SDK-548, SDK-553 | State that recordings support reproduction, while credited coverage and rates come from the live run. Preserve the current coverage policy. | Before either measurement is reported. |
 | SDK-569 | Expand the scanner and negative controls to R2's scope. Include G2's decision and N10's removal dependency. | Before the first shared-reader methods. |
 | SDK-574, SDK-571 | Assign a milestone and owner. SDK-574 concerns worker pause coordination; SDK-571 remains a reproduce-first hang investigation. Link either as a blocker only where the affected live check requires it. | During preparation for live work. |
-| 755 gaps without an owner | Group by failure shape, then create one follow-up per shape or record an explicit accepted-gap note. Keep the ticket mapping in docs if G1 is retained. | Triage with R6; do not require all gaps to be solved before M4. |
+| 755 gaps without an owner | Group by failure shape, then create one follow-up per shape or record an explicit accepted-gap note. Keep the ticket mapping in docs, as agreed in G1. | Triage with R6; do not require all gaps to be solved before M4. |
 | Roadmap and specification | Record section 3's acceptance target. Correct the M3 sentence: the snapshot contains loaded-modifier counts; the recorded answer retains the names. | Before shared-reader implementation. |
 
 ## 9. Order of work
@@ -191,34 +200,62 @@ mean finishing every repair below.** Preparation establishes the target, ownersh
 the first implementation work removes the known obstacles to shared-reader methods. Checkboxes
 remain open until the stated result exists.
 
+**Preparation started, 2026-09-24 ([SDK-596](https://linear.app/unnamed-system/issue/SDK-596)).**
+The following delivery tickets are assigned to Jackson in Milestone 4:
+
+| Responsibility | Ticket |
+| --- | --- |
+| Atlas composition and fixture conclusions (R6, G1) | [SDK-597](https://linear.app/unnamed-system/issue/SDK-597) |
+| Runtime weight observations blocking SDK-545 | [SDK-598](https://linear.app/unnamed-system/issue/SDK-598) |
+| Scope availability observations blocking SDK-549 | [SDK-599](https://linear.app/unnamed-system/issue/SDK-599) |
+| Public-API council agenda parity gate (R5) | [SDK-600](https://linear.app/unnamed-system/issue/SDK-600) |
+
+SDK-542, SDK-544 and SDK-550 now name their observation work and owner. SDK-563 and SDK-577
+are in Milestone 4. SDK-569 and SDK-563 are blocked by preparation; SDK-541 is blocked by both,
+and SDK-542 by preparation and SDK-569. Existing dependencies remain. SDK-548 and SDK-553 state
+that credited rates come from the live run, while recordings support reproduction.
+
+M1 uses the SDK-588 completeness report shape with current public diagnostics. SDK-588 remains
+open for SDK-581's internal stop diagnostics and normalized cross-run diffs. SDK-598 is a separate
+weight-observation ticket: SDK-547's naval-capacity state reads are not assumed to evaluate weights.
+
+**Preparation verification, 2026-09-24:** R1's regression cases and existing M45 modifier parity
+pass without expected-output changes. M45-release registry parity explicitly asserts 164. M1 is
+recorded in [discovery](../native/discovery.md#milestone-4-field-baseline-sdk-596): 28 complete,
+136 partial, no failed queries; 878 fields, of which 232 have unknown kinds. The 11 unknown-kind
+fields with an identity use four signatures; the other 221 have no single established identity.
+No field discovery or binding code changed. Formatting, clippy, the default Rust suite, doc checks
+and all seven Python codec tests passed. Full live-game and unrelated ignored parity suites were
+not run; preparation changes no live operation.
+
 ### 9.1 Before shared-reader implementation
 
-- [ ] **Record the acceptance target (R5).** Put section 3 in the roadmap, specification and
+- [x] **Record the acceptance target (R5).** Put section 3 in the roadmap, specification and
   Linear milestone description. Assign the public-API parity test in `tests/static_questions.rs`.
   State that it will initially fail and must pass before M4 closes. Remove the stale freeze and
   held-out policy wording, and correct the loaded-modifier sentence. Done when the documents and
   tracker describe the same static and fixture requirements.
-- [ ] **Record the two decisions (G1, G2).** Confirm whether gap owners remain categories with
-  ticket mappings in docs, and whether the session limit comes from the bound build's registry
-  count. Record the chosen behavior and its check. G1 controls A9; G2 controls the protocol work
-  in R2. An unresolved decision holds that change, not unrelated work.
-- [ ] **Assign Atlas integration and fixture dependencies (R3, R6).** Create the R6 ticket with
+- [x] **Record the two decisions (G1, G2).** Agreed in section 7: category owners with ticket
+  mappings in docs; production validation against the bound build's registries, with an explicit
+  164-registry assertion in M45-release tests. G1 controls A9; G2 controls R2's protocol work.
+  The decisions are recorded; implementation and updates to the specification and tickets remain open.
+- [x] **Assign Atlas integration and fixture dependencies (R3, R6).** Create the R6 ticket with
   an Atlas label and owner. Update all five fixture tickets and assign the two missing
   observation dependencies. Link SDK-577 to the relevant Atlas work. Done when every required
   result has a delivery ticket, an owner and a completion check; the implementations can follow
   during M4.
-- [ ] **Fix the existing modifier-answer defect (R1, Native).** Combine duplicate registrations
+- [x] **Fix the existing modifier-answer defect (R1, Native).** Combine duplicate registrations
   conservatively. Equal tags remain established; conflicting or unresolved tags retain a gap
   in either input order. Pass the four regression cases in section 5 and check parity. Record
   whether the supported M45 result changes. This repairs an existing answer before new results
   build on it.
-- [ ] **Save the baseline before field discovery changes (M1, Native).** Use SDK-588's report
+- [x] **Save the baseline before field discovery changes (M1, Native).** Use SDK-588's report
   shape to run the current `registry-fields/v3` and reader-kind analysis on M45-release across
   all 164 discovered registries. Record the build and Native revision, complete/partial/failed
   totals, fields per reader kind, and distinct callee signatures behind `Unknown` in
   `docs/native/discovery.md`. Do not fix failures inside the measurement. Done when the report
   can distinguish later discovery improvements from the starting population.
-- [ ] **Set the first implementation dependencies.** Widen SDK-569's written scope to R2 and
+- [x] **Set the first implementation dependencies.** Widen SDK-569's written scope to R2 and
   schedule SDK-563 in M4 ahead of SDK-541. Preserve this order: **M1 baseline → shortcut guard
   and field-discovery repair → shared-reader methods**, with R6 alongside the first methods.
 
@@ -226,7 +263,7 @@ remain open until the stated result exists.
 
 | Order | Responsible area and action | Result needed before moving on |
 | --- | --- | --- |
-| 1 | Native: implement R2 / SDK-569, including G2 if adopted. Demonstrate the existing shortcuts as failing controls before removing or relocating them. | The guard catches the owner, registry, field and fixed-count shortcuts and accepts uniform symbol-keyed methods. N10 remains a known failure until the next step. If G2 is adopted, a synthetic build with a different registry count passes the handshake. |
+| 1 | Native: implement R2 / SDK-569 and the agreed G2. Demonstrate the existing shortcuts as failing controls before removing or relocating them. | The guard catches production shortcuts and accepts uniform symbol-keyed methods and build-specific test expectations. N10 remains a known failure until the next step. M45-release parity explicitly asserts 164 registries; a synthetic build with more than 164 valid registries passes session admission. Duplicate and unknown selections are rejected. |
 | 2 | Native: remove N10 after its negative control has failed. Preserve the contract labels and their removal note. Complete the other shortcut repairs or relocations identified by R2. | The council-agenda-only branch and its unused result fields are gone. The guard now passes with only the documented category exception. |
 | 3 | Native: implement SDK-563 after M1. | Jump-table controls and parity pass; the missed megastructure fields are found, and changes to the registry population are recorded. SDK-541 can use the repaired field discovery. |
 | 4 | Native and Atlas: start SDK-541 and SDK-542 with R6. Add R5's public-API council agenda test. | Each delivered answer reaches Atlas with its conditions and gaps intact. The full council agenda test remains an explicit unfinished check until the later methods land. |
@@ -250,7 +287,7 @@ remain open until the stated result exists.
 - **N12, A7 and A8:** remove stale wording and unused files after checking references and tests.
 - **N13:** remove the old sweep JSON only after M1 exists and any distinct old findings have a
   usable retained home. Keep the old Markdown summary.
-- **A9:** remove ticket-number owners only after G1 is recorded. Update schema and tests together.
+- **A9:** G1 is agreed. Remove ticket-number owners and update schema and tests together.
 - **pdxscript-rs:** the documentation-only pin bump is optional.
 
 ### 9.5 Before Milestone 4 is declared complete

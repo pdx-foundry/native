@@ -1,5 +1,5 @@
 //! Static language questions: modifiers, modifier categories, scopes and scope links.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::Native;
 use super::questions::{error, scope_id, scope_references};
@@ -17,7 +17,8 @@ use crate::engine::analysis::{
 impl Native {
     /// Read the built-in modifiers from direct definition calls in executable text.
     ///
-    /// Each direct call is one modifier. Modifiers that content generates at run time, such as
+    /// Repeated names share one declaration; unresolved or conflicting category tags remain
+    /// unresolved. Modifiers that content generates at run time, such as
     /// one per resource or job, are not listed: each call site that generates them is an
     /// [`GapKind::UnnamedDeclaration`] gap. [`Native::modifier_families`] gives the name templates
     /// of a registry's generated modifiers. Category tags are intended-use tags; where a modifier
@@ -139,16 +140,12 @@ pub(crate) fn normalized_modifiers(
     result: &ModifierResult,
     build: BuildId,
 ) -> Answer<Vec<ModifierDeclaration>> {
-    let mut value = Vec::new();
-    let mut names = BTreeSet::new();
+    let mut declarations = BTreeMap::new();
     let mut gaps = Vec::new();
 
     for site in &result.sites {
         match site {
             DefinitionSite::Declared { name, tags } => {
-                if !names.insert(name.clone()) {
-                    continue;
-                }
                 let category_tags = match tags {
                     Tags::Listed(tags) => DeclaredTags::Listed(tags.clone()),
                     Tags::Unresolved(reason) => {
@@ -160,10 +157,28 @@ pub(crate) fn normalized_modifiers(
                         DeclaredTags::Unresolved
                     }
                 };
-                value.push(ModifierDeclaration {
-                    name: name.clone(),
-                    category_tags,
-                });
+                match declarations.entry(name.clone()) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        entry.insert(category_tags);
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut entry) => {
+                        match (entry.get(), &category_tags) {
+                            (DeclaredTags::Listed(previous), DeclaredTags::Listed(current)) => {
+                                if previous != current {
+                                    gaps.push(gap(
+                                        GapKind::UnresolvedPath,
+                                        Some(name),
+                                        "modifier registrations declare conflicting category tags",
+                                    ));
+                                    entry.insert(DeclaredTags::Unresolved);
+                                }
+                            }
+                            _ => {
+                                entry.insert(DeclaredTags::Unresolved);
+                            }
+                        }
+                    }
+                }
             }
             DefinitionSite::RuntimeToken => gaps.push(gap(
                 GapKind::UnnamedDeclaration,
@@ -191,6 +206,13 @@ pub(crate) fn normalized_modifiers(
         "The search covers every direct modifier definition call in executable text. Generated modifier families, whose templates modifier_families gives for each registry, and where a modifier takes effect are outside it.",
     ));
 
+    let value = declarations
+        .into_iter()
+        .map(|(name, category_tags)| ModifierDeclaration {
+            name,
+            category_tags,
+        })
+        .collect();
     answer(
         value,
         gaps,
@@ -399,6 +421,79 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
 mod tests {
     use super::*;
     use crate::engine::analysis::declarations::ScopeType;
+
+    fn modifier_registrations(tags: Vec<Tags>) -> Answer<Vec<ModifierDeclaration>> {
+        let result = ModifierResult {
+            sites: tags
+                .into_iter()
+                .map(|tags| DefinitionSite::Declared {
+                    name: "example_modifier".into(),
+                    tags,
+                })
+                .collect(),
+            categories: BTreeMap::new(),
+            generation_sites: 0,
+            type_masks: BTreeMap::new(),
+        };
+        normalized_modifiers(&result, BuildId("test".into()))
+    }
+
+    #[test]
+    fn equal_modifier_registrations_keep_one_established_declaration() {
+        let tags = Tags::Listed(vec!["country".into()]);
+        let answer = modifier_registrations(vec![tags.clone(), tags]);
+        assert_eq!(answer.completeness, Completeness::Complete);
+        assert_eq!(answer.value.len(), 1);
+        assert_eq!(
+            answer.value[0].category_tags,
+            DeclaredTags::Listed(vec!["country".into()])
+        );
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .all(|gap| gap.kind == GapKind::OutsideMethod)
+        );
+    }
+
+    #[test]
+    fn conflicting_modifier_registrations_remain_unresolved() {
+        for tags in [
+            vec!["country", "planet", "country"],
+            vec!["planet", "country", "planet"],
+        ] {
+            let answer = modifier_registrations(
+                tags.into_iter()
+                    .map(|tag| Tags::Listed(vec![tag.into()]))
+                    .collect(),
+            );
+            assert_eq!(answer.completeness, Completeness::Partial);
+            assert_eq!(answer.value.len(), 1);
+            assert_eq!(answer.value[0].category_tags, DeclaredTags::Unresolved);
+            assert!(answer.gaps.iter().any(|gap| {
+                gap.kind == GapKind::UnresolvedPath
+                    && gap.subject == Some(GapSubject::answer_item("example_modifier"))
+                    && gap.detail == "modifier registrations declare conflicting category tags"
+            }));
+        }
+    }
+
+    #[test]
+    fn unresolved_modifier_registration_is_kept_in_either_order() {
+        let known = Tags::Listed(vec!["country".into()]);
+        let unknown = Tags::Unresolved("unreadable category mask");
+        let first = modifier_registrations(vec![known.clone(), unknown.clone()]);
+        let second = modifier_registrations(vec![unknown, known]);
+        assert_eq!(first, second);
+        assert_eq!(first.completeness, Completeness::Partial);
+        assert_eq!(first.value.len(), 1);
+        assert_eq!(first.value[0].category_tags, DeclaredTags::Unresolved);
+        assert!(first.gaps.iter().any(|gap| {
+            gap.kind == GapKind::UnresolvedPath
+                && gap.subject == Some(GapSubject::answer_item("example_modifier"))
+                && gap.detail == "category tags not followed at unreadable category mask"
+        }));
+    }
 
     fn scope(bit: usize, name: &str) -> ScopeType {
         ScopeType {

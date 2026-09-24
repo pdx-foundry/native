@@ -1,5 +1,69 @@
 # Static analysis, reference observations, and registry discovery
 
+## Milestone 4 field baseline (SDK-596)
+
+One run on 2026-09-24 of `registry-fields/v3` over all 164 discovered registries on M45-release
+returned **28 complete, 136 partial and 0 failed** answers, with **878 fields**. Field discovery,
+reader classification and binding code were unchanged from `3777d2c`; SDK-596 changed reporting
+and modifier-answer normalization only. No failure was repaired inside the run. The executable
+SHA-256 was `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`.
+The [full baseline](milestone-4-field-baseline.md) records the command, exact source identity,
+per-registry and per-reader counts, and retained local probe locations.
+
+| Reader kind | Fields |
+| --- | ---: |
+| Block | 292 |
+| Boolean | 86 |
+| FixedPoint | 28 |
+| Integer | 62 |
+| Reference | 7 |
+| String | 171 |
+| Unknown | 232 |
+
+Of the 232 unknown kinds, **221 fields have no single established reader identity**. The other
+11 have an identified callee but an unknown kind. All 19 established reader IDs in the inventory
+were joined to exactly one demangled ARM64 definition symbol. The four unknown signatures are:
+
+| Callee | Fields | Examples |
+| --- | ---: | --- |
+| `CVariableValue::Read(CReader&, EScopeType)` | 6 | `council_agendas#agenda_cost`; three fields in `country_limits/ship_of_size_limits`; `megastructures#overclock_cooldown`; `species_rights/purge_types#pop_decline_rate` |
+| `CReader::Read(CColor&)` | 3 | `governments/authorities#color`, `named_colors#color`, `patrons#color` |
+| `CReader::Read(CVector2FixedPoint&)` | 1 | `patrons#position` |
+| `CReader::Read(float&)` | 1 | `star_classes#icon_scale` |
+
+The example paths above are below `common/`. The signature join uses the same demangler and
+reader-ID derivation as Native; it names an already identified reader, not the semantics it accepts.
+The large unknown population therefore cannot be solved by classifying these four signatures alone.
+Missing joins and unresolved root paths are the larger part of the remaining work.
+
+Failure shapes in the current public answers, excluding `OutsideMethod`:
+
+| Shape | Gap records | Registries |
+| --- | ---: | ---: |
+| Reader alternatives do not establish one shared reader | 221 | 80 |
+| Shared reader identified, broad value form unknown | 11 | 8 |
+| Root reader path could not be followed to its end | 101 | 101 |
+| Field reader not established on at least one path | 101 | 101 |
+| Required function or name table could not be read | 12 | 12 |
+| Reader paths have no recovered field name | 15 | 15 |
+
+The last row accounts for 61 unnamed paths. Rows overlap and cannot be added as independent
+failures; the 101 root-path gap records are not a count of all stopped paths. SDK-581 and SDK-588
+still own internal function/instruction/bound diagnostics and normalized cross-run diffs. This
+baseline groups the public reasons available before those changes and leaves SDK-588 open.
+
+Council agendas has all ten fields, but its answer is partial because `agenda_cost` uses the
+unclassified `CVariableValue` reader. Establishing that broad kind alone will not meet the M4
+semantic gate: normalized conditions, numeric conversion, block families, scope context and weight
+grammar still have their own acceptance criteria. `CPersistent` block classification for `ai_weight`
+and `modifier` does not establish their accepted keys or member family.
+
+**Modifier-answer repair (R1):** duplicate registrations now retain unresolved or conflicting
+category tags, independent of which known/unknown registration comes first. Regression tests cover
+equal tags, conflicts, known then unresolved and unresolved then known. The existing M45 modifier
+parity test passed without changes to its expected count, gaps or samples; no returned modifier has
+unresolved tags on this build. The explicit M45-release count assertion also passed at 164.
+
 ## Reusable reference seam
 
 SDK-482 was accepted on 2026-09-17 at experiment `c2258d2ef5bdcb195f6d2a3a88d7a45e2f80cc57`, branch `prototype/sdk-482-reference-observations`. Source: `typed-extraction/typed-extraction/reference-observation-prototype/`. Target: M45-observe. The provider selects the Mach-O slice, binds symbols/fixups/stubs, parses ARM64 instructions, relocates local branches and checks complete-function shape. Four manually qualified compiler templates preserve register widths, aliases, branch destinations, comparisons and calls. Only declared input/output locations, global bindings and typed callees are parameters; other code changes return unknown. This is not a general decompiler.
