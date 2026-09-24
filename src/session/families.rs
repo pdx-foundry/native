@@ -1,4 +1,6 @@
 //! The static question of the modifier families that a registry generates.
+use std::collections::BTreeMap;
+
 use super::Native;
 use super::language::gap;
 use super::questions::error;
@@ -7,20 +9,23 @@ use crate::answer::{
     ModifierFamily, NamePart, Operation, Source,
 };
 use crate::engine::analysis::{
-    families::{self, Condition, Family, FamilyResult, METHOD, Part},
-    modifiers::{self, CategoryNames, DefinitionSite, Tags},
+    families::{
+        self, Condition, Family, FamilyResult, METHOD, Part,
+        joins::{Joins, Reason, SiteJoin},
+    },
+    modifiers::{self, CategoryNames, Tags},
 };
 
 impl Native {
-    /// Read the modifier families that one registry's database generator registers for each of
-    /// its items, such as `planet_{key}_build_speed_mult` for `common/buildings`.
+    /// Read the modifier families that one registry's code registers for each of its items, such
+    /// as `planet_{key}_build_speed_mult` for `common/buildings`.
     ///
     /// Each family is a name template with the place of the item key, the category tags, and
-    /// whether every item generates it. Apply [`ModifierFamily::name_for`] to item keys. Other
-    /// code that generates modifiers from content, such as generators shared by several
-    /// registries, is not joined to a registry: an [`GapKind::UnnamedDeclaration`] gap counts it,
-    /// so the answer is partial while such code exists. Where a modifier takes effect is outside
-    /// this method.
+    /// whether every item generates it. Apply [`ModifierFamily::name_for`] to item keys. Code that
+    /// generates modifiers from content that is not joined to this registry, such as code of
+    /// content that Native does not name as a registry, is counted in an
+    /// [`GapKind::UnnamedDeclaration`] gap, so the answer is partial while such code exists. Where
+    /// a modifier takes effect is outside this method.
     ///
     /// The name is a content directory from [`Native::registries`]; another name is
     /// [`Error::UnknownRegistry`].
@@ -29,34 +34,36 @@ impl Native {
         self.answer("modifier_families", Some(registry), || {
             let operation = Operation::ModifierFamilies;
             let analysis = self.declaration_analysis(operation)?;
-            let input = analysis
-                .family_input(registry)
-                .map_err(|failure| error(operation, failure))?
+            let index = analysis
+                .family_index()
+                .map_err(|failure| error(operation, failure))?;
+            let code = index
+                .registries
+                .get(registry)
                 .ok_or_else(|| Error::UnknownRegistry {
                     name: registry.into(),
                 })?;
             let modifier_input = analysis
                 .modifier_input()
                 .map_err(|failure| error(operation, failure))?;
-            let declarations = modifiers::analyze(&modifier_input)
-                .map_err(|error| Error::Method(error.to_string()))?;
 
-            let result = families::analyze(&input);
+            let result = families::analyze(&index.input, code);
             let masks = result
                 .iter()
-                .flat_map(|result| &result.sites)
-                .filter_map(|(_, family)| family.as_ref().ok().map(|family| family.mask));
+                .flat_map(|result| &result.families)
+                .filter_map(|family| family.mask);
             let categories = modifiers::category_names(&modifier_input.categories, masks);
-            let runtime_names = declarations
-                .sites
-                .iter()
-                .filter(|site| **site == DefinitionSite::RuntimeToken)
-                .count();
+            let unnamed_input = index
+                .joins
+                .registries
+                .get(registry)
+                .is_some_and(|join| join.unnamed_input);
 
             Ok(normalized_families(
                 registry,
                 result.as_ref(),
-                input.unjoined_sites + runtime_names,
+                unnamed_input,
+                &unjoined_sites(&index.joins),
                 &categories,
                 self.build(),
             ))
@@ -64,12 +71,54 @@ impl Native {
     }
 }
 
+/// The generation calls that are not joined to a registry, by reason.
+pub(super) fn unjoined_sites(joins: &Joins) -> BTreeMap<Reason, usize> {
+    let mut counts = BTreeMap::new();
+    for join in joins.sites.values() {
+        if let SiteJoin::Unjoined(reason) = join {
+            *counts.entry(*reason).or_default() += 1;
+        }
+    }
+    counts
+}
+
+/// The count of unjoined generation calls with each reason, in words, or `None` when every call
+/// is joined.
+pub(super) fn unjoined_summary(unjoined: &BTreeMap<Reason, usize>) -> Option<String> {
+    let total: usize = unjoined.values().sum();
+    if total == 0 {
+        return None;
+    }
+
+    let reasons: Vec<String> = unjoined
+        .iter()
+        .map(|(reason, count)| {
+            let reason = match reason {
+                Reason::RegistrationFunction => "inside the registration function",
+                Reason::UnnamedInput => {
+                    "combine a registry's keys with the keys of content that Native does not name as a registry"
+                }
+                Reason::UnnamedContent => {
+                    "reached from the post-read code of content objects that are not items of a named registry"
+                }
+                Reason::NoRoot => "reached by no chain of calls from a registry's code",
+            };
+            format!("{count} {reason}")
+        })
+        .collect();
+    Some(format!(
+        "{total} sites that compose modifier names at run time are not joined to a registry ({})",
+        reasons.join("; ")
+    ))
+}
+
 /// The families of one registry, sorted by template. `unjoined` counts the code that generates
 /// modifier names and is not joined to any registry.
 fn normalized_families(
     registry: &str,
     result: Option<&FamilyResult>,
-    unjoined: usize,
+    unnamed_input: bool,
+    unjoined: &BTreeMap<Reason, usize>,
     categories: &CategoryNames,
     build: BuildId,
 ) -> Answer<Vec<ModifierFamily>> {
@@ -83,58 +132,68 @@ fn normalized_families(
                 GapKind::UnresolvedPath,
                 subject,
                 format!(
-                    "the place of the item key could not be established at {}; no name of the database generator was followed",
+                    "the place of the item key could not be established at {}; no name of the registry's code was followed",
                     reason.0
                 ),
             ));
         }
+        for (reason, count) in &result.failures {
+            gaps.push(gap(
+                GapKind::UnresolvedPath,
+                subject,
+                format!(
+                    "{count} names or generation calls of the registry's code could not be followed at {reason}"
+                ),
+            ));
+        }
 
-        for (_, family) in &result.sites {
-            match family {
-                Ok(family) => {
-                    let family = public_family(family, categories);
-                    let template = template(&family);
-                    if family.category_tags == DeclaredTags::Unresolved {
-                        gaps.push(gap(
-                            GapKind::UnresolvedPath,
-                            subject,
-                            format!("category tags of {template} could not be followed"),
-                        ));
-                    }
-                    if family.condition == GenerationCondition::Unresolved {
-                        gaps.push(gap(
-                            GapKind::UnresolvedPath,
-                            subject,
-                            format!("the method could not establish that every item generates {template}"),
-                        ));
-                    }
-                    value.push(family);
-                }
-                Err(reason) => gaps.push(gap(
+        for family in &result.families {
+            let public = public_family(family, categories);
+            let template = template(&public);
+            if public.category_tags == DeclaredTags::Unresolved {
+                gaps.push(gap(
+                    GapKind::UnresolvedPath,
+                    subject,
+                    format!("category tags of {template} could not be followed"),
+                ));
+            }
+            match family.condition {
+                Condition::Always => {}
+                Condition::Unresolved => gaps.push(gap(
+                    GapKind::UnresolvedPath,
+                    subject,
+                    format!("the method could not establish that every item generates {template}"),
+                )),
+                Condition::ItemRoot => gaps.push(gap(
                     GapKind::UnresolvedPath,
                     subject,
                     format!(
-                        "a name that the database generator registers could not be followed at {}",
-                        reason.0
+                        "only an item's post-read code registers {template}; that the engine runs it for every item is not established"
                     ),
                 )),
             }
+            value.push(public);
         }
     }
 
-    if unjoined > 0 {
+    if unnamed_input {
+        gaps.push(gap(
+            GapKind::UnnamedDeclaration,
+            subject,
+            "names that combine this registry's keys with the keys of content that Native does not name as a registry are not returned",
+        ));
+    }
+    if let Some(summary) = unjoined_summary(unjoined) {
         gaps.push(gap(
             GapKind::UnnamedDeclaration,
             None,
-            format!(
-                "{unjoined} sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
-            ),
+            format!("{summary}; some may generate this registry's modifiers"),
         ));
     }
     gaps.push(gap(
         GapKind::OutsideMethod,
         subject,
-        "The search covers the registry's database generator. Where a modifier takes effect, the tags that a later registration of the same name gives, and names longer than a fixed-size buffer keeps are outside it.",
+        "The search covers the registry's database generator and post-read code. Where a modifier takes effect, the tags that a later registration of the same name gives, the tags of a declared modifier after content registers it again, and names longer than a fixed-size buffer keeps are outside it.",
     ));
 
     value.sort_by_cached_key(|family| (template(family), format!("{:?}", family.category_tags)));
@@ -161,13 +220,13 @@ pub(super) fn public_family(family: &Family, categories: &CategoryNames) -> Modi
             Part::Unresolved => None,
         })
         .collect();
-    let category_tags = match modifiers::tags(categories, family.mask) {
-        Tags::Listed(tags) => DeclaredTags::Listed(tags),
-        Tags::Unresolved(_) => DeclaredTags::Unresolved,
+    let category_tags = match family.mask.map(|mask| modifiers::tags(categories, mask)) {
+        Some(Tags::Listed(tags)) => DeclaredTags::Listed(tags),
+        Some(Tags::Unresolved(_)) | None => DeclaredTags::Unresolved,
     };
     let condition = match family.condition {
         Condition::Always => GenerationCondition::Always,
-        Condition::Unresolved => GenerationCondition::Unresolved,
+        Condition::Unresolved | Condition::ItemRoot => GenerationCondition::Unresolved,
     };
 
     ModifierFamily {
@@ -194,7 +253,6 @@ fn template(family: &ModifierFamily) -> String {
 mod tests {
     use super::*;
     use crate::engine::analysis::evaluate::Unresolved;
-    use std::collections::BTreeMap;
 
     fn categories() -> CategoryNames {
         BTreeMap::from([
@@ -205,7 +263,7 @@ mod tests {
         ])
     }
 
-    fn family(parts: Vec<Part>, mask: u64, condition: Condition) -> Family {
+    fn family(parts: Vec<Part>, mask: Option<u64>, condition: Condition) -> Family {
         Family {
             parts,
             limit: None,
@@ -218,47 +276,60 @@ mod tests {
         BuildId("test".into())
     }
 
+    fn answer(
+        result: Option<&FamilyResult>,
+        unnamed_input: bool,
+        unjoined: &[(Reason, usize)],
+    ) -> Answer<Vec<ModifierFamily>> {
+        normalized_families(
+            "common/x",
+            result,
+            unnamed_input,
+            &unjoined.iter().copied().collect(),
+            &categories(),
+            build(),
+        )
+    }
+
     #[test]
     fn families_are_sorted_and_gaps_name_each_unresolved_part() {
         let result = FamilyResult {
             key_offset: Ok(0x10),
-            sites: vec![
-                (
-                    1,
-                    Ok(family(
-                        vec![Part::ItemKey, Part::Literal("_b".into())],
-                        3,
-                        Condition::Always,
-                    )),
+            families: vec![
+                family(
+                    vec![Part::ItemKey, Part::Literal("_b".into())],
+                    Some(3),
+                    Condition::Always,
                 ),
-                (
-                    2,
-                    Ok(family(
-                        vec![Part::Literal("a_".into()), Part::ItemKey],
-                        1,
-                        Condition::Unresolved,
-                    )),
+                family(
+                    vec![Part::Literal("a_".into()), Part::ItemKey],
+                    Some(1),
+                    Condition::Unresolved,
                 ),
-                (3, Err(Unresolved("name"))),
-                (
-                    4,
-                    Ok(family(
-                        vec![Part::ItemKey, Part::Literal("_c".into())],
-                        4,
-                        Condition::Always,
-                    )),
+                family(
+                    vec![Part::ItemKey, Part::Literal("_c".into())],
+                    Some(4),
+                    Condition::Always,
+                ),
+                family(
+                    vec![Part::ItemKey, Part::Literal("_d".into())],
+                    None,
+                    Condition::ItemRoot,
                 ),
             ],
+            failures: BTreeMap::from([("name", 2)]),
         };
-        let answer = normalized_families("common/x", Some(&result), 0, &categories(), build());
+        let answer = answer(Some(&result), false, &[]);
 
         let templates: Vec<_> = answer.value.iter().map(template).collect();
-        assert_eq!(templates, ["a_{key}", "{key}_b", "{key}_c"]);
+        assert_eq!(templates, ["a_{key}", "{key}_b", "{key}_c", "{key}_d"]);
         assert_eq!(
             answer.value[1].category_tags,
             DeclaredTags::Listed(vec!["Colony".into(), "Ships".into()])
         );
         assert_eq!(answer.value[2].category_tags, DeclaredTags::Unresolved);
+        assert_eq!(answer.value[3].category_tags, DeclaredTags::Unresolved);
+        assert_eq!(answer.value[3].condition, GenerationCondition::Unresolved);
         assert_eq!(answer.completeness, Completeness::Partial);
         assert_eq!(answer.source.basis, Basis::StaticAnalysis);
 
@@ -268,11 +339,16 @@ mod tests {
                 .iter()
                 .any(|detail| detail.contains("every item generates a_{key}"))
         );
-        assert!(details.iter().any(|detail| detail.ends_with("at name")));
+        assert!(details.iter().any(|detail| detail.starts_with("2 names")));
         assert!(
             details
                 .iter()
                 .any(|detail| detail.contains("category tags of {key}_c"))
+        );
+        assert!(
+            details
+                .iter()
+                .any(|detail| detail.contains("only an item's post-read code registers {key}_d"))
         );
         assert!(
             answer
@@ -285,21 +361,32 @@ mod tests {
 
     #[test]
     fn unjoined_generation_keeps_every_answer_partial() {
-        let complete = normalized_families("common/x", None, 0, &categories(), build());
+        let complete = answer(None, false, &[]);
         assert!(complete.value.is_empty());
         assert_eq!(complete.completeness, Completeness::Complete);
 
-        let partial = normalized_families("common/x", None, 3, &categories(), build());
+        let partial = answer(
+            None,
+            false,
+            &[(Reason::UnnamedContent, 2), (Reason::NoRoot, 1)],
+        );
         assert_eq!(partial.completeness, Completeness::Partial);
         let gap = &partial.gaps[0];
         assert_eq!(gap.kind, GapKind::UnnamedDeclaration);
-        assert!(gap.detail.starts_with("3 sites"));
+        assert!(gap.detail.starts_with("3 sites"), "{}", gap.detail);
+        assert!(gap.detail.contains("2 reached from the post-read code"));
+        assert!(gap.detail.contains("1 reached by no chain"));
+
+        let matrix = answer(None, true, &[]);
+        assert_eq!(matrix.completeness, Completeness::Partial);
+        assert_eq!(matrix.gaps[0].subject.as_deref(), Some("common/x"));
 
         let missing_key = FamilyResult {
             key_offset: Err(Unresolved("key-storage")),
-            sites: Vec::new(),
+            families: Vec::new(),
+            failures: BTreeMap::new(),
         };
-        let answer = normalized_families("common/x", Some(&missing_key), 0, &categories(), build());
+        let answer = answer(Some(&missing_key), false, &[]);
         assert_eq!(answer.completeness, Completeness::Partial);
         assert_eq!(answer.gaps[0].kind, GapKind::UnresolvedPath);
     }

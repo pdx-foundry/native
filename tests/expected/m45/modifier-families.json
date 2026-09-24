@@ -1,4 +1,30 @@
 {
+  "common/anomalies": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Leaders"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_research_speed_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/anomalies",
+        "only an item's post-read code registers {key}_research_speed_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
   "common/buildings": {
     "families": [
       {
@@ -10,13 +36,28 @@
         "condition": "Always",
         "name_limit": null,
         "template": "planet_{key}_build_speed_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_max"
       }
     ],
     "gaps": [
       [
+        "UnresolvedPath",
+        "common/buildings",
+        "only an item's post-read code registers {key}_max; that the engine runs it for every item is not established"
+      ],
+      [
         "UnnamedDeclaration",
         null,
-        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -57,7 +98,33 @@
       [
         "UnnamedDeclaration",
         null,
-        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/country_types": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Ships"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": 511,
+        "template": "damage_vs_country_type_{key}_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/country_types",
+        "only an item's post-read code registers damage_vs_country_type_{key}_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -72,13 +139,331 @@
         "condition": "Always",
         "name_limit": null,
         "template": "planet_{key}_build_speed_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_max_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_max_mult"
       }
     ],
     "gaps": [
       [
+        "UnresolvedPath",
+        "common/districts",
+        "2 names or generation calls of the registry's code could not be followed at name"
+      ],
+      [
+        "UnresolvedPath",
+        "common/districts",
+        "only an item's post-read code registers {key}_max_add; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/districts",
+        "only an item's post-read code registers {key}_max_mult; that the engine runs it for every item is not established"
+      ],
+      [
         "UnnamedDeclaration",
         null,
-        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/economic_categories": {
+    "families": [
+      {
+        "category_tags": "Unresolved",
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_cost_mult"
+      },
+      {
+        "category_tags": "Unresolved",
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_logistics_mult"
+      },
+      {
+        "category_tags": "Unresolved",
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_produces_mult"
+      },
+      {
+        "category_tags": "Unresolved",
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_upkeep_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "category tags of {key}_cost_mult could not be followed"
+      ],
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "only an item's post-read code registers {key}_cost_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "category tags of {key}_logistics_mult could not be followed"
+      ],
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "only an item's post-read code registers {key}_logistics_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "category tags of {key}_produces_mult could not be followed"
+      ],
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "only an item's post-read code registers {key}_produces_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "category tags of {key}_upkeep_mult could not be followed"
+      ],
+      [
+        "UnresolvedPath",
+        "common/economic_categories",
+        "only an item's post-read code registers {key}_upkeep_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        "common/economic_categories",
+        "names that combine this registry's keys with the keys of content that Native does not name as a registry are not returned"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/espionage_operation_categories": {
+    "families": [],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_categories",
+        "the place of the item key could not be established at constructor; no name of the registry's code was followed"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/espionage_operation_types": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Espionage"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "hostile_{key}_difficulty_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Espionage"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "hostile_{key}_difficulty_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Espionage"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_difficulty_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Espionage"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_difficulty_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Espionage"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_skill_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Espionage"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_skill_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Espionage"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_speed_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_types",
+        "only an item's post-read code registers hostile_{key}_difficulty_add; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_types",
+        "only an item's post-read code registers hostile_{key}_difficulty_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_types",
+        "only an item's post-read code registers {key}_difficulty_add; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_types",
+        "only an item's post-read code registers {key}_difficulty_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_types",
+        "only an item's post-read code registers {key}_skill_add; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_types",
+        "only an item's post-read code registers {key}_skill_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/espionage_operation_types",
+        "only an item's post-read code registers {key}_speed_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/ethics": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "pop_{key}_attraction_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/ethics",
+        "only an item's post-read code registers pop_{key}_attraction_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/governments/councilors": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Leaders"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_exp_gain"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/governments/councilors",
+        "1 names or generation calls of the registry's code could not be followed at name"
+      ],
+      [
+        "UnresolvedPath",
+        "common/governments/councilors",
+        "the method could not establish that every item generates {key}_exp_gain"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/leader_classes": {
+    "families": [],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/leader_classes",
+        "8 names or generation calls of the registry's code could not be followed at name"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -99,7 +484,303 @@
       [
         "UnnamedDeclaration",
         null,
-        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/patrons": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "add_attunement_{key}"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_attunement_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/patrons",
+        "the method could not establish that every item generates add_attunement_{key}"
+      ],
+      [
+        "UnresolvedPath",
+        "common/patrons",
+        "the method could not establish that every item generates {key}_attunement_mult"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/pop_categories": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "pop_cat_{key}_bonus_workforce_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "pop_cat_{key}_happiness"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "pop_cat_{key}_political_power"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/pop_categories",
+        "only an item's post-read code registers pop_cat_{key}_bonus_workforce_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_categories",
+        "only an item's post-read code registers pop_cat_{key}_happiness; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_categories",
+        "only an item's post-read code registers pop_cat_{key}_political_power; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/pop_jobs": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "job_{key}_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "job_{key}_automated_workforce_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "job_{key}_max_workforce_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "job_{key}_max_workforce_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "job_{key}_per_crime"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Colony"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "job_{key}_per_pop"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "pop_{key}_bonus_workforce_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "pop_{key}_workforce_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers job_{key}_add; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers job_{key}_automated_workforce_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers job_{key}_max_workforce_add; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers job_{key}_max_workforce_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers job_{key}_per_crime; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers job_{key}_per_pop; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers pop_{key}_bonus_workforce_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/pop_jobs",
+        "only an item's post-read code registers pop_{key}_workforce_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/resolution_categories": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_vote_strength_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/resolution_categories",
+        "only an item's post-read code registers {key}_vote_strength_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/scripted_modifiers": {
+    "families": [
+      {
+        "category_tags": "Unresolved",
+        "condition": "Always",
+        "name_limit": null,
+        "template": "{key}"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/scripted_modifiers",
+        "category tags of {key} could not be followed"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/ship_sizes": {
+    "families": [],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/ship_sizes",
+        "1 names or generation calls of the registry's code could not be followed at name"
+      ],
+      [
+        "UnresolvedPath",
+        "common/ship_sizes",
+        "1 names or generation calls of the registry's code could not be followed at unreached"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -140,17 +821,149 @@
       [
         "UnnamedDeclaration",
         null,
-        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
-  "common/traditions": {
-    "families": [],
+  "common/species_archetypes": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_bonus_pop_growth"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_bonus_pop_growth_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_logistic_growth_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Pops"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_pop_happiness"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_species_trait_picks_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "{key}_species_trait_points_add"
+      }
+    ],
     "gaps": [
+      [
+        "UnresolvedPath",
+        "common/species_archetypes",
+        "only an item's post-read code registers {key}_bonus_pop_growth; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/species_archetypes",
+        "only an item's post-read code registers {key}_bonus_pop_growth_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/species_archetypes",
+        "only an item's post-read code registers {key}_logistic_growth_mult; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/species_archetypes",
+        "only an item's post-read code registers {key}_pop_happiness; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/species_archetypes",
+        "only an item's post-read code registers {key}_species_trait_picks_add; that the engine runs it for every item is not established"
+      ],
+      [
+        "UnresolvedPath",
+        "common/species_archetypes",
+        "only an item's post-read code registers {key}_species_trait_points_add; that the engine runs it for every item is not established"
+      ],
       [
         "UnnamedDeclaration",
         null,
-        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
+  "common/technology/category": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "category_{key}_draw_chance_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "category_{key}_research_speed_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        "common/technology/category",
+        "the method could not establish that every item generates category_{key}_draw_chance_mult"
+      ],
+      [
+        "UnresolvedPath",
+        "common/technology/category",
+        "the method could not establish that every item generates category_{key}_research_speed_mult"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -171,7 +984,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "64 sites that compose modifier names at run time are not joined to a registry; some may generate this registry's modifiers"
+        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   }

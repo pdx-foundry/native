@@ -1,4 +1,4 @@
-use super::{Binding, installation::Installation};
+use super::{Binding, installation::Installation, registry_instance};
 use crate::UnavailableReason;
 use std::fs;
 use tempfile::{TempDir, tempdir};
@@ -36,6 +36,14 @@ fn initial_loader_requires_one_named_candidate_with_an_address() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn a_registry_without_an_instance_gets_no_key_read() {
+    assert_eq!(registry_instance(Ok(0x40), Ok(0x10)), (0x40, Ok(0x10)));
+    let (instance, key_offset) = registry_instance(Err("no symbol".into()), Ok(0x10));
+    assert_eq!(instance, 0);
+    assert!(key_offset.unwrap_err().contains("no symbol"));
 }
 
 #[test]

@@ -222,15 +222,16 @@ fn modifier_declarations_match_the_recorded_m45_boundary() {
     }
 }
 
-/// Templates checked by hand against the M45-release disassembly of each database generator.
-/// The five of buildings, districts and bypass also matched every registration of two SDK-498
-/// live runs with renamed private content.
+/// Templates checked by hand against the M45-release disassembly of each database generator,
+/// item post-read function and shared helper. The five of buildings, districts and bypass also
+/// matched every registration of two SDK-498 live runs with renamed private content; the
+/// SDK-566 live run matched the others against the loaded table (`docs/native/discovery.md`).
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn modifier_families_match_the_recorded_m45_generators() {
     let native = native();
     let expected: BTreeMap<String, Value> = expected("modifier-families.json");
-    assert_eq!(expected.len(), 7);
+    assert_eq!(expected.len(), 22);
     for (registry, expected) in &expected {
         let answer = native.modifier_families(registry).unwrap();
         assert_eq!(answer.source.basis, Basis::StaticAnalysis);
@@ -252,6 +253,15 @@ fn modifier_families_match_the_recorded_m45_generators() {
             Some("lgate_ship_windup_mult".into()),
         ]
     );
+    let jobs = native.modifier_families("common/pop_jobs").unwrap();
+    let names: Vec<_> = jobs
+        .value
+        .iter()
+        .filter_map(|family| family.name_for("miner"))
+        .collect();
+    assert!(names.contains(&"job_miner_add".to_owned()));
+    assert!(names.contains(&"pop_miner_workforce_mult".to_owned()));
+
     assert!(matches!(
         native.modifier_families("common/not_a_registry"),
         Err(Error::UnknownRegistry { .. })

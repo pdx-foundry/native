@@ -1485,6 +1485,30 @@ async fn loaded_modifiers(native: &Native) -> Outcome {
         {
             return Err(format!("building family: {capital:?}").into());
         }
+        // SDK-566: families that item post-read code and shared helpers register.
+        for (name, registry, item) in [
+            ("job_miner_add", "common/pop_jobs", "miner"),
+            (
+                "district_mining_max_add",
+                "common/districts",
+                "district_mining",
+            ),
+            (
+                "category_computing_research_speed_mult",
+                "common/technology/category",
+                "computing",
+            ),
+        ] {
+            let modifier = by_name.get(name).ok_or(name)?;
+            if modifier.declared
+                || !modifier
+                    .generated_by
+                    .iter()
+                    .any(|generated| generated.registry == registry && generated.item == item)
+            {
+                return Err(format!("{name}: {modifier:?}").into());
+            }
+        }
         engine_log_agrees(loaded)?;
         let generated = loaded
             .iter()

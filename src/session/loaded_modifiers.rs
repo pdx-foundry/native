@@ -13,7 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::Native;
-use super::families::public_family;
+use super::families::{public_family, unjoined_sites, unjoined_summary};
 use super::language::gap;
 use super::questions::error;
 use crate::answer::{
@@ -62,40 +62,31 @@ impl Native {
             .map_err(|error| Error::Method(error.to_string()))?;
 
         let mut declared = BTreeSet::new();
-        let mut runtime_names = 0;
         let mut unreadable = 0;
         for site in &declarations.sites {
             match site {
                 DefinitionSite::Declared { name, .. } => {
                     declared.insert(name.clone());
                 }
-                DefinitionSite::RuntimeToken => runtime_names += 1,
+                DefinitionSite::RuntimeToken => {}
                 DefinitionSite::Unreadable => unreadable += 1,
             }
         }
 
-        let mut results = Vec::new();
-        let mut unjoined_sites = 0;
-        for registry in self
-            .bound()
-            .family_registries()
-            .map_err(|failure| error(operation, failure))?
-        {
-            let input = analysis
-                .family_input(&registry)
-                .map_err(|failure| error(operation, failure))?
-                .ok_or_else(|| Error::UnknownRegistry {
-                    name: registry.clone(),
-                })?;
-            unjoined_sites = input.unjoined_sites;
-            if let Some(result) = families::analyze(&input) {
-                results.push((registry, result));
-            }
-        }
+        let index = analysis
+            .family_index()
+            .map_err(|failure| error(operation, failure))?;
+        let results: Vec<_> = index
+            .registries
+            .iter()
+            .filter_map(|(registry, code)| {
+                families::analyze(&index.input, code).map(|result| (registry.clone(), result))
+            })
+            .collect();
         let masks = results
             .iter()
-            .flat_map(|(_, result)| &result.sites)
-            .filter_map(|(_, family)| family.as_ref().ok().map(|family| family.mask));
+            .flat_map(|(_, result)| &result.families)
+            .filter_map(|family| family.mask);
         let family_categories = modifiers::category_names(&modifier_input.categories, masks);
 
         let mut gaps = Vec::new();
@@ -120,32 +111,38 @@ impl Native {
                     ),
                 ));
             }
-            let mut registry_families = Vec::new();
-            for (_, family) in &result.sites {
-                match family {
-                    Ok(family) => registry_families.push(public_family(family, &family_categories)),
-                    Err(reason) => gaps.push(gap(
-                        GapKind::UnresolvedPath,
-                        Some(&registry),
-                        format!(
-                            "a name that the database generator registers could not be followed at {}; it explains no name",
-                            reason.0
-                        ),
-                    )),
-                }
+            for (reason, count) in &result.failures {
+                gaps.push(gap(
+                    GapKind::UnresolvedPath,
+                    Some(&registry),
+                    format!(
+                        "{count} names or generation calls of the registry's code could not be followed at {reason}; they explain no name"
+                    ),
+                ));
             }
+            let registry_families: Vec<_> = result
+                .families
+                .iter()
+                .map(|family| public_family(family, &family_categories))
+                .collect();
             if !registry_families.is_empty() {
                 families.insert(registry, registry_families);
             }
         }
-        let unjoined = unjoined_sites + runtime_names;
-        if unjoined > 0 {
+        for (registry, join) in &index.joins.registries {
+            if join.unnamed_input {
+                gaps.push(gap(
+                    GapKind::UnnamedDeclaration,
+                    Some(registry),
+                    "names that combine this registry's keys with the keys of content that Native does not name as a registry are unexplained",
+                ));
+            }
+        }
+        if let Some(summary) = unjoined_summary(&unjoined_sites(&index.joins)) {
             gaps.push(gap(
                 GapKind::UnnamedDeclaration,
                 None,
-                format!(
-                    "{unjoined} sites that compose modifier names at run time are not joined to a registry; the names that they add are unexplained"
-                ),
+                format!("{summary}; the names that they add are unexplained"),
             ));
         }
 

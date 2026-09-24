@@ -71,9 +71,12 @@ pub enum Tags {
 /// Every definition site, every category name, and the input-wide counts. Category names cover
 /// each single bit, the mask of every bit, and each mask that a definition uses.
 pub struct ModifierResult {
+    /// One for each definition site of the input, in its order.
     pub sites: Vec<DefinitionSite>,
     pub categories: CategoryNames,
     pub generation_sites: usize,
+    /// The category mask of each modifier type that a definition call passes as a constant.
+    pub type_masks: BTreeMap<u64, u64>,
 }
 
 /// Read every direct definition call and name every category mask that the calls use.
@@ -90,18 +93,23 @@ pub fn analyze(input: &ModifierInput) -> Result<ModifierResult, InputError> {
 
     let categories = category_names(
         &input.categories,
-        arguments.iter().filter_map(|(_, mask)| mask.ok()),
+        arguments.iter().filter_map(|arguments| arguments.mask.ok()),
     );
+    let type_masks = arguments
+        .iter()
+        .filter_map(|arguments| Some((arguments.modifier_type?, arguments.mask.ok()?)))
+        .collect();
 
     let sites = arguments
         .into_iter()
-        .map(|(token, mask)| definition_site(input, &categories, token, mask))
+        .map(|arguments| definition_site(input, &categories, arguments))
         .collect();
 
     Ok(ModifierResult {
         sites,
         categories,
         generation_sites: input.generation_sites,
+        type_masks,
     })
 }
 
@@ -122,10 +130,28 @@ pub fn category_names(
 
 type Argument = Result<u64, Unresolved>;
 
-/// The token and category mask passed to one definition call.
-fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> (Argument, Argument) {
+/// The arguments of one definition call.
+struct Arguments {
+    token: Argument,
+    /// The modifier type in `w1`, when it is a constant.
+    modifier_type: Option<u64>,
+    mask: Argument,
+}
+
+impl Arguments {
+    fn unreadable() -> Self {
+        Self {
+            token: Err(Unresolved("site")),
+            modifier_type: None,
+            mask: Err(Unresolved("site")),
+        }
+    }
+}
+
+/// The token, modifier type and category mask passed to one definition call.
+fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> Arguments {
     let Some(first) = rows.first() else {
-        return (Err(Unresolved("site")), Err(Unresolved("site")));
+        return Arguments::unreadable();
     };
 
     let code = Code::from_rows(rows.iter().cloned());
@@ -149,11 +175,13 @@ fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> (Argumen
             let mask = machine
                 .read(stack + input.category_offset, 4)
                 .ok_or(Unresolved("category-mask"));
-            (token, mask)
+            Arguments {
+                token,
+                modifier_type: machine.register(1).map(|value| value as u32 as u64),
+                mask,
+            }
         }
-        Ok(Exit::Returned | Exit::Trapped | Exit::Reached) | Err(_) => {
-            (Err(Unresolved("site")), Err(Unresolved("site")))
-        }
+        Ok(Exit::Returned | Exit::Trapped | Exit::Reached) | Err(_) => Arguments::unreadable(),
     }
 }
 
@@ -161,8 +189,7 @@ fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> (Argumen
 fn definition_site(
     input: &ModifierInput,
     categories: &CategoryNames,
-    token: Argument,
-    mask: Argument,
+    Arguments { token, mask, .. }: Arguments,
 ) -> DefinitionSite {
     if token == Err(Unresolved("site")) {
         return DefinitionSite::Unreadable;
@@ -321,6 +348,15 @@ mod tests {
             row(0x200c, "mov", &format!("w0,{token}")),
             row(0x2010, "bl", "#0x800"),
         ]
+    }
+
+    #[test]
+    fn constant_modifier_types_keep_their_masks() {
+        let mut typed = site("#7", "#3");
+        typed.insert(4, row(0x2010, "mov", "w1,#0x3c"));
+        typed.last_mut().unwrap().address = 0x2014;
+        let result = analyze(&input(vec![typed, site("#8", "#1")])).unwrap();
+        assert_eq!(result.type_masks, BTreeMap::from([(0x3c, 3)]));
     }
 
     #[test]

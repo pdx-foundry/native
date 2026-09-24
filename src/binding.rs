@@ -27,6 +27,24 @@ fn named_candidate<'a>(
     Ok(candidate)
 }
 
+/// The database instance of a registry whose keys a session reads, and its key offset. A
+/// registry without an instance symbol gets no key read, with the reason, and the rest of the
+/// table binding stands.
+fn registry_instance(
+    instance: Result<u64, String>,
+    key_offset: Result<u64, String>,
+) -> (u64, Result<u64, String>) {
+    match instance {
+        Ok(instance) => (instance, key_offset),
+        Err(reason) => (
+            0,
+            Err(format!(
+                "the registry's database instance is not established: {reason}"
+            )),
+        ),
+    }
+}
+
 fn initial_loader(candidate: &NamedCandidate, directory: &str) -> Result<u64, String> {
     candidate
         .record
@@ -141,9 +159,9 @@ impl Binding {
             let instance = verified.symbol(&format!(
                 "TGameDatabase<{}>::_pInstance",
                 candidate.record.database
-            ))?;
+            ));
             let key_offset = verified.registry_key_offset(candidate, layout.string_tag_offset());
-            instances.insert(directory.clone(), (instance, key_offset));
+            instances.insert(directory.clone(), registry_instance(instance, key_offset));
         }
         Ok(groups::modifier_table_binding(
             table,
@@ -156,14 +174,6 @@ impl Binding {
                 registries: instances,
             },
         ))
-    }
-
-    /// The named registries whose modifier families the loaded modifier table is joined with.
-    pub(crate) fn family_registries(&self) -> Result<Vec<String>, crate::AnalysisError> {
-        self.analysis
-            .as_ref()
-            .ok_or(crate::AnalysisError::InvalidRange)?
-            .family_registries()
     }
 
     pub(crate) fn has_modifier_table_method(&self) -> bool {

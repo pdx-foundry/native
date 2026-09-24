@@ -5,9 +5,10 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
+use super::binary::families::FamilyIndex;
 use super::{binary, installation::Installation};
 use crate::engine::analysis::discovery::{SchedulerLayout, Symbol};
-use crate::engine::analysis::families::{DatabaseLayout, FamilyInput};
+use crate::engine::analysis::families::DatabaseLayout;
 use crate::{AnalysisError, UnavailableReason};
 
 pub(crate) struct BoundAnalysis {
@@ -19,6 +20,8 @@ pub(crate) struct BoundAnalysis {
     /// The first change that a read saw. It stays, even when the original bytes come back.
     invalidated: Mutex<Option<UnavailableReason>>,
     catalog: OnceLock<Result<Catalog, AnalysisError>>,
+    /// Derived from the catalog's executable; every read checks the executable first.
+    families: OnceLock<Result<FamilyIndex, AnalysisError>>,
 }
 
 struct Catalog {
@@ -87,7 +90,7 @@ impl VerifiedAnalysis<'_> {
         let input = binary::families::key_storage(
             &self.executable,
             &self.catalog.symbols,
-            &candidate.record,
+            &candidate.record.owner_candidate,
             string_tag_offset,
         )
         .map_err(|error| format!("item key storage analysis failed: {error}"))?;
@@ -122,40 +125,54 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
-    /// The family input of the registry named `registry`, or `None` when no one template
-    /// registry has that name.
-    fn family_input(
+    /// Every generation call, its joins to the named registries, and each registry's code.
+    fn family_index(
         &self,
-        registry: &str,
         recipe: &super::targets::DeclarationRecipe,
         database: DatabaseLayout,
-    ) -> Result<Option<FamilyInput>, AnalysisError> {
-        use crate::engine::analysis::directories::Directory;
+    ) -> Result<FamilyIndex, AnalysisError> {
+        use crate::engine::analysis::{directories::Directory, modifiers};
 
-        let named = Directory::Named(registry.into());
-        let mut matching = self
+        let registries: Vec<_> = self
             .named_candidates()
             .iter()
-            .filter(|candidate| candidate.directory == named);
-        let (Some(candidate), None) = (matching.next(), matching.next()) else {
-            return Ok(None);
-        };
-
-        let databases: Vec<&str> = self
-            .named_candidates()
-            .iter()
-            .filter(|candidate| matches!(candidate.directory, Directory::Named(_)))
-            .map(|candidate| candidate.record.database.as_str())
+            .filter_map(|candidate| match &candidate.directory {
+                Directory::Named(name) => Some(binary::families::NamedRegistry {
+                    name,
+                    database: &candidate.record.database,
+                    owner: &candidate.record.owner_candidate,
+                }),
+                _ => None,
+            })
             .collect();
-        binary::families::read(
+
+        let modifier_input = self.modifier_input(recipe)?;
+        let declarations = modifiers::analyze(&modifier_input).map_err(AnalysisError::Input)?;
+        let runtime_definitions: Vec<u64> = declarations
+            .sites
+            .iter()
+            .zip(&modifier_input.definition_sites)
+            .filter(|(site, _)| **site == modifiers::DefinitionSite::RuntimeToken)
+            .filter_map(|(_, rows)| rows.last().map(|call| call.address))
+            .collect();
+        let table = self
+            .modifier_table_layout(recipe.short_string_length_offset)
+            .ok();
+
+        binary::families::index(
             &self.executable,
             &self.catalog.symbols,
-            &candidate.record,
-            &databases,
+            &registries,
+            binary::families::KnownFacts {
+                runtime_definitions: &runtime_definitions,
+                type_masks: declarations.type_masks,
+                table,
+                pointers: &self.catalog.pointers,
+                bound_slots: &self.catalog.bound_slots,
+            },
             recipe,
             database,
         )
-        .map(Some)
     }
 
     fn scope_input(
@@ -424,6 +441,7 @@ impl BoundAnalysis {
             installation,
             invalidated: Mutex::new(None),
             catalog: OnceLock::new(),
+            families: OnceLock::new(),
         }
     }
 
@@ -562,35 +580,15 @@ impl BoundAnalysis {
         self.verified()?.modifier_input(recipe)
     }
 
-    /// The named registries whose database has a modifier generator: the registries that
-    /// `family_input` can give families, in name order.
-    pub(crate) fn family_registries(&self) -> Result<Vec<String>, AnalysisError> {
-        use crate::engine::analysis::directories::Directory;
-        let verified = self.verified()?;
-        let mut registries: Vec<String> = verified
-            .named_candidates()
-            .iter()
-            .filter_map(|candidate| match &candidate.directory {
-                Directory::Named(name) => verified
-                    .symbol(&binary::families::generator(&candidate.record.database))
-                    .is_ok()
-                    .then(|| name.clone()),
-                _ => None,
-            })
-            .collect();
-        registries.sort();
-        Ok(registries)
-    }
-
-    /// The family input of the registry named `registry`, or `None` when no one template
-    /// registry has that name.
-    pub(crate) fn family_input(
-        &self,
-        registry: &str,
-    ) -> Result<Option<FamilyInput>, AnalysisError> {
+    /// Every generation call, its joins to the named registries, and each registry's code.
+    pub(crate) fn family_index(&self) -> Result<&FamilyIndex, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let database = self.database.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.family_input(registry, recipe, database)
+        let verified = self.verified()?;
+        self.families
+            .get_or_init(|| verified.family_index(recipe, database))
+            .as_ref()
+            .map_err(Clone::clone)
     }
 
     pub(crate) fn scope_input(
