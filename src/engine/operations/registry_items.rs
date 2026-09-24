@@ -20,7 +20,7 @@
 //! No diagnostic gives a complete answer. Any diagnostic gives a partial answer that keeps the
 //! accepted items, or no answer when the registry was not observed at all. An empty complete
 //! answer therefore means an empty registry, never "could not look".
-use super::event_stream::{OwnerEvent, WorkerEvent, WorkerRecord, single};
+use super::event_stream::{OwnerEvent, PauseCause, WorkerEvent, WorkerRecord, single};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -43,7 +43,8 @@ pub(crate) enum Observed {
     Complete,
     /// The registry was observed, but a witness is missing. The accepted items are kept.
     Partial,
-    /// The hook was active, but this loader did not return before the session paused.
+    /// The hook was active, but this loader did not return before the session paused. The
+    /// diagnostic says what ended the session first.
     NotLoaded,
     /// The loader ran, but the binding cannot read this registry's item layout.
     Unsupported,
@@ -232,20 +233,23 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
             | WorkerEvent::WorkerLossReady => {}
         }
     }
-    let not_loaded = activated
+    let pause_cause = records.iter().find_map(|record| match record.event {
+        WorkerEvent::SessionPaused { cause, .. } => Some(cause),
+        _ => None,
+    });
+    let session_failed = owner
+        .iter()
+        .any(|event| matches!(event, OwnerEvent::ObservationUnavailable { .. }));
+    if let Some(cause) = pause_cause
+        && activated
         && !saw_registry
         && diagnostics.is_empty()
-        && records
-            .iter()
-            .any(|record| matches!(record.event, WorkerEvent::SessionPaused { .. }))
-        && !owner
-            .iter()
-            .any(|event| matches!(event, OwnerEvent::ObservationUnavailable { .. }));
-    if not_loaded {
+        && !session_failed
+    {
         return RegistryItems {
             items: Vec::new(),
             observed: Observed::NotLoaded,
-            diagnostics: vec!["initial loader did not run before the session paused".into()],
+            diagnostics: vec![not_loaded_reason(name, cause)],
         };
     }
     if !ended {
@@ -280,6 +284,21 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
         items,
         observed,
         diagnostics,
+    }
+}
+
+/// Why the loader of `name` was not observed, from what ended the session first.
+fn not_loaded_reason(name: &str, cause: PauseCause) -> String {
+    match cause {
+        PauseCause::Deadline => format!(
+            "the initial loader of {name} did not run before the session's startup deadline stopped the game; the game had not reached it"
+        ),
+        PauseCause::LoadersReturned => format!(
+            "the initial loader of {name} did not run before the other selected loaders returned and the session paused; late and on-demand loaders are outside this method"
+        ),
+        PauseCause::ContentLoaded => format!(
+            "the initial loader of {name} did not run before all content loaded; late and on-demand loaders are outside this method"
+        ),
     }
 }
 
@@ -322,7 +341,9 @@ fn activated(records: &[WorkerRecord], owner: &[OwnerEvent], registry: &str) -> 
 ///
 /// The worker's pause record and the supervisor's pause confirmation must name the same
 /// registries and the owned game. Each named registry needs its activation witness, and one
-/// loader entry and one loader return on the pause thread, in order, before the pause. Whether
+/// loader entry and one loader return on the pause thread, in order, before the pause. The
+/// pause's cause must agree with the stream: a pause after the loaders returned names every
+/// activated registry, and a pause after content loaded follows the documentation entry. Whether
 /// the items of a registry are complete is a separate question.
 pub(crate) fn readiness(
     records: &[WorkerRecord],
@@ -333,7 +354,7 @@ pub(crate) fn readiness(
     let pause = single(records, |event| {
         matches!(event, WorkerEvent::SessionPaused { .. })
     })?;
-    let WorkerEvent::SessionPaused { returned } = &pause.event else {
+    let WorkerEvent::SessionPaused { returned, cause } = &pause.event else {
         return None;
     };
     if returned.iter().collect::<BTreeSet<_>>().len() != returned.len()
@@ -395,13 +416,25 @@ pub(crate) fn readiness(
         matches!(event, WorkerEvent::ModifierDocumentationEntered)
     })
     .is_some_and(|entered| entered.thread == pause.thread && entered.seq < pause.seq);
-    Some(if loaded_modifiers && documented {
-        GameReadiness::PausedAfterContentLoad
-    } else if returned.len() == declared.len() {
-        GameReadiness::PausedAfterRegistryInitialization
-    } else {
-        GameReadiness::PausedDuringRegistryInitialization
-    })
+    match cause {
+        PauseCause::ContentLoaded => {
+            (loaded_modifiers && documented).then_some(GameReadiness::PausedAfterContentLoad)
+        }
+        PauseCause::LoadersReturned => {
+            let active_loader_missing = declared
+                .iter()
+                .any(|name| !returned.contains(name) && activated(records, owner, name));
+            if active_loader_missing {
+                return None;
+            }
+            Some(if returned.len() == declared.len() {
+                GameReadiness::PausedAfterRegistryInitialization
+            } else {
+                GameReadiness::PausedDuringRegistryInitialization
+            })
+        }
+        PauseCause::Deadline => Some(GameReadiness::PausedDuringRegistryInitialization),
+    }
 }
 
 #[cfg(test)]
@@ -443,7 +476,7 @@ mod tests {
             }
             rows.push(json!({"kind":"registry-end","name":name,"owner":owner,"count":keys.len(),"producerLastSequence":rows.len()+1}));
         }
-        rows.push(json!({"kind":"session-paused","returned":names}));
+        rows.push(json!({"kind":"session-paused","returned":names,"cause":"loaders-returned"}));
         let records = rows
             .into_iter()
             .enumerate()
@@ -519,13 +552,55 @@ mod tests {
         );
     }
 
+    /// Turn the session's pause into one that the worker's deadline caused, with `returned`.
+    fn pause_at_deadline(records: &mut [WorkerRecord], owner: &mut [OwnerEvent], names: &[&str]) {
+        let returned: Vec<String> = names.iter().map(|name| (*name).into()).collect();
+        for record in records.iter_mut() {
+            if matches!(record.event, WorkerEvent::SessionPaused { .. }) {
+                record.event = WorkerEvent::SessionPaused {
+                    returned: returned.clone(),
+                    cause: PauseCause::Deadline,
+                };
+            }
+        }
+        for event in owner.iter_mut() {
+            if let OwnerEvent::GamePauseConfirmed {
+                returned: confirmed,
+                ..
+            } = event
+            {
+                *confirmed = returned.clone();
+            }
+        }
+    }
+
     #[test]
     fn a_selected_loader_that_never_runs_is_not_an_empty_complete_answer() {
         let (mut records, mut owner, names) = session(&["first"]);
         records.retain(|record| registry_name(&record.event) != Some(CATEGORIES));
         for (index, record) in records.iter_mut().enumerate() {
             record.seq = index as u64 + 1;
-            if let WorkerEvent::SessionPaused { returned } = &mut record.event {
+        }
+        pause_at_deadline(&mut records, &mut owner, &[TRADITIONS]);
+        assert_eq!(
+            readiness(&records, &owner, &names, false),
+            Some(GameReadiness::PausedDuringRegistryInitialization)
+        );
+        let absent = reduce(CATEGORIES, &records, &owner);
+        assert_eq!(absent.observed, Observed::NotLoaded);
+        assert!(absent.items.is_empty());
+        assert!(absent.diagnostics[0].contains("startup deadline"));
+    }
+
+    #[test]
+    fn a_pause_after_the_loaders_returned_must_name_every_active_loader() {
+        // The categories hook was active, but the worker claims that the loaders returned
+        // without it: the witnesses disagree, and no readiness follows.
+        let (mut records, mut owner, names) = session(&["first"]);
+        records.retain(|record| registry_name(&record.event) != Some(CATEGORIES));
+        for (index, record) in records.iter_mut().enumerate() {
+            record.seq = index as u64 + 1;
+            if let WorkerEvent::SessionPaused { returned, .. } = &mut record.event {
                 *returned = vec![TRADITIONS.into()];
             }
         }
@@ -534,13 +609,70 @@ mod tests {
                 *returned = vec![TRADITIONS.into()];
             }
         }
+        assert_eq!(readiness(&records, &owner, &names, false), None);
+        // Without the categories hook, the same pause is consistent: only the active loader
+        // had to return.
+        let WorkerEvent::HooksActiveBeforeResume { hooks } = &mut records[2].event else {
+            unreachable!()
+        };
+        hooks.remove("registry:common/tradition_categories");
         assert_eq!(
             readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedDuringRegistryInitialization)
         );
-        let absent = reduce(CATEGORIES, &records, &owner);
-        assert_eq!(absent.observed, Observed::NotLoaded);
-        assert!(absent.items.is_empty());
+        assert_eq!(
+            reduce(CATEGORIES, &records, &owner).observed,
+            Observed::Unavailable
+        );
+    }
+
+    #[test]
+    fn the_not_loaded_reason_says_what_ended_the_session() {
+        let (mut records, owner, _) = session(&["first"]);
+        records.retain(|record| registry_name(&record.event) != Some(CATEGORIES));
+        for (index, record) in records.iter_mut().enumerate() {
+            record.seq = index as u64 + 1;
+        }
+        let pause = records.len() - 1;
+        for (cause, expected) in [
+            (PauseCause::Deadline, "startup deadline"),
+            (
+                PauseCause::LoadersReturned,
+                "other selected loaders returned",
+            ),
+            (PauseCause::ContentLoaded, "before all content loaded"),
+        ] {
+            records[pause].event = WorkerEvent::SessionPaused {
+                returned: vec![TRADITIONS.into()],
+                cause,
+            };
+            let absent = reduce(CATEGORIES, &records, &owner);
+            assert_eq!(absent.observed, Observed::NotLoaded, "{cause:?}");
+            assert!(absent.diagnostics[0].contains(expected), "{cause:?}");
+        }
+    }
+
+    #[test]
+    fn a_pause_after_content_loaded_needs_the_documentation_witness() {
+        let (mut records, owner, names) = session(&["first"]);
+        let pause = records.len() - 1;
+        records[pause].event = WorkerEvent::SessionPaused {
+            returned: names.clone(),
+            cause: PauseCause::ContentLoaded,
+        };
+        assert_eq!(readiness(&records, &owner, &names, true), None);
+        let mut entered = records[pause].clone();
+        entered.event = WorkerEvent::ModifierDocumentationEntered;
+        records.insert(pause, entered);
+        for (index, record) in records.iter_mut().enumerate() {
+            record.seq = index as u64 + 1;
+        }
+        assert_eq!(
+            readiness(&records, &owner, &names, true),
+            Some(GameReadiness::PausedAfterContentLoad)
+        );
+        // The same pause without the requested table is not a content-load pause.
+        assert_eq!(readiness(&records, &owner, &names, false), None);
     }
 
     #[test]
@@ -583,15 +715,8 @@ mod tests {
         records.retain(|record| registry_name(&record.event).is_none());
         for (index, record) in records.iter_mut().enumerate() {
             record.seq = index as u64 + 1;
-            if let WorkerEvent::SessionPaused { returned } = &mut record.event {
-                returned.clear();
-            }
         }
-        for event in &mut owner {
-            if let OwnerEvent::GamePauseConfirmed { returned, .. } = event {
-                returned.clear();
-            }
-        }
+        pause_at_deadline(&mut records, &mut owner, &[]);
         assert_eq!(
             readiness(&records, &owner, &[TRADITIONS.into()], false),
             Some(GameReadiness::PausedDuringRegistryInitialization)
@@ -817,11 +942,7 @@ mod tests {
     #[test]
     fn a_pause_after_a_part_of_the_registries_is_a_pause_during_initialization() {
         let (mut records, mut owner, names) = session(&["first"]);
-        let returned = vec![CATEGORIES.to_string()];
-        records.last_mut().unwrap().event = WorkerEvent::SessionPaused {
-            returned: returned.clone(),
-        };
-        owner[1] = OwnerEvent::GamePauseConfirmed { pid: 10, returned };
+        pause_at_deadline(&mut records, &mut owner, &[CATEGORIES]);
         assert_eq!(
             readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedDuringRegistryInitialization)

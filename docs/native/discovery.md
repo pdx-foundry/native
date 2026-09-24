@@ -458,8 +458,12 @@ live runs on the same build:
   unexplained. No loaded name comes from the templates of two registries. The district
   `sdk498_district_*_max_add` and `*_max_mult` names stay unexplained. No name is assigned by
   similarity. SDK-564 returns the loaded inventory and owns the classification of each entry.
-- Live `registry_items` returns `Unsupported` for all six registries: each initial loader runs
-  after the session pauses. SDK-567 removed the shared `+0x10` key offset. A constructor probe now
+- The SDK-540 session that selected the six registries returned `Unsupported` for all six, with
+  the reason "initial loader did not run before the session paused". SDK-573 established the
+  cause (below): that session paused at the worker's deadline, not after the loaders. A fresh
+  registry session observes all six initial loads, complete, about 24 seconds after launch. The
+  earlier note that "each initial loader runs after the session pauses" was wrong.
+  SDK-567 removed the shared `+0x10` key offset. A constructor probe now
   establishes the key storage of each selected registry before the worker can read its items.
   On M45-release it established 148 of 164 named registries. `common/bypass` and
   `common/map_modes` use `+0x18`; the other established keys use `+0x10`. Eleven registries have
@@ -467,10 +471,31 @@ live runs on the same build:
   16 refuse an item read with a reason if their loader runs; no item name is read from an
   unestablished offset. An authored constructor test covers `+0x18`. On M45-release,
   `common/map_modes` returned eight live keys equal to its eight top-level source keys in one
-  session; another session paused before its loader ran and returned `Unsupported`. The method
-  gives no name from an unestablished offset in either case. A session that pauses at the
-  documentation point (SDK-564, below) observes the initial loads of `common/buildings` (498
-  items) and `common/zones` (146).
+  session; another session paused before its loader ran and returned `Unsupported` (SDK-573
+  repeated the session three times; each returned the eight keys, complete, about 22 seconds
+  after launch). The method gives no name from an unestablished offset in either case. A session
+  that pauses at the documentation point (SDK-564, below) observes the initial loads of
+  `common/buildings` (498 items) and `common/zones` (146).
+
+**Why the SDK-540 session was not loaded (SDK-573).** A registry session has two pause paths.
+The worker holds the game when every registry whose hook was active has returned from its
+initial loader, or, when the worker's deadline (the startup budget less a margin; 170 seconds of
+the default 180) passes first, it stops the game where it is and holds it there. Only the second
+path pauses with no loader returned, and a registry with an active hook that the game never
+reached is then `NotLoaded`. The SDK-540 session's recorded files date it at 186 seconds from
+start to answers: the 170-second deadline plus launch setup. Its `Unsupported` answers therefore
+came from the deadline, and the loaders were not reached in that time. A fresh session with the
+same six registries (2026-09-23, M45-release) entered and returned all six loaders on the launch
+thread in the order bypass, buildings, zones, districts, situations, megastructures, paused after
+registry initialization about 24 seconds after launch, and returned 10, 498, 146, 147, 90 and
+164 complete items, in that order. Why the earlier game did not reach the loaders within 170 seconds is not
+established: the session's work directory was removed after its confirmed disposal, and the
+answers did not say which path paused the session. That is the repair: the worker's pause record
+now carries its cause (`loaders-returned`, `content-loaded` or `deadline`), the reducer refuses a
+loaders-returned pause that omits an active loader, and a `NotLoaded` answer says whether the
+startup deadline, the other selected loaders or the content load ended the session. A live case
+(`generator_registries`) requires the six complete answers, and `nonstandard_key` now requires
+the eight `common/map_modes` keys.
 
 **Not in SDK-540.** Generator classes and shared helpers (SDK-566); the classification of each
 loaded entry (SDK-564); a condition named by its item field; engine behavior for a name longer than

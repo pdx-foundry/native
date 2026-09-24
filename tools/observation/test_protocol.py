@@ -72,6 +72,15 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             wire.encode('record', row)
 
+    def test_pause_record_names_its_cause(self):
+        row = dict(run='attempt', seq=9, kind='session-paused', returned=['common/traditions'], thread=7)
+        for cause in ['loaders-returned', 'content-loaded', 'deadline']:
+            paused = dict(row, cause=cause)
+            self.assertEqual(wire.decode('record', wire.encode('record', paused)), paused)
+        for changes in [dict(), dict(cause='stopped'), dict(cause=None)]:
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                wire.encode('record', dict(row, **changes))
+
     def test_handshake_and_grant_reject_unknown_fields(self):
         grant = dict(version=wire.VERSION, attempt='a', game=10, worker=11)
         self.assertEqual(wire.decode('grant', wire.encode('grant', grant)), grant)

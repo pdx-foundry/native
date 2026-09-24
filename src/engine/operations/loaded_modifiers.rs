@@ -169,7 +169,7 @@ mod tests {
             format!(
                 r#""kind":"modifier-table-end","count":2,"producerLastSequence":7,"thread":{THREAD}"#
             ),
-            format!(r#""kind":"session-paused","returned":[],"thread":{THREAD}"#),
+            format!(r#""kind":"session-paused","returned":[],"cause":"content-loaded","thread":{THREAD}"#),
         ]
         .into_iter()
         .enumerate()
