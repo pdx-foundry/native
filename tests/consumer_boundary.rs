@@ -31,6 +31,7 @@ const EXPORTS: &[&str] = &[
     "Gap",
     "GameRule",
     "GapKind",
+    "GapSubject",
     "GeneratedName",
     "GenerationCondition",
     "LinkData",

@@ -140,6 +140,13 @@ pub struct Answer<T> {
 pub enum Basis { Declared, StaticAnalysis, LiveObservation, Recorded }
 ```
 
+`Gap.subject` is `Option<GapSubject>`, not a free-text name. The subject kind identifies a
+registry, field, named answer item, localization context, localization link, scope type, or
+fixture file. Context and scope subjects include `LocalizationContextId` or `ScopeId` and a
+human-readable name; names alone do not identify them. A gap without an identifiable subject
+has `None`. Recorded JSON writes named subjects as objects with `kind` and `name`, plus `id`
+for contexts and scope types.
+
 - `Complete` means the stated search or window completed. It is not complete game knowledge.
   `OutsideMethod` describes an explicit boundary; other gaps make the bounded answer partial.
 - An empty `Complete` answer needs a completed search that found nothing. An access failure, a

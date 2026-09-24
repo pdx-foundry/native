@@ -4,12 +4,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use sha2::{Digest, Sha256};
 
 use super::Native;
-use super::language::{declared, gap};
+use super::language::{declared, gap, gap_for_subject};
 use super::questions::{error, scope_id};
 use crate::answer::{
-    Answer, BuildId, ContextScopes, Error, Gap, GapKind, LocalizationCommand, LocalizationContext,
-    LocalizationContextId, LocalizationContextReference, LocalizationDeclarations,
-    LocalizationLink, LocalizationOutput, Operation, ScopeReference,
+    Answer, BuildId, ContextScopes, Error, Gap, GapKind, GapSubject, LocalizationCommand,
+    LocalizationContext, LocalizationContextId, LocalizationContextReference,
+    LocalizationDeclarations, LocalizationLink, LocalizationOutput, Operation, ScopeReference,
 };
 use crate::engine::analysis::localization::{self, Join, LocalizationResult, METHOD, Output};
 
@@ -86,9 +86,12 @@ pub(crate) fn normalized_localization(
 
     for context in &result.contexts {
         if context.name.is_none() {
-            gaps.push(gap(
+            gaps.push(gap_for_subject(
                 GapKind::UnreadableInput,
-                Some(&context_id(context.value).0),
+                Some(GapSubject::LocalizationContext {
+                    id: context_id(context.value),
+                    name: String::new(),
+                }),
                 "the name of this context could not be read",
             ));
         }
@@ -149,9 +152,12 @@ fn contexts(
             Join::NoContext => {}
             Join::Unresolved(reason) => {
                 unresolved = true;
-                gaps.push(gap(
+                gaps.push(gap_for_subject(
                     GapKind::UnresolvedPath,
-                    Some(&scope.name),
+                    Some(GapSubject::ScopeType {
+                        id: scope_id(scope),
+                        name: scope.name.clone(),
+                    }),
                     format!("the scope-object setter could not be followed ({reason})"),
                 ));
             }
@@ -195,9 +201,12 @@ fn commands(
                         .insert(context.value);
                 }
             }
-            Err(reason) => gaps.push(gap(
+            Err(reason) => gaps.push(gap_for_subject(
                 GapKind::UnreadableInput,
-                Some(&reference(context.value).name),
+                Some(GapSubject::LocalizationContext {
+                    id: context_id(context.value),
+                    name: reference(context.value).name,
+                }),
                 format!("the command rows of this context could not be read ({reason})"),
             )),
         }
@@ -222,9 +231,12 @@ fn links(
         let links = match &context.links {
             Ok(links) => links,
             Err(reason) => {
-                gaps.push(gap(
+                gaps.push(gap_for_subject(
                     GapKind::UnreadableInput,
-                    Some(&reference(context.value).name),
+                    Some(GapSubject::LocalizationContext {
+                        id: context_id(context.value),
+                        name: reference(context.value).name,
+                    }),
                     format!("the link rows of this context could not be read ({reason})"),
                 ));
                 continue;
@@ -237,9 +249,9 @@ fn links(
                 Output::Various => Target::Various,
                 Output::Unchanged => Target::Unchanged,
                 Output::Unresolved(reason) => {
-                    gaps.push(gap(
+                    gaps.push(gap_for_subject(
                         GapKind::UnresolvedPath,
-                        Some(name),
+                        Some(GapSubject::LocalizationLink { name: name.clone() }),
                         format!(
                             "from context {}: the link function could not be followed ({reason})",
                             reference(context.value).name
@@ -279,4 +291,48 @@ fn sorted_references(
     let mut references: Vec<_> = values.into_iter().map(reference).collect();
     references.sort_by(|left, right| (&left.name, &left.id).cmp(&(&right.name, &right.id)));
     references
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::analysis::declarations::ScopeType;
+    use crate::engine::analysis::localization::Context;
+
+    #[test]
+    fn gaps_identify_link_context_and_scope_even_when_names_collide() {
+        let scope = ScopeType {
+            bit: 1,
+            name: "Planet".into(),
+        };
+        let result = LocalizationResult {
+            contexts: vec![Context {
+                value: 7,
+                name: Some("Planet".into()),
+                commands: Err("rows"),
+                links: Ok(vec![("Planet".into(), Output::Unresolved("output"))]),
+            }],
+            joins: vec![(scope.clone(), Join::Unresolved("setter"))],
+            scope_table_missing: false,
+        };
+
+        let answer = normalized_localization(&result, BuildId("test".into()));
+        let subjects: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter_map(|gap| gap.subject.clone())
+            .collect();
+
+        assert!(subjects.contains(&GapSubject::LocalizationContext {
+            id: context_id(7),
+            name: "Planet".into(),
+        }));
+        assert!(subjects.contains(&GapSubject::LocalizationLink {
+            name: "Planet".into(),
+        }));
+        assert!(subjects.contains(&GapSubject::ScopeType {
+            id: scope_id(&scope),
+            name: "Planet".into(),
+        }));
+    }
 }

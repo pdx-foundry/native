@@ -30,10 +30,108 @@ pub enum Completeness {
 pub struct Gap {
     /// Machine-readable reason.
     pub kind: GapKind,
-    /// The registry, field, or other public name that the gap concerns, when one exists.
-    pub subject: Option<String>,
+    /// The public subject that the gap concerns, when one can be identified.
+    pub subject: Option<GapSubject>,
     /// Human-readable detail. It holds no address, symbol, or other native detail.
     pub detail: String,
+}
+
+/// What the name of a gap identifies. Context and scope identities remain stable when names collide.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GapSubject {
+    /// A content directory.
+    Registry {
+        /// Content directory.
+        name: String,
+    },
+    /// A field of the registry in the question.
+    Field {
+        /// Field name.
+        name: String,
+    },
+    /// A named item of the question's answer.
+    Item {
+        /// Item name.
+        name: String,
+    },
+    /// A localization context, identified independently of its display name.
+    LocalizationContext {
+        /// Stable context identity.
+        id: LocalizationContextId,
+        /// Display name, which may be empty when unreadable.
+        name: String,
+    },
+    /// A localization link.
+    LocalizationLink {
+        /// Link name.
+        name: String,
+    },
+    /// A scope type, identified independently of its display name.
+    ScopeType {
+        /// Stable scope identity.
+        id: ScopeId,
+        /// Scope name.
+        name: String,
+    },
+    /// A fixture file in the current observation.
+    FixtureFile {
+        /// Fixture file path.
+        name: String,
+    },
+}
+
+impl GapSubject {
+    /// Human-readable name of the subject.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Registry { name }
+            | Self::Field { name }
+            | Self::Item { name }
+            | Self::LocalizationContext { name, .. }
+            | Self::LocalizationLink { name }
+            | Self::ScopeType { name, .. }
+            | Self::FixtureFile { name } => name,
+        }
+    }
+
+    pub(crate) fn registry(name: impl Into<String>) -> Self {
+        Self::Registry { name: name.into() }
+    }
+
+    pub(crate) fn field(name: impl Into<String>) -> Self {
+        Self::Field { name: name.into() }
+    }
+
+    pub(crate) fn item(name: impl Into<String>) -> Self {
+        Self::Item { name: name.into() }
+    }
+
+    pub(crate) fn fixture_file(name: impl Into<String>) -> Self {
+        Self::FixtureFile { name: name.into() }
+    }
+}
+
+#[cfg(test)]
+mod gap_subject_tests {
+    use super::*;
+
+    #[test]
+    fn recorded_gap_requires_a_subject_kind() {
+        let old = r#"{"kind":"UnresolvedPath","subject":"Planet","detail":"example"}"#;
+        assert!(serde_json::from_str::<Gap>(old).is_err());
+
+        let gap = Gap {
+            kind: GapKind::UnresolvedPath,
+            subject: Some(GapSubject::LocalizationLink {
+                name: "Planet".into(),
+            }),
+            detail: "example".into(),
+        };
+        let encoded = serde_json::to_value(&gap).unwrap();
+        assert_eq!(encoded["subject"]["kind"], "localization_link");
+        assert_eq!(serde_json::from_value::<Gap>(encoded).unwrap(), gap);
+    }
 }
 
 /// Why a part of an answer is missing. A gap never means that the game forbids a construct.

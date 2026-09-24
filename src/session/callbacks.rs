@@ -356,7 +356,7 @@ mod tests {
             answer
                 .gaps
                 .iter()
-                .any(|gap| gap.subject.as_deref() == Some("on_test"))
+                .any(|gap| gap.subject.as_ref().map(|subject| subject.name()) == Some("on_test"))
         );
     }
 
@@ -378,7 +378,7 @@ mod tests {
                 .gaps
                 .iter()
                 .any(|gap| gap.kind == GapKind::UnreadableInput
-                    && gap.subject.as_deref() == Some("on_test"))
+                    && gap.subject.as_ref().map(|subject| subject.name()) == Some("on_test"))
         );
     }
 

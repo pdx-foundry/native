@@ -336,7 +336,7 @@ impl Game {
         &mut self,
         registry: &str,
     ) -> Result<crate::Answer<Vec<String>>, Error> {
-        use crate::{Answer, Basis, Completeness, Gap, GapKind, Operation, Source};
+        use crate::{Answer, Basis, Completeness, Gap, GapKind, GapSubject, Operation, Source};
         let operation = Operation::RegistryItems;
         let directory = registry.trim_end_matches('/');
         if !self.observed.contains(directory) {
@@ -404,7 +404,7 @@ impl Game {
             } else {
                 vec![Gap {
                     kind: GapKind::IncompleteObservation,
-                    subject: Some(directory.into()),
+                    subject: Some(GapSubject::registry(directory)),
                     detail: "The engine collection was not read to its end.".into(),
                 }]
             },

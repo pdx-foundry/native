@@ -5,8 +5,8 @@ use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
     Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
     FixtureObservationKind as Kind, FixtureOwnerId, FixtureRequest, FixtureRuntime, FixtureStorage,
-    Gap, GapKind, Operation, ProcessingStage, Reader, ReaderId, ReaderKind, RegistrationEntry,
-    Source, StoredStringOccurrence,
+    Gap, GapKind, GapSubject, Operation, ProcessingStage, Reader, ReaderId, ReaderKind,
+    RegistrationEntry, Source, StoredStringOccurrence,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -284,7 +284,7 @@ impl<'a> Window<'a> {
         }
     }
 
-    fn push_gap(&mut self, kind: GapKind, subject: Option<String>, detail: &str) {
+    fn push_gap(&mut self, kind: GapKind, subject: Option<GapSubject>, detail: &str) {
         let gap = Gap {
             kind,
             subject,
@@ -304,7 +304,7 @@ impl<'a> Window<'a> {
         }
         self.push_gap(
             GapKind::IncompleteObservation,
-            Some(self.request.file().into()),
+            Some(GapSubject::fixture_file(self.request.file())),
             detail,
         );
     }
@@ -315,8 +315,8 @@ impl<'a> Window<'a> {
             .request
             .field_questions
             .get(question as usize)
-            .map(|question| question.field.clone())
-            .or_else(|| Some(self.request.file().into()));
+            .map(|question| GapSubject::field(question.field.clone()))
+            .or_else(|| Some(GapSubject::fixture_file(self.request.file())));
         self.push_gap(GapKind::IncompleteObservation, subject, detail);
     }
 
@@ -324,7 +324,7 @@ impl<'a> Window<'a> {
         self.diagnostic_issue = true;
         self.push_gap(
             GapKind::IncompleteObservation,
-            Some(self.request.file().into()),
+            Some(GapSubject::fixture_file(self.request.file())),
             detail,
         );
     }
@@ -856,7 +856,7 @@ impl<'a> Window<'a> {
                 Some(DiagnosticTerminalState::Unavailable(reason)) => {
                     self.push_gap(
                         GapKind::OutsideMethod,
-                        Some(self.request.registry().into()),
+                        Some(GapSubject::registry(self.request.registry())),
                         &reason,
                     );
                     DiagnosticCoverage::Unavailable(reason)
@@ -945,12 +945,20 @@ impl<'a> Window<'a> {
                     }
                     Some(_) => GapKind::OutsideMethod,
                 };
-                self.push_gap(kind, Some(question.field.clone()), &reason);
+                self.push_gap(
+                    kind,
+                    Some(GapSubject::field(question.field.clone())),
+                    &reason,
+                );
                 FixtureStorage::Unavailable(reason)
             };
             let runtime = if question.runtime {
                 let reason = "Runtime is outside the initial file-load method";
-                self.push_gap(GapKind::OutsideMethod, Some(question.field.clone()), reason);
+                self.push_gap(
+                    GapKind::OutsideMethod,
+                    Some(GapSubject::field(question.field.clone())),
+                    reason,
+                );
                 FixtureRuntime::Unavailable(reason.into())
             } else {
                 FixtureRuntime::NotRequested

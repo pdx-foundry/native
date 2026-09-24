@@ -35,7 +35,7 @@ fn recorded() -> tempfile::TempDir {
         json!({ "Ok": {
             "value": [{ "namespace": "NCamera", "name": "FOV", "value_type": "Float" }],
             "completeness": "Partial",
-            "gaps": [{ "kind": "UnresolvedReader", "subject": "NGraphics.ORBIT_HSV",
+            "gaps": [{ "kind": "UnresolvedReader", "subject": {"kind": "field", "name": "NGraphics.ORBIT_HSV"},
                 "detail": "reader path exceeds the table-search limit" }],
             "source": source()
         }}),
@@ -72,7 +72,7 @@ fn recorded() -> tempfile::TempDir {
             { "name": "block", "reader": { "id": "block", "kind": "Block" }, "conditional": false },
             { "name": "unknown", "reader": { "id": null, "kind": "Unknown" }, "conditional": true }
         ], "completeness": "Partial",
-            "gaps": [{ "kind": "ReaderSemantics", "subject": "unknown", "detail": "Example." }],
+            "gaps": [{ "kind": "ReaderSemantics", "subject": {"kind": "field", "name": "unknown"}, "detail": "Example." }],
             "source": source() } }),
     );
     write(
@@ -92,7 +92,7 @@ fn recorded() -> tempfile::TempDir {
             "completeness": "Partial",
             "gaps": [
                 { "kind": "UnnamedDeclaration", "subject": null, "detail": "runtime token" },
-            { "kind": "UnresolvedPath", "subject": "missing", "detail": "documentation" }
+            { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "missing"}, "detail": "documentation" }
             ],
             "source": source()
         }}),
@@ -108,7 +108,7 @@ fn recorded() -> tempfile::TempDir {
             "completeness": "Partial",
             "gaps": [
                 { "kind": "UnnamedDeclaration", "subject": null, "detail": "generated family" },
-                { "kind": "UnresolvedPath", "subject": "unfollowed", "detail": "category tags" }
+                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "unfollowed"}, "detail": "category tags" }
             ],
             "source": source()
         }}),
@@ -233,7 +233,10 @@ fn defines_read_recorded_names_types_gaps_and_basis() {
         pdx_native::DefineValueType::Float
     );
     assert_eq!(
-        answer.gaps[0].subject.as_deref(),
+        answer.gaps[0]
+            .subject
+            .as_ref()
+            .map(|subject| subject.name()),
         Some("NGraphics.ORBIT_HSV")
     );
 
@@ -274,8 +277,8 @@ fn localization_declarations_read_recorded_joins_and_outputs() {
             },
             "completeness": "Partial",
             "gaps": [
-                { "kind": "UnresolvedPath", "subject": "planet", "detail": "scope join" },
-                { "kind": "UnresolvedPath", "subject": "MainAttacker", "detail": "dead object" }
+                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "planet"}, "detail": "scope join" },
+                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "MainAttacker"}, "detail": "dead object" }
             ],
             "source": source()
         }}),
@@ -538,7 +541,7 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
             ],
             "completeness": "Partial",
             "gaps": [
-                { "kind": "UnresolvedPath", "subject": "on_press_begin",
+                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "on_press_begin"},
                   "detail": "a call site passes a command that builds its own scope" },
                 { "kind": "UnnamedDeclaration", "subject": null,
                   "detail": "31 call sites could not be named" }
@@ -558,7 +561,7 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
             ],
             "completeness": "Partial",
             "gaps": [
-                { "kind": "UnresolvedPath", "subject": "leader_election_weight",
+                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "leader_election_weight"},
                   "detail": "no followed call site" }
             ],
             "source": source()
@@ -584,7 +587,13 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
         )
     );
     assert!(answer.value[2].entries.is_empty());
-    assert_eq!(answer.gaps[0].subject.as_deref(), Some("on_press_begin"));
+    assert_eq!(
+        answer.gaps[0]
+            .subject
+            .as_ref()
+            .map(|subject| subject.name()),
+        Some("on_press_begin")
+    );
 
     let rules = native.game_rules().unwrap().value;
     assert_eq!(rules[0].kind, RuleKind::Scripted);
