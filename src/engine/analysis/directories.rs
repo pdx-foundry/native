@@ -17,6 +17,8 @@
 //! is a gap; the method never selects one of several.
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::decode::{add_immediate, adrp};
+
 /// Method revision recorded in each answer's source.
 pub const METHOD: &str = "registry-directories/v3";
 
@@ -102,31 +104,18 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
         let word = u32::from_le_bytes(*word);
         let address = function.address + index as u64 * 4;
         let (rd, rn) = ((word & 31) as usize, ((word >> 5) & 31) as usize);
-        if word & 0x9f00_0000 == 0x9000_0000 {
-            // adrp xd, page
-            let immediate = (((word >> 5) & 0x7ffff) << 2 | ((word >> 29) & 3)) as i64;
-            let immediate = if immediate >= 1 << 20 {
-                immediate - (1 << 21)
-            } else {
-                immediate
-            };
-            let page = ((address & !0xfff) as i64).wrapping_add(immediate << 12);
-            registers[rd] = Value::Constant(page as u64);
-        } else if word & 0xff80_0000 == 0x9100_0000 {
-            // add xd, xn|sp, #imm[, lsl #12]. Register 31 is the stack pointer here.
-            let immediate = ((word >> 10) & 0xfff) as u64;
-            let immediate = if word & 0x0040_0000 != 0 {
-                immediate << 12
-            } else {
-                immediate
-            };
-            let value = match (rn, registers[rn]) {
-                (31, _) => Value::Stack(immediate),
-                (_, Value::Constant(base)) => Value::Constant(base.wrapping_add(immediate)),
+        if let Some((destination, page)) = adrp(word, address) {
+            registers[destination] = Value::Constant(page);
+        } else if let Some((destination, source, addend)) = add_immediate(word) {
+            // Register 31 is the stack pointer: a source gives a stack address, and a write to it
+            // is not followed.
+            let value = match (source, registers[source]) {
+                (31, _) => Value::Stack(addend),
+                (_, Value::Constant(base)) => Value::Constant(base.wrapping_add(addend)),
                 _ => Value::Unknown,
             };
-            if rd != 31 {
-                registers[rd] = value;
+            if destination != 31 {
+                registers[destination] = value;
             }
         } else if word & 0xffe0_ffe0 == 0xaa00_03e0 {
             // mov xd, xm

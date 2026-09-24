@@ -77,7 +77,7 @@ pub struct Function {
 }
 
 /// Why the method did not establish that the engine runs the item roots for every item.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NotEstablished {
     /// No function of the database's classes constructs an item.
     NoLoader,

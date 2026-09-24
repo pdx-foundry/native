@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    decode::{Instruction, decode_arm64},
+    decode::{Instruction, add_immediate, adrp, decode_arm64},
     discovery::Symbol,
     evaluate::{Code, ReadOnlyData},
     families::{
@@ -479,7 +479,7 @@ fn functions_forming(text: &Text, points: &BTreeSet<u64>) -> BTreeSet<u64> {
 /// Whether the words at `address`, in address order, put one of `points` in a register through
 /// `adrp` and `add` of an immediate.
 fn words_form(code: &[u8], address: u64, points: &BTreeSet<u64>) -> bool {
-    let mut values: BTreeMap<u32, u64> = BTreeMap::new();
+    let mut values: BTreeMap<usize, u64> = BTreeMap::new();
     for (index, word) in code.as_chunks::<4>().0.iter().enumerate() {
         let word = u32::from_le_bytes(*word);
         if let Some((destination, page)) = adrp(word, address + index as u64 * 4) {
@@ -497,22 +497,9 @@ fn words_form(code: &[u8], address: u64, points: &BTreeSet<u64>) -> bool {
     false
 }
 
-/// The destination, source and addend of a 64-bit `add` of an immediate.
-fn add_immediate(word: u32) -> Option<(u32, u32, u64)> {
-    if word & 0xff00_0000 != 0x9100_0000 {
-        return None;
-    }
-    let shift = if word >> 22 & 1 == 1 { 12 } else { 0 };
-    Some((
-        word & 0x1f,
-        word >> 5 & 0x1f,
-        u64::from(word >> 10 & 0xfff) << shift,
-    ))
-}
-
 /// Whether the instructions, in address order, put one of `points` in a register.
 fn forms(rows: &[Instruction], points: &BTreeSet<u64>) -> bool {
-    let mut values: BTreeMap<u32, u64> = BTreeMap::new();
+    let mut values: BTreeMap<usize, u64> = BTreeMap::new();
     for row in rows {
         let operands: Vec<&str> = row.operands.split(',').collect();
         let value = match (row.operation.as_str(), operands.as_slice()) {
@@ -545,7 +532,7 @@ fn forms(rows: &[Instruction], points: &BTreeSet<u64>) -> bool {
 
 /// The general registers that an instruction writes, as far as the scan needs them: a call
 /// writes the caller-saved registers and the link register.
-fn written_registers(operation: &str, operands: &[&str]) -> Vec<u32> {
+fn written_registers(operation: &str, operands: &[&str]) -> Vec<usize> {
     let calls = ["bl", "blr"];
     let writes_nothing = operation.starts_with("st")
         || operation.starts_with("b")
@@ -574,7 +561,7 @@ fn written_registers(operation: &str, operands: &[&str]) -> Vec<u32> {
 }
 
 /// The number of general register `name`, such as `x8` or `w8`.
-fn register(name: &str) -> Option<u32> {
+fn register(name: &str) -> Option<usize> {
     name.strip_prefix('x')
         .or_else(|| name.strip_prefix('w'))?
         .parse()
@@ -588,16 +575,6 @@ fn parse_immediate(operand: &str) -> Option<u64> {
         Some(hex) => u64::from_str_radix(hex, 16).ok(),
         None => text.parse().ok(),
     }
-}
-
-/// The page of an `adrp` at `at`.
-fn adrp(word: u32, at: u64) -> Option<(u32, u64)> {
-    if word & 0x9f00_0000 != 0x9000_0000 {
-        return None;
-    }
-    let immediate = (word >> 29 & 0b11) | (word >> 5 & 0x7_ffff) << 2;
-    let offset = ((immediate << 11) as i32 >> 11) as i64;
-    Some((word & 0x1f, (at & !0xfff).wrapping_add_signed(offset << 12)))
 }
 
 /// The functions other than `constructors` that call one of them: those of the database's own
