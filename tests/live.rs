@@ -9,7 +9,7 @@
 //! STELLARIS_PATH=/path/to/Stellaris cargo live missing_hook
 //! ```
 //!
-//! A word after `--ignored` selects the cases whose name contains it. A case takes about 35
+//! A word after `cargo live` selects the cases whose name contains it. A case takes about 35
 //! seconds; the full set takes longer as cases are added.
 //!
 //! This file has its own `main` (`harness = false` in `Cargo.toml`) for two reasons. The
