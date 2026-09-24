@@ -487,7 +487,7 @@ before `PrintScriptingDocumentation`. The worker hooks its entry on the launch t
 table when it returns. The session then pauses there (`GameReadiness::PausedAfterContentLoad`),
 about 20 seconds after launch; the read takes about 0.4 seconds.
 
-**Layout (M45-release, binding group `M45ModifierTable`).** `LogDefinitions` walks
+**Layout (M45-release, derived by SDK-572).** `LogDefinitions` walks
 `CPdxModifier<…>::_Definitions`, a `CPdxArray` with its data at `+0x8` and its count at `+0x14`,
 of 0x98-byte definitions: the lexer token at `+0x78` and the category mask at `+0x84`. The beta
 prototype's offsets are unchanged. `AddDefinition` indexes the array by `ModifierType`. Each
@@ -498,6 +498,23 @@ rebuilds it when its count differs from the size at `0x103796d88`. At the return
 `LogDefinitions` the lookup is current, because the function named every entry; the worker requires
 the two counts to be equal. `LogDefinitions` and `_Definitions` are resolved by symbol; the lookup
 has no symbol.
+
+SDK-572 derives the header, entry stride, token and category fields from the documentation
+loop, and the lookup globals and stride from `GetString`. Candidate instruction shapes are
+checked with the evaluator: zero, one and two entries, two opposite sets of offset labels,
+and lookup tokens 0, 1 and 7 with matching and mismatching counts. Changed headers, strides,
+fields and globals are authored test inputs. Unknown code or calls, transformed fields,
+inconsistent iteration and a different array-header shape refuse the operation before launch.
+No modifier-table address or offset remains in a binding group. The shared CString layout
+still comes from the registry binding.
+
+The exact-build parity run established one complete table layout, zero partial layouts and
+zero failures. All eight values equal the earlier disassembly findings above. This method
+reads the one documentation loop and its lexer reader; it has no registry-specific cases.
+The live controls pass: 45,578 entries match the engine's `modifiers.log`, and worker loss
+and a missing registry hook keep their existing failure behavior.
+Cold lexer initialization, lookup rebuilding itself, and logger code after the loop are
+outside the method.
 
 **Generator registries.** The join applies each `modifier_families` template to the registry's
 loaded keys. The worker reads them from the database at the same point:

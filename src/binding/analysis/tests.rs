@@ -145,6 +145,14 @@ fn m45_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
     let table = binding.modifier_table_binding(&registries).unwrap();
     assert_eq!(table.documentation_entry, 0x100972384);
     assert_eq!(table.definitions, 0x10329da80);
+    assert_eq!(table.array_data_offset, 0x8);
+    assert_eq!(table.array_count_offset, 0x14);
+    assert_eq!(table.definition_stride, 0x98);
+    assert_eq!(table.token_offset, 0x78);
+    assert_eq!(table.mask_offset, 0x84);
+    assert_eq!(table.lookup, 0x103796d70);
+    assert_eq!(table.lookup_size, 0x103796d88);
+    assert_eq!(table.lookup_stride, 0x28);
     assert_eq!(table.registries["common/buildings"].instance, 0x10329edc0);
     assert_eq!(table.registries["common/bypass"].key_offset, Some(0x18));
     assert_eq!(table.registries["common/zones"].key_offset, Some(0x10));
