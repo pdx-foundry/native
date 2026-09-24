@@ -166,8 +166,11 @@ in memory; this adds no qualification record or persisted content pin.
 - **Live operations:** ignored by default; run with `STELLARIS_PATH` set. They cover the normal
   case and the failure controls (missing hook, worker loss, timeout, cancel).
 - **Supervisor without a game:** unit tests cover reservations, worker-process cleanup, pause
-  witnesses and caller cancellation. A full fake-worker session test remains to be added. The
-  live tests currently cover the end-to-end worker-loss, timeout, cancel and cleanup cases.
+  witnesses and caller cancellation. A fake-worker session test
+  (`fake_worker_session_reports_a_paused_answer_and_reaps_both_processes` in
+  `src/execution/supervisor.rs`) runs a full session to a paused answer and checks that both
+  processes are reaped. The live tests cover the end-to-end worker-loss, timeout, cancel and
+  cleanup cases.
 - **Consumers (Atlas):** `Native::from_recorded_answers`, for static and live questions. This replaces
   replay and the synthetic test-support engine.
 - **Held-out method tests** (roadmap ordering principle) stay. They need the executable, not
@@ -306,8 +309,9 @@ in memory; this adds no qualification record or persisted content pin.
         stays: it still works, and `docs/native/retrieval.md` uses it to verify and restore the
         knowledge bundles. `tools/observation/test_protocol.py` stays for the worker codec.
 
-        Not done: the fake-worker supervisor test that "Tests" names does not exist. The unit
-        test of the removed hold loop went with that loop. The live tests cover worker loss,
+        Not done on 2026-09-20: the fake-worker supervisor test that "Tests" names did not
+        exist. It was added on 2026-09-21 (commit `1da4abf`). The unit test of the removed hold
+        loop went with that loop. The live tests cover worker loss,
         timeout, cancel, drop and cleanup; without a game, unit tests cover the reducer, the
         reservation journal, the worker's process cleanup and the pause witness.
      3. **Done, 2026-09-20.** `discovery::discover(input)` and `fields::analyze(input)` are
@@ -339,7 +343,8 @@ and `c679617` were checked against this work order. The moved live reducer keeps
 sequence, loader/owner/thread, slot and terminal checks; static method logic and its bounds remain.
 The caller reads normalized answers from the supervisor and no longer opens capture files. The
 review follow-up repairs stale document/tool references and keeps failed live-case work directories
-when a later case passes. The full fake-worker supervisor test remains the known test gap above.
+when a later case passes. At that review, the full fake-worker supervisor test was the known test
+gap above; it was added on 2026-09-21.
 
 This paragraph records the original decision. The milestone 2 review later replaced the durable
 reservation journal with the OS lock and process inventory; see

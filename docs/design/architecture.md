@@ -36,7 +36,14 @@ src/
   answer.rs                        Answer, Source, Gap, Error, Disposal, normalized value types
   api.rs                           OpenError; the private reasons that block an answer
   session.rs                       Native: a pinned installation, or recorded answers
-  session/questions.rs             the static questions
+  session/                         Native's questions, one file for each group
+    questions.rs                   build, support, declarations, registries, registry fields
+    language.rs                    modifiers, modifier categories, scopes, scope links
+    localization.rs                localization contexts, commands and links
+    callbacks.rs                   on_actions and game rules
+    defines.rs                     the define inventory
+    families.rs                    the modifier families that a registry generates
+    loaded_modifiers.rs            the live loaded modifier table, joined with static answers
   game.rs                          Game: live session or recorded back end
   game/driver.rs                   the thread that talks to the supervisor process
   fixture.rs                       consumer fixture request and normalized observation types
@@ -67,7 +74,7 @@ src/
     machine/
       arm64.rs                     ARM64 registers and spawn preference
   engine/
-    analysis/                      callbacks, decode, declarations, directories, discovery, evaluate, families, fields, localization, modifiers, readers, scopes: bounded static methods
+    analysis/                      callbacks, decode, declarations, defines, directories, discovery, evaluate, families, fields, localization, modifier_table, modifiers, readers, scopes: bounded static methods
     operations/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
       fixture.rs                   fixture observation reducer
@@ -83,14 +90,18 @@ tests/
   recorded_answers.rs              recorded answers through the public API
   installation.rs                  installation identification errors
   live.rs                          the real game; ignored; needs STELLARIS_PATH
+  consumer_boundary.rs             Atlas caller's source uses only the public API; ignored; needs ATLAS_CALLER_PATH
   expected/                        small tracked expected output of the parity tests
+  support/                         synthetic Mach-O, fat and PE files for the installation tests
 tools/
   knowledge_bundles.py             verify and restore the private knowledge bundles
   observation/test_protocol.py     the worker's generated codec
+  profiling/                       SDK-559 timing runner and the script that instruments a source copy
 docs/
   specs/native.md                  product behavior
   design/                          this design and the simplification decision
   native/                          engine knowledge pages
+  native/performance/              measurement records of SDK-559 to SDK-561
 ```
 
 Use `feature.rs` as each module's entry file and `feature/` for its internal modules. Folders

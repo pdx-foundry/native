@@ -37,7 +37,8 @@ The config fork has 49,196 lines in 172 `.cwt` files.
 
 SDK-525 measured every documentation claim against the installed base-game `common/**/*.txt`
 files and the config fork's `script-docs/v4.4.1` effects/triggers logs. Atlas owns the comment-to-key
-parser and the source-tagged ledger. Native's future declarations operation remains separate.
+parser and the source-tagged ledger. Native's `declarations` operation (SDK-535) is separate: it
+reads the effect and trigger documentation strings from the executable.
 
 | Config area | Doc entries | Exact copies | Rewritten candidates | Authored remainder |
 | --- | ---: | ---: | ---: | ---: |
