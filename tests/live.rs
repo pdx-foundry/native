@@ -38,6 +38,16 @@ const MAP_GALAXY: &str = "map/galaxy";
 const CIVICS: &str = "common/governments/civics";
 const GAME_SCENARIOS: &str = "common/game_scenarios";
 const MAP_MODES: &str = "common/map_modes";
+/// The registries whose database generators register modifier families (SDK-540), with the
+/// item counts of the catalogued M45 build.
+const GENERATOR_REGISTRIES: [(&str, usize); 6] = [
+    ("common/buildings", 498),
+    ("common/bypass", 10),
+    ("common/districts", 147),
+    ("common/megastructures", 164),
+    ("common/situations", 90),
+    ("common/zones", 146),
+];
 /// Item counts of the catalogued M45 build.
 const ITEM_COUNTS: [(&str, usize); 3] =
     [(TRADITIONS, 234), (CATEGORIES, 33), (ASCENSION_PERKS, 49)];
@@ -137,6 +147,7 @@ enum Case {
     OutsideCommon,
     LateOnly,
     NonstandardKey,
+    GeneratorRegistries,
     RecordedRoundTrip,
     Fixture(Fault),
     FixtureOutsideSelection,
@@ -198,6 +209,7 @@ fn cases() -> Vec<(String, Case)> {
         ("outside_common".to_owned(), Case::OutsideCommon),
         ("late_only".to_owned(), Case::LateOnly),
         ("nonstandard_key".to_owned(), Case::NonstandardKey),
+        ("generator_registries".to_owned(), Case::GeneratorRegistries),
         ("recorded_round_trip".to_owned(), Case::RecordedRoundTrip),
         ("startup_timeout".to_owned(), Case::StartupTimeout),
         ("cancel".to_owned(), Case::Cancel),
@@ -328,6 +340,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             loaded_modifiers_missing_registry_hook(native).await
         }
         Case::InvalidSelection => invalid_selection(native).await,
+        Case::GeneratorRegistries => generator_registries(native).await,
         Case::OutsideCommon => outside_common(native).await,
         Case::LateOnly => late_only(native).await,
         Case::NonstandardKey => nonstandard_key(native).await,
@@ -1631,6 +1644,8 @@ async fn outside_common(native: &Native) -> Outcome {
     result
 }
 
+/// A registry whose loader never runs before the startup deadline: the worker stops the game
+/// there, and the answer says that the deadline, not another loader, ended the session.
 async fn late_only(native: &Native) -> Outcome {
     let mut options = options().registries([GAME_SCENARIOS]);
     options.startup_seconds = 60;
@@ -1640,7 +1655,11 @@ async fn late_only(native: &Native) -> Outcome {
             return Err("late-only session did not pause during initialization".into());
         }
         match game.registry_items(GAME_SCENARIOS).await {
-            Err(Error::Unsupported { reason, .. }) if reason.contains("initial loader") => Ok(()),
+            Err(Error::Unsupported { reason, .. })
+                if reason.contains("initial loader") && reason.contains("startup deadline") =>
+            {
+                Ok(())
+            }
             other => Err(format!("late-only registry: {other:?}").into()),
         }
     }
@@ -1649,20 +1668,42 @@ async fn late_only(native: &Native) -> Outcome {
     result
 }
 
+/// `common/map_modes` keeps its key at `+0x18`; its loader runs before the pause (SDK-573).
 async fn nonstandard_key(native: &Native) -> Outcome {
     let mut game = native
         .start_game(options().registries([MAP_MODES, TRADITIONS]))
         .await?;
     let mut result = async {
-        match game.registry_items(MAP_MODES).await {
-            Ok(answer) => {
-                complete(&answer, MAP_MODES)?;
-                source_keys_match(&answer, MAP_MODES)?;
-                Ok(())
-            }
-            Err(Error::Unsupported { reason, .. }) if reason.contains("initial loader") => Ok(()),
-            other => Err(format!("map modes with nonstandard key: {other:?}").into()),
+        if game.readiness() != GameReadiness::PausedAfterRegistryInitialization {
+            return Err(format!("readiness: {:?}", game.readiness()).into());
         }
+        let answer = game.registry_items(MAP_MODES).await?;
+        if complete(&answer, MAP_MODES)? != 8 {
+            return Err(format!("{MAP_MODES}: {} items", answer.value.len()).into());
+        }
+        source_keys_match(&answer, MAP_MODES)
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// The six generator registries load on the launch thread before the pause (SDK-573).
+async fn generator_registries(native: &Native) -> Outcome {
+    let mut game = native
+        .start_game(options().registries(GENERATOR_REGISTRIES.map(|(name, _)| name)))
+        .await?;
+    let mut result = async {
+        if game.readiness() != GameReadiness::PausedAfterRegistryInitialization {
+            return Err(format!("readiness: {:?}", game.readiness()).into());
+        }
+        for (registry, count) in GENERATOR_REGISTRIES {
+            let answer = game.registry_items(registry).await?;
+            if complete(&answer, registry)? != count {
+                return Err(format!("{registry}: {} items", answer.value.len()).into());
+            }
+        }
+        Ok(())
     }
     .await;
     and_close(&mut result, &mut game).await;

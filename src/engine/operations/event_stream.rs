@@ -114,7 +114,11 @@ pub(crate) enum WorkerEvent {
     /// The worker could not read the modifier table.
     ModifierUnavailable { reason: String },
     /// The game is held at a safe pause, after these registries returned from their loaders.
-    SessionPaused { returned: Vec<String> },
+    /// `cause` says what ended the observation and left the game held.
+    SessionPaused {
+        returned: Vec<String>,
+        cause: PauseCause,
+    },
     /// The debugger could not attach, a hook was missing or late, or the supervisor's permission
     /// to resume did not arrive.
     CapabilityUnavailable { reason: String },
@@ -134,6 +138,18 @@ pub(crate) enum WorkerEvent {
     WorkerLossReady,
     /// The worker ended in order.
     WorkerFinished,
+}
+
+/// Why the worker held the game where it did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PauseCause {
+    /// Every registry whose hook was active returned from its initial loader.
+    LoadersReturned,
+    /// The engine's modifier documentation returned, after all content loaded.
+    ContentLoaded,
+    /// The worker's deadline passed first, and the worker stopped the game where it was.
+    Deadline,
 }
 
 /// What the supervisor did and confirmed, in order.

@@ -29,6 +29,8 @@ session_active = set()
 # True when the modifier hook was active before resume: the documentation point then owns the pause.
 modifier_active = False
 safe_pause = False
+# Why the game is held: 'loaders-returned', 'content-loaded' or 'deadline'. Set with safe_pause.
+pause_cause = None
 callback_active = False
 
 
@@ -186,7 +188,7 @@ def registry_snapshot(frame):
 
 
 def registry_callback(frame, name):
-    global registry, registry_owner, control, finished, safe_pause
+    global registry, registry_owner, control, finished, safe_pause, pause_cause
     is_return = name.startswith('registry-return:')
     selected = name.split(':', 1)[1]
     registry = request['registries'][selected]
@@ -216,6 +218,8 @@ def registry_callback(frame, name):
         return False
     finished = session_active.issubset(set(returned_registries))
     safe_pause = finished
+    if finished:
+        pause_cause = 'loaders-returned'
     return finished
 
 
@@ -620,7 +624,7 @@ class ModifierObserver:
             return {'unavailable': str(error)}
 
     def on_return(self, frame, name):
-        global finished, safe_pause
+        global finished, safe_pause, pause_cause
         breakpoints[name].SetEnabled(False)
         process = frame.GetThread().GetProcess()
         target = process.GetTarget()
@@ -644,6 +648,7 @@ class ModifierObserver:
         # The return of the documentation function is the witnessed boundary of this pause.
         finished = True
         safe_pause = True
+        pause_cause = 'content-loaded'
         return True
 
     def callback(self, frame, name):
@@ -695,7 +700,7 @@ def callback(frame, loc, _):
 
 
 def run(debugger):
-    global entry_thread, session_active, safe_pause, modifier_active
+    global entry_thread, session_active, safe_pause, modifier_active, pause_cause
     import lldb
     import sys
     source_hashes = {name: sha(ROOT / 'source' / name) for name in request['source_hashes']}
@@ -784,8 +789,9 @@ def run(debugger):
         while process.GetState() != lldb.eStateStopped and time.monotonic() < stop_deadline:
             time.sleep(.02)
         safe_pause = stop_error.Success() and process.GetState() == lldb.eStateStopped and not callback_active
+        pause_cause = 'deadline'
     if safe_pause and process.GetState() == lldb.eStateStopped:
-        emit('session-paused', returned=returned_registries, thread=entry_thread)
+        emit('session-paused', returned=returned_registries, cause=pause_cause, thread=entry_thread)
         paused_thread = process.GetThreadByID(entry_thread)
         paused_pc = paused_thread.GetFrameAtIndex(0).GetPC()
         witness = dict(attempt=request['attempt'], game=request['game'], worker=os.getpid(),

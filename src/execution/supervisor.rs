@@ -587,7 +587,7 @@ mod tests {
             serde_json::json!({"kind":"registry-load-returned","name":registry,"owner":"0x1000"}),
             serde_json::json!({"kind":"registry-snapshot","name":registry,"directory":registry,"owner":"0x1000","count":0}),
             serde_json::json!({"kind":"registry-end","name":registry,"owner":"0x1000","count":0,"producerLastSequence":8}),
-            serde_json::json!({"kind":"session-paused","returned":[registry]}),
+            serde_json::json!({"kind":"session-paused","returned":[registry],"cause":"loaders-returned"}),
         ];
         let mut trace = Vec::new();
         for (index, mut row) in rows.into_iter().enumerate() {

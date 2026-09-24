@@ -370,9 +370,11 @@ impl Game {
         if observed.observed == Observed::NotLoaded {
             return Err(Error::Unsupported {
                 operation,
-                reason: format!(
-                    "the initial loader of {directory} did not run before the session paused; late and on-demand loaders are outside this method"
-                ),
+                reason: observed.diagnostics.first().cloned().unwrap_or_else(|| {
+                    format!(
+                        "the initial loader of {directory} did not run before the session paused"
+                    )
+                }),
             });
         }
         if observed.observed == Observed::Unsupported {
