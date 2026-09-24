@@ -195,7 +195,7 @@ impl<'a> Composer<'a> {
                         Exit::Trapped => {}
                         Exit::Stopped(target)
                             if composition.strings.never_return.contains(&target) => {}
-                        Exit::Returned | Exit::Stopped(_) => {
+                        Exit::Returned | Exit::Stopped(_) | Exit::Looped => {
                             return Err(Unresolved("call-skipped"));
                         }
                     }

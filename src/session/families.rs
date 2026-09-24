@@ -10,7 +10,7 @@ use crate::answer::{
 };
 use crate::engine::analysis::{
     families::{
-        self, Condition, Family, FamilyResult, METHOD, Part,
+        self, Condition, Family, FamilyResult, METHOD, NotEstablished, Part,
         joins::{Joins, Reason, SiteJoin},
     },
     modifiers::{self, CategoryNames, Tags},
@@ -168,7 +168,8 @@ fn normalized_families(
                     GapKind::UnresolvedPath,
                     subject,
                     format!(
-                        "only an item's post-read code registers {template}; that the engine runs it for every item is not established"
+                        "only an item's post-read code registers {template}; that the engine runs it for every item is not established: {}",
+                        item_call_reason(result.item_call.as_ref())
                     ),
                 )),
             }
@@ -207,6 +208,31 @@ fn normalized_families(
         completeness,
         gaps,
         source: Source::new(build, METHOD, Basis::StaticAnalysis),
+    }
+}
+
+/// Why the method did not establish that the engine runs the item roots for every item.
+fn item_call_reason(item_call: Option<&Result<(), NotEstablished>>) -> String {
+    match item_call {
+        Some(Err(NotEstablished::NoLoader)) => {
+            "no function of the database's classes calls a constructor of the item's class".into()
+        }
+        Some(Err(NotEstablished::NoVtable)) => {
+            "the item's class has no vtable in the executable".into()
+        }
+        Some(Err(NotEstablished::ConstructedElsewhere { function })) => {
+            format!("{function} constructs an item outside the database's code")
+        }
+        Some(Err(NotEstablished::InlineConstruction { function })) => format!(
+            "{function} forms an address of the item's vtables without calling its constructor, which the method does not follow"
+        ),
+        Some(Err(NotEstablished::Unread { function })) => format!(
+            "a path of {function} keeps an item that it constructed without running its post-read code"
+        ),
+        Some(Err(NotEstablished::Unfollowed { function, reason })) => {
+            format!("a path of {function} could not be followed at {reason}")
+        }
+        Some(Ok(())) | None => "the item's loading code was not followed".into(),
     }
 }
 
@@ -319,6 +345,9 @@ mod tests {
                 ),
             ],
             failures: BTreeMap::from([("name", 2)]),
+            item_call: Some(Err(NotEstablished::Unread {
+                function: "CXDatabase::CXDatabase()".into(),
+            })),
         };
         let answer = answer(Some(&result), false, &[]);
 
@@ -349,7 +378,8 @@ mod tests {
         assert!(
             details
                 .iter()
-                .any(|detail| detail.contains("only an item's post-read code registers {key}_d"))
+                .any(|detail| detail.contains("only an item's post-read code registers {key}_d")
+                    && detail.ends_with("a path of CXDatabase::CXDatabase() keeps an item that it constructed without running its post-read code"))
         );
         assert!(
             answer
@@ -389,6 +419,7 @@ mod tests {
             key_offset: Err(Unresolved("key-storage")),
             families: Vec::new(),
             failures: BTreeMap::new(),
+            item_call: None,
         };
         let answer = answer(Some(&missing_key), false, &[]);
         assert_eq!(answer.completeness, Completeness::Partial);

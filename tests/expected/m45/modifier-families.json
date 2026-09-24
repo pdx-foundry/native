@@ -16,7 +16,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/anomalies"},
-        "only an item's post-read code registers {key}_research_speed_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_research_speed_mult"
       ],
       [
         "UnnamedDeclaration",
@@ -52,7 +52,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/buildings"},
-        "only an item's post-read code registers {key}_max; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_max"
       ],
       [
         "UnnamedDeclaration",
@@ -119,7 +119,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/country_types"},
-        "only an item's post-read code registers damage_vs_country_type_{key}_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates damage_vs_country_type_{key}_mult"
       ],
       [
         "UnnamedDeclaration",
@@ -170,12 +170,12 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/districts"},
-        "only an item's post-read code registers {key}_max_add; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_max_add"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/districts"},
-        "only an item's post-read code registers {key}_max_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_max_mult"
       ],
       [
         "UnnamedDeclaration",
@@ -220,7 +220,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/economic_categories"},
-        "only an item's post-read code registers {key}_cost_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_cost_mult"
       ],
       [
         "UnresolvedPath",
@@ -230,7 +230,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/economic_categories"},
-        "only an item's post-read code registers {key}_logistics_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_logistics_mult"
       ],
       [
         "UnresolvedPath",
@@ -240,7 +240,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/economic_categories"},
-        "only an item's post-read code registers {key}_produces_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_produces_mult"
       ],
       [
         "UnresolvedPath",
@@ -250,7 +250,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/economic_categories"},
-        "only an item's post-read code registers {key}_upkeep_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_upkeep_mult"
       ],
       [
         "UnnamedDeclaration",
@@ -356,37 +356,37 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/espionage_operation_types"},
-        "only an item's post-read code registers hostile_{key}_difficulty_add; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates hostile_{key}_difficulty_add"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/espionage_operation_types"},
-        "only an item's post-read code registers hostile_{key}_difficulty_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates hostile_{key}_difficulty_mult"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/espionage_operation_types"},
-        "only an item's post-read code registers {key}_difficulty_add; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_difficulty_add"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/espionage_operation_types"},
-        "only an item's post-read code registers {key}_difficulty_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_difficulty_mult"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/espionage_operation_types"},
-        "only an item's post-read code registers {key}_skill_add; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_skill_add"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/espionage_operation_types"},
-        "only an item's post-read code registers {key}_skill_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_skill_mult"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/espionage_operation_types"},
-        "only an item's post-read code registers {key}_speed_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_speed_mult"
       ],
       [
         "UnnamedDeclaration",
@@ -412,7 +412,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/ethics"},
-        "only an item's post-read code registers pop_{key}_attraction_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates pop_{key}_attraction_mult"
       ],
       [
         "UnnamedDeclaration",
@@ -537,7 +537,7 @@
             "Pops"
           ]
         },
-        "condition": "Unresolved",
+        "condition": "Always",
         "name_limit": null,
         "template": "pop_cat_{key}_bonus_workforce_mult"
       },
@@ -547,7 +547,7 @@
             "Pops"
           ]
         },
-        "condition": "Unresolved",
+        "condition": "Always",
         "name_limit": null,
         "template": "pop_cat_{key}_happiness"
       },
@@ -557,27 +557,12 @@
             "Pops"
           ]
         },
-        "condition": "Unresolved",
+        "condition": "Always",
         "name_limit": null,
         "template": "pop_cat_{key}_political_power"
       }
     ],
     "gaps": [
-      [
-        "UnresolvedPath",
-        {"kind": "registry", "name": "common/pop_categories"},
-        "only an item's post-read code registers pop_cat_{key}_bonus_workforce_mult; that the engine runs it for every item is not established"
-      ],
-      [
-        "UnresolvedPath",
-        {"kind": "registry", "name": "common/pop_categories"},
-        "only an item's post-read code registers pop_cat_{key}_happiness; that the engine runs it for every item is not established"
-      ],
-      [
-        "UnresolvedPath",
-        {"kind": "registry", "name": "common/pop_categories"},
-        "only an item's post-read code registers pop_cat_{key}_political_power; that the engine runs it for every item is not established"
-      ],
       [
         "UnnamedDeclaration",
         null,
@@ -672,42 +657,42 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_add; that the engine runs it for every item is not established"
+        "only an item's post-read code registers job_{key}_add; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_automated_workforce_mult; that the engine runs it for every item is not established"
+        "only an item's post-read code registers job_{key}_automated_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_max_workforce_add; that the engine runs it for every item is not established"
+        "only an item's post-read code registers job_{key}_max_workforce_add; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_max_workforce_mult; that the engine runs it for every item is not established"
+        "only an item's post-read code registers job_{key}_max_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_per_crime; that the engine runs it for every item is not established"
+        "only an item's post-read code registers job_{key}_per_crime; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_per_pop; that the engine runs it for every item is not established"
+        "only an item's post-read code registers job_{key}_per_pop; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers pop_{key}_bonus_workforce_mult; that the engine runs it for every item is not established"
+        "only an item's post-read code registers pop_{key}_bonus_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers pop_{key}_workforce_mult; that the engine runs it for every item is not established"
+        "only an item's post-read code registers pop_{key}_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnnamedDeclaration",
@@ -733,7 +718,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/resolution_categories"},
-        "only an item's post-read code registers {key}_vote_strength_mult; that the engine runs it for every item is not established"
+        "only an item's post-read code registers {key}_vote_strength_mult; that the engine runs it for every item is not established: TSingleObjectGameDatabase<CResolutionCategoryDatabase, CResolutionCategory, false>::ReadExistingEntry(CReader&, CString const&, CResolutionCategory*, bool) forms an address of the item's vtables without calling its constructor, which the method does not follow"
       ],
       [
         "UnnamedDeclaration",
@@ -892,32 +877,32 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/species_archetypes"},
-        "only an item's post-read code registers {key}_bonus_pop_growth; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_bonus_pop_growth"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/species_archetypes"},
-        "only an item's post-read code registers {key}_bonus_pop_growth_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_bonus_pop_growth_mult"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/species_archetypes"},
-        "only an item's post-read code registers {key}_logistic_growth_mult; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_logistic_growth_mult"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/species_archetypes"},
-        "only an item's post-read code registers {key}_pop_happiness; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_pop_happiness"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/species_archetypes"},
-        "only an item's post-read code registers {key}_species_trait_picks_add; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_species_trait_picks_add"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/species_archetypes"},
-        "only an item's post-read code registers {key}_species_trait_points_add; that the engine runs it for every item is not established"
+        "the method could not establish that every item generates {key}_species_trait_points_add"
       ],
       [
         "UnnamedDeclaration",

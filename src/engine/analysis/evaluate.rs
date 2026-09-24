@@ -35,6 +35,10 @@ pub const PATH_LIMIT: usize = 64;
 /// The most times that one path of [`Machine::run_paths_to`] arrives at one loop head.
 pub const LOOP_LIMIT: u32 = 4;
 
+/// The most times that the joined facts at one loop head of [`Machine::run_paths_joining`]
+/// become fewer.
+const JOIN_LIMIT: u32 = 16;
+
 /// Every NZCV state.
 const ALL_FLAG_STATES: u16 = u16::MAX;
 
@@ -201,6 +205,10 @@ pub enum Exit {
     Trapped,
     /// The path arrived at the site given to [`Machine::run_paths_to`]. The site did not run.
     Reached,
+    /// The path arrived again at a loop head in a state that its earlier arrival there covers,
+    /// so the passes that follow repeat ones that the run already followed. Only
+    /// [`Machine::run_paths_joining`] reports it.
+    Looped,
 }
 
 /// What [`Machine::run_paths`] does at each call: it receives the target, or `None` for a call
@@ -247,10 +255,37 @@ pub struct Machine<'a> {
     labels: BTreeMap<u64, u64>,
     /// Known values that this path stored to an unknown address.
     unknown_stores: Vec<u64>,
-    /// How often this path arrived at each loop head of a [`Machine::run_paths_to`] run.
+    /// How often this path arrived at each loop head of a [`Machine::run_paths_to`] run, or at a
+    /// loop head of a [`Machine::run_paths_joining`] run without joining the state there.
     loop_visits: BTreeMap<u64, u32>,
     /// The return address of each entered call, innermost last.
     frames: Vec<u64>,
+}
+
+/// Where the paths of a run end, besides a return or a stop.
+enum Bound {
+    /// [`Machine::run_paths`]: nowhere else.
+    Unbounded,
+    /// [`Machine::run_paths_to`].
+    Site(Site),
+    /// [`Machine::run_paths_joining`]: at an arrival at one of these loop heads that an earlier
+    /// arrival covers.
+    Joining(BTreeSet<u64>),
+}
+
+/// The facts that every path joined at a loop head knew there, with the flag states that any
+/// of them allowed, and how often a path made them fewer.
+#[derive(Debug, Clone)]
+struct HeadState {
+    registers: [Option<u64>; 31],
+    vectors: [Option<u128>; 32],
+    flags: Option<Flags>,
+    possible_flags: u16,
+    memory: BTreeMap<u64, Option<u8>>,
+    stack_pointer: u64,
+    frames: Vec<u64>,
+    labels: BTreeMap<u64, u64>,
+    widened: u32,
 }
 
 /// The instruction that [`Machine::run_paths_to`] must arrive at, every instruction from which
@@ -390,11 +425,7 @@ impl<'a> Machine<'a> {
         let mut value = 0u128;
         for offset in 0..width {
             let address = address.checked_add(offset)?;
-            let byte = match self.memory.get(&address) {
-                Some(byte) => (*byte)?,
-                None => self.data.byte(address)?,
-            };
-            value |= u128::from(byte) << (offset * 8);
+            value |= u128::from(self.byte(address)?) << (offset * 8);
         }
         Some(value)
     }
@@ -442,7 +473,26 @@ impl<'a> Machine<'a> {
     /// `calls` receives the target of each call and tail call; see [`PathCalls`]. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
     pub fn run_paths(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
-        self.follow(entry, None, calls)
+        self.follow(entry, &Bound::Unbounded, calls)
+    }
+
+    /// Execute from `entry` along every path, as [`Machine::run_paths`] does, and join the
+    /// states of the paths at each loop head.
+    ///
+    /// A loop head is a target of a backward branch of the decoded code. The run keeps, for each
+    /// loop head, the facts that every path that arrived there knew with the same values:
+    /// registers, flags and memory. A path that arrives in a state that knows each of them ends
+    /// as [`Exit::Looped`], since the run already follows a path from a state that covers its
+    /// own. Otherwise the kept facts become fewer, and the path goes on from the kept facts alone,
+    /// which cover every path joined there. A path joins only paths with the same stack, entered
+    /// calls and labels; the caller's labels are facts that the run cannot make fewer. A path
+    /// that goes on without a join more than [`LOOP_LIMIT`] times at one head, or a loop head
+    /// whose facts become fewer more than [`JOIN_LIMIT`] times, ends as `Unresolved`. Paths that
+    /// end as [`Exit::Looped`] do not count toward [`PATH_LIMIT`].
+    pub fn run_paths_joining(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
+        let addresses = self.code.rows.keys().copied().collect();
+        let heads = self.code.loop_heads(&addresses);
+        self.follow(entry, &Bound::Joining(heads), calls)
     }
 
     /// Execute from `entry` along every path that can arrive at the instruction at `site`, as
@@ -464,24 +514,27 @@ impl<'a> Machine<'a> {
             loop_heads: self.code.loop_heads(&reaching),
             reaching,
         };
-        self.follow(entry, Some(&site), calls)
+        self.follow(entry, &Bound::Site(site), calls)
     }
 
-    fn follow(
-        self,
-        entry: u64,
-        site: Option<&Site>,
-        calls: &mut PathCalls<'_, 'a>,
-    ) -> Vec<Path<'a>> {
-        let mut pending = vec![(self, entry, 0)];
+    fn follow(self, entry: u64, bound: &Bound, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
+        // Each pending walk says whether it resumes a split on flags at the instruction that
+        // split, which it has already arrived at.
+        let mut pending = vec![(self, entry, 0, false)];
         let mut ended = Vec::new();
+        let mut joined = BTreeMap::new();
+        // Paths that a joined state covers end at once and add no work, so they do not count.
+        let mut covered = 0;
 
-        while let Some((mut machine, pc, steps)) = pending.pop() {
-            match machine.walk(pc, steps, site, calls) {
-                Walk::End(end) => ended.push(Path { end, machine }),
+        while let Some((mut machine, pc, steps, resumed)) = pending.pop() {
+            match machine.walk(pc, steps, resumed, bound, &mut joined, calls) {
+                Walk::End(end) => {
+                    covered += usize::from(end == Ok(Exit::Looped));
+                    ended.push(Path { end, machine });
+                }
                 Walk::Leaves => {}
                 Walk::Fork { branches, steps } => {
-                    if ended.len() + pending.len() + branches.len() > PATH_LIMIT {
+                    if ended.len() - covered + pending.len() + branches.len() > PATH_LIMIT {
                         ended.push(Path {
                             end: Err(Unresolved("path-limit")),
                             machine,
@@ -494,7 +547,7 @@ impl<'a> Machine<'a> {
                         if let Some(states) = states {
                             branch.possible_flags = states;
                         }
-                        pending.push((branch, pc, steps));
+                        pending.push((branch, pc, steps, states.is_some()));
                     }
                 }
             }
@@ -508,25 +561,36 @@ impl<'a> Machine<'a> {
         &mut self,
         mut pc: u64,
         mut steps: usize,
-        site: Option<&Site>,
+        mut resumed: bool,
+        bound: &Bound,
+        joined: &mut BTreeMap<u64, HeadState>,
         calls: &mut PathCalls<'_, 'a>,
     ) -> Walk {
         while steps < STEP_LIMIT {
-            if let Some(site) = site {
-                if pc == site.address {
-                    return Walk::End(Ok(Exit::Reached));
-                }
-                if !site.reaching.contains(&pc) {
-                    return Walk::Leaves;
-                }
-                if site.loop_heads.contains(&pc) {
-                    let visits = self.loop_visits.entry(pc).or_default();
-                    *visits += 1;
-                    if *visits > LOOP_LIMIT {
+            match bound {
+                Bound::Unbounded => {}
+                Bound::Site(site) => {
+                    if pc == site.address {
+                        return Walk::End(Ok(Exit::Reached));
+                    }
+                    if !site.reaching.contains(&pc) {
+                        return Walk::Leaves;
+                    }
+                    if site.loop_heads.contains(&pc) && self.visit(pc) > LOOP_LIMIT {
                         return Walk::End(Err(Unresolved("loop-limit")));
                     }
                 }
+                // A walk that resumes a split on flags has joined at its instruction already.
+                Bound::Joining(heads) if heads.contains(&pc) && !resumed => {
+                    match self.join(pc, joined) {
+                        Ok(true) => {}
+                        Ok(false) => return Walk::End(Ok(Exit::Looped)),
+                        Err(unresolved) => return Walk::End(Err(unresolved)),
+                    }
+                }
+                Bound::Joining(_) => {}
             }
+            resumed = false;
 
             steps += 1;
             let code = self.code;
@@ -593,6 +657,104 @@ impl<'a> Machine<'a> {
         }
 
         Walk::End(Err(Unresolved("step-limit")))
+    }
+
+    /// Join this path's state with the facts kept at the loop head `pc`. Whether the path goes
+    /// on: `false` when the kept facts cover its state.
+    fn join(&mut self, pc: u64, joined: &mut BTreeMap<u64, HeadState>) -> Result<bool, Unresolved> {
+        let Some(kept) = joined.get_mut(&pc) else {
+            joined.insert(pc, self.head_state(0));
+            return Ok(true);
+        };
+        if kept.stack_pointer != self.stack_pointer
+            || kept.frames != self.frames
+            || kept.labels != self.labels
+        {
+            return match self.visit(pc) {
+                visits if visits > LOOP_LIMIT => Err(Unresolved("loop-limit")),
+                _ => Ok(true),
+            };
+        }
+
+        let mut lost = false;
+        for index in 0..self.registers.len() {
+            let before = kept.registers[index];
+            lost |= before.is_some() && before != self.registers[index];
+            if before != self.registers[index] {
+                self.registers[index] = None;
+            }
+        }
+        for index in 0..self.vectors.len() {
+            let before = kept.vectors[index];
+            lost |= before.is_some() && before != self.vectors[index];
+            if before != self.vectors[index] {
+                self.vectors[index] = None;
+            }
+        }
+        let kept_states = kept.flags.map_or(kept.possible_flags, Flags::state);
+        let states = self.flags.map_or(self.possible_flags, Flags::state);
+        lost |= states & !kept_states != 0;
+        if kept.flags.is_none() || kept.flags != self.flags {
+            self.set_flags(None);
+            self.possible_flags = kept_states | states;
+        }
+        let addresses: BTreeSet<u64> = kept
+            .memory
+            .keys()
+            .chain(self.memory.keys())
+            .copied()
+            .collect();
+        for address in addresses {
+            let before = kept
+                .memory
+                .get(&address)
+                .copied()
+                .unwrap_or_else(|| self.data.byte(address));
+            let now = self.byte(address);
+            lost |= before.is_some() && before != now;
+            if before != now && now.is_some() {
+                self.memory.insert(address, None);
+            }
+        }
+
+        if !lost {
+            return Ok(false);
+        }
+        let widened = kept.widened + 1;
+        if widened > JOIN_LIMIT {
+            return Err(Unresolved("join-limit"));
+        }
+        *kept = self.head_state(widened);
+        Ok(true)
+    }
+
+    fn head_state(&self, widened: u32) -> HeadState {
+        HeadState {
+            registers: self.registers,
+            vectors: self.vectors,
+            flags: self.flags,
+            possible_flags: self.possible_flags,
+            memory: self.memory.clone(),
+            stack_pointer: self.stack_pointer,
+            frames: self.frames.clone(),
+            labels: self.labels.clone(),
+            widened,
+        }
+    }
+
+    /// The byte at `address`, when it is known.
+    fn byte(&self, address: u64) -> Option<u8> {
+        match self.memory.get(&address) {
+            Some(byte) => *byte,
+            None => self.data.byte(address),
+        }
+    }
+
+    /// Count an arrival at the loop head `pc`, and return how often the path arrived there.
+    fn visit(&mut self, pc: u64) -> u32 {
+        let visits = self.loop_visits.entry(pc).or_default();
+        *visits += 1;
+        *visits
     }
 
     /// A branch out of the decoded code: the call, then a return from the present function. The
@@ -1543,6 +1705,15 @@ impl Flags {
         }
     }
 
+    /// The bit of this state in a set of possible flag states.
+    fn state(self) -> u16 {
+        let bits = u8::from(self.negative) << 3
+            | u8::from(self.zero) << 2
+            | u8::from(self.carry) << 1
+            | u8::from(self.overflow);
+        1 << bits
+    }
+
     fn from_bits(bits: u8) -> Self {
         Self {
             negative: bits & 8 != 0,
@@ -2488,6 +2659,119 @@ mod tests {
 
         assert_eq!(machine.register(0), None);
         assert_eq!(machine.register(1), Some(7));
+    }
+
+    /// Calls each path made to `target`, counted in the path's label `target`.
+    fn count_calls(
+        target: u64,
+    ) -> impl FnMut(Option<u64>, &mut Machine) -> Result<Call, Unresolved> {
+        move |called, machine| {
+            if called == Some(target) {
+                let count = machine.labelled(target).unwrap_or(0);
+                machine.label(target, count + 1);
+            }
+            Ok(Call::Return(None))
+        }
+    }
+
+    /// A loop that counts `x0` up to three and then calls `0x900`. The joined state forgets the
+    /// counter, so the run follows the exit although the first pass cannot take it.
+    #[test]
+    fn a_joining_run_follows_the_code_after_a_counted_loop() {
+        let code = rows(&[
+            (0x100, "mov", "x0,#0"),
+            (0x104, "add", "x0,x0,#1"),
+            (0x108, "cmp", "x0,#3"),
+            (0x10c, "b.ne", "#0x104"),
+            (0x110, "bl", "#0x900"),
+            (0x114, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths_joining(0x100, &mut count_calls(0x900));
+
+        assert!(paths.iter().all(|path| path.end.is_ok()));
+        assert!(paths.iter().any(|path| path.end == Ok(Exit::Looped)));
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.end == Ok(Exit::Returned)
+                    && path.machine.labelled(0x900) == Some(1))
+        );
+    }
+
+    /// The first pass sets `x5`; only a later pass calls `0x904`, because of it. The run follows
+    /// that later pass.
+    #[test]
+    fn a_joining_run_follows_a_later_pass_that_differs_from_the_first() {
+        let code = rows(&[
+            (0x100, "mov", "x5,#0"),
+            (0x104, "cbnz", "x5,#0x110"),
+            (0x108, "mov", "x5,#1"),
+            (0x10c, "b", "#0x114"),
+            (0x110, "bl", "#0x904"),
+            (0x114, "cbnz", "x6,#0x104"),
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut called = BTreeSet::new();
+        let paths = Machine::new(&code, &data).run_paths_joining(0x100, &mut |target, _| {
+            called.extend(target);
+            Ok(Call::Return(None))
+        });
+
+        assert!(paths.iter().all(|path| path.end.is_ok()));
+        assert!(paths.iter().any(|path| path.end == Ok(Exit::Looped)));
+        assert!(called.contains(&0x904));
+
+        let mut first_pass = BTreeSet::new();
+        Machine::new(&code, &data).run_paths_to(0x100, 0x114, &mut |target, _| {
+            first_pass.extend(target);
+            Ok(Call::Return(None))
+        });
+        assert!(first_pass.is_empty(), "the first pass never calls 0x904");
+    }
+
+    /// The loop head is a branch on unknown flags. Both sides of the split resume at the head,
+    /// and neither may end as covered by the arrival that split.
+    #[test]
+    fn a_joining_run_follows_both_sides_of_a_branch_at_a_loop_head() {
+        let code = rows(&[
+            (0x100, "cmp", "x7,#0"),
+            (0x104, "b.eq", "#0x10c"),
+            (0x108, "b", "#0x104"),
+            (0x10c, "bl", "#0x900"),
+            (0x110, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut called = BTreeSet::new();
+        let paths = Machine::new(&code, &data).run_paths_joining(0x100, &mut |target, _| {
+            called.extend(target);
+            Ok(Call::Return(None))
+        });
+
+        assert!(paths.iter().any(|path| path.end == Ok(Exit::Returned)));
+        assert!(paths.iter().any(|path| path.end == Ok(Exit::Looped)));
+        assert!(called.contains(&0x900));
+    }
+
+    /// Paths with different labels are not joined: each goes on until it passes the loop head
+    /// too often.
+    #[test]
+    fn a_joining_run_keeps_paths_with_different_labels_apart() {
+        let code = rows(&[
+            (0x100, "bl", "#0x900"),
+            (0x104, "cbnz", "x6,#0x100"),
+            (0x108, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths_joining(0x100, &mut count_calls(0x900));
+
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.end == Err(Unresolved("loop-limit")))
+        );
+        assert!(!paths.iter().any(|path| path.end == Ok(Exit::Looped)));
     }
 
     #[test]

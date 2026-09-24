@@ -631,6 +631,9 @@ engine runs for the items of one content database. The method calls these functi
 | `TSingleObjectGameDatabase<Db, Owner, …>::PostReadInit()` | the database; it loops over `+0x48`/`+0x54` and calls `<Owner>::PostReadInit()` for each item | can be `Always` |
 | `<Owner>::InitPostRead(…)` | one item | never `Always`: the engine calls it through a virtual slot, and that it runs for every item is not established |
 
+SDK-575 (below) replaced the last row: an item root can be `Always` when the method establishes
+that the engine runs it for every item that the database loads.
+
 Generator classes (`CTechnologyModifierGenerator`, `CSpeciesClassModifierGenerator`, …) are stack
 objects that the root builds. The root stores the item at `+0xb8` and calls the `Create*` methods
 directly, not through the vtable. The post-read function of every other content class
@@ -772,6 +775,109 @@ registries. The live `loaded_modifiers` case asserts the attribution of `job_min
 registry (none on M45-release); conditions of item roots; content fields other than the key
 (leader classes); names composed from another modifier's name (ship sizes); the tags of a declared
 base modifier after content registers it again.
+
+### Item post-read code for every loaded item (SDK-575)
+
+SDK-575 establishes, for each registry with an item root, whether the engine calls
+`<Owner>::InitPostRead` for every item that the database loads. `modifier_families` is
+`modifier-families/v3` (`families/loading.rs`). The public types did not change.
+
+**Engine code (M45-release).** `TSingleObjectGameDatabase<Db, Owner, …>::LoadFromReader` reads the
+statements of a file in a loop. For a new key it allocates the item, calls the key constructor
+and, unless the database's word at `+0x70` is 1, calls slot `0x20` of the item's vtable at `+0x38`
+(the item's `CPersistent` base), then inserts the item into the array at `+0x48`/`+0x54`. Some
+instances move the new-key code into `ReadNewEntry`. A key that exists goes through the
+database's vtable to `ReadExistingEntry`, which destroys the item, zeroes it, constructs it again
+and makes the same gated call. Slot `0x20` is `CPersistent::Read`. It calls
+`ReadWithoutInitPostRead`, then slot `0x30` (`InitPostRead()`) and, as a tail call, slot `0x38`
+(`InitPostRead(CString const&, int, int)`), on every path. In each owner's vtable those slots
+hold a thunk of the owner's override, which adjusts `this` by `-0x38`. For `CBuildingType` the
+thunk is `sub x0, x0, #0x38; b CBuildingType::InitPostRead`. For `CCountryType` the non-virtual
+thunk holds a copy of the whole body. Only the database constructors write the `+0x70` word:
+0 for every registry here, 1 for `CJobTagDatabase` and `CTraitTagDatabase`.
+
+**Method.** The functions that call a constructor of the owner, directly or through a
+constructor that delegates to it, must be functions of the database's classes (`<Db>::…` and
+`TSingleObjectGameDatabase<Db, Owner, …>::…`) or the null object's initializer
+(`TPdxNullObject<Owner>::Initialize`, which constructs the null object with index -1 and an empty
+key in its own storage). No other function may form an address point of the owner's vtables:
+such code can construct an item inline. The binding decodes each function with an `adrp` of a
+point's page and reads it in address order (`adrp`, `add` of an immediate and `mov` carry a
+value; any other write clears it). A function that does not decode is read as words with
+`adrp` and `add` only. On M45-release only the owners' constructors and destructors form the
+address points, and the `resolution_categories` readers, which construct inline. Each function of the database's classes runs from its entry with
+fresh registers. Its database is the memory that the database constructor leaves, with an item
+array of unknown length, and its pointer arguments are unknown memory. The run handles calls as
+follows:
+
+- An allocation returns new memory.
+- An owner constructor gives its object the address points of the owner's vtable group,
+  parsed from `vtable for <Owner>` (ABI: a complete object after its constructor).
+- The run enters the functions in the group's slots.
+- A thunk of an item root counts as the root when `this` is the item's subobject whose vtable
+  holds the thunk.
+
+States join at loop heads (`Machine::run_paths_joining`): each head keeps the facts that every
+arriving path knew with the same values, and the flag states that any of them allowed. A path
+that the kept facts cover ends there, and the other paths continue from the kept facts, so the
+run covers every pass of a loop. The two sides of a branch on unknown flags at a loop head
+resume there without a second join. The call is
+established when every item that a returned path constructed received every item root. The
+item families then follow the database-root rule of SDK-540/566 (every returned path of both
+key forms registers the family; failed paths and paths that assumed text do not count).
+
+**Assumptions.** The null object is not an item of the database. A store to an unknown
+address, or a call that the run does not enter, changes neither the database's fields other
+than its item array nor an item's vtable pointers. A thunk runs its root, also when it holds a
+copy of the root's body.
+
+**Freeze and revisions.** An adversarial plan review found four holes before the first
+executable run. The first plan followed one pass of each loop, so a later pass that skipped the
+read went unseen. It let one root discharge the others. It excluded constructions outside the
+database's classes without accounting for them. It missed a root that a thunk reaches by a
+branch inside the decoded code. Each hole is now an authored test with a negative control. Two
+revisions followed the first M45 run. With per-path joins, the loaders exceeded 64 paths; joins
+are now shared between paths, and a path that the joined facts cover does not count toward the
+limit. `ReadExistingEntry` of espionage types has a backward branch that is not a loop, and a
+covered path ended there before the covering path read the item. Only returned paths are now
+checked; a covered path's items are the covering path's, which carries the same labels.
+Two reviews of the implementation found six more holes, each now an authored test:
+
+- The two sides of a flag split at a loop head ended as covered by the arrival that split.
+- The joins ignored the flag states that a path allowed.
+- A loader received the registers that the database constructor left, such as a zero `bool`.
+- A thunk was credited at any subobject offset.
+- Code that constructs an item inline was not accounted for.
+- A loader's new memory could have the address of memory that the database constructor reserved.
+
+The review also named the database assumption above; it stays an assumption, as the key
+assumption of SDK-566 does. After these changes the M45 result is unchanged, except the reason
+for `resolution_categories`.
+
+**Result on M45-release.**
+
+| Registry | Per-item call | Families now `Always` | Live (items, loaded names) |
+| --- | --- | --- | --- |
+| `common/anomalies`, `buildings`, `country_types`, `districts`, `economic_categories`, `espionage_operation_types`, `ethics`, `ship_sizes`, `species_archetypes` | established | none: a path skips each registration | unchanged from SDK-566 |
+| `common/pop_categories` | established | `pop_cat_{key}_happiness`, `_political_power`, `_bonus_workforce_mult` | 24 items, 24 names each |
+| `common/pop_jobs` | not established: `CJobTypeDatabase::CJobTypeDatabase()` constructs one item and inserts it without calling `Read` | none | 366 items, 365 names each (automated 354) |
+| `common/resolution_categories` | not established: its `ReadExistingEntry` and `ReadNewEntry` construct the item inline (and call `CPersistent::Read` directly) | none | 37 items, 37 names |
+
+The `pop_jobs` gap agrees with the live measure: the database constructor's item is the one item
+without generated names. The families that stay `Unresolved` in established registries have
+these causes:
+
+- An item-field gate: `CCountryType::InitPostRead` registers only when the field at `+0x580`
+  equals `0x7fffffff`. Every loaded country type has that value (101 of 101).
+- The buildings `{key}_max` gate on bit 2 of `+0x17a8`, which no loaded building sets (0 of 498).
+- Root runs that exceed the path limit of SDK-566: districts, espionage types, ethics, species
+  archetypes, economic categories.
+
+Anomaly root runs have no failed path, but half of their returned paths skip the registration.
+Why was not traced.
+
+**Not in SDK-575.** Joining states in the item-root runs themselves, which would remove their
+path-limit failures; following inline construction; a copied thunk's own family run.
 
 ## Rust ports
 

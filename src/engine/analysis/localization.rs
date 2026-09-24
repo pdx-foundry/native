@@ -469,7 +469,7 @@ fn path_context(
     match path.end {
         Err(Unresolved(reason)) => Err(reason),
         Ok(Exit::Stopped(target)) if target == scope_object => Ok(PathContext::ScopeObject),
-        Ok(Exit::Stopped(_) | Exit::Reached) => Err("stopped"),
+        Ok(Exit::Stopped(_) | Exit::Reached | Exit::Looped) => Err("stopped"),
         Ok(Exit::Trapped) => Ok(PathContext::Trapped),
         Ok(Exit::Returned) => match path.machine.read(field, 4) {
             None => Err("context-unknown"),

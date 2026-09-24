@@ -19,8 +19,9 @@
 //! generated only for a root that loops over every item, when no path fails, some path returns,
 //! and every returned path registers it. A branch on an unknown item field makes a path that
 //! skips the call, so such a family is never `Always`. Paths that end in a function that never
-//! returns, or in a trap, are ignored. That the engine calls an item root for every item is not
-//! established, so its families are never `Always`.
+//! returns, or in a trap, are ignored. An item root counts as a root that loops over every item
+//! only when `loading` establishes that the engine calls it for every item that the database
+//! loads; otherwise its families are never `Always`.
 //!
 //! A helper can read the category mask of a declared modifier type from the engine's definition
 //! table (`CModifierGeneratorBase::GenerateFrom`). The run holds a table with the mask of each
@@ -41,15 +42,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
 
 pub mod joins;
+pub mod loading;
 mod strings;
 
 pub use joins::Receiver;
+pub use loading::{Loading, NotEstablished};
 use strings::{ASSUMED_TEXT, ITEM_KEY};
 pub(super) use strings::{Arena, Effect, Model, Node};
 pub use strings::{Part, StringFunctions, StringLayout};
 
 /// Name and revision of the modifier-family method.
-pub const METHOD: &str = "modifier-families/v2";
+pub const METHOD: &str = "modifier-families/v3";
 
 /// The long key: longer than the longest short string, so the engine stores it in a buffer.
 const LONG_KEY: &str = "generatedmodifierfamilyitemkey01";
@@ -102,7 +105,9 @@ pub struct RegistryInput {
     pub entered: BTreeSet<u64>,
     /// Every body of the item constructor that takes the key.
     pub constructors: Vec<u64>,
-    /// Every root, entered function and constructor body.
+    /// The code that makes the registry's items, when it has an item root.
+    pub loading: Option<Loading>,
+    /// Every root, entered function and constructor body, and the loading code.
     pub code: Code,
 }
 
@@ -182,6 +187,8 @@ pub struct FamilyResult {
     /// How many registered names, or generation calls that a root reaches, could not be
     /// followed, by reason.
     pub failures: BTreeMap<&'static str, usize>,
+    /// Whether the engine runs the item roots for every item, when the registry has one.
+    pub item_call: Option<Result<(), NotEstablished>>,
 }
 
 /// The names that one chain of calls registers.
@@ -202,7 +209,8 @@ pub enum Condition {
     Always,
     /// A path skips the registration, or a path could not be followed.
     Unresolved,
-    /// Only an item root registers it, and that every item runs that root is not established.
+    /// Only an item root registers it, and that the engine runs that root for every item is not
+    /// established: see [`FamilyResult::item_call`].
     ItemRoot,
 }
 
@@ -224,8 +232,21 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
             key_offset,
             families: Vec::new(),
             failures: BTreeMap::new(),
+            item_call: None,
         });
     };
+
+    let item_roots: BTreeSet<u64> = registry
+        .roots
+        .iter()
+        .filter(|root| root.receiver == Receiver::Item)
+        .map(|root| root.function)
+        .collect();
+    let item_call = (!item_roots.is_empty()).then(|| match &registry.loading {
+        Some(loading) => loading::every_item(input, loading, &item_roots),
+        None => Err(NotEstablished::NoLoader),
+    });
+    let every_item = matches!(item_call, Some(Ok(())));
 
     let mut families: BTreeMap<Template, Condition> = BTreeMap::new();
     let mut failures = BTreeMap::new();
@@ -235,7 +256,7 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
             .map(|form| root_paths(input, registry, root, offset, form))
             .collect();
 
-        let (root_families, root_failures) = root_families(root, &runs);
+        let (root_families, root_failures) = root_families(root, every_item, &runs);
         for family in root_families {
             let condition = families
                 .entry((family.parts, family.limit, family.mask))
@@ -260,6 +281,7 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
         key_offset,
         families,
         failures,
+        item_call,
     })
 }
 
@@ -412,7 +434,7 @@ fn ending(strings: &StringFunctions, end: &Result<Exit, Unresolved>) -> Ending {
         Ok(Exit::Returned) => Ending::Returned,
         Ok(Exit::Trapped) => Ending::Ignored,
         Ok(Exit::Stopped(target)) if strings.never_return.contains(target) => Ending::Ignored,
-        Ok(Exit::Stopped(_) | Exit::Reached) | Err(_) => Ending::Failed,
+        Ok(Exit::Stopped(_) | Exit::Reached | Exit::Looped) | Err(_) => Ending::Failed,
     }
 }
 
@@ -575,7 +597,12 @@ impl<'a> DefinitionTable<'a> {
 
 /// The families of one root from its runs with each key form, and the reason of each name or
 /// generation call that could not be followed.
-fn root_families(root: &Root, runs: &[Vec<PathSummary>]) -> (Vec<Family>, Vec<&'static str>) {
+/// `every_item` says that the engine runs an item root for every item.
+fn root_families(
+    root: &Root,
+    every_item: bool,
+    runs: &[Vec<PathSummary>],
+) -> (Vec<Family>, Vec<&'static str>) {
     let mut failures = Vec::new();
 
     // For each chain of calls, the names that each key form registers there, with every mask.
@@ -613,7 +640,7 @@ fn root_families(root: &Root, runs: &[Vec<PathSummary>]) -> (Vec<Family>, Vec<&'
                     parts,
                     limit,
                     mask,
-                    condition: condition(root, runs, calls, name),
+                    condition: condition(root, every_item, runs, calls, name),
                 }),
                 Err(Unresolved(reason)) => failures.push(reason),
             }
@@ -623,10 +650,17 @@ fn root_families(root: &Root, runs: &[Vec<PathSummary>]) -> (Vec<Family>, Vec<&'
     (families, failures)
 }
 
-/// `Always` for a database root when, in every run, no path failed, some path returned, and
-/// every returned path registered `name` at `calls` before it assumed any text.
-fn condition(root: &Root, runs: &[Vec<PathSummary>], calls: &[u64], name: &Node) -> Condition {
-    if root.receiver == Receiver::Item {
+/// `Always` for a database root, or an item root that the engine runs for every item, when, in
+/// every run, no path failed, some path returned, and every returned path registered `name` at
+/// `calls` before it assumed any text.
+fn condition(
+    root: &Root,
+    every_item: bool,
+    runs: &[Vec<PathSummary>],
+    calls: &[u64],
+    name: &Node,
+) -> Condition {
+    if root.receiver == Receiver::Item && !every_item {
         return Condition::ItemRoot;
     }
 
@@ -987,6 +1021,7 @@ mod tests {
                 roots,
                 entered: entered.iter().copied().collect(),
                 constructors: constructor.into_iter().collect(),
+                loading: None,
                 code: code(parts),
             },
         }
@@ -1616,6 +1651,100 @@ mod tests {
             ]
         );
         assert!(result.failures.is_empty());
+    }
+
+    /// Loading code that constructs one item and calls the item root with it.
+    fn loading() -> Loading {
+        const LOADER: u64 = 0x1000;
+        const DATABASE_CONSTRUCTOR: u64 = 0x1100;
+        const ALLOCATE_ITEM: u64 = 0x950;
+        let loader = rows(
+            LOADER,
+            &[
+                ("stp", "x19,x30,[sp,#-0x10]!"),
+                ("bl", &format!("#{ALLOCATE_ITEM:#x}")),
+                ("mov", "x19,x0"),
+                ("bl", &format!("#{CONSTRUCTOR:#x}")),
+                ("mov", "x0,x19"),
+                ("bl", &format!("#{ITEM_ROOT:#x}")),
+                ("ldp", "x19,x30,[sp],#0x10"),
+                ("ret", ""),
+            ],
+        );
+        let database_constructor = rows(
+            DATABASE_CONSTRUCTOR,
+            &[("str", "wzr,[x0,#0x70]"), ("ret", "")],
+        );
+        let function = |address, name: &str| loading::Function {
+            address,
+            name: name.into(),
+            pointers: Vec::new(),
+        };
+        Loading {
+            loaders: vec![function(LOADER, "CDb::Load()")],
+            database_constructors: vec![function(DATABASE_CONSTRUCTOR, "CDb::CDb()")],
+            elsewhere: Vec::new(),
+            inline_constructions: Vec::new(),
+            constructors: [CONSTRUCTOR].into(),
+            vtables: [(0, 0x5000)].into(),
+            thunks: BTreeMap::new(),
+            dispatch: BTreeSet::new(),
+            allocations: [ALLOCATE_ITEM].into(),
+            code: code(&[loader, database_constructor]),
+        }
+    }
+
+    /// With the call of the item root established for every item, its families follow the
+    /// rule of a database root: `Always` when every path registers them, `Unresolved` when a
+    /// branch on an item field skips the registration.
+    #[test]
+    fn an_item_root_that_runs_for_every_item_can_be_always() {
+        let mut every_item = item_fixture(generator_method(), &[METHOD, HELPER, SIZE]);
+        every_item.registry.loading = Some(loading());
+        let result = every_item.analyze().unwrap();
+        assert_eq!(result.item_call, Some(Ok(())));
+        assert_eq!(result.families[0].condition, Condition::Always);
+
+        let gated_root = rows(
+            ITEM_ROOT,
+            &[
+                ("sub", "sp,sp,#0xc0"),
+                ("ldr", "w8,[x0,#0x200]"),
+                ("cbz", "w8,#0x618"),
+                ("str", "x0,[sp,#0xb8]"),
+                ("mov", "x0,sp"),
+                ("bl", &format!("#{METHOD:#x}")),
+                ("add", "sp,sp,#0xc0"),
+                ("ret", ""),
+            ],
+        );
+        let mut gated = fixture(
+            &[
+                constructor(0x10),
+                gated_root,
+                generator_method(),
+                size(),
+                helper(),
+            ],
+            vec![Root {
+                function: ITEM_ROOT,
+                receiver: Receiver::Item,
+                sites: BTreeSet::from([0x87c]),
+            }],
+            &[METHOD, HELPER, SIZE],
+            Some(CONSTRUCTOR),
+        );
+        gated.input.definitions = Some(definitions());
+        gated.registry.loading = Some(loading());
+        let result = gated.analyze().unwrap();
+        assert_eq!(result.item_call, Some(Ok(())));
+        assert_eq!(result.families[0].condition, Condition::Unresolved);
+
+        let mut no_loading = item_fixture(generator_method(), &[METHOD, HELPER, SIZE]);
+        no_loading.registry.loading = None;
+        let result = no_loading.analyze().unwrap();
+        assert_eq!(result.item_call, Some(Err(NotEstablished::NoLoader)));
+        assert_eq!(result.families[0].condition, Condition::ItemRoot);
     }
 
     /// A template that a database root establishes for every item stays `Always` when an item
