@@ -3,13 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    decode::decode_arm64,
+    decode::{Instruction, decode_arm64},
     discovery::Symbol,
-    evaluate::Code,
+    evaluate::{Code, ReadOnlyData},
     families::{
         DatabaseLayout, Definitions, FamilyInput, KeyStorageInput, Receiver, RegistryInput, Root,
         StringFunctions, StringLayout,
         joins::{self, DEPTH, GenerationSite, Graph, Joins, RootOf},
+        loading::{Function, Loading},
     },
     modifier_table::Layout,
 };
@@ -33,6 +34,9 @@ const DEFINITIONS: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifie
 
 /// The post-read functions that the engine runs for a content object.
 const POST_READ: [&str; 2] = ["::InitPostRead(", "::PostReadInit()"];
+
+/// The functions that return new memory.
+const ALLOCATIONS: [&str; 3] = ["_calloc", "_malloc", "operator new(unsigned long)"];
 
 /// A named registry and the classes of its database and its items.
 pub(in crate::binding) struct NamedRegistry<'a> {
@@ -77,6 +81,7 @@ pub(in crate::binding) fn index(
 
     let graph = graph(&text, symbols, &names, registries, registration, &facts)?;
     let joins = joins::join(&graph);
+    let data = constant_data(bytes, facts.pointers, facts.bound_slots)?;
 
     let mut inputs = BTreeMap::new();
     for registry in registries {
@@ -93,6 +98,10 @@ pub(in crate::binding) fn index(
         let path = join.map(|join| join.path.clone()).unwrap_or_default();
         let entered = entered(&text, &names, &strings, &roots, path, registration)?;
         let constructors = constructors(symbols, registry.owner);
+        let loading = roots
+            .iter()
+            .any(|root| root.receiver == Receiver::Item)
+            .then(|| loading(&text, symbols, &names, &data, registry, &roots));
 
         let functions: Vec<u64> = roots
             .iter()
@@ -106,6 +115,7 @@ pub(in crate::binding) fn index(
                 roots,
                 entered,
                 constructors,
+                loading,
                 code: decoded(&text, &functions),
             },
         );
@@ -132,7 +142,7 @@ pub(in crate::binding) fn index(
             layout: StringLayout {
                 flag_byte: recipe.short_string_length_offset,
             },
-            data: constant_data(bytes, facts.pointers, facts.bound_slots)?,
+            data,
         },
         joins,
         registries: inputs,
@@ -337,6 +347,432 @@ enum Call {
     Indirect,
 }
 
+/// The code that constructs the registry's items: the functions that call a constructor of the
+/// item's class, directly or through a constructor that delegates, the database constructor,
+/// and the item's vtables.
+fn loading(
+    text: &Text,
+    symbols: &[Symbol],
+    names: &Names,
+    data: &ReadOnlyData,
+    registry: &NamedRegistry,
+    roots: &[Root],
+) -> Loading {
+    let constructor_prefix = format!("{0}::{0}(", registry.owner);
+    let constructors: BTreeSet<u64> = symbols
+        .iter()
+        .filter(|symbol| {
+            symbol.name.starts_with(&constructor_prefix) && !symbol.name.contains(".cold.")
+        })
+        .map(|symbol| symbol.address)
+        .collect();
+    let (loaders, elsewhere) = constructing_functions(text, names, registry, &constructors);
+
+    let database_constructor = format!("{0}::{0}()", registry.database);
+    let database_constructors: Vec<Function> = addresses(symbols, &database_constructor)
+        .into_iter()
+        .map(|address| function(address, &database_constructor))
+        .collect();
+
+    let item_roots: BTreeSet<u64> = roots
+        .iter()
+        .filter(|root| root.receiver == Receiver::Item)
+        .map(|root| root.function)
+        .collect();
+    let group = vtable_group(symbols, data, registry.owner).unwrap_or_default();
+    let thunks: BTreeMap<u64, (u64, u64)> = thunks(symbols, names, &item_roots)
+        .into_iter()
+        .filter_map(|(thunk, root)| match group.slots.get(&thunk) {
+            Some(offsets) if offsets.len() == 1 => Some((thunk, (root, *offsets.first()?))),
+            _ => None,
+        })
+        .collect();
+    let dispatch: BTreeSet<u64> = group
+        .slots
+        .keys()
+        .copied()
+        .filter(|slot| {
+            text.starts.contains(slot) && !item_roots.contains(slot) && !thunks.contains_key(slot)
+        })
+        .collect();
+
+    let destructor_prefix = format!("{0}::~{0}(", registry.owner);
+    let own_code = |function: u64| {
+        constructors.contains(&function)
+            || names.of(function).any(|name| {
+                name.starts_with(&destructor_prefix)
+                    || name.starts_with(&format!("non-virtual thunk to {destructor_prefix}"))
+                    || name.starts_with(&constructor_prefix)
+            })
+    };
+    let points = group.address_points.values().copied().collect();
+    let inline_constructions = functions_forming(text, &points)
+        .into_iter()
+        .filter(|&function| !own_code(function))
+        .map(|function| {
+            names
+                .of(function)
+                .next()
+                .map_or_else(|| format!("{function:#x}"), str::to_owned)
+        })
+        .collect();
+
+    let functions: Vec<u64> = loaders
+        .iter()
+        .chain(&database_constructors)
+        .map(|function| function.address)
+        .chain(dispatch.iter().copied())
+        .collect();
+    Loading {
+        loaders,
+        database_constructors,
+        elsewhere,
+        inline_constructions,
+        constructors,
+        vtables: group.address_points,
+        thunks,
+        dispatch,
+        allocations: ALLOCATIONS
+            .iter()
+            .flat_map(|name| addresses(symbols, name))
+            .collect(),
+        code: decoded(text, &functions),
+    }
+}
+
+/// The functions whose code forms one of `points` in a register. Each function with an `adrp`
+/// of a point's page is decoded and read in address order: `adrp` gives a page, `add` of an
+/// immediate and `mov` carry a known value, and every other write makes the register unknown. A
+/// function that does not decode is read as words, with `adrp` and `add` only, and a register
+/// keeps its value through other writes. An address that code forms in another way, such as
+/// across branches in another order, is not found.
+fn functions_forming(text: &Text, points: &BTreeSet<u64>) -> BTreeSet<u64> {
+    let pages: BTreeSet<u64> = points.iter().map(|point| point & !0xfff).collect();
+    let candidates: BTreeSet<u64> = text
+        .code
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .enumerate()
+        .filter_map(|(index, word)| {
+            let at = text.address + index as u64 * 4;
+            let (_, page) = adrp(u32::from_le_bytes(*word), at)?;
+            pages.contains(&page).then_some(at)
+        })
+        .filter_map(|at| text.starts.range(..=at).next_back().copied())
+        .collect();
+
+    candidates
+        .into_iter()
+        .filter(|&function| {
+            let Ok((address, code)) = text.function(function) else {
+                return true;
+            };
+            match decode_arm64(code, address) {
+                Ok(rows) => forms(&rows, points),
+                Err(_) => words_form(code, address, points),
+            }
+        })
+        .collect()
+}
+
+/// Whether the words at `address`, in address order, put one of `points` in a register through
+/// `adrp` and `add` of an immediate.
+fn words_form(code: &[u8], address: u64, points: &BTreeSet<u64>) -> bool {
+    let mut values: BTreeMap<u32, u64> = BTreeMap::new();
+    for (index, word) in code.as_chunks::<4>().0.iter().enumerate() {
+        let word = u32::from_le_bytes(*word);
+        if let Some((destination, page)) = adrp(word, address + index as u64 * 4) {
+            values.insert(destination, page);
+        } else if let Some((destination, source, addend)) = add_immediate(word)
+            && let Some(&value) = values.get(&source)
+        {
+            let sum = value.wrapping_add(addend);
+            if points.contains(&sum) {
+                return true;
+            }
+            values.insert(destination, sum);
+        }
+    }
+    false
+}
+
+/// The destination, source and addend of a 64-bit `add` of an immediate.
+fn add_immediate(word: u32) -> Option<(u32, u32, u64)> {
+    if word & 0xff00_0000 != 0x9100_0000 {
+        return None;
+    }
+    let shift = if word >> 22 & 1 == 1 { 12 } else { 0 };
+    Some((
+        word & 0x1f,
+        word >> 5 & 0x1f,
+        u64::from(word >> 10 & 0xfff) << shift,
+    ))
+}
+
+/// Whether the instructions, in address order, put one of `points` in a register.
+fn forms(rows: &[Instruction], points: &BTreeSet<u64>) -> bool {
+    let mut values: BTreeMap<u32, u64> = BTreeMap::new();
+    for row in rows {
+        let operands: Vec<&str> = row.operands.split(',').collect();
+        let value = match (row.operation.as_str(), operands.as_slice()) {
+            ("adrp", [_, page]) => parse_immediate(page),
+            ("add", [_, source, addend, shift @ ..]) if matches!(shift, [] | ["lsl#12"]) => {
+                register(source)
+                    .and_then(|source| values.get(&source))
+                    .zip(parse_immediate(addend))
+                    .map(|(value, addend)| value.wrapping_add(addend << (12 * shift.len())))
+            }
+            ("mov", [_, source]) => {
+                register(source).and_then(|source| values.get(&source).copied())
+            }
+            _ => None,
+        };
+        if value.is_some_and(|value| points.contains(&value)) {
+            return true;
+        }
+        for written in written_registers(&row.operation, &operands) {
+            values.remove(&written);
+        }
+        if let (Some(value), Some(destination)) =
+            (value, operands.first().and_then(|o| register(o)))
+        {
+            values.insert(destination, value);
+        }
+    }
+    false
+}
+
+/// The general registers that an instruction writes, as far as the scan needs them: a call
+/// writes the caller-saved registers and the link register.
+fn written_registers(operation: &str, operands: &[&str]) -> Vec<u32> {
+    let calls = ["bl", "blr"];
+    let writes_nothing = operation.starts_with("st")
+        || operation.starts_with("b")
+        || operation.starts_with("cb")
+        || operation.starts_with("tb")
+        || [
+            "cmp", "cmn", "tst", "ccmp", "ccmn", "fcmp", "ret", "nop", "prfm",
+        ]
+        .contains(&operation);
+    if calls.contains(&operation) {
+        return (0..=18).chain([30]).collect();
+    }
+    if writes_nothing {
+        return Vec::new();
+    }
+    let count = if operation.starts_with("ldp") || operation.starts_with("ldnp") {
+        2
+    } else {
+        1
+    };
+    operands
+        .iter()
+        .take(count)
+        .filter_map(|operand| register(operand))
+        .collect()
+}
+
+/// The number of general register `name`, such as `x8` or `w8`.
+fn register(name: &str) -> Option<u32> {
+    name.strip_prefix('x')
+        .or_else(|| name.strip_prefix('w'))?
+        .parse()
+        .ok()
+}
+
+/// An immediate operand such as `#0x10`.
+fn parse_immediate(operand: &str) -> Option<u64> {
+    let text = operand.strip_prefix('#')?;
+    match text.strip_prefix("0x") {
+        Some(hex) => u64::from_str_radix(hex, 16).ok(),
+        None => text.parse().ok(),
+    }
+}
+
+/// The page of an `adrp` at `at`.
+fn adrp(word: u32, at: u64) -> Option<(u32, u64)> {
+    if word & 0x9f00_0000 != 0x9000_0000 {
+        return None;
+    }
+    let immediate = (word >> 29 & 0b11) | (word >> 5 & 0x7_ffff) << 2;
+    let offset = ((immediate << 11) as i32 >> 11) as i64;
+    Some((word & 0x1f, (at & !0xfff).wrapping_add_signed(offset << 12)))
+}
+
+/// The functions other than `constructors` that call one of them: those of the database's own
+/// classes, and the names of the others, except the null object's initializer.
+fn constructing_functions(
+    text: &Text,
+    names: &Names,
+    registry: &NamedRegistry,
+    constructors: &BTreeSet<u64>,
+) -> (Vec<Function>, Vec<String>) {
+    let own_classes = [
+        format!("{}::", registry.database),
+        format!(
+            "TSingleObjectGameDatabase<{}, {}, ",
+            registry.database, registry.owner
+        ),
+    ];
+    let null_object = format!("TPdxNullObject<{}>::Initialize()", registry.owner);
+    let containing = |address: u64| text.starts.range(..=address).next_back().copied();
+
+    let mut loaders = BTreeMap::new();
+    let mut elsewhere = BTreeSet::new();
+    for (at, _) in text.calls_into(constructors) {
+        let Some(caller) = containing(at) else {
+            continue;
+        };
+        if constructors.contains(&caller) {
+            continue;
+        }
+        let name = names
+            .of(caller)
+            .find(|name| !name.contains("thunk"))
+            .unwrap_or_default();
+        if own_classes.iter().any(|class| name.starts_with(class)) {
+            loaders.insert(caller, function(caller, name));
+        } else if name != null_object && !is_cold_part_of(names, caller, constructors) {
+            elsewhere.insert(if name.is_empty() {
+                format!("{caller:#x}")
+            } else {
+                name.to_owned()
+            });
+        }
+    }
+    (
+        loaders.into_values().collect(),
+        elsewhere.into_iter().collect(),
+    )
+}
+
+/// A function that a run of the loading code starts at.
+fn function(address: u64, name: &str) -> Function {
+    Function {
+        address,
+        name: name.to_owned(),
+        pointers: pointer_arguments(name),
+    }
+}
+
+/// The thunks of each root in `roots`: `non-virtual thunk to <root>` and `{virtual override
+/// thunk(…, <root>)}`. A thunk adjusts `this` and runs its root; the compiler may give it a copy
+/// of the root's body instead of a branch to the root.
+fn thunks(symbols: &[Symbol], names: &Names, roots: &BTreeSet<u64>) -> BTreeMap<u64, u64> {
+    let mut thunks = BTreeMap::new();
+    for &root in roots {
+        for name in names.of(root) {
+            let non_virtual = format!("non-virtual thunk to {name}");
+            let virtual_override = format!(", {name})}}");
+            for symbol in symbols {
+                let thunk = symbol.name == non_virtual
+                    || (symbol.name.starts_with("{virtual override thunk(")
+                        && symbol.name.ends_with(&virtual_override));
+                if thunk {
+                    thunks.insert(symbol.address, root);
+                }
+            }
+        }
+    }
+    thunks
+}
+
+/// Whether `function` is an out-of-line part of one of `functions`, which only unwinding
+/// reaches.
+fn is_cold_part_of(names: &Names, function: u64, functions: &BTreeSet<u64>) -> bool {
+    names.of(function).any(|cold| {
+        functions
+            .iter()
+            .any(|&other| names.of(other).any(|name| is_cold_part(cold, name)))
+    })
+}
+
+/// Whether the symbol `cold` names an out-of-line part of the function `name`.
+fn is_cold_part(cold: &str, name: &str) -> bool {
+    cold.strip_prefix(name)
+        .is_some_and(|suffix| suffix.contains(".cold."))
+}
+
+/// The argument registers of the demangled member function `name` that hold a pointer or a
+/// reference. `x0` holds `this`, so the parameters start at `x1`.
+fn pointer_arguments(name: &str) -> Vec<usize> {
+    let Some(parameters) = name
+        .find('(')
+        .zip(name.rfind(')'))
+        .and_then(|(start, end)| name.get(start + 1..end))
+    else {
+        return Vec::new();
+    };
+    let mut depth = 0;
+    let mut parts = vec![String::new()];
+    for character in parameters.chars() {
+        match character {
+            '<' | '(' => depth += 1,
+            '>' | ')' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(String::new());
+                continue;
+            }
+            _ => {}
+        }
+        parts.last_mut().expect("one part").push(character);
+    }
+    parts
+        .iter()
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .enumerate()
+        .filter(|(_, part)| part.ends_with('&') || part.ends_with('*'))
+        .map(|(index, _)| index + 1)
+        .collect()
+}
+
+/// A class's Itanium vtable group.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct VtableGroup {
+    /// The address point of each vtable, by the offset of its subobject in the object.
+    address_points: BTreeMap<u64, u64>,
+    /// Every known address in the group's slots, with the subobject offset of each vtable that
+    /// holds it.
+    slots: BTreeMap<u64, BTreeSet<u64>>,
+}
+
+/// Read the vtable group of `class` from `vtable for <class>` up to the next symbol. Each vtable
+/// starts with its offset to the top of the object, zero or negative, and `typeinfo for
+/// <class>`; its address point follows them. The other words are slots.
+fn vtable_group(symbols: &[Symbol], data: &ReadOnlyData, class: &str) -> Option<VtableGroup> {
+    let start = unique(symbols, &format!("vtable for {class}")).ok()?;
+    let typeinfo = unique(symbols, &format!("typeinfo for {class}")).ok()?;
+    let end = symbols
+        .iter()
+        .map(|symbol| symbol.address)
+        .filter(|&address| address > start)
+        .min()?;
+
+    let mut group = VtableGroup::default();
+    let mut subobject = None;
+    let mut at = start;
+    while at + 8 <= end {
+        if let (Some(offset), Some(info)) = (data.read(at, 8), data.read(at + 8, 8))
+            && at + 16 <= end
+            && info == typeinfo
+            && (offset as i64) <= 0
+        {
+            let offset = (offset as i64).unsigned_abs();
+            group.address_points.insert(offset, at + 16);
+            subobject = Some(offset);
+            at += 16;
+            continue;
+        }
+        if let (Some(offset), Some(slot)) = (subobject, data.read(at, 8)) {
+            group.slots.entry(slot).or_default().insert(offset);
+        }
+        at += 8;
+    }
+    group.address_points.contains_key(&0).then_some(group)
+}
+
 /// Every call and every branch out of the function at `start`.
 fn calls(text: &Text, start: u64) -> Result<Vec<Call>, AnalysisError> {
     let (address, code) = text.function(start)?;
@@ -385,12 +821,9 @@ fn call_kind(names: &Names, strings: &StringFunctions, function: u64, call: Call
     if strings.follows(target) {
         return CallKind::Modelled;
     }
-    let own_cold = names.of(target).any(|cold| {
-        names.of(function).any(|name| {
-            cold.strip_prefix(name)
-                .is_some_and(|suffix| suffix.contains(".cold."))
-        })
-    });
+    let own_cold = names
+        .of(target)
+        .any(|cold| names.of(function).any(|name| is_cold_part(cold, name)));
     if own_cold {
         CallKind::OwnColdPart
     } else {
@@ -533,6 +966,134 @@ mod tests {
             address,
             name: name.into(),
         }
+    }
+
+    #[test]
+    fn a_vtable_group_gives_each_subobject_its_address_point() {
+        const TYPEINFO: u64 = 0x9000;
+        let mut bytes = Vec::new();
+        for word in [
+            0,
+            TYPEINFO,
+            0x100,
+            0x104,
+            (-0x38i64) as u64,
+            TYPEINFO,
+            0x200,
+            0x204,
+            0x208,
+        ] {
+            bytes.extend(word.to_le_bytes());
+        }
+        let data = ReadOnlyData::new(vec![(0x8000, bytes)]);
+        let symbols = [
+            symbol(0x8000, "vtable for CItem"),
+            symbol(0x8048, "vtable for CItemDatabase"),
+            symbol(TYPEINFO, "typeinfo for CItem"),
+        ];
+
+        let group = vtable_group(&symbols, &data, "CItem").unwrap();
+        assert_eq!(
+            group.address_points,
+            BTreeMap::from([(0, 0x8010), (0x38, 0x8030)])
+        );
+        assert_eq!(
+            group.slots,
+            BTreeMap::from([
+                (0x100, BTreeSet::from([0])),
+                (0x104, BTreeSet::from([0])),
+                (0x200, BTreeSet::from([0x38])),
+                (0x204, BTreeSet::from([0x38])),
+                (0x208, BTreeSet::from([0x38])),
+            ])
+        );
+        assert_eq!(vtable_group(&symbols, &data, "COther"), None);
+    }
+
+    /// `adrp` of page `0x5000` then `add` forms `0x5010` directly, through two additions, after
+    /// other instructions and a copy, or not at all: an `add` that replaces the page ends it.
+    #[test]
+    fn functions_forming_an_address_are_found_through_one_or_two_additions() {
+        let words: [u32; 24] = [
+            // 0x1000: adrp x8, 0x5000; add x8, x8, #0x10
+            0x9000_0028,
+            0x9100_4108,
+            0xd65f_03c0,
+            0xd503_201f,
+            // 0x1010: adrp x9, 0x5000; add x9, x9, #0x20
+            0x9000_0029,
+            0x9100_8129,
+            0xd65f_03c0,
+            0xd503_201f,
+            // 0x1020: adrp x10, 0x5000; add x10, x10, #0; add x11, x10, #0x10
+            0x9000_002a,
+            0x9100_014a,
+            0x9100_414b,
+            0xd65f_03c0,
+            // 0x1030: adrp x8, 0x5000; add x8, x8, #0x158; add x8, x8, #0x10 forms 0x5168
+            0x9000_0028,
+            0x9105_6108,
+            0x9100_4108,
+            0xd65f_03c0,
+            // 0x1040: adrp x8, 0x5000; four nops; mov x9, x8; add x10, x9, #0x10
+            0x9000_0028,
+            0xd503_201f,
+            0xd503_201f,
+            0xd503_201f,
+            0xd503_201f,
+            0xaa08_03e9,
+            0x9100_412a,
+            0xd65f_03c0,
+        ];
+        let code: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+        let text = Text {
+            address: 0x1000,
+            code: &code,
+            starts: BTreeSet::from([0x1000, 0x1010, 0x1020, 0x1030, 0x1040]),
+        };
+        assert_eq!(
+            functions_forming(&text, &BTreeSet::from([0x5010])),
+            BTreeSet::from([0x1000, 0x1020, 0x1040])
+        );
+
+        // Words that do not decode are read for `adrp` and `add` alone.
+        let points = BTreeSet::from([0x5010]);
+        assert!(words_form(&code[..0x10], 0x1000, &points));
+        assert!(!words_form(&code[0x10..0x20], 0x1010, &points));
+        assert!(!words_form(&code[0x30..0x40], 0x1030, &points));
+    }
+
+    #[test]
+    fn pointer_arguments_follow_this_in_x0() {
+        assert_eq!(
+            pointer_arguments(
+                "TSingleObjectGameDatabase<CDb, CItem, false>::ReadExistingEntry(CReader&, CString const&, CItem*, bool)"
+            ),
+            [1, 2, 3]
+        );
+        assert_eq!(
+            pointer_arguments("CDb::Load(CPdxArray<CString, int> const&, int)"),
+            [1]
+        );
+        assert!(pointer_arguments("CDb::CDb()").is_empty());
+    }
+
+    #[test]
+    fn thunks_of_a_root_are_named_after_it() {
+        let symbols = [
+            symbol(0x100, "CItem::InitPostRead()"),
+            symbol(0x200, "non-virtual thunk to CItem::InitPostRead()"),
+            symbol(
+                0x300,
+                "{virtual override thunk({offset(-56)}, CItem::InitPostRead())}",
+            ),
+            symbol(0x400, "non-virtual thunk to COther::InitPostRead()"),
+        ];
+        let names = Names::new(&symbols);
+        assert_eq!(
+            thunks(&symbols, &names, &BTreeSet::from([0x100])),
+            BTreeMap::from([(0x200, 0x100), (0x300, 0x100)])
+        );
     }
 
     #[test]

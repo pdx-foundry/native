@@ -181,7 +181,9 @@ fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> Argument
                 mask,
             }
         }
-        Ok(Exit::Returned | Exit::Trapped | Exit::Reached) | Err(_) => Arguments::unreadable(),
+        Ok(Exit::Returned | Exit::Trapped | Exit::Reached | Exit::Looped) | Err(_) => {
+            Arguments::unreadable()
+        }
     }
 }
 
