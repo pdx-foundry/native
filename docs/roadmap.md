@@ -124,26 +124,61 @@ and private-directory cleanup. This work has no Linear tickets.
 | 1 | Scoreboard | Preserve the beta installation. Claim ledger from the `.cwt` files with owner and documentation-provenance tags. The ledger work is done in the Atlas repository. | Every config line maps to a claim; a coverage percentage exists | SDK-522, SDK-523, SDK-525 |
 | 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas. In Atlas: the first rule snapshot, then the `.cwt` comparison tool that reads it. | Rust results equal retained results (164 named template registries that agree with every live-observed directory; 10 agenda fields); the tradition snapshot raises coverage above the baseline and is compared with the config | SDK-527 to SDK-534, SDK-558, SDK-524 |
 | 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | Each of the five `script-docs` logs and each config name list has an engine-derived answer in the snapshot, with its gaps in the ledger; the per-area coverage figures are recorded | SDK-535 to SDK-540, SDK-562, SDK-564 to SDK-568; Atlas: SDK-570 |
-| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method ticket ends with one run over every registry. | Council agenda completeness passes; full-registry counts and failure shapes recorded per method | SDK-541 to SDK-550, SDK-569 |
+| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method ticket ends with one run over its full registry or command inventory. | The council agenda test, method fixture criteria and Atlas integration checks below pass; full-inventory counts and failure shapes are recorded | SDK-541 to SDK-550, SDK-563, SDK-569; preparation SDK-596; Atlas SDK-597; observations SDK-598 and SDK-599; acceptance test SDK-600 |
 | 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; the method set, unchanged at a recorded commit, over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
 | 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
 
 **Milestone 3 exit gate met, 2026-09-24 (SDK-570).** The Atlas language snapshot answers each
-of the five `script-docs` logs and each config name list: every effect, trigger, loaded modifier,
-log scope link and localization entry is in it, and the ledger keeps its gaps. With a live snapshot
+of the five `script-docs` logs and each config name list: effect, trigger, log scope-link and
+localization entries are in it, and the ledger keeps its gaps. The snapshot holds the loaded
+modifier table's counts; the 45,578 loaded names remain in the recorded answer. With a live snapshot
 on config revision `8574760`, coverage is 15,278 of 58,032 Atlas-owned claims (26.33%); the
 language areas give 14,137 of 31,751 (44.52%), from effects 25.97% to scopes and links 91.15%. No
 on_action or game-rule entry scope is established: each followed call site supplies a self link or
 an unresolved scope. See Atlas's [language snapshot measurement](https://github.com/pdx-foundry/atlas/blob/9c39c807ed062f65c893789edb16677b7ea843a1/docs/coverage/language-snapshot.md).
+
+### Milestone 4 acceptance and start order
+
+The accepted [Milestone 3 review](design/milestone-3-review.md) defines the work order.
+SDK-596 owns preparation: align the contracts and tickets, repair duplicate modifier uncertainty,
+and measure the current M45-release field population before changing discovery. SDK-569's shortcut
+guard and SDK-563's jump-table repair precede SDK-541 and SDK-542. SDK-597 delivers Atlas integration
+alongside those methods; SDK-577's display-name repair belongs with that integration.
+
+Milestone 4 completes only when all of these hold:
+
+1. **Council agenda parity (SDK-600):** `registry_fields("common/council_agendas")` is `Complete`
+   with established reader kinds for all ten fields. Without typed gaps, establish `agenda_cost`
+   storage kind, scale and script-value acceptance; the read conditions of `agenda_cooldown` and
+   `agenda_finish_modifier_duration`; trigger family and entry scopes for `potential` and `allow`;
+   effect family and entry scopes for `effect` and `init_effect`; the content-directory target of
+   `finish_modifier`; the member family of `modifier`; and `ai_weight` keys, reader kinds and
+   nested `modifier` entries. The test uses the public API and the exact supported executable.
+2. **Fixture criteria:** all SDK-541 to SDK-550 acceptance criteria remain required. Numeric
+   storage decoding belongs to SDK-544; SDK-598 blocks SDK-545's runtime weight checks; SDK-599
+   blocks SDK-549's scope-availability check. SDK-542 and SDK-550 own any missing parser diagnostic
+   hooks. Missing observations are unmet criteria, not static passes. Only Jackson may amend them.
+   Existing SDK-547 runtime/application bounds and SDK-550 expansion bounds remain the exclusions.
+3. **Method transfer:** each method runs unchanged over its full registry or command inventory,
+   recording complete, partial and failed counts and distinct failure shapes. SDK-569 passes.
+   Production registry validation follows the bound build; M45-release parity explicitly asserts
+   164 registries as a regression expectation, not a production cap.
+4. **Atlas integration (SDK-597):** two established field branches and one unresolved branch
+   survive assembly, verification, comparison and coverage; an established argument never credits
+   an unresolved sibling. Claims use typed subjects. Directories with several CWT types are joined
+   or recorded as counted gaps. Credited rates come from the live run; recordings support reproduction.
+
+The [specification](specs/native.md#milestone-4-shared-reader-acceptance) records the same contract.
 
 Milestone 3 needs only the static context (SDK-527), so its first tickets are unblocked as soon as
 that ticket is done. The blocking relations in Linear are the authority for what can start.
 
 ## Not yet ticketed
 
-- Atlas-side rule work after the tradition snapshot (SDK-558): snapshot assembly for milestones 4
-  to 6 (milestone 3 is SDK-570), the run driver and rule composition of the registry sweep (SDK-553), the policy overlay
+- Atlas-side rule work after the tradition snapshot (SDK-558): snapshot assembly for milestones
+  5 and 6 (milestone 3 is SDK-570; milestone 4 is SDK-597), the run driver and rule composition of
+  the registry sweep (SDK-553), the policy overlay
   (severity, subtype naming, alias factoring) keyed to rule identities, and the authored remainder
   of the documentation. These get the `Atlas` repository label.
 - Installation discovery without a location hint (specification user story 2). It does not block

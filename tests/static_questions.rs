@@ -828,6 +828,11 @@ fn expected<T: serde::de::DeserializeOwned>(name: &str) -> T {
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn registries_are_named_by_their_content_directory() {
     let answer = native().registries().unwrap();
+    assert_eq!(
+        answer.value.len(),
+        164,
+        "M45-release registry discovery changed"
+    );
     let names: Vec<_> = answer.value.iter().map(|r| r.name.clone()).collect();
     assert_eq!(names, expected::<Vec<String>>("registries.json"));
     assert_eq!(answer.completeness, Completeness::Complete);

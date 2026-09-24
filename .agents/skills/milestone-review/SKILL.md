@@ -1,7 +1,6 @@
 ---
 name: milestone-review
 description: Review a finished roadmap milestone across Native, Atlas and pdxscript-rs, then write the cut-and-repair report.
-disable-model-invocation: true
 argument-hint: "<milestone number>"
 ---
 

@@ -157,6 +157,11 @@ for contexts and scope types.
   not establish scope availability. A candidate reference class does not establish lookup semantics.
 - Two fields that use one shared reader report the same reader identity.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
+- Repeated modifier names combine all registrations. Unresolved or conflicting category tags
+  remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
+- Atlas's published gaps carry a reason and owner category. Repair-ticket mappings live in docs,
+  so changing the work plan does not change the published engine knowledge (agreed G1, 2026-09-24;
+  Atlas implementation tracked by SDK-597).
 
 Question, session, and recorded-answer failures use one `Error` type. Opening an installation uses
 `OpenError`, because no `Native` exists yet. `Answer<T>` and `Error` are serializable.
@@ -184,6 +189,14 @@ observation worker.
   `start_game` or `close` names the kept directory, and `Game::work_directory` gives it after a
   read error.
 - No blind retry of an operation whose completion is uncertain.
+
+**Agreed G2, 2026-09-24 (implementation: SDK-569):** registry selection is validated against the
+bound build's discovered registries, not a fixed registry count. The supervisor derives or verifies
+that information from the installation it opens; a caller-supplied count is not authoritative.
+Duplicate and unknown selections remain invalid, and transport message-size limits remain.
+Build-specific tests explicitly assert 164 registries for M45-release, alongside expected names;
+a synthetic build with more than 164 valid registries must pass session admission. Test constants
+are regression expectations and are allowed by the locality gate.
 
 ### 5. Shared native methods
 
@@ -288,6 +301,40 @@ supervision failures that the public API cannot cause safely.
 9. **Atlas integration:** carry a tradition field through Native answers, Atlas claims, a
    snapshot, and an offline consumer. Include invalid input and an absent answer.
 10. **Update portability:** run the frozen Atlas flow on a second Apple Silicon executable.
+
+### Milestone 4 shared-reader acceptance
+
+SDK-600 owns one ignored parity test through the public API. On the supported executable,
+`registry_fields("common/council_agendas")` must be `Complete` with established reader kinds for
+all ten fields. The following facts must be established without a typed gap:
+
+| Fields | Required facts | Method tickets |
+| --- | --- | --- |
+| `agenda_cost` | Numeric storage kind and scale; whether a script value is accepted | SDK-544 |
+| `agenda_cooldown`, `agenda_finish_modifier_duration` | Normalized conditions under which each is read | SDK-541 |
+| `potential`, `allow` | Trigger block family and entry scope types | SDK-542, SDK-549 |
+| `effect`, `init_effect` | Effect block family and entry scope types | SDK-542, SDK-549 |
+| `finish_modifier` | Target registry named by content directory | SDK-543 |
+| `modifier` | Accepted member family | SDK-542 |
+| `ai_weight` | Accepted keys, the reader kind of each, and nesting of `modifier` entries | SDK-545 |
+
+Passing this static test does not satisfy the method tickets' fixture criteria. Every criterion
+in SDK-541 to SDK-550 remains required unless Jackson explicitly amends it. SDK-544 owns numeric
+storage decoding; SDK-598 supplies runtime weight observations for SDK-545; SDK-599 supplies
+scope-availability observations for SDK-549. SDK-542 and SDK-550 include any diagnostic hooks
+needed for their accepted/rejected nesting and expansion fixtures. Missing capability is an unmet
+criterion, not a gap that permits the ticket to close. Existing SDK-547 runtime/application bounds
+and SDK-550 script-expansion bounds are the only accepted exclusions.
+
+Each method runs unchanged over its full discovered registry or command inventory, with complete,
+partial and failed counts and distinct failure shapes in `docs/native/discovery.md`. SDK-569 must
+pass. Per-ticket freeze commits and held-out selection are not required.
+
+SDK-597 owns Atlas integration: two established conditional branches and one unresolved branch
+must survive assembly, verification, comparison and coverage; an established argument must not
+credit an unresolved sibling. Claims use typed subjects. Directories mapped to several CWT types
+are joined to each applicable type or kept as explicit, counted gaps. Credited rates come from
+the live run with build and source revisions recorded; recorded answers support reproduction.
 
 ## Out of Scope
 
