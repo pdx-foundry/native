@@ -12,6 +12,7 @@ pub(super) struct ResolvedObservation {
     pub fixture: Option<crate::protocol::observation::FixtureBinding>,
     pub strategy: platform::StrategyResolution,
     pub registry_layout: Option<groups::RegistryLayout>,
+    pub modifier_table: Option<groups::ModifierTableLayout>,
     pub default_registries: &'static [&'static str],
 }
 
@@ -34,6 +35,7 @@ fn assemble(
         machine: machine::resolve(image.architecture)?,
         strategy: platform::resolve(recipe.strategy),
         registry_layout: groups::registry_layout(recipe.groups),
+        modifier_table: groups::modifier_table(recipe.groups),
         default_registries: recipe.default_registries,
         fixture: groups::fixture(recipe.groups),
     })

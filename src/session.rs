@@ -2,10 +2,13 @@
 use crate::{OpenError, UnavailableReason, binding::Binding};
 use std::sync::{Arc, Mutex};
 
+pub(crate) use loaded_modifiers::ModifierJoin;
+
 mod callbacks;
 mod defines;
 mod families;
 mod language;
+mod loaded_modifiers;
 mod localization;
 pub(crate) mod questions;
 
@@ -115,8 +118,8 @@ impl Native {
         self.bound()
             .blocking_reasons(self.target_integrity(), false)
     }
-    /// Start a supervised game and wait until it is paused after its registries load. The game
-    /// never loads a world. With recorded answers, no process starts; the fixture selects its recording and launch options are ignored.
+    /// Start a supervised game and wait until it is paused after its registries load, or after
+    /// all content loads with `GameOptions::loaded_modifiers`. The game never loads a world. With recorded answers, no process starts; the fixture selects its recording and launch options are ignored.
     ///
     /// Dropping this future requests cleanup. No async runtime owns the process: an independent
     /// thread and the supervisor do, so cleanup continues if the caller is lost.
@@ -155,7 +158,9 @@ impl Native {
         }
         if !reasons.is_empty() {
             return Err(Error::Unsupported {
-                operation: if options.fixture.is_some() {
+                operation: if options.loaded_modifiers {
+                    Operation::LoadedModifiers
+                } else if options.fixture.is_some() {
                     Operation::ObserveFixture
                 } else {
                     Operation::RegistryItems
@@ -190,6 +195,17 @@ impl Native {
                 });
             }
         }
+        let modifiers = if options.loaded_modifiers {
+            if !self.bound().has_modifier_table_method() {
+                return Err(Error::Unsupported {
+                    operation: Operation::LoadedModifiers,
+                    reason: "this build has no loaded modifier table recipe".into(),
+                });
+            }
+            Some(self.modifier_join(options.fixture.as_ref())?)
+        } else {
+            None
+        };
         let fault = options
             .fault
             .map(|(directory, control)| crate::protocol::session::Fault {
@@ -216,6 +232,8 @@ impl Native {
             fault,
             fixture: options.fixture.clone(),
             fixture_fault: options.fixture_fault,
+            loaded_modifiers: modifiers.as_ref().map(ModifierJoin::registries),
+            modifier_fault: options.modifier_fault,
         };
         request.validate().map_err(|error| Error::Startup {
             reason: error.to_string(),
@@ -231,6 +249,7 @@ impl Native {
             recorder: self.recorder.clone(),
             work,
             fixture: options.fixture,
+            modifiers,
         };
         crate::game::start(options.supervisor, request, session).await
     }

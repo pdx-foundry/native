@@ -132,6 +132,8 @@ pub enum Operation {
     RegistryItems,
     /// `Game::observe_fixture`
     ObserveFixture,
+    /// `Game::loaded_modifiers`
+    LoadedModifiers,
 }
 
 /// One define whose name and value type the executable reads.
@@ -458,6 +460,69 @@ pub enum GenerationCondition {
     /// Some items may not generate it, such as when the engine checks an item field first, or the
     /// method could not follow every path. A gap names the family.
     Unresolved,
+}
+
+/// The modifiers that the engine holds after all content has loaded, with the content that the
+/// game loaded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedModifiers {
+    /// Every loaded modifier, in the engine's table order.
+    pub modifiers: Vec<LoadedModifier>,
+    /// The item keys of each registry whose families were applied, as the engine holds them at
+    /// the same point, by content directory. A registry whose keys could not be read is absent
+    /// and has a gap.
+    pub registry_items: std::collections::BTreeMap<String, Vec<String>>,
+    /// The content that the game loaded before the engine documented its modifiers.
+    pub content: LoadedContent,
+}
+
+/// One modifier in the loaded table.
+///
+/// A modifier that the executable does not declare and that no family explains has
+/// `declared == false` and an empty `generated_by`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedModifier {
+    /// The modifier's script name.
+    pub name: String,
+    /// The intended-use category tags of the loaded modifier, by the rule of
+    /// `Native::modifiers`. Content that registers a declared name again can change them.
+    pub category_tags: DeclaredTags,
+    /// Whether the executable declares this name: it is in `Native::modifiers`.
+    pub declared: bool,
+    /// Each family and loaded item whose generated name is this name. A family explains a name
+    /// only when [`ModifierFamily::name_for`] gives it for a key of the family's registry that
+    /// the engine holds; names are never matched by similarity.
+    pub generated_by: Vec<GeneratedName>,
+}
+
+/// A modifier name that a family of `Native::modifier_families` gives for one loaded item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeneratedName {
+    /// The family's registry, such as `common/buildings`.
+    pub registry: String,
+    /// The key of the item, such as `building_foundry`.
+    pub item: String,
+    /// The family's name template, as in [`ModifierFamily::name`].
+    pub template: Vec<NamePart>,
+}
+
+/// The content that a game session loaded.
+///
+/// Native's sessions enable no user mod and disable no DLC. Their profile mounts one private
+/// mod that holds exact copies of the installed files of each selected registry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LoadedContent {
+    /// The installation's own content and its installed DLC.
+    Installation,
+    /// The installation's content, with one registry's directory replaced by the prepared
+    /// fixture's files.
+    Fixture {
+        /// The replaced content directory, such as `common/tradition_categories`.
+        registry: String,
+        /// The fixture's files, by path below the content root.
+        files: Vec<String>,
+    },
 }
 
 /// A modifier category name that the engine declares. A category is an intended-use tag, not an

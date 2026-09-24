@@ -62,6 +62,10 @@ let mut game = native.start_game(GameOptions::new(supervisor_command)).await?;
 game.registry_items("common/traditions").await?;        // Answer<Vec<String>>
 game.close().await?;                                    // Disposal: Confirmed | Unconfirmed
 
+// SDK-564: pause after all content loads and read the loaded modifier table.
+let mut game = native.start_game(GameOptions::new(supervisor_command).loaded_modifiers()).await?;
+game.loaded_modifiers().await?;                         // Answer<LoadedModifiers>
+
 // Tests without a game.
 let native = Native::from_recorded_answers("/path/to/recorded-answers")?;
 

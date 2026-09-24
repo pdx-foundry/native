@@ -25,11 +25,24 @@ class ProtocolTests(unittest.TestCase):
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
                        registries={}, control_registry=None, control=wire.CONTROL['normal'], deadline_seconds=180,
-                       fixture=fixture, fixture_fault=False)
+                       fixture=fixture, fixture_fault=False, modifiers=None, modifier_fault=False)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
         fixture['bindings']['fields'][0]['token'] = 'not an integer'
         with self.assertRaises(ValueError):
             wire.encode('request', request)
+
+    def test_modifier_table_is_typed_and_bounded_by_its_own_limit(self):
+        table = dict(attempt='a', entries=[dict(name='pop_happiness', mask=1)],
+                     registries={'common/buildings': dict(keys=['building_capital']),
+                                 'common/bypass': dict(unavailable='item key storage was not established')})
+        self.assertEqual(wire.decode('modifier_table', wire.encode('modifier_table', table).rstrip(b'\n')), table)
+        for entry in [dict(name='pop_happiness'), dict(name='pop_happiness', mask=-1), dict(name=1, mask=1)]:
+            with self.subTest(entry=entry), self.assertRaises(ValueError):
+                wire.encode('modifier_table', dict(table, entries=[entry]))
+        large = dict(table, entries=[dict(name='modifier_%06d' % index, mask=1) for index in range(3000)])
+        with self.assertRaises(ValueError):
+            wire.encode('modifier_table', large)
+        self.assertLess(len(wire.encode('modifier_table', large, wire.MAX_MODIFIER_TABLE)), wire.MAX_MODIFIER_TABLE)
 
     def test_fixture_records_keep_typed_source_and_terminal_counts(self):
         event = dict(kind='field-read', file='common/tradition_categories/atlas.txt',

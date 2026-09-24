@@ -23,12 +23,13 @@ pub mod supervisor;
 pub use answer::{
     Answer, Basis, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
     DeclaredScopes, DeclaredTags, Define, DefineValueType, Disposal, EntryContext, EntryScope,
-    Error, Field, GameRule, Gap, GapKind, GenerationCondition, LinkData, LocalizationCommand,
-    LocalizationContext, LocalizationContextId, LocalizationContextReference,
-    LocalizationDeclarations, LocalizationLink, LocalizationOutput, ModifierCategory,
-    ModifierDeclaration, ModifierFamily, NamePart, OnAction, Operation, OutputScope, Reader,
-    ReaderId, ReaderKind, Registry, RuleKind, ScopeDeclaration, ScopeGroup, ScopeId,
-    ScopeInventory, ScopeLink, ScopeReference, Source, Support,
+    Error, Field, GameRule, Gap, GapKind, GeneratedName, GenerationCondition, LinkData,
+    LoadedContent, LoadedModifier, LoadedModifiers, LocalizationCommand, LocalizationContext,
+    LocalizationContextId, LocalizationContextReference, LocalizationDeclarations,
+    LocalizationLink, LocalizationOutput, ModifierCategory, ModifierDeclaration, ModifierFamily,
+    NamePart, OnAction, Operation, OutputScope, Reader, ReaderId, ReaderKind, Registry, RuleKind,
+    ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory, ScopeLink, ScopeReference, Source,
+    Support,
 };
 pub use api::OpenError;
 pub use engine::operations::registry_items::GameReadiness;

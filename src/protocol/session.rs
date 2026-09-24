@@ -31,6 +31,11 @@ pub(crate) struct SessionRequest {
     pub fixture: Option<crate::FixtureRequest>,
     /// A fault restricted to fixture observations.
     pub fixture_fault: Option<ObservationControl>,
+    /// Read the loaded modifier table, and the item keys of these registries, where the engine
+    /// documents its modifiers; the session pauses there.
+    pub loaded_modifiers: Option<Vec<String>>,
+    /// A fault restricted to the modifier observation. Only `WorkerLoss`.
+    pub modifier_fault: Option<ObservationControl>,
 }
 
 /// A deliberate fault and the internal name of the registry that receives it.
@@ -57,6 +62,17 @@ impl SessionRequest {
                 "A fixture fault requires a fixture and no registry fault".into(),
             ));
         }
+        if self.modifier_fault.is_some()
+            && (self.loaded_modifiers.is_none()
+                || self.fault.is_some()
+                || self.fixture_fault.is_some()
+                || self.modifier_fault != Some(ObservationControl::WorkerLoss))
+        {
+            return Err(SupervisorError(
+                "A modifier fault is worker loss, with the loaded modifier table and no other fault"
+                    .into(),
+            ));
+        }
         if !self.work_directory.is_absolute()
             || !(1..=MAX_SESSION_SECONDS).contains(&self.startup_seconds)
             || !(1..=MAX_SESSION_SECONDS).contains(&self.idle_seconds)
@@ -73,18 +89,27 @@ impl SessionRequest {
                     })
             })
         };
-        if self.registries.is_empty()
-            || self.registries.len() > 164
-            || self.registries.iter().any(|name| !valid(name))
-            || self
-                .registries
-                .iter()
-                .collect::<std::collections::BTreeSet<_>>()
-                .len()
-                != self.registries.len()
-        {
+        let selection = |names: &[String]| {
+            names.len() <= 164
+                && names.iter().all(|name| valid(name))
+                && names
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+                    == names.len()
+        };
+        if self.registries.is_empty() || !selection(&self.registries) {
             return Err(SupervisorError(
                 "Expected 1 to 164 unique registry content directories".into(),
+            ));
+        }
+        if self
+            .loaded_modifiers
+            .as_ref()
+            .is_some_and(|names| !selection(names))
+        {
+            return Err(SupervisorError(
+                "Expected at most 164 unique modifier family registries".into(),
             ));
         }
         if let Some(fixture) = &self.fixture
@@ -130,6 +155,8 @@ pub(crate) enum Control {
     ReadRegistry { name: String, request: u64 },
     /// The caller read its prepared fixture observation.
     ReadFixture { request: u64 },
+    /// The caller read the loaded modifier table.
+    ReadModifiers { request: u64 },
 }
 
 /// Why a session ended. This says nothing about disposal.
@@ -208,6 +235,8 @@ mod tests {
             fault: None,
             fixture: None,
             fixture_fault: None,
+            loaded_modifiers: None,
+            modifier_fault: None,
         }
     }
 
@@ -263,9 +292,35 @@ mod tests {
         ] {
             assert!(with(control).validate().is_ok());
         }
+        let mut both = with(ObservationControl::WorkerLoss);
+        both.loaded_modifiers = Some(Vec::new());
+        both.modifier_fault = Some(ObservationControl::WorkerLoss);
+        assert!(both.validate().is_err());
         // A request with a session field that this build does not know is refused.
         let mut unknown = serde_json::to_value(request()).unwrap();
         unknown["registry"] = "traditions".into();
         assert!(serde_json::from_value::<SessionRequest>(unknown).is_err());
+    }
+
+    #[test]
+    fn a_modifier_fault_is_worker_loss_on_a_modifier_session() {
+        let modifiers = || {
+            let mut request = request();
+            request.loaded_modifiers = Some(vec!["common/buildings".into()]);
+            request
+        };
+        assert!(modifiers().validate().is_ok());
+        let mut lost = modifiers();
+        lost.modifier_fault = Some(ObservationControl::WorkerLoss);
+        assert!(lost.validate().is_ok());
+        let mut other = modifiers();
+        other.modifier_fault = Some(ObservationControl::MissingTerminal);
+        assert!(other.validate().is_err());
+        let mut without = request();
+        without.modifier_fault = Some(ObservationControl::WorkerLoss);
+        assert!(without.validate().is_err());
+        let mut repeated = request();
+        repeated.loaded_modifiers = Some(vec!["common/zones".into(), "common/zones".into()]);
+        assert!(repeated.validate().is_err());
     }
 }

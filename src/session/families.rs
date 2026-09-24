@@ -151,7 +151,7 @@ fn normalized_families(
     }
 }
 
-fn public_family(family: &Family, categories: &CategoryNames) -> ModifierFamily {
+pub(super) fn public_family(family: &Family, categories: &CategoryNames) -> ModifierFamily {
     let name = family
         .parts
         .iter()

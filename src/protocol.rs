@@ -8,10 +8,10 @@ use std::io::{Read, Write};
 pub(crate) mod observation;
 pub(crate) mod session;
 
-const VERSION: u32 = 7;
+const VERSION: u32 = 8;
 /// A `Paused` reply holds the items of every observed registry, which the worker's stream
-/// bounds; the other messages are small.
-const MAX_MESSAGE: usize = observation::MAX_TRACE + 64 * 1024;
+/// bounds, and the loaded modifier table, which its file bounds; the other messages are small.
+const MAX_MESSAGE: usize = observation::MAX_TRACE + observation::MAX_MODIFIER_TABLE + 64 * 1024;
 
 /// Identity of this build of Native: the package version and the build script's stamp. The
 /// caller and the supervisor must link the same build, because they share this private wire and
@@ -70,12 +70,20 @@ pub(crate) enum Reply {
     Paused {
         readiness: crate::GameReadiness,
         fixture: Box<Option<Result<crate::Answer<crate::FixtureObservation>, crate::Error>>>,
+        modifiers: Box<
+            Option<
+                Result<
+                    crate::engine::operations::loaded_modifiers::ObservedModifiers,
+                    crate::Error,
+                >,
+            >,
+        >,
         registries: std::collections::BTreeMap<
             String,
             crate::engine::operations::registry_items::RegistryItems,
         >,
     },
-    /// Acknowledges a registry or fixture read.
+    /// Acknowledges a registry, fixture or modifier read.
     ObservationRead { request: u64 },
     /// The session is over. Always the last message.
     Finished(Box<session::SessionReport>),

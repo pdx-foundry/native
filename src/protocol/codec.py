@@ -57,10 +57,10 @@ def validate(value, schema, root=None):
                 raise ValueError('integer outside wire range')
 
 
-def encode(kind, value):
+def encode(kind, value, limit=MAX_RECORD):
     validate(value, SCHEMAS[kind])
     encoded = (json.dumps(value, separators=(',', ':')) + '\n').encode('utf-8')
-    if len(encoded) > MAX_RECORD:
+    if len(encoded) > limit:
         raise ValueError('wire record too large')
     return encoded
 

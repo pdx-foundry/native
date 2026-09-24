@@ -22,6 +22,11 @@ const NEVER_RETURN: [&str; 5] = [
     "_abort",
 ];
 
+/// The name of a database's modifier generator.
+pub(in crate::binding) fn generator(database: &str) -> String {
+    format!("{database}::GenerateModifiers()")
+}
+
 /// Read the registry's database generator, its item constructor and the string functions.
 ///
 /// `databases` names the database class of every named registry: a generation call outside all
@@ -39,8 +44,7 @@ pub(in crate::binding) fn read(
     let calls = generation_calls(&text, symbols)?;
 
     let generator_of = |database: &str| -> Result<Option<(u64, u64)>, AnalysisError> {
-        let name = format!("{database}::GenerateModifiers()");
-        let starts = addresses(symbols, &name);
+        let starts = addresses(symbols, &generator(database));
         match starts.len() {
             0 => Ok(None),
             1 => {

@@ -92,6 +92,25 @@ returns `Unsupported`; a selected loader that does not run before the pause give
 `examples/registry-items-report.rs` for a report over all discovered
 registries.
 
+## The loaded modifier inventory
+
+`GameOptions::loaded_modifiers` runs the game on until all content has loaded and pauses it where
+the engine documents its modifiers (`GameReadiness::PausedAfterContentLoad`). See
+`examples/loaded-modifiers.rs`.
+
+```rust
+let mut game = native.start_game(GameOptions::new(supervisor).loaded_modifiers()).await?;
+let loaded = game.loaded_modifiers().await; // Answer<LoadedModifiers>, or an error
+let disposal = game.close().await?;
+```
+
+Each `LoadedModifier` has its loaded category tags, by the rule of `Native::modifiers`, whether
+the executable declares its name, and each `modifier_families` family and loaded item whose
+generated name it is. A name that is neither declared nor generated is unexplained; a gap counts
+those names. `registry_items` holds the loaded keys that the families were applied to, and
+`content` states what the game loaded. The selected registries are still observed. On M45-release
+the table has 45,578 entries: 571 declared, 987 generated and 44,020 unexplained.
+
 ## Prepared fixtures
 
 Prepare the files and observation request before launching. See `examples/observe-fixture.rs`.
@@ -193,6 +212,7 @@ game_rules.json
 defines.json
 registry_items/common/traditions.json
 observe_fixture/<files-hash>/<request-hash>.json
+loaded_modifiers.json
 ```
 
 ## Supported build
@@ -229,7 +249,7 @@ cargo doc --no-deps
 ```
 
 The default tests need no game. The static parity tests read the executable of the exact supported
-build and start no game. The live test command runs registry and fixture controls one case after
+build and start no game. The live test command runs registry, fixture and loaded-modifier controls one case after
 the other, and takes several minutes; a word after `--ignored` selects cases by name.
 The Atlas boundary check scans the frozen caller's Rust source for unsupported Native imports,
 hidden hooks, platform or build branches, and native constants.

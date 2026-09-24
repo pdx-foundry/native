@@ -129,6 +129,8 @@ impl Observer {
             fault,
             fixture,
             fixture_fault,
+            modifiers,
+            modifier_fault,
             startup_seconds,
             machine,
             package,
@@ -157,10 +159,13 @@ impl Observer {
             registries: registries.clone(),
             control_registry: fault.map(|fault| fault.registry.clone()),
             control: fixture_fault
+                .or(modifier_fault)
                 .or_else(|| fault.map(|fault| fault.control))
                 .unwrap_or_default(),
             fixture,
             fixture_fault: fixture_fault.is_some(),
+            modifiers,
+            modifier_fault: modifier_fault.is_some(),
             deadline_seconds: worker_deadline_seconds(startup_seconds),
         };
         Ok(Self {
@@ -478,6 +483,8 @@ pub(crate) fn test_observer(
             control: crate::protocol::session::ObservationControl::Normal,
             fixture: None,
             fixture_fault: false,
+            modifiers: None,
+            modifier_fault: false,
             deadline_seconds: 1,
         },
         tool: Tool {
