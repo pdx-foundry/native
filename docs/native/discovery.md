@@ -487,8 +487,8 @@ start to answers: the 170-second deadline plus launch setup. Its `Unsupported` a
 came from the deadline, and the loaders were not reached in that time. A fresh session with the
 same six registries (2026-09-23, M45-release) entered and returned all six loaders on the launch
 thread in the order bypass, buildings, zones, districts, situations, megastructures, paused after
-registry initialization about 24 seconds after launch, and returned 498, 10, 147, 164, 90 and
-146 complete items. Why the earlier game did not reach the loaders within 170 seconds is not
+registry initialization about 24 seconds after launch, and returned 10, 498, 146, 147, 90 and
+164 complete items, in that order. Why the earlier game did not reach the loaders within 170 seconds is not
 established: the session's work directory was removed after its confirmed disposal, and the
 answers did not say which path paused the session. That is the repair: the worker's pause record
 now carries its cause (`loaders-returned`, `content-loaded` or `deadline`), the reducer refuses a

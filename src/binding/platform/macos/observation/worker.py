@@ -788,8 +788,10 @@ def run(debugger):
         stop_deadline = time.monotonic() + 2
         while process.GetState() != lldb.eStateStopped and time.monotonic() < stop_deadline:
             time.sleep(.02)
-        safe_pause = stop_error.Success() and process.GetState() == lldb.eStateStopped and not callback_active
-        pause_cause = 'deadline'
+        # A callback that completed while the game was being stopped owns the pause and its cause.
+        if not finished:
+            safe_pause = stop_error.Success() and process.GetState() == lldb.eStateStopped and not callback_active
+            pause_cause = 'deadline'
     if safe_pause and process.GetState() == lldb.eStateStopped:
         emit('session-paused', returned=returned_registries, cause=pause_cause, thread=entry_thread)
         paused_thread = process.GetThreadByID(entry_thread)
