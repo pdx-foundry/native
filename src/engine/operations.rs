@@ -5,4 +5,5 @@
 //! caller receives the reduced answers; it never reads the stream.
 pub(crate) mod event_stream;
 pub(crate) mod fixture;
+pub(crate) mod loaded_modifiers;
 pub(crate) mod registry_items;

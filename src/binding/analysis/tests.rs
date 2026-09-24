@@ -126,6 +126,37 @@ fn every_m45_named_candidate_has_one_initial_loader_entry() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn m45_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
+    let installation =
+        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let registries = binding.family_registries().unwrap();
+    assert_eq!(
+        registries,
+        [
+            "common/buildings",
+            "common/bypass",
+            "common/districts",
+            "common/megastructures",
+            "common/situations",
+            "common/zones",
+        ]
+    );
+    let table = binding.modifier_table_binding(&registries).unwrap();
+    assert_eq!(table.documentation_entry, 0x100972384);
+    assert_eq!(table.definitions, 0x10329da80);
+    assert_eq!(table.registries["common/buildings"].instance, 0x10329edc0);
+    assert_eq!(table.registries["common/bypass"].key_offset, Some(0x18));
+    assert_eq!(table.registries["common/zones"].key_offset, Some(0x10));
+    assert!(
+        binding
+            .modifier_table_binding(&["common/no_such_registry".into()])
+            .is_err()
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn m45_registry_keys_follow_their_item_constructors() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");

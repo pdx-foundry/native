@@ -354,6 +354,8 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         registries: vec!["common/traditions".into()],
         fixture: None,
         fixture_fault: None,
+        loaded_modifiers: None,
+        modifier_fault: None,
         fault: Some(Fault {
             registry: "common/traditions".into(),
             control: ObservationControl::MissingHook,

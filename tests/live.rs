@@ -157,6 +157,8 @@ enum Case {
         control: Fault,
         expect: Expect,
     },
+    LoadedModifiers,
+    LoadedModifiersWorkerLoss,
     WorkerLoss {
         registry: &'static str,
         control: Fault,
@@ -182,6 +184,11 @@ enum FixtureOutcomeCase {
 fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
         ("normal".to_owned(), Case::Normal),
+        ("loaded_modifiers".to_owned(), Case::LoadedModifiers),
+        (
+            "loaded_modifiers_worker_loss".to_owned(),
+            Case::LoadedModifiersWorkerLoss,
+        ),
         ("invalid_selection".to_owned(), Case::InvalidSelection),
         ("outside_common".to_owned(), Case::OutsideCommon),
         ("late_only".to_owned(), Case::LateOnly),
@@ -310,6 +317,8 @@ fn cases() -> Vec<(String, Case)> {
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::Normal => normal(native).await,
+        Case::LoadedModifiers => loaded_modifiers(native).await,
+        Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
         Case::InvalidSelection => invalid_selection(native).await,
         Case::OutsideCommon => outside_common(native).await,
         Case::LateOnly => late_only(native).await,
@@ -1369,6 +1378,174 @@ async fn normal(native: &Native) -> Outcome {
     .await;
     and_close(&mut result, &mut game).await;
     result
+}
+
+/// The loaded tags of the five declared names that content registers again (M45-release).
+const RE_REGISTERED: [(&str, &[&str]); 5] = [
+    ("terraforming_cost_mult", &["Planets", "AI Economy"]),
+    (
+        "starbase_shipyard_build_cost_mult",
+        &["Starbases", "AI Economy"],
+    ),
+    (
+        "starbase_shipyard_artificial_build_cost_mult",
+        &SHIP_TAGS_WITH_ECONOMY,
+    ),
+    (
+        "starbase_shipyard_space_fauna_build_cost_mult",
+        &SHIP_TAGS_WITH_ECONOMY,
+    ),
+    ("gdf_ship_alloys_cost_mult", &SHIP_TAGS_WITH_ECONOMY),
+];
+const SHIP_TAGS_WITH_ECONOMY: [&str; 7] = [
+    "Orbital Stations",
+    "Space Stations",
+    "Military Ships",
+    "Civilian Ships",
+    "Science Ships",
+    "Transport Ships",
+    "AI Economy",
+];
+/// Entries of the loaded table on M45-release with installed content (SDK-488: 45,578).
+const LOADED_MODIFIERS: usize = 45_578;
+
+async fn loaded_modifiers(native: &Native) -> Outcome {
+    use pdx_native::{DeclaredTags, LoadedContent};
+    let declared = native.modifiers()?.value;
+    let mut game = native.start_game(options().loaded_modifiers()).await?;
+    let readiness = game.readiness();
+    let mut result = async {
+        if readiness != GameReadiness::PausedAfterContentLoad {
+            return Err(format!("readiness: {readiness:?}").into());
+        }
+        let answer = game.loaded_modifiers().await?;
+        if answer.source.basis != Basis::LiveObservation
+            || answer.value.content != LoadedContent::Installation
+        {
+            return Err(format!("source or content: {:?}", answer.source).into());
+        }
+        let loaded = &answer.value.modifiers;
+        if loaded.len() != LOADED_MODIFIERS {
+            return Err(format!("{} loaded modifiers", loaded.len()).into());
+        }
+        let by_name: std::collections::BTreeMap<_, _> = loaded
+            .iter()
+            .map(|modifier| (modifier.name.as_str(), modifier))
+            .collect();
+        for declaration in &declared {
+            if !by_name
+                .get(declaration.name.as_str())
+                .is_some_and(|modifier| modifier.declared)
+            {
+                return Err(format!("{} is not loaded as declared", declaration.name).into());
+            }
+        }
+        if loaded.iter().filter(|modifier| modifier.declared).count() != declared.len() {
+            return Err("a loaded name is marked declared without a declaration".into());
+        }
+        for (name, tags) in RE_REGISTERED {
+            let expected = DeclaredTags::Listed(tags.iter().map(|tag| tag.to_string()).collect());
+            let static_tags = &declared
+                .iter()
+                .find(|declaration| declaration.name == name)
+                .ok_or(name)?
+                .category_tags;
+            if by_name[name].category_tags != expected || *static_tags == expected {
+                return Err(format!("{name}: loaded {:?}", by_name[name].category_tags).into());
+            }
+        }
+        let capital = by_name
+            .get("planet_building_capital_build_speed_mult")
+            .ok_or("no building family name")?;
+        if capital.declared
+            || !capital.generated_by.iter().any(|generated| {
+                generated.registry == "common/buildings" && generated.item == "building_capital"
+            })
+        {
+            return Err(format!("building family: {capital:?}").into());
+        }
+        engine_log_agrees(loaded)?;
+        let generated = loaded
+            .iter()
+            .filter(|modifier| !modifier.generated_by.is_empty())
+            .count();
+        let unexplained = loaded
+            .iter()
+            .filter(|modifier| !modifier.declared && modifier.generated_by.is_empty())
+            .count();
+        println!(
+            "  loaded {}, declared {}, generated {generated}, unexplained {unexplained}; gaps {:?}",
+            loaded.len(),
+            declared.len(),
+            answer.gaps
+        );
+        if game.loaded_modifiers().await? != answer {
+            return Err("a repeated read gave another answer".into());
+        }
+        complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)?;
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// Compare every name and tag list with the modifier documentation that the engine itself wrote
+/// in the session's private profile. Only this test reads the log.
+fn engine_log_agrees(loaded: &[pdx_native::LoadedModifier]) -> Outcome {
+    let logs: Vec<_> = work_directories()?
+        .into_iter()
+        .map(|work| work.join("session/profile/logs/script_documentation/modifiers.log"))
+        .filter(|path| path.exists())
+        .collect();
+    let [log] = logs.as_slice() else {
+        return Err(format!("expected one engine modifier log: {logs:?}").into());
+    };
+    let text = std::fs::read_to_string(log)?;
+    let logged: Vec<(&str, Vec<&str>)> = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("- "))
+        .filter_map(|line| line.split_once(", Category: "))
+        .map(|(name, tags)| {
+            (
+                name,
+                tags.split(", ").filter(|tag| !tag.is_empty()).collect(),
+            )
+        })
+        .collect();
+    if logged.len() != loaded.len() {
+        return Err(format!("engine log has {} entries", logged.len()).into());
+    }
+    for ((name, tags), modifier) in logged.iter().zip(loaded) {
+        let pdx_native::DeclaredTags::Listed(loaded_tags) = &modifier.category_tags else {
+            return Err(format!("{}: unresolved tags", modifier.name).into());
+        };
+        if *name != modifier.name || *tags != *loaded_tags {
+            return Err(format!("{name} {tags:?} differs from {modifier:?}").into());
+        }
+    }
+    Ok(())
+}
+
+async fn loaded_modifiers_worker_loss(native: &Native) -> Outcome {
+    match native
+        .start_game(
+            options()
+                .loaded_modifiers()
+                .modifier_fault(Fault::WorkerLoss),
+        )
+        .await
+    {
+        Err(Error::Startup {
+            disposal: Disposal::Confirmed,
+            reason,
+        }) if reason.contains("WorkerLost") => Ok(()),
+        Err(error) => Err(format!("expected a worker-loss startup error: {error:?}").into()),
+        Ok(mut game) => {
+            let _ = game.close().await;
+            Err("the game started although its worker was lost".into())
+        }
+    }
 }
 
 async fn invalid_selection(native: &Native) -> Outcome {

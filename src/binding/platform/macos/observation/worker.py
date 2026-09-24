@@ -2,8 +2,10 @@
 
 It sets registry and requested fixture hooks before the game runs. When a loader returns, it reads
 the registry's collection and writes what it sees to raw-trace.jsonl. When every observed
-registry has returned, it holds the game at that point until the supervisor releases it. Engine
-locations arrive in the request, from Native's binding groups."""
+registry has returned, it holds the game at that point until the supervisor releases it. A
+session that reads the loaded modifier table holds the game where the engine's modifier
+documentation returns instead, after all content has loaded. Engine locations arrive in the
+request, from Native's binding groups."""
 import hashlib
 import json
 import os
@@ -24,6 +26,8 @@ registry_owner = None
 registry_owners = {}
 returned_registries = []
 session_active = set()
+# True when the modifier hook was active before resume: the documentation point then owns the pause.
+modifier_active = False
 safe_pause = False
 callback_active = False
 
@@ -40,13 +44,15 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def atomic(kind, name, value):
+def atomic(kind, name, value, limit=protocol.MAX_RECORD):
+    encoded = protocol.encode(kind, value, limit)
     temporary = ROOT / (name + '.pending')
     with temporary.open('xb') as output:
-        output.write(protocol.encode(kind, value))
+        output.write(encoded)
         output.flush()
         os.fsync(output.fileno())
     temporary.rename(ROOT / name)
+    return encoded
 
 
 def emit(kind, **fields):
@@ -205,6 +211,9 @@ def registry_callback(frame, name):
             return True
     if control == protocol.CONTROL['worker_loss']:
         return True
+    if modifier_active:
+        finished = False
+        return False
     finished = session_active.issubset(set(returned_registries))
     safe_pause = finished
     return finished
@@ -511,6 +520,158 @@ class FixtureObserver:
 fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
 
 
+# Bounds that no plausible table exceeds; each bounds a read before it is made.
+MAX_TOKENS = 400000
+MAX_MODIFIERS = 200000
+
+
+class ModifierObserver:
+    """The loaded modifier table, read when the engine's modifier documentation returns. That
+    function has just named every entry through the lexer, so the lexer's lookup is current."""
+    def __init__(self, binding):
+        self.binding = binding
+        self.control = request['control'] if request['modifier_fault'] else protocol.CONTROL['normal']
+        self.entered = False
+
+    def hooks(self):
+        return [('modifiers:documentation', self.binding['documentation_entry'])]
+
+    def load(self, target, address):
+        return target.ResolveFileAddress(address).GetLoadAddress(target)
+
+    def read(self, process, address, size):
+        import lldb
+        error = lldb.SBError()
+        value = process.ReadMemory(address, size, error) if size else b''
+        if error.Fail() or len(value) != size:
+            raise RuntimeError('native memory access failed: ' + str(error))
+        return value
+
+    def text(self, process, buffer, offset):
+        """The engine string object at `offset` in `buffer`: short text in place, or a pointer
+        and a length when bit 7 of its tag byte is set."""
+        tag = buffer[offset + self.binding['string_tag_offset']]
+        if tag & 128:
+            pointer = int.from_bytes(buffer[offset:offset + 8], 'little')
+            length = int.from_bytes(buffer[offset + 8:offset + 16], 'little')
+            if length > 4096:
+                raise RuntimeError('string length outside bound')
+            value = self.read(process, pointer, length)
+        else:
+            if tag > self.binding['string_tag_offset']:
+                raise RuntimeError('short string length outside bound')
+            value = bytes(buffer[offset:offset + tag])
+        return value.decode('utf-8')
+
+    def array(self, process, address, stride, bound):
+        count = uint(process, address + self.binding['array_count_offset'], 4)
+        data = uint(process, address + self.binding['array_data_offset'])
+        if count > bound or (count and not data):
+            raise RuntimeError('engine array bounds invalid')
+        return count, self.read(process, data, count * stride)
+
+    def entries(self, process, target):
+        b = self.binding
+        lookup = self.load(target, b['lookup'])
+        if uint(process, lookup + b['array_count_offset'], 4) != uint(process, self.load(target, b['lookup_size']), 4):
+            raise RuntimeError('lexer token lookup is not current')
+        names, lookup_bytes = self.array(process, lookup, b['lookup_stride'], MAX_TOKENS)
+        count, table = self.array(process, self.load(target, b['definitions']), b['definition_stride'], MAX_MODIFIERS)
+        entries = []
+        for index in range(count):
+            row = index * b['definition_stride']
+            token = int.from_bytes(table[row + b['token_offset']:row + b['token_offset'] + 4], 'little')
+            mask = int.from_bytes(table[row + b['mask_offset']:row + b['mask_offset'] + 4], 'little')
+            if token >= names:
+                raise RuntimeError('modifier token outside the lexer lookup')
+            name = self.text(process, lookup_bytes, token * b['lookup_stride'])
+            if not name or any(character.isspace() or ord(character) < 32 for character in name):
+                raise RuntimeError('invalid modifier name')
+            entries.append(dict(name=name, mask=mask))
+        return entries
+
+    def registry_keys(self, process, target, directory, registry):
+        if registry['key_offset'] is None:
+            return {'unavailable': registry['key_unavailable'] or 'item key storage was not established'}
+        try:
+            database = uint(process, self.load(target, registry['instance']))
+            if not database or database % registry['pointer_size']:
+                raise RuntimeError('registry database instance is null')
+            header = self.read(process, database + registry['directory_offset'], 24)
+            if self.text(process, header, 0) != directory:
+                raise RuntimeError('registry database directory mismatch')
+            count = uint(process, database + registry['count_offset'], 4)
+            data = uint(process, database + registry['data_offset'])
+            if count > 100000 or (count and (not data or data % registry['pointer_size'])):
+                raise RuntimeError('registry collection bounds invalid')
+            size = registry['pointer_size']
+            pointers = self.read(process, data, count * size)
+            keys = []
+            for index in range(count):
+                item = int.from_bytes(pointers[index * size:index * size + size], 'little')
+                if not item or item % registry['pointer_size']:
+                    raise RuntimeError('invalid registry object')
+                key = self.text(process, self.read(process, item + registry['key_offset'], 24), 0)
+                if not key or key in keys or any(character.isspace() or ord(character) < 32 for character in key):
+                    raise RuntimeError('item key layout not established: empty, duplicate, or invalid item key')
+                keys.append(key)
+            return {'keys': keys}
+        except Exception as error:
+            return {'unavailable': str(error)}
+
+    def on_return(self, frame, name):
+        global finished, safe_pause
+        breakpoints[name].SetEnabled(False)
+        process = frame.GetThread().GetProcess()
+        target = process.GetTarget()
+        thread = frame.GetThread().GetThreadID()
+        try:
+            entries = self.entries(process, target)
+            registries = {directory: self.registry_keys(process, target, directory, registry)
+                          for directory, registry in self.binding['registries'].items()}
+            encoded = atomic('modifier_table', 'loaded-modifiers.json',
+                             dict(attempt=request['attempt'], entries=entries, registries=registries),
+                             protocol.MAX_MODIFIER_TABLE)
+            emit('modifier-table', count=len(entries), bytes=len(encoded),
+                 sha256=hashlib.sha256(encoded).hexdigest(), thread=thread)
+            if self.control == protocol.CONTROL['worker_loss']:
+                emit('worker-loss-ready')
+                (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+                return True
+            emit('modifier-table-end', count=len(entries), producerLastSequence=sequence + 1, thread=thread)
+        except Exception:
+            emit('modifier-unavailable', reason=traceback.format_exc(), thread=thread)
+        # The return of the documentation function is the witnessed boundary of this pause.
+        finished = True
+        safe_pause = True
+        return True
+
+    def callback(self, frame, name):
+        global finished, safe_pause
+        thread = frame.GetThread().GetThreadID()
+        if thread != entry_thread:
+            raise RuntimeError('modifier documentation runs on another thread than the launch')
+        if name == 'modifiers:return':
+            return self.on_return(frame, name)
+        if self.entered:
+            raise RuntimeError('modifier documentation entered more than once')
+        self.entered = True
+        breakpoints[name].SetEnabled(False)
+        emit('modifier-documentation-entered', thread=thread)
+        hook = frame.GetThread().GetProcess().GetTarget().BreakpointCreateByAddress(
+            register(frame, request['machine']['registers']['return']))
+        hook.SetThreadID(thread)
+        hook.SetOneShot(True)
+        hook.SetScriptCallbackFunction('worker.callback')
+        if hook.GetNumResolvedLocations() != 1:
+            raise RuntimeError('modifier documentation return hook unresolved')
+        breakpoints['modifiers:return'] = hook
+        return False
+
+
+modifiers = ModifierObserver(request['modifiers']) if request['modifiers'] else None
+
+
 def callback(frame, loc, _):
     global finished, callback_active
     callback_active = True
@@ -522,6 +683,8 @@ def callback(frame, loc, _):
             except Exception:
                 fixture.emit('unavailable', frame.GetThread().GetThreadID(), reason=traceback.format_exc())
                 return False
+        if name.startswith('modifiers:'):
+            return modifiers.callback(frame, name)
         return registry_callback(frame, name)
     except Exception:
         emit('callback-error', error=traceback.format_exc())
@@ -532,7 +695,7 @@ def callback(frame, loc, _):
 
 
 def run(debugger):
-    global entry_thread, session_active, safe_pause
+    global entry_thread, session_active, safe_pause, modifier_active
     import lldb
     import sys
     source_hashes = {name: sha(ROOT / 'source' / name) for name in request['source_hashes']}
@@ -551,6 +714,8 @@ def run(debugger):
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
     hooks = [('registry:' + name, value['load_entry']) for name, value in request['registries'].items()]
     controlled_hook = 'registry:' + request['control_registry'] if request['control_registry'] else None
+    if modifiers:
+        hooks.extend(modifiers.hooks())
     if fixture:
         hooks.extend(fixture.hooks())
         if request['fixture_fault']:
@@ -582,8 +747,12 @@ def run(debugger):
         if hook and hook['enabled'] and hook['locations'] == 1 and hook['resolved'] == 1 and hook['hits'] == 0:
             if name.startswith('registry:'):
                 session_active.add(name.split(':', 1)[1])
+            elif name.startswith('modifiers:'):
+                modifier_active = True
         else:
-            if name.startswith('fixture:'):
+            if name.startswith('modifiers:'):
+                emit('modifier-unavailable', reason='required modifier hook missing or late before resume')
+            elif name.startswith('fixture:'):
                 fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
             else:
                 emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')

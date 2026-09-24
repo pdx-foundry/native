@@ -118,6 +118,63 @@ impl Binding {
             .collect()
     }
 
+    /// Where this session reads the loaded modifier table, and the database instance of each
+    /// registry in `registries` whose item keys it reads there.
+    pub(crate) fn modifier_table_binding(
+        &self,
+        registries: &[String],
+    ) -> Result<crate::protocol::observation::ModifierTableBinding, String> {
+        let operation = self.operation.as_ref();
+        let (Some(table), Some(layout)) = (
+            operation.and_then(|operation| operation.modifier_table),
+            operation.and_then(|operation| operation.registry_layout),
+        ) else {
+            return Err("this build has no loaded modifier table layout".into());
+        };
+        let verified = self
+            .analysis
+            .as_ref()
+            .ok_or("this build has no static registry analysis")?
+            .verified()
+            .map_err(|error| error.to_string())?;
+        let mut instances = std::collections::BTreeMap::new();
+        for directory in registries {
+            let candidate = named_candidate(verified.named_candidates(), directory)?;
+            let instance = verified.symbol(&format!(
+                "TGameDatabase<{}>::_pInstance",
+                candidate.record.database
+            ))?;
+            let key_offset = verified.registry_key_offset(candidate, layout.string_tag_offset());
+            instances.insert(directory.clone(), (instance, key_offset));
+        }
+        Ok(groups::modifier_table_binding(
+            table,
+            layout,
+            groups::ModifierTableSymbols {
+                documentation_entry: verified.symbol("CModifier::LogDefinitions()")?,
+                definitions: verified.symbol(
+                    "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions",
+                )?,
+                registries: instances,
+            },
+        ))
+    }
+
+    /// The named registries whose modifier families the loaded modifier table is joined with.
+    pub(crate) fn family_registries(&self) -> Result<Vec<String>, crate::AnalysisError> {
+        self.analysis
+            .as_ref()
+            .ok_or(crate::AnalysisError::InvalidRange)?
+            .family_registries()
+    }
+
+    pub(crate) fn has_modifier_table_method(&self) -> bool {
+        self.operation
+            .as_ref()
+            .is_some_and(|operation| operation.modifier_table.is_some())
+            && self.has_declarations_method()
+    }
+
     pub(crate) fn has_fixture_method(&self) -> bool {
         self.operation
             .as_ref()
@@ -481,6 +538,16 @@ impl ExecutionPlan {
                 .map(|fixture| self.fixture_setup(fixture))
                 .transpose()?,
             fixture_fault: request.fixture_fault,
+            modifiers: request
+                .loaded_modifiers
+                .as_ref()
+                .map(|registries| {
+                    self.binding
+                        .modifier_table_binding(registries)
+                        .map_err(crate::supervisor::SupervisorError)
+                })
+                .transpose()?,
+            modifier_fault: request.modifier_fault,
             startup_seconds: request.startup_seconds,
             machine: &operation.machine,
             package: &operation.strategy.package,

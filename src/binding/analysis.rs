@@ -45,6 +45,22 @@ pub(crate) struct VerifiedAnalysis<'a> {
 }
 
 impl VerifiedAnalysis<'_> {
+    /// The address of the one symbol with this demangled name.
+    pub(in crate::binding) fn symbol(&self, name: &str) -> Result<u64, String> {
+        let addresses: std::collections::BTreeSet<_> = self
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.address)
+            .collect();
+        match (addresses.first(), addresses.len()) {
+            (Some(address), 1) => Ok(*address),
+            (_, 0) => Err(format!("no symbol {name}")),
+            _ => Err(format!("more than one symbol {name}")),
+        }
+    }
+
     /// Establish the key's item-relative offset from the selected registry's constructor.
     pub(in crate::binding) fn registry_key_offset(
         &self,
@@ -527,6 +543,26 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.modifier_input(recipe)
+    }
+
+    /// The named registries whose database has a modifier generator: the registries that
+    /// `family_input` can give families, in name order.
+    pub(crate) fn family_registries(&self) -> Result<Vec<String>, AnalysisError> {
+        use crate::engine::analysis::directories::Directory;
+        let verified = self.verified()?;
+        let mut registries: Vec<String> = verified
+            .named_candidates()
+            .iter()
+            .filter_map(|candidate| match &candidate.directory {
+                Directory::Named(name) => verified
+                    .symbol(&binary::families::generator(&candidate.record.database))
+                    .is_ok()
+                    .then(|| name.clone()),
+                _ => None,
+            })
+            .collect();
+        registries.sort();
+        Ok(registries)
     }
 
     /// The family input of the registry named `registry`, or `None` when no one template

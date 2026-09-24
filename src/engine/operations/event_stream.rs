@@ -95,6 +95,24 @@ pub(crate) enum WorkerEvent {
     RegistryUnavailable { name: String, reason: String },
     /// The collection was reached, but this binding cannot read its item keys.
     RegistryUnsupported { name: String, reason: String },
+    /// The engine entered the function that documents its modifiers.
+    ModifierDocumentationEntered,
+    /// The worker read the modifier table when that function returned, and wrote it once to
+    /// `loaded-modifiers.json`: `count` entries, in a file of `bytes` bytes with this SHA-256.
+    ModifierTable {
+        count: u64,
+        bytes: u64,
+        sha256: String,
+    },
+    /// The terminal of the modifier observation, and the sequence number that the worker gave
+    /// this record.
+    ModifierTableEnd {
+        count: u64,
+        #[serde(rename = "producerLastSequence")]
+        producer_last_sequence: u64,
+    },
+    /// The worker could not read the modifier table.
+    ModifierUnavailable { reason: String },
     /// The game is held at a safe pause, after these registries returned from their loaders.
     SessionPaused { returned: Vec<String> },
     /// The debugger could not attach, a hook was missing or late, or the supervisor's permission
@@ -176,6 +194,7 @@ pub(crate) fn read_worker_stream(raw: &[u8], attempt: &str) -> (Vec<WorkerRecord
             !matches!(
                 record.event,
                 WorkerEvent::RegistryEnd { .. }
+                    | WorkerEvent::ModifierTableEnd { .. }
                     | WorkerEvent::Fixture {
                         event: super::fixture::FixtureEvent::End { .. }
                     }

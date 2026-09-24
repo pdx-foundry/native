@@ -10,6 +10,8 @@
 //! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json` and `defines.json`, and
 //! `declarations/<kind>.json`. Fixture answers use
 //! `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys, not provenance.
+//! The loaded modifier inventory uses `loaded_modifiers.json`, or
+//! `loaded_modifiers/<files-hash>/<request-hash>.json` for a session with a fixture.
 use crate::answer::{Answer, Basis, BuildId, Error};
 use serde::{Serialize, de::DeserializeOwned};
 use std::io::Write;

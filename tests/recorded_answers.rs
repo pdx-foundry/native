@@ -414,6 +414,65 @@ async fn static_and_live_answers_from_another_build_are_refused() {
 }
 
 #[tokio::test]
+async fn the_loaded_modifier_inventory_reads_its_recorded_file_with_no_game() {
+    let root = recorded();
+    write(
+        root.path(),
+        "loaded_modifiers.json",
+        json!({ "Ok": {
+            "value": {
+                "modifiers": [
+                    { "name": "pop_happiness", "category_tags": { "Listed": ["Pops"] },
+                      "declared": true, "generated_by": [] },
+                    { "name": "planet_building_capital_build_speed_mult",
+                      "category_tags": { "Listed": ["Colony"] }, "declared": false,
+                      "generated_by": [{ "registry": "common/buildings", "item": "building_capital",
+                          "template": [{ "Literal": "planet_" }, "ItemKey",
+                                       { "Literal": "_build_speed_mult" }] }] },
+                    { "name": "job_example_add", "category_tags": "Unresolved",
+                      "declared": false, "generated_by": [] }
+                ],
+                "registry_items": { "common/buildings": ["building_capital"] },
+                "content": "Installation"
+            },
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnnamedDeclaration", "subject": null,
+                "detail": "1 loaded modifiers are neither declared nor generated" }],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let options = GameOptions::new(std::process::Command::new("must-not-start")).loaded_modifiers();
+    let mut game = native.start_game(options).await.unwrap();
+    let answer = game.loaded_modifiers().await.unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(answer.value.modifiers.len(), 3);
+    assert_eq!(
+        answer.value.content,
+        pdx_native::LoadedContent::Installation
+    );
+    assert_eq!(
+        answer.value.modifiers[1].generated_by[0].item,
+        "building_capital"
+    );
+    assert_eq!(game.close().await.unwrap(), Disposal::NotApplicable);
+
+    // A session with a fixture reads the recording of that fixture, which does not exist here.
+    let fixture = pdx_native::FixtureRequest::new(
+        "common/tradition_categories/example.txt",
+        "example = {}\n",
+    );
+    let mut game = native
+        .start_game(GameOptions::new(std::process::Command::new("must-not-start")).fixture(fixture))
+        .await
+        .unwrap();
+    assert!(matches!(
+        game.loaded_modifiers().await,
+        Err(Error::NotRecorded { .. })
+    ));
+}
+
+#[tokio::test]
 async fn live_questions_need_no_supervisor_and_start_no_process() {
     let root = recorded();
     let native = Native::from_recorded_answers(root.path()).unwrap();

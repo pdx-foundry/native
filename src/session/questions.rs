@@ -90,7 +90,10 @@ impl Native {
                 },
                 None => Support::Unsupported("this build has no static analysis recipe".into()),
             },
-            Operation::RegistryItems | Operation::ObserveFixture => {
+            Operation::LoadedModifiers if !self.bound().has_modifier_table_method() => {
+                Support::Unsupported("this build has no loaded modifier table recipe".into())
+            }
+            Operation::RegistryItems | Operation::ObserveFixture | Operation::LoadedModifiers => {
                 match self.selected_blocking_reasons() {
                     reasons if reasons.is_empty() => Support::Supported,
                     reasons => Support::Unsupported(format!("{reasons:?}")),

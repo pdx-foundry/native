@@ -71,6 +71,7 @@ src/
     operations/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
       fixture.rs                   fixture observation reducer
+      loaded_modifiers.rs          stream and table file to the loaded modifier table
       registry_items.rs            stream to registry items; readiness of the pause
   execution/
     supervisor.rs                  independent process/resource ownership; reduces at the pause

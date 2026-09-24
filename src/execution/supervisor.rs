@@ -10,6 +10,7 @@ use crate::{
     binding::{self, ExecutionPlan},
     engine::operations::{
         event_stream::{self, OwnerEvent},
+        loaded_modifiers,
         registry_items::{self, Observed},
     },
     protocol::{
@@ -235,6 +236,7 @@ fn run(
                 attempt: &report.attempt,
                 registries: request.registries.clone(),
                 fixture: request.fixture.as_ref(),
+                loaded_modifiers: request.loaded_modifiers.as_deref(),
                 build: crate::BuildId(request.build.clone()),
                 startup: Duration::from_secs(request.startup_seconds),
                 idle: Duration::from_secs(request.idle_seconds),
@@ -331,6 +333,8 @@ struct Session<'a> {
     /// Internal names of the registries that the session observes.
     registries: Vec<String>,
     fixture: Option<&'a crate::FixtureRequest>,
+    /// The registries whose item keys the modifier observation reads, when it is requested.
+    loaded_modifiers: Option<&'a [String]>,
     build: crate::BuildId,
     startup: Duration,
     idle: Duration,
@@ -373,8 +377,12 @@ fn observe_session(
                 )?;
                 // A damaged stream has lost its terminals, so no answer from it is complete.
                 let (records, _) = event_stream::read_worker_stream(&raw, session.attempt);
-                let readiness =
-                    registry_items::readiness(&records, events.all(), &session.registries)
+                let readiness = registry_items::readiness(
+                    &records,
+                    events.all(),
+                    &session.registries,
+                    session.loaded_modifiers.is_some(),
+                )
                         .ok_or_else(|| {
                             SupervisorError(
                                 "The witnesses of the registry initialization pause are missing or inconsistent"
@@ -397,9 +405,33 @@ fn observe_session(
                         session.build.clone(),
                     )
                 });
+                let modifiers = session.loaded_modifiers.map(|registries| {
+                    let path = session.work_directory.join("loaded-modifiers.json");
+                    let file = path
+                        .try_exists()?
+                        .then(|| {
+                            files::read_bounded(&path, protocol::observation::MAX_MODIFIER_TABLE)
+                        })
+                        .transpose()?;
+                    Ok::<_, SupervisorError>(
+                        loaded_modifiers::reduce(
+                            &records,
+                            events.all(),
+                            file.as_deref(),
+                            session.attempt,
+                            registries,
+                        )
+                        .map_err(|reason| crate::Error::Observation {
+                            operation: crate::Operation::LoadedModifiers,
+                            reason,
+                        }),
+                    )
+                });
+                let modifiers = modifiers.transpose()?;
                 output.send(Reply::Paused {
                     readiness,
                     fixture: Box::new(fixture),
+                    modifiers: Box::new(modifiers),
                     registries: registries.clone(),
                 })?;
                 answers = Some(registries);
@@ -430,6 +462,15 @@ fn observe_session(
                 if answers.is_none() || session.fixture.is_none() {
                     return Err(SupervisorError(
                         "Fixture read without a prepared fixture at the pause".into(),
+                    ));
+                }
+                output.send(Reply::ObservationRead { request })?;
+                deadline = Instant::now() + session.idle;
+            }
+            Ok(Input::Control(Control::ReadModifiers { request })) => {
+                if answers.is_none() || session.loaded_modifiers.is_none() {
+                    return Err(SupervisorError(
+                        "Modifier read without a requested modifier table at the pause".into(),
                     ));
                 }
                 output.send(Reply::ObservationRead { request })?;
@@ -616,6 +657,7 @@ exec sleep 30
             attempt: "unit",
             registries: vec![registry.into()],
             fixture: None,
+            loaded_modifiers: None,
             build: crate::BuildId("unit".into()),
             startup: Duration::from_secs(3),
             idle: Duration::from_secs(3),

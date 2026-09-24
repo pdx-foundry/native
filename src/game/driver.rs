@@ -127,6 +127,7 @@ fn connect(
                             request: sequence,
                         },
                         ReadQuestion::Fixture => Control::ReadFixture { request: sequence },
+                        ReadQuestion::Modifiers => Control::ReadModifiers { request: sequence },
                     },
                 )?;
             }
@@ -164,6 +165,7 @@ fn connect(
                 readiness,
                 registries,
                 fixture,
+                modifiers,
             } => {
                 if state.borrow().paused.is_some() {
                     return Err(SupervisorError("Unexpected second pause".into()));
@@ -173,6 +175,7 @@ fn connect(
                         readiness,
                         registries,
                         fixture: *fixture,
+                        modifiers: *modifiers,
                     })
                 });
                 if !ending {

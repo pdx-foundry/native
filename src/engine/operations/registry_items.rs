@@ -31,6 +31,9 @@ pub enum GameReadiness {
     PausedAfterRegistryInitialization,
     /// Only a part of the observed registries returned before the pause.
     PausedDuringRegistryInitialization,
+    /// All content has loaded: the game is held where the engine documents its modifiers,
+    /// before it shows its main menu. Requested with `GameOptions::loaded_modifiers`.
+    PausedAfterContentLoad,
 }
 
 /// How much of one registry's collection the session established.
@@ -216,6 +219,10 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                 }
             }
             WorkerEvent::Fixture { .. }
+            | WorkerEvent::ModifierDocumentationEntered
+            | WorkerEvent::ModifierTable { .. }
+            | WorkerEvent::ModifierTableEnd { .. }
+            | WorkerEvent::ModifierUnavailable { .. }
             | WorkerEvent::HooksRequested
             | WorkerEvent::LaunchStopped { .. }
             | WorkerEvent::HooksActiveBeforeResume { .. }
@@ -321,6 +328,7 @@ pub(crate) fn readiness(
     records: &[WorkerRecord],
     owner: &[OwnerEvent],
     declared: &[String],
+    loaded_modifiers: bool,
 ) -> Option<GameReadiness> {
     let pause = single(records, |event| {
         matches!(event, WorkerEvent::SessionPaused { .. })
@@ -383,7 +391,13 @@ pub(crate) fn readiness(
             return None;
         }
     }
-    Some(if returned.len() == declared.len() {
+    let documented = single(records, |event| {
+        matches!(event, WorkerEvent::ModifierDocumentationEntered)
+    })
+    .is_some_and(|entered| entered.thread == pause.thread && entered.seq < pause.seq);
+    Some(if loaded_modifiers && documented {
+        GameReadiness::PausedAfterContentLoad
+    } else if returned.len() == declared.len() {
         GameReadiness::PausedAfterRegistryInitialization
     } else {
         GameReadiness::PausedDuringRegistryInitialization
@@ -470,7 +484,7 @@ mod tests {
         assert_eq!(categories.items, ["category"]);
         assert_eq!(categories.observed, Observed::Complete);
         assert_eq!(
-            readiness(&records, &owner, &names),
+            readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedAfterRegistryInitialization)
         );
     }
@@ -500,7 +514,7 @@ mod tests {
             assert_eq!(reduce(name, &records, &owner).observed, Observed::Complete);
         }
         assert_eq!(
-            readiness(&records, &owner, &names),
+            readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedAfterRegistryInitialization)
         );
     }
@@ -521,7 +535,7 @@ mod tests {
             }
         }
         assert_eq!(
-            readiness(&records, &owner, &names),
+            readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedDuringRegistryInitialization)
         );
         let absent = reduce(CATEGORIES, &records, &owner);
@@ -554,7 +568,7 @@ mod tests {
         }
 
         assert_eq!(
-            readiness(&records, &owner, &names),
+            readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedAfterRegistryInitialization)
         );
         let items = reduce(TRADITIONS, &records, &owner);
@@ -579,7 +593,7 @@ mod tests {
             }
         }
         assert_eq!(
-            readiness(&records, &owner, &[TRADITIONS.into()]),
+            readiness(&records, &owner, &[TRADITIONS.into()], false),
             Some(GameReadiness::PausedDuringRegistryInitialization)
         );
         assert_eq!(
@@ -680,7 +694,7 @@ mod tests {
             Observed::Complete
         );
         assert_eq!(
-            readiness(&records, &owner, &names),
+            readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedAfterRegistryInitialization)
         );
     }
@@ -720,7 +734,7 @@ mod tests {
                 reduce(TRADITIONS, &records, &owner).observed,
                 Observed::Unavailable
             );
-            assert_eq!(readiness(&records, &owner, &names), None);
+            assert_eq!(readiness(&records, &owner, &names, false), None);
         }
         // A loader entry with a sequence number before the resume.
         let (mut records, owner, _) = session(&["first"]);
@@ -785,19 +799,19 @@ mod tests {
         let (records, owner, names) = session(&["first"]);
         let mut no_confirmation = owner.clone();
         no_confirmation.pop();
-        assert_eq!(readiness(&records, &no_confirmation, &names), None);
+        assert_eq!(readiness(&records, &no_confirmation, &names, false), None);
         let mut no_return = records.clone();
         no_return.retain(|record| !matches!(&record.event, WorkerEvent::RegistryLoadReturned { name, .. } if name == TRADITIONS));
-        assert_eq!(readiness(&no_return, &owner, &names), None);
+        assert_eq!(readiness(&no_return, &owner, &names, false), None);
         let mut duplicate = records.clone();
         duplicate.insert(6, records[5].clone());
-        assert_eq!(readiness(&duplicate, &owner, &names), None);
+        assert_eq!(readiness(&duplicate, &owner, &names, false), None);
         let mut wrong_game = owner.clone();
         wrong_game[1] = OwnerEvent::GamePauseConfirmed {
             pid: 11,
             returned: names.clone(),
         };
-        assert_eq!(readiness(&records, &wrong_game, &names), None);
+        assert_eq!(readiness(&records, &wrong_game, &names, false), None);
     }
 
     #[test]
@@ -809,7 +823,7 @@ mod tests {
         };
         owner[1] = OwnerEvent::GamePauseConfirmed { pid: 10, returned };
         assert_eq!(
-            readiness(&records, &owner, &names),
+            readiness(&records, &owner, &names, false),
             Some(GameReadiness::PausedDuringRegistryInitialization)
         );
     }

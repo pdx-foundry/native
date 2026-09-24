@@ -33,6 +33,8 @@ pub struct GameOptions {
     pub(crate) fixture: Option<crate::FixtureRequest>,
     pub(crate) fixture_fault: Option<ObservationControl>,
     pub(crate) registries: Option<Vec<String>>,
+    pub(crate) loaded_modifiers: bool,
+    pub(crate) modifier_fault: Option<ObservationControl>,
 }
 impl GameOptions {
     /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
@@ -46,7 +48,24 @@ impl GameOptions {
             fixture: None,
             fixture_fault: None,
             registries: None,
+            loaded_modifiers: false,
+            modifier_fault: None,
         }
+    }
+    /// Run the game on until all content has loaded, and read the loaded modifier table where
+    /// the engine documents its modifiers. The game pauses there, before its main menu, and
+    /// `Game::loaded_modifiers` answers from that table. The selected registries are still
+    /// observed; one whose initial loader does not run before that point is not loaded.
+    pub fn loaded_modifiers(mut self) -> Self {
+        self.loaded_modifiers = true;
+        self
+    }
+    /// Inject a fault into the modifier observation for Native's live tests. Only
+    /// `WorkerLoss`; requires `loaded_modifiers`.
+    #[doc(hidden)]
+    pub fn modifier_fault(mut self, control: ObservationControl) -> Self {
+        self.modifier_fault = Some(control);
+        self
     }
     /// Prepare one fixed fixture before launch. Registry queries observe this mounted content.
     pub fn fixture(mut self, request: crate::FixtureRequest) -> Self {
@@ -95,6 +114,8 @@ pub(crate) struct Session {
     /// Temporary directory that Native made for this session.
     pub work: PathBuf,
     pub fixture: Option<crate::FixtureRequest>,
+    /// The static side of the loaded modifier join, when the session reads the table.
+    pub modifiers: Option<crate::session::ModifierJoin>,
 }
 
 /// What the supervisor established when the game paused.
@@ -104,6 +125,8 @@ struct Paused {
     /// By internal registry name.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
+    modifiers:
+        Option<Result<crate::engine::operations::loaded_modifiers::ObservedModifiers, Error>>,
 }
 
 /// How a session ended, from the supervisor's final report.
@@ -124,6 +147,7 @@ struct State {
 enum ReadQuestion {
     Registry(String),
     Fixture,
+    Modifiers,
 }
 enum DriverCommand {
     /// The caller answered a question about this registry; the idle time starts again.
@@ -139,7 +163,8 @@ enum GameBackend {
     Recorded(Arc<crate::recorded::Answers>),
 }
 
-/// An owned process paused at registry initialization, never a loaded world.
+/// An owned process paused at registry initialization, or after content loads with
+/// `GameOptions::loaded_modifiers`; never a loaded world.
 /// Drop requests cleanup. Await close for independently confirmed disposal.
 #[derive(Debug)]
 pub struct Game {
@@ -155,8 +180,56 @@ pub struct Game {
     /// Temporary work directory that Native made. Removed after a clean close.
     work: Option<PathBuf>,
     fixture: Option<crate::FixtureRequest>,
+    /// The joined loaded modifier answer, when the session reads the table.
+    modifiers: Option<Result<crate::Answer<crate::LoadedModifiers>, Error>>,
 }
 impl Game {
+    /// Return the modifiers that the engine holds after all content has loaded, with their
+    /// loaded category tags.
+    ///
+    /// Each entry says whether the executable declares its name (`Native::modifiers`) and which
+    /// family of `Native::modifier_families` gives it for a loaded item. The table is read once,
+    /// where the engine documents its modifiers; every call returns it and refreshes the idle
+    /// timeout, and the game is never resumed. Request it with `GameOptions::loaded_modifiers`
+    /// before `Native::start_game`; otherwise this is `Error::Unsupported`.
+    pub async fn loaded_modifiers(
+        &mut self,
+    ) -> Result<crate::Answer<crate::LoadedModifiers>, Error> {
+        if self.closing || self.state.borrow().finished.is_some() {
+            return Err(Error::Closed);
+        }
+        let subject = self
+            .fixture
+            .as_ref()
+            .map(crate::FixtureRequest::recorded_subject);
+        let recorder = match &self.backend {
+            GameBackend::Recorded(directory) => {
+                return directory.read("loaded_modifiers", subject.as_deref());
+            }
+            GameBackend::Live { recorder } => recorder.clone(),
+        };
+        let answer = match self.modifiers.clone() {
+            None => Err(Error::Unsupported {
+                operation: crate::Operation::LoadedModifiers,
+                reason: "this session does not read the loaded modifier table; use GameOptions::loaded_modifiers before start_game".into(),
+            }),
+            Some(answer) => match self.restart_idle_time(ReadQuestion::Modifiers).await {
+                Ok(()) => answer,
+                Err(error) => Err(error),
+            },
+        };
+        if let Some(directory) = &recorder {
+            crate::recorded::write(
+                directory,
+                &self.build,
+                "loaded_modifiers",
+                subject.as_deref(),
+                &answer,
+            )?;
+        }
+        answer
+    }
+
     /// Return the prepared fixture's read-entry observations. Every call uses the same startup
     /// observation and refreshes the idle timeout; it never resumes the game. Set the fixture
     /// with `GameOptions::fixture` before calling `Native::start_game`.
@@ -207,6 +280,7 @@ impl Game {
             readiness: GameReadiness::PausedAfterRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
+            modifiers: None,
         };
         let (_, state) = watch::channel(State::default());
         Self {
@@ -220,6 +294,7 @@ impl Game {
             backend: GameBackend::Recorded(directory),
             work: None,
             fixture,
+            modifiers: None,
         }
     }
 
@@ -459,6 +534,14 @@ pub(crate) async fn start(
             });
         }
         if let Some(paused) = current.paused {
+            let modifiers = session.modifiers.map(|join| match &paused.modifiers {
+                Some(Ok(observed)) => Ok(join.assemble(observed, session.build.clone())),
+                Some(Err(error)) => Err(error.clone()),
+                None => Err(Error::Observation {
+                    operation: crate::Operation::LoadedModifiers,
+                    reason: "The supervisor sent no modifier table".into(),
+                }),
+            });
             return Ok(Game {
                 commands: Some(commands),
                 stop,
@@ -472,6 +555,7 @@ pub(crate) async fn start(
                 },
                 work: Some(session.work),
                 fixture: session.fixture,
+                modifiers,
             });
         }
         changes
@@ -573,6 +657,7 @@ mod tests {
             readiness: GameReadiness::PausedDuringRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
+            modifiers: None,
         };
         let (commands, receive) = mpsc::sync_channel(16);
         let (state, changes) = watch::channel(State {
@@ -591,10 +676,43 @@ mod tests {
                 backend: GameBackend::Live { recorder: None },
                 work: None,
                 fixture: None,
+                modifiers: None,
             },
             receive,
             state,
         )
+    }
+
+    #[tokio::test]
+    async fn loaded_modifiers_need_the_option_and_refresh_idle_time_when_read() {
+        let (mut game, commands, _state) = game();
+        assert!(matches!(
+            game.loaded_modifiers().await,
+            Err(Error::Unsupported { .. })
+        ));
+        assert!(commands.try_recv().is_err());
+        let answer = crate::Answer {
+            value: crate::LoadedModifiers {
+                modifiers: Vec::new(),
+                registry_items: BTreeMap::new(),
+                content: crate::LoadedContent::Installation,
+            },
+            completeness: crate::Completeness::Complete,
+            gaps: vec![],
+            source: crate::Source::new(
+                game.build.clone(),
+                "test/v1",
+                crate::Basis::LiveObservation,
+            ),
+        };
+        game.modifiers = Some(Ok(answer.clone()));
+        let acknowledgement = std::thread::spawn(move || {
+            let DriverCommand::Read { question, reply } = commands.recv().unwrap();
+            assert!(matches!(question, ReadQuestion::Modifiers));
+            reply.send(Ok(())).unwrap();
+        });
+        assert_eq!(game.loaded_modifiers().await, Ok(answer));
+        acknowledgement.join().unwrap();
     }
 
     #[tokio::test]
