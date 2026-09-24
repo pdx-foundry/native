@@ -11,7 +11,9 @@ open for the remaining reader work and human review. No production API changed.
 **Implemented 2026-09-23:** `Native::modifier_families` (SDK-540) recovers these templates and three
 more registries from the executable. See [discovery](discovery.md#modifier-families-sdk-540).
 `Game::loaded_modifiers` (SDK-564) returns the loaded inventory and classifies each entry; see
-[discovery](discovery.md#the-loaded-modifier-inventory-sdk-564).
+[discovery](discovery.md#the-loaded-modifier-inventory-sdk-564). SDK-566 adds the item post-read code and the
+shared helpers of item 5 below; see
+[discovery](discovery.md#modifier-families-from-post-read-code-and-shared-helpers-sdk-566).
 
 ## Target and experiment
 

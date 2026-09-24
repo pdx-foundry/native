@@ -432,7 +432,7 @@ The nine calls include the five hook sites of the prototype (`0x1000df770`, `0x1
 calls. That path is the item gate `ldrb w8,[x23,#0x508]; cbz` before the calls. No path fails. In
 bypass, only the stack-check path is ignored. Every answer is partial: 64 sites are not joined to a
 registry. They are the other 53 `TryAddDynamicModifier` and `AddDynamicModifier` calls and the 11
-runtime-token `AddDefinition` calls. SDK-566 owns them.
+runtime-token `AddDefinition` calls. SDK-566 joined 44 of them (below).
 
 **Freeze and revision.** The method was frozen (`bf44567`) before its first run on the executable.
 Post-freeze revision 1: the first run gave both situation families as paths-disagree. With a short
@@ -497,7 +497,7 @@ startup deadline, the other selected loaders or the content load ended the sessi
 (`generator_registries`) requires the six complete answers, and `nonstandard_key` now requires
 the eight `common/map_modes` keys.
 
-**Not in SDK-540.** Generator classes and shared helpers (SDK-566); the classification of each
+**Not in SDK-540.** Generator classes and shared helpers (SDK-566, below); the classification of each
 loaded entry (SDK-564); a condition named by its item field; engine behavior for a name longer than
 the formatter keeps; tags that a later registration of the same name gives.
 
@@ -545,7 +545,8 @@ outside the method.
 loaded keys. The worker reads them from the database at the same point:
 `TGameDatabase<Db>::_pInstance` (resolved by symbol), the database's directory, which must equal
 the registry, and the items at the established key offset (SDK-567). The registries are those whose
-database has `<Db>::GenerateModifiers()`; SDK-566 extends the set.
+database has `<Db>::GenerateModifiers()`; SDK-566 extends the set to every registry that returns a
+family (20 on M45-release).
 
 **Transport.** The worker writes the table and the keys once to `loaded-modifiers.json` (at most
 32 MiB; the M45-release table is about 3.2 MiB) and puts its size and SHA-256 in its stream, followed by a
@@ -582,7 +583,7 @@ two families. The match rate, measured through the API with `examples/loaded-mod
 
 The situations result agrees with the item gate and the `Unresolved` condition of SDK-540. The
 answer is partial: the 64 unjoined generation sites (SDK-566) and the 44,020 unexplained names are
-gaps.
+gaps. SDK-566 (below) explains 5,432 names and leaves 39,576 unexplained.
 
 **DLC archives.** No DLC archive of the installation holds a script file. 22 of the 32 archives hold
 only `music/` and `sound/` files. The other ten (`dlc002`, `dlc004`, `dlc013`, `dlc015`, `dlc029`,
@@ -615,6 +616,156 @@ lacks. It compared names only. None is missing:
 game; the generation sites outside database generators (SDK-566); where a modifier takes effect.
 
 Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
+
+### Modifier families from post-read code and shared helpers (SDK-566)
+
+SDK-566 joins the generation sites outside database generators to their registries.
+`modifier_families` is now `modifier-families/v2`. The public types did not change.
+
+**Roots.** Nearly every unjoined site is one to three direct calls below a function that the
+engine runs for the items of one content database. The method calls these functions *roots*:
+
+| Root | Receives | Condition |
+| --- | --- | --- |
+| `<Db>::GenerateModifiers()` (SDK-540) | the database | can be `Always` |
+| `TSingleObjectGameDatabase<Db, Owner, …>::PostReadInit()` | the database; it loops over `+0x48`/`+0x54` and calls `<Owner>::PostReadInit()` for each item | can be `Always` |
+| `<Owner>::InitPostRead(…)` | one item | never `Always`: the engine calls it through a virtual slot, and that it runs for every item is not established |
+
+Generator classes (`CTechnologyModifierGenerator`, `CSpeciesClassModifierGenerator`, …) are stack
+objects that the root builds. The root stores the item at `+0xb8` and calls the `Create*` methods
+directly, not through the vtable. The post-read function of every other content class
+(`CStrategicResource`, `CPlanetClass`, `CZoneType::CSerializer`,
+`CEconomicCategory::CTriggeredModifierTable::CSerializer<N>`) is a root with no named registry.
+
+**Joins** (`families/joins.rs`). From the function that contains each generation call, the method
+climbs direct calls and tail calls, at most four, to the first root of each chain. A chain is a
+*context*. A chain that meets no root is not a context: this ignores the reload path
+(`ReadExistingEntry`) and the non-virtual thunks, which hold copies of `InitPostRead`. A context is
+joined when its root belongs to a named registry and no function on it takes a content object
+that no named registry owns. The parameter types of the demangled name show that; the one case is
+`CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, …)`. A site is joined
+only when every context is joined. Each other site keeps one reason, in this order:
+registration function, unnamed matrix input, unnamed content, no root.
+
+**Run.** Each root runs as in SDK-540: one item, two key forms, the string model. The evaluator
+now *enters* a call (`Call::Enter`). The path runs the callee with a return stack of its own, and
+a tail call out of the decoded code returns from the entered frame only. The run enters the
+functions on the joined contexts, and *composers*. A composer is a leaf, such as
+`CString::GetSize` or `GetNameFromEnum`, or a function that composes text with the modelled
+string functions, such as `CModifierGeneratorBase::BuildModifierTag`. Calls to its own `.cold`
+parts, which only unwinding reaches, are allowed. A function that only calls memory and copy
+functions is not a composer. The first version entered
+`basic_string::__assign_external`, whose store through an unknown buffer pointer made every known
+byte unknown. That removed the SDK-540 families of districts, zones and megastructures until the
+rule changed. Every registration a path makes is recorded with the calls that the path is inside.
+A family is one name at one chain of calls; conditions are computed per root, and a template that
+two roots give is `Always` when one root establishes it.
+
+**String model additions.** `CString::operator+=(CPdxStringView)` (the view is its text only when
+its length equals the text's length), `operator+=(char)`, `Reserve` (no effect), and
+`basic_string::__assign_external`, which only reads its text. Before this, an unfollowed
+`__assign_external` of the key into `CJobType+0x920` made the key unresolved. An all-zero string
+object is the empty text.
+
+**Definition table.** `GenerateFrom(base, prefix, key, suffix)` reads the flags and the category
+mask of `_Definitions[base]` (mask at `+0x84`, the SDK-572 layout). `base` is a constant, such as
+`0x83` for the district `max_add`. The modifier method now records the type (`w1`) of each direct
+`AddDefinition` call. The run holds a definition array with the mask of each declared type, and
+room for 256 more. The registration writes a new type into its `ModifierType&` argument, as the
+engine does. The stub first left the engine's sentinel `0x23b` there. The code after the call
+then read `_Definitions[0x23b]`, which was outside the held array; it ended in the item and made
+the key unresolved.
+
+**Assumptions.** An item's key does not change after its constructor. A store to an unknown
+address, or a call that the model does not follow, leaves the key object, its text and its label.
+This recovered the anomaly families (an unfollowed
+`NLocalizationUtil::CheckLocalizationExists(key, …)`) and those of councilors, species archetypes
+and ship sizes, which store through unknown item fields before they compose names. A store to an
+unknown address also does not change the held definition masks. Both are authored tests with
+negative controls: without the protection, the test fails.
+
+**Key storage.** The item constructor may take the key by value: `<Owner>::<Owner>(int, CString)`
+has the same ARM64 call shape as `const&`. With it, the constructor probe establishes 156 of 164
+named registries (148 before). Four have no matching constructor and four runs do not establish
+key storage. This also serves live key reads (SDK-567).
+
+**Accounting on M45-release.** 73 sites: 62 dynamic calls (61 `TryAddDynamicModifier`, one
+`AddDynamicModifier`) and 11 runtime-token `AddDefinition` calls. 9 were joined by SDK-540; 53
+are joined now. The `UnnamedDeclaration` gap counts the other 20 by reason:
+
+| Reason | Sites | Code |
+| --- | ---: | --- |
+| Inside the registration function | 1 | the `AddDefinition` in `CModifier::TryAddDynamicModifier` |
+| Unnamed matrix input | 1 | `CEconomicCategory::FillModifierTable<false>` (economic category × strategic resource) |
+| Unnamed content | 5 | `CModifierGeneratorBase::GenerateFrom` (also called by `CStrategicResourceModifierGenerator`), `CDatabaseModifierGenerator<CStrategicResource>::Generate`, `CPlanetClassModifierGenerator::CreateModifier`, `CZoneTypeModifierGenerator::CreateMaxModifier` (from `CZoneType::CSerializer`), `CEconomicCategory::FillModifierTable<true>` (also from the triggered-table serializers) |
+| No root | 13 | ten `AddDefinition` calls in `CShipClassModifierHelper::Init` (from `CModifier::InitDefinitions`: engine ship-class enum, before content), `CWeaponTagModifierHelper::CreateModifierType` (from `CWeaponTagDatabase::InitInstance`), two in `CLeaderClass::CreateStartingAgeModifiers` (no direct caller) |
+
+`common/strategic_resources` and `common/planet_classes` have custom loaders and are not named
+registries (SDK-551). Decided with Jackson on 2026-09-24: their sites stay gaps and `NamePart`
+does not change. SDK-551 has an acceptance criterion for this case.
+
+**Result on M45-release** (22 registries, 50 families). The last two columns are from one
+live `examples/loaded-modifiers.rs` session: the registry's loaded items, and how many of the names
+that the template gives for them are loaded.
+
+| Registry | Families (template) | Root | Items | Loaded names |
+| --- | --- | --- | ---: | ---: |
+| `common/anomalies` | `{key}_research_speed_mult` | item | 327 | 327 |
+| `common/buildings` | `{key}_max` | item | 498 | 0 |
+| `common/country_types` | `damage_vs_country_type_{key}_mult` (limit 511) | item | 101 | 101 |
+| `common/districts` | `{key}_max_add`, `{key}_max_mult` | item | 147 | 147 each |
+| `common/economic_categories` | `{key}_produces_mult`, `_upkeep_mult`, `_cost_mult`, `_logistics_mult` (tags unresolved) | item | 269 | 46, 53, 35, 1 |
+| `common/espionage_operation_types` | `{key}_speed_mult`, `_skill_add`/`_mult`, `_difficulty_add`/`_mult`, `hostile_{key}_difficulty_add`/`_mult` | item | 27 | 27 each |
+| `common/ethics` | `pop_{key}_attraction_mult` | item | 17 | 17 |
+| `common/governments/councilors` | `{key}_exp_gain` | database loop | 179 | 179 |
+| `common/patrons` | `add_attunement_{key}`, `{key}_attunement_mult` | database loop | 14 | 5 each |
+| `common/pop_categories` | `pop_cat_{key}_happiness`, `_political_power`, `_bonus_workforce_mult` | item | 24 | 24 each |
+| `common/pop_jobs` | `job_{key}_add`, `_per_pop`, `_per_crime`, `_max_workforce_add`/`_mult`, `_automated_workforce_mult`, `pop_{key}_workforce_mult`, `pop_{key}_bonus_workforce_mult` | item | 366 | 365 each; automated 354 |
+| `common/resolution_categories` | `{key}_vote_strength_mult` | item | 37 | 37 |
+| `common/scripted_modifiers` | `{key}` (tags unresolved; `Always`) | database loop | 133 | 133 |
+| `common/species_archetypes` | `{key}_species_trait_points_add`, `_picks_add`, `_pop_happiness`, `_logistic_growth_mult`, `_bonus_pop_growth`, `_bonus_pop_growth_mult` | item | 6 | 4, 4, 2, 2, 2, 2 |
+| `common/technology/category` | `category_{key}_research_speed_mult`, `category_{key}_draw_chance_mult` | database loop | 13 | 13 each |
+
+The six SDK-540 registries keep their nine families. Districts add the two maximum families that
+SDK-540 left unexplained. The loaded table has 45,578 entries: 571 declared, 5,432 generated by a
+returned family (987 before), 39,576 unexplained. Every family's names are loaded for at least one
+item, except `{key}_max` of buildings. `CBuildingType::InitPostRead` registers it only when bit 2
+of `+0x17a8` is set, and no loaded building sets it. Its condition is `Unresolved`, as it should
+be. The other partial rates belong to families whose condition is `Unresolved`: the code checks
+an item field first. The SDK-564 config probe names the content side: economic categories generate
+with `generate_mult_modifiers`, 11 jobs have `can_be_automated = no` (12 jobs lack the automated
+family here), and some archetypes and patrons do not use modifiers.
+
+Tags come from the category mask of the registration. Economic categories and scripted modifiers
+pass a mask from an item field (for economic categories, `+0x128`, the content's
+`modifier_category`), so their tags are unresolved.
+
+**Gaps that remain in joined registries.**
+
+- `common/leader_classes`: the eight families compose from `+0x1f0`, a string field of the item
+  that is not the key. The method does not name it.
+- `common/districts`: two paths per call use the object at `+0xea0` instead of the item, when a
+  virtual call on it returns non-zero; those names are not the item's.
+- `common/ship_sizes`: `CShipSizeModifierGenerator::CreateModifier(ModifierType)` lower-cases the
+  base definition's localization key and replaces `mod_ship_` with `shipsize_{key}_`; the model
+  does not follow `ToLower` or `Replace`. The other call is not reached within the path limit.
+- `common/espionage_operation_categories`: no item constructor symbol, so no key storage.
+- The districts, pop categories and espionage types have one failed name per path that reads an
+  unknown object; these are counted by reason in the answer.
+
+**Tests.** Authored inputs cover entering, nested entering, a fork inside an entered call, tail
+calls in entered frames, the item root with a generator field, views, the base-type mask, a loop
+that registers two families at one call, per-root conditions, and the negative controls: a view
+of the wrong length, a part from another object, a root that is not entered, and the key after an
+unknown store. `joins.rs` tests a helper with a named and an unnamed caller, a matrix input, and
+the depth limit. The parity test (`tests/expected/m45/modifier-families.json`) holds the 22
+registries. The live `loaded_modifiers` case asserts the attribution of `job_miner_add`,
+`district_mining_max_add` and `category_computing_research_speed_mult`.
+
+**Not in SDK-566.** Registries with custom loaders (SDK-551); a key part from a second named
+registry (none on M45-release); conditions of item roots; content fields other than the key
+(leader classes); names composed from another modifier's name (ship sizes); the tags of a declared
+base modifier after content registers it again.
 
 ## Rust ports
 

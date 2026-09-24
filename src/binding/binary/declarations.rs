@@ -211,7 +211,7 @@ fn branch_target(word: u32, address: u64) -> Option<u64> {
 }
 
 /// The target of a `bl` or of a `b`, which a tail call uses.
-fn call_or_jump_target(word: u32, address: u64) -> Option<u64> {
+pub(super) fn call_or_jump_target(word: u32, address: u64) -> Option<u64> {
     if word >> 26 != 0b100101 && word >> 26 != 0b000101 {
         return None;
     }

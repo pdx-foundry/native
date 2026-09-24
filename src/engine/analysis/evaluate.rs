@@ -9,7 +9,8 @@
 //! values. A branch on an unknown value, an unsupported instruction, a jump outside the decoded
 //! code, or the step bound ends the run as [`Unresolved`]; nothing is guessed. A store to an
 //! unknown address makes every written byte unknown, because it may overwrite any of them.
-//! Calls are not entered. The caller decides what each call returns, or stops the run there.
+//! The caller decides what each call returns, stops the run there, or enters the callee: the path
+//! then runs the callee's code and returns to the instruction after the call.
 //!
 //! [`Machine::run_paths`] is for code that checks run-time state before its answer, such as a
 //! localization promotion that tests a database pointer. It follows both sides of a branch on an
@@ -183,6 +184,9 @@ pub enum Call {
     Return(Option<u64>),
     /// End the run here.
     Stop,
+    /// Run the callee's code on this path, then continue after the call when it returns. The
+    /// callee must be in the decoded code.
+    Enter,
 }
 
 /// How a completed run ended.
@@ -245,6 +249,8 @@ pub struct Machine<'a> {
     unknown_stores: Vec<u64>,
     /// How often this path arrived at each loop head of a [`Machine::run_paths_to`] run.
     loop_visits: BTreeMap<u64, u32>,
+    /// The return address of each entered call, innermost last.
+    frames: Vec<u64>,
 }
 
 /// The instruction that [`Machine::run_paths_to`] must arrive at, every instruction from which
@@ -272,6 +278,7 @@ impl<'a> Machine<'a> {
             labels: BTreeMap::new(),
             unknown_stores: Vec::new(),
             loop_visits: BTreeMap::new(),
+            frames: Vec::new(),
         }
     }
 
@@ -352,6 +359,11 @@ impl<'a> Machine<'a> {
         &self.unknown_stores
     }
 
+    /// The address of each entered call that this path is inside, outermost first.
+    pub fn entered_calls(&self) -> impl Iterator<Item = u64> + '_ {
+        self.frames.iter().map(|address| address - 4)
+    }
+
     /// Every known eight-byte value at an eight-byte aligned address, by address.
     pub fn known_words(&self) -> Vec<(u64, u64)> {
         self.memory
@@ -408,8 +420,12 @@ impl<'a> Machine<'a> {
                         pc += 4;
                     }
                     Call::Stop => return Ok(Exit::Stopped(target)),
+                    Call::Enter => pc = self.enter(pc, target),
                 },
-                Flow::Return => return Ok(Exit::Returned),
+                Flow::Return => match self.frames.pop() {
+                    Some(caller) => pc = caller,
+                    None => return Ok(Exit::Returned),
+                },
             }
         }
         Err(Unresolved("step-limit"))
@@ -532,7 +548,11 @@ impl<'a> Machine<'a> {
             match flow {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) if !code.rows.contains_key(&target) => {
-                    return Walk::End(self.tail_call(target, calls));
+                    match self.tail_call(target, calls) {
+                        Ok(Some(caller)) => pc = caller,
+                        Ok(None) => return Walk::End(Ok(Exit::Returned)),
+                        Err(end) => return Walk::End(end),
+                    }
                 }
                 Flow::Jump(target) => pc = target,
                 Flow::Unknown { target, .. } => {
@@ -547,22 +567,27 @@ impl<'a> Machine<'a> {
                         pc += 4;
                     }
                     Ok(Call::Stop) => return Walk::End(Ok(Exit::Stopped(target))),
+                    Ok(Call::Enter) => pc = self.enter(pc, target),
                     Err(unresolved) => return Walk::End(Err(unresolved)),
                 },
-                Flow::IndirectCall(target) => match calls(target, self) {
-                    Ok(Call::Return(value)) => {
+                Flow::IndirectCall(target) => match (calls(target, self), target) {
+                    (Ok(Call::Return(value)), _) => {
                         self.returned_from_call(value);
                         pc += 4;
                     }
-                    Ok(Call::Stop) => {
-                        return Walk::End(match target {
-                            Some(target) => Ok(Exit::Stopped(target)),
-                            None => Err(Unresolved("stopped-at-unknown-call")),
-                        });
+                    (Ok(Call::Stop), Some(target)) => {
+                        return Walk::End(Ok(Exit::Stopped(target)));
                     }
-                    Err(unresolved) => return Walk::End(Err(unresolved)),
+                    (Ok(Call::Enter), Some(target)) => pc = self.enter(pc, target),
+                    (Ok(Call::Stop | Call::Enter), None) => {
+                        return Walk::End(Err(Unresolved("stopped-at-unknown-call")));
+                    }
+                    (Err(unresolved), _) => return Walk::End(Err(unresolved)),
                 },
-                Flow::Return => return Walk::End(Ok(Exit::Returned)),
+                Flow::Return => match self.frames.pop() {
+                    Some(caller) => pc = caller,
+                    None => return Walk::End(Ok(Exit::Returned)),
+                },
                 Flow::Trap => return Walk::End(Ok(Exit::Trapped)),
             }
         }
@@ -570,18 +595,27 @@ impl<'a> Machine<'a> {
         Walk::End(Err(Unresolved("step-limit")))
     }
 
+    /// A branch out of the decoded code: the call, then a return from the present function. The
+    /// address where the path continues, or `None` when the outermost function returned.
     fn tail_call(
         &mut self,
         target: u64,
         calls: &mut PathCalls<'_, 'a>,
-    ) -> Result<Exit, Unresolved> {
-        match calls(Some(target), self)? {
+    ) -> Result<Option<u64>, Result<Exit, Unresolved>> {
+        match calls(Some(target), self).map_err(Err)? {
             Call::Return(value) => {
                 self.returned_from_call(value);
-                Ok(Exit::Returned)
+                Ok(self.frames.pop())
             }
-            Call::Stop => Ok(Exit::Stopped(target)),
+            Call::Stop => Err(Ok(Exit::Stopped(target))),
+            Call::Enter => Err(Err(Unresolved("outside-code"))),
         }
+    }
+
+    /// Enter the call at `pc` to `target`, and return where the path continues.
+    fn enter(&mut self, pc: u64, target: u64) -> u64 {
+        self.frames.push(pc + 4);
+        target
     }
 
     /// A called function returned `value`; caller-saved registers and flags are unknown.
@@ -2569,5 +2603,120 @@ mod tests {
         assert_eq!(returned(&code, &data, 1), Ok(Some(1)));
         assert_eq!(returned(&code, &data, 2), Ok(Some(1)));
         assert_eq!(returned(&code, &data, 3), Ok(Some(0)));
+    }
+
+    /// Runs `code` from 0x100 with every call to an address in `entered` entered and every other
+    /// call returning its target, and gives each path's end with `x0` and the other calls made.
+    fn entered_paths(code: &Code, entered: &[u64]) -> Vec<(Result<Exit, Unresolved>, Option<u64>)> {
+        let data = ReadOnlyData::default();
+        let mut paths: Vec<_> = Machine::new(code, &data)
+            .run_paths(0x100, &mut |target, _| {
+                Ok(match target {
+                    Some(target) if entered.contains(&target) => Call::Enter,
+                    target => Call::Return(target),
+                })
+            })
+            .into_iter()
+            .map(|path| (path.end, path.machine.register(0)))
+            .collect();
+        paths.sort_by_key(|(_, value)| *value);
+        paths
+    }
+
+    #[test]
+    fn an_entered_call_runs_the_callee_and_returns_after_the_call() {
+        let code = rows(&[
+            (0x100, "bl", "#0x200"),
+            (0x104, "add", "x0,x0,#1"),
+            (0x108, "ret", ""),
+            (0x200, "bl", "#0x300"),
+            (0x204, "add", "x0,x0,#0x10"),
+            (0x208, "ret", ""),
+            (0x300, "mov", "x0,#0x100"),
+            (0x304, "ret", ""),
+        ]);
+
+        assert_eq!(
+            entered_paths(&code, &[0x200, 0x300]),
+            [(Ok(Exit::Returned), Some(0x111))]
+        );
+        assert_eq!(
+            entered_paths(&code, &[0x200]),
+            [(Ok(Exit::Returned), Some(0x311))]
+        );
+    }
+
+    #[test]
+    fn a_fork_inside_an_entered_call_returns_to_the_caller_on_each_path() {
+        let code = rows(&[
+            (0x100, "bl", "#0x200"),
+            (0x104, "add", "x0,x0,#1"),
+            (0x108, "ret", ""),
+            (0x200, "mov", "x0,#0x10"),
+            (0x204, "cbz", "x5,#0x20c"),
+            (0x208, "mov", "x0,#0x20"),
+            (0x20c, "ret", ""),
+        ]);
+
+        assert_eq!(
+            entered_paths(&code, &[0x200]),
+            [
+                (Ok(Exit::Returned), Some(0x11)),
+                (Ok(Exit::Returned), Some(0x21))
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tail_call_inside_an_entered_call_returns_from_that_call_only() {
+        let code = rows(&[
+            (0x100, "bl", "#0x200"),
+            (0x104, "bl", "#0x900"),
+            (0x108, "ret", ""),
+            (0x200, "b", "#0x800"),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut calls = Vec::new();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |target, machine| {
+            calls.push((target, machine.entered_calls().collect::<Vec<_>>()));
+            Ok(match target {
+                Some(0x200) => Call::Enter,
+                target => Call::Return(target),
+            })
+        });
+
+        assert_eq!(
+            calls,
+            [
+                (Some(0x200), vec![]),
+                (Some(0x800), vec![0x100]),
+                (Some(0x900), vec![])
+            ]
+        );
+        assert_eq!(returned_values(&paths), [Some(0x900)]);
+    }
+
+    #[test]
+    fn a_tail_jump_into_an_entered_function_returns_to_the_first_caller() {
+        let code = rows(&[
+            (0x100, "bl", "#0x200"),
+            (0x104, "add", "x0,x0,#1"),
+            (0x108, "ret", ""),
+            (0x200, "b", "#0x300"),
+            (0x300, "mov", "x0,#0x40"),
+            (0x304, "ret", ""),
+        ]);
+
+        assert_eq!(
+            entered_paths(&code, &[0x200]),
+            [(Ok(Exit::Returned), Some(0x41))]
+        );
+        assert_eq!(
+            entered_paths(
+                &rows(&[(0x100, "bl", "#0x200"), (0x104, "ret", "")]),
+                &[0x200]
+            ),
+            [(Err(Unresolved("outside-code")), None)]
+        );
     }
 }

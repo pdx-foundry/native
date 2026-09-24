@@ -130,18 +130,26 @@ fn m45_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
-    let registries = binding.family_registries().unwrap();
-    assert_eq!(
-        registries,
-        [
-            "common/buildings",
-            "common/bypass",
-            "common/districts",
-            "common/megastructures",
-            "common/situations",
-            "common/zones",
-        ]
-    );
+    let index = binding.analysis.as_ref().unwrap().family_index().unwrap();
+    let registries: Vec<String> = index
+        .registries
+        .iter()
+        .filter(|(_, code)| !code.roots.is_empty())
+        .map(|(name, _)| name.clone())
+        .collect();
+    for generator in [
+        "common/buildings",
+        "common/bypass",
+        "common/districts",
+        "common/megastructures",
+        "common/situations",
+        "common/zones",
+    ] {
+        assert!(
+            registries.iter().any(|name| name == generator),
+            "{generator}"
+        );
+    }
     let table = binding.modifier_table_binding(&registries).unwrap();
     assert_eq!(table.documentation_entry, 0x100972384);
     assert_eq!(table.definitions, 0x10329da80);

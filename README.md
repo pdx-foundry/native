@@ -35,9 +35,10 @@ the script-list commands, through their callers. Each declaration has the scopes
 declares; which scope types a target argument accepts is not part of it. A registration that it
 cannot follow, and unreadable documentation, are gaps. `modifiers` covers direct
 modifier definitions; modifier families that content generates are gaps. `modifier_families`
-gives the name templates that one registry's database generator registers for each item, such as
-`{key}_ship_windup_mult`; apply `ModifierFamily::name_for` to item keys. Other generating code is
-not joined to a registry and is counted as a gap. Category tags are intended-use tags, not where a
+gives the name templates that one registry's code registers for each item, such as
+`{key}_ship_windup_mult`: its database generator, its post-read code and the shared helpers that
+they call. Apply `ModifierFamily::name_for` to item keys. Generating code that is not joined to a
+registry is counted as a gap, with the reason. Category tags are intended-use tags, not where a
 modifier takes effect. `scopes` groups keywords only by the engine's
 keyword-to-scope map; a keyword that matches several types, such as `carrier`, is a group.
 `scope_links` gives declared input and output scopes for each link, including the links that take

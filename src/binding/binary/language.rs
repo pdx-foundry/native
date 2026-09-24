@@ -212,9 +212,7 @@ pub(in crate::binding) fn localization(
         pointers,
         bound_slots,
     };
-    let data = loaded_data(bytes, &fixups, |segment, kind| {
-        is_read_only(kind) || segment == "__DATA_CONST"
-    })?;
+    let data = constant_data(bytes, pointers, bound_slots)?;
     let rows = loaded_data(bytes, &fixups, |segment, kind| {
         is_read_only(kind) || segment == "__DATA_CONST" || segment == "__DATA"
     })?;
@@ -271,6 +269,22 @@ fn is_read_only(kind: SectionKind) -> bool {
         kind,
         SectionKind::ReadOnlyData | SectionKind::ReadOnlyString
     )
+}
+
+/// The read-only sections and `__DATA_CONST` as the loader leaves them: rebased pointers, such
+/// as vtable entries and global offset table slots, hold their targets.
+pub(super) fn constant_data(
+    bytes: &[u8],
+    pointers: &BTreeMap<u64, u64>,
+    bound_slots: &BTreeSet<u64>,
+) -> Result<ReadOnlyData, AnalysisError> {
+    let fixups = Fixups {
+        pointers,
+        bound_slots,
+    };
+    loaded_data(bytes, &fixups, |segment, kind| {
+        is_read_only(kind) || segment == "__DATA_CONST"
+    })
 }
 
 /// The chained-fixup facts that the loaded-data views need.
