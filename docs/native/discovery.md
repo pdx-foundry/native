@@ -562,7 +562,7 @@ lacks. It compared names only. None is missing:
   `CStaticLexer::AddDynamicToken` compares lower-cased characters when it looks a token up; that
   content reads resolve the lower-case spelling through the same lookup is not established here.
 - The 179 templates, expanded over the installed content keys of each `<type>` and the values of
-  each enum, give 37,565 names; 51 are absent. 29 come from expanding a subtype over its whole type
+  each enum, give 37,565 names; 51 are absent. 37 come from expanding a subtype over its whole type
   (archetypes with `uses_modifiers = no` or `robotic = yes`, leader classes without
   `leader_capacity`, patrons without `add_modifier = yes`) and 3 from the script taking
   `random_list` as a planet class. The other 11 are `job_<job>_automated_workforce_mult` for the
