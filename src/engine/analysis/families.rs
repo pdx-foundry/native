@@ -26,6 +26,10 @@
 //! table (`CModifierGeneratorBase::GenerateFrom`). The run holds a table with the mask of each
 //! type that a direct definition declares; its other fields are unknown.
 //!
+//! The model writes unresolved text as the empty text, so that the code runs on; the text stays
+//! unresolved in every name. After that, a path takes branches that the real text may not take,
+//! so only its registrations before that point count for the condition.
+//!
 //! An item's key does not change after its constructor. A store to an unknown address or a call
 //! that the model does not follow therefore leaves the key object and its text as they were.
 //!
@@ -40,7 +44,7 @@ pub mod joins;
 mod strings;
 
 pub use joins::Receiver;
-use strings::ITEM_KEY;
+use strings::{ASSUMED_TEXT, ITEM_KEY};
 pub(super) use strings::{Arena, Effect, Model, Node};
 pub use strings::{Part, StringFunctions, StringLayout};
 
@@ -426,6 +430,9 @@ type Template = (Vec<Part>, Option<u64>, Option<u64>);
 struct PathSummary {
     ending: Ending,
     records: BTreeSet<Record>,
+    /// The chain and name of each registration made before the path first assumed text: only
+    /// these show that the path registers them.
+    established: BTreeSet<(Vec<u64>, Node)>,
 }
 
 /// Run the root over one item whose key has `form`, and summarize each path.
@@ -437,7 +444,7 @@ fn root_paths(
     form: KeyForm,
 ) -> Vec<PathSummary> {
     let mut machine = Machine::new(&registry.code, &input.data);
-    let mut table = input
+    let table = input
         .definitions
         .as_ref()
         .map(|definitions| DefinitionTable::hold(&mut machine, definitions));
@@ -458,7 +465,7 @@ fn root_paths(
 
     let model = model(input, form);
     let mut arena = Arena::default();
-    let mut records: Vec<(Vec<u64>, u64, Option<u64>)> = Vec::new();
+    let mut records: Vec<(Vec<u64>, u64, Option<u64>, bool)> = Vec::new();
     let paths = machine.run_paths(root.function, &mut |target, machine| match target {
         Some(target) if target == input.registration => {
             let site = machine.register(30).ok_or(Unresolved("call-site"))? - 4;
@@ -466,12 +473,14 @@ fn root_paths(
             calls.push(site);
             let name = model.object_node(machine, machine.register(1), &mut arena);
             let mask = machine.read(machine.stack_pointer() + input.category_offset, 4);
-            records.push((calls, name, mask));
-            if let (Some(table), Some(modifier_type)) = (&mut table, machine.register(0)) {
-                table.register(machine, modifier_type, mask);
-            }
+            let assumed = machine.labelled(ASSUMED_TEXT).is_some();
+            records.push((calls, name, mask, assumed));
 
+            // The path's own registrations so far, so forked paths never share a new type.
             let count = machine.labelled(RECORD_COUNT).unwrap_or(0);
+            if let (Some(table), Some(argument)) = (&table, machine.register(0)) {
+                table.register(machine, argument, count, mask);
+            }
             machine.label(RECORD_COUNT + 1 + count, records.len() as u64 - 1);
             machine.label(RECORD_COUNT, count + 1);
             Ok(Call::Return(Some(1)))
@@ -484,16 +493,21 @@ fn root_paths(
         .into_iter()
         .map(|path| {
             let count = path.machine.labelled(RECORD_COUNT).unwrap_or(0);
-            let records = (0..count)
+            let made: Vec<_> = (0..count)
                 .filter_map(|index| path.machine.labelled(RECORD_COUNT + 1 + index))
-                .map(|record| {
-                    let (calls, name, mask) = &records[record as usize];
-                    (calls.clone(), arena.node(*name).clone(), *mask)
-                })
+                .map(|record| &records[record as usize])
                 .collect();
             PathSummary {
                 ending: ending(&input.strings, &path.end),
-                records,
+                records: made
+                    .iter()
+                    .map(|(calls, name, mask, _)| (calls.clone(), arena.node(*name).clone(), *mask))
+                    .collect(),
+                established: made
+                    .iter()
+                    .filter(|(.., assumed)| !assumed)
+                    .map(|(calls, name, ..)| (calls.clone(), arena.node(*name).clone()))
+                    .collect(),
             }
         })
         .collect()
@@ -503,9 +517,8 @@ fn root_paths(
 struct DefinitionTable<'a> {
     definitions: &'a Definitions,
     array: u64,
-    /// The next modifier type that a registration creates.
-    next_type: u64,
-    last_type: u64,
+    /// The type that a path's first registration creates.
+    first_dynamic: u64,
 }
 
 impl<'a> DefinitionTable<'a> {
@@ -530,8 +543,7 @@ impl<'a> DefinitionTable<'a> {
         let table = Self {
             definitions,
             array,
-            next_type: first_dynamic,
-            last_type,
+            first_dynamic,
         };
         for (&modifier_type, &mask) in &definitions.masks {
             table.write_mask(machine, modifier_type, Some(mask));
@@ -539,16 +551,16 @@ impl<'a> DefinitionTable<'a> {
         table
     }
 
-    /// A registration creates a new type: write it to the type argument at `argument`, and its
-    /// mask into its definition.
-    fn register(&mut self, machine: &mut Machine, argument: u64, mask: Option<u64>) {
-        if self.next_type > self.last_type {
+    /// The path's registration number `index` creates a new type: write it to the type argument
+    /// at `argument`, and its mask into its definition.
+    fn register(&self, machine: &mut Machine, argument: u64, index: u64, mask: Option<u64>) {
+        if index >= DYNAMIC_TYPES {
             machine.forget(argument, 4);
             return;
         }
-        machine.write(argument, 4, self.next_type);
-        self.write_mask(machine, self.next_type, mask);
-        self.next_type += 1;
+        let modifier_type = self.first_dynamic + index;
+        machine.write(argument, 4, modifier_type);
+        self.write_mask(machine, modifier_type, mask);
     }
 
     fn write_mask(&self, machine: &mut Machine, modifier_type: u64, mask: Option<u64>) {
@@ -612,7 +624,7 @@ fn root_families(root: &Root, runs: &[Vec<PathSummary>]) -> (Vec<Family>, Vec<&'
 }
 
 /// `Always` for a database root when, in every run, no path failed, some path returned, and
-/// every returned path registered `name` at `calls`.
+/// every returned path registered `name` at `calls` before it assumed any text.
 fn condition(root: &Root, runs: &[Vec<PathSummary>], calls: &[u64], name: &Node) -> Condition {
     if root.receiver == Receiver::Item {
         return Condition::ItemRoot;
@@ -626,9 +638,9 @@ fn condition(root: &Root, runs: &[Vec<PathSummary>], calls: &[u64], name: &Node)
         !paths.iter().any(|path| path.ending == Ending::Failed)
             && !returned.is_empty()
             && returned.iter().all(|path| {
-                path.records
+                path.established
                     .iter()
-                    .any(|(at, registered, _)| at == calls && registered == name)
+                    .any(|(at, registered)| at == calls && registered == name)
             })
     });
 
@@ -1141,6 +1153,55 @@ mod tests {
         assert_eq!(Fixture::only_family(&input), Err(Unresolved("name")));
     }
 
+    /// Negative control: unresolved text that the code builds before the registration is
+    /// written as the empty text, so that path cannot establish that every item generates the
+    /// family.
+    #[test]
+    fn a_path_on_assumed_text_never_establishes_always() {
+        let mut generator = concatenating_generator();
+        patch(&mut generator, 0x458, "b", "#0x4a0");
+        generator.extend(rows(
+            0x4a0,
+            &[
+                ("add", "x0,sp,#0x60"),
+                ("ldr", "x1,[x21,#0x100]"),
+                ("bl", &format!("#{FROM_TEXT:#x}")),
+                ("mov", "w8,#0x40000000"),
+                ("b", "#0x45c"),
+            ],
+        ));
+        let input = family_input(&[constructor(0x10), generator], &[0x464], Some(CONSTRUCTOR));
+        let family = Fixture::only_family(&input).unwrap();
+        assert_eq!(
+            family.parts,
+            [
+                literal("planet_"),
+                Part::ItemKey,
+                literal("_build_speed_mult")
+            ]
+        );
+        assert_eq!(family.condition, Condition::Unresolved);
+
+        // The same text after the registration does not change that the item registers it.
+        let mut generator = concatenating_generator();
+        patch(&mut generator, 0x468, "b", "#0x4c0");
+        generator.extend(rows(
+            0x4c0,
+            &[
+                ("add", "x0,sp,#0x60"),
+                ("ldr", "x1,[x21,#0x100]"),
+                ("bl", &format!("#{FROM_TEXT:#x}")),
+                ("add", "x27,x27,#8"),
+                ("b", "#0x46c"),
+            ],
+        ));
+        let input = family_input(&[constructor(0x10), generator], &[0x464], Some(CONSTRUCTOR));
+        assert_eq!(
+            Fixture::only_family(&input).unwrap().condition,
+            Condition::Always
+        );
+    }
+
     /// Post-freeze revision 2: a copy of unknown length into a string may change it.
     #[test]
     fn a_copy_of_unknown_length_leaves_the_name_unresolved() {
@@ -1441,6 +1502,68 @@ mod tests {
                 mask: Some(2),
                 condition: Condition::ItemRoot,
             })
+        );
+    }
+
+    /// Each path creates its own modifier types: two sibling paths that register once both get
+    /// the first new type, so both register the second family.
+    #[test]
+    fn forked_paths_create_their_own_modifier_types() {
+        let generator = rows(
+            GENERATOR,
+            &[
+                ("sub", "sp,sp,#0x80"),
+                ("ldr", "x8,[x0,#0x48]"),
+                ("ldr", "x19,[x8]"),
+                ("ldrb", "w9,[x19,#0x500]"),
+                ("cbz", "w9,#0x418"),
+                ("nop", ""),
+                // 0x418
+                ("add", "x0,sp,#0x20"),
+                ("add", "x1,x19,#0x10"),
+                ("str", "wzr,[sp]"),
+                ("bl", &format!("#{REGISTER:#x}")),
+                ("ldr", "w8,[sp,#0x20]"),
+                ("cbnz", "w8,#0x45c"),
+                ("add", "x0,sp,#0x40"),
+                ("adrp", "x1,#0x5000"),
+                ("add", "x1,x1,#0"),
+                ("bl", &format!("#{FROM_TEXT:#x}")),
+                ("add", "x0,sp,#0x40"),
+                ("add", "x1,x19,#0x10"),
+                ("bl", &format!("#{APPEND_STRING:#x}")),
+                ("add", "x0,sp,#0x20"),
+                ("add", "x1,sp,#0x40"),
+                ("str", "wzr,[sp]"),
+                // 0x458
+                ("bl", &format!("#{REGISTER:#x}")),
+                // 0x45c
+                ("add", "sp,sp,#0x80"),
+                ("ret", ""),
+            ],
+        );
+        let mut fixture = family_input(
+            &[constructor(0x10), generator],
+            &[0x424, 0x458],
+            Some(CONSTRUCTOR),
+        );
+        fixture.input.definitions = Some(Definitions {
+            masks: BTreeMap::new(),
+            ..definitions()
+        });
+        let families: Vec<_> = fixture
+            .analyze()
+            .unwrap()
+            .families
+            .into_iter()
+            .map(|family| (family.parts, family.condition))
+            .collect();
+        assert_eq!(
+            families,
+            [
+                (vec![literal("planet_"), Part::ItemKey], Condition::Always),
+                (vec![Part::ItemKey], Condition::Always),
+            ]
         );
     }
 

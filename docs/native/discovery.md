@@ -665,14 +665,20 @@ two roots give is `Always` when one root establishes it.
 its length equals the text's length), `operator+=(char)`, `Reserve` (no effect), and
 `basic_string::__assign_external`, which only reads its text. Before this, an unfollowed
 `__assign_external` of the key into `CJobType+0x920` made the key unresolved. An all-zero string
-object is the empty text.
+object is the empty text. The model writes unresolved text as the empty text so that the code
+runs on (its label keeps it unresolved in every name). From review: after that point a path takes
+the branches of an empty text, which the real text may not take, so only the registrations that
+the path made before it count for `Always`. Leaving the length unknown instead removed the
+economic-category families: the inline copy of `"mod_"` + an unknown field then stores through an
+unknown address, which makes the run's whole memory unknown.
 
 **Definition table.** `GenerateFrom(base, prefix, key, suffix)` reads the flags and the category
 mask of `_Definitions[base]` (mask at `+0x84`, the SDK-572 layout). `base` is a constant, such as
 `0x83` for the district `max_add`. The modifier method now records the type (`w1`) of each direct
 `AddDefinition` call. The run holds a definition array with the mask of each declared type, and
 room for 256 more. The registration writes a new type into its `ModifierType&` argument, as the
-engine does. The stub first left the engine's sentinel `0x23b` there. The code after the call
+engine does. The type is the path's own: its count of registrations, so forked paths never share
+one (from review). The stub first left the engine's sentinel `0x23b` there. The code after the call
 then read `_Definitions[0x23b]`, which was outside the held array; it ended in the item and made
 the key unresolved.
 

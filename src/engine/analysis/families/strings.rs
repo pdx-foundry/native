@@ -192,6 +192,11 @@ pub struct Arena {
 /// The node of the item key; every arena starts with it.
 pub const ITEM_KEY: u64 = 0;
 
+/// The label of a path on which the model wrote unresolved text as the empty text. Its label
+/// keeps the text unresolved, but the code after it took the branches of an empty text, which
+/// the real text may not take. Every text address is below this label.
+pub const ASSUMED_TEXT: u64 = u64::MAX - 1;
+
 impl Default for Arena {
     fn default() -> Self {
         Self {
@@ -368,7 +373,13 @@ impl Model<'_> {
         arena: &Arena,
     ) -> Result<Call, Unresolved> {
         let object = object.ok_or(Unresolved("string-object"))?;
-        let text = arena.node(node).text(self.key).unwrap_or_default();
+        let text = match arena.node(node).text(self.key) {
+            Some(text) => text,
+            None => {
+                machine.label(ASSUMED_TEXT, 1);
+                String::new()
+            }
+        };
         let buffer = machine.allocate(text.len() as u64 + 1);
         for (offset, byte) in text.bytes().enumerate() {
             machine.write(buffer + offset as u64, 1, u64::from(byte));
@@ -584,6 +595,7 @@ mod tests {
         let view = [Some(object), Some(LITERAL), Some(3)];
         let node = call(&model, &mut machine, &mut arena, APPEND_VIEW, view, object);
         assert_eq!(node.parts, [Part::Literal("pop".into())]);
+        assert_eq!(machine.labelled(ASSUMED_TEXT), None);
 
         let character = [Some(object), Some(u64::from(b'_')), None];
         let node = call(
@@ -606,6 +618,7 @@ mod tests {
             object,
         );
         assert!(!node.is_resolved());
+        assert_eq!(machine.labelled(ASSUMED_TEXT), Some(1));
 
         let copy = machine.allocate(0x18);
         let assign = [Some(copy), Some(LITERAL), Some(3)];
