@@ -51,8 +51,8 @@ pub enum GapSubject {
         name: String,
     },
     /// A named item of the question's answer.
-    Item {
-        /// Item name.
+    AnswerItem {
+        /// Item name in this answer.
         name: String,
     },
     /// A localization context, identified independently of its display name.
@@ -87,7 +87,7 @@ impl GapSubject {
         match self {
             Self::Registry { name }
             | Self::Field { name }
-            | Self::Item { name }
+            | Self::AnswerItem { name }
             | Self::LocalizationContext { name, .. }
             | Self::LocalizationLink { name }
             | Self::ScopeType { name, .. }
@@ -103,8 +103,8 @@ impl GapSubject {
         Self::Field { name: name.into() }
     }
 
-    pub(crate) fn item(name: impl Into<String>) -> Self {
-        Self::Item { name: name.into() }
+    pub(crate) fn answer_item(name: impl Into<String>) -> Self {
+        Self::AnswerItem { name: name.into() }
     }
 
     pub(crate) fn fixture_file(name: impl Into<String>) -> Self {

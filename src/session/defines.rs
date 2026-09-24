@@ -39,7 +39,7 @@ fn normalize(outcomes: Vec<SiteOutcome>, build: crate::BuildId) -> Answer<Vec<De
             }
             SiteOutcome::Unresolved { subject, reason } => gaps.push(Gap {
                 kind: GapKind::UnresolvedReader,
-                subject: subject.map(GapSubject::item),
+                subject: subject.map(GapSubject::answer_item),
                 detail: reason.into(),
             }),
         }
@@ -49,7 +49,7 @@ fn normalize(outcomes: Vec<SiteOutcome>, build: crate::BuildId) -> Answer<Vec<De
         if types.len() != 1 {
             gaps.push(Gap {
                 kind: GapKind::UnresolvedReader,
-                subject: Some(GapSubject::item(format!("{namespace}.{name}"))),
+                subject: Some(GapSubject::answer_item(format!("{namespace}.{name}"))),
                 detail: "the engine reads this define with conflicting value types".into(),
             });
             continue;

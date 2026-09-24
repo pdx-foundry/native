@@ -1,8 +1,8 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
 use pdx_native::{
     Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal,
-    EntryScope, Error, GameOptions, GapKind, GenerationCondition, LinkData, LocalizationOutput,
-    Native, OutputScope, ReaderKind, RuleKind, Support,
+    EntryScope, Error, GameOptions, GapKind, GapSubject, GenerationCondition, LinkData,
+    LocalizationOutput, Native, OutputScope, ReaderKind, RuleKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -35,7 +35,7 @@ fn recorded() -> tempfile::TempDir {
         json!({ "Ok": {
             "value": [{ "namespace": "NCamera", "name": "FOV", "value_type": "Float" }],
             "completeness": "Partial",
-            "gaps": [{ "kind": "UnresolvedReader", "subject": {"kind": "field", "name": "NGraphics.ORBIT_HSV"},
+            "gaps": [{ "kind": "UnresolvedReader", "subject": {"kind": "answer_item", "name": "NGraphics.ORBIT_HSV"},
                 "detail": "reader path exceeds the table-search limit" }],
             "source": source()
         }}),
@@ -92,7 +92,7 @@ fn recorded() -> tempfile::TempDir {
             "completeness": "Partial",
             "gaps": [
                 { "kind": "UnnamedDeclaration", "subject": null, "detail": "runtime token" },
-            { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "missing"}, "detail": "documentation" }
+            { "kind": "UnresolvedPath", "subject": {"kind": "answer_item", "name": "missing"}, "detail": "documentation" }
             ],
             "source": source()
         }}),
@@ -108,7 +108,7 @@ fn recorded() -> tempfile::TempDir {
             "completeness": "Partial",
             "gaps": [
                 { "kind": "UnnamedDeclaration", "subject": null, "detail": "generated family" },
-                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "unfollowed"}, "detail": "category tags" }
+                { "kind": "UnresolvedPath", "subject": {"kind": "answer_item", "name": "unfollowed"}, "detail": "category tags" }
             ],
             "source": source()
         }}),
@@ -233,11 +233,10 @@ fn defines_read_recorded_names_types_gaps_and_basis() {
         pdx_native::DefineValueType::Float
     );
     assert_eq!(
-        answer.gaps[0]
-            .subject
-            .as_ref()
-            .map(|subject| subject.name()),
-        Some("NGraphics.ORBIT_HSV")
+        answer.gaps[0].subject.as_ref(),
+        Some(&GapSubject::AnswerItem {
+            name: "NGraphics.ORBIT_HSV".into(),
+        })
     );
 
     fs::remove_file(root.path().join("defines.json")).unwrap();
@@ -277,8 +276,8 @@ fn localization_declarations_read_recorded_joins_and_outputs() {
             },
             "completeness": "Partial",
             "gaps": [
-                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "planet"}, "detail": "scope join" },
-                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "MainAttacker"}, "detail": "dead object" }
+                { "kind": "UnresolvedPath", "subject": {"kind": "scope_type", "id": "planet-id", "name": "planet"}, "detail": "scope join" },
+                { "kind": "UnresolvedPath", "subject": {"kind": "localization_link", "name": "MainAttacker"}, "detail": "dead object" }
             ],
             "source": source()
         }}),
@@ -286,6 +285,16 @@ fn localization_declarations_read_recorded_joins_and_outputs() {
 
     let answer = native.localization_declarations().unwrap();
     assert_eq!(answer.source.basis, Basis::Recorded);
+    assert!(
+        matches!(answer.gaps[0].subject.as_ref(), Some(GapSubject::ScopeType { id, name })
+        if serde_json::to_value(id).unwrap() == json!("planet-id") && name == "planet")
+    );
+    assert_eq!(
+        answer.gaps[1].subject.as_ref(),
+        Some(&GapSubject::LocalizationLink {
+            name: "MainAttacker".into(),
+        })
+    );
     let localization = answer.value;
     let scopes: Vec<_> = localization
         .contexts
@@ -541,7 +550,7 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
             ],
             "completeness": "Partial",
             "gaps": [
-                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "on_press_begin"},
+                { "kind": "UnresolvedPath", "subject": {"kind": "answer_item", "name": "on_press_begin"},
                   "detail": "a call site passes a command that builds its own scope" },
                 { "kind": "UnnamedDeclaration", "subject": null,
                   "detail": "31 call sites could not be named" }
@@ -561,7 +570,7 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
             ],
             "completeness": "Partial",
             "gaps": [
-                { "kind": "UnresolvedPath", "subject": {"kind": "item", "name": "leader_election_weight"},
+                { "kind": "UnresolvedPath", "subject": {"kind": "answer_item", "name": "leader_election_weight"},
                   "detail": "no followed call site" }
             ],
             "source": source()

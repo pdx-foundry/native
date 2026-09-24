@@ -85,7 +85,7 @@ impl Native {
 }
 
 pub(super) fn gap(kind: GapKind, subject: Option<&str>, detail: impl Into<String>) -> Gap {
-    gap_for_subject(kind, subject.map(GapSubject::item), detail)
+    gap_for_subject(kind, subject.map(GapSubject::answer_item), detail)
 }
 
 pub(super) fn registry_gap(

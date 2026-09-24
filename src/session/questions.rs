@@ -268,7 +268,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                         if *link != "scope-table" {
                             gaps.push(Gap {
                                 kind: GapKind::UnresolvedPath,
-                                subject: Some(GapSubject::item(name.clone())),
+                                subject: Some(GapSubject::answer_item(name.clone())),
                                 detail: format!("scope declaration not followed at {link}"),
                             });
                         }
@@ -294,7 +294,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                 what,
             } => gaps.push(Gap {
                 kind: GapKind::UnresolvedPath,
-                subject: Some(GapSubject::item(name.clone())),
+                subject: Some(GapSubject::answer_item(name.clone())),
                 detail: format!("{what} could not be read"),
             }),
             Site::Unreadable { name: None, .. } => gaps.push(Gap {
@@ -496,7 +496,7 @@ mod declaration_tests {
                 .gaps
                 .iter()
                 .any(|gap| gap.kind == GapKind::UnresolvedPath
-                    && gap.subject == Some(GapSubject::item("missing")))
+                    && gap.subject == Some(GapSubject::answer_item("missing")))
         );
     }
 
