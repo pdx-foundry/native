@@ -106,6 +106,18 @@ def string(process, address):
     return value
 
 
+def long_cstring(tag):
+    """Bit 7 of a CString's tag byte says that it holds a pointer to its text."""
+    return tag & 128
+
+
+def cstring(process, storage, tag_offset):
+    """The text of the CString at `storage`: in place, or behind its pointer."""
+    tag = uint(process, storage + tag_offset, 1)
+    address = uint(process, storage) if long_cstring(tag) else storage
+    return string(process, address)
+
+
 def hook_state():
     return {name: dict(enabled=bp.IsEnabled(), locations=bp.GetNumLocations(),
                        resolved=bp.GetNumResolvedLocations(), hits=bp.GetHitCount())
@@ -121,9 +133,7 @@ def registry_begin(frame):
     registry_owner = register(frame, request['machine']['registers']['owner'])
     if not registry_owner:
         raise RuntimeError('registry loader receiver is null')
-    storage = registry_owner + registry['directory_offset']
-    address = uint(process, storage) if uint(process, storage + registry['string_tag_offset'], 1) & 128 else storage
-    directory = string(process, address)
+    directory = cstring(process, registry_owner + registry['directory_offset'], registry['string_tag_offset'])
     if directory != registry['directory']:
         raise RuntimeError('registry loader directory mismatch')
     hook = process.GetTarget().BreakpointCreateByAddress(register(frame, request['machine']['registers']['return']))
@@ -146,10 +156,7 @@ def registry_snapshot(frame):
     owner = registry_owner
     if not owner:
         raise RuntimeError('registry receiver is null')
-    def cstring(address):
-        storage = uint(process, address) if uint(process, address + registry['string_tag_offset'], 1) & 128 else address
-        return string(process, storage)
-    directory = cstring(owner + registry['directory_offset'])
+    directory = cstring(process, owner + registry['directory_offset'], registry['string_tag_offset'])
     if directory != registry['directory']:
         raise RuntimeError('registry receiver directory mismatch: ' + directory)
     emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
@@ -169,7 +176,7 @@ def registry_snapshot(frame):
         obj = uint(process, data + registry['pointer_size'] * index)
         if not obj or obj % registry['pointer_size'] or obj in objects:
             raise RuntimeError('invalid or duplicate registry object')
-        key = cstring(obj + registry['key_offset'])
+        key = cstring(process, obj + registry['key_offset'], registry['string_tag_offset'])
         if not key or key in keys or any(character.isspace() or ord(character) < 32 for character in key):
             raise UnsupportedKeyLayout('item key layout not established: empty, duplicate, or invalid item key')
         keys.add(key)
@@ -275,13 +282,11 @@ class FixtureObserver:
     def location(self, process, reader):
         lexer = uint(process, reader + self.bindings['reader_lexer_offset'])
         source = uint(process, lexer + self.bindings['lexer_file_offset'])
-        storage = source + self.bindings['file_name_offset']
-        address = uint(process, storage) if uint(process, storage + self.bindings['string_tag_offset'], 1) & 128 else storage
-        return string(process, address), uint(process, source + self.bindings['file_line_offset'], 4)
+        file = self.stored_string(process, source + self.bindings['file_name_offset'])
+        return file, uint(process, source + self.bindings['file_line_offset'], 4)
 
     def stored_string(self, process, storage):
-        address = uint(process, storage) if uint(process, storage + self.bindings['string_tag_offset'], 1) & 128 else storage
-        return string(process, address)
+        return cstring(process, storage, self.bindings['string_tag_offset'])
 
     def return_hook(self, frame, name):
         process = frame.GetThread().GetProcess()
@@ -555,7 +560,7 @@ class ModifierObserver:
         """The engine string object at `offset` in `buffer`: short text in place, or a pointer
         and a length when bit 7 of its tag byte is set."""
         tag = buffer[offset + self.binding['string_tag_offset']]
-        if tag & 128:
+        if long_cstring(tag):
             pointer = int.from_bytes(buffer[offset:offset + 8], 'little')
             length = int.from_bytes(buffer[offset + 8:offset + 16], 'little')
             if length > 4096:
