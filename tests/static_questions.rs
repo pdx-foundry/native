@@ -3,10 +3,10 @@
 use pdx_native::internals::registry_field_stops;
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
-    DeclaredTags, Define, EntryContext, EntryScope, Error, Field, GapKind, LinkData,
+    DeclaredTags, Define, EntryContext, EntryScope, Error, Field, GameRule, GapKind, LinkData,
     LocalizationContextReference, LocalizationDeclarations, LocalizationOutput,
-    ModifierDeclaration, ModifierFamily, NamePart, Native, Operation, OutputScope, ReaderKind,
-    RuleKind, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
+    ModifierDeclaration, ModifierFamily, NamePart, Native, OnAction, Operation, OutputScope,
+    ReaderKind, RuleKind, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -566,8 +566,8 @@ fn callbacks_match_the_recorded_m45_inventory() {
     let scopes = native.scopes().unwrap().value;
 
     for answer in [
-        &compact_callbacks(&on_actions),
-        &compact_callbacks(&game_rules),
+        &compact_on_actions(&on_actions),
+        &compact_game_rules(&game_rules),
     ] {
         assert_eq!(
             answer["completeness"] == json!(Completeness::Complete),
@@ -601,11 +601,11 @@ fn callbacks_match_the_recorded_m45_inventory() {
     }
 
     assert_eq!(
-        compact_callbacks(&on_actions),
+        compact_on_actions(&on_actions),
         expected::<Value>("on-actions.json")
     );
     assert_eq!(
-        compact_callbacks(&game_rules),
+        compact_game_rules(&game_rules),
         expected::<Value>("game-rules.json")
     );
 }
@@ -625,27 +625,28 @@ fn entry(context: &EntryContext) -> String {
     )
 }
 
-/// A callback answer with one entry list for each name. Game rules carry their kind.
-fn compact_callbacks<T: serde::Serialize>(answer: &Answer<Vec<T>>) -> Value {
-    let names: serde_json::Map<_, _> = serde_json::to_value(&answer.value)
-        .unwrap()
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|item| {
-            let entries: Vec<_> =
-                serde_json::from_value::<Vec<EntryContext>>(item["entries"].clone())
-                    .unwrap()
-                    .iter()
-                    .map(entry)
-                    .collect();
-            let value = match item.get("kind") {
-                Some(kind) => json!([kind, entries]),
-                None => json!(entries),
-            };
-            (item["name"].as_str().unwrap().to_owned(), value)
-        })
-        .collect();
+/// The on_actions answer with the entry list of each name.
+fn compact_on_actions(answer: &Answer<Vec<OnAction>>) -> Value {
+    compact_callbacks(answer, |on_action| {
+        let entries: Vec<_> = on_action.entries.iter().map(entry).collect();
+        (on_action.name.clone(), json!(entries))
+    })
+}
+
+/// The game rules answer with the kind and entry list of each name.
+fn compact_game_rules(answer: &Answer<Vec<GameRule>>) -> Value {
+    compact_callbacks(answer, |rule| {
+        let entries: Vec<_> = rule.entries.iter().map(entry).collect();
+        (rule.name.clone(), json!([rule.kind, entries]))
+    })
+}
+
+/// A callback answer as its completeness, its gaps and one value for each callback name.
+fn compact_callbacks<T>(
+    answer: &Answer<Vec<T>>,
+    name_and_value: impl Fn(&T) -> (String, Value),
+) -> Value {
+    let names: serde_json::Map<_, _> = answer.value.iter().map(name_and_value).collect();
     let gaps: Vec<_> = answer
         .gaps
         .iter()

@@ -93,6 +93,17 @@ const EXPORTS: &[&str] = &[
     "supervisor",
 ];
 
+/// The `pdx_native::supervisor` members that Atlas may use.
+const SUPERVISOR_EXPORTS: &[&str] = &["serve", "SupervisorError"];
+
+/// The hidden `GameOptions` methods that inject observation faults for Native's own tests.
+const FAULT_HOOKS: &[&str] = &["fault", "fixture_fault", "modifier_fault"];
+
+/// A fault hook, or the hidden `ObservationControl` type that the hooks take.
+fn is_hidden_test_hook(name: &str) -> bool {
+    FAULT_HOOKS.contains(&name) || name == "ObservationControl"
+}
+
 #[derive(Debug)]
 struct Violation {
     file: PathBuf,
@@ -152,12 +163,9 @@ impl Checker {
     fn check_supervisor_tree(&mut self, tree: &UseTree) {
         match tree {
             UseTree::Name(name)
-                if matches!(name.ident.to_string().as_str(), "serve" | "SupervisorError") => {}
+                if SUPERVISOR_EXPORTS.contains(&name.ident.to_string().as_str()) => {}
             UseTree::Rename(rename)
-                if matches!(
-                    rename.ident.to_string().as_str(),
-                    "serve" | "SupervisorError"
-                ) => {}
+                if SUPERVISOR_EXPORTS.contains(&rename.ident.to_string().as_str()) => {}
             UseTree::Group(group) => {
                 for item in &group.items {
                     self.check_supervisor_tree(item);
@@ -165,7 +173,7 @@ impl Checker {
             }
             _ => self.reject(
                 "unsupported supervisor export",
-                "only serve and SupervisorError are supported",
+                format!("only {} are supported", SUPERVISOR_EXPORTS.join(" and ")),
             ),
         }
     }
@@ -194,10 +202,7 @@ impl Checker {
                 }
                 TokenTree::Ident(ident) => {
                     let name = ident.to_string();
-                    if matches!(
-                        name.as_str(),
-                        "fault" | "fixture_fault" | "modifier_fault" | "ObservationControl"
-                    ) {
+                    if is_hidden_test_hook(&name) {
                         self.reject("hidden test hook", &name);
                     }
                     if name == "unsafe" {
@@ -209,7 +214,7 @@ impl Checker {
                                 self.check_export(&export.to_string());
                                 if export == "supervisor"
                                     && let Some(member) = path_ident(&tokens, index + 6)
-                                    && !matches!(member.as_str(), "serve" | "SupervisorError")
+                                    && !SUPERVISOR_EXPORTS.contains(&member.as_str())
                                 {
                                     self.reject("unsupported supervisor export", member);
                                 }
@@ -281,11 +286,9 @@ impl<'ast> Visit<'ast> for Checker {
     }
 
     fn visit_expr_method_call(&mut self, expression: &'ast ExprMethodCall) {
-        if matches!(
-            expression.method.to_string().as_str(),
-            "fault" | "fixture_fault" | "modifier_fault"
-        ) {
-            self.reject("hidden test hook", expression.method.to_string());
+        let method = expression.method.to_string();
+        if FAULT_HOOKS.contains(&method.as_str()) {
+            self.reject("hidden test hook", method);
         }
         syn::visit::visit_expr_method_call(self, expression);
     }
@@ -356,7 +359,7 @@ fn check_path(checker: &mut Checker, path: &syn::Path) {
         checker.check_export(name);
         if name == "supervisor"
             && segments.len() > 2
-            && !matches!(segments[2].as_str(), "serve" | "SupervisorError")
+            && !SUPERVISOR_EXPORTS.contains(&segments[2].as_str())
         {
             checker.reject("unsupported supervisor export", &segments[2]);
         }
@@ -368,11 +371,8 @@ fn check_path(checker: &mut Checker, path: &syn::Path) {
     {
         checker.reject("platform branch", "std::env::consts");
     }
-    if segments.iter().any(|name| name == "ObservationControl") {
-        checker.reject("hidden test hook", "ObservationControl");
-    }
     for name in &segments {
-        if matches!(name.as_str(), "fault" | "fixture_fault" | "modifier_fault") {
+        if is_hidden_test_hook(name) {
             checker.reject("hidden test hook", name);
         }
     }
