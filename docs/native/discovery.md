@@ -85,8 +85,91 @@ internal gaps: one per stopped path, plus one per path without a single named to
 | Root `ReadMember` missing or ambiguous (no stop) | 12 | — |
 
 The unknown-flags stops on `b.hi` are the bounded unsigned compare in front of a compiler jump
-table, the shape SDK-563 repairs; the `ldrb` and `ldrh` rows are the table loads. Rerun the
+table, the shape SDK-563 repairs. No path reached a table load, because each stopped at the
+guard. The `ldrb` rows are bit-field loads with a constant register index, not table loads
+([SDK-563](#jump-tables-and-bit-fields-in-the-root-reader-sdk-563) corrects this). Rerun the
 sweep and use `--diff` against a report of this run to count the registries a repair changes.
+
+### Jump tables and bit fields in the root reader (SDK-563)
+
+Date: 2026-09-25, M45-release (executable SHA-256 above). `CMegaStructureType::ReadMember` at
+`0x101122c70` dispatches two token ranges through halfword jump tables:
+
+```text
+mov  w8,#-base            ; 14112 at 0x101122ca4, 17766 at 0x101122dd4
+add  w8,w2,w8             ; the index: token - base, a zero-extended word
+cmp  w8,#last             ; 188 and 19
+b.hi <out of range>
+adrp x9,<table> ; add x9,x9,#off   ; 0x102cd49d8 and 0x102cd4b52, in __TEXT,__const
+adr  x10,<entry base>     ; 0x101122ccc and 0x101122dfc
+ldrh w11,[x9,x8,lsl#1]
+add  x10,x10,x11,lsl#2
+br   x10
+```
+
+165 of the 189 entries in the first table, and 12 of the 20 in the second, reach `0x101123830`,
+which tail-calls `CPersistent::ReadMember`, the verified base rejection. The method follows every
+token in the guarded range to its own case, so a default case is rejected like any other unexpected
+token. The `b.hi` side is split by unsigned intervals of `token - base`. It holds further direct
+comparisons, which gave two more fields: `dismantle_cost` and `ai_weight`.
+
+Every token has a name, so a default slot that reaches a call other than the rejection, such as an
+inherited reader, would give false fields. The ticket's rule, "the most frequent target is the
+default", fails on `CMissionType::ReadMember`. Its table for tokens 11653–11656 has no default slot,
+and `on_fail` and `on_cancel` share one case that reads the same effect member (`+0x430`). That case
+ties for the most frequent target. The method uses a different rule. The switch's default block also
+serves the wide token intervals that no case handles. So a table case whose address a wide interval
+also reaches is the default, and it may only reject. When a wide interval that leaves through
+the table's guard does not end at the rejection, the default may be past its end. A case is then kept only when it joins a known reader,
+which a default does not do. Frequency is not used: a default can hold one slot, and an alias can
+hold as many as the default. In `CMissionType` all wide intervals end at the rejection, so the
+alias gives both fields.
+
+28 of the ticket's 32 table fields reached a reader call once the table was decoded. The other four
+(`tooltip_show_star_resources`, `place_entity_on_planet_plane`, `use_planet_resource` and
+`can_prevent_crisis_terraformation`) are boolean bit fields. The reader copies the bit to a stack
+temporary with `ldr` and `ubfx`, or with `ldrb w8,[x19,x8]` where x8 is a constant, then calls
+`CReader::Read(bool&)`. The walker now reads a register-offset load with a constant index, and it
+forgets the result of `ubfx` and `and`. So these paths reach the call and name their fields. The
+reader join stays missing because the destination is a temporary, not the member. Direct
+comparisons reach the same shape, for example `is_ruined_orbital_ring` and `hide_name`.
+
+**M45-observe** (4.5 beta, no longer catalogued; ARM64 slice at
+`.local/executables/stellaris-m45-observe-arm64`): the same reader used a jump table for tokens
+18066–18115, which held `overclock_loc_key`, `overclock_cooldown`, `dismantle_possible`,
+`dismantle_potential` and `should_ai_dismantle`. The release compiler used direct comparisons for
+these five, so before this repair Native found them on the release build only. The compiler
+chooses between a table and comparisons on each build, so the method must read both.
+
+**Registry population** (`registry-fields/v4`, all 164 registries, `--diff` against the SDK-581
+report of `registry-fields/v3`; the stamp changes on every registry, so the counts below are
+registries whose field lists changed):
+
+| Run | Registries changed | Fields added | Fields removed |
+| --- | ---: | ---: | ---: |
+| Jump tables only | 32 | 300 | 0 |
+| Jump tables and bit-field reads | 38 | 469 | 0 |
+
+The totals stay at 28 complete, 136 partial and 0 failed. Fields go from 878 to 1,347. No
+registry lost a field or changed completeness, and no jump table in the population gave a
+`JumpTable` gap. So each table's default slots reach the verified rejection, or the table has no
+default slot. Queries with an unresolved root path go from 101 to 85. The sweep time was the same, about 65 s.
+
+| Reader kind | Before | After |
+| --- | ---: | ---: |
+| Block | 292 | 379 |
+| Boolean | 86 | 129 |
+| FixedPoint | 28 | 51 |
+| Integer | 62 | 82 |
+| Reference | 7 | 8 |
+| String | 171 | 206 |
+| Unknown | 232 | 492 |
+
+The unknown count grows most, because each bit field now appears with an unestablished reader.
+Of the 492, 477 fields have no single reader identity. Joining a bit-field temporary to its member
+is a separate repair. The `ubfx` stops (84) and the `b.hi` table guards (47) are gone from the stop
+table. Two `b.hi` stops remain in `CEspionageOperationType` and `CStarClass`. Both compare a
+value loaded from the object, not the token, so they correctly stay unknown flags.
 
 ## Reusable reference seam
 

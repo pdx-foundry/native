@@ -1,11 +1,13 @@
 use crate::AnalysisError;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
-    fields::{FieldInput, Function},
+    fields::{DataSection, FieldInput, Function},
 };
+use object::{Object, ObjectSection, SectionKind};
 use std::collections::BTreeMap;
 
-/// Read the selected root and the shared engine token constructor from the same verified buffer.
+/// Read the selected root, the shared engine token constructor and the read-only data that holds
+/// jump tables from the same verified buffer.
 pub(in crate::binding) fn read(
     bytes: &[u8],
     symbols: &[Symbol],
@@ -63,6 +65,37 @@ pub(in crate::binding) fn read(
         symbols: symbols.to_vec(),
         functions,
         strings: strings.clone(),
+        read_only_data: read_only_data(bytes)?,
         gaps,
     })
+}
+
+fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisError> {
+    let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
+    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
+    file.sections()
+        .filter(|section| section.kind() == SectionKind::ReadOnlyData)
+        .map(|section| {
+            let bytes = section.data().map_err(|_| AnalysisError::InvalidRange)?;
+            Ok(DataSection {
+                address: section.address(),
+                bytes: bytes.to_vec(),
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::analysis::analysis_support::{IMAGE_JUMP_TABLE, macho_image};
+
+    #[test]
+    fn the_field_input_holds_the_jump_tables_in_read_only_data() {
+        let sections = read_only_data(&macho_image(6)).unwrap();
+
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].address, 0x1_0000_3000);
+        assert_eq!(sections[0].bytes, IMAGE_JUMP_TABLE);
+    }
 }

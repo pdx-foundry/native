@@ -422,7 +422,7 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         } else {
             continue;
         };
-        seen.insert((kind as u8, Some(field.name.clone())));
+        seen.insert((kind as u8, Some(field.name.clone()), false));
         gaps.push(Gap {
             kind,
             subject: Some(GapSubject::field(field.name.clone())),
@@ -443,9 +443,14 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
                 GapKind::UnresolvedPath,
                 "A path through the registry's reader could not be followed to its end.",
             ),
+            FieldGapKind::JumpTable => (
+                GapKind::UnresolvedPath,
+                "The registry's reader selects some fields through a compiler jump table that could not be decoded.",
+            ),
         };
         let subject = gap.path.and_then(field_of);
-        if seen.insert((kind as u8, subject.clone())) {
+        let table = gap.kind == FieldGapKind::JumpTable;
+        if seen.insert((kind as u8, subject.clone(), table)) {
             gaps.push(Gap {
                 kind,
                 subject: Some(match subject {
@@ -607,6 +612,7 @@ mod field_gap_tests {
             (FieldGapKind::ReaderJoin, GapKind::UnresolvedReader),
             (FieldGapKind::UnresolvedTokenPath, GapKind::UnresolvedPath),
             (FieldGapKind::TokenPartition, GapKind::UnresolvedPath),
+            (FieldGapKind::JumpTable, GapKind::UnresolvedPath),
         ] {
             let registry_wide = public_gaps(vec![FieldGap::new(kind, "reason")]);
             assert_eq!(registry_wide.len(), 1, "{kind:?}");
@@ -643,6 +649,20 @@ mod field_gap_tests {
 
         let kinds: Vec<_> = public.iter().map(|gap| gap.kind).collect();
         assert_eq!(kinds, [GapKind::UnreadableInput, GapKind::UnresolvedReader]);
+    }
+
+    #[test]
+    fn a_jump_table_gap_stays_apart_from_the_general_path_gap() {
+        let public = public_gaps(vec![
+            FieldGap::new(FieldGapKind::UnresolvedTokenPath, "path"),
+            FieldGap::new(FieldGapKind::JumpTable, "jump table at 0x8040"),
+            FieldGap::new(FieldGapKind::JumpTable, "jump table at 0x8080"),
+        ]);
+
+        let details: Vec<_> = public.iter().map(|gap| gap.detail.as_str()).collect();
+        assert_eq!(details.len(), 2);
+        assert!(details[1].contains("jump table"));
+        assert!(!details[1].contains("0x"));
     }
 
     #[test]
