@@ -471,6 +471,14 @@ fn apply(row: &Instruction, state: &mut State, entry: u64) -> Result<(), Unresol
     Ok(())
 }
 
+/// The entry address and instructions of the root function, or `None` when the image has no
+/// single root function or its code does not decode.
+fn decode_root(input: &FieldInput, root: &str) -> Option<(u64, Vec<Instruction>)> {
+    let function = function(input, root)?;
+    let rows = decode(function).ok()?;
+    Some((function.address, rows))
+}
+
 /// Every token path through the root, and the jump tables in it that could not be decoded.
 pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
     let root = format!(
@@ -492,9 +500,7 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
         path: vec![],
         table_case: None,
     };
-    let Some((entry, rows)) = function(input, &root)
-        .and_then(|function| Some((function.address, decode(function).ok()?)))
-    else {
+    let Some((entry, rows)) = decode_root(input, &root) else {
         let missing = Unresolved::new("root-function");
         return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);
     };
