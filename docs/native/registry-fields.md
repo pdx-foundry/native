@@ -17,7 +17,8 @@ cargo run --release --example registry-field-sweep -- --diff before.json report.
 
 Use `--diff` against an earlier report to count the registries that a change affects. The
 starting population, before SDK-563, is in the [Milestone 4 field
-baseline](milestone-4-field-baseline.md) (878 fields).
+baseline](milestone-4-field-baseline.md) (878 fields). SDK-563 changed the field lists of 38
+registries: 469 fields added and none removed, with no change in completeness.
 
 **28 complete, 136 partial and 0 failed** answers, with **1,347 fields**:
 
@@ -130,7 +131,9 @@ these paths reach the call and name their fields. The reader join stays missing,
 destination is a temporary, not the member. Joining the temporary to its member is a separate
 repair.
 
-## Members and shared readers (prototypes)
+## Members and shared readers
+
+These findings are from the prototypes.
 
 - **SDK-487.** Token-dispatch paths are discovered without field or config seeds, and the method
   transfers to AI attitudes. It partitions paths, recovers concrete token readers and records
@@ -178,8 +181,10 @@ commit `efba955e47897cf2b01773ade542ba3289151bd1`):
   category loader reads a `.bin` fixture. The final merged values were not measured, and these
   runs do not establish a general extension policy, physical-file resolution or "last value
   wins".
-- An engine exception before the end marker, with incomplete category fixtures, was not
-  diagnosed.
+- Failed approaches: the observer's overhead was too high in one form, and the observer failed
+  to start in others. The first held-out transfer to the AI budget failed; the owner rule was
+  revised before the economic-plan transfer. An engine exception before the end marker, with
+  incomplete category fixtures, was not diagnosed.
 
 SDK-551 owns custom, nested and late loaders; SDK-552 owns mounted selection and duplicates;
 SDK-543 owns identifier grammar. Symbols and addresses locate evidence on one build only; the
