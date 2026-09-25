@@ -59,7 +59,7 @@ restate what the instruction does.
 
 - [Milestone 2 review](docs/design/milestone-2-review.md) Agreed cuts and repairs across Native, Atlas and pdxscript-rs.
 - [Milestone 2 repairs](docs/native/milestone-2-repair-notes.md) Shared decisions and repair results.
-- [Milestone 2 field sweep](docs/native/milestone-2-registry-sweep.md) Historical results for every discovered registry.
+- [Milestone 2 field sweep](docs/native/milestone-2-registry-sweep.md) Historical v2 totals and their comparison with the Milestone 4 baseline.
 - [Milestone 3 review](docs/design/milestone-3-review.md) Exit-gate findings and preparation for Milestone 4.
 - [Milestone 4 field baseline](docs/native/milestone-4-field-baseline.md) Field and reader counts before Milestone 4 changes.
 - [Reference method retirement](docs/native/reference-method-retirement.md) Removed initializer analysis and retained findings.

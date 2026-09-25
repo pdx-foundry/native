@@ -38,7 +38,7 @@ measurements and Atlas integration checks pass.
 
 ## Review basis
 
-Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Revision 8 (2026-09-24) records Jackson's Milestone 3.5 amendment in [section 8.1](#81-milestone-35-amendment-2026-09-24). Revision 9 (2026-09-25) returns SDK-577 to Milestone 4 in the same section. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
+Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Revision 8 (2026-09-24) records Jackson's Milestone 3.5 amendment in [section 8.1](#81-milestone-35-amendment-2026-09-24). Revision 9 (2026-09-25) returns SDK-577 to Milestone 4 in the same section. Revision 10 (2026-09-25) adds the churn and files-per-operation measurements from SDK-603 and records N12 and N13 as done. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
 
 The findings of `docs/design/native-dx.md` are already ticketed (SDK-579 to SDK-595) and are not repeated; they appear only as dependencies.
 
@@ -72,7 +72,64 @@ One qualification to the Milestone 3 wording: roadmap:134-136 says every loaded 
 
 ### Focus (Native line counts, agent-reported, approximate)
 
-`src/` 37,355 lines (974 Python, about 12,000 in-source tests): `engine/analysis` 17,263 (evaluate 3,006; families 3,505; callbacks 3,469), `binding` 8,310, `engine/operations` 3,557, `session` 3,035. `tests/` 4,367 Rust plus 6,194 JSON; `docs/` 3,898 Markdown plus 15,866 JSON. Functions over 100 lines: `evaluate.rs:791` `step` about 592 (verified); agent-reported: `registry_items.rs:65` 226, `callbacks.rs:254` 193, `dispatch.rs:235` 150, and about ten more between 104 and 157. The evaluator and family modules serve current operations and carry substantial inline tests; no new unreachable feature or supported-path duplication justifies a broad cut. Fixture observation remains the largest feature with the narrowest use (impression). Churn and files per operation: not obtained.
+`src/` 37,355 lines (974 Python, about 12,000 in-source tests): `engine/analysis` 17,263 (evaluate 3,006; families 3,505; callbacks 3,469), `binding` 8,310, `engine/operations` 3,557, `session` 3,035. `tests/` 4,367 Rust plus 6,194 JSON; `docs/` 3,898 Markdown plus 15,866 JSON. Functions over 100 lines: `evaluate.rs:791` `step` about 592 (verified); agent-reported: `registry_items.rs:65` 226, `callbacks.rs:254` 193, `dispatch.rs:235` 150, and about ten more between 104 and 157. The evaluator and family modules serve current operations and carry substantial inline tests; no new unreachable feature or supported-path duplication justifies a broad cut. Fixture observation remains the largest feature with the narrowest use (impression). Churn and files per operation were not obtained in the original review; SDK-603 measured them after acceptance ([below](#churn-and-files-per-operation)).
+
+### Churn and files per operation
+
+Measured on 2026-09-25 for SDK-603. This is historical review evidence, not a gate.
+
+**Ranges.** Native `89820bd..866e2ea`, from the Milestone 2 review revision to this review's
+revision (25 commits). Atlas `01902e4..29546ff`, from the last Atlas commit before `89820bd` to
+the first Atlas commit that pins Native `866e2ea` (10 commits). The data comes from
+`git log --numstat --no-renames --format=@%h <range>`; binary files count zero lines. Areas:
+`src/`, with in-source tests (`tests.rs`, `tests_*.rs` or a `tests/` directory) counted apart;
+`tests/`; docs (`docs/` and other Markdown); other.
+
+**Repository churn.** Distinct files changed, then lines added and removed:
+
+| Area | Native files | Native lines | Atlas files | Atlas lines |
+| --- | ---: | ---: | ---: | ---: |
+| `src/` | 73 | +22,064 −3,648 | 19 | +6,319 −2,124 |
+| In-source tests | 8 | +2,712 −36 | 1 | +253 −0 |
+| `tests/` | 24 | +8,226 −1,394 | 359 | +96,406 −8,597 |
+| Docs | 29 | +15,825 −267 | 13 | +1,384 −459 |
+| Other | 12 | +500 −695 | 29 | +792 −4,407 |
+| Total | 146 | +49,327 −6,040 | 421 | +105,154 −15,587 |
+
+JSON is 20,748 of Native's 55,367 changed lines. The Milestone 2 repair commit `1da4abf` adds
+15,905 lines, 13,628 of them the old sweep JSON; without it, Native has 24 commits, 115 files
+and +33,422 −2,344. In Atlas, JSON is 104,953 of 120,741 changed lines, and 102,167 of those
+are under `tests/`, mostly recorded Native answers in `tests/fixtures/native`. Line churn
+therefore measures recorded data more than operation cost.
+
+**Files per operation.** An operation's introducing commit is the first Native commit whose
+`src/` diff adds `pub fn <name>` or `pub async fn <name>` (`git log --reverse -G`). Pull
+requests are squash-merged, so one commit is one pull request. That commit also carries shared
+refactors and docs, so its count is an upper bound on the operation's cost; later repairs to
+the operation are not attributed. Shared files are the 11 `src/` files that at least four of
+the seven commits touched.
+
+| Operations | Commit | `src/` files (shared) | `tests/` | Docs | Other | Total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `declarations` | `a2c2ada` | 15 (7) | 8 | 7 | 1 | 31 |
+| `modifiers`, `modifier_categories`, `scopes`, `scope_links` | `ff37ef9` | 15 (10) | 9 | 6 | 1 | 31 |
+| `localization_declarations` | `24f24ba` | 16 (9) | 4 | 7 | 1 | 28 |
+| `on_actions`, `game_rules` | `20425ea` | 19 (11) | 5 | 7 | 1 | 32 |
+| `modifier_families` | `aa73780` | 20 (11) | 5 | 8 | 1 | 34 |
+| `defines` | `c7edcf2` | 11 (8) | 4 | 4 | 0 | 19 |
+| `Game::loaded_modifiers` | `72e3de8` | 30 (7) | 2 | 7 | 2 | 41 |
+
+`src/` counts include in-source tests. All seven commits touched `answer.rs`, `lib.rs`,
+`binding/analysis.rs` and `session/questions.rs`. The live operation touched the most files
+because it crosses the protocol, worker and supervisor. The other four operations came before
+the range: `registries`, `registry_fields` and `registry_items` in `2331278` (the
+simplification rewrite, which cannot be attributed per operation) and `observe_fixture` in
+`5c98745`.
+
+In Atlas, one commit, `2721a2f`, first called all 11 operations above (11 `src/` files, 183
+`tests/` files, 202 files in total), so its cost cannot be divided per operation. Atlas first
+called `registries`, `registry_fields` and `observe_fixture` in `1d2ed48` (40 files). Atlas at
+`29546ff` does not call `registry_items`.
 
 ## 3. Acceptance target
 
@@ -359,9 +416,13 @@ Milestone 4.
   no longer takes one; every static answer on M45-release stayed byte-identical. The scheduler
   method is removed, the candidate logic stays, and the table facts and cases are in
   [registry fields](../native/registry-fields.md#scheduler-table-on-m45-release).
-- **N12, A7 and A8:** remove stale wording and unused files after checking references and tests.
-- **N13:** remove the old sweep JSON only after M1 exists and any distinct old findings have a
-  usable retained home. Keep the old Markdown summary.
+- **N12:** done in SDK-603. `.gitattributes` no longer names replay artifacts or the missing
+  `tests/fixtures/**` path.
+- **A7 and A8:** remove stale wording and unused files after checking references and tests.
+- **N13:** done in SDK-603. The old sweep differs from the M1 baseline only in five megastructure
+  fields, already in [registry fields](../native/registry-fields.md#compiler-jump-tables), and in
+  completeness labels. The [Markdown summary](../native/milestone-2-registry-sweep.md) records
+  the comparison and how to retrieve the removed JSON from git.
 - **A9:** G1 is agreed. Remove ticket-number owners and update schema and tests together.
 - **pdxscript-rs:** the documentation-only pin bump is optional.
 
@@ -385,7 +446,6 @@ Milestone 4.
 - SDK-550 waits for SDK-542.
 - Sharing type parsing between `readers.rs` and `binary/defines.rs`: only when SDK-594 shows a common shape; not a prerequisite.
 - Generating hook names from the protocol for Rust and Python (agent-reported duplication): with the next live operation.
-- `git log --stat` churn and files touched per operation: not obtained in the original review; SDK-603 tracks the historical measurement follow-up.
 
 ## What is solid
 
