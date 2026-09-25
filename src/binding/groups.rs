@@ -58,7 +58,7 @@ pub(super) struct RegistryLayout {
 }
 
 impl RegistryLayout {
-    pub(super) fn string_tag_offset(self) -> u64 {
+    pub(super) const fn string_tag_offset(self) -> u64 {
         self.string_tag_offset
     }
 
@@ -71,7 +71,7 @@ impl RegistryLayout {
     }
 }
 
-const M45_TEMPLATE_LAYOUT: RegistryLayout = RegistryLayout {
+pub(super) const M45_TEMPLATE_LAYOUT: RegistryLayout = RegistryLayout {
     directory_offset: 0x10,
     data_offset: 0x48,
     count_offset: 0x54,

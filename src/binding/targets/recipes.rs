@@ -1,5 +1,6 @@
 //! Recipes: which binding groups, live strategy and static layout make up one build's
 //! operations. A recipe is host-neutral data.
+use crate::binding::groups::M45_TEMPLATE_LAYOUT;
 use crate::engine::analysis::callbacks::{CallbackLayout, RuleArray};
 use crate::engine::analysis::localization::TextLayout;
 
@@ -65,7 +66,7 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     dynamic_modifier_category_offset: 0x0,
     event_target_token_offset: 0x58,
     string_object_size: 0x18,
-    short_string_length_offset: 0x17,
+    short_string_length_offset: M45_TEMPLATE_LAYOUT.string_tag_offset(),
     game_text: TextLayout {
         context_offset: 0x8,
         promotion_targets: 0x318,
