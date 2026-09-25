@@ -198,14 +198,9 @@ fn normalized_families(
     ));
 
     value.sort_by_cached_key(|family| (template(family), format!("{:?}", family.category_tags)));
-    let completeness = if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-        Completeness::Complete
-    } else {
-        Completeness::Partial
-    };
     Answer {
         value,
-        completeness,
+        completeness: Completeness::from_gaps(&gaps),
         gaps,
         source: Source::new(build, METHOD, Basis::StaticAnalysis),
     }

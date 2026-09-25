@@ -67,11 +67,7 @@ fn normalize(outcomes: Vec<SiteOutcome>, build: crate::BuildId) -> Answer<Vec<De
     });
     Answer {
         value,
-        completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-            Completeness::Complete
-        } else {
-            Completeness::Partial
-        },
+        completeness: Completeness::from_gaps(&gaps),
         gaps,
         source: Source::new(build, defines::METHOD, Basis::StaticAnalysis),
     }
