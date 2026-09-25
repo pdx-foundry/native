@@ -15,7 +15,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 use super::Native;
-use crate::{Answer, Error, Field};
+use crate::{Answer, Error, Field, Operation};
 
 pub use crate::engine::analysis::fields::{
     Condition, FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RegistryFieldResult, RootField,
@@ -36,10 +36,11 @@ pub struct Run {
 /// recorded answers has no method result: the error is `Error::Unsupported`. The answer is not
 /// written to a recorder.
 pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
-    let result = native.registry_field_result(registry)?;
-
-    Ok(Run {
-        answer: native.registry_field_answer(registry, &result),
-        result,
+    native.method_result(Operation::RegistryFields, || {
+        let result = native.registry_field_result(registry)?;
+        Ok(Run {
+            answer: native.registry_field_answer(registry, &result),
+            result,
+        })
     })
 }

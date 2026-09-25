@@ -213,31 +213,20 @@ impl Game {
             .fixture
             .as_ref()
             .map(crate::FixtureRequest::recorded_subject);
-        let recorder = match &self.backend {
-            GameBackend::Recorded(directory) => {
-                return directory.read("loaded_modifiers", subject.as_deref());
-            }
-            GameBackend::Live { recorder } => recorder.clone(),
-        };
-        let answer = match self.modifiers.clone() {
-            None => Err(Error::Unsupported {
-                operation: crate::Operation::LoadedModifiers,
-                reason: "this session does not read the loaded modifier table; use GameOptions::loaded_modifiers before start_game".into(),
-            }),
-            Some(answer) => match self.restart_idle_time(ReadQuestion::Modifiers).await {
-                Ok(()) => answer,
-                Err(error) => Err(error),
-            },
-        };
-        if let Some(directory) = &recorder {
-            crate::recorded::write(
-                directory,
-                &self.build,
-                "loaded_modifiers",
-                subject.as_deref(),
-                &answer,
-            )?;
-        }
+        self.answer("loaded_modifiers", subject.as_deref(), async |game| {
+            game.loaded_modifiers_from_game().await
+        })
+        .await
+    }
+
+    async fn loaded_modifiers_from_game(
+        &mut self,
+    ) -> Result<crate::Answer<crate::LoadedModifiers>, Error> {
+        let answer = self.modifiers.clone().ok_or_else(|| Error::Unsupported {
+            operation: crate::Operation::LoadedModifiers,
+            reason: "this session does not read the loaded modifier table; use GameOptions::loaded_modifiers before start_game".into(),
+        })?;
+        self.restart_idle_time(ReadQuestion::Modifiers).await?;
         answer
     }
 
@@ -261,31 +250,22 @@ impl Game {
             reason: "Prepare a fixture with GameOptions::fixture before starting the game".into(),
         })?;
         let subject = fixture.recorded_subject();
-        let recorder = match &self.backend {
-            GameBackend::Recorded(directory) => {
-                return directory.read("observe_fixture", Some(&subject));
-            }
-            GameBackend::Live { recorder } => recorder.clone(),
-        };
+        self.answer("observe_fixture", Some(&subject), async |game| {
+            game.fixture_from_game().await
+        })
+        .await
+    }
+
+    async fn fixture_from_game(
+        &mut self,
+    ) -> Result<crate::Answer<crate::FixtureObservation>, Error> {
         let answer = self.paused.fixture.clone().unwrap_or_else(|| {
             Err(Error::Observation {
                 operation: crate::Operation::ObserveFixture,
                 reason: "The supervisor sent no fixture observation".into(),
             })
         });
-        let answer = match self.restart_idle_time(ReadQuestion::Fixture).await {
-            Ok(()) => answer,
-            Err(error) => Err(error),
-        };
-        if let Some(directory) = &recorder {
-            crate::recorded::write(
-                directory,
-                &self.build,
-                "observe_fixture",
-                Some(&subject),
-                &answer,
-            )?;
-        }
+        self.restart_idle_time(ReadQuestion::Fixture).await?;
         answer
     }
 
@@ -339,21 +319,27 @@ impl Game {
         if self.closing || self.state.borrow().finished.is_some() {
             return Err(Error::Closed);
         }
+        self.answer("registry_items", Some(registry), async |game| {
+            game.registry_items_from_game(registry).await
+        })
+        .await
+    }
+
+    /// Answer from recorded files when they are the back end; otherwise read the live session,
+    /// and write the result when a recorder is set.
+    async fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &mut self,
+        question: &str,
+        subject: Option<&str>,
+        live: impl AsyncFnOnce(&mut Self) -> Result<crate::Answer<T>, Error>,
+    ) -> Result<crate::Answer<T>, Error> {
         let recorder = match &self.backend {
-            GameBackend::Recorded(directory) => {
-                return directory.read("registry_items", Some(registry));
-            }
+            GameBackend::Recorded(answers) => return answers.read(question, subject),
             GameBackend::Live { recorder } => recorder.clone(),
         };
-        let answer = self.registry_items_from_game(registry).await;
+        let answer = live(self).await;
         if let Some(directory) = &recorder {
-            crate::recorded::write(
-                directory,
-                &self.build,
-                "registry_items",
-                Some(registry),
-                &answer,
-            )?;
+            crate::recorded::write(directory, &self.build, question, subject, &answer)?;
         }
         answer
     }
