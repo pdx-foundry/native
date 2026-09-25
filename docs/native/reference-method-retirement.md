@@ -4,7 +4,17 @@ The SDK-482 Rust port was removed from the product build at milestone 2 because 
 supported Native operation called it. Its exact M45-observe results are retained as
 [small expected cases](reference-method-cases.json); the executable inputs and original
 27 mutation controls remain in the preserved `typed-extraction` prototype bundle and
-Git history. [Discovery](discovery.md) gives the source revision and retrieval route.
+Git history: experiment `c2258d2ef5bdcb195f6d2a3a88d7a45e2f80cc57`, branch
+`prototype/sdk-482-reference-observations`, source
+`typed-extraction/typed-extraction/reference-observation-prototype/` (see
+[retrieval](retrieval.md)).
+
+The provider selects the Mach-O slice, binds symbols, fixups and stubs, parses ARM64
+instructions, relocates local branches and checks the shape of a complete function. Four compiler
+templates, each checked by hand, keep register widths, aliases, branch destinations, comparisons
+and calls. Only declared input and output locations, global bindings and typed callees are
+parameters; any other code change gives unknown. It is not a general decompiler. The reader
+traversal tracks concrete tokens and owner provenance and stops on unknown calls or state.
 
 | Input shape | Established result | Boundary |
 | --- | --- | --- |
@@ -18,3 +28,11 @@ The two unresolved callee shapes above are separate failures. Neither says that 
 working caller selection, typed-null check, reader join, or linear scan must be
 rewritten. A future public reference operation should start from these cases and
 qualify the missing callee and ownership relationships before claiming more.
+
+Typed database and null names are candidate reference classes. They do not prove the collection's
+element class, content-loader ownership, registration, validation or gameplay. All 27 controls
+passed in the accepted result. They change disassembly in memory, not the executable: wrong owners or registers, clobbers, changed
+comparisons or getters, inverted branches or null selection, changed string layout or type,
+pointer truncation, reader provenance, unknown calls and an unavailable target or owner. `run.py`
+does not launch the game, but needs the pinned installation and Xcode tools, and rewrites its
+outputs; use a restored working copy.
