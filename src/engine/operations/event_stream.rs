@@ -190,20 +190,22 @@ pub(crate) fn read_worker_stream(raw: &[u8], attempt: &str) -> (Vec<WorkerRecord
     let mut records = Vec::new();
     let mut damage = None;
     for (index, line) in raw.split_inclusive(|byte| *byte == b'\n').enumerate() {
-        let parsed = serde_json::from_slice::<WorkerRecord>(line);
-        let valid = line.len() <= crate::protocol::observation::MAX_RECORD
-            && line.ends_with(b"\n")
-            && parsed
-                .as_ref()
-                .is_ok_and(|record| record.run == attempt && record.seq != 0);
-        if !valid {
-            damage = Some(format!(
-                "Worker stream record {} is damaged, partial, or from another session",
-                index + 1
-            ));
-            break;
+        let complete =
+            line.len() <= crate::protocol::observation::MAX_RECORD && line.ends_with(b"\n");
+        let session_record = serde_json::from_slice::<WorkerRecord>(line)
+            .ok()
+            .filter(|record| record.run == attempt && record.seq != 0);
+
+        match session_record {
+            Some(record) if complete => records.push(record),
+            _ => {
+                damage = Some(format!(
+                    "Worker stream record {} is damaged, partial, or from another session",
+                    index + 1
+                ));
+                break;
+            }
         }
-        records.extend(parsed);
     }
     if damage.is_some() {
         records.retain(|record| {
@@ -237,59 +239,54 @@ pub(crate) fn activation(
     owner: &[OwnerEvent],
     required: &[&str],
 ) -> Option<(u64, u64)> {
-    let witness = || -> Option<(u64, u64)> {
-        let launch = single(records, |event| {
-            matches!(event, WorkerEvent::LaunchStopped { .. })
-        })?;
-        let WorkerEvent::LaunchStopped {
-            error,
-            pid,
-            triple,
-            frames,
-        } = &launch.event
-        else {
-            return None;
-        };
-        let owned: Vec<_> = owner
-            .iter()
-            .filter_map(|event| match event {
-                OwnerEvent::GameOwnedSuspended { pid, identity } if !identity.is_empty() => {
-                    Some(*pid)
-                }
-                _ => None,
-            })
-            .collect();
-        if error != "success"
-            || *pid == 0
-            || owned != [*pid]
-            || !triple.starts_with("arm64-")
-            || !frames.iter().any(|frame| frame.function == "_dyld_start")
-            || launch.thread.unwrap_or(0) == 0
-        {
-            return None;
-        }
-        let active = single(records, |event| {
-            matches!(event, WorkerEvent::HooksActiveBeforeResume { .. })
-        })?;
-        let WorkerEvent::HooksActiveBeforeResume { hooks } = &active.event else {
-            return None;
-        };
-        if !required.iter().all(|name| {
-            hooks.get(*name).is_some_and(|hook| {
-                hook.enabled && hook.locations == 1 && hook.resolved == 1 && hook.hits == 0
-            })
-        }) {
-            return None;
-        }
-        let resume = single(records, |event| matches!(event, WorkerEvent::Resume { .. }))?;
-        if !matches!(&resume.event, WorkerEvent::Resume { error } if error == "success")
-            || !(launch.seq < active.seq && active.seq < resume.seq)
-        {
-            return None;
-        }
-        Some((launch.thread?, resume.seq))
+    let launch = single(records, |event| {
+        matches!(event, WorkerEvent::LaunchStopped { .. })
+    })?;
+    let WorkerEvent::LaunchStopped {
+        error,
+        pid,
+        triple,
+        frames,
+    } = &launch.event
+    else {
+        return None;
     };
-    witness()
+    let owned: Vec<_> = owner
+        .iter()
+        .filter_map(|event| match event {
+            OwnerEvent::GameOwnedSuspended { pid, identity } if !identity.is_empty() => Some(*pid),
+            _ => None,
+        })
+        .collect();
+    if error != "success"
+        || *pid == 0
+        || owned != [*pid]
+        || !triple.starts_with("arm64-")
+        || !frames.iter().any(|frame| frame.function == "_dyld_start")
+        || launch.thread.unwrap_or(0) == 0
+    {
+        return None;
+    }
+    let active = single(records, |event| {
+        matches!(event, WorkerEvent::HooksActiveBeforeResume { .. })
+    })?;
+    let WorkerEvent::HooksActiveBeforeResume { hooks } = &active.event else {
+        return None;
+    };
+    if !required.iter().all(|name| {
+        hooks.get(*name).is_some_and(|hook| {
+            hook.enabled && hook.locations == 1 && hook.resolved == 1 && hook.hits == 0
+        })
+    }) {
+        return None;
+    }
+    let resume = single(records, |event| matches!(event, WorkerEvent::Resume { .. }))?;
+    if !matches!(&resume.event, WorkerEvent::Resume { error } if error == "success")
+        || !(launch.seq < active.seq && active.seq < resume.seq)
+    {
+        return None;
+    }
+    Some((launch.thread?, resume.seq))
 }
 
 #[cfg(test)]

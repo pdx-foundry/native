@@ -221,6 +221,16 @@ struct RawDiagnostic {
     occurrence: Option<u64>,
 }
 
+/// How the definition, field and occurrence of a parser diagnostic join a field question.
+enum QuestionLink {
+    /// The diagnostic names no definition, field or occurrence.
+    Unscoped,
+    /// The diagnostic names a stored occurrence of this question.
+    Question(u64),
+    /// The diagnostic names a field in part, or names no stored occurrence of a question.
+    Unmatched,
+}
+
 enum DiagnosticTerminalState {
     Complete,
     Unavailable(String),
@@ -350,6 +360,13 @@ impl<'a> Window<'a> {
         owner
     }
 
+    /// Whether `line` is a line of the requested fixture file.
+    fn is_fixture_line(&self, file: &str, line: u64) -> bool {
+        file == self.request.file()
+            && line > 0
+            && line <= self.request.files[file].lines().count() as u64
+    }
+
     fn accept(&mut self, record: &WorkerRecord, event: &FixtureEvent) {
         if let FixtureEvent::Unavailable { .. } = event {
             self.window_gap("A requested fixture observation was unavailable");
@@ -465,21 +482,19 @@ impl<'a> Window<'a> {
     }
 
     fn accept_field_read(&mut self, file: &str, line: u64, field: &str, owner: &str, ordinal: u64) {
-        let valid = self.request.requests(Kind::CategoryFieldReads)
-            && self.loading
-            && !self.returned
-            && file == self.request.file()
-            && line > 0
-            && line <= self.request.files[file].lines().count() as u64
-            && self
-                .category_fields
-                .iter()
-                .any(|binding| binding.name == field)
-            && super::registry_items::pointer(owner)
-            && self.owner.as_ref().is_none_or(|expected| expected == owner)
-            && ordinal > self.last_field_ordinal
-            && ordinal <= self.category_fields.len() as u64;
-        if !valid {
+        let in_window =
+            self.request.requests(Kind::CategoryFieldReads) && self.loading && !self.returned;
+        let in_source = self.is_fixture_line(file, line);
+        let field_known = self
+            .category_fields
+            .iter()
+            .any(|binding| binding.name == field);
+        let owner_joins = super::registry_items::pointer(owner)
+            && self.owner.as_ref().is_none_or(|expected| expected == owner);
+        let in_order =
+            ordinal > self.last_field_ordinal && ordinal <= self.category_fields.len() as u64;
+
+        if !(in_window && in_source && field_known && owner_joins && in_order) {
             self.window_gap("A field read lacks a matching file, owner, line, order or loader");
             return;
         }
@@ -501,9 +516,7 @@ impl<'a> Window<'a> {
     fn accept_definition(&mut self, file: &str, line: u64, definition: &str, owner: &str) {
         let valid = self.loading
             && !self.returned
-            && file == self.request.file()
-            && line > 0
-            && line <= self.request.files[file].lines().count() as u64
+            && self.is_fixture_line(file, line)
             && super::registry_items::pointer(owner)
             && !self.definitions.contains_key(definition);
         if !valid {
@@ -578,28 +591,26 @@ impl<'a> Window<'a> {
             self.window_gap("A storage event names an unknown question");
             return;
         };
-        let expected = self
+        let next_occurrence = self
             .occurrences
             .get(question)
             .map_or(1, |items| items.len() as u64 + 1);
-        let valid = self.loading
-            && !self.returned
-            && file == self.request.file()
-            && definition == &asked.definition
-            && field == &asked.field
-            && self
-                .definitions
-                .get(definition)
-                .is_some_and(|known| &known.native_owner == owner)
-            && self
-                .field_authorities
-                .get(question)
-                .is_some_and(|authority| authority.storage_supported)
-            && !self.field_terminals.contains_key(question)
-            && *line > 0
-            && *line <= self.request.files[file].lines().count() as u64
-            && *occurrence == expected;
-        if !valid {
+        let in_window =
+            self.loading && !self.returned && !self.field_terminals.contains_key(question);
+        let in_source = self.is_fixture_line(file, *line);
+        let asked_field = definition == &asked.definition && field == &asked.field;
+        let owner_joins = self
+            .definitions
+            .get(definition)
+            .is_some_and(|known| &known.native_owner == owner);
+        let storage_supported = self
+            .field_authorities
+            .get(question)
+            .is_some_and(|authority| authority.storage_supported);
+        let in_order = *occurrence == next_occurrence;
+
+        if !(in_window && in_source && asked_field && owner_joins && storage_supported && in_order)
+        {
             self.field_gap(
                 *question,
                 "A stored value lacks a matching question, source, owner, order or open field window",
@@ -788,47 +799,46 @@ impl<'a> Window<'a> {
         self.ended = true;
     }
 
+    fn question_link(&self, raw: &RawDiagnostic) -> QuestionLink {
+        let (definition, field, occurrence) = match (&raw.definition, &raw.field, raw.occurrence) {
+            (None, None, None) => return QuestionLink::Unscoped,
+            (Some(definition), Some(field), Some(occurrence)) => (definition, field, occurrence),
+            _ => return QuestionLink::Unmatched,
+        };
+
+        self.request
+            .field_questions
+            .iter()
+            .enumerate()
+            .find(|(index, question)| {
+                question.definition == *definition
+                    && question.field == *field
+                    && self.occurrences.get(&(*index as u64)).is_some_and(|items| {
+                        items.iter().any(|item| {
+                            item.occurrence == occurrence && raw.line == Some(item.line)
+                        })
+                    })
+            })
+            .map_or(QuestionLink::Unmatched, |(index, _)| {
+                QuestionLink::Question(index as u64)
+            })
+    }
+
     fn finish_diagnostics(&mut self) {
         for raw in std::mem::take(&mut self.raw_diagnostics) {
             let source = match (&raw.file, raw.line) {
-                (Some(file), Some(line))
-                    if file == self.request.file()
-                        && line > 0
-                        && line <= self.request.files[file].lines().count() as u64 =>
-                {
+                (Some(file), Some(line)) if self.is_fixture_line(file, line) => {
                     Some((file.clone(), line))
                 }
                 _ => None,
             };
-            let linked_question = match (&raw.definition, &raw.field, raw.occurrence) {
-                (None, None, None) => Some(None),
-                (Some(definition), Some(field), Some(occurrence)) => self
-                    .request
-                    .field_questions
-                    .iter()
-                    .enumerate()
-                    .find(|(index, question)| {
-                        question.definition == *definition
-                            && question.field == *field
-                            && self.occurrences.get(&(*index as u64)).is_some_and(|items| {
-                                items.iter().any(|item| {
-                                    item.occurrence == occurrence && raw.line == Some(item.line)
-                                })
-                            })
-                    })
-                    .map(|(index, _)| Some(index as u64)),
-                _ => None,
-            };
-            let join = match (source, linked_question) {
-                (Some((file, line)), Some(question)) => {
-                    if let Some(question) = question {
-                        let asked = &self.request.field_questions[question as usize];
-                        if asked.diagnostics {
-                            self.diagnostic_indices
-                                .entry(question)
-                                .or_default()
-                                .push(self.value.diagnostics.len());
-                        }
+            let join = match (source, self.question_link(&raw)) {
+                (Some((file, line)), QuestionLink::Question(question)) => {
+                    if self.request.field_questions[question as usize].diagnostics {
+                        self.diagnostic_indices
+                            .entry(question)
+                            .or_default()
+                            .push(self.value.diagnostics.len());
                     }
                     DiagnosticJoin::Source {
                         file,
@@ -838,7 +848,14 @@ impl<'a> Window<'a> {
                         occurrence: raw.occurrence,
                     }
                 }
-                (Some((file, line)), None) => {
+                (Some((file, line)), QuestionLink::Unscoped) => DiagnosticJoin::Source {
+                    file,
+                    line,
+                    definition: None,
+                    field: None,
+                    occurrence: None,
+                },
+                (Some((file, line)), QuestionLink::Unmatched) => {
                     self.diagnostic_gap(
                         "A parser diagnostic field join lacks a witnessed occurrence",
                     );
@@ -1076,7 +1093,9 @@ mod tests {
         request
     }
 
-    fn field_events() -> Vec<Value> {
+    /// Worker records for an owned session that activates every field-outcome hook, then emits
+    /// `window` and the terminal `end`. The terminal gains its producer's last sequence.
+    fn field_outcome_session(window: Vec<Value>, mut end: Value) -> Vec<Value> {
         let hook = json!({"enabled":true,"locations":1,"resolved":1,"hits":0});
         let fixture = |event: Value| json!({"kind":"fixture", "event":event});
         let mut events = vec![
@@ -1090,34 +1109,11 @@ mod tests {
                 "fixture:unexpected":hook
             }}),
             json!({"kind":"resume","error":"success"}),
-            fixture(json!({"kind":"load-start","file":"common/traditions/sample.txt"})),
-            fixture(
-                json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":true,"unavailable":null}),
-            ),
-            fixture(
-                json!({"kind":"definition","file":"common/traditions/sample.txt","line":1,"definition":"sample","owner":"0x2000"}),
-            ),
-            fixture(
-                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":1,"value":"one"}),
-            ),
-            fixture(
-                json!({"kind":"diagnostic","text":"malformed value","stage":"reader-malformed-report","file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","occurrence":1}),
-            ),
-            fixture(
-                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":2,"value":"two"}),
-            ),
-            fixture(
-                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":"two","unavailable":null}),
-            ),
-            fixture(json!({"kind":"diagnostics-terminal","count":1})),
-            fixture(
-                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
-            ),
-            Value::Null,
         ];
-        let last = events.len();
-        events[last - 1] = fixture(json!({"kind":"end","registrations":0,"field_reads":0,
-            "field_outcomes":1,"diagnostics":1,"producer_last_sequence":last}));
+        events.extend(window.into_iter().map(fixture));
+        end["producer_last_sequence"] = json!(events.len() + 1);
+        events.push(fixture(end));
+
         events
             .into_iter()
             .enumerate()
@@ -1128,6 +1124,25 @@ mod tests {
                 event
             })
             .collect()
+    }
+
+    /// Row numbers, from 0: 3 load start, 4 authority, 5 definition, 6 and 8 storage,
+    /// 7 diagnostic, 9 field terminal, 10 diagnostic terminal, 11 return and 12 end.
+    fn field_events() -> Vec<Value> {
+        field_outcome_session(
+            vec![
+                json!({"kind":"load-start","file":"common/traditions/sample.txt"}),
+                json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":true,"unavailable":null}),
+                json!({"kind":"definition","file":"common/traditions/sample.txt","line":1,"definition":"sample","owner":"0x2000"}),
+                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":1,"value":"one"}),
+                json!({"kind":"diagnostic","text":"malformed value","stage":"reader-malformed-report","file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","occurrence":1}),
+                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":2,"value":"two"}),
+                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":"two","unavailable":null}),
+                json!({"kind":"diagnostics-terminal","count":1}),
+                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
+            ],
+            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":1,"diagnostics":1}),
+        )
     }
 
     fn renumber(events: &mut [Value]) {
@@ -1213,47 +1228,16 @@ mod tests {
     }
 
     fn category_outcome_events() -> Vec<Value> {
-        let hook = json!({"enabled":true,"locations":1,"resolved":1,"hits":0});
-        let fixture = |event: Value| json!({"kind":"fixture", "event":event});
-        let mut events = vec![
-            json!({"kind":"launch-stopped", "error":"success", "pid":42, "triple":"arm64-macos", "frames":[{"function":"_dyld_start"}]}),
-            json!({"kind":"hooks-active-before-resume", "hooks":{
-                "fixture:load":hook,
-                "fixture:constructor":hook,
-                "fixture:reader":hook,
-                "fixture:member":hook,
-                "fixture:malformed":hook,
-                "fixture:unexpected":hook
-            }}),
-            json!({"kind":"resume","error":"success"}),
-            fixture(json!({"kind":"load-start","file":"common/tradition_categories/sample.txt"})),
-            fixture(
+        field_outcome_session(
+            vec![
+                json!({"kind":"load-start","file":"common/tradition_categories/sample.txt"}),
                 json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":false,"unavailable":"No exact-build storage binding for this field"}),
-            ),
-            fixture(
                 json!({"kind":"field-terminal","question":0,"owner":null,"definition_line":null,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":null,"unavailable":"No exact-build storage binding for this field"}),
-            ),
-            fixture(
                 json!({"kind":"diagnostics-unavailable","reason":"Parser diagnostics are outside this registry binding"}),
-            ),
-            fixture(
                 json!({"kind":"load-returned","file":"common/tradition_categories/sample.txt","field_count":0}),
-            ),
-            Value::Null,
-        ];
-        let last = events.len();
-        events[last - 1] = fixture(json!({"kind":"end","registrations":0,"field_reads":0,
-            "field_outcomes":1,"diagnostics":0,"producer_last_sequence":last}));
-        events
-            .into_iter()
-            .enumerate()
-            .map(|(index, mut event)| {
-                event["seq"] = json!(index + 1);
-                event["thread"] = json!(7);
-                event["run"] = json!("attempt");
-                event
-            })
-            .collect()
+            ],
+            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":1,"diagnostics":0}),
+        )
     }
 
     fn two_field_request() -> FixtureRequest {
@@ -1268,48 +1252,24 @@ mod tests {
     }
 
     fn two_field_events() -> Vec<Value> {
-        let mut events = field_events();
-        events[4] = json!({"kind":"fixture","event":{"kind":"field-authority","question":0,
-            "reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":true,
-            "unavailable":null},"thread":7,"run":"attempt"});
-        events[6] = json!({"kind":"fixture","event":{"kind":"field-storage","question":0,
-            "file":"common/traditions/sample.txt","line":2,"definition":"sample",
-            "field":"custom_tooltip","owner":"0x2000","occurrence":1,"value":"tip"},
-            "thread":7,"run":"attempt"});
-        events.remove(7);
-        events[7] = json!({"kind":"fixture","event":{"kind":"field-storage","question":1,
-            "file":"common/traditions/sample.txt","line":3,"definition":"sample",
-            "field":"unlocks_agenda","owner":"0x2000","occurrence":1,"value":"agenda"},
-            "thread":7,"run":"attempt"});
-        events[8] = json!({"kind":"fixture","event":{"kind":"field-terminal","question":0,
-            "owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d",
-            "reader_kind":"String","final_value":"tip","unavailable":null},
-            "thread":7,"run":"attempt"});
-        events.insert(
-            5,
-            json!({"kind":"fixture","event":{"kind":"field-authority","question":1,
-            "reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":true,
-            "unavailable":null},"thread":7,"run":"attempt"}),
-        );
-        events.insert(
-            10,
-            json!({"kind":"fixture","event":{"kind":"field-terminal","question":1,
-            "owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d",
-            "reader_kind":"String","final_value":"agenda","unavailable":null},
-            "thread":7,"run":"attempt"}),
-        );
-        for event in &mut events {
-            if event.pointer("/event/kind").and_then(Value::as_str) == Some("diagnostics-terminal")
-            {
-                event["event"]["count"] = json!(0);
-            }
-            if event.pointer("/event/kind").and_then(Value::as_str) == Some("end") {
-                event["event"]["field_outcomes"] = json!(2);
-                event["event"]["diagnostics"] = json!(0);
-            }
-        }
-        renumber(&mut events);
-        events
+        let authority = |question: u64| json!({"kind":"field-authority","question":question,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":true,"unavailable":null});
+        let storage = |question: u64, line: u64, field: &str, value: &str| json!({"kind":"field-storage","question":question,"file":"common/traditions/sample.txt","line":line,"definition":"sample","field":field,"owner":"0x2000","occurrence":1,"value":value});
+        let terminal = |question: u64, value: &str| json!({"kind":"field-terminal","question":question,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":value,"unavailable":null});
+        field_outcome_session(
+            vec![
+                json!({"kind":"load-start","file":"common/traditions/sample.txt"}),
+                authority(0),
+                authority(1),
+                json!({"kind":"definition","file":"common/traditions/sample.txt","line":1,"definition":"sample","owner":"0x2000"}),
+                storage(0, 2, "custom_tooltip", "tip"),
+                storage(1, 3, "unlocks_agenda", "agenda"),
+                terminal(0, "tip"),
+                terminal(1, "agenda"),
+                json!({"kind":"diagnostics-terminal","count":0}),
+                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
+            ],
+            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":2,"diagnostics":0}),
+        )
     }
 
     fn different_owner_request() -> FixtureRequest {

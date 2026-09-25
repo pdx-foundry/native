@@ -402,17 +402,18 @@ fn immediate(value: &str) -> Option<u64> {
 
 fn memory_operand(memory: &str) -> Option<(usize, u64)> {
     let memory = memory.strip_suffix(']')?;
-    let (base, offset) = memory
-        .split_once(',')
-        .map_or((memory, Some(0)), |(base, offset)| {
-            (base, immediate(offset))
-        });
+    let (base, offset) = match memory.split_once(',') {
+        Some((base, offset)) => (base, immediate(offset)?),
+        None => (memory, 0),
+    };
+
     let base = base
         .strip_prefix('x')?
         .parse::<usize>()
         .ok()
         .filter(|base| *base < 31)?;
-    Some((base, offset?))
+
+    Some((base, offset))
 }
 
 fn load(row: &Instruction) -> Option<(&str, usize, u64)> {

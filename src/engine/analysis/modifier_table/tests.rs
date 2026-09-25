@@ -182,3 +182,14 @@ fn refuses_arithmetic_disguised_as_an_adjacent_field() {
         Err(Unresolved::new("modifier-field-transformation"))
     );
 }
+
+#[test]
+fn memory_operand_defaults_to_offset_zero_and_refuses_unreadable_parts() {
+    assert_eq!(memory_operand("x8]"), Some((8, 0)));
+    assert_eq!(memory_operand("x9,#0x18]"), Some((9, 0x18)));
+    assert_eq!(memory_operand("x9,#24]"), Some((9, 24)));
+    assert_eq!(memory_operand("x9,w8]"), None);
+    assert_eq!(memory_operand("sp,#8]"), None);
+    assert_eq!(memory_operand("x31]"), None);
+    assert_eq!(memory_operand("x8,#8]!"), None);
+}
