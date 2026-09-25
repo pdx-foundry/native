@@ -5,8 +5,11 @@ Prototype result, 2026-09-23. Prepared for
 from [Validate modifier grammars and generated modifier families](https://linear.app/unnamed-system/issue/SDK-498/validate-modifier-grammars-and-generated-modifier-families).
 
 **Generation rules are recoverable for the five traced templates. This does not establish
-complete family extraction or a complete shared modifier grammar.** Keep the prototype issue
-open for the remaining reader work and human review. No production API changed.
+complete family extraction or a complete shared modifier grammar.** No production API changed.
+
+**2026-09-24:** SDK-498 is closed. SDK-607 owns the remaining shared modifier-block grammar,
+and SDK-544 owns numeric conversion limits. SDK-486 owns the archive of the untracked
+`.local/sdk-498/` prototype.
 
 **Implemented 2026-09-23:** `Native::modifier_families` (SDK-540) recovers these templates and three
 more registries from the executable. See [discovery](discovery.md#modifier-families-sdk-540).
@@ -115,13 +118,13 @@ parity test belongs in the implementation. Do not add capture/replay APIs or evi
 | --- | --- | --- |
 | Five templates above | Demonstrated static mechanism plus two fresh live mutations | Family implementation, SDK-540 |
 | Other generation, including district maximums and conditional resource/job families | Precise method limit: caller/helper/condition recovery is absent; 44,334 loaded names unexplained | SDK-540; full loaded inventory SDK-564 |
-| Graphical fixed fields | Release disassembly and literal token constructors identify `icon`, `custom_tooltip` → `CString`; `icon_frame` → integer; `show_only_custom_tooltip`, `important`, `hide_from_country_list` → boolean | Shared grammar investigation, SDK-498 |
-| Inherited special fields | `CPdxModifier::TryReadMember` handles token 27 `name` through a polymorphic name reader, and token 240 `data` through an integer reader | SDK-498 must qualify the name-reader variants |
-| Numeric modifier entries | Release code searches the declaration table, reads `CFixedPoint`, stores the entry, then checks category overlap | Conversion limits remain with SDK-508; grammar/duplicate qualification with SDK-498 |
-| Static/scripted modifier references | `CModifier::TryReadMember` tries loaded static modifiers, with immediate-add/deferred paths; `CScriptedModifier::PostReadInit` calls `AddDynamicModifier` | SDK-498 must test valid, absent, forward, and colliding keys through deferred completion |
-| Repeated graphical blocks | Historical M45-observe agenda probe: numeric entries reset; omitted tooltip/flag metadata persists | Fresh release and second-use transfer remain SDK-498 |
-| Post-read graphical validation | Release `InitPostRead` checks a nonempty icon: `GFX_` prefix bypasses the file check; other strings call `VFSExists` and may log a missing-icon diagnostic | SDK-498; sprite/localisation asset inventories are project/external inputs |
-| Localisation and whole shared grammar | A `CString` read does not prove localisation-key existence. The old root walker returned 13 gaps here: unsupported load writeback or indirect call | SDK-498; no complete grammar claim |
+| Graphical fixed fields | Release disassembly and literal token constructors identify `icon`, `custom_tooltip` → `CString`; `icon_frame` → integer; `show_only_custom_tooltip`, `important`, `hide_from_country_list` → boolean | Shared grammar, SDK-607 |
+| Inherited special fields | `CPdxModifier::TryReadMember` handles token 27 `name` through a polymorphic name reader, and token 240 `data` through an integer reader | SDK-607 must qualify the name-reader variants |
+| Numeric modifier entries | Release code searches the declaration table, reads `CFixedPoint`, stores the entry, then checks category overlap | Conversion limits remain with SDK-544; grammar/duplicate qualification with SDK-607 |
+| Static/scripted modifier references | `CModifier::TryReadMember` tries loaded static modifiers, with immediate-add/deferred paths; `CScriptedModifier::PostReadInit` calls `AddDynamicModifier` | SDK-607 must test valid, absent, forward, and colliding keys through deferred completion |
+| Repeated graphical blocks | Historical M45-observe agenda probe: numeric entries reset; omitted tooltip/flag metadata persists | Fresh release and second-use transfer remain SDK-607 |
+| Post-read graphical validation | Release `InitPostRead` checks a nonempty icon: `GFX_` prefix bypasses the file check; other strings call `VFSExists` and may log a missing-icon diagnostic | SDK-607; sprite/localisation asset inventories are project/external inputs |
+| Localisation and whole shared grammar | A `CString` read does not prove localisation-key existence. The old root walker returned 13 gaps here: unsupported load writeback or indirect call | SDK-607; no complete grammar claim |
 | Runtime effect and propagation | Untested by startup registration or parser storage | SDK-497 / SDK-547 |
 | Duplicate warnings, severity, recommended syntax | Consumer policy, separate from engine storage and diagnostics | Atlas/consumer |
 

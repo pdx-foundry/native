@@ -31,12 +31,13 @@ specific observation work. Those checks remain required; a static result cannot 
 
 **Milestone 4 can start before all repairs and cuts are finished.** Atlas integration runs
 alongside the first methods. Other repairs attach to the changes they serve; optional cleanup
-does not delay the milestone. Milestone 4 finishes only when the council agenda test, method
+does not delay the milestone. *Amended 2026-09-24:* a Milestone 3.5 now comes first and holds the
+method tooling and the cleanup ([section 8.1](#81-milestone-35-amendment-2026-09-24)). Milestone 4 finishes only when the council agenda test, method
 fixture criteria, full-inventory measurements and Atlas integration checks pass.
 
 ## Review basis
 
-Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
+Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Revision 8 (2026-09-24) records Jackson's Milestone 3.5 amendment in [section 8.1](#81-milestone-35-amendment-2026-09-24). Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
 
 The findings of `docs/design/native-dx.md` are already ticketed (SDK-579 to SDK-595) and are not repeated; they appear only as dependencies.
 
@@ -222,6 +223,32 @@ exception (M2 N5) stays under SDK-569's documented removal route; hidden `intern
 and its consumer boundary stay under SDK-579. Keep the live candidate code, symbol-keyed reader
 tables, callback forwarders, evaluator/family methods and profiling tools. [SDK-580](https://linear.app/unnamed-system/issue/SDK-580)
 owns the later build-anchor move. No broad rewrite or deletion is implied by the line counts.
+
+### 8.1 Milestone 3.5 amendment, 2026-09-24
+
+After reconciliation, Milestone 4 held 32 tickets: its ten method tickets, four gate tickets and
+about twenty repair, tooling and cleanup tickets from this review and from
+[native-dx.md](native-dx.md). Jackson chose a separate milestone between 3 and 4. This changes
+the rule above that repairs do not gate Milestone 4. The contents of the new milestone are
+limited to work that makes each method cheaper or safer to write, plus independent cleanup.
+
+| Change | Tickets |
+| --- | --- |
+| Moved to Milestone 3.5 (Foundations) | SDK-563 and SDK-569 (both block SDK-541); SDK-581 → SDK-588 (DX 1, 2); SDK-589 (DX 8); SDK-574 (now blocks SDK-598 and SDK-599); SDK-571; SDK-593 (DX 7, step 1); SDK-601 (R4); SDK-602 (N11); SDK-603 (N12, N13); SDK-604 (A7, A8); SDK-605; SDK-577 |
+| New in Milestone 3.5 | SDK-606, the test assembler helper, split from SDK-594 (DX 7) |
+| Out of Milestones 3.5 and 4 | SDK-594 (typed operands) and SDK-595. Neither blocks a method ticket |
+| Stay in Milestone 4 | SDK-541 to SDK-550, SDK-597, SDK-598, SDK-599, SDK-600 |
+
+The Milestone 4 exit gate in section 3 and the checks in section 9.5 do not change. SDK-569
+now passes in Milestone 3.5 and must still pass when Milestone 4 closes.
+
+The open prototype children of SDK-470 were closed on the same day. The inspector, stop
+diagnostics and sweep report let one task explore and deliver a method, so a separate prototype
+is not needed. Each prototype's unique cases were copied into its production ticket under
+"Carried from SDK-NNN". Work that no open ticket owned became SDK-607 (shared modifier-block
+grammar, from SDK-498), SDK-608 (event and pre_trigger contexts, from SDK-496), SDK-609 (live
+localisation checks, from SDK-500) and SDK-610 (define defaults and bounds, from SDK-504). SDK-480,
+SDK-486, SDK-506 and SDK-511 stay open. SDK-486 now also owns the archive of `.local/sdk-498/`.
 
 ## 9. Order of work
 

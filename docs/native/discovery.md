@@ -96,7 +96,7 @@ Normal/reversed two-mod runs demonstrate shared virtual-filename mount selection
 
 Retained failures include excessive observer overhead, observer-startup failures and an engine exception before the end marker with incomplete supporting category fixtures. The exception was not fully diagnosed. The first held-out AI-budget attempt was not a successful frozen transfer; the economic-plan transfer follows the revised freeze. Config comparison occurred only after engine output was frozen.
 
-SDK-509 owns custom/nested/late discovery; SDK-510 owns mounted selection and duplicates. Identifier grammar, full field/rule composition, stripped-target discovery, symbol-renaming correspondence and cross-build behavior remain qualified separately. Use stable publication identities with target-local symbols/addresses as evidence locators; the demo's synthetic identity proposal is not a demonstrated cross-build match.
+SDK-551 owns custom/nested/late discovery; SDK-552 owns mounted selection and duplicates (both took over from the closed prototypes SDK-509 and SDK-510). SDK-543 owns identifier grammar. Full field/rule composition, stripped-target discovery, symbol-renaming correspondence and cross-build behavior remain qualified separately. Use stable publication identities with target-local symbols/addresses as evidence locators; the demo's synthetic identity proposal is not a demonstrated cross-build match.
 
 ## Engine documentation commands
 
@@ -268,7 +268,7 @@ to SDK-543 and SDK-550.
 
 SDK-537 reads the localization language (the `[Root.GetName]` bracket commands) statically on
 M45-release as `Native::localization_declarations`. No prototype had read it from the engine
-before; SDK-500 holds the open question.
+before; SDK-609 holds the open live question (from the closed prototype SDK-500).
 
 **Mechanism.** `CGameApplication::PrintScriptingDocumentation` writes `localizations.log` from
 `CGameText::GenerateDocumentation`. A *context* is an `ECURRENT_POINTER` value: the kind of object
@@ -346,13 +346,14 @@ The dump prints no outputs and no scope join, so those are not compared with it.
 
 `Third_party` from `Diplomacy` is `Unchanged`: `PromoteAction` handles indexes 0 and 1 and returns
 for index 2. Whether a command gives useful text at run time, argument forms, formatting, scripted
-localization and fallback between `Base Scope` and a typed context are not tested (SDK-500).
+localization and fallback between `Base Scope` and a typed context are not tested (SDK-609).
 
 ### On_actions, game rules and their entry scopes (SDK-538)
 
 SDK-538 reads the callbacks that the engine calls by name on M45-release as `Native::on_actions`
 and `Native::game_rules`, with the scopes that each call site supplies. No prototype had read them
-from the engine; SDK-496 holds the open question. The engine has no documentation dump for either.
+from the engine; SDK-608 holds the open question (from the closed prototype SDK-496). The engine
+has no documentation dump for either.
 
 **Mechanism.** Engine code fires an on_action with
 `COnActionDatabase::PerformEvent(CString const&, CEventScope&, …)`. Nearly every call site builds
@@ -441,7 +442,7 @@ scopes: the config writes `carrier` where the engine passes a `colony` or `plane
   whose type depends on a run-time value (`CDepositHolderRefCaster::FillEventScope`).
 - 3 declared rules have no call site that the method follows, and 11 have only unresolved contexts.
 - What the event system does with a self-linked root or from, the prev chain, events and their
-  `push_scope`, pre_triggers, and on_actions that content defines are not tested (SDK-496).
+  `push_scope`, pre_triggers, and on_actions that content defines are not tested (SDK-608).
 
 ### Modifier families (SDK-540)
 
@@ -970,5 +971,5 @@ The method reads only executable code and literals. It classifies the target of 
 arguments; `GetArrayValue` reads a named value from a namespace table. The source stamp is
 `defines/v1` with `StaticAnalysis`. The tracked parity test checks counts, gap types and small
 samples; it needs the exact executable through `STELLARIS_PATH`. Shipped define entries,
-defaults, comments, bounds and uses are not established here. SDK-504 owns the broader
+defaults, comments, bounds and uses are not established here. SDK-610 owns the broader
 extraction question and Atlas owns the comparison with shipped content and config.

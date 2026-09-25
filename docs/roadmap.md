@@ -101,7 +101,7 @@ rate; its failures return as new reader shapes, not as handwritten answers. The
   Scope) and in comments on SDK-476 and SDK-485.
 - **The update rehearsal stays, and runs last.** Per-build adaptation cost has never been measured.
   The rehearsal blocks no earlier milestone, and it measures most when the full method set exists,
-  so it is the final milestone (rescoped SDK-485).
+  so it is the final milestone (SDK-557; the rescoped SDK-485 closed on 2026-09-24).
 - **The beta installation is preserved first.** Stellaris 4.5 leaves beta in the week of 2026-09-21.
   The only supported target record is the exact beta executable. A verified copy of that
   installation must exist before Steam updates it (SDK-522), or live work stops until a new
@@ -110,6 +110,17 @@ rate; its failures return as new reader shapes, not as handwritten answers. The
   (8697). Its target record (M45-release) replaces the beta record. Steam offers old full releases
   for download but not old open betas, so Native keeps full-release targets only. The beta ARM64
   executable stays in `.local/executables`.
+- **Foundations come before the shared readers (2026-09-24).** After the Milestone 3 review and
+  the [DX proposal](design/native-dx.md), Milestone 4 held its ten method tickets and about twenty
+  repair and tooling tickets. Milestone 3.5 now holds the work that makes each method cheaper or
+  safer to write, and the independent cleanup. Refactors that block no method (SDK-594, SDK-595)
+  are in neither milestone. This amends the review's rule that repairs do not gate Milestone 4
+  ([review, section 8.1](design/milestone-3-review.md#81-milestone-35-amendment-2026-09-24)).
+- **A method is written in one task (2026-09-24).** The inspector (SDK-579), stop diagnostics
+  (SDK-581) and the sweep report (SDK-588) replace the throwaway prototype. One task explores with
+  the inspector, records findings and failed shapes in `docs/native/discovery.md`, and delivers the
+  method with its authored tests. The open prototype children of SDK-470 are closed. Their unique
+  cases moved into the production tickets; four remainders became SDK-607 to SDK-610.
 
 ## Milestones
 
@@ -124,7 +135,8 @@ and private-directory cleanup. This work has no Linear tickets.
 | 1 | Scoreboard | Preserve the beta installation. Claim ledger from the `.cwt` files with owner and documentation-provenance tags. The ledger work is done in the Atlas repository. | Every config line maps to a claim; a coverage percentage exists | SDK-522, SDK-523, SDK-525 |
 | 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas. In Atlas: the first rule snapshot, then the `.cwt` comparison tool that reads it. | Rust results equal retained results (164 named template registries that agree with every live-observed directory; 10 agenda fields); the tradition snapshot raises coverage above the baseline and is compared with the config | SDK-527 to SDK-534, SDK-558, SDK-524 |
 | 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | Each of the five `script-docs` logs and each config name list has an engine-derived answer in the snapshot, with its gaps in the ledger; the per-area coverage figures are recorded | SDK-535 to SDK-540, SDK-562, SDK-564 to SDK-568; Atlas: SDK-570 |
-| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method ticket ends with one run over its full registry or command inventory. | The council agenda test, method fixture criteria and Atlas integration checks below pass; full-inventory counts and failure shapes are recorded | SDK-541 to SDK-550, SDK-563, SDK-569; preparation SDK-596; Atlas SDK-597; observations SDK-598 and SDK-599; acceptance test SDK-600 |
+| 3.5 | Foundations | Shortcut guard; jump-table repair; stop diagnostics and the sweep report; test assembler helper; method-authoring guide; one pause owner in the worker; the review's refactors and cleanup | The shortcut guard passes; the 32 megastructure jump-table fields are found; a failed path is located from one inspector run; the sweep report groups failures by stop diagnostic; every refactor keeps parity output byte-identical | SDK-563, SDK-569, SDK-571, SDK-574, SDK-577, SDK-581, SDK-588, SDK-589, SDK-593, SDK-601 to SDK-606 |
+| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method ticket ends with one run over its full registry or command inventory. | The council agenda test, method fixture criteria and Atlas integration checks below pass; full-inventory counts and failure shapes are recorded | SDK-541 to SDK-550; preparation SDK-596; Atlas SDK-597; observations SDK-598 and SDK-599; acceptance test SDK-600 |
 | 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; the method set, unchanged at a recorded commit, over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
 | 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
@@ -142,9 +154,10 @@ an unresolved scope. See Atlas's [language snapshot measurement](https://github.
 
 The accepted [Milestone 3 review](design/milestone-3-review.md) defines the work order.
 SDK-596 owns preparation: align the contracts and tickets, repair duplicate modifier uncertainty,
-and measure the current M45-release field population before changing discovery. SDK-569's shortcut
-guard and SDK-563's jump-table repair precede SDK-541 and SDK-542. SDK-597 delivers Atlas integration
-alongside those methods; SDK-577's display-name repair belongs with that integration.
+and measure the current M45-release field population before changing discovery. Milestone 3.5
+comes next: SDK-569's shortcut guard and SDK-563's jump-table repair block SDK-541, and SDK-574's
+single pause owner blocks the new observers of SDK-598 and SDK-599. SDK-597 delivers Atlas
+integration alongside SDK-541 and SDK-542.
 
 Milestone 4 completes only when all of these hold:
 
