@@ -94,7 +94,7 @@ To preserve knowledge means small representative inputs, expected outcomes, fail
 
 ## 5. Repairs
 
-**Measurement first.** M1. Run `registry-fields/v3` over all 164 registries on M45-release with the SDK-588 report shape before any M4 method or SDK-563 changes a field list. Record in `registry-fields.md`: complete, partial, failed; fields per reader kind; the distinct callee signatures behind `Unknown`. Limit: one run, no fix inside it.
+**Measurement first.** M1. Run `registry-fields/v3` over all 164 registries on M45-release with the SDK-588 report shape before any M4 method or SDK-563 changes a field list. Record in `milestone-4-field-baseline.md`: complete, partial, failed; fields per reader kind; the distinct callee signatures behind `Unknown`. Limit: one run, no fix inside it.
 
 - **R1. Duplicate modifier registrations keep their uncertainty** (`language.rs:149`). Combine registrations by name; an unresolved or conflicting tag set on any registration of the name yields a gap and `DeclaredTags::Unresolved`, as `defines.rs:48-56` does for value types. Tests: equal tags, conflicting tags, known-then-unresolved and unresolved-then-known. Check parity output; record whether M45 changes. Limit: a bounded correctness fix, no new framework.
 - **R2. Widen SDK-569 to case-specific shortcuts.** Scan `src/engine/analysis`, `src/engine/operations`, `src/session` and `src/protocol` for a comparison or match that selects behavior or output for one engine class, registry, field or registry count (`owner == "C..."`, `registry != "common/..."`, `matches!(field, "...")`, a literal `164`), plus build-version tests. Uniform tables keyed on the executable's own overload or symbol shapes (`readers.rs:35-60`, `binary/defines.rs:61-98`, `binary/callbacks.rs:82-118`) are not shortcuts and are not flagged. The exception list holds one entry, the category read-entry exception (`early-observations.md:128`), with its removal route. Negative controls: crack 1, `operations/fixture.rs:128,463` and `protocol/session.rs:93` go red before they are cut, moved to the binding, or listed.
@@ -149,8 +149,8 @@ serialization of new fields:
 
 | # | Cut | Lines | Reason and conditions |
 | --- | --- | ---: | --- |
-| N10 | `blocking_readers`, `ReaderContractGap`, `complete_registry` (`fields/inventory.rs:74-93`, `fields/records.rs:122-129,141-144`, `fields.rs:118-119`, `tests_fields.rs:87,166`, `questions.rs:417`) | ~40 | Per-registry branch with no reader. Preserve first: the five contract labels are already in `registry-fields.md:181`; add a line that they left the code. After R2's negative control has gone red. |
-| N11 | Scheduler-window removal, as its own conditional change: (a) replace the code window that `binary::discovery::read` takes from `SchedulerLayout` (`binding/analysis.rs:522`, `recipes.rs:105-111`) with the inventory's code range, keeping the vtable witnesses and every supported operation byte-identical in parity; (b) then remove `discover()` (`discovery.rs:25-`), `scheduler()` and `SchedulerLayout` in `discovery/scheduler.rs`, their `tests_discovery.rs` cases, and the `#[allow(dead_code)]` at `analysis.rs:11`. | part of ~480 (agent-reported) | Not a consequence of SDK-579, whose design keeps the layout's code window (`native-dx.md:53`); it can be done after SDK-579 or independently. Condition: (a) passes parity before (b) starts. Keep `candidates`, `CandidateRecord`, `Symbol`, `records.rs` and their tests: they are live (`fields.rs:77`, `binding/analysis.rs:515,523`); move `candidates` out of `scheduler.rs` first. Preserve the scheduler layout (198 rows, offset 96, stride 48) and its recovered/gap cases as a note in `registry-fields.md:187-199`. |
+| N10 | `blocking_readers`, `ReaderContractGap`, `complete_registry` (`fields/inventory.rs:74-93`, `fields/records.rs:122-129,141-144`, `fields.rs:118-119`, `tests_fields.rs:87,166`, `questions.rs:417`) | ~40 | Per-registry branch with no reader. Preserve first: the five contract labels are already in `registry-fields.md:142-146`; add a line that they left the code. After R2's negative control has gone red. |
+| N11 | Scheduler-window removal, as its own conditional change: (a) replace the code window that `binary::discovery::read` takes from `SchedulerLayout` (`binding/analysis.rs:522`, `recipes.rs:105-111`) with the inventory's code range, keeping the vtable witnesses and every supported operation byte-identical in parity; (b) then remove `discover()` (`discovery.rs:25-`), `scheduler()` and `SchedulerLayout` in `discovery/scheduler.rs`, their `tests_discovery.rs` cases, and the `#[allow(dead_code)]` at `analysis.rs:11`. | part of ~480 (agent-reported) | Not a consequence of SDK-579, whose design keeps the layout's code window (`native-dx.md:53`); it can be done after SDK-579 or independently. Condition: (a) passes parity before (b) starts. Keep `candidates`, `CandidateRecord`, `Symbol`, `records.rs` and their tests: they are live (`fields.rs:77`, `binding/analysis.rs:515,523`); move `candidates` out of `scheduler.rs` first. Preserve the scheduler layout (198 rows, offset 96, stride 48) and its recovered/gap cases as a note in `registry-fields.md:159-191`. |
 | N12 | `.gitattributes:1,5` replay wording and the missing `tests/fixtures/**` rule | small | N9 leftover. |
 | N13 | `docs/native/milestone-2-registry-sweep.json` | 13,628 (agent-reported) | After M1 records the v3 baseline; keep the Markdown summary. |
 
@@ -281,7 +281,7 @@ weight-observation ticket: SDK-547's naval-capacity state reads are not assumed 
 
 **Preparation verification, 2026-09-24:** R1's regression cases and existing M45 modifier parity
 pass without expected-output changes. M45-release registry parity explicitly asserts 164. M1 is
-recorded in [discovery](../native/registry-fields.md#milestone-4-field-baseline-sdk-596): 28 complete,
+recorded in [the baseline](../native/milestone-4-field-baseline.md): 28 complete,
 136 partial, no failed queries; 878 fields, of which 232 have unknown kinds. The 11 unknown-kind
 fields with an identity use four signatures; the other 221 have no single established identity.
 No field discovery or binding code changed. Formatting, clippy, the default Rust suite, doc checks
@@ -313,8 +313,8 @@ not run; preparation changes no live operation.
   shape to run the current `registry-fields/v3` and reader-kind analysis on M45-release across
   all 164 discovered registries. Record the build and Native revision, complete/partial/failed
   totals, fields per reader kind, and distinct callee signatures behind `Unknown` in
-  `docs/native/registry-fields.md`. Do not fix failures inside the measurement. Done when the
-  report can distinguish later discovery improvements from the starting population.
+  `docs/native/milestone-4-field-baseline.md`. Do not fix failures inside the measurement. Done
+  when the report can distinguish later discovery improvements from the starting population.
 - [x] **Set the first implementation dependencies.** Widen SDK-569's written scope to R2 and
   schedule SDK-563 in M4 ahead of SDK-541. Preserve this order: **M1 baseline → shortcut guard
   and field-discovery repair → shared-reader methods**, with R6 alongside the first methods.
