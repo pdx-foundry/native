@@ -81,7 +81,7 @@ impl SessionRequest {
                 "Expected an absolute work directory and budgets of 1 to 180 seconds".into(),
             ));
         }
-        let valid = |name: &str| {
+        let valid_registry_directory = |name: &str| {
             name.split('/').all(|segment| {
                 !segment.is_empty()
                     && segment.bytes().all(|byte| {
@@ -91,15 +91,15 @@ impl SessionRequest {
         };
         // The supervisor checks each name against the registries it discovers in the opened
         // executable, so the number of names follows the build.
-        let selection = |names: &[String]| {
-            names.iter().all(|name| valid(name))
+        let unique_registry_directories = |names: &[String]| {
+            names.iter().all(|name| valid_registry_directory(name))
                 && names
                     .iter()
                     .collect::<std::collections::BTreeSet<_>>()
                     .len()
                     == names.len()
         };
-        if self.registries.is_empty() || !selection(&self.registries) {
+        if self.registries.is_empty() || !unique_registry_directories(&self.registries) {
             return Err(SupervisorError(
                 "Expected one or more unique registry content directories".into(),
             ));
@@ -107,7 +107,7 @@ impl SessionRequest {
         if self
             .loaded_modifiers
             .as_ref()
-            .is_some_and(|names| !selection(names))
+            .is_some_and(|names| !unique_registry_directories(names))
         {
             return Err(SupervisorError(
                 "Expected unique modifier family registries".into(),
