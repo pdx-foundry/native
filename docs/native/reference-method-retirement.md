@@ -4,7 +4,7 @@ The SDK-482 Rust port was removed from the product build at milestone 2 because 
 supported Native operation called it. Its exact M45-observe results are retained as
 [small expected cases](reference-method-cases.json); the executable inputs and original
 27 mutation controls remain in the preserved `typed-extraction` prototype bundle and
-Git history. [Discovery](discovery.md) gives the source revision and retrieval route.
+Git history. [Discovery](discovery.md#reusable-reference-seam-retired) gives the source revision and retrieval route.
 
 | Input shape | Established result | Boundary |
 | --- | --- | --- |

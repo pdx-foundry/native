@@ -1,56 +1,62 @@
-# Static analysis, reference observations, and registry discovery
+# Static analysis methods
 
-Each static method records its findings, failed shapes and sweep counts on the page for its
-subject. Add a page when a method starts a new subject.
+Each static method records its engine facts, current result, gaps and pitfalls on the page for
+its subject. Add a page when a method starts a new subject. The code and its module comments
+describe the methods; these pages hold what the code cannot.
 
-| Page | Methods |
+| Page | Subjects |
 | --- | --- |
-| [Registry fields](registry-fields.md) | The Milestone 4 field baseline (SDK-596) and where its paths stop (SDK-581); jump tables and bit fields in root readers (SDK-563); members and shared readers (SDK-487, SDK-492, SDK-493); registry scheduling and owner joins (SDK-489) |
-| [Engine commands](engine-commands.md) | Effect and trigger declarations (SDK-488, SDK-535, SDK-562); target getters (SDK-568); modifiers, categories, scopes and links (SDK-536, SDK-565); localization (SDK-537); on_actions and game rules (SDK-538) |
-| [Modifier families](modifier-families.md) | Families from database generators (SDK-540); the loaded modifier inventory (SDK-564); post-read code and shared helpers (SDK-566); item post-read code (SDK-575) |
+| [Registry fields](registry-fields.md) | The current field sweep and its stops; compiler jump tables and bit fields in root readers; members and shared readers; registry scheduling and owner joins |
+| [Engine commands](engine-commands.md) | Effect and trigger declarations and their scopes; target getters; modifier, category, scope and link declarations; localization contexts; on_actions and game rules |
+| [Modifier families](modifier-families.md) | Modifier families from database generators, post-read code and shared helpers; the per-item post-read call; item keys; the loaded modifier table |
 
-This page keeps the reusable reference seam (SDK-482), the Rust ports and the define read helpers
-(SDK-539).
+This page also holds the retired reference seam and the define read helpers.
 
-## Reusable reference seam
+## Define read helpers
 
-SDK-482 was accepted on 2026-09-17 at experiment `c2258d2ef5bdcb195f6d2a3a88d7a45e2f80cc57`, branch `prototype/sdk-482-reference-observations`. Source: `typed-extraction/typed-extraction/reference-observation-prototype/`. Target: M45-observe. The provider selects the Mach-O slice, binds symbols/fixups/stubs, parses ARM64 instructions, relocates local branches and checks complete-function shape. Four manually qualified compiler templates preserve register widths, aliases, branch destinations, comparisons and calls. Only declared input/output locations, global bindings and typed callees are parameters; other code changes return unknown. This is not a general decompiler.
+On M45-release, `Native::defines()` (`defines/v1`) finds 2,385 compiled `NDefines` and
+`NUncheckedDefines` `ReadDefine` helpers, and follows 2,305 of them to a literal namespace, a
+literal name and a typed engine reader, in about four seconds. Resolved types are 1,091
+fixed-point, 672 integer, 326 string, 172 float, 23 list, 13 vector and 8 boolean. The other 80
+named helpers use a table-search loop that exceeds the path search; they are `UnresolvedReader`
+gaps, including `NGraphics.ORBIT_HSV`. There are no failed or unnamed helpers.
 
-Ship's authored reader destination joins a typed map call with empty/nonempty alternatives and same-type null substitution. District's reader joins a length-and-byte-comparison collection scan, with first-match versus empty/no-match outcomes. Planet-class qualifies a getter wrapper and its null substitution but not the custom reader or table internals. Army remains unknown because conditional event-target traversal and indirect jump tables lack a qualified reusable method. A fresh relic trial reused the frozen district scan method unchanged; no post-selection method or consumer changes were made.
+The method classifies the target of each direct `GetValue`, `GetArrayValue` or
+`ReadDefinesValue` call. `GetValue` takes namespace and name arguments; `GetArrayValue` reads a
+named value from a namespace table. Shipped define entries, defaults, comments, bounds and uses
+are not established here. SDK-610 owns the broader extraction question, and Atlas owns the
+comparison with shipped content and config.
 
-Typed database/null names are candidate reference classes. They do not prove actual collection element class, content-loader ownership, registration, validation or gameplay. The reader traversal tracks concrete tokens and owner provenance and stops on unknown calls/state. Preserve stage, conditional alternatives, incomplete joins, target-local handles and distinct native-method/rule qualification in emitted observations.
+## Reusable reference seam (retired)
 
-All 27 retained controls pass in the original result: wrong owners/registers, clobbers, changed comparisons/getters, inverted branches/null selection, changed string layout/type, pointer truncation, reader provenance, unknown calls and unavailable target/owner. Controls mutate disassembly in memory rather than the executable. The transfer establishes one pattern on one build, not a broad success rate or low maintenance cost. `run.py` does not launch the game but does require the pinned installation and Xcode tools, and rewrites outputs; use a restored working copy. See [offline retrieval](retrieval.md) for retained-evidence checks that require neither.
+The SDK-482 prototype was accepted on 2026-09-17 at experiment
+`c2258d2ef5bdcb195f6d2a3a88d7a45e2f80cc57`, branch `prototype/sdk-482-reference-observations`,
+on M45-observe. Source: `typed-extraction/typed-extraction/reference-observation-prototype/` (see
+[retrieval](retrieval.md)). Its Rust port left the product build; [reference method
+retirement](reference-method-retirement.md) keeps its expected cases.
 
-Original Atlas consumer pointers remain in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`. Accepted resolutions, including SDK-482/487/488/489/492/493, are available offline in `linear-records/linear/SDK-<number>-comments.json`. Original reviews keep their earlier pending labels and unmodified evidence.
+The provider selects the Mach-O slice, binds symbols, fixups and stubs, parses ARM64
+instructions, relocates local branches and checks the shape of a complete function. Four compiler
+templates, each checked by hand, keep register widths, aliases, branch destinations, comparisons
+and calls. Only declared input and output locations, global bindings and typed callees are
+parameters; any other code change gives unknown. It is not a general decompiler.
 
-## Rust ports
+- Ship's reader destination joins a typed map call with empty and nonempty alternatives and
+  same-type null substitution.
+- District's reader joins a collection scan that compares length and bytes, with first-match and
+  empty or no-match outcomes. A fresh relic trial reused this scan method unchanged.
+- Planet class establishes a getter wrapper and its null substitution, but not the custom reader
+  or the table internals.
+- Army stays unknown: conditional event-target traversal and indirect jump tables had no
+  reusable method.
 
-The Rust code in `src/engine/analysis` ports five of these methods: template registry discovery with
-the static scheduler table (SDK-489), registry names from the database constructors, and root fields
-with their reader joins (SDK-487), effect and trigger declarations (SDK-535), and modifier,
-category, scope and link declarations (SDK-536). SDK-537 adds a method that no prototype had:
-localization contexts, commands and links. SDK-538 adds another: on_actions and game rules with the
-scopes that their call sites supply. SDK-540 adds modifier families from database generators. The
-module comments describe each method. The methods read the executable only and receive no field or
-config seeds. The five shared-reader contracts of [members and shared
-readers](registry-fields.md#members-and-shared-readers) stay unresolved, so no registry has a
-complete field answer.
+Typed database and null names are candidate reference classes. They do not prove the collection's
+element class, content-loader ownership, registration, validation or gameplay. The reader
+traversal tracks concrete tokens and owner provenance and stops on unknown calls or state.
 
-### Define read helpers (SDK-539)
-
-On the exact M45-release executable, `Native::defines()` found 2,385 compiled
-`NDefines` and `NUncheckedDefines` `ReadDefine` helpers. It followed 2,305 to a literal namespace,
-literal name and typed engine reader. The result is partial: 80 named helpers use a table-search
-loop that exceeds the bounded path search. They remain `UnresolvedReader` gaps, including
-`NGraphics.ORBIT_HSV`. There were no failed or unnamed helpers. Resolved types are 1,091
-fixed-point, 672 integer, 326 string, 172 float, 23 list, 13 vector and 8 boolean. The static
-query took about four seconds in a development test run.
-
-The method reads only executable code and literals. It classifies the target of each direct
-`GetValue`, `GetArrayValue` or `ReadDefinesValue` call. `GetValue` uses namespace and name
-arguments; `GetArrayValue` reads a named value from a namespace table. The source stamp is
-`defines/v1` with `StaticAnalysis`. The tracked parity test checks counts, gap types and small
-samples; it needs the exact executable through `STELLARIS_PATH`. Shipped define entries,
-defaults, comments, bounds and uses are not established here. SDK-610 owns the broader
-extraction question and Atlas owns the comparison with shipped content and config.
+All 27 controls pass: wrong owners or registers, clobbers, changed comparisons or getters,
+inverted branches or null selection, changed string layout or type, pointer truncation, reader
+provenance, unknown calls and an unavailable target or owner. The controls change disassembly in
+memory, not the executable. The result establishes one pattern on one build, not a success rate.
+`run.py` does not launch the game, but needs the pinned installation and Xcode tools, and
+rewrites its outputs; use a restored working copy.
