@@ -157,14 +157,9 @@ pub(crate) fn normalized_game_rules(
 }
 
 fn static_answer<T>(value: Vec<T>, gaps: Vec<Gap>, build: BuildId) -> Answer<Vec<T>> {
-    let completeness = if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-        Completeness::Complete
-    } else {
-        Completeness::Partial
-    };
     Answer {
         value,
-        completeness,
+        completeness: Completeness::from_gaps(&gaps),
         gaps,
         source: Source::new(build, METHOD, Basis::StaticAnalysis),
     }
@@ -185,16 +180,31 @@ impl<'a> Scopes<'a> {
         Self(names.as_deref())
     }
 
+    fn name(&self, bit: u32) -> Option<&'a String> {
+        self.0?.get(bit as usize).filter(|name| !name.is_empty())
+    }
+
     fn reference(&self, bit: u32) -> Option<ScopeReference> {
-        let name = self.0?.get(bit as usize).filter(|name| !name.is_empty())?;
         let scope = ScopeType {
             bit: bit as usize,
-            name: name.clone(),
+            name: self.name(bit)?.clone(),
         };
         Some(ScopeReference {
             id: scope_id(&scope),
             name: scope.name,
         })
+    }
+
+    /// The public scope of a slot. A scope type without a name is unresolved.
+    fn entry_scope(&self, slot: Slot) -> EntryScope {
+        match slot {
+            Slot::Scope(bit) => self
+                .reference(bit)
+                .map_or(EntryScope::Unresolved, EntryScope::Scope),
+            Slot::NotSet => EntryScope::NotSet,
+            Slot::SelfLink => EntryScope::SelfLink,
+            Slot::Unresolved => EntryScope::Unresolved,
+        }
     }
 }
 
@@ -206,38 +216,24 @@ fn entries(
     scopes: &Scopes<'_>,
     gaps: &mut Vec<Gap>,
 ) -> Vec<EntryContext> {
-    let mut unreadable = false;
-    let mut slot = |slot: Slot| match slot {
-        Slot::Scope(bit) => scopes.reference(bit).map_or_else(
-            || {
-                unreadable = true;
-                EntryScope::Unresolved
-            },
-            EntryScope::Scope,
-        ),
-        Slot::NotSet => EntryScope::NotSet,
-        Slot::SelfLink => EntryScope::SelfLink,
-        Slot::Unresolved => EntryScope::Unresolved,
-    };
     let entries: Vec<EntryContext> = findings
         .contexts
         .iter()
         .map(|Context { this, root, from }| EntryContext {
-            this: slot(*this),
-            root: slot(*root),
-            from: from.iter().map(|from| slot(*from)).collect(),
+            this: scopes.entry_scope(*this),
+            root: scopes.entry_scope(*root),
+            from: from.iter().map(|from| scopes.entry_scope(*from)).collect(),
         })
         .collect();
 
     for reason in &findings.unresolved {
         gaps.push(gap(GapKind::UnresolvedPath, Some(name), describe(reason)));
     }
-    let incomplete = findings.contexts.iter().any(|context| {
-        std::iter::once(&context.this)
-            .chain([&context.root])
-            .chain(&context.from)
-            .any(|slot| *slot == Slot::Unresolved)
-    });
+    let incomplete = findings
+        .contexts
+        .iter()
+        .flat_map(slots)
+        .any(|slot| *slot == Slot::Unresolved);
     if incomplete {
         gaps.push(gap(
             GapKind::UnresolvedPath,
@@ -245,6 +241,11 @@ fn entries(
             "some entry scopes of a call site could not be established",
         ));
     }
+    let unreadable = findings
+        .contexts
+        .iter()
+        .flat_map(slots)
+        .any(|slot| matches!(slot, Slot::Scope(bit) if scopes.name(*bit).is_none()));
     if unreadable {
         gaps.push(gap(
             GapKind::UnreadableInput,
@@ -260,6 +261,12 @@ fn entries(
         ));
     }
     entries
+}
+
+fn slots(context: &Context) -> impl Iterator<Item = &Slot> {
+    std::iter::once(&context.this)
+        .chain([&context.root])
+        .chain(&context.from)
 }
 
 /// One gap for each reason that some call sites could not be named, with their number.

@@ -122,16 +122,11 @@ fn answer<T>(
     declared(value, gaps, build, method)
 }
 
-/// A declared answer, complete exactly when every gap is outside the method.
+/// A declared answer, with completeness from [`Completeness::from_gaps`].
 pub(super) fn declared<T>(value: T, gaps: Vec<Gap>, build: BuildId, method: &str) -> Answer<T> {
-    let completeness = if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-        Completeness::Complete
-    } else {
-        Completeness::Partial
-    };
     Answer {
         value,
-        completeness,
+        completeness: Completeness::from_gaps(&gaps),
         gaps,
         source: Source::new(build, method, Basis::Declared),
     }

@@ -214,11 +214,7 @@ impl Native {
         }
         Ok(Answer {
             value: names.into_iter().map(|name| Registry { name }).collect(),
-            completeness: if unnamed == 0 {
-                Completeness::Complete
-            } else {
-                Completeness::Partial
-            },
+            completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), directories::METHOD, Basis::StaticAnalysis),
         })
@@ -249,11 +245,7 @@ impl Native {
         let gaps = normalized_gaps(result, registry.trim_end_matches('/'));
         Answer {
             value: normalized_fields(result),
-            completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-                Completeness::Complete
-            } else {
-                Completeness::Partial
-            },
+            completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
         }
@@ -360,11 +352,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
     value.sort_by(|left, right| left.name.cmp(&right.name));
     Answer {
         value,
-        completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-            Completeness::Complete
-        } else {
-            Completeness::Partial
-        },
+        completeness: Completeness::from_gaps(&gaps),
         gaps,
         source: Source::new(build, declarations::METHOD, Basis::Declared),
     }

@@ -25,6 +25,17 @@ pub enum Completeness {
     Partial,
 }
 
+impl Completeness {
+    /// Complete exactly when every gap is a declared limit outside the method.
+    pub(crate) fn from_gaps(gaps: &[Gap]) -> Self {
+        if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
+            Self::Complete
+        } else {
+            Self::Partial
+        }
+    }
+}
+
 /// One missing part of an answer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gap {

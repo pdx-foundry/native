@@ -229,33 +229,31 @@ impl JoinTables {
             }
         }
 
+        let mut modifiers = Vec::new();
         let mut unresolved_masks = BTreeSet::new();
         let mut unexplained = 0;
-        let modifiers = observed
-            .entries
-            .iter()
-            .map(|entry| {
-                let mask = u64::from(entry.mask);
-                let category_tags = match modifiers::tags(categories, mask) {
-                    Tags::Listed(tags) => DeclaredTags::Listed(tags),
-                    Tags::Unresolved(_) => {
-                        unresolved_masks.insert(mask);
-                        DeclaredTags::Unresolved
-                    }
-                };
-                let declared = self.declared.contains(&entry.name);
-                let generated_by = generated.remove(&entry.name).unwrap_or_default();
-                if !declared && generated_by.is_empty() {
-                    unexplained += 1;
+        for entry in &observed.entries {
+            let mask = u64::from(entry.mask);
+            let category_tags = match modifiers::tags(categories, mask) {
+                Tags::Listed(tags) => DeclaredTags::Listed(tags),
+                Tags::Unresolved(_) => {
+                    unresolved_masks.insert(mask);
+                    DeclaredTags::Unresolved
                 }
-                LoadedModifier {
-                    name: entry.name.clone(),
-                    category_tags,
-                    declared,
-                    generated_by,
-                }
-            })
-            .collect();
+            };
+            let declared = self.declared.contains(&entry.name);
+            let generated_by = generated.remove(&entry.name).unwrap_or_default();
+            if !declared && generated_by.is_empty() {
+                unexplained += 1;
+            }
+
+            modifiers.push(LoadedModifier {
+                name: entry.name.clone(),
+                category_tags,
+                declared,
+                generated_by,
+            });
+        }
 
         for mask in unresolved_masks {
             gaps.push(registry_gap(
@@ -279,18 +277,13 @@ impl JoinTables {
             "The table is read where the engine documents its modifiers, after content loads. Modifiers added later, such as during a game, and where a modifier takes effect are outside it.",
         ));
 
-        let completeness = if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-            Completeness::Complete
-        } else {
-            Completeness::Partial
-        };
         Answer {
             value: LoadedModifiers {
                 modifiers,
                 registry_items,
                 content: self.content.clone(),
             },
-            completeness,
+            completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(build, METHOD, Basis::LiveObservation),
         }
