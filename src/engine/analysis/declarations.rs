@@ -316,10 +316,7 @@ fn object_stores(rows: &[Instruction], since: usize) -> Option<(u64, u64)> {
                 }
             }
             ("add", [dst, base, offset]) => {
-                if let Some(value) = values
-                    .get(base)
-                    .and_then(|base| base.checked_add(number(offset)?))
-                {
+                if let Some(value) = added_address(&values, base, offset) {
                     values.insert(dst, value);
                 }
             }
@@ -354,10 +351,7 @@ fn register_values(rows: &[Instruction]) -> BTreeMap<&str, u64> {
                 }
             },
             ("add", [dst, base, offset]) => {
-                match values
-                    .get(base)
-                    .and_then(|base| base.checked_add(number(offset)?))
-                {
+                match added_address(&values, base, offset) {
                     Some(value) => values.insert(dst, value),
                     None => values.remove(dst),
                 };
@@ -375,6 +369,14 @@ fn register_values(rows: &[Instruction]) -> BTreeMap<&str, u64> {
         }
     }
     values
+}
+
+/// The address that `add` forms from the address that `base` holds and an immediate `offset`.
+/// `None` when `base` holds no known address or `offset` is not an immediate. Each caller decides
+/// what `None` does to the destination register.
+fn added_address(values: &BTreeMap<&str, u64>, base: &str, offset: &str) -> Option<u64> {
+    let base = values.get(base)?;
+    base.checked_add(number(offset)?)
 }
 
 /// The vtable that the code stores in the new object: at `[x19]`, or a copy of `x19`, when a
@@ -413,10 +415,7 @@ fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u
                 }
             }
             ("add", [dst, base, offset]) => {
-                if let Some(value) = values
-                    .get(base)
-                    .and_then(|base| base.checked_add(number(offset)?))
-                {
+                if let Some(value) = added_address(&values, base, offset) {
                     values.insert(dst, value);
                 }
             }

@@ -636,7 +636,7 @@ impl<'a> Machine<'a> {
                     if !site.reaching.contains(&pc) {
                         return Walk::Leaves;
                     }
-                    if site.loop_heads.contains(&pc) && self.visit(pc) > LOOP_LIMIT {
+                    if site.loop_heads.contains(&pc) && self.record_loop_arrival(pc) > LOOP_LIMIT {
                         let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
                         return Walk::End(Err(self.stop(pc, "loop-limit", limit)));
                     }
@@ -742,7 +742,7 @@ impl<'a> Machine<'a> {
             || kept.frames != self.frames
             || kept.labels != self.labels
         {
-            return match self.visit(pc) {
+            return match self.record_loop_arrival(pc) {
                 visits if visits > LOOP_LIMIT => {
                     let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
                     Err(self.stop(pc, "loop-limit", limit))
@@ -827,7 +827,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Count an arrival at the loop head `pc`, and return how often the path arrived there.
-    fn visit(&mut self, pc: u64) -> u32 {
+    fn record_loop_arrival(&mut self, pc: u64) -> u32 {
         let visits = self.loop_visits.entry(pc).or_default();
         *visits += 1;
         *visits
@@ -900,8 +900,11 @@ impl<'a> Machine<'a> {
 
     /// Run the instruction at `pc`.
     fn step(&mut self, pc: u64, operation: &Operation) -> Result<Flow, Halt> {
-        let mnemonic = ordered_access(&operation.mnemonic);
-        let operands = operation.operands.as_slice();
+        let Operation::Parsed { mnemonic, operands } = operation else {
+            return Err(Halt::unsupported("instruction"));
+        };
+        let mnemonic = ordered_access(mnemonic);
+        let operands = operands.as_slice();
         if self.step_move(mnemonic, operands)?
             || self.step_integer(mnemonic, operands)?
             || self.step_condition(mnemonic, operands)?
@@ -1485,29 +1488,34 @@ impl<'a> Machine<'a> {
         mnemonic: &str,
         operands: &[Operand],
     ) -> Result<Flow, Halt> {
-        match (mnemonic, operands) {
-            ("nop", []) => {}
-            ("b", [Operand::Immediate(target)]) => return Ok(Flow::Jump(*target as u64)),
-            (branch, [Operand::Immediate(target)]) if branch.starts_with("b.") => {
-                let condition =
-                    Condition::parse(&branch[2..]).ok_or(Halt::unsupported("branch-condition"))?;
+        if matches!((mnemonic, operands), ("nop", [])) {
+            return Ok(Flow::Next);
+        }
+
+        let branch = Branch::of(mnemonic).ok_or(Halt::unsupported("instruction"))?;
+        match (branch, operands) {
+            (Branch::Always, [Operand::Immediate(target)]) => {
+                return Ok(Flow::Jump(*target as u64));
+            }
+            (Branch::OnFlags(condition), [Operand::Immediate(target)]) => {
+                let condition = condition.ok_or(Halt::unsupported("branch-condition"))?;
                 if self.holds(condition)? {
                     return Ok(Flow::Jump(*target as u64));
                 }
             }
-            ("cbz" | "cbnz", [register, Operand::Immediate(target)]) => {
+            (Branch::OnZero { when_zero }, [register, Operand::Immediate(target)]) => {
                 let Some(value) = self.operand(register)? else {
                     return Ok(Flow::Unknown {
                         target: *target as u64,
                         halt: Halt::unknown_register("branch-value", register),
                     });
                 };
-                if (value == 0) == (mnemonic == "cbz") {
+                if (value == 0) == when_zero {
                     return Ok(Flow::Jump(*target as u64));
                 }
             }
             (
-                "tbz" | "tbnz",
+                Branch::OnBit { when_set },
                 [
                     register,
                     Operand::Immediate(bit),
@@ -1521,11 +1529,11 @@ impl<'a> Machine<'a> {
                     });
                 };
                 let set = value >> bit & 1 == 1;
-                if set == (mnemonic == "tbnz") {
+                if set == when_set {
                     return Ok(Flow::Jump(*target as u64));
                 }
             }
-            ("br", [register]) => {
+            (Branch::Register, [register]) => {
                 let target = self
                     .operand(register)?
                     .ok_or(Halt::unknown_register("branch-value", register))?;
@@ -1533,17 +1541,17 @@ impl<'a> Machine<'a> {
             }
             // A call puts its return address in the link register, so a `calls` closure can tell
             // call sites apart: the site is `x30 - 4`.
-            ("bl", [Operand::Immediate(target)]) => {
+            (Branch::Call, [Operand::Immediate(target)]) => {
                 self.registers[30] = Some(pc + 4);
                 return Ok(Flow::Call(*target as u64));
             }
-            ("blr", [register]) => {
+            (Branch::RegisterCall, [register]) => {
                 let target = self.operand(register)?;
                 self.registers[30] = Some(pc + 4);
                 return Ok(Flow::IndirectCall(target));
             }
-            ("ret", []) => return Ok(Flow::Return),
-            ("brk", [Operand::Immediate(_)]) => return Ok(Flow::Trap),
+            (Branch::Return, []) => return Ok(Flow::Return),
+            (Branch::Trap, [Operand::Immediate(_)]) => return Ok(Flow::Trap),
             _ => return Err(Halt::unsupported("instruction")),
         }
         Ok(Flow::Next)
@@ -1731,7 +1739,10 @@ fn binary(mnemonic: &str, left: u64, right: u64, wide: bool) -> u64 {
         "mul" => left.wrapping_mul(right),
         "lsl" => left.wrapping_shl((right % bits) as u32),
         "lsr" => truncate(left, wide) >> (right % bits),
-        _ => (sign_extend(truncate(left, wide), bits / 8, true) as i64 >> (right % bits)) as u64,
+        "asr" => {
+            (sign_extend(truncate(left, wide), bits / 8, true) as i64 >> (right % bits)) as u64
+        }
+        other => unreachable!("{other} is not a two-operand integer instruction"),
     }
 }
 
@@ -1743,7 +1754,8 @@ fn extend(kind: &str, value: u64) -> u64 {
         "uxtb" => value as u8 as u64,
         "uxth" => value as u16 as u64,
         "uxtw" => value as u32 as u64,
-        _ => value,
+        "uxtx" | "sxtx" => value,
+        other => unreachable!("{other} is not an extension"),
     }
 }
 
@@ -2014,63 +2026,115 @@ impl Condition {
 }
 
 #[derive(Debug, Clone)]
-struct Operation {
-    mnemonic: String,
-    operands: Vec<Operand>,
+enum Operation {
+    Parsed {
+        mnemonic: String,
+        operands: Vec<Operand>,
+    },
+    /// A row with an operand that does not parse. The machine does not run it, so it can never be
+    /// read as a different instruction. Reachability takes it to continue at the next row.
+    Unparsed,
 }
 
 impl Operation {
-    /// The instructions that can run next by direct control flow, or `None` for a branch through
-    /// a register. A call continues after itself.
-    fn successors(&self, address: u64) -> Option<Vec<u64>> {
-        let next = address + 4;
-        let target = self
-            .operands
-            .iter()
-            .rev()
-            .find_map(|operand| match operand {
-                Operand::Immediate(target) => Some(*target as u64),
-                _ => None,
-            });
-        Some(match self.mnemonic.as_str() {
-            "b" => target.into_iter().collect(),
-            "br" => return None,
-            "ret" | "brk" => Vec::new(),
-            "cbz" | "cbnz" | "tbz" | "tbnz" => target.into_iter().chain([next]).collect(),
-            branch if branch.starts_with("b.") => target.into_iter().chain([next]).collect(),
-            _ => vec![next],
-        })
-    }
-
-    /// The condition that the instruction tests, when it tests one.
-    fn condition(&self) -> Option<Condition> {
-        if let Some(suffix) = self.mnemonic.strip_prefix("b.") {
-            return Condition::parse(suffix);
-        }
-
-        self.operands.iter().find_map(|operand| match operand {
-            Operand::Condition(condition) => Some(*condition),
-            _ => None,
-        })
-    }
-
-    /// An operand that does not parse makes the whole row unsupported, so it can never be read as
-    /// a different instruction.
     fn parse(row: &Instruction) -> Self {
         let operands: Option<Vec<_>> = split(&row.operands)
             .into_iter()
             .map(Operand::parse)
             .collect();
         match operands {
-            Some(operands) => Self {
+            Some(operands) => Self::Parsed {
                 mnemonic: row.operation.clone(),
                 operands,
             },
-            None => Self {
-                mnemonic: format!("unsupported {}", row.operation),
-                operands: Vec::new(),
-            },
+            None => Self::Unparsed,
         }
+    }
+
+    /// The instructions that can run next by direct control flow, or `None` for a branch through
+    /// a register. A call continues after itself.
+    fn successors(&self, address: u64) -> Option<Vec<u64>> {
+        let next = address + 4;
+        let Self::Parsed { mnemonic, operands } = self else {
+            return Some(vec![next]);
+        };
+
+        let target = operands.iter().rev().find_map(|operand| match operand {
+            Operand::Immediate(target) => Some(*target as u64),
+            _ => None,
+        });
+        Some(match Branch::of(mnemonic) {
+            None | Some(Branch::Call | Branch::RegisterCall) => vec![next],
+            Some(Branch::Always) => target.into_iter().collect(),
+            Some(Branch::OnFlags(_) | Branch::OnZero { .. } | Branch::OnBit { .. }) => {
+                target.into_iter().chain([next]).collect()
+            }
+            Some(Branch::Register) => return None,
+            Some(Branch::Return | Branch::Trap) => Vec::new(),
+        })
+    }
+
+    /// The condition that the instruction tests, when it tests one.
+    fn condition(&self) -> Option<Condition> {
+        let Self::Parsed { mnemonic, operands } = self else {
+            return None;
+        };
+        if let Some(Branch::OnFlags(condition)) = Branch::of(mnemonic) {
+            return condition;
+        }
+
+        operands.iter().find_map(|operand| match operand {
+            Operand::Condition(condition) => Some(*condition),
+            _ => None,
+        })
+    }
+}
+
+/// How an instruction passes control other than to the next instruction. Both the machine and the
+/// reachability of the decoded code read it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Branch {
+    /// `b`: to its target.
+    Always,
+    /// `b.<condition>`: to its target when the flags satisfy the condition. `None` for a condition
+    /// that does not parse.
+    OnFlags(Option<Condition>),
+    /// `cbz` or `cbnz`: to its target when the register is zero, or when it is not.
+    OnZero { when_zero: bool },
+    /// `tbz` or `tbnz`: to its target when the tested bit is clear, or when it is set.
+    OnBit { when_set: bool },
+    /// `br`: to the address in a register.
+    Register,
+    /// `bl`: a call to its target that returns to the next instruction.
+    Call,
+    /// `blr`: a call to the address in a register that returns to the next instruction.
+    RegisterCall,
+    /// `ret`: out of the present function.
+    Return,
+    /// `brk`: a trap that does not return.
+    Trap,
+}
+
+impl Branch {
+    /// The branch that `mnemonic` makes, or `None` when it is not a branch, call, return or trap.
+    fn of(mnemonic: &str) -> Option<Self> {
+        if let Some(condition) = mnemonic.strip_prefix("b.") {
+            return Some(Self::OnFlags(Condition::parse(condition)));
+        }
+
+        Some(match mnemonic {
+            "b" => Self::Always,
+            "cbz" => Self::OnZero { when_zero: true },
+            "cbnz" => Self::OnZero { when_zero: false },
+            "tbz" => Self::OnBit { when_set: false },
+            "tbnz" => Self::OnBit { when_set: true },
+            "br" => Self::Register,
+            "bl" => Self::Call,
+            "blr" => Self::RegisterCall,
+            "ret" => Self::Return,
+            "brk" => Self::Trap,
+            _ => return None,
+        })
     }
 }
 

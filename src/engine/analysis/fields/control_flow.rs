@@ -83,28 +83,18 @@ impl Constants {
             ("adrp", [destination, address]) => {
                 self.assign(destination, number(address).map(|v| v as u64))
             }
-            ("add" | "sub", [destination, left, right]) => {
-                let value = self
-                    .value(left)
-                    .zip(self.value(right))
-                    .map(|(left, right)| {
-                        if row.operation == "add" {
-                            left.wrapping_add(right)
-                        } else {
-                            left.wrapping_sub(right)
-                        }
-                    });
-                self.assign(destination, value);
-            }
-            ("add" | "sub", [destination, left, right, shift]) => {
-                let shift = shift
-                    .strip_prefix("lsl")
-                    .and_then(number)
-                    .filter(|&n| n == 0 || n == 12)
-                    .ok_or("shifted-arithmetic")?;
-                if !right.starts_with('#') {
-                    return Err("shifted-arithmetic");
-                }
+            ("add" | "sub", [destination, left, right, shift_operand @ ..])
+                if shift_operand.len() <= 1 =>
+            {
+                let shift = match shift_operand.first() {
+                    None => 0,
+                    Some(_) if !right.starts_with('#') => return Err("shifted-arithmetic"),
+                    Some(operand) => operand
+                        .strip_prefix("lsl")
+                        .and_then(number)
+                        .filter(|&n| n == 0 || n == 12)
+                        .ok_or("shifted-arithmetic")?,
+                };
                 let value = self
                     .value(left)
                     .zip(self.value(right))
