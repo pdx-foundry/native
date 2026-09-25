@@ -1,14 +1,30 @@
-# Static analysis methods
+# Discovery methods
 
-Each static method records its engine facts, current result, gaps and pitfalls on the page for
+Each method records its engine facts, current result, gaps and pitfalls on the page for
 its subject. Add a page when a method starts a new subject. The code and its module comments
 describe the methods; these pages hold what the code cannot.
 
-| Page | Subjects |
-| --- | --- |
-| [Registry fields](registry-fields.md) | The current field sweep and its stops; compiler jump tables and bit fields in root readers; members and shared readers; registry scheduling and owner joins |
-| [Engine commands](engine-commands.md) | Effect and trigger declarations and their scopes; target getters; modifier, category, scope and link declarations; localization contexts; on_actions and game rules |
-| [Modifier families](modifier-families.md) | Modifier families from database generators, post-read code and shared helpers; the per-item post-read call; item keys; the loaded modifier table |
+Use the [method-authoring guide](method-authoring.md) to explore, implement and check a method in
+one task. Each row below is one method source stamp; the two callback operations share a method.
+Module paths are relative to `src/engine/analysis/` unless a full `src/` path is shown. The table
+names the method owners, not every shared decoder or evaluator they use. It covers the static
+methods and their live loaded-modifier join; other live observations are in
+[early observations](early-observations.md).
+
+| Operation | Source stamp | Modules | Knowledge section |
+| --- | --- | --- | --- |
+| `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
+| `Native::registry_fields` | `registry-fields/v4` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#sweep-on-m45-release) |
+| `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
+| `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
+| `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
+| `Native::scopes` | `scope-declarations/v1` | `scopes.rs` | [Scope types](engine-commands.md#scope-types) |
+| `Native::scope_links` | `scope-links/v2` | `scopes.rs` | [Scope links](engine-commands.md#scope-links) |
+| `Native::localization_declarations` | `localization-declarations/v1` | `localization.rs` | [Localization contexts, commands and links](engine-commands.md#localization-contexts-commands-and-links) |
+| `Native::on_actions`, `Native::game_rules` | `callbacks/v1` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
+| `Native::defines` | `defines/v1` | `defines.rs` | [Define read helpers](#define-read-helpers) |
+| `Native::modifier_families` | `modifier-families/v3` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `families/strings.rs` | [Generation calls and roots](modifier-families.md#engine-code-m45-release) |
+| `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
 This page also holds the define read helpers. The retired SDK-482 reference seam is on
 [reference method retirement](reference-method-retirement.md).
