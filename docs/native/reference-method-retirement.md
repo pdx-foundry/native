@@ -30,8 +30,8 @@ rewritten. A future public reference operation should start from these cases and
 qualify the missing callee and ownership relationships before claiming more.
 
 Typed database and null names are candidate reference classes. They do not prove the collection's
-element class, content-loader ownership, registration, validation or gameplay. The 27 controls
-change disassembly in memory, not the executable: wrong owners or registers, clobbers, changed
+element class, content-loader ownership, registration, validation or gameplay. All 27 controls
+passed in the accepted result. They change disassembly in memory, not the executable: wrong owners or registers, clobbers, changed
 comparisons or getters, inverted branches or null selection, changed string layout or type,
 pointer truncation, reader provenance, unknown calls and an unavailable target or owner. `run.py`
 does not launch the game, but needs the pinned installation and Xcode tools, and rewrites its
