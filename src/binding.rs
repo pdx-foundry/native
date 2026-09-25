@@ -3,6 +3,7 @@ pub(crate) use analysis::{BoundAnalysis, NamedCandidate, VerifiedAnalysis};
 mod binary;
 mod compose;
 mod groups;
+pub mod inspect;
 mod installation;
 mod machine;
 mod platform;

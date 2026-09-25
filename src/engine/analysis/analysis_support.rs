@@ -65,3 +65,152 @@ pub fn macho(code: &[u8]) -> Vec<u8> {
     bytes.extend(code);
     bytes
 }
+
+/// Where `macho_image` puts its chained-fixups header, so a test can change a field.
+pub const IMAGE_FIXUPS_OFFSET: usize = 0x5000;
+
+/// An ARM64 Mach-O executable with symbols, strings and one chained pointer, whose segment uses
+/// `pointer_format`. Format 6 is the one Native reads.
+///
+/// `Probe::Read()` at 0x100001000 forms the string `entity_offset` at 0x100002008, calls
+/// `_helper` at 0x100001020 and loads the data slot at 0x100004000, which points to `_helper`.
+pub fn macho_image(pointer_format: u16) -> Vec<u8> {
+    const BASE: u64 = 0x1_0000_0000;
+    let code: Vec<u8> = [
+        0xa9bf7bfdu32, // stp x29, x30, [sp, #-16]!
+        0xb0000000,    // adrp x0, 0x100002000
+        0x91002000,    // add x0, x0, #8
+        0x94000005,    // bl 0x100001020
+        0xf0000008,    // adrp x8, 0x100004000
+        0xf9400108,    // ldr x8, [x8]
+        0xa8c17bfd,    // ldp x29, x30, [sp], #16
+        0xd65f03c0,    // ret
+        0xd65f03c0,    // _helper: ret
+    ]
+    .into_iter()
+    .flat_map(u32::to_le_bytes)
+    .collect();
+    let strings = b"other\0\0\0entity_offset\0";
+    let names = b"\0__ZN5Probe4ReadEv\0_helper\0";
+
+    let mut bytes = vec![0u8; 0x5300];
+    let mut commands = Vec::new();
+    commands.extend(segment(
+        b"__TEXT",
+        BASE,
+        0x4000,
+        0,
+        &[
+            (b"__text", BASE + 0x1000, code.len(), 0x1000, 0x8000_0400),
+            (b"__cstring", BASE + 0x2000, strings.len(), 0x2000, 0x2),
+        ],
+    ));
+    commands.extend(segment(
+        b"__DATA",
+        BASE + 0x4000,
+        0x1000,
+        0x4000,
+        &[(b"__data", BASE + 0x4000, 16, 0x4000, 0)],
+    ));
+    for value in [0x2u32, 24, 0x5100, 2, 0x5200, names.len() as u32] {
+        commands.extend(value.to_le_bytes()); // LC_SYMTAB
+    }
+    for value in [0x8000_0034u32, 16, IMAGE_FIXUPS_OFFSET as u32, 0x60] {
+        commands.extend(value.to_le_bytes()); // LC_DYLD_CHAINED_FIXUPS
+    }
+
+    let header: Vec<u8> = [
+        0xfeedfacfu32,
+        0x0100000c,
+        0,
+        2,
+        4,
+        commands.len() as u32,
+        0,
+        0,
+    ]
+    .into_iter()
+    .flat_map(u32::to_le_bytes)
+    .collect();
+    put(&mut bytes, 0, &header);
+    put(&mut bytes, 32, &commands);
+    put(&mut bytes, 0x1000, &code);
+    put(&mut bytes, 0x2000, strings);
+    // A DYLD_CHAINED_PTR_64_OFFSET rebase to `_helper`, the last in its chain.
+    put(&mut bytes, 0x4000, &0x1020u64.to_le_bytes());
+
+    // dyld_chained_fixups_header: version, starts, imports, symbols, import count, formats.
+    let mut fixups: Vec<u8> = [0u32, 32, 0x60, 0x60, 0, 3, 0, 0]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect();
+    // dyld_chained_starts_in_image: two segments; only __DATA has chains, at +12.
+    for value in [2u32, 0, 12] {
+        fixups.extend(value.to_le_bytes());
+    }
+    // dyld_chained_starts_in_segment: one 0x1000 page whose chain starts at offset 0.
+    fixups.extend(24u32.to_le_bytes());
+    fixups.extend(0x1000u16.to_le_bytes());
+    fixups.extend(pointer_format.to_le_bytes());
+    fixups.extend(0x4000u64.to_le_bytes());
+    fixups.extend(0u32.to_le_bytes());
+    fixups.extend(1u16.to_le_bytes());
+    fixups.extend(0u16.to_le_bytes());
+    put(&mut bytes, IMAGE_FIXUPS_OFFSET, &fixups);
+
+    // nlist_64 entries: name offset, N_SECT | N_EXT, section 1, no description, address.
+    for (index, (name, address)) in [(1u32, BASE + 0x1000), (19, BASE + 0x1020)]
+        .into_iter()
+        .enumerate()
+    {
+        let mut symbol = name.to_le_bytes().to_vec();
+        symbol.extend([0x0f, 1, 0, 0]);
+        symbol.extend(address.to_le_bytes());
+        put(&mut bytes, 0x5100 + index * 16, &symbol);
+    }
+    put(&mut bytes, 0x5200, names);
+
+    bytes
+}
+
+/// An `LC_SEGMENT_64` command with its sections: name, address, size, file offset and flags.
+fn segment(
+    name: &[u8],
+    address: u64,
+    size: u64,
+    offset: u64,
+    sections: &[(&[u8], u64, usize, u32, u32)],
+) -> Vec<u8> {
+    let mut command = Vec::new();
+    command.extend(0x19u32.to_le_bytes());
+    command.extend((72 + 80 * sections.len() as u32).to_le_bytes());
+    command.extend(fixed_name(name));
+    for value in [address, size, offset, size] {
+        command.extend(value.to_le_bytes());
+    }
+    for value in [3u32, 3, sections.len() as u32, 0] {
+        command.extend(value.to_le_bytes());
+    }
+
+    for (section, address, size, offset, flags) in sections {
+        command.extend(fixed_name(section));
+        command.extend(fixed_name(name));
+        command.extend(address.to_le_bytes());
+        command.extend((*size as u64).to_le_bytes());
+        for value in [*offset, 2, 0, 0, *flags, 0, 0, 0] {
+            command.extend(value.to_le_bytes());
+        }
+    }
+
+    command
+}
+
+fn fixed_name(name: &[u8]) -> [u8; 16] {
+    let mut fixed = [0; 16];
+    fixed[..name.len()].copy_from_slice(name);
+    fixed
+}
+
+fn put(bytes: &mut [u8], at: usize, data: &[u8]) {
+    bytes[at..at + data.len()].copy_from_slice(data);
+}

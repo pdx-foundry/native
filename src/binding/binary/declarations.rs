@@ -242,7 +242,7 @@ fn operator_new(symbols: &[Symbol]) -> Result<BTreeSet<u64>, AnalysisError> {
 }
 
 /// The one executable text section and the function boundaries that symbols give it.
-pub(super) struct Text<'a> {
+pub(in crate::binding) struct Text<'a> {
     pub address: u64,
     pub code: &'a [u8],
     pub starts: BTreeSet<u64>,
