@@ -641,9 +641,12 @@ fn compact_game_rules(answer: &Answer<Vec<GameRule>>) -> Value {
     })
 }
 
-/// A callback answer with the value that `named` gives each callback under its name.
-fn compact_callbacks<T>(answer: &Answer<Vec<T>>, named: impl Fn(&T) -> (String, Value)) -> Value {
-    let names: serde_json::Map<_, _> = answer.value.iter().map(named).collect();
+/// A callback answer as its completeness, its gaps and one value for each callback name.
+fn compact_callbacks<T>(
+    answer: &Answer<Vec<T>>,
+    name_and_value: impl Fn(&T) -> (String, Value),
+) -> Value {
+    let names: serde_json::Map<_, _> = answer.value.iter().map(name_and_value).collect();
     let gaps: Vec<_> = answer
         .gaps
         .iter()
