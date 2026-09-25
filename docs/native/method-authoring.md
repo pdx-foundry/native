@@ -93,9 +93,9 @@ lists the other syntax differences from the decoder. [AGENTS.md](../../AGENTS.md
 assembly comments that explain test intent, such as the token or field name above.
 
 Use [`analysis_support.rs`](../../src/engine/analysis/analysis_support.rs) when a test needs an
-image: `macho` wraps authored bytes at `0x1000`, the examples' assembly base; `macho_image`
-supplies symbols, strings, a jump table and a chained pointer. Keep these authored tests
-independent of an installed game.
+image: `macho_with_text` wraps authored bytes at `0x1000`, the examples' assembly base;
+`macho_with_fixups` supplies symbols, strings, a jump table and a chained pointer. Keep these
+authored tests independent of an installed game.
 
 ## Check parity on the supported build
 

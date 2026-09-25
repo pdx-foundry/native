@@ -28,7 +28,7 @@ fn has_pointer(listing: &Listing) -> bool {
 fn an_uncatalogued_image_is_identified_and_disassembled_without_a_target_record() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("stellaris");
-    std::fs::write(&path, support::macho_image(6)).unwrap();
+    std::fs::write(&path, support::macho_with_fixups(6)).unwrap();
 
     let bytes = crate::internals::inspect::read_image(&path).unwrap();
     let image = Image::read(&bytes).unwrap();
@@ -60,7 +60,7 @@ fn an_uncatalogued_image_is_identified_and_disassembled_without_a_target_record(
 
 #[test]
 fn an_unread_fixup_format_leaves_symbols_strings_and_code() {
-    let bytes = support::macho_image(1);
+    let bytes = support::macho_with_fixups(1);
     let image = Image::read(&bytes).unwrap();
 
     let diagnostic = image.pointer_resolution().unwrap_err();
@@ -97,7 +97,7 @@ fn an_unread_fixup_format_leaves_symbols_strings_and_code() {
 
 #[test]
 fn a_read_fixup_format_resolves_slots() {
-    let bytes = support::macho_image(6);
+    let bytes = support::macho_with_fixups(6);
     let image = Image::read(&bytes).unwrap();
 
     assert_eq!(image.pointer_resolution(), Ok(()));
@@ -116,7 +116,7 @@ fn a_read_fixup_format_resolves_slots() {
 
 #[test]
 fn an_unread_fixup_header_names_its_values() {
-    let mut bytes = support::macho_image(6);
+    let mut bytes = support::macho_with_fixups(6);
     bytes[support::IMAGE_FIXUPS_OFFSET] = 1;
     let inventory = inventory::read(&bytes).unwrap();
 
@@ -132,7 +132,7 @@ fn an_unread_fixup_header_names_its_values() {
 
 #[test]
 fn an_image_without_fixups_says_so() {
-    let bytes = support::macho(&support::code());
+    let bytes = support::macho_with_text(&support::sample_arm64_code());
     let image = Image::read(&bytes).unwrap();
 
     assert_eq!(
@@ -143,7 +143,7 @@ fn an_image_without_fixups_says_so() {
 
 fn listing_of(words: &[u32]) -> Listing {
     let code: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-    let bytes = support::macho(&code);
+    let bytes = support::macho_with_text(&code);
     let image = Image::read(&bytes).unwrap();
 
     image.disassemble(0x1000, 4096).unwrap()
@@ -193,7 +193,7 @@ fn indirect_branches_and_undecoded_words_are_labelled() {
 
 #[test]
 fn invalid_starts_and_limits_are_errors() {
-    let bytes = support::macho(&support::code());
+    let bytes = support::macho_with_text(&support::sample_arm64_code());
     let image = Image::read(&bytes).unwrap();
 
     for start in [0, 0xffc, 0x1002, 0x1000 + 44, u64::MAX] {
@@ -207,7 +207,7 @@ fn invalid_starts_and_limits_are_errors() {
 
 #[test]
 fn a_start_inside_a_function_names_its_symbol() {
-    let bytes = support::macho_image(6);
+    let bytes = support::macho_with_fixups(6);
     let image = Image::read(&bytes).unwrap();
     let listing = image.disassemble(READ + 0x10, 4096).unwrap();
 
@@ -228,7 +228,7 @@ fn a_name_without_parameters_matches_functions_only() {
 
 #[test]
 fn a_slot_range_past_the_address_space_is_an_error() {
-    let bytes = support::macho_image(6);
+    let bytes = support::macho_with_fixups(6);
     let image = Image::read(&bytes).unwrap();
     let last = u64::MAX - 7;
 
@@ -249,7 +249,7 @@ fn a_base_register_that_is_only_read_keeps_its_page() {
 fn a_stop_is_placed_at_its_instruction_function_and_entry() {
     use crate::engine::analysis::stop::{Obstacle, Unknown};
 
-    let bytes = support::macho_image(6);
+    let bytes = support::macho_with_fixups(6);
     let image = Image::read(&bytes).unwrap();
     let stop = Stop {
         instruction: READ + 0x14,

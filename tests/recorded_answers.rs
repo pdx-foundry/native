@@ -521,7 +521,6 @@ async fn live_questions_need_no_supervisor_and_start_no_process() {
     ] {
         assert_eq!(game.registry_items(name).await.unwrap().value, [key]);
     }
-    // A hand-written failure case comes back as the same error.
     assert!(matches!(
         game.registry_items("common/tradition_categories").await,
         Err(Error::Observation { .. })

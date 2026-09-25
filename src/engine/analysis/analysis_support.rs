@@ -3,7 +3,7 @@
 use crate::engine::analysis::assembler::arm64;
 
 // An authored ARM64 sequence at 0x1000; it is not game code.
-pub fn code() -> Vec<u8> {
+pub fn sample_arm64_code() -> Vec<u8> {
     arm64!(at 0x1000;
         stp x29, x30, [sp, #-16]!;
         mov x29, sp;
@@ -19,7 +19,8 @@ pub fn code() -> Vec<u8> {
     )
 }
 
-pub fn expected() -> Vec<(&'static str, &'static str)> {
+/// The decoder's mnemonic and operand text for each instruction of [`sample_arm64_code`].
+pub fn sample_arm64_disassembly() -> Vec<(&'static str, &'static str)> {
     vec![
         ("stp", "x29,x30,[sp,#-0x10]!"),
         ("mov", "x29,sp"),
@@ -36,7 +37,7 @@ pub fn expected() -> Vec<(&'static str, &'static str)> {
 }
 
 /// A 64-bit ARM64 Mach-O executable with one `__text` section at 0x1000 that holds `code`.
-pub fn macho(code: &[u8]) -> Vec<u8> {
+pub fn macho_with_text(code: &[u8]) -> Vec<u8> {
     let length = code.len() as u64;
     let mut bytes: Vec<u8> = [0xfeedfacfu32, 0x0100000c, 0, 2, 1, 152, 0, 0]
         .into_iter()
@@ -63,10 +64,10 @@ pub fn macho(code: &[u8]) -> Vec<u8> {
     bytes
 }
 
-/// Where `macho_image` puts its chained-fixups header, so a test can change a field.
+/// Where `macho_with_fixups` puts its chained-fixups header, so a test can change a field.
 pub const IMAGE_FIXUPS_OFFSET: usize = 0x5000;
 
-/// The halfword jump-table entries in `macho_image`'s read-only data.
+/// The halfword jump-table entries in `macho_with_fixups`'s read-only data.
 pub const IMAGE_JUMP_TABLE: [u8; 6] = [2, 0, 0, 0, 6, 0];
 
 /// An ARM64 Mach-O executable with symbols, strings and one chained pointer, whose segment uses
@@ -75,7 +76,7 @@ pub const IMAGE_JUMP_TABLE: [u8; 6] = [2, 0, 0, 0, 6, 0];
 /// `Probe::Read()` at 0x100001000 forms the string `entity_offset` at 0x100002008, calls
 /// `_helper` at 0x100001020 and loads the data slot at 0x100004000, which points to `_helper`.
 /// `__TEXT,__const` at 0x100003000 holds [`IMAGE_JUMP_TABLE`].
-pub fn macho_image(pointer_format: u16) -> Vec<u8> {
+pub fn macho_with_fixups(pointer_format: u16) -> Vec<u8> {
     const BASE: u64 = 0x1_0000_0000;
     // File offsets. The image maps each one at `BASE` plus the offset.
     const TEXT: usize = 0x1000;

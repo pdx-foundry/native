@@ -80,11 +80,11 @@ fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::analysis::analysis_support::{IMAGE_JUMP_TABLE, macho_image};
+    use crate::engine::analysis::analysis_support::{IMAGE_JUMP_TABLE, macho_with_fixups};
 
     #[test]
     fn the_field_input_holds_the_jump_tables_in_read_only_data() {
-        let sections = read_only_data(&macho_image(6)).unwrap();
+        let sections = read_only_data(&macho_with_fixups(6)).unwrap();
 
         assert_eq!(sections.len(), 1);
         assert_eq!(sections[0].address, 0x1_0000_3000);
