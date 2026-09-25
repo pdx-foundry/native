@@ -65,7 +65,7 @@ The sets are disjoint. Two new district names, `sdk498_district_*_max_add` and
 district build-speed result is incomplete; name resemblance is not a recovered generation rule.
 
 Five built-in names acquired different loaded category tags, as already found in [declaration
-discovery](engine-commands.md#modifiers-categories-scopes-and-links-sdk-536):
+discovery](engine-commands.md#modifiers):
 `terraforming_cost_mult`, the three `starbase_shipyard_*build_cost_mult` variants, and
 `gdf_ship_alloys_cost_mult`. Keep executable declarations distinct from the loaded table after later
 registrations.
