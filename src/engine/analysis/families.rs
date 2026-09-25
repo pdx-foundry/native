@@ -460,6 +460,18 @@ struct PathSummary {
     established: BTreeSet<(Vec<u64>, Node)>,
 }
 
+/// One registration call of a root run, as the run records it.
+struct Registration {
+    /// The calls that the path was inside, then the registration call itself.
+    calls: Vec<u64>,
+    /// The name's node in the run's arena.
+    name: u64,
+    /// The category mask.
+    mask: Option<u64>,
+    /// The path had assumed text before the call.
+    assumed_text: bool,
+}
+
 /// Run the root over one item whose key has `form`, and summarize each path.
 fn root_paths(
     input: &FamilyInput,
@@ -490,7 +502,7 @@ fn root_paths(
 
     let model = model(input, form);
     let mut arena = Arena::default();
-    let mut records: Vec<(Vec<u64>, u64, Option<u64>, bool)> = Vec::new();
+    let mut records: Vec<Registration> = Vec::new();
     let paths = machine.run_paths(root.function, &mut |target, machine| match target {
         Some(target) if target == input.registration => {
             let site = machine.known_register(30, "call-site")? - 4;
@@ -498,8 +510,13 @@ fn root_paths(
             calls.push(site);
             let name = model.object_node(machine, machine.register(1), &mut arena);
             let mask = machine.read(machine.stack_pointer() + input.category_offset, 4);
-            let assumed = machine.labelled(ASSUMED_TEXT).is_some();
-            records.push((calls, name, mask, assumed));
+            let assumed_text = machine.labelled(ASSUMED_TEXT).is_some();
+            records.push(Registration {
+                calls,
+                name,
+                mask,
+                assumed_text,
+            });
 
             // The path's own registrations so far, so forked paths never share a new type.
             let count = machine.labelled(RECORD_COUNT).unwrap_or(0);
@@ -526,12 +543,18 @@ fn root_paths(
                 ending: ending(&input.strings, &path.end),
                 records: made
                     .iter()
-                    .map(|(calls, name, mask, _)| (calls.clone(), arena.node(*name).clone(), *mask))
+                    .map(|registration| {
+                        let name = arena.node(registration.name).clone();
+                        (registration.calls.clone(), name, registration.mask)
+                    })
                     .collect(),
                 established: made
                     .iter()
-                    .filter(|(.., assumed)| !assumed)
-                    .map(|(calls, name, ..)| (calls.clone(), arena.node(*name).clone()))
+                    .filter(|registration| !registration.assumed_text)
+                    .map(|registration| {
+                        let name = arena.node(registration.name).clone();
+                        (registration.calls.clone(), name)
+                    })
                     .collect(),
             }
         })
