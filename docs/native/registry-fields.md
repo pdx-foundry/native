@@ -237,6 +237,37 @@ ARM64 slice `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
   An empty range still gives every row, as gaps. The method rejected a stride other than 48, a
   range over 64 KiB and an unaligned table offset. The row count is not a registry count.
 
+### Owner vtables on M45-release
+
+The owner rule above needs the persistent base's offset-to-top and the shared member-dispatch
+slot. SDK-602 removed an image-wide scan of these, which no live method read. It is at
+`git show 8d9a073:src/binding/binary/discovery.rs` (`vtables`). For new owner joins, use
+`vtable_group` in `binding/binary/families.rs`. It reads one class and checks its typeinfo.
+
+- **Scan.** From each `vtable for <class>` symbol up to the next symbol (at most 64 KiB), in
+  8-byte steps, the scan took a position as a vtable when two things held: its word was an
+  offset-to-top in `-4096..=0`, and the next word was a fixed-up pointer. The address point is
+  the position + 16. The member slot is the fixed-up pointer at the position + 56: the address
+  point + 40, which is slot 5.
+- **Result.** 15,371 address points in 12,876 classes; 2,593 have a non-zero offset-to-top. For
+  159 of the 164 candidate owners, the member slot of some vtable holds `ReadMember(CReader&,
+  int)`: through a `virtual override thunk` for 149, directly for 10. That base's offset-to-top is
+  -56 for 155 owners, -112 for 2, -64 for 1 and 0 for 1. There is no such vtable for
+  `CComponentSlotTemplate`, `CJobTag` and `CTraitTag`, which have no named reader, or for
+  `CStarbaseBuilding` and `CStarbaseModule`, which have one.
+- **Example.** `CTraditionCategory`: address point `0x103095310`, offset-to-top -56, member slot
+  `0x100cd92b0`, the thunk to `CTraditionCategory::ReadMember(CReader&, int)`.
+  `CMegaStructureType`: `0x1030b0860` (0, `InitPostRead`), `0x1030b08a8` (-56, the `ReadMember`
+  thunk).
+- **Pitfalls.** The scan did not check that the second word is the class's own typeinfo, so it
+  accepted false address points. For example, `CMegaStructureType` got `0x1030b08f8` (-64,
+  `~CMegaStructureTypeDatabase()`), and `CCouncilAgenda` got `0x10301b9d8`, whose member slot
+  holds `typeinfo for CCouncilAgenda`. Slot 5 holds the reader only in the persistent base;
+  other bases hold other functions there.
+- **Imports.** The chained fixups bind 29,695 slots to other images; 10,994 of them have a name
+  (for example `0x102ff4000` `_AcronymTag`). There are 303,281 local pointers. The catalogue keeps
+  the bound slots, and `internals::inspect` names imports from the fixups directly.
+
 SDK-551 owns custom, nested and late loaders; SDK-552 owns mounted selection and duplicates;
 SDK-543 owns identifier grammar. Symbols and addresses locate evidence on one build only; the
 prototype's synthetic identity is not a cross-build match.
