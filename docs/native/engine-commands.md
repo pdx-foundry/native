@@ -100,11 +100,11 @@ direct calls:
 - Four give a name a second time with the same tags: `bonus_automated_workforce_mult`,
   `district_automated_workforce`, `country_storm_location_intel_add`,
   `country_storm_movement_intel_add`.
-- 11 pass a token that is not a literal: ten calls in `CShipClassModifierHelper::Init` compose the
-  name from a string, and one call is inside `CModifier::TryAddDynamicModifier`.
+- 11 pass a token that is not a literal.
 
-The 73 sites that generate modifiers from content are `UnnamedDeclaration` gaps here. The
-[modifier families](modifier-families.md) page joins them to registries. Five declared names have
+The 11 calls and the other sites that generate modifiers at run time are `UnnamedDeclaration` gaps
+here. The [modifier families](modifier-families.md#generation-calls) page lists them and joins
+them to registries. Five declared names have
 other tags in the loaded table, because content registers the same name again (for example
 `common/economic_categories` `terraforming` has `generate_mult_modifiers` and
 `modifier_category = planet`). The static answer keeps the executable's declaration.
