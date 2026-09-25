@@ -66,8 +66,13 @@ reached returns a constant:
 | 2 (`planet`) | 834 | 752 | `CEffect::GetSupportedScopeTargets`, and many trigger classes' own getters (`CIfTrigger`) |
 | `0xfffc` (bits 2 to 15, `country` to `war`) | 229 | 163 | `CIntEffect`, `CBoolEffect`, `CValueEffect` and the matching triggers |
 | 0 | 3 | 165 | `tooltip`, `exists`, `set_home_base` and others |
-| An override that names a type | 4 | 12 | For example `has_casus_belli` gives `country`, `is_default_species` gives `species`, `steal_planet_output` gives `country, ship` |
+| An override that names a type | 4 | 12 | Listed below |
 | Vtable not found | 4 | 4 | The scope set is also `Unresolved` |
+
+The 16 overrides: `has_casus_belli`, `intel` and eight other triggers, and the effects
+`transfer_resources_to_empire` and `transfer_galactic_defense_force_fleets`, give `country`;
+`is_default_species` gives `species`; `is_background_planet` gives `planet, colony`;
+`steal_planet_output` and `transfer_resource_stockpile` give `country, ship`.
 
 These masks are not the scope types that a target argument accepts, so `Declaration` has no
 target field:
