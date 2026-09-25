@@ -132,6 +132,110 @@ pub(in crate::binding) fn callbacks(
     recipe: &DeclarationRecipe,
 ) -> Result<CallbacksInput, AnalysisError> {
     let text = Text::read(bytes, symbols)?;
+    let CallbackSites {
+        sites,
+        forwarders,
+        script_fired_sites,
+    } = callback_sites(&text, symbols)?;
+
+    let pulse = Pulse {
+        init: unique(symbols, "COnActionDatabase::Init()")?,
+        // An import stub keeps its raw name when it does not demangle.
+        string_compare: addresses(symbols, "_strcmp"),
+        instance: unique(symbols, "COnActionDatabase::_pInstance")?,
+    };
+
+    let mut functions = BTreeMap::new();
+    for function in sites
+        .iter()
+        .map(|site| site.function)
+        .chain([pulse.init])
+        .collect::<BTreeSet<_>>()
+    {
+        if let Some(rows) = decoded(&text, function) {
+            functions.insert(function, rows);
+        }
+    }
+
+    let scope_functions = scope_functions(symbols);
+    let scope_code = scope_functions
+        .fresh_constructors
+        .iter()
+        .chain(&scope_functions.setters)
+        .filter_map(|&start| decoded(&text, start))
+        .flatten()
+        .collect();
+
+    let initializer = unique(symbols, "__GLOBAL__sub_I_game_rules.cpp")?;
+    let finders = vec![
+        (
+            RuleFamily::Scripted,
+            unique(symbols, "FindRuleDeclarationByEnum(NGameRules::EGameRule)")?,
+        ),
+        (
+            RuleFamily::Weighted,
+            unique(
+                symbols,
+                "FindWeightedRuleDeclarationByEnum(NGameRules::EWeightedGameRule)",
+            )?,
+        ),
+    ];
+    let table_functions =
+        std::iter::once(initializer).chain(finders.iter().map(|&(_, finder)| finder));
+    let mut table_code = Vec::new();
+    for start in table_functions {
+        let rows = decoded(&text, start).ok_or(AnalysisError::InvalidRange)?;
+        table_code.extend(rows);
+    }
+
+    Ok(CallbacksInput {
+        functions,
+        scope_code,
+        scope_functions,
+        strings: StringFunctions {
+            from_literal: addresses(symbols, "CString::CString(char const*)"),
+            copy: addresses(symbols, "CString::CString(CString const&)"),
+            destructors: addresses(symbols, "CString::~CString()"),
+            object_size: recipe.string_object_size as i64,
+        },
+        lookups: addresses(
+            symbols,
+            "COnActionDatabase::GetOnActionList(CString const&) const",
+        ),
+        sites,
+        forwarders,
+        rule_owners: symbols
+            .iter()
+            .filter(|symbol| symbol.name.starts_with("CGameRules::"))
+            .map(|symbol| symbol.address)
+            .collect(),
+        script_fired_sites,
+        pulse: Some(pulse),
+        rule_tables: RuleTables {
+            code: table_code,
+            initializer,
+            finders,
+        },
+        tokens: text.token_names(symbols, strings)?,
+        scope_names: text.scope_names(symbols, strings),
+        data: read_only_data(bytes)?,
+        layout: recipe.callbacks,
+    })
+}
+
+/// The direct calls that fire an on_action or evaluate a game rule, and what they reach.
+struct CallbackSites {
+    sites: Vec<Site>,
+    /// The forwarders found in this build; a forwarded site holds its index here.
+    forwarders: Vec<Forwarder>,
+    /// Calls inside the effect that script uses to fire an on_action it names.
+    script_fired_sites: usize,
+}
+
+/// Find every direct call to an anchor or a forwarder, except calls inside the database's own
+/// dispatch and inside the script effect. An anchor that the build lacks is an error; a
+/// forwarder without exactly one address is skipped.
+fn callback_sites(text: &Text, symbols: &[Symbol]) -> Result<CallbackSites, AnalysisError> {
     let names: BTreeMap<u64, &str> = symbols
         .iter()
         .map(|symbol| (symbol.address, symbol.name.as_str()))
@@ -195,89 +299,10 @@ pub(in crate::binding) fn callbacks(
         }
     }
 
-    let pulse = Pulse {
-        init: unique(symbols, "COnActionDatabase::Init()")?,
-        // An import stub keeps its raw name when it does not demangle.
-        string_compare: addresses(symbols, "_strcmp"),
-        instance: unique(symbols, "COnActionDatabase::_pInstance")?,
-    };
-
-    let mut functions = BTreeMap::new();
-    for function in sites
-        .iter()
-        .map(|site| site.function)
-        .chain([pulse.init])
-        .collect::<BTreeSet<_>>()
-    {
-        if let Some(rows) = decoded(&text, function) {
-            functions.insert(function, rows);
-        }
-    }
-
-    let scope_functions = scope_functions(symbols);
-    let scope_code = scope_functions
-        .fresh_constructors
-        .iter()
-        .chain(&scope_functions.setters)
-        .filter_map(|&start| decoded(&text, start))
-        .flatten()
-        .collect();
-
-    let initializer = unique(symbols, "__GLOBAL__sub_I_game_rules.cpp")?;
-    let finders = vec![
-        (
-            RuleFamily::Scripted,
-            unique(symbols, "FindRuleDeclarationByEnum(NGameRules::EGameRule)")?,
-        ),
-        (
-            RuleFamily::Weighted,
-            unique(
-                symbols,
-                "FindWeightedRuleDeclarationByEnum(NGameRules::EWeightedGameRule)",
-            )?,
-        ),
-    ];
-    let table_code = [initializer]
-        .into_iter()
-        .chain(finders.iter().map(|(_, finder)| *finder))
-        .map(|start| decoded(&text, start).ok_or(AnalysisError::InvalidRange))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
-        .collect();
-
-    Ok(CallbacksInput {
-        functions,
-        scope_code,
-        scope_functions,
-        strings: StringFunctions {
-            from_literal: addresses(symbols, "CString::CString(char const*)"),
-            copy: addresses(symbols, "CString::CString(CString const&)"),
-            destructors: addresses(symbols, "CString::~CString()"),
-            object_size: recipe.string_object_size as i64,
-        },
-        lookups: addresses(
-            symbols,
-            "COnActionDatabase::GetOnActionList(CString const&) const",
-        ),
+    Ok(CallbackSites {
         sites,
         forwarders,
-        rule_owners: symbols
-            .iter()
-            .filter(|symbol| symbol.name.starts_with("CGameRules::"))
-            .map(|symbol| symbol.address)
-            .collect(),
         script_fired_sites,
-        pulse: Some(pulse),
-        rule_tables: RuleTables {
-            code: table_code,
-            initializer,
-            finders,
-        },
-        tokens: text.token_names(symbols, strings)?,
-        scope_names: text.scope_names(symbols, strings),
-        data: read_only_data(bytes)?,
-        layout: recipe.callbacks,
     })
 }
 

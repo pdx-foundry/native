@@ -25,16 +25,18 @@ pub(in crate::binding) fn read(
     kind: DeclarationKind,
     recipe: &DeclarationRecipe,
 ) -> Result<DeclarationInput, AnalysisError> {
-    let (database, registrar_name, helper_class) = match kind {
+    let (database, registrar_name, helper_class, scope_slot) = match kind {
         DeclarationKind::Effect => (
             "CEffectDatabase",
             "CEffectDatabase::RegisterEffectEntry(int, CEffectEntryBase*)",
             "CEffectRegistryHelper",
+            recipe.effect_scope_slot,
         ),
         DeclarationKind::Trigger => (
             "CTriggerDatabase",
             "CTriggerDatabase::RegisterTriggerEntry(int, CTriggerEntryBase*)",
             "CTriggerRegistryHelper",
+            recipe.trigger_scope_slot,
         ),
     };
     let register_entry = unique(symbols, registrar_name)?;
@@ -72,10 +74,6 @@ pub(in crate::binding) fn read(
             },
         );
     }
-    let scope_slot = match kind {
-        DeclarationKind::Effect => recipe.effect_scope_slot,
-        DeclarationKind::Trigger => recipe.trigger_scope_slot,
-    };
     Ok(DeclarationInput {
         tokens,
         registrars,
