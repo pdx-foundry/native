@@ -262,20 +262,10 @@ impl BoundAnalysis {
         &self,
         registry: &str,
     ) -> Result<Option<FixtureLoader>, AnalysisError> {
-        use crate::engine::analysis::{decode::decode_arm64, directories::Directory};
+        use crate::engine::analysis::decode::decode_arm64;
 
         let verified = self.verified()?;
-        let candidate = |name: &str| {
-            let mut matching = verified
-                .named_candidates()
-                .iter()
-                .filter(|candidate| candidate.directory == Directory::Named(name.into()));
-            match (matching.next(), matching.next()) {
-                (Some(candidate), None) => Some(candidate),
-                _ => None,
-            }
-        };
-        let Some(selected) = candidate(registry) else {
+        let Some(selected) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(None);
         };
         let Some(address) = selected
@@ -378,17 +368,10 @@ impl BoundAnalysis {
         &self,
         registry: &str,
     ) -> Result<Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>, AnalysisError> {
-        use crate::engine::analysis::{
-            directories::Directory,
-            fields::{self, ReaderJoin, Value},
-        };
+        use crate::engine::analysis::fields::{self, ReaderJoin, Value};
 
         let verified = self.verified()?;
-        let mut matching = verified
-            .named_candidates()
-            .iter()
-            .filter(|candidate| candidate.directory == Directory::Named(registry.into()));
-        let (Some(candidate), None) = (matching.next(), matching.next()) else {
+        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(Vec::new());
         };
         let input = verified.field_input(candidate.record.clone())?;
@@ -494,14 +477,10 @@ impl BoundAnalysis {
         &self,
         registry: &str,
     ) -> Result<Option<Vec<crate::Field>>, AnalysisError> {
-        use crate::engine::analysis::{directories::Directory, fields};
+        use crate::engine::analysis::fields;
 
         let verified = self.verified()?;
-        let mut matching = verified
-            .named_candidates()
-            .iter()
-            .filter(|candidate| candidate.directory == Directory::Named(registry.into()));
-        let (Some(candidate), None) = (matching.next(), matching.next()) else {
+        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(None);
         };
         let input = verified.field_input(candidate.record.clone())?;
@@ -515,6 +494,24 @@ impl BoundAnalysis {
 pub(crate) struct NamedCandidate {
     pub record: crate::engine::analysis::discovery::CandidateRecord,
     pub directory: crate::engine::analysis::directories::Directory,
+}
+
+/// The one candidate whose constructors establish the content directory `directory`, or `None`
+/// when no candidate or more than one does.
+pub(crate) fn unique_named_candidate<'a>(
+    candidates: &'a [NamedCandidate],
+    directory: &str,
+) -> Option<&'a NamedCandidate> {
+    use crate::engine::analysis::directories::Directory;
+
+    let mut matching = candidates.iter().filter(
+        |candidate| matches!(&candidate.directory, Directory::Named(name) if name == directory),
+    );
+    let (Some(candidate), None) = (matching.next(), matching.next()) else {
+        return None;
+    };
+
+    Some(candidate)
 }
 
 impl BoundAnalysis {

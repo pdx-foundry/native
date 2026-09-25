@@ -1,5 +1,7 @@
 mod analysis;
-pub(crate) use analysis::{BoundAnalysis, NamedCandidate, VerifiedAnalysis};
+pub(crate) use analysis::{
+    BoundAnalysis, NamedCandidate, VerifiedAnalysis, unique_named_candidate,
+};
 mod binary;
 mod compose;
 mod groups;
@@ -18,14 +20,8 @@ fn named_candidate<'a>(
     candidates: &'a [NamedCandidate],
     directory: &str,
 ) -> Result<&'a NamedCandidate, String> {
-    use crate::engine::analysis::directories::Directory;
-    let mut matches = candidates.iter().filter(
-        |candidate| matches!(&candidate.directory, Directory::Named(name) if name == directory),
-    );
-    let (Some(candidate), None) = (matches.next(), matches.next()) else {
-        return Err(format!("{directory}: no unique static registry candidate"));
-    };
-    Ok(candidate)
+    unique_named_candidate(candidates, directory)
+        .ok_or_else(|| format!("{directory}: no unique static registry candidate"))
 }
 
 /// The database instance of a registry whose keys a session reads, and its key offset. A
