@@ -22,10 +22,12 @@ use syn::{
     visit::Visit,
 };
 
-/// A recorded manual exception: one site where scanned code names an engine fact because no
+/// A recorded manual exception: one function where scanned code names an engine fact because no
 /// method reaches it yet.
 struct Exception {
     file: &'static str,
+    /// The function that holds the exception. The same text elsewhere in the file still fails.
+    function: &'static str,
     text: &'static str,
     reason: &'static str,
     removal: &'static str,
@@ -33,6 +35,7 @@ struct Exception {
 
 const EXCEPTIONS: &[Exception] = &[Exception {
     file: "src/fixture.rs",
+    function: "validate",
     text: "common/tradition_categories",
     reason: "Manual category read-entry exception (docs/native/early-observations.md): the public \
              InitialCategoryLoad window and CategoryFieldReads kind exist only for the category \
@@ -42,11 +45,11 @@ const EXCEPTIONS: &[Exception] = &[Exception {
               unfamiliar-category transfer.",
 }];
 
-/// Names of values that hold an engine subject. A literal compared with one of them selects
-/// behavior for one registry, class, field or command.
+/// Words that name a value holding an engine subject, alone or in a compound name such as
+/// `field_name`. A literal compared with such a value selects behavior for one registry, class,
+/// field or command.
 const ENGINE_SUBJECTS: &[&str] = &[
     "owner",
-    "owner_candidate",
     "class",
     "registry",
     "directory",
@@ -77,32 +80,51 @@ const COMPARISON_METHODS: &[&str] = &[
     "strip_suffix",
 ];
 
-/// Build-specific facts that the gate recognizes in source. They come from the M45-release
-/// expectations, so production code cannot restate them.
+/// Build-specific facts that the gate recognizes in source. They come from the registry
+/// expectations of the catalogued builds, so production code cannot restate them.
 struct Reference {
     roots: BTreeSet<String>,
-    registry_count: u64,
+    registry_counts: BTreeSet<u64>,
 }
 
 impl Reference {
-    fn m45() -> Self {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected/m45/registries.json");
-        let text = std::fs::read_to_string(path).expect("read the M45 registry expectation");
-        let registries: Vec<String> =
-            serde_json::from_str(&text).expect("parse the M45 registry expectation");
+    /// Reads `tests/expected/<build>/registries.json` for every build with expectations.
+    fn catalogued() -> Self {
+        let expected = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected");
+        let builds: Vec<Vec<String>> = std::fs::read_dir(expected)
+            .expect("read the build expectations")
+            .map(|entry| {
+                entry
+                    .expect("expectation entry")
+                    .path()
+                    .join("registries.json")
+            })
+            .filter(|path| path.is_file())
+            .map(|path| {
+                let text = std::fs::read_to_string(&path).expect("read a registry expectation");
 
-        Self::new(&registries)
+                serde_json::from_str(&text).expect("parse a registry expectation")
+            })
+            .collect();
+        assert!(!builds.is_empty(), "no registry expectation found");
+
+        Self::new(&builds)
     }
 
-    fn new(registries: &[String]) -> Self {
-        let roots = registries
+    fn new(builds: &[Vec<String>]) -> Self {
+        let roots = builds
             .iter()
+            .flatten()
             .map(|registry| registry.split('/').next().unwrap().to_string())
+            .collect();
+        let registry_counts = builds
+            .iter()
+            .map(|registries| registries.len() as u64)
             .collect();
 
         Self {
             roots,
-            registry_count: registries.len() as u64,
+            registry_counts,
         }
     }
 
@@ -122,18 +144,27 @@ impl Reference {
 #[derive(Debug)]
 struct Violation {
     file: PathBuf,
+    /// The innermost named function around the violation, or empty at module level.
+    function: String,
     rule: &'static str,
     detail: String,
 }
 
 impl Violation {
     fn describe(&self) -> String {
-        format!("{}: {}: {}", self.file.display(), self.rule, self.detail)
+        format!(
+            "{}: {}: {}: {}",
+            self.file.display(),
+            self.function,
+            self.rule,
+            self.detail
+        )
     }
 }
 
 struct Checker<'a> {
     file: PathBuf,
+    functions: Vec<String>,
     reference: &'a Reference,
     violations: Vec<Violation>,
 }
@@ -142,6 +173,7 @@ impl Checker<'_> {
     fn reject(&mut self, rule: &'static str, detail: impl Into<String>) {
         self.violations.push(Violation {
             file: self.file.clone(),
+            function: self.functions.last().cloned().unwrap_or_default(),
             rule,
             detail: detail.into(),
         });
@@ -149,46 +181,45 @@ impl Checker<'_> {
 
     /// Checks a literal wherever it appears.
     fn check_literal(&mut self, literal: &Lit) {
-        match literal {
-            Lit::Str(value) => {
-                let text = value.value();
+        if let Lit::Int(value) = literal
+            && let Ok(number) = value.base10_parse::<u64>()
+            && self.reference.registry_counts.contains(&number)
+        {
+            self.reject("registry count", value.to_string());
+        }
 
-                if self.reference.names_content_directory(&text) {
-                    self.reject("content directory", text);
-                } else if source::has_build_shape(&text) {
-                    self.reject("build version", text);
-                }
-            }
-            Lit::Int(value)
-                if value.base10_parse::<u64>().ok() == Some(self.reference.registry_count) =>
-            {
-                self.reject("registry count", value.to_string());
-            }
-            _ => {}
+        let Some(text) = literal_text(literal) else {
+            return;
+        };
+
+        if self.reference.names_content_directory(&text) {
+            self.reject("content directory", text);
+        } else if is_class_name(&text) {
+            self.reject("engine class", text);
+        } else if source::has_build_shape(&text) {
+            self.reject("build version", text);
         }
     }
 
     /// Checks a literal that a comparison tests against `subject`.
     fn check_compared(&mut self, subject: &Expr, literal: &Lit) {
         let subject = subject_name(subject).unwrap_or_default();
+        let engine_subject = subject
+            .split('_')
+            .any(|word| ENGINE_SUBJECTS.contains(&word));
         let build_subject = subject.contains("build") || subject.contains("version");
+        let text = match literal {
+            Lit::Int(value) => value.to_string(),
+            literal => match literal_text(literal) {
+                Some(text) => text,
+                None => return,
+            },
+        };
 
-        match literal {
-            Lit::Str(value) => {
-                let text = value.value();
-
-                if is_class_name(&text) {
-                    self.reject("engine class", format!("{subject} compared with {text}"));
-                } else if ENGINE_SUBJECTS.contains(&subject.as_str()) {
-                    self.reject("engine subject", format!("{subject} compared with {text}"));
-                } else if build_subject {
-                    self.reject("build version", format!("{subject} compared with {text}"));
-                }
-            }
-            Lit::Int(value) if build_subject => {
-                self.reject("build version", format!("{subject} compared with {value}"));
-            }
-            _ => {}
+        if engine_subject && !matches!(literal, Lit::Int(_)) {
+            self.reject("engine subject", format!("{subject} compared with {text}"));
+        } else if build_subject {
+            self.reject("build version", format!("{subject} compared with {text}"));
         }
     }
 
@@ -204,14 +235,21 @@ impl Checker<'_> {
                 let subject: Expr = input.parse()?;
                 input.parse::<syn::Token![,]>()?;
                 let pattern = Pat::parse_multi_with_leading_vert(input)?;
-                let _: TokenStream = input.parse()?;
+                let guard = match input.parse::<Option<syn::Token![if]>>()? {
+                    Some(_) => Some(input.parse::<Expr>()?),
+                    None => None,
+                };
+                input.parse::<Option<syn::Token![,]>>()?;
 
-                Ok((subject, pattern))
+                Ok((subject, pattern, guard))
             };
 
-            if let Ok((subject, pattern)) = parser.parse2(item.tokens.clone()) {
+            if let Ok((subject, pattern, guard)) = parser.parse2(item.tokens.clone()) {
                 self.check_pattern(&subject, &pattern);
                 self.visit_expr(&subject);
+                if let Some(guard) = &guard {
+                    self.visit_expr(guard);
+                }
                 return;
             }
         }
@@ -248,6 +286,18 @@ impl<'ast> Visit<'ast> for Checker<'_> {
         if !is_test_code(item_attributes(item)) {
             syn::visit::visit_item(self, item);
         }
+    }
+
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        self.functions.push(item.sig.ident.to_string());
+        syn::visit::visit_item_fn(self, item);
+        self.functions.pop();
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+        self.functions.push(item.sig.ident.to_string());
+        syn::visit::visit_impl_item_fn(self, item);
+        self.functions.pop();
     }
 
     fn visit_impl_item(&mut self, item: &'ast ImplItem) {
@@ -346,6 +396,16 @@ impl<'ast> Visit<'ast> for Checker<'_> {
     }
 }
 
+/// The text of a string, byte-string or C-string literal.
+fn literal_text(literal: &Lit) -> Option<String> {
+    match literal {
+        Lit::Str(value) => Some(value.value()),
+        Lit::ByteStr(value) => String::from_utf8(value.value()).ok(),
+        Lit::CStr(value) => value.value().into_string().ok(),
+        _ => None,
+    }
+}
+
 /// The literal an expression evaluates to, seen through references, parentheses and conversions.
 fn direct_literal(expression: &Expr) -> Option<&Lit> {
     match expression {
@@ -409,8 +469,8 @@ fn pattern_literals(pattern: &Pat) -> Vec<&Lit> {
     }
 }
 
-/// A bare engine class name such as `CCouncilAgenda`. A demangled signature, which names a
-/// symbol shape, is not one.
+/// A bare CamelCase engine class name such as `CCouncilAgenda`. A demangled signature, which
+/// names a symbol shape, is not one, and neither is a constant name such as `CARGO_PKG_VERSION`.
 fn is_class_name(text: &str) -> bool {
     let mut characters = text.chars();
 
@@ -418,7 +478,10 @@ fn is_class_name(text: &str) -> bool {
         && characters
             .next()
             .is_some_and(|character| character.is_ascii_uppercase())
-        && characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+        && text
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+        && text.chars().any(|character| character.is_ascii_lowercase())
 }
 
 fn item_attributes(item: &Item) -> &[Attribute] {
@@ -479,6 +542,7 @@ fn violations(file: &Path, source: &str, reference: &Reference) -> Vec<Violation
     let syntax = syn::parse_file(source).expect("crate source is Rust");
     let mut checker = Checker {
         file: file.into(),
+        functions: Vec::new(),
         reference,
         violations: Vec::new(),
     };
@@ -621,14 +685,16 @@ fn scan(root: &Path, reference: &Reference) -> Vec<Violation> {
 }
 
 fn excuses(exception: &Exception, violation: &Violation) -> bool {
-    violation.file == Path::new(exception.file) && violation.detail.contains(exception.text)
+    violation.file == Path::new(exception.file)
+        && violation.function == exception.function
+        && violation.detail.contains(exception.text)
 }
 
 #[test]
 fn locality_rules_accept_methods_and_reject_shortcuts() {
     let reference = Reference {
         roots: ["common".into(), "map".into()].into(),
-        registry_count: 164,
+        registry_counts: [164, 201].into(),
     };
     let cases = [
         // The shortcuts the Milestone 3 review found, and the shapes of their relatives.
@@ -662,6 +728,29 @@ fn locality_rules_accept_methods_and_reject_shortcuts() {
             false,
         ),
         ("const MAXIMUM: usize = 164;", false),
+        (
+            "fn f(names: &[String]) -> bool { names.len() > 201 }",
+            false,
+        ),
+        ("const AGENDA: &str = \"CCouncilAgenda\";", false),
+        ("const V: &str = env!(\"CARGO_PKG_VERSION\");", true),
+        (
+            "fn f(field_name: &str) -> bool { field_name == \"tree_template\" }",
+            false,
+        ),
+        ("fn f(q: &Q) -> bool { q.registry_name.eq(\"x\") }", false),
+        (
+            "fn f(v: u8, field: &str) -> bool { matches!(v, _ if field == \"tree_template\") }",
+            false,
+        ),
+        (
+            "fn f(d: &[u8]) -> bool { d == b\"common/traditions\" }",
+            false,
+        ),
+        (
+            "fn f() -> &'static std::ffi::CStr { c\"map/galaxy\" }",
+            false,
+        ),
         (
             "fn f() -> String { format!(\"{}/x\", \"map/galaxy\") }",
             false,
@@ -724,6 +813,14 @@ fn locality_rules_accept_methods_and_reject_shortcuts() {
         ),
         (
             "fn f(owner: &str, other: &str) -> bool { owner == other }",
+            true,
+        ),
+        (
+            "fn f(field_count: usize) -> bool { field_count == 3 }",
+            true,
+        ),
+        (
+            "fn f(instruction: &str) -> bool { instruction == \"bl\" }",
             true,
         ),
         // Test code, documentation and conditional compilation.
@@ -798,7 +895,7 @@ fn module_walk_reaches_every_source_file() {
     assert_eq!(tree.tests.len(), 2, "{tree:?}");
     assert!(unreached(&src, &tree).is_empty());
 
-    let reference = Reference::new(&["common/x".into()]);
+    let reference = Reference::new(&[vec!["common/x".into()]]);
     let found = scan(root.path(), &reference);
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].file, Path::new("src/engine/analysis/mod.rs"));
@@ -809,6 +906,33 @@ fn module_walk_reaches_every_source_file() {
 
     write("lib.rs", "mod missing;");
     assert!(std::panic::catch_unwind(|| ModuleTree::read(&src)).is_err());
+}
+
+#[test]
+fn an_exception_excuses_only_its_own_function() {
+    let exception = Exception {
+        file: "case.rs",
+        function: "validate",
+        text: "common/x",
+        reason: "test",
+        removal: "test",
+    };
+    let reference = Reference::new(&[vec!["common/x".into()]]);
+    let source = "impl R { fn validate(r: &str) -> bool { r == \"common/x\" } }\n\
+                  fn select(r: &str) -> bool { r == \"common/x\" }";
+    let found = violations(Path::new("case.rs"), source, &reference);
+    let unexcused: Vec<_> = found
+        .iter()
+        .filter(|violation| !excuses(&exception, violation))
+        .map(|violation| violation.function.as_str())
+        .collect();
+
+    assert!(
+        found
+            .iter()
+            .any(|violation| violation.function == "validate")
+    );
+    assert_eq!(unexcused, ["select"]);
 }
 
 #[test]
@@ -834,7 +958,7 @@ fn methods_sessions_and_operations_keep_engine_facts_in_their_home() {
         "files outside the module tree: {unreached:?}"
     );
 
-    let found = scan(root, &Reference::m45());
+    let found = scan(root, &Reference::catalogued());
     let unexcused: Vec<_> = found
         .iter()
         .filter(|violation| {
@@ -847,7 +971,12 @@ fn methods_sessions_and_operations_keep_engine_facts_in_their_home() {
     let unused: Vec<_> = EXCEPTIONS
         .iter()
         .filter(|exception| !found.iter().any(|violation| excuses(exception, violation)))
-        .map(|exception| format!("{}: {}", exception.file, exception.text))
+        .map(|exception| {
+            format!(
+                "{}: {}: {}",
+                exception.file, exception.function, exception.text
+            )
+        })
         .collect();
 
     assert!(unexcused.is_empty(), "\n{}", unexcused.join("\n"));
