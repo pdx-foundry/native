@@ -91,7 +91,7 @@ impl SessionRequest {
         };
         // The supervisor checks each name against the registries it discovers in the opened
         // executable, so the number of names follows the build.
-        let unique_registry_directories = |names: &[String]| {
+        let valid_unique_registry_directories = |names: &[String]| {
             names.iter().all(|name| valid_registry_directory(name))
                 && names
                     .iter()
@@ -99,7 +99,7 @@ impl SessionRequest {
                     .len()
                     == names.len()
         };
-        if self.registries.is_empty() || !unique_registry_directories(&self.registries) {
+        if self.registries.is_empty() || !valid_unique_registry_directories(&self.registries) {
             return Err(SupervisorError(
                 "Expected one or more unique registry content directories".into(),
             ));
@@ -107,7 +107,7 @@ impl SessionRequest {
         if self
             .loaded_modifiers
             .as_ref()
-            .is_some_and(|names| !unique_registry_directories(names))
+            .is_some_and(|names| !valid_unique_registry_directories(names))
         {
             return Err(SupervisorError(
                 "Expected unique modifier family registries".into(),
