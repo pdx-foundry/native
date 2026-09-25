@@ -21,6 +21,9 @@ pub mod scopes;
 #[path = "analysis/analysis_support.rs"]
 pub(crate) mod analysis_support;
 #[cfg(test)]
+#[path = "analysis/assembler.rs"]
+pub(crate) mod assembler;
+#[cfg(test)]
 #[path = "analysis/tests_decoder.rs"]
 mod tests_decoder;
 #[cfg(test)]

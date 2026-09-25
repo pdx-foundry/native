@@ -1,16 +1,11 @@
 //! The registry field method on small authored inputs.
 use crate::engine::analysis::{
+    assembler::arm64,
     discovery::{Symbol, candidates},
     fields::{self, FieldInput, Function, PathOutcome, ReaderJoin},
 };
 use std::collections::BTreeMap;
-fn code(words: &[u32]) -> Vec<u8> {
-    words.iter().flat_map(|w| w.to_le_bytes()).collect()
-}
-fn branch(from: u64, to: u64, link: bool) -> u32 {
-    (if link { 0x94000000 } else { 0x14000000 })
-        | (((to as i64 - from as i64) / 4) as u32 & 0x3ffffff)
-}
+
 fn fixture() -> FieldInput {
     let root = "CExample::ReadMember(CReader&, int)";
     let symbols=vec![
@@ -28,32 +23,35 @@ fn fixture() -> FieldInput {
             Function {
                 name: root.into(),
                 address: 0x1000,
-                code: code(&[
-                    0x71001c5f,
-                    0x54000060,
-                    0x9100e000,
-                    branch(0x100c, 0x5000, false),
-                    0x91010008,
-                    0xaa0103e0,
-                    0xaa0803e1,
-                    branch(0x101c, 0x4000, false),
-                ]),
+                code: arm64!(at 0x1000;
+                    cmp w2, #7; // token 7
+                    b.eq extern 0x1010;
+                    add x0, x0, #0x38;
+                    b extern 0x5000; // CPersistent::ReadMember
+                    add x8, x0, #0x40; // the member
+                    mov x0, x1; // the reader
+                    mov x1, x8;
+                    b extern 0x4000 // CReader::Read
+                ),
             },
             Function {
                 name: "GetTokenArray()".into(),
                 address: 0x2000,
-                code: code(&[
-                    0x528000e1,
-                    0xd0000022,
-                    0x91000042,
-                    branch(0x200c, 0x3000, true),
-                    0xd65f03c0,
-                ]),
+                code: arm64!(at 0x2000;
+                    mov w1, #7; // token 7
+                    adrp x2, extern 0x8000; // "new_engine_field"
+                    add x2, x2, #0;
+                    bl extern 0x3000; // CToken::CToken
+                    ret
+                ),
             },
             Function {
                 name: "CPersistent::ReadMember(CReader&, int)".into(),
                 address: 0x5000,
-                code: code(&[0xaa0103e0, branch(0x5004, 0x6000, false)]),
+                code: arm64!(at 0x5000;
+                    mov x0, x1;
+                    b extern 0x6000 // CReader::ReportUnexpected
+                ),
             },
         ],
     }
@@ -61,8 +59,18 @@ fn fixture() -> FieldInput {
 fn derive(input: FieldInput) -> fields::RegistryFieldResult {
     fields::analyze(&input).unwrap()
 }
-fn replace(input: &mut FieldInput, index: usize, word: u32) {
-    input.functions[0].code[index * 4..index * 4 + 4].copy_from_slice(&word.to_le_bytes());
+/// Replaces the instruction at `address` in the function that holds it.
+fn replace(input: &mut FieldInput, address: u64, instruction: Vec<u8>) {
+    let function = input
+        .functions
+        .iter_mut()
+        .find(|function| {
+            (function.address..function.address + function.code.len() as u64).contains(&address)
+        })
+        .expect("an authored function holds the address");
+    let offset = (address - function.address) as usize;
+
+    function.code.splice(offset..offset + 4, instruction);
 }
 #[test]
 fn discovers_unknown_name_and_excludes_pivot_and_rejection_tokens() {
@@ -88,7 +96,7 @@ fn discovers_unknown_name_and_excludes_pivot_and_rejection_tokens() {
 #[test]
 fn unsupported_instruction_preserves_obligation_and_does_not_invent_fields() {
     let mut input = fixture();
-    replace(&mut input, 0, 0xd65f03c0);
+    replace(&mut input, 0x1000, arm64!(at 0x1000; ret));
     let result = derive(input);
     assert!(result.fields.is_empty());
     assert!(result.partition_accounted);
@@ -96,9 +104,13 @@ fn unsupported_instruction_preserves_obligation_and_does_not_invent_fields() {
 }
 #[test]
 fn clobbered_and_truncated_receivers_cannot_join() {
-    for word in [0xaa1f03e0, 0x2a0103e0, 0xf9400020] {
+    for receiver in [
+        arm64!(at 0x1014; mov x0, xzr),
+        arm64!(at 0x1014; mov w0, w1),
+        arm64!(at 0x1014; ldr x0, [x1]),
+    ] {
         let mut input = fixture();
-        replace(&mut input, 5, word);
+        replace(&mut input, 0x1014, receiver);
         let result = derive(input);
         assert_eq!(result.fields.len(), 1);
         assert!(matches!(
@@ -125,7 +137,7 @@ fn unresolved_callee_and_missing_token_name_remain_gaps() {
 #[test]
 fn clobbered_token_constructor_arguments_do_not_reuse_stale_values() {
     let mut input = fixture();
-    input.functions[1].code[8..12].copy_from_slice(&0xaa1f03e2u32.to_le_bytes());
+    replace(&mut input, 0x2008, arm64!(at 0x2008; mov x2, xzr));
     let result = derive(input);
     assert!(result.fields.is_empty());
     assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
@@ -133,7 +145,7 @@ fn clobbered_token_constructor_arguments_do_not_reuse_stale_values() {
 #[test]
 fn unsupported_rejection_body_is_not_a_successful_negative_result() {
     let mut input = fixture();
-    input.functions[2].code[0..4].copy_from_slice(&0xd503201fu32.to_le_bytes());
+    replace(&mut input, 0x5000, arm64!(at 0x5000; nop));
     let result = derive(input);
     assert!(
         !result
@@ -145,9 +157,12 @@ fn unsupported_rejection_body_is_not_a_successful_negative_result() {
 }
 #[test]
 fn altered_flags_and_external_branch_do_not_silently_drop_token_intervals() {
-    for (index, word) in [(0, 0x71001c3f), (1, 0x54000100)] {
+    for (address, instruction) in [
+        (0x1000, arm64!(at 0x1000; cmp w1, #7)),
+        (0x1004, arm64!(at 0x1004; b.eq extern 0x1024)), // past the function's end
+    ] {
         let mut input = fixture();
-        replace(&mut input, index, word);
+        replace(&mut input, address, instruction);
         let result = derive(input);
         assert!(result.fields.is_empty());
         assert!(result.partition_accounted);
@@ -173,17 +188,17 @@ fn completeness_is_never_an_input_and_a_foreign_selection_is_refused() {
 fn conflicting_names_for_one_token_never_select_an_arbitrary_name() {
     let mut input = fixture();
     input.strings.insert(0x8010, "conflicting_field".into());
-    input.functions[1].code = code(&[
-        0x528000e1,
-        0xd0000022,
-        0x91000042,
-        branch(0x200c, 0x3000, true),
-        0x528000e1,
-        0xd0000022,
-        0x91004042,
-        branch(0x201c, 0x3000, true),
-        0xd65f03c0,
-    ]);
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        add x2, x2, #0; // "new_engine_field"
+        bl extern 0x3000;
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        add x2, x2, #0x10; // "conflicting_field"
+        bl extern 0x3000;
+        ret
+    );
     let result = derive(input);
     assert!(result.fields.is_empty());
     assert!(
@@ -198,13 +213,13 @@ fn conflicting_names_for_one_token_never_select_an_arbitrary_name() {
 fn writeback_cannot_preserve_a_stale_token_name_pointer() {
     let mut input = fixture();
     // The post-index store changes x2, even though its first operand is x3.
-    input.functions[1].code = code(&[
-        0x528000e1,
-        0xd0000022,
-        0xf8008443,
-        branch(0x200c, 0x3000, true),
-        0xd65f03c0,
-    ]);
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        str x3, [x2], #8;
+        bl extern 0x3000;
+        ret
+    );
     let result = derive(input);
     assert!(result.fields.is_empty());
     assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
@@ -213,7 +228,7 @@ fn writeback_cannot_preserve_a_stale_token_name_pointer() {
 #[test]
 fn cyclic_dispatch_is_bounded_and_visible() {
     let mut input = fixture();
-    replace(&mut input, 4, branch(0x1010, 0x1010, false));
+    replace(&mut input, 0x1010, arm64!(at 0x1010; b extern 0x1010));
     let result = derive(input);
     assert!(result.partition_accounted);
     assert!(
@@ -228,18 +243,18 @@ fn cyclic_dispatch_is_bounded_and_visible() {
 #[test]
 fn an_unresolved_state_alternative_stays_attached_to_the_field() {
     let mut input = fixture();
-    input.functions[0].code = code(&[
-        0x71001c5f,
-        0x54000060,
-        0x9100e000,
-        branch(0x100c, 0x5000, false),
-        0x340000a3, // cbz w3, 0x1024
-        0x91010008,
-        0xaa0103e0,
-        0xaa0803e1,
-        branch(0x1020, 0x4000, false),
-        0xd65f03c0,
-    ]);
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        cbz w3, extern 0x1024; // w3 is unknown
+        add x8, x0, #0x40;
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000;
+        ret
+    );
     let result = derive(input);
     assert_eq!(result.fields.len(), 1);
     assert_eq!(result.fields[0].readers.len(), 2);
@@ -261,16 +276,15 @@ fn an_unresolved_state_alternative_stays_attached_to_the_field() {
 fn a_branch_into_the_constructor_cannot_bypass_argument_provenance() {
     let mut input = fixture();
     // This branch is outside the eight-instruction constructor window.
-    let mut words = vec![branch(0x2000, 0x2030, false)];
-    words.extend([0xd503201f; 8]);
-    words.extend([
-        0x528000e1,
-        0xd0000022,
-        0x91000042,
-        branch(0x2030, 0x3000, true),
-        0xd65f03c0,
-    ]);
-    input.functions[1].code = code(&words);
+    input.functions[1].code = arm64!(at 0x2000;
+        b extern 0x2030; // to the constructor call
+        nop; nop; nop; nop; nop; nop; nop; nop;
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        add x2, x2, #0;
+        bl extern 0x3000;
+        ret
+    );
     let result = derive(input);
     assert!(result.fields.is_empty());
     assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
@@ -278,16 +292,16 @@ fn a_branch_into_the_constructor_cannot_bypass_argument_provenance() {
 
 #[test]
 fn unreachable_token_constructors_are_not_discovered() {
-    for skip in [branch(0x2000, 0x2014, false), 0xd65f03c0] {
+    for skip in [arm64!(at 0x2000; b extern 0x2014), arm64!(at 0x2000; ret)] {
         let mut input = fixture();
-        input.functions[1].code = code(&[
-            skip,
-            0x528000e1,
-            0xd0000022,
-            0x91000042,
-            branch(0x2010, 0x3000, true),
-            0xd65f03c0,
-        ]);
+        let constructor = arm64!(at 0x2004;
+            mov w1, #7;
+            adrp x2, extern 0x8000;
+            add x2, x2, #0;
+            bl extern 0x3000;
+            ret
+        );
+        input.functions[1].code = [skip, constructor].concat();
         let result = derive(input);
         assert!(result.fields.is_empty());
         assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
@@ -296,26 +310,31 @@ fn unreachable_token_constructors_are_not_discovered() {
 
 #[test]
 fn known_zero_tests_keep_only_feasible_reader_paths() {
-    for (constant, branch_op, has_field) in [
-        (0x52800003, 0x340000a3, false),
-        (0x52800023, 0x340000a3, true),
-        (0x52800003, 0x350000a3, true),
-        (0x52800023, 0x350000a3, false),
+    let zero = arm64!(at 0x1010; mov w3, #0);
+    let one = arm64!(at 0x1010; mov w3, #1);
+    let skip_if_zero = arm64!(at 0x1014; cbz w3, extern 0x1028);
+    let skip_unless_zero = arm64!(at 0x1014; cbnz w3, extern 0x1028);
+    for (constant, skip, has_field) in [
+        (&zero[..], &skip_if_zero[..], false),
+        (&one[..], &skip_if_zero[..], true),
+        (&zero[..], &skip_unless_zero[..], true),
+        (&one[..], &skip_unless_zero[..], false),
     ] {
         let mut input = fixture();
-        input.functions[0].code = code(&[
-            0x71001c5f,
-            0x54000060,
-            0x9100e000,
-            branch(0x100c, 0x5000, false),
-            constant,
-            branch_op,
-            0x91010008,
-            0xaa0103e0,
-            0xaa0803e1,
-            branch(0x1024, 0x4000, false),
-            0xd65f03c0,
-        ]);
+        let dispatch = arm64!(at 0x1000;
+            cmp w2, #7;
+            b.eq extern 0x1010;
+            add x0, x0, #0x38;
+            b extern 0x5000
+        );
+        let read = arm64!(at 0x1018;
+            add x8, x0, #0x40;
+            mov x0, x1;
+            mov x1, x8;
+            b extern 0x4000;
+            ret
+        );
+        input.functions[0].code = [&dispatch[..], constant, skip, &read[..]].concat();
         let result = derive(input);
         assert_eq!(!result.fields.is_empty(), has_field);
         assert_eq!(result.paths.len(), 3, "constant alternatives must not fork");
@@ -325,15 +344,15 @@ fn known_zero_tests_keep_only_feasible_reader_paths() {
 #[test]
 fn constant_token_construction_branches_do_not_emit_dead_literals() {
     let mut input = fixture();
-    input.functions[1].code = code(&[
-        0x52800003, // mov w3,#0
-        0x340000a3, // cbz w3,0x2018
-        0x528000e1,
-        0xd0000022,
-        0x91000042,
-        branch(0x2014, 0x3000, true),
-        0xd65f03c0,
-    ]);
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w3, #0;
+        cbz w3, extern 0x2018; // always skips the constructor
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        add x2, x2, #0;
+        bl extern 0x3000;
+        ret
+    );
     assert!(derive(input).fields.is_empty());
 }
 
@@ -360,19 +379,19 @@ fn duplicate_constructor_symbols_use_one_address_and_conflicts_remain_unknown() 
 #[test]
 fn token_constructor_reachability_stops_at_external_tail_calls() {
     let mut input = fixture();
-    input.functions[1].code = code(&[
-        0x91440268, // add x8,x19,#0x100,lsl #12
-        0x528000e1,
-        0xd0000022,
-        0x91000042,
-        branch(0x2010, 0x3000, true),
-        branch(0x2014, 0x9000, false),
-        0x52800101, // unreachable constructor for another token
-        0xd0000022,
-        0x91000042,
-        branch(0x2024, 0x3000, true),
-        0xd65f03c0,
-    ]);
+    input.functions[1].code = arm64!(at 0x2000;
+        add x8, x19, #0x100, lsl #12;
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        add x2, x2, #0;
+        bl extern 0x3000;
+        b extern 0x9000; // an external tail call
+        mov w1, #8; // an unreachable constructor for another token
+        adrp x2, extern 0x8000;
+        add x2, x2, #0;
+        bl extern 0x3000;
+        ret
+    );
     let result = derive(input);
     assert_eq!(result.fields.len(), 1);
     assert_eq!(result.fields[0].token, 7);

@@ -1,6 +1,7 @@
 //! The declaration method on small authored inputs. The code is authored ARM64, not game code.
 use super::*;
 use crate::engine::analysis::{
+    assembler::{Arm64, arm64},
     evaluate::ReadOnlyData,
     families::{StringFunctions, StringLayout},
 };
@@ -26,104 +27,10 @@ const HELPER_DOCUMENTATION: u64 = 0x20100;
 const LIST_DOCUMENTATION: u64 = 0x20200;
 const LIST_NAME: u64 = 0x20300;
 
-/// Authored code at one start address.
-struct Assembly {
-    start: u64,
-    words: Vec<u32>,
-}
-
-impl Assembly {
-    fn at(start: u64) -> Self {
-        Self {
-            start,
-            words: Vec::new(),
-        }
-    }
-
-    fn here(&self) -> u64 {
-        self.start + self.words.len() as u64 * 4
-    }
-
-    fn word(mut self, word: u32) -> Self {
-        self.words.push(word);
-        self
-    }
-
-    /// `stp x29, x30, [sp, #-16]!` and `mov x29, sp`.
-    fn prologue(self) -> Self {
-        self.word(0xa9bf7bfd).word(0x910003fd)
-    }
-
-    /// `ldp x29, x30, [sp], #16`.
-    fn epilogue(self) -> Self {
-        self.word(0xa8c17bfd)
-    }
-
-    fn ret(self) -> Self {
-        self.word(0xd65f03c0)
-    }
-
-    fn mov_immediate(self, register: u32, value: u32) -> Self {
-        self.word(0x52800000 | value << 5 | register)
-    }
-
-    fn mov(self, destination: u32, source: u32) -> Self {
-        self.word(0xaa0003e0 | source << 16 | destination)
-    }
-
-    /// `adrp` and `add`: the address in `register`.
-    fn address(self, register: u32, address: u64) -> Self {
-        let pages = (address >> 12) as i64 - (self.here() >> 12) as i64;
-        let pages = pages as u32;
-        let adrp = 0x90000000 | (pages & 3) << 29 | (pages >> 2 & 0x7ffff) << 5 | register;
-        let add = 0x91000000 | ((address & 0xfff) as u32) << 10 | register << 5 | register;
-        self.word(adrp).word(add)
-    }
-
-    /// `add destination, sp, #offset`.
-    fn stack_address(self, destination: u32, offset: u32) -> Self {
-        self.word(0x91000000 | offset << 10 | 31 << 5 | destination)
-    }
-
-    /// `stp first, second, [x0]`.
-    fn store_pair(self, first: u32, second: u32) -> Self {
-        self.word(0xa9000000 | second << 10 | first)
-    }
-
-    /// `adrp` and `ldr`: the pointer stored at `address` in `register`.
-    fn load(self, register: u32, address: u64) -> Self {
-        let pages = (address >> 12) as i64 - (self.here() >> 12) as i64;
-        let pages = pages as u32;
-        let adrp = 0x90000000 | (pages & 3) << 29 | (pages >> 2 & 0x7ffff) << 5 | register;
-        let ldr = 0xf9400000 | ((address & 0xfff) as u32 / 8) << 10 | register << 5 | register;
-        self.word(adrp).word(ldr)
-    }
-
-    /// `add register, register, #value`.
-    fn add(self, register: u32, value: u32) -> Self {
-        self.word(0x91000000 | value << 10 | register << 5 | register)
-    }
-
-    /// `str source, [base]`.
-    fn store(self, source: u32, base: u32) -> Self {
-        self.word(0xf9000000 | base << 5 | source)
-    }
-
-    fn call(self, target: u64) -> Self {
-        let offset = ((target as i64 - self.here() as i64) / 4) as u32 & 0x3ffffff;
-        self.word(0x94000000 | offset)
-    }
-
-    fn tail_call(self, target: u64) -> Self {
-        let offset = ((target as i64 - self.here() as i64) / 4) as u32 & 0x3ffffff;
-        self.word(0x14000000 | offset)
-    }
-
-    fn function(self) -> Function {
-        Function {
-            address: self.start,
-            code: self.words.into_iter().flat_map(u32::to_le_bytes).collect(),
-        }
+fn function(code: Arm64) -> Function {
+    Function {
+        address: code.start(),
+        code: code.bytes(),
     }
 }
 
@@ -219,17 +126,20 @@ fn sites(input: &DeclarationInput) -> Vec<Site> {
 
 #[test]
 fn a_tail_call_to_the_register_function_is_a_registration() {
-    let registrar = Assembly::at(0x1000)
-        .mov_immediate(0, 16)
+    let mut registrar = Arm64::at(0x1000);
+    arm64!(registrar; mov w0, #16);
+    registrar
         .call(NEW)
         .address(8, FACTORY)
-        .address(9, WIN_DOCUMENTATION)
-        .store_pair(8, 9)
-        .mov(2, 0)
-        .mov_immediate(1, 7)
-        .epilogue()
-        .tail_call(REGISTER)
-        .function();
+        .address(9, WIN_DOCUMENTATION);
+    arm64!(registrar;
+        stp x8, x9, [x0]; // the entry
+        mov x2, x0;
+        mov w1, #7 // "win"
+    );
+    registrar.epilogue().tail_call(REGISTER);
+    let registrar = function(registrar);
+
     let input = input(
         vec![registrar],
         vec![],
@@ -243,21 +153,20 @@ fn a_tail_call_to_the_register_function_is_a_registration() {
 
 #[test]
 fn a_registry_helper_call_has_the_documentation_argument_and_the_helpers_factory() {
-    let helper = Assembly::at(HELPER)
-        .prologue()
-        .mov(23, 2)
-        .mov_immediate(0, 16)
-        .call(NEW)
-        .address(8, FACTORY)
-        .store_pair(8, 23)
-        .epilogue()
-        .ret()
-        .function();
-    let registrar = Assembly::at(0x1000)
-        .mov_immediate(1, 8)
-        .address(2, HELPER_DOCUMENTATION)
-        .call(HELPER)
-        .function();
+    let mut helper = Arm64::at(HELPER);
+    helper.prologue();
+    arm64!(helper; mov x23, x2; mov w0, #16);
+    helper.call(NEW).address(8, FACTORY);
+    arm64!(helper; stp x8, x23, [x0]); // the entry
+    helper.epilogue();
+    arm64!(helper; ret);
+    let helper = function(helper);
+
+    let mut registrar = Arm64::at(0x1000);
+    arm64!(registrar; mov w1, #8); // "if"
+    registrar.address(2, HELPER_DOCUMENTATION).call(HELPER);
+    let registrar = function(registrar);
+
     let input = input(
         vec![registrar],
         vec![helper],
@@ -271,22 +180,21 @@ fn a_registry_helper_call_has_the_documentation_argument_and_the_helpers_factory
 
 #[test]
 fn a_documentation_address_set_before_another_call_is_not_read() {
-    let helper = Assembly::at(HELPER)
-        .prologue()
-        .mov(23, 2)
-        .mov_immediate(0, 16)
-        .call(NEW)
-        .address(8, FACTORY)
-        .store_pair(8, 23)
-        .epilogue()
-        .ret()
-        .function();
-    let registrar = Assembly::at(0x1000)
-        .address(2, HELPER_DOCUMENTATION)
-        .call(0x9400)
-        .mov_immediate(1, 8)
-        .call(HELPER)
-        .function();
+    let mut helper = Arm64::at(HELPER);
+    helper.prologue();
+    arm64!(helper; mov x23, x2; mov w0, #16);
+    helper.call(NEW).address(8, FACTORY);
+    arm64!(helper; stp x8, x23, [x0]); // the entry
+    helper.epilogue();
+    arm64!(helper; ret);
+    let helper = function(helper);
+
+    let mut registrar = Arm64::at(0x1000);
+    registrar.address(2, HELPER_DOCUMENTATION).call(0x9400);
+    arm64!(registrar; mov w1, #8); // "if"
+    registrar.call(HELPER);
+    let registrar = function(registrar);
+
     let input = input(
         vec![registrar],
         vec![helper],
@@ -304,59 +212,61 @@ fn a_documentation_address_set_before_another_call_is_not_read() {
 /// A function that registers the token in `w1` with the documentation text in `x2`, the shape
 /// of a script list's registration helper.
 fn registering() -> (Function, u64) {
-    let before = Assembly::at(REGISTERING)
-        .prologue()
-        .mov(19, 1)
-        .mov(20, 2)
-        .mov_immediate(0, 16)
-        .call(NEW)
-        .address(8, FACTORY)
-        .store_pair(8, 20)
-        .mov(2, 0)
-        .mov(1, 19);
-    let site = before.here();
-    (before.call(REGISTER).epilogue().ret().function(), site)
+    let mut code = Arm64::at(REGISTERING);
+    code.prologue();
+    arm64!(code; mov x19, x1; mov x20, x2; mov w0, #16);
+    code.call(NEW).address(8, FACTORY);
+    arm64!(code;
+        stp x8, x20, [x0]; // the entry
+        mov x2, x0;
+        mov x1, x19
+    );
+    let site = code.here();
+    code.call(REGISTER).epilogue();
+    arm64!(code; ret);
+    (function(code), site)
 }
 
 #[test]
 fn a_run_time_name_is_followed_through_each_caller() {
     let (registering, site) = registering();
-    let composer = Assembly::at(COMPOSER)
-        .prologue()
-        .mov(1, 0)
-        .mov(0, 8)
-        .call(STRING_FROM_TEXT)
-        .epilogue()
-        .ret()
-        .function();
-    let caller = Assembly::at(CALLER)
-        .prologue()
-        .word(0xd10103ff) // sub sp, sp, #0x40
-        .stack_address(8, 0x10)
-        .address(0, LIST_NAME)
-        .call(COMPOSER)
-        .stack_address(0, 0x10)
-        .call(DYNAMIC_TOKEN)
-        .mov(1, 0)
-        .address(2, LIST_DOCUMENTATION);
+    let mut composer = Arm64::at(COMPOSER);
+    composer.prologue();
+    arm64!(composer; mov x1, x0; mov x0, x8);
+    composer.call(STRING_FROM_TEXT).epilogue();
+    arm64!(composer; ret);
+    let composer = function(composer);
+
+    let mut caller = Arm64::at(CALLER);
+    caller.prologue();
+    arm64!(caller;
+        sub sp, sp, #0x40;
+        add x8, sp, #0x10 // the composed string
+    );
+    caller.address(0, LIST_NAME).call(COMPOSER);
+    arm64!(caller; add x0, sp, #0x10);
+    caller.call(DYNAMIC_TOKEN);
+    arm64!(caller; mov x1, x0); // the run-time token
+    caller.address(2, LIST_DOCUMENTATION);
     let composed_call = caller.here();
-    let caller = caller
-        .call(REGISTERING)
-        .mov_immediate(1, 9)
-        .address(2, WIN_DOCUMENTATION);
+    caller.call(REGISTERING);
+    arm64!(caller; mov w1, #9); // "every_country"
+    caller.address(2, WIN_DOCUMENTATION);
     let literal_call = caller.here();
-    let caller = caller
-        .call(REGISTERING)
-        .word(0x910103ff) // add sp, sp, #0x40
-        .epilogue()
-        .ret()
-        .function();
-    let unknown = Assembly::at(UNKNOWN_CALLER)
-        .prologue()
-        .word(0xb9400001) // ldr w1, [x0]
-        .address(2, WIN_DOCUMENTATION);
+    caller.call(REGISTERING);
+    arm64!(caller; add sp, sp, #0x40);
+    caller.epilogue();
+    arm64!(caller; ret);
+    let caller = function(caller);
+
+    let mut unknown = Arm64::at(UNKNOWN_CALLER);
+    unknown.prologue();
+    arm64!(unknown; ldr w1, [x0]); // a token from memory
+    unknown.address(2, WIN_DOCUMENTATION);
     let unknown_call = unknown.here();
-    let unknown = unknown.call(REGISTERING).epilogue().ret().function();
+    unknown.call(REGISTERING).epilogue();
+    arm64!(unknown; ret);
+    let unknown = function(unknown);
 
     let registrar = Function {
         address: REGISTERING,
@@ -406,33 +316,38 @@ fn a_run_time_name_without_callers_is_a_gap() {
 
 /// A literal registration of `win` whose entry holds `FACTORY`.
 fn win_registrar() -> Function {
-    Assembly::at(0x1000)
-        .mov_immediate(0, 16)
-        .call(NEW)
+    let mut code = Arm64::at(0x1000);
+    arm64!(code; mov w0, #16);
+    code.call(NEW)
         .address(8, FACTORY)
-        .address(9, WIN_DOCUMENTATION)
-        .store_pair(8, 9)
-        .mov(2, 0)
-        .mov_immediate(1, 7)
-        .call(REGISTER)
-        .function()
+        .address(9, WIN_DOCUMENTATION);
+    arm64!(code;
+        stp x8, x9, [x0]; // the entry
+        mov x2, x0;
+        mov w1, #7 // "win"
+    );
+    code.call(REGISTER);
+    function(code)
 }
 
 /// A create method that allocates the command in `x19`, and in which `store` stores its vtable.
-fn create(store: impl FnOnce(Assembly) -> Assembly) -> Function {
-    let body = Assembly::at(CREATE)
-        .prologue()
-        .mov_immediate(0, 16)
-        .call(NEW)
-        .mov(19, 0);
-    store(body).mov(0, 19).epilogue().ret().function()
+fn create(store: impl FnOnce(&mut Arm64)) -> Function {
+    let mut code = Arm64::at(CREATE);
+    code.prologue();
+    arm64!(code; mov w0, #16);
+    code.call(NEW);
+    arm64!(code; mov x19, x0); // the command
+    store(&mut code);
+    arm64!(code; mov x0, x19);
+    code.epilogue();
+    arm64!(code; ret);
+    function(code)
 }
 
 fn constant_getter(address: u64, mask: u32) -> Function {
-    Assembly::at(address)
-        .mov_immediate(0, mask)
-        .ret()
-        .function()
+    let mut code = Arm64::at(address);
+    arm64!(code; mov w0, #mask; ret);
+    function(code)
 }
 
 /// `win` with a create method, a command vtable at `VTABLE`, and its scope getter.
@@ -469,7 +384,10 @@ fn win(scopes: ScopeOutcome) -> Site {
 
 #[test]
 fn a_zero_scope_mask_is_any() {
-    let create = create(|body| body.address(8, VTABLE).store(8, 19));
+    let create = create(|body| {
+        body.address(8, VTABLE);
+        arm64!(body; str x8, [x19]);
+    });
     assert_eq!(
         followed(create, constant_getter(SCOPE_GETTER, 0)),
         [win(ScopeOutcome::Any)]
@@ -478,7 +396,10 @@ fn a_zero_scope_mask_is_any() {
 
 #[test]
 fn a_multi_bit_scope_mask_lists_each_scope_in_bit_order() {
-    let create = create(|body| body.address(8, VTABLE).store(8, 19));
+    let create = create(|body| {
+        body.address(8, VTABLE);
+        arm64!(body; str x8, [x19]);
+    });
     assert_eq!(
         followed(create, constant_getter(SCOPE_GETTER, 0b110)),
         [win(ScopeOutcome::Listed(vec![
@@ -490,11 +411,14 @@ fn a_multi_bit_scope_mask_lists_each_scope_in_bit_order() {
 
 #[test]
 fn a_scope_getter_that_reads_the_command_is_unresolved_on_its_declaration() {
-    let create = create(|body| body.address(8, VTABLE).store(8, 19));
-    let getter = Assembly::at(SCOPE_GETTER)
-        .word(0xf9400400) // ldr x0, [x0, #8]
-        .ret()
-        .function();
+    let create = create(|body| {
+        body.address(8, VTABLE);
+        arm64!(body; str x8, [x19]);
+    });
+    let mut getter = Arm64::at(SCOPE_GETTER);
+    arm64!(getter; ldr x0, [x0, #8]; ret); // a member of the command
+    let getter = function(getter);
+
     assert_eq!(
         followed(create, getter),
         [win(ScopeOutcome::Unresolved("scope-mask"))]
@@ -503,7 +427,10 @@ fn a_scope_getter_that_reads_the_command_is_unresolved_on_its_declaration() {
 
 #[test]
 fn a_command_vtable_loaded_through_a_pointer_is_followed() {
-    let create = create(|body| body.load(8, VTABLE_POINTER).add(8, 0x10).store(8, 19));
+    let create = create(|body| {
+        body.load(8, VTABLE_POINTER);
+        arm64!(body; add x8, x8, #0x10; str x8, [x19]);
+    });
     assert_eq!(
         followed(create, constant_getter(SCOPE_GETTER, 0b10)),
         [win(ScopeOutcome::Listed(vec![scope(1, "planet")]))]
@@ -513,14 +440,15 @@ fn a_command_vtable_loaded_through_a_pointer_is_followed() {
 #[test]
 fn a_vtable_stored_through_a_copy_of_the_command_register_is_followed() {
     let create = create(|body| {
-        body.address(9, VTABLE)
-            .mov(8, 19)
-            .word(0xf8068509) // str x9, [x8], #0x68
-            .address(10, 0x33000)
-            .word(0xf900010a) // str x10, [x8]: after the post-index, x8 is a member
-            .mov(8, 19)
-            .add(8, 0x70)
-            .word(0xf900010a) // str x10, [x8]: after the add, x8 is a member
+        body.address(9, VTABLE);
+        arm64!(body; mov x8, x19; str x9, [x8], #0x68);
+        body.address(10, 0x33000);
+        arm64!(body;
+            str x10, [x8]; // after the post-index, x8 is a member
+            mov x8, x19;
+            add x8, x8, #0x70;
+            str x10, [x8] // after the add, x8 is a member
+        );
     });
     assert_eq!(
         followed(create, constant_getter(SCOPE_GETTER, 0)),

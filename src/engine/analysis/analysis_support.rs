@@ -1,25 +1,22 @@
-//! Authored ARM64 code and a minimal Mach-O image around it. Native's unit tests and its
-//! integration tests share this file.
+//! Authored ARM64 code and a minimal Mach-O image around it, for Native's unit tests.
 #![allow(dead_code)]
+use crate::engine::analysis::assembler::arm64;
 
 // An authored ARM64 sequence at 0x1000; it is not game code.
 pub fn code() -> Vec<u8> {
-    [
-        0xa9bf7bfdu32, // stp x29, x30, [sp, #-16]!
-        0x910003fd,    // mov x29, sp
-        0x11008000,    // add w0, w0, #32
-        0x9400000d,    // bl 0x1040
-        0xb0000008,    // adrp x8, 0x2000
-        0xf9400908,    // ldr x8, [x8, #16]
-        0xf9400108,    // ldr x8, [x8]
-        0xf100001f,    // cmp x0, #0
-        0x9a801100,    // csel x0, x8, x0, ne
-        0xa8c17bfd,    // ldp x29, x30, [sp], #16
-        0xd65f03c0,    // ret
-    ]
-    .into_iter()
-    .flat_map(u32::to_le_bytes)
-    .collect()
+    arm64!(at 0x1000;
+        stp x29, x30, [sp, #-16]!;
+        mov x29, sp;
+        add w0, w0, #32;
+        bl extern 0x1040;
+        adrp x8, extern 0x2000;
+        ldr x8, [x8, #16];
+        ldr x8, [x8];
+        cmp x0, #0;
+        csel x0, x8, x0, ne;
+        ldp x29, x30, [sp], #16;
+        ret
+    )
 }
 
 pub fn expected() -> Vec<(&'static str, &'static str)> {
@@ -76,20 +73,17 @@ pub const IMAGE_FIXUPS_OFFSET: usize = 0x5000;
 /// `_helper` at 0x100001020 and loads the data slot at 0x100004000, which points to `_helper`.
 pub fn macho_image(pointer_format: u16) -> Vec<u8> {
     const BASE: u64 = 0x1_0000_0000;
-    let code: Vec<u8> = [
-        0xa9bf7bfdu32, // stp x29, x30, [sp, #-16]!
-        0xb0000000,    // adrp x0, 0x100002000
-        0x91002000,    // add x0, x0, #8
-        0x94000005,    // bl 0x100001020
-        0xf0000008,    // adrp x8, 0x100004000
-        0xf9400108,    // ldr x8, [x8]
-        0xa8c17bfd,    // ldp x29, x30, [sp], #16
-        0xd65f03c0,    // ret
-        0xd65f03c0,    // _helper: ret
-    ]
-    .into_iter()
-    .flat_map(u32::to_le_bytes)
-    .collect();
+    let code = arm64!(at BASE + 0x1000;
+        stp x29, x30, [sp, #-16]!;
+        adrp x0, extern (BASE + 0x2000) as usize;
+        add x0, x0, #8; // "entity_offset"
+        bl extern (BASE + 0x1020) as usize;
+        adrp x8, extern (BASE + 0x4000) as usize;
+        ldr x8, [x8]; // the data slot
+        ldp x29, x30, [sp], #16;
+        ret;
+        ret // _helper
+    );
     let strings = b"other\0\0\0entity_offset\0";
     let names = b"\0__ZN5Probe4ReadEv\0_helper\0";
 

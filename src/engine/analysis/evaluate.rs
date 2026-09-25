@@ -2104,6 +2104,7 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::assembler::arm64;
 
     fn rows(lines: &[(u64, &str, &str)]) -> Code {
         Code::from_rows(
@@ -2280,14 +2281,13 @@ mod tests {
 
     #[test]
     fn decoded_movi_fills_every_lane() {
-        let words: [u32; 5] = [
-            0x6f07e7e0, // movi v0.2d,#0xffffffffffffffff
-            0x3d800020, // str q0,[x1]
-            0x6f00e400, // movi v0.2d,#0
-            0x3d800420, // str q0,[x1,#0x10]
-            0xd65f03c0, // ret
-        ];
-        let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+        let bytes = arm64!(at 0x100;
+            movi v0.d2, #0xffffffffffffffff;
+            str q0, [x1];
+            movi v0.d2, #0;
+            str q0, [x1, #0x10];
+            ret
+        );
         let code = Code::decode(&[(0x100, &bytes)]).unwrap();
         let data = ReadOnlyData::default();
         let mut machine = Machine::new(&code, &data);

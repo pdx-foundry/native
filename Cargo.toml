@@ -20,6 +20,8 @@ libc = "0.2"
 tempfile = "3"
 syn = { version = "3", features = ["full", "visit"] }
 proc-macro2 = "1"
+dynasm = "5.1"
+dynasmrt = "5.1"
 
 # Executable hashing and C++ symbol decoding dominate unoptimized static queries.
 # Keep Native itself debuggable; see docs/native/performance.md for measurements.

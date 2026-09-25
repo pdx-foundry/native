@@ -1,4 +1,5 @@
 //! The registry discovery method on small authored inputs.
+use crate::engine::analysis::assembler::arm64;
 use crate::engine::analysis::discovery::{
     DiscoveryGapKind, SchedulerLayout, StaticInput, Symbol, candidates, discover, scheduler,
 };
@@ -10,7 +11,15 @@ fn input() -> StaticInput {
             Symbol {name:"TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::LoadFile(char const*, bool)".into(),address:0x3000},
             Symbol {name:"TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::Init()".into(),address:0x4000},
         ],
-        code: [0x910003f3u32, 0xb0000008,0xf9003268,0xd0000009,0xf9003669,0xa9077e7f,0xa9087e7f].into_iter().flat_map(u32::to_le_bytes).collect(),
+        code: arm64!(at 0x1000;
+            mov x19, sp;
+            adrp x8, extern 0x2000; // "example"
+            str x8, [x19, #0x60];
+            adrp x9, extern 0x3000; // LoadFile
+            str x9, [x19, #0x68];
+            stp xzr, xzr, [x19, #0x70];
+            stp xzr, xzr, [x19, #0x80]
+        ),
         layout:SchedulerLayout{start:0x1000,end:0x101c,offset:96,stride:48,count:1},
         pointers:BTreeMap::new(),global_bindings:BTreeMap::new(),bound_slots:Default::default(),strings:BTreeMap::from([(0x2000,"example".into())]),vtables:BTreeMap::new(),
     }
@@ -46,13 +55,13 @@ fn omissions_and_clobbers_preserve_obligations() {
     assert_eq!(scheduler(&input).unwrap().0[0].status, "recovered");
     input.strings.clear();
     assert_eq!(scheduler(&input).unwrap().0[0].status, "gap");
-    input = input_fixture_with_clobber(0x52800008); // mov w8,#0 before the name store
+    input = input_fixture_with_clobber(arm64!(at 0x1008; mov w8, #0)); // before the name store
     let (rows, _) = scheduler(&input).unwrap();
     assert!(rows[0].values[0].is_none());
-    input = input_fixture_with_clobber(0x94000000); // unknown call clobbers x8
+    input = input_fixture_with_clobber(arm64!(at 0x1008; bl extern 0x1008)); // an unknown call
     let (rows, gaps) = scheduler(&input).unwrap();
     assert!(rows[0].values[0].is_none() && !gaps.is_empty());
-    input = input_fixture_with_clobber(0x91002273); // add x19,x19,#8 changes table owner
+    input = input_fixture_with_clobber(arm64!(at 0x1008; add x19, x19, #8)); // a new table owner
     let result = discover(&input).unwrap();
     assert!(
         result
@@ -72,9 +81,10 @@ fn omissions_and_clobbers_preserve_obligations() {
             .any(|g| g.kind == DiscoveryGapKind::OutsideTemplate)
     );
 }
-fn input_fixture_with_clobber(code: u32) -> StaticInput {
+/// `input()` with `instruction` at 0x1008, before the name store.
+fn input_fixture_with_clobber(instruction: Vec<u8>) -> StaticInput {
     let mut input = input();
-    input.code.splice(8..8, code.to_le_bytes());
+    input.code.splice(8..8, instruction);
     input.layout.end += 4;
     input
 }
