@@ -162,12 +162,12 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                 let key_readable = !key.is_empty() && key.len() < 4095 && !key.contains('\0');
                 let witnessed = slot_witnessed && pointer(object) && key_readable;
 
-                // The key is claimed before the object: a new key stays claimed when its object
-                // repeats, and an object stays unclaimed when its key repeats.
-                let claimed =
-                    witnessed && keys.insert(key.clone()) && objects.insert(object.clone());
+                // Claim the key before the object: a new key stays claimed when its object repeats,
+                // and an object stays unclaimed when its key repeats.
+                let key_claimed = witnessed && keys.insert(key.clone());
+                let object_claimed = key_claimed && objects.insert(object.clone());
 
-                if !claimed {
+                if !object_claimed {
                     diagnostics.push(
                         "Registry entry lacks a unique slot, owner, key, or thread witness".into(),
                     );
