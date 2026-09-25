@@ -43,8 +43,8 @@ A root is a function that the engine runs for the items of one content database.
   `Create*` methods directly, not through the vtable.
 - The post-read functions of `CStrategicResource`, `CPlanetClass`, `CZoneType::CSerializer` and
   `CEconomicCategory::CTriggeredModifierTable::CSerializer<N>` are roots with no named registry.
-  `common/strategic_resources` and `common/planet_classes` have custom loaders (SDK-551). Decided
-  with Jackson on 2026-09-24: their sites stay gaps, and `NamePart` does not change.
+  `common/strategic_resources` and `common/planet_classes` have custom loaders and are not named
+  registries (SDK-551). Their sites stay gaps; `NamePart` has no part for them.
 - `CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, …)` takes a content
   object that no named registry owns. Its names combine two registries' keys.
 - The reload path (`ReadExistingEntry`) and the non-virtual thunks hold copies of
@@ -181,8 +181,10 @@ pass a mask from an item field (for economic categories `+0x128`, the content's
   situations generator tests `ldrb w8,[x23,#0x508]; cbz` before both calls (1 of 90 loaded).
 - **Content gates.** Economic categories generate only with `generate_mult_modifiers`. The 11 jobs
   with `can_be_automated = no` have no `job_<job>_automated_workforce_mult`. Archetypes with
-  `uses_modifiers = no` or `robotic = yes`, and patrons without `add_modifier = yes`, have no
-  names.
+  `uses_modifiers = no` or `robotic = yes`, leader classes without `leader_capacity`, and patrons
+  without `add_modifier = yes` have no names. A comparison that expands a template over a whole
+  type, or that takes the script value `random_list` as a planet class, reports these as missing
+  names; they are not engine omissions.
 - **Path limit.** The item-root runs of districts, espionage types, ethics, species archetypes
   and economic categories exceed the path limit.
 - **Per-item call not established.** `pop_jobs` and `resolution_categories` (above).
@@ -210,8 +212,8 @@ Gaps in joined registries:
   path limit.
 - `common/districts`: two paths per call use the object at `+0xea0` instead of the item, when a
   virtual call on it returns non-zero. Those names are not the item's.
-- Some paths read an unknown object and fail to give a name (districts, councilors, scripted
-  modifiers). The answer counts them by reason.
+- Some paths read an unknown object and fail to give a name (districts, councilors). The answer
+  counts them by reason.
 
 Outside the methods: modifiers that the engine adds after the documentation point; where a
 modifier takes effect; the tags of a declared modifier after content registers it again; a key

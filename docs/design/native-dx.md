@@ -39,7 +39,7 @@ Sources: the Native and Atlas repos read directly; the full text of SDK-543, 553
 
 - SDK-574: three observers share pause flags in `worker.py`, which caused two SDK-564 defects. SDK-571: a hang whose cause is unconfirmed.
 - CI runs no parity or live tests and no `cargo doc`; no toolchain pin. The SDK-569 gate is not implemented; `tests/consumer_boundary.rs` has a `syn` scanner to reuse.
-- The session work directory is removed on confirmed disposal; one failure's cause was lost that way (`registry-items.md:67-69`).
+- The session work directory is removed on confirmed disposal; one failure's cause was lost that way (`registry-items.md:66-70`).
 - Stale docs: `simplification.md:169,309,342` says the fake-worker test is missing, but it exists (`supervisor.rs:566`); `roadmap.md:40`; `retrieval.md:3` and `.claude/skills/milestone-review/SKILL.md:14` use the old checkout path; `architecture.md:80-89` omits four directories; `AGENTS.md:5` says "reservation recovery". `discovery.md` has no method index.
 - `.local/sdk-559`, `sdk-560-*`, `sdk-561-*` hold instrumented source copies and raw logs that `performance.md:39` explicitly retains.
 

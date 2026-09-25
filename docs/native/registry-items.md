@@ -65,5 +65,6 @@ game did not reach is then `NotLoaded`. The worker's pause record carries its ca
 (`loaders-returned`, `content-loaded` or `deadline`), the reducer refuses a loaders-returned pause
 that omits an active loader, and a `NotLoaded` answer names the cause. One M45-release session
 paused at the deadline before any of the six generator registries loaded; why it did not reach
-them is not known. Its work directory was removed when the session was disposed, so a session
-that must be diagnosed needs its work directory kept.
+them is not known. `close` keeps the work directory after a read error or a failed start, but
+that session's answers were `Unsupported` and its disposal was clean, so its work directory was
+removed.
