@@ -77,12 +77,22 @@ pub const IMAGE_JUMP_TABLE: [u8; 6] = [2, 0, 0, 0, 6, 0];
 /// `__TEXT,__const` at 0x100003000 holds [`IMAGE_JUMP_TABLE`].
 pub fn macho_image(pointer_format: u16) -> Vec<u8> {
     const BASE: u64 = 0x1_0000_0000;
-    let code = arm64!(at BASE + 0x1000;
+    // File offsets. The image maps each one at `BASE` plus the offset.
+    const TEXT: usize = 0x1000;
+    const HELPER: usize = TEXT + 0x20;
+    const CSTRING: usize = 0x2000;
+    const CONST: usize = 0x3000;
+    const DATA: usize = 0x4000;
+    const SYMBOLS: usize = 0x5100;
+    const NAMES: usize = 0x5200;
+    let address = |offset: usize| BASE + offset as u64;
+
+    let code = arm64!(at address(TEXT);
         stp x29, x30, [sp, #-16]!;
-        adrp x0, extern (BASE + 0x2000) as usize;
+        adrp x0, extern address(CSTRING) as usize;
         add x0, x0, #8; // "entity_offset"
-        bl extern (BASE + 0x1020) as usize;
-        adrp x8, extern (BASE + 0x4000) as usize;
+        bl extern address(HELPER) as usize;
+        adrp x8, extern address(DATA) as usize;
         ldr x8, [x8]; // the data slot
         ldp x29, x30, [sp], #16;
         ret;
@@ -96,23 +106,23 @@ pub fn macho_image(pointer_format: u16) -> Vec<u8> {
     commands.extend(segment(
         b"__TEXT",
         BASE,
-        0x4000,
+        DATA as u64,
         0,
         &[
-            (b"__text", BASE + 0x1000, code.len(), 0x1000, 0x8000_0400),
-            (b"__cstring", BASE + 0x2000, strings.len(), 0x2000, 0x2),
-            (b"__const", BASE + 0x3000, IMAGE_JUMP_TABLE.len(), 0x3000, 0),
+            (b"__text", address(TEXT), code.len(), TEXT, 0x8000_0400),
+            (b"__cstring", address(CSTRING), strings.len(), CSTRING, 0x2),
+            (b"__const", address(CONST), IMAGE_JUMP_TABLE.len(), CONST, 0),
         ],
     ));
     commands.extend(segment(
         b"__DATA",
-        BASE + 0x4000,
+        address(DATA),
         0x1000,
-        0x4000,
-        &[(b"__data", BASE + 0x4000, 16, 0x4000, 0)],
+        DATA,
+        &[(b"__data", address(DATA), 16, DATA, 0)],
     ));
-    for value in [0x2u32, 24, 0x5100, 2, 0x5200, names.len() as u32] {
-        commands.extend(value.to_le_bytes()); // LC_SYMTAB
+    for value in [0x2, 24, SYMBOLS, 2, NAMES, names.len()] {
+        commands.extend((value as u32).to_le_bytes()); // LC_SYMTAB
     }
     for value in [0x8000_0034u32, 16, IMAGE_FIXUPS_OFFSET as u32, 0x60] {
         commands.extend(value.to_le_bytes()); // LC_DYLD_CHAINED_FIXUPS
@@ -133,11 +143,11 @@ pub fn macho_image(pointer_format: u16) -> Vec<u8> {
     .collect();
     put(&mut bytes, 0, &header);
     put(&mut bytes, 32, &commands);
-    put(&mut bytes, 0x1000, &code);
-    put(&mut bytes, 0x2000, strings);
-    put(&mut bytes, 0x3000, &IMAGE_JUMP_TABLE);
+    put(&mut bytes, TEXT, &code);
+    put(&mut bytes, CSTRING, strings);
+    put(&mut bytes, CONST, &IMAGE_JUMP_TABLE);
     // A DYLD_CHAINED_PTR_64_OFFSET rebase to `_helper`, the last in its chain.
-    put(&mut bytes, 0x4000, &0x1020u64.to_le_bytes());
+    put(&mut bytes, DATA, &(HELPER as u64).to_le_bytes());
 
     // dyld_chained_fixups_header: version, starts, imports, symbols, import count, formats.
     let mut fixups: Vec<u8> = [0u32, 32, 0x60, 0x60, 0, 3, 0, 0]
@@ -152,23 +162,23 @@ pub fn macho_image(pointer_format: u16) -> Vec<u8> {
     fixups.extend(24u32.to_le_bytes());
     fixups.extend(0x1000u16.to_le_bytes());
     fixups.extend(pointer_format.to_le_bytes());
-    fixups.extend(0x4000u64.to_le_bytes());
+    fixups.extend((DATA as u64).to_le_bytes());
     fixups.extend(0u32.to_le_bytes());
     fixups.extend(1u16.to_le_bytes());
     fixups.extend(0u16.to_le_bytes());
     put(&mut bytes, IMAGE_FIXUPS_OFFSET, &fixups);
 
     // nlist_64 entries: name offset, N_SECT | N_EXT, section 1, no description, address.
-    for (index, (name, address)) in [(1u32, BASE + 0x1000), (19, BASE + 0x1020)]
+    for (index, (name, symbol_address)) in [(1u32, address(TEXT)), (19, address(HELPER))]
         .into_iter()
         .enumerate()
     {
         let mut symbol = name.to_le_bytes().to_vec();
         symbol.extend([0x0f, 1, 0, 0]);
-        symbol.extend(address.to_le_bytes());
-        put(&mut bytes, 0x5100 + index * 16, &symbol);
+        symbol.extend(symbol_address.to_le_bytes());
+        put(&mut bytes, SYMBOLS + index * 16, &symbol);
     }
-    put(&mut bytes, 0x5200, names);
+    put(&mut bytes, NAMES, names);
 
     bytes
 }
@@ -178,14 +188,14 @@ fn segment(
     name: &[u8],
     address: u64,
     size: u64,
-    offset: u64,
-    sections: &[(&[u8], u64, usize, u32, u32)],
+    offset: usize,
+    sections: &[(&[u8], u64, usize, usize, u32)],
 ) -> Vec<u8> {
     let mut command = Vec::new();
     command.extend(0x19u32.to_le_bytes());
     command.extend((72 + 80 * sections.len() as u32).to_le_bytes());
     command.extend(fixed_name(name));
-    for value in [address, size, offset, size] {
+    for value in [address, size, offset as u64, size] {
         command.extend(value.to_le_bytes());
     }
     for value in [3u32, 3, sections.len() as u32, 0] {
@@ -197,7 +207,7 @@ fn segment(
         command.extend(fixed_name(name));
         command.extend(address.to_le_bytes());
         command.extend((*size as u64).to_le_bytes());
-        for value in [*offset, 2, 0, 0, *flags, 0, 0, 0] {
+        for value in [*offset as u32, 2, 0, 0, *flags, 0, 0, 0] {
             command.extend(value.to_le_bytes());
         }
     }

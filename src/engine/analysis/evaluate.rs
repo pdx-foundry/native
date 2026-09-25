@@ -3145,7 +3145,7 @@ mod tests {
     }
 
     /// Runs `code` from 0x100 with every call to an address in `entered` entered and every other
-    /// call returning its target, and gives each path's end with `x0` and the other calls made.
+    /// call returning its target, and gives each path's end with its `x0`, ordered by `x0`.
     fn entered_paths(code: &Code, entered: &[u64]) -> Vec<(Result<Exit, Unresolved>, Option<u64>)> {
         let data = ReadOnlyData::default();
         let mut paths: Vec<_> = Machine::new(code, &data)
