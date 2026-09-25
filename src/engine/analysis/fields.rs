@@ -4,7 +4,10 @@
 //! literals. It finds reachable token-constructor calls, joining only equal constants across
 //! control-flow merges. It then recovers their literal arguments and partitions the signed 32-bit
 //! root-token branches. Known zero tests take only their feasible branch; unknown state tests
-//! keep both alternatives.
+//! keep both alternatives. A compiler jump table is decoded from read-only data: a bounded
+//! unsigned compare of `token + constant` guards it, and each token in the guarded range is
+//! followed to its own case. The switch's default case, which a wide token interval also
+//! reaches, may only reject: every token has a name, so a default slot never becomes a field.
 //!
 //! A reader join proves argument routing to a callee. It does not establish the reader's grammar,
 //! accepted types, scope contract, or runtime behavior. A bare comparison pivot or an unsupported
@@ -16,12 +19,20 @@
 //!   verified base rejection, indirect calls, dynamic names and nested grammars are boundaries.
 //! - It does not carry argument provenance through unknown calls, and does not assume that a
 //!   stack restore recovers provenance.
-//! - Root traversal: at most 500 instructions per path and 4,096 states. Token-construction
-//!   reachability: at most 40 visits per decoded instruction in aggregate.
+//! - Root traversal: at most 500 instructions per path, 4,096 states and 1,024 tokens per jump
+//!   table. Token-construction reachability: at most 40 visits per decoded instruction in
+//!   aggregate.
+//! - A jump table is followed only when its entries are offsets from a code address. A table of
+//!   addresses, an unbounded index, an unreadable entry, a case outside the root or a default
+//!   case that reaches a call is a `JumpTable` gap that names the table and the root. When a wide
+//!   interval does not end at the rejection, a case without a known reader is treated as the
+//!   default.
+//! - Bit-field reads (`ubfx`, `and`) forget their result. A field read into a temporary reaches
+//!   its reader call, but the reader join stays missing.
 //! - Unknown instructions, unsupported addressing, missing symbols or names, conflicting token
 //!   names, cycles and clobbered values become explicit gaps.
 //! - Inputs: at most 128 functions and 4 MiB of aggregate code, with a 1 MiB per-function
-//!   decode bound.
+//!   decode bound, and at most 64 MiB of read-only data.
 //!
 //! `partition_accounted` means that the ledger accounts for every signed token interval,
 //! including gaps. It never means that every path was resolved. Council agenda keeps five
@@ -65,7 +76,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v3";
+pub const METHOD: &str = "registry-fields/v4";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
@@ -73,6 +84,15 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
         || input.functions.iter().map(|f| f.code.len()).sum::<usize>() > 4 * 1024 * 1024
     {
         return Err(InputError("function input budget exceeded".into()));
+    }
+    if input
+        .read_only_data
+        .iter()
+        .map(|section| section.bytes.len())
+        .sum::<usize>()
+        > 64 * 1024 * 1024
+    {
+        return Err(InputError("read-only data budget exceeded".into()));
     }
     if !crate::engine::analysis::discovery::candidates(&input.symbols).contains(&input.selection) {
         return Err(InputError(
@@ -86,7 +106,8 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
         .collect();
     let (tokens, token_gaps) = tokens::recover(input);
     gaps.extend(token_gaps);
-    let paths = dispatch::explore(input);
+    let (paths, table_gaps) = dispatch::explore(input);
+    gaps.extend(table_gaps);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
     gaps.extend(path_gaps);
     let partition_accounted = inventory::partition_accounted(&paths);

@@ -19,6 +19,7 @@ fn fixture() -> FieldInput {
         selection: candidates(&symbols).remove(0),
         symbols,
         strings: BTreeMap::from([(0x8000, "new_engine_field".into())]),
+        read_only_data: vec![],
         gaps: vec![],
         functions: vec![
             Function {
@@ -465,4 +466,298 @@ fn a_path_that_spends_its_step_bound_names_the_bound_in_its_gap() {
         path: Some(0),
         ..FieldGap::unresolved(FieldGapKind::ReaderJoin, spent)
     }));
+}
+
+/// Names tokens 100 to 102 and dispatches them through a jump table at 0x8040, whose entries are
+/// read by `load` and whose targets are the rejection (`0x1028`), `first_table_field` and
+/// `second_table_field`. `entries` are the raw table bytes.
+fn table_fixture(load: Vec<u8>, entries: &[u8]) -> FieldInput {
+    let mut input = fixture();
+    input.strings = BTreeMap::from([
+        (0x8000, "first_table_field".into()),
+        (0x8010, "second_table_field".into()),
+    ]);
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #100; // token 100
+        adrp x2, extern 0x8000;
+        add x2, x2, #0; // "first_table_field"
+        bl extern 0x3000; // CToken::CToken
+        mov w1, #102; // token 102
+        adrp x2, extern 0x8000;
+        add x2, x2, #0x10; // "second_table_field"
+        bl extern 0x3000;
+        ret
+    );
+    let dispatch = arm64!(at 0x1000;
+        movn w8, #99; // -100
+        add w8, w2, w8; // the index: token - 100
+        cmp w8, #2;
+        b.hi extern 0x1028; // tokens outside 100 to 102
+        adrp x9, extern 0x8000;
+        add x9, x9, #0x40; // the table
+        adr x10, extern 0x1028 // the base of the entries
+    );
+    let cases = arm64!(at 0x1028;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        add x8, x0, #0x40; // token 100: entry 2
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        add x8, x0, #0x48; // token 102: entry 6
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000
+    );
+    input.functions[0].code = [dispatch, load, arm64!(at 0x1024; br x10), cases].concat();
+    input.read_only_data = vec![fields::DataSection {
+        address: 0x8040,
+        bytes: entries.to_vec(),
+    }];
+    input
+}
+
+fn halfword_table() -> FieldInput {
+    table_fixture(
+        arm64!(at 0x101c; ldrh w11, [x9, x8, lsl #1]; add x10, x10, x11, lsl #2),
+        &[2, 0, 0, 0, 6, 0],
+    )
+}
+
+fn jump_table_gaps(result: &fields::RegistryFieldResult) -> Vec<&FieldGap> {
+    result
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind == FieldGapKind::JumpTable)
+        .collect()
+}
+
+#[test]
+fn halfword_and_byte_jump_tables_name_each_case_and_reject_the_default() {
+    let byte_table = table_fixture(
+        arm64!(at 0x101c; ldrb w11, [x9, x8]; add x10, x10, x11, lsl #2),
+        &[2, 0, 6],
+    );
+    for input in [halfword_table(), byte_table] {
+        let result = derive(input);
+
+        let fields: Vec<_> = result.fields.iter().map(|f| (f.token, &*f.name)).collect();
+        assert_eq!(
+            fields,
+            [(100, "first_table_field"), (102, "second_table_field")],
+            "{:?}",
+            result.gaps
+        );
+        assert!(
+            result
+                .fields
+                .iter()
+                .all(|f| matches!(f.readers[..], [ReaderJoin::Joined { .. }]))
+        );
+        let rejected: Vec<_> = result
+            .paths
+            .iter()
+            .filter(|p| p.outcome == PathOutcome::Rejected)
+            .map(|p| p.domain)
+            .collect();
+        assert_eq!(
+            rejected,
+            [[i32::MIN as i64, 99], [101, 101], [103, i32::MAX as i64]]
+        );
+        assert!(result.partition_accounted);
+        assert!(result.gaps.is_empty(), "{:?}", result.gaps);
+    }
+}
+
+#[test]
+fn a_table_of_addresses_is_a_gap_that_names_the_reader_and_the_table() {
+    let input = table_fixture(arm64!(at 0x101c; ldr x10, [x9, x8, lsl #3]; nop), &[0; 24]);
+    let result = derive(input);
+
+    assert!(result.fields.is_empty());
+    let stop = Unresolved::at("jump-table", 0x1024, 0x1000, Obstacle::Unsupported);
+    assert!(
+        result
+            .paths
+            .iter()
+            .any(|p| p.domain == [100, 102] && p.outcome == PathOutcome::Gap(stop))
+    );
+    assert_eq!(
+        jump_table_gaps(&result),
+        [&FieldGap {
+            reason: "jump table at 0x8040 in CExample::ReadMember(CReader&, int): its entries are addresses".into(),
+            ..FieldGap::unresolved(FieldGapKind::JumpTable, stop)
+        }]
+    );
+    assert!(result.partition_accounted);
+}
+
+#[test]
+fn unreadable_entries_and_cases_outside_the_reader_stop_only_their_tokens() {
+    for (entries, reason, why) in [
+        (
+            &[2, 0][..],
+            "jump-table-entry",
+            "an entry could not be read",
+        ),
+        (
+            &[2, 0, 0, 0, 0xff, 0][..],
+            "jump-table-case",
+            "a case is outside the reader",
+        ),
+    ] {
+        let mut input = halfword_table();
+        input.read_only_data[0].bytes = entries.to_vec();
+        let result = derive(input);
+
+        let fields: Vec<_> = result.fields.iter().map(|f| f.token).collect();
+        assert_eq!(fields, [100]);
+        let stopped = result
+            .paths
+            .iter()
+            .find(|p| p.domain == [102, 102])
+            .unwrap();
+        assert!(matches!(
+            stopped.outcome,
+            PathOutcome::Gap(Unresolved { reason: r, .. }) if r == reason
+        ));
+        let gaps = jump_table_gaps(&result);
+        assert_eq!(gaps.len(), 1);
+        assert!(
+            gaps[0]
+                .reason
+                .starts_with("jump table at 0x8040 in CExample::ReadMember")
+        );
+        assert!(gaps[0].reason.ends_with(why));
+    }
+}
+
+#[test]
+fn an_unbounded_table_index_spends_the_entry_bound() {
+    let mut input = halfword_table();
+    replace(&mut input, 0x100c, arm64!(at 0x100c; nop)); // no range check
+    let result = derive(input);
+
+    let bound = Obstacle::Bound(Bound::TableEntries(1024));
+    let stop = Unresolved::at("jump-table", 0x1024, 0x1000, bound);
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(stop));
+    assert_eq!(jump_table_gaps(&result).len(), 1);
+}
+
+#[test]
+fn a_signed_condition_on_a_shifted_token_is_a_gap_not_a_dropped_interval() {
+    let mut input = halfword_table();
+    replace(&mut input, 0x100c, arm64!(at 0x100c; b.gt extern 0x1028));
+    let result = derive(input);
+
+    let stop = Unresolved::at("branch-condition", 0x100c, 0x1000, Obstacle::Unsupported);
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(stop));
+    assert!(result.partition_accounted);
+}
+
+#[test]
+fn a_bit_field_read_through_a_constant_index_reaches_its_reader_call() {
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov w8, #0x20;
+        ldrb w8, [x0, x8]; // the byte that holds the bit
+        ubfx w8, w8, #3, #1;
+        and w8, w8, #1;
+        strb w8, [sp, #0x10];
+        mov x9, x1; // the reader
+        add x1, sp, #0x10; // a temporary, not the member
+        mov x0, x9;
+        bl extern 0x4000 // CReader::Read
+    );
+    let result = derive(input);
+
+    assert_eq!(result.fields.len(), 1, "{:?}", result.gaps);
+    assert!(matches!(
+        result.fields[0].readers[..],
+        [ReaderJoin::Missing(Unresolved {
+            reason: "reader-routing",
+            ..
+        })]
+    ));
+}
+
+#[test]
+fn a_default_case_can_only_reject_and_other_shared_cases_are_aliases() {
+    // Tokens outside 100 to 102 read the member at 0x1030, as an inherited reader would, and
+    // so do tokens 100 and 101: that case is the default.
+    let mut input = halfword_table();
+    replace(&mut input, 0x100c, arm64!(at 0x100c; b.hi extern 0x1030));
+    input.read_only_data[0].bytes = vec![2, 0, 2, 0, 6, 0];
+    let result = derive(input);
+
+    let fields: Vec<_> = result.fields.iter().map(|f| f.token).collect();
+    assert_eq!(fields, [102]);
+    let default = Unresolved::at("jump-table-default", 0x103c, 0x1000, Obstacle::Unsupported);
+    for token in [100, 101] {
+        let path = result
+            .paths
+            .iter()
+            .find(|p| p.domain == [token, token])
+            .unwrap();
+        assert_eq!(path.outcome, PathOutcome::Gap(default));
+    }
+    assert_eq!(jump_table_gaps(&result).len(), 1);
+
+    // Five entries: 100 and 102 read one member, and three tokens reject.
+    let mut input = halfword_table();
+    replace(&mut input, 0x1008, arm64!(at 0x1008; cmp w8, #4));
+    input.read_only_data[0].bytes = vec![2, 0, 0, 0, 2, 0, 0, 0, 0, 0];
+    let result = derive(input);
+
+    let fields: Vec<_> = result.fields.iter().map(|f| f.token).collect();
+    assert_eq!(fields, [100, 102], "{:?}", result.gaps);
+    assert!(result.gaps.is_empty(), "{:?}", result.gaps);
+}
+
+#[test]
+fn an_unscaled_wide_load_is_not_a_table_entry() {
+    let input = table_fixture(
+        arm64!(at 0x101c; ldrh w11, [x9, x8]; add x10, x10, x11, lsl #2),
+        &[2, 0, 0, 0, 6, 0],
+    );
+    let result = derive(input);
+
+    assert!(result.fields.is_empty());
+    let stop = Unresolved::at("instruction", 0x101c, 0x1000, Obstacle::Unsupported);
+    assert!(
+        result
+            .paths
+            .iter()
+            .any(|p| p.domain == [100, 102] && p.outcome == PathOutcome::Gap(stop))
+    );
+}
+
+#[test]
+fn a_case_without_a_known_reader_can_only_reject_when_the_default_may_be_unseen() {
+    // Tokens outside 100 to 102 stop at an instruction that the walker does not run, so the
+    // default may be past it. Token 102's case calls an unknown function.
+    let mut input = halfword_table();
+    input.functions[0].code.extend(arm64!(at 0x1050; ret));
+    replace(&mut input, 0x100c, arm64!(at 0x100c; b.hi extern 0x1050));
+    replace(&mut input, 0x104c, arm64!(at 0x104c; b extern 0x9000));
+    let result = derive(input);
+
+    let fields: Vec<_> = result.fields.iter().map(|f| f.token).collect();
+    assert_eq!(fields, [100]);
+    let default = Unresolved::at("jump-table-default", 0x104c, 0x1000, Obstacle::Unsupported);
+    let path = result
+        .paths
+        .iter()
+        .find(|p| p.domain == [102, 102])
+        .unwrap();
+    assert_eq!(path.outcome, PathOutcome::Gap(default));
+    let gaps = jump_table_gaps(&result);
+    assert_eq!(gaps.len(), 1);
+    assert!(gaps[0].reason.ends_with("which an unresolved path hides"));
 }

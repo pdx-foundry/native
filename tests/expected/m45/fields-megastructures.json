@@ -1,0 +1,658 @@
+[
+ {
+  "name": "entity",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "custom_tooltip",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "victory_score",
+  "reader": {
+   "id": "a9818fec780f8313",
+   "kind": "FixedPoint"
+  },
+  "conditional": false
+ },
+ {
+  "name": "custom_tooltip_with_modifiers",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "custom_tooltip_requirements",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "is_ruined_orbital_ring",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "prerequisites",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "potential",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "sensor_range",
+  "reader": {
+   "id": "d7a95ab8c8d44489",
+   "kind": "Integer"
+  },
+  "conditional": false
+ },
+ {
+  "name": "country_modifier",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "possible",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "rotate_to_center",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "scale_offset",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "orbit_modifier",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "generate_borders",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "ship_modifier",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "station_modifier",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "build_time",
+  "reader": {
+   "id": "a9818fec780f8313",
+   "kind": "FixedPoint"
+  },
+  "conditional": false
+ },
+ {
+  "name": "dismantle_time",
+  "reader": {
+   "id": "a9818fec780f8313",
+   "kind": "FixedPoint"
+  },
+  "conditional": false
+ },
+ {
+  "name": "dismantle_cost",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "ai_weight",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "entity_offset",
+  "reader": {
+   "id": "784ec4ab3c469836",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "plane_offset",
+  "reader": {
+   "id": "a9818fec780f8313",
+   "kind": "FixedPoint"
+  },
+  "conditional": false
+ },
+ {
+  "name": "construction_scale",
+  "reader": {
+   "id": "a9818fec780f8313",
+   "kind": "FixedPoint"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_build_queued",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_build_unqueued",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_build_start",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_build_cancel",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_build_complete",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_dismantle_start",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_dismantle_cancel",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_dismantle_complete",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "build_megastructure_no_cost_localization_key",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "build_system_tooltip",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tooltip_system_score",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tooltip_system_score_low_threshold",
+  "reader": {
+   "id": "d7a95ab8c8d44489",
+   "kind": "Integer"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tooltip_system_score_high_threshold",
+  "reader": {
+   "id": "d7a95ab8c8d44489",
+   "kind": "Integer"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tooltip_best_systems_header",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tooltip_system_filter",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "tooltip_show_star_resources",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "upgrade_from",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "construction_entity",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "placement_rules",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "place_entity_on_planet_plane",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "use_planet_resource",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "scripted_action",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "starbase",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "system_modifier",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "show_galactic_map_icon",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "hide_name",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "bypass_type",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "triggered_country_modifier",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "show_in_outliner",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "outliner_trigger",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "hyperlane_range",
+  "reader": {
+   "id": "d7a95ab8c8d44489",
+   "kind": "Integer"
+  },
+  "conditional": false
+ },
+ {
+  "name": "starbase_capacity_used",
+  "reader": {
+   "id": "a9818fec780f8313",
+   "kind": "FixedPoint"
+  },
+  "conditional": false
+ },
+ {
+  "name": "show_prereqs",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "prereq_name",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "scales_with_planet",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "resources",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "portrait",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "overlord_can_upgrade",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "is_grand_archive",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "must_select_ship_design",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "is_shroud_seal",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "can_be_dismantled_by_non_owner",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "overclock_types",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "on_cycle_complete",
+  "reader": {
+   "id": "6e28a363faf61c52",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "cycle_length_in_days",
+  "reader": {
+   "id": "c61abc171edc30aa",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "cycle_title",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "cycle_desc",
+  "reader": {
+   "id": "97942c9a3d3c9c1b",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "cycle_icon",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "order_icon",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "can_prevent_crisis_terraformation",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "context_menu_potential",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "build_menu_potential",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "nomad_reactivatable",
+  "reader": {
+   "id": null,
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "overclock_loc_key",
+  "reader": {
+   "id": "325efaa17499c32d",
+   "kind": "String"
+  },
+  "conditional": false
+ },
+ {
+  "name": "overclock_cooldown",
+  "reader": {
+   "id": "c61abc171edc30aa",
+   "kind": "Unknown"
+  },
+  "conditional": false
+ },
+ {
+  "name": "dismantle_possible",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "dismantle_potential",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ },
+ {
+  "name": "should_ai_dismantle",
+  "reader": {
+   "id": "e044b50825a1841d",
+   "kind": "Block"
+  },
+  "conditional": false
+ }
+]

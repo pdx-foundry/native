@@ -860,6 +860,7 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
             "fields-tradition_categories.json",
         ),
         ("common/council_agendas", "fields-council_agendas.json"),
+        ("common/megastructures", "fields-megastructures.json"),
     ] {
         let answer = native.registry_fields(registry).unwrap();
         assert_eq!(answer.value, expected::<Vec<Field>>(file), "{registry}");
@@ -908,6 +909,63 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
 }
 
 /// The developer entry that the sweep uses gives the public answer from its one run.
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn megastructure_fields_behind_the_two_jump_tables_are_found() {
+    let answer = native().registry_fields("common/megastructures").unwrap();
+    let found: std::collections::BTreeSet<_> = answer
+        .value
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    // CMegaStructureType::ReadMember dispatches these through two halfword jump tables.
+    let first_table = [
+        "entity_offset",
+        "plane_offset",
+        "construction_scale",
+        "on_build_queued",
+        "on_build_unqueued",
+        "on_build_start",
+        "on_build_cancel",
+        "on_build_complete",
+        "on_dismantle_start",
+        "on_dismantle_cancel",
+        "on_dismantle_complete",
+        "build_megastructure_no_cost_localization_key",
+        "build_system_tooltip",
+        "tooltip_system_score",
+        "tooltip_system_score_low_threshold",
+        "tooltip_system_score_high_threshold",
+        "tooltip_best_systems_header",
+        "tooltip_system_filter",
+        "tooltip_show_star_resources",
+        "upgrade_from",
+        "construction_entity",
+        "placement_rules",
+        "place_entity_on_planet_plane",
+        "use_planet_resource",
+    ];
+    let second_table = [
+        "overclock_types",
+        "on_cycle_complete",
+        "cycle_length_in_days",
+        "cycle_title",
+        "cycle_desc",
+        "cycle_icon",
+        "order_icon",
+        "can_prevent_crisis_terraformation",
+    ];
+    for name in first_table.into_iter().chain(second_table) {
+        assert!(found.contains(name), "{name}");
+    }
+    assert!(
+        !answer
+            .gaps
+            .iter()
+            .any(|gap| gap.detail.contains("jump table"))
+    );
+}
+
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn the_developer_run_gives_the_public_registry_field_answer() {

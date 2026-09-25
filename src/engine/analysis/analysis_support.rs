@@ -66,11 +66,15 @@ pub fn macho(code: &[u8]) -> Vec<u8> {
 /// Where `macho_image` puts its chained-fixups header, so a test can change a field.
 pub const IMAGE_FIXUPS_OFFSET: usize = 0x5000;
 
+/// The halfword jump-table entries in `macho_image`'s read-only data.
+pub const IMAGE_JUMP_TABLE: [u8; 6] = [2, 0, 0, 0, 6, 0];
+
 /// An ARM64 Mach-O executable with symbols, strings and one chained pointer, whose segment uses
 /// `pointer_format`. Format 6 is the one Native reads.
 ///
 /// `Probe::Read()` at 0x100001000 forms the string `entity_offset` at 0x100002008, calls
 /// `_helper` at 0x100001020 and loads the data slot at 0x100004000, which points to `_helper`.
+/// `__TEXT,__const` at 0x100003000 holds [`IMAGE_JUMP_TABLE`].
 pub fn macho_image(pointer_format: u16) -> Vec<u8> {
     const BASE: u64 = 0x1_0000_0000;
     let code = arm64!(at BASE + 0x1000;
@@ -97,6 +101,7 @@ pub fn macho_image(pointer_format: u16) -> Vec<u8> {
         &[
             (b"__text", BASE + 0x1000, code.len(), 0x1000, 0x8000_0400),
             (b"__cstring", BASE + 0x2000, strings.len(), 0x2000, 0x2),
+            (b"__const", BASE + 0x3000, IMAGE_JUMP_TABLE.len(), 0x3000, 0),
         ],
     ));
     commands.extend(segment(
@@ -130,6 +135,7 @@ pub fn macho_image(pointer_format: u16) -> Vec<u8> {
     put(&mut bytes, 32, &commands);
     put(&mut bytes, 0x1000, &code);
     put(&mut bytes, 0x2000, strings);
+    put(&mut bytes, 0x3000, &IMAGE_JUMP_TABLE);
     // A DYLD_CHAINED_PTR_64_OFFSET rebase to `_helper`, the last in its chain.
     put(&mut bytes, 0x4000, &0x1020u64.to_le_bytes());
 

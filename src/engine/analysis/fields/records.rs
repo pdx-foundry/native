@@ -14,6 +14,15 @@ pub struct Function {
     /// Complete bounded function bytes.
     pub code: Vec<u8>,
 }
+/// Read-only data bytes from the selected executable slice, where the compiler puts jump tables.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DataSection {
+    /// File virtual address of the first byte.
+    pub address: u64,
+    /// The section's bytes.
+    pub bytes: Vec<u8>,
+}
 /// What the method reads, all from the executable. The selection is a discovered candidate,
 /// never a list of field names.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +36,8 @@ pub struct FieldInput {
     pub functions: Vec<Function>,
     /// Executable literal strings, indexed by file address.
     pub strings: BTreeMap<u64, String>,
+    /// Read-only data sections, which hold the root's jump tables.
+    pub read_only_data: Vec<DataSection>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
 }
@@ -45,6 +56,31 @@ pub enum Value {
     Stack(i64),
     /// Load from a known base, with byte width.
     Load(Box<Value>, u8),
+    /// The original field token plus a constant, as a zero-extended 32-bit word.
+    TokenWord(i64),
+    /// A jump-table entry that the token selects.
+    TableEntry(TableEntry),
+    /// A code address formed from a jump-table entry: `base + (entry << shift)`.
+    TableTarget {
+        /// The address that the entry is added to.
+        base: u64,
+        /// The entry that the token selects.
+        entry: TableEntry,
+        /// How far the entry is shifted left before the addition.
+        shift: u8,
+    },
+}
+/// The entry at `table + index * width`, where the index is the token word `token + offset`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct TableEntry {
+    /// Address of the first entry.
+    pub table: u64,
+    /// The constant added to the token to form the index.
+    pub offset: i64,
+    /// Bytes in one entry.
+    pub width: u8,
+    /// Whether the load sign-extends the entry.
+    pub signed: bool,
 }
 /// Conditional alternative not determined by the field token.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -121,6 +157,8 @@ pub enum FieldGapKind {
     UnresolvedTokenPath,
     /// The paths do not account for every token interval.
     TokenPartition,
+    /// A jump table in the root reader could not be decoded.
+    JumpTable,
 }
 
 /// A remaining obligation, separate from a discovered field.

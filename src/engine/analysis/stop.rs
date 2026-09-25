@@ -96,6 +96,8 @@ pub enum Bound {
     States(usize),
     /// Visits that one search may make to the instructions of a function, together.
     Visits(usize),
+    /// Entries that one jump table may select.
+    TableEntries(usize),
 }
 
 impl fmt::Display for Stop {
@@ -140,6 +142,7 @@ impl fmt::Display for Bound {
             Self::Joins(size) => write!(formatter, "join bound {size}"),
             Self::States(size) => write!(formatter, "state bound {size}"),
             Self::Visits(size) => write!(formatter, "visit bound {size}"),
+            Self::TableEntries(size) => write!(formatter, "table entry bound {size}"),
         }
     }
 }
