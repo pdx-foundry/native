@@ -16,7 +16,7 @@ Sources: the Native and Atlas repos read directly; the full text of SDK-543, 553
 - No tracked inspection tool. The primitives exist but are crate-private: `Text::direct_calls`, `branches_to`, `calls_into` (`binding/binary/declarations.rs:319-346`), `VerifiedAnalysis::symbol` (`binding/analysis.rs:52`), the string map (`binary/discovery.rs:307-320`). `lib.rs` exposes only the public answer types plus a hidden `internals` module holding `ObservationControl`, which `tests/consumer_boundary.rs` rejects in Atlas.
 - **The image reader is build-bound.** `binary::discovery::read(bytes, layout: &SchedulerLayout)` (`discovery.rs:275-332`) reads the layout's address range, and its `fixups` step (`discovery.rs:65-125`) fails the whole read unless the chained-fixup header matches M45's values and format 6. Symbols, strings, fixups and the scheduler window are all read in that one function. Nothing in the crate reads an image without a target record.
 - Analysis stops with bare reasons: `Unresolved(&'static str)` (`evaluate.rs:60`), `FieldGap { kind, reason }` (`fields/records.rs:114`), and `AnalysisError` prints `{self:?}`. Per-path `instructions` and `terminal` addresses exist internally (`fields/records.rs:86-97`) but are surfaced nowhere. Locating an obstruction means adding prints.
-- Evaluator coverage is the repeated cause of repair rounds (`discovery.md:240-246, :274, :368-372, :873`). SDK-563 is the sharpest case: 32 megastructure fields missed behind `ldrh …; br` jump tables, and five others found on the release build only because the beta compiler chose a table. SDK-543 names an indirect jump table in the Army reader; whether it is the same dispatch shape is not established.
+- Evaluator coverage is the repeated cause of repair rounds (`engine-commands.md:209-215, :243, :338-342`, `modifier-families.md:495`). SDK-563 is the sharpest case: 32 megastructure fields missed behind `ldrh …; br` jump tables, and five others found on the release build only because the beta compiler chose a table. SDK-543 names an indirect jump table in the Army reader; whether it is the same dispatch shape is not established.
 
 ### Decoder duplication (a fact, not a prerequisite)
 
@@ -39,7 +39,7 @@ Sources: the Native and Atlas repos read directly; the full text of SDK-543, 553
 
 - SDK-574: three observers share pause flags in `worker.py`, which caused two SDK-564 defects. SDK-571: a hang whose cause is unconfirmed.
 - CI runs no parity or live tests and no `cargo doc`; no toolchain pin. The SDK-569 gate is not implemented; `tests/consumer_boundary.rs` has a `syn` scanner to reuse.
-- The session work directory is removed on confirmed disposal; one failure's cause was lost that way (`discovery.md:491-493`).
+- The session work directory is removed on confirmed disposal; one failure's cause was lost that way (`modifier-families.md:115-117`).
 - Stale docs: `simplification.md:169,309,342` says the fake-worker test is missing, but it exists (`supervisor.rs:566`); `roadmap.md:40`; `retrieval.md:3` and `.claude/skills/milestone-review/SKILL.md:14` use the old checkout path; `architecture.md:80-89` omits four directories; `AGENTS.md:5` says "reservation recovery". `discovery.md` has no method index.
 - `.local/sdk-559`, `sdk-560-*`, `sdk-561-*` hold instrumented source copies and raw logs that `performance.md:39` explicitly retains.
 
@@ -103,6 +103,6 @@ Sources: the Native and Atlas repos read directly; the full text of SDK-543, 553
 - Two new unit cases in `src/binding/binary/` on authored images (`tests/support/mod.rs` and `analysis_support.rs` already build minimal Mach-O files):
     - An uncatalogued authored ARM64 Mach-O is identified and one function disassembled through `internals::inspect` with no target record, while `Native::open` on the same file returns `OpenError::UnknownTarget`.
     - An image whose chained-fixup header is not format 6 still lists symbols and strings and disassembles, produces no resolved pointers, and reports the fixup diagnostic.
-- `STELLARIS_PATH=... cargo test --release --test static_questions -- --ignored`: byte-identical after the inventory split; after SDK-563, `registry_fields("common/megastructures")` includes the 32 named fields, other registries may legitimately change, and the count of changed registries is recorded in `discovery.md`.
+- `STELLARIS_PATH=... cargo test --release --test static_questions -- --ignored`: byte-identical after the inventory split; after SDK-563, `registry_fields("common/megastructures")` includes the 32 named fields, other registries may legitimately change, and the count of changed registries is recorded in `registry-fields.md`.
 - `cargo run --release --example inspect -- --function 'CMegaStructureType::ReadMember'` shows both jump tables that SDK-563 describes.
 - Atlas builds with the local patch and `tests/snapshot.rs` passes with recorded answers.

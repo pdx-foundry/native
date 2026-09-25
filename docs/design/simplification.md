@@ -99,7 +99,7 @@ pub struct Field    { pub name: String, pub reader: Reader, pub conditional: boo
 pub struct Reader   { pub id: Option<ReaderId>, pub kind: ReaderKind }
 pub enum ReaderKind { Unknown /* extended as reader support lands */ }
 pub struct Declaration { pub name: String, pub description: String, pub usage: String,
-                         pub scopes: DeclaredScopes } // SDK-568: no targets; see discovery.md
+                         pub scopes: DeclaredScopes } // SDK-568: no targets; see engine-commands.md
 pub enum DeclaredScopes { Any, Listed(Vec<ScopeReference>), Unresolved }
 pub struct ScopeReference { pub id: ScopeId, pub name: String } // SDK-536: join by id, not name
 ```
@@ -361,10 +361,10 @@ reservation journal with the OS lock and process inventory; see
 
 ## Documents
 
-Keep the pages that hold engine knowledge: `engine-calls.md`, `discovery.md`, `targets.md`,
-`early-observations.md`, `loader-entry-worker.md`, `lifecycle.md`. Remove the qualification,
-production and verification records. Rewrite the specification to the purpose above; most of
-sections 3 and 8 and half of the acceptance checks go.
+Keep the pages that hold engine knowledge: `engine-calls.md`, `discovery.md` and its method
+pages, `targets.md`, `early-observations.md`, `loader-entry-worker.md`, `lifecycle.md`. Remove the
+qualification, production and verification records. Rewrite the specification to the purpose
+above; most of sections 3 and 8 and half of the acceptance checks go.
 
 ## Effect on Atlas
 

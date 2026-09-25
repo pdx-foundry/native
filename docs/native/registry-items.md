@@ -45,17 +45,17 @@ installation. 161 registries returned `Complete`. A follow-up run established pr
 | `common/map_modes` | Unsupported: item key layout is not established |
 | `common/game_scenarios` | Unsupported: initial loader did not run before the startup deadline stopped the game |
 
-These are historical M45-observe results. On M45-release, SDK-567 derives the key offset from
-each selected registry's item constructor before the worker reads keys. The method established
-148 of 164 named registries; 16 with unresolved key storage refuse item reads. Both
-`common/bypass` and `common/map_modes` have keys at `+0x18`. On M45-release, one selected
-`common/map_modes` session returned eight complete live keys equal to its top-level source keys;
-another paused before its loader ran and returned `Unsupported`. SDK-573 repeated that session
-three times and each returned the eight keys, complete, about 22 seconds after launch; the live
-case `nonstandard_key` now requires them. The six generator registries of SDK-540
-(`common/buildings`, `common/bypass`, `common/districts`, `common/megastructures`,
-`common/situations`, `common/zones`) return complete items in one session about 24 seconds after
-launch (live case `generator_registries`); the earlier `Unsupported` answers came from a session
-that paused at the worker's deadline (see [discovery](discovery.md), SDK-573). The worker also
-checks key uniqueness, nonempty keys and control characters. SDK-551 covers custom,
-nested-definition and late loaders outside this template method.
+These are historical M45-observe results. On M45-release, SDK-567 derives the key offset from each
+selected registry's item constructor before the worker reads keys. The method established 148 of 164
+named registries; 16 with unresolved key storage refuse item reads. Both `common/bypass` and
+`common/map_modes` have keys at `+0x18`. On M45-release, one selected `common/map_modes` session
+returned eight complete live keys equal to its top-level source keys; another paused before its
+loader ran and returned `Unsupported`. SDK-573 repeated that session three times and each returned
+the eight keys, complete, about 22 seconds after launch; the live case `nonstandard_key` now
+requires them. The six generator registries of SDK-540 (`common/buildings`, `common/bypass`,
+`common/districts`, `common/megastructures`, `common/situations`, `common/zones`) return complete
+items in one session about 24 seconds after launch (live case `generator_registries`); the earlier
+`Unsupported` answers came from a session that paused at the worker's deadline (see [modifier
+families](modifier-families.md#modifier-families-sdk-540), SDK-573). The worker also checks key
+uniqueness, nonempty keys and control characters. SDK-551 covers custom, nested-definition and late
+loaders outside this template method.

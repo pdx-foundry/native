@@ -47,10 +47,11 @@ removal route.
 ### Measuring method transfer
 
 A method ticket ends with one run of the method over every discovered registry, or over the whole
-command inventory when the method reads commands. Record in `docs/native/discovery.md` the counts
-of complete, partial and failed answers, each failure shape, and any distinct finding the run
-produced. Repairs that the run prompts land in the shared module; the next ticket's run reflects
-them. Do not record routine run chronology.
+command inventory when the method reads commands. Record on the method's page in `docs/native/`
+(the [discovery index](native/discovery.md) lists them) the counts of complete, partial and failed
+answers, each failure shape, and any distinct finding the run produced. Repairs that the run
+prompts land in the shared module; the next ticket's run reflects them. Do not record routine run
+chronology.
 
 There is no freeze commit, no commit-per-repair rule and no held-out selection. A method with no
 per-case branch treats every registry the same, so running it on a registry it has not seen is not
@@ -59,16 +60,15 @@ unchanged at a recorded commit and reports the automatic rate per relationship, 
 reader identity. Failures in the sweep become follow-up tickets, never fixes inside the sweep.
 
 This replaces the per-ticket freeze and held-out tests of the Milestone 2 and 3 tickets
-(2026-09-23). Their transfer tables in the discovery notes stay as findings.
+(2026-09-23). Their transfer tables on the method pages stay as findings.
 
 ### Write a method in one task
 
-Do not write a separate throwaway prototype first. In the method's own task, explore the
-executable with the developer inspector (`examples/inspect.rs`), record each finding and each
-failed shape in `docs/native/discovery.md`, and deliver the method with its authored tests and
-parity output. This replaces the prototype-then-port split (2026-09-24). Untracked work in
-`.local/` still holds acquired knowledge until its findings are recorded; preserve it as the next
-section says.
+Do not write a separate throwaway prototype first. In the method's own task, explore the executable
+with the developer inspector (`examples/inspect.rs`), record each finding and each failed shape on
+the method's page in `docs/native/`, and deliver the method with its authored tests and parity
+output. This replaces the prototype-then-port split (2026-09-24). Untracked work in `.local/` still
+holds acquired knowledge until its findings are recorded; preserve it as the next section says.
 
 ## Preserve acquired knowledge
 
