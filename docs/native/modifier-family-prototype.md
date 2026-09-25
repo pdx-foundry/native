@@ -13,11 +13,11 @@ and SDK-544 owns numeric conversion limits. SDK-486 owns the archive of the untr
 
 **Implemented 2026-09-23:** `Native::modifier_families` (SDK-540) recovers these templates and three
 more registries from the executable. See [modifier
-families](modifier-families.md#modifier-families-sdk-540). `Game::loaded_modifiers` (SDK-564)
+families](modifier-families.md#result-on-m45-release). `Game::loaded_modifiers` (SDK-564)
 returns the loaded inventory and classifies each entry; see [modifier
-families](modifier-families.md#the-loaded-modifier-inventory-sdk-564). SDK-566 adds the item
+families](modifier-families.md#the-loaded-modifier-table). SDK-566 adds the item
 post-read code and the shared helpers of item 5 below; see [modifier
-families](modifier-families.md#modifier-families-from-post-read-code-and-shared-helpers-sdk-566).
+families](modifier-families.md#roots).
 
 ## Target and experiment
 
