@@ -81,7 +81,7 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
 /// The report state gathered from each registry's query, in registry order.
 #[derive(Default)]
 struct SweepReport {
-    /// The one method that answered every query.
+    /// The one method that gave every answer. A failed query has no method.
     field_method: Option<String>,
     complete_queries: usize,
     partial_queries: usize,
