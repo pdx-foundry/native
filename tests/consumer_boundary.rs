@@ -575,6 +575,7 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
         ),
         ("fn f() { let _ = pdx_native::supervisor::hidden; }", false),
         ("type C = pdx_native::internals::ObservationControl;", false),
+        ("use pdx_native::internals::inspect::Image;", false),
         ("fn f() { let _ = pdx_native::GameOptions::fault; }", false),
         ("fn f() { let _ = GameOptions::fixture_fault; }", false),
         ("fn f() { let _ = 0x1234; }", false),

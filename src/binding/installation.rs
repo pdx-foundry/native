@@ -109,7 +109,7 @@ fn access_error(path: &Path, error: std::io::Error) -> OpenError {
     }
 }
 
-fn resolve_directory(hint: &Path) -> Result<PathBuf, OpenError> {
+pub(super) fn resolve_directory(hint: &Path) -> Result<PathBuf, OpenError> {
     let mut candidates = Vec::new();
     for relative in [
         "stellaris.app/Contents/MacOS/stellaris",

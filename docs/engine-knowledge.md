@@ -24,6 +24,24 @@ A finding is **demonstrated** on its original build only. A **candidate** lacks 
 behavior check. An unsupported or untested build gets no inferred result. A failed method stays
 on its page, with the correction that replaced it.
 
+## Inspecting an executable
+
+`examples/inspect.rs` looks inside any ARM64 executable, catalogued or not, with no game and no
+target record. Use it in place of a Python dump before you write a method:
+
+```sh
+cargo run --release --example inspect -- --function 'CMegaStructureType::ReadMember'
+```
+
+The image is `--image PATH` or `STELLARIS_PATH`. The other commands are `--symbols TEXT`,
+`--callers NAME`, `--strings TEXT` and `--slots NAME --count N`. Each run first prints the image
+hashes and whether chained fixups were read. Without them, no data slot is resolved and the run
+prints why. Function extents come from symbols, so every end is an inferred boundary. Indirect
+branches stay unresolved, and jump tables are shown only as the addresses the code forms.
+Callers are direct `bl` and `b` only; a string reference is `adr`, or `adrp` then `add` in one
+function with no branch or write between them. The inspector reads ARM64 images only. The entry
+is `pdx_native::internals::inspect`, which is not a consumer API.
+
 ## Private prototype bundles
 
 The prototype sources, raw captures, logs, disassembly and exported Linear records are not in

@@ -532,7 +532,7 @@ fn forms(rows: &[Instruction], points: &BTreeSet<u64>) -> bool {
 
 /// The general registers that an instruction writes, as far as the scan needs them: a call
 /// writes the caller-saved registers and the link register.
-fn written_registers(operation: &str, operands: &[&str]) -> Vec<usize> {
+pub(in crate::binding) fn written_registers(operation: &str, operands: &[&str]) -> Vec<usize> {
     let calls = ["bl", "blr"];
     let writes_nothing = operation.starts_with("st")
         || operation.starts_with("b")
@@ -561,7 +561,7 @@ fn written_registers(operation: &str, operands: &[&str]) -> Vec<usize> {
 }
 
 /// The number of general register `name`, such as `x8` or `w8`.
-fn register(name: &str) -> Option<usize> {
+pub(in crate::binding) fn register(name: &str) -> Option<usize> {
     name.strip_prefix('x')
         .or_else(|| name.strip_prefix('w'))?
         .parse()

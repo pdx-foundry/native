@@ -4,7 +4,7 @@ use object::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::OpenError;
+use crate::{AnalysisError, OpenError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ImageIdentity {
@@ -21,6 +21,17 @@ pub(super) fn hash(bytes: &[u8]) -> String {
 pub(super) fn identify(bytes: &[u8], executable_hash: &str) -> Result<ImageIdentity, OpenError> {
     let slice = selected_slice(bytes)?;
     let file = object::File::parse(slice).map_err(|_| OpenError::MalformedExecutable)?;
+    check_supported(&file)?;
+    Ok(ImageIdentity {
+        executable: executable_hash.into(),
+        slice: hash(slice),
+        architecture: file.architecture(),
+        format: file.format(),
+    })
+}
+
+/// An executable of a declared target shape: ARM64 Mach-O or x86-64 PE.
+fn check_supported(file: &object::File<'_>) -> Result<(), OpenError> {
     if file.kind() != ObjectKind::Executable {
         return Err(OpenError::UnsupportedTarget);
     }
@@ -30,12 +41,7 @@ pub(super) fn identify(bytes: &[u8], executable_hash: &str) -> Result<ImageIdent
     ) {
         return Err(OpenError::UnsupportedTarget);
     }
-    Ok(ImageIdentity {
-        executable: executable_hash.into(),
-        slice: hash(slice),
-        architecture: file.architecture(),
-        format: file.format(),
-    })
+    Ok(())
 }
 
 pub(super) fn selected_slice(bytes: &[u8]) -> Result<&[u8], OpenError> {
@@ -54,20 +60,29 @@ pub(super) fn selected_slice(bytes: &[u8]) -> Result<&[u8], OpenError> {
     }
 }
 
+/// `length` bytes of executable code at `address`: at most 4096, aligned, and inside one text
+/// section.
 pub(super) fn code_range(
     bytes: &[u8],
     address: u64,
     length: u64,
 ) -> Result<Vec<u8>, crate::AnalysisError> {
-    use crate::AnalysisError;
+    let slice = selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
+    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
+    text_range(&file, address, length)
+}
+
+fn text_range(
+    file: &object::File<'_>,
+    address: u64,
+    length: u64,
+) -> Result<Vec<u8>, AnalysisError> {
     if length == 0 || length > 4096 || !length.is_multiple_of(4) || !address.is_multiple_of(4) {
         return Err(AnalysisError::InvalidRange);
     }
     let end = address
         .checked_add(length)
         .ok_or(AnalysisError::InvalidRange)?;
-    let slice = selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
-    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
     let mut matched = None;
     for section in file.sections() {
         let section_end = section
@@ -90,6 +105,20 @@ pub(super) fn code_range(
         );
     }
     matched.ok_or(AnalysisError::InvalidRange)
+}
+
+/// The little-endian word at `at`, when it is inside `bytes`.
+fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(
+        bytes.get(at..at.checked_add(4)?)?.try_into().ok()?,
+    ))
+}
+
+/// The little-endian double word at `at`, when it is inside `bytes`.
+fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
+    Some(u64::from_le_bytes(
+        bytes.get(at..at.checked_add(8)?)?.try_into().ok()?,
+    ))
 }
 
 fn select_arm64<'a, A: FatArch>(arches: &[A], bytes: &'a [u8]) -> Result<&'a [u8], OpenError> {
@@ -116,6 +145,8 @@ fn select_arm64<'a, A: FatArch>(arches: &[A], bytes: &'a [u8]) -> Result<&'a [u8
 
 pub(in crate::binding) mod constructors;
 pub(in crate::binding) mod discovery;
+pub(in crate::binding) mod fixups;
+pub(in crate::binding) mod inventory;
 
 pub(super) mod callbacks;
 pub(super) mod declarations;
