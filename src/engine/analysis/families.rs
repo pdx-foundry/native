@@ -484,7 +484,7 @@ fn root_paths(
     let table = input
         .definitions
         .as_ref()
-        .map(|definitions| DefinitionTable::hold(&mut machine, definitions));
+        .map(|definitions| DefinitionTable::install(&mut machine, definitions));
     let item = machine.reserve(ITEM_SPAN);
     write_key(&mut machine, input.layout, item + key_offset, form);
     let receiver = match root.receiver {
@@ -570,11 +570,11 @@ struct DefinitionTable<'a> {
 }
 
 impl<'a> DefinitionTable<'a> {
-    /// Write the address of a definition array into the table's header, and each declared type's
-    /// category mask into its definition. The array has room for [`DYNAMIC_TYPES`] more types.
-    /// Every other field is unknown. A store to an unknown address is taken not to change a
-    /// definition's category mask.
-    fn hold(machine: &mut Machine, definitions: &'a Definitions) -> Self {
+    /// Install a definition array in `machine`: write its address into the table's header, and
+    /// each declared type's category mask into its definition. The array has room for
+    /// [`DYNAMIC_TYPES`] more types. Every other field is unknown. A store to an unknown address
+    /// is taken not to change a definition's category mask.
+    fn install(machine: &mut Machine, definitions: &'a Definitions) -> Self {
         let first_dynamic = definitions
             .masks
             .keys()

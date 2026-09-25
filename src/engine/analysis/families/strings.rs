@@ -503,11 +503,14 @@ fn allocation(machine: &mut Machine, size: Option<u64>) -> Option<u64> {
 
 /// The length of the known text at `address`, when every byte up to its end is known.
 fn text_length(machine: &Machine, address: u64) -> Option<u64> {
-    (0..TEXT_LIMIT).find_map(|offset| match machine.read(address + offset, 1) {
-        Some(0) => Some(Some(offset)),
-        Some(_) => None,
-        None => Some(None),
-    })?
+    for offset in 0..TEXT_LIMIT {
+        let byte = machine.read(address + offset, 1)?;
+        if byte == 0 {
+            return Some(offset);
+        }
+    }
+
+    None
 }
 
 /// `memmove` and `memcpy` copy each byte, known or not, and the source's label. `false` when the

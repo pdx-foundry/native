@@ -68,11 +68,19 @@ pub fn analyze(input: &DefineInput) -> Vec<SiteOutcome> {
 fn analyze_site(input: &DefineInput, site: &ReadSite) -> SiteOutcome {
     let rows = match &site.rows {
         Ok(rows) => rows,
-        Err(reason) => return unresolved(None, reason),
+        Err(reason) => {
+            return SiteOutcome::Unresolved {
+                subject: None,
+                reason,
+            };
+        }
     };
     let evidence = collect_read_evidence(input, site, rows);
     if !evidence.reader_seen {
-        return unresolved(None, "define helper has no recognized read call");
+        return SiteOutcome::Unresolved {
+            subject: None,
+            reason: "define helper has no recognized read call",
+        };
     }
     let subject = evidence
         .found
@@ -81,16 +89,19 @@ fn analyze_site(input: &DefineInput, site: &ReadSite) -> SiteOutcome {
         .map(|(namespace, name, _)| format!("{namespace}.{name}"))
         .or(evidence.subject_hint);
     if evidence.found.len() > 1 {
-        return unresolved(
+        return SiteOutcome::Unresolved {
             subject,
-            "reader paths yield conflicting names or value types",
-        );
+            reason: "reader paths yield conflicting names or value types",
+        };
     }
     if let Some(reason) = evidence.failure {
-        return unresolved(subject, reason);
+        return SiteOutcome::Unresolved { subject, reason };
     }
     let Some((namespace, name, value_type)) = evidence.found.into_iter().next() else {
-        return unresolved(None, "reader call yielded no named value type");
+        return SiteOutcome::Unresolved {
+            subject: None,
+            reason: "reader call yielded no named value type",
+        };
     };
     SiteOutcome::Resolved(Define {
         namespace,
@@ -186,10 +197,6 @@ fn helper_key(symbol: &str) -> Option<String> {
 fn address(operand: &str) -> Option<u64> {
     let text = operand.strip_prefix("#0x")?;
     u64::from_str_radix(text, 16).ok()
-}
-
-fn unresolved(subject: Option<String>, reason: &'static str) -> SiteOutcome {
-    SiteOutcome::Unresolved { subject, reason }
 }
 
 #[cfg(test)]
