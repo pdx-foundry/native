@@ -62,8 +62,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::RegistryFields(registry) => {
             let native = Native::open(&arguments.image)?;
-            let result = registry_field_stops::run(&native, &registry)?;
-            print_registry_fields(&image, &registry, &result);
+            let run = registry_field_stops::run(&native, &registry)?;
+            print_registry_fields(&image, &registry, &run.result);
         }
     }
 

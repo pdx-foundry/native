@@ -59,8 +59,9 @@ The static methods locate their stops with one diagnostic (`Unresolved` and `Sto
 localization, modifiers and modifier families keep it. Callbacks and defines keep only the reason word,
 since they combine reasons across paths. Declaration scopes are read without a walk, so they have
 no stop.
-Public answers quote only the reason word; no address reaches them. `pdx_native::internals::registry_field_stops` returns the registry field
-method's internal result; it is not a consumer API.
+Public answers quote only the reason word; no address reaches them. `pdx_native::internals::registry_field_stops::run` runs the registry field
+method once and returns its internal result with the public answer derived from it, as
+`Native::registry_fields` derives it; it is not a consumer API.
 
 `examples/registry-field-sweep.rs` runs every registry and groups the internal gaps by stop
 instruction kind and obstacle, then by function. `--diff BEFORE AFTER` lists the registries whose

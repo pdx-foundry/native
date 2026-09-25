@@ -1,9 +1,10 @@
 //! Baseline of registry fields and reader kinds on one supported executable.
 //! Run unchanged across the inventory and redirect stdout to a development report.
 //!
-//! `registry-field-sweep INSTALLATION` writes the report. Failures are grouped twice: by public gap
-//! detail, and by the method's internal stop (instruction kind and obstacle, then function).
-//! Addresses in the stop groups are for development only.
+//! `registry-field-sweep INSTALLATION` writes the report. It runs the method once per registry and
+//! derives the public answer from that run, as `Native::registry_fields` does. Failures are grouped
+//! twice: by public gap detail, and by the method's internal stop (instruction kind and obstacle,
+//! then function). Addresses in the stop groups are for development only.
 //!
 //! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports and
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
@@ -76,10 +77,10 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
 
     for registry in &registries.value {
         let query_started = Instant::now();
-        let answer = native.registry_fields(&registry.name);
+        let run = registry_field_stops::run(&native, &registry.name);
         let elapsed_ms = query_started.elapsed().as_millis();
-        match answer {
-            Ok(answer) => {
+        match run {
+            Ok(registry_field_stops::Run { answer, result }) => {
                 match &field_method {
                     Some(method) if method != &answer.source.method => {
                         return Err("Registry field methods differ within one sweep".into());
@@ -139,7 +140,6 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
                     }
                 }
 
-                let result = registry_field_stops::run(&native, &registry.name)?;
                 stop_cases.extend(place_gaps(&image, &registry.name, result.gaps));
 
                 cases.push(json!({

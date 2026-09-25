@@ -213,11 +213,19 @@ impl Native {
     }
 
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
-        let name = registry.trim_end_matches('/');
         let result = self.registry_field_result(registry)?;
-        let gaps = normalized_gaps(&result, name);
-        Ok(Answer {
-            value: normalized_fields(&result),
+        Ok(self.registry_field_answer(registry, &result))
+    }
+
+    /// The public answer that the registry field method's `result` gives for `registry`.
+    pub(crate) fn registry_field_answer(
+        &self,
+        registry: &str,
+        result: &RegistryFieldResult,
+    ) -> Answer<Vec<Field>> {
+        let gaps = normalized_gaps(result, registry.trim_end_matches('/'));
+        Answer {
+            value: normalized_fields(result),
             completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
                 Completeness::Complete
             } else {
@@ -225,7 +233,7 @@ impl Native {
             },
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
-        })
+        }
     }
 
     /// The registry field method's own result, with every path and stop. Recorded answers do
