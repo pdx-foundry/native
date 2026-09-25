@@ -377,6 +377,7 @@ fn verified_forwarders(
         let code = code_for(&mut codes, runner, input, forwarder.function);
         inner[index] = forwarder_contexts(input, runner, code, forwarder, &sites, states);
     }
+
     inner
 }
 
@@ -530,6 +531,7 @@ fn site_finding(
             }
         }
     };
+
     Some(finding)
 }
 

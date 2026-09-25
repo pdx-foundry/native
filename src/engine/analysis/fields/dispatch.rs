@@ -611,6 +611,7 @@ impl Branching {
             ..Self::default()
         }
     }
+
     /// End `state` at `at` in `unresolved`, which the undecoded jump table `table` causes.
     fn end_in_table_gap(
         &mut self,
@@ -629,6 +630,7 @@ impl Branching {
             .push(state.finish(at, PathOutcome::Gap(unresolved)));
     }
 }
+
 /// A jump table that could not be decoded, and why.
 struct TableGap {
     table: u64,
