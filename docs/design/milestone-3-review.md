@@ -38,7 +38,7 @@ measurements and Atlas integration checks pass.
 
 ## Review basis
 
-Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Revision 8 (2026-09-24) records Jackson's Milestone 3.5 amendment in [section 8.1](#81-milestone-35-amendment-2026-09-24). Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
+Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Revision 8 (2026-09-24) records Jackson's Milestone 3.5 amendment in [section 8.1](#81-milestone-35-amendment-2026-09-24). Revision 9 (2026-09-25) returns SDK-577 to Milestone 4 in the same section. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
 
 The findings of `docs/design/native-dx.md` are already ticketed (SDK-579 to SDK-595) and are not repeated; they appear only as dependencies.
 
@@ -206,7 +206,7 @@ a new start or exit gate.
 | The 755 gaps without owners | SDK-597 explicitly requires a follow-up per failure shape or an accepted-gap note, with ticket mappings in docs. This triage is still open; solving every gap is not an integration prerequisite. |
 | Native R7 and carried M2 R6 identity cleanup | [SDK-574](https://linear.app/unnamed-system/issue/SDK-574) owns serde ReaderKind on the worker wire; [SDK-581](https://linear.app/unnamed-system/issue/SDK-581) owns the FieldGap enum and normalization. |
 | Jump-table repair | [SDK-563](https://linear.app/unnamed-system/issue/SDK-563), moved to M4; blocked by SDK-579 and completed preparation, and blocking SDK-541. |
-| Atlas display-name identity repair | [SDK-577](https://linear.app/unnamed-system/issue/SDK-577), assigned in M4 alongside SDK-597. |
+| Atlas display-name identity repair | [SDK-577](https://linear.app/unnamed-system/issue/SDK-577), M4, in the same change as SDK-597's first live re-record ([section 8.1](#81-milestone-35-amendment-2026-09-24)). |
 | Live hang investigation and pause coordination | [SDK-571](https://linear.app/unnamed-system/issue/SDK-571) and SDK-574 now have a person and M4 assignment. Reproduce the hang first; block only affected live checks. |
 | N11 conditional scheduler removal | [SDK-602](https://linear.app/unnamed-system/issue/SDK-602): replace the live code window and pass parity before deleting; preserve candidates and recovered/failed cases. |
 | N12/N13 and carried M2 N9; missing churn/files-per-operation measurements | [SDK-603](https://linear.app/unnamed-system/issue/SDK-603): preserve distinct old findings before removing duplicate artifacts; retain the historical measurement scope. |
@@ -235,10 +235,16 @@ limited to work that makes each method cheaper or safer to write, plus independe
 
 | Change | Tickets |
 | --- | --- |
-| Moved to Milestone 3.5 (Foundations) | SDK-563 and SDK-569 (both block SDK-541); SDK-581 (DX 1, 2; SDK-588 merged into it on 2026-09-24); SDK-589 (DX 8); SDK-574 (now blocks SDK-598 and SDK-599); SDK-571; SDK-593 (DX 7, step 1); SDK-601 (R4); SDK-602 (N11); SDK-603 (N12, N13); SDK-604 (A7, A8); SDK-605; SDK-577 |
+| Moved to Milestone 3.5 (Foundations) | SDK-563 and SDK-569 (both block SDK-541); SDK-581 (DX 1, 2; SDK-588 merged into it on 2026-09-24); SDK-589 (DX 8); SDK-574 (now blocks SDK-598 and SDK-599); SDK-571; SDK-593 (DX 7, step 1); SDK-601 (R4); SDK-602 (N11); SDK-603 (N12, N13); SDK-604 (A7, A8); SDK-605 |
 | New in Milestone 3.5 | SDK-606, the test assembler helper, split from SDK-594 (DX 7) |
 | Out of Milestones 3.5 and 4 | SDK-594 (typed operands) and SDK-595. Neither blocks a method ticket |
-| Stay in Milestone 4 | SDK-541 to SDK-550, SDK-597, SDK-598, SDK-599, SDK-600 |
+| Stay in Milestone 4 | SDK-541 to SDK-550, SDK-597, SDK-598, SDK-599, SDK-600; SDK-577 (returned 2026-09-25, see below) |
+
+SDK-577 was first moved to Milestone 3.5 with the cleanup. On 2026-09-25 it returned to
+Milestone 4. It adds `display_name` rules, so the snapshot changes, and the full-config gate
+must be re-pinned from a live run. SDK-597 needs a live run for credited rates, so SDK-577 lands
+in the same change as SDK-597's first live re-record, and before scope-context answers become
+claims. This also replaces the earlier plan in the ticket to wait until Milestone 7.
 
 The Milestone 4 exit gate in section 3 and the checks in section 9.5 do not change. SDK-569
 now passes in Milestone 3.5 and must still pass when Milestone 4 closes.
@@ -269,8 +275,8 @@ The following delivery tickets are assigned to Jackson in Milestone 4:
 | Public-API council agenda parity gate (R5) | [SDK-600](https://linear.app/unnamed-system/issue/SDK-600) |
 
 SDK-542, SDK-544 and SDK-550 now name their observation work and owner. SDK-563 and SDK-577
-were placed in Milestone 4; on 2026-09-24 both moved to Milestone 3.5 with SDK-569
-([section 8.1](#81-milestone-35-amendment-2026-09-24)). SDK-569 and SDK-563 are blocked by
+were placed in Milestone 4; on 2026-09-24 both moved to Milestone 3.5 with SDK-569, and on
+2026-09-25 SDK-577 returned to Milestone 4 ([section 8.1](#81-milestone-35-amendment-2026-09-24)). SDK-569 and SDK-563 are blocked by
 preparation; SDK-541 is blocked by both, and SDK-542 by preparation and SDK-569. Existing dependencies remain. SDK-548 and SDK-553 state
 that credited rates come from the live run, while recordings support reproduction.
 
