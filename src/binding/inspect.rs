@@ -176,10 +176,14 @@ pub struct Slot {
 }
 
 impl<'a> Image<'a> {
-    /// Read `bytes` as a supported executable. Fails only when the image itself cannot be read;
-    /// unreadable fixups are kept as a diagnostic.
+    /// Read `bytes` as an ARM64 executable. Fails only when the image itself cannot be read or
+    /// is not ARM64; unreadable fixups are kept as a diagnostic.
     pub fn read(bytes: &'a [u8]) -> Result<Self, InspectError> {
         let inventory = inventory::read(bytes).map_err(|cause| error(cause.to_string()))?;
+        if inventory.file.architecture() != Architecture::Aarch64 {
+            return Err(error("only ARM64 images are inspected"));
+        }
+
         let text = Text::read(bytes, &inventory.symbols)
             .map_err(|_| error("the image does not have exactly one text section"))?;
         let fixups = fixups::read(&inventory);
@@ -269,9 +273,6 @@ impl<'a> Image<'a> {
     /// bytes, whichever is first. `start` must be an aligned text address, and `limit` a
     /// nonzero multiple of 4.
     pub fn disassemble(&self, start: u64, limit: u64) -> Result<Listing, InspectError> {
-        if self.inventory.file.architecture() != Architecture::Aarch64 {
-            return Err(error("only ARM64 code is disassembled"));
-        }
         if limit == 0 || !limit.is_multiple_of(4) {
             return Err(error(format!(
                 "limit {limit} is not a nonzero multiple of 4"
@@ -334,8 +335,8 @@ impl<'a> Image<'a> {
     }
 
     /// Every instruction that puts the address of a string containing `text` in a register:
-    /// `adr`, or `adrp` then, within 64 bytes, `add` in the same function with no branch or
-    /// other write between them. Other forms are not found.
+    /// `adr`, or `adrp` then `add` in the same function with no branch or other write between
+    /// them. Other forms are not found.
     pub fn string_references(&self, text: &str) -> Vec<StringReference> {
         if text.is_empty() {
             return Vec::new();
@@ -350,9 +351,9 @@ impl<'a> Image<'a> {
             .collect();
 
         let mut references = Vec::new();
-        for (function, last) in self.string_candidates(&strings) {
-            let Ok(listing) = self.disassemble(function, last + STRING_SEARCH_REACH - function)
-            else {
+        for function in self.string_candidates(&strings) {
+            let length = self.text.function_length(function).next_multiple_of(4);
+            let Ok(listing) = self.disassemble(function, length) else {
                 continue;
             };
 
@@ -375,12 +376,11 @@ impl<'a> Image<'a> {
         references
     }
 
-    /// Each function with a word that can form one of `strings`, an `adrp` of its page or an
-    /// `adr` of it, and the last such word. Reading each function once, from its start to just
-    /// past that word, lets the tracker see every branch before a reference.
-    fn string_candidates(&self, strings: &BTreeMap<u64, &str>) -> BTreeMap<u64, u64> {
+    /// Each function with a word that can form one of `strings`: an `adrp` of its page or an
+    /// `adr` of it. Each is read whole, once, so the tracker sees every branch before a reference.
+    fn string_candidates(&self, strings: &BTreeMap<u64, &str>) -> BTreeSet<u64> {
         let pages: BTreeSet<u64> = strings.keys().map(|address| address & !0xfff).collect();
-        let mut functions = BTreeMap::new();
+        let mut functions = BTreeSet::new();
 
         for (index, word) in self.text.code.as_chunks::<4>().0.iter().enumerate() {
             let at = self.text.address + index as u64 * 4;
@@ -391,7 +391,7 @@ impl<'a> Image<'a> {
 
             if forms_page || forms_string {
                 let function = self.text.starts.range(..=at).next_back().copied();
-                functions.insert(function.unwrap_or(self.text.address), at);
+                functions.insert(function.unwrap_or(self.text.address));
             }
         }
 
@@ -402,6 +402,18 @@ impl<'a> Image<'a> {
     /// Without fixups nothing is resolved, and the error is the fixup diagnostic.
     pub fn slots(&self, address: u64, count: usize) -> Result<Vec<Slot>, String> {
         let fixups = self.fixups.as_ref().map_err(ToString::to_string)?;
+        let last_fits = match (count as u64).checked_sub(1) {
+            None => true,
+            Some(last) => last
+                .checked_mul(8)
+                .and_then(|offset| address.checked_add(offset))
+                .is_some(),
+        };
+        if !last_fits {
+            return Err(format!(
+                "{count} slots from {address:#x} pass the end of the address space"
+            ));
+        }
 
         Ok((0..count as u64)
             .map(|index| address + index * 8)
@@ -583,9 +595,6 @@ impl<'a> Image<'a> {
     }
 }
 
-/// How far past its last candidate `adrp` a string search reads a function for the `add`.
-const STRING_SEARCH_REACH: u64 = 64;
-
 /// One instruction word and, when it decodes, its instruction.
 struct Word {
     address: u64,
@@ -677,19 +686,33 @@ fn is_control_flow(operation: &str) -> bool {
 
 /// The general registers an instruction writes. `written_registers` reads every mnemonic that
 /// starts with `b` as a branch; branches are handled before this, so the rest, such as `bic`
-/// and `bfi`, write their first operand.
+/// and `bfi`, write their first operand. A pre- or post-index access also writes its base.
 fn destinations(instruction: &Instruction) -> Vec<usize> {
     let operands: Vec<&str> = instruction.operands.split(',').collect();
-
-    if instruction.operation.starts_with('b') {
-        return operands
+    let mut written = if instruction.operation.starts_with('b') {
+        operands
             .first()
             .and_then(|operand| register(operand))
             .into_iter()
-            .collect();
+            .collect()
+    } else {
+        written_registers(&instruction.operation, &operands)
+    };
+
+    written.extend(writeback_base(&instruction.operands));
+    written
+}
+
+/// The base register of a pre-index (`[x8,#8]!`) or post-index (`[x8],#8`) operand.
+fn writeback_base(operands: &str) -> Option<usize> {
+    let (_, address) = operands.split_once('[')?;
+    let (inside, after) = address.split_once(']')?;
+    let writes_back = after.starts_with('!') || after.starts_with(',');
+    if !writes_back {
+        return None;
     }
 
-    written_registers(&instruction.operation, &operands)
+    register(inside.split(',').next()?)
 }
 
 /// The destination register and address of an `adr` word at `address`.

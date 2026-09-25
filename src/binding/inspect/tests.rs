@@ -181,7 +181,11 @@ fn a_page_is_forgotten_across_calls_branches_and_writes() {
     let call = [ADRP_X8, 0x9400_0010, ADD_X8]; // bl
     let branch = [ADRP_X8, 0x5400_0021, ADD_X8]; // b.ne to the add
     let write = [ADRP_X8, 0xd280_0008, ADD_X8]; // mov x8, #0
-    for words in [&call[..], &branch, &write] {
+    let post_index = [ADRP_X8, 0xf800_8500, ADD_X8]; // str x0, [x8], #8
+    let pre_index = [ADRP_X8, 0xf840_8d01, ADD_X8]; // ldr x1, [x8, #8]!
+    assert_eq!(listing_of(&post_index).rows[1].operands, "x0,[x8],#8");
+    assert_eq!(listing_of(&pre_index).rows[1].operands, "x1,[x8,#8]!");
+    for words in [&call[..], &branch, &write, &post_index, &pre_index] {
         assert!(
             formed_addresses(&listing_of(words)).is_empty(),
             "{words:x?}"
@@ -231,4 +235,23 @@ fn a_name_without_parameters_matches_functions_only() {
     assert!(!is_parameter_list("()::s_pTokenArray"));
     assert!(!is_parameter_list("::Nested()"));
     assert!(!is_parameter_list("(unbalanced"));
+}
+
+#[test]
+fn a_slot_range_past_the_address_space_is_an_error() {
+    let bytes = support::macho_image(6);
+    let image = Image::read(&bytes).unwrap();
+    let last = u64::MAX - 7;
+
+    assert!(image.slots(last, 2).is_err());
+    assert_eq!(image.slots(last, 1).unwrap().len(), 1);
+}
+
+#[test]
+fn a_base_register_that_is_only_read_keeps_its_page() {
+    assert_eq!(writeback_base("x0,[x8,#8]"), None);
+    assert_eq!(writeback_base("x0,[x8]"), None);
+    assert_eq!(writeback_base("x0,[x8,#8]!"), Some(8));
+    assert_eq!(writeback_base("x0,x1,[sp],#16"), None);
+    assert_eq!(writeback_base("x0,[x9],#16"), Some(9));
 }

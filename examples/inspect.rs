@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Strings(text) => {
-            println!("adr, or adrp then add within 64 bytes with no branch or write between them");
+            println!("adr, or adrp then add in one function with no branch or write between them");
             for reference in image.string_references(&text) {
                 println!("{reference}");
             }

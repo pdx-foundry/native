@@ -38,9 +38,9 @@ The image is `--image PATH` or `STELLARIS_PATH`. The other commands are `--symbo
 hashes and whether chained fixups were read. Without them, no data slot is resolved and the run
 prints why. Function extents come from symbols, so every end is an inferred boundary. Indirect
 branches stay unresolved, and jump tables are shown only as the addresses the code forms.
-Callers are direct `bl` and `b` only; a string reference is `adr`, or `adrp` then `add` within
-64 bytes with no branch between them. The entry is `pdx_native::internals::inspect`, which is
-not a consumer API.
+Callers are direct `bl` and `b` only; a string reference is `adr`, or `adrp` then `add` in one
+function with no branch or write between them. The inspector reads ARM64 images only. The entry
+is `pdx_native::internals::inspect`, which is not a consumer API.
 
 ## Private prototype bundles
 

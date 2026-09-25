@@ -86,3 +86,12 @@ fn universal_images_require_one_valid_arm64_slice() {
     fs::write(&binary, truncated).unwrap();
     assert_eq!(open(&binary), OpenError::MalformedExecutable);
 }
+
+#[test]
+fn the_inspector_reads_arm64_images_only() {
+    let error = pdx_native::internals::inspect::Image::read(&support::pe())
+        .err()
+        .expect("an x86-64 image is refused");
+
+    assert!(error.to_string().contains("ARM64"), "{error}");
+}
