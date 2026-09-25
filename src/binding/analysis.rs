@@ -103,7 +103,8 @@ impl VerifiedAnalysis<'_> {
     }
 
     /// The one `owner(int, CString const&)` constructor that the file reader calls directly.
-    /// The reader's body ends at the next symbol and must be nonempty and at most 16 KiB.
+    /// The scan runs from the reader's entry to the next symbol, which must be at most 16 KiB
+    /// away.
     fn reader_constructor_call(
         &self,
         reader_entry: u64,

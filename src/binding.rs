@@ -643,13 +643,15 @@ impl ExecutionPlan {
     ) -> Result<(), crate::supervisor::SupervisorError> {
         use crate::{supervisor::SupervisorError, work_directory as files};
         self.integrity()?;
-        let replaced = replaced_directories(registries, fixture);
         let profile = work_directory.join("profile");
         platform::lifecycle::private_directory(&profile.join("mod"))?;
         let mount = profile.join("mod/native_registry");
         platform::lifecycle::private_directory(&mount)?;
-        for directory in &replaced {
-            std::fs::create_dir_all(mount.join(directory))?;
+        for registry in registries.values() {
+            std::fs::create_dir_all(mount.join(&registry.directory))?;
+        }
+        if let Some(fixture) = fixture {
+            std::fs::create_dir_all(mount.join(fixture.registry()))?;
         }
 
         for (relative, expected) in content
@@ -679,7 +681,7 @@ impl ExecutionPlan {
 
         files::write_new(
             &profile.join("mod/native_registry.mod"),
-            registry_mod_descriptor(&mount, &replaced)?.as_bytes(),
+            registry_mod_descriptor(&mount, &replaced_directories(registries, fixture))?.as_bytes(),
         )?;
         std::fs::write(
             profile.join("dlc_load.json"),
