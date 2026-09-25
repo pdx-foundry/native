@@ -348,12 +348,10 @@ impl Game {
         &mut self,
         registry: &str,
     ) -> Result<crate::Answer<Vec<String>>, Error> {
-        use crate::{Answer, Basis, Completeness, Gap, GapKind, GapSubject, Operation, Source};
-        let operation = Operation::RegistryItems;
         let directory = registry.trim_end_matches('/');
         if !self.observed.contains(directory) {
             return Err(Error::Unsupported {
-                operation,
+                operation: crate::Operation::RegistryItems,
                 reason: format!(
                     "this session does not observe {directory}; name it in GameOptions::registries before start_game"
                 ),
@@ -363,69 +361,10 @@ impl Game {
         if self.closing || self.state.borrow().finished.is_some() {
             return Err(Error::Closed);
         }
-        let observed = self
-            .paused
-            .registries
-            .get(&name)
-            .filter(|items| items.observed != Observed::Unavailable)
-            .cloned();
-        let Some(observed) = observed else {
-            let diagnostics = self.paused.registries.get(&name);
-            return Err(Error::Observation {
-                operation,
-                reason: diagnostics.map_or_else(
-                    || "The supervisor sent no observation of this registry".into(),
-                    |items| items.diagnostics.join("; "),
-                ),
-            });
-        };
-        if observed.observed == Observed::NotLoaded {
-            return Err(Error::Unsupported {
-                operation,
-                reason: observed.diagnostics.first().cloned().unwrap_or_else(|| {
-                    format!(
-                        "the initial loader of {directory} did not run before the session paused"
-                    )
-                }),
-            });
-        }
-        if observed.observed == Observed::Unsupported {
-            return Err(Error::Unsupported {
-                operation,
-                reason: format!(
-                    "item observation of {directory} is unavailable: {}",
-                    observed
-                        .diagnostics
-                        .first()
-                        .map(String::as_str)
-                        .unwrap_or("unsupported item layout")
-                ),
-            });
-        }
+        let answer =
+            registry_items_answer(directory, self.paused.registries.get(&name), &self.build)?;
         self.restart_idle_time(ReadQuestion::Registry(name)).await?;
-        let complete = observed.observed == Observed::Complete;
-        Ok(Answer {
-            value: observed.items,
-            completeness: if complete {
-                Completeness::Complete
-            } else {
-                Completeness::Partial
-            },
-            gaps: if complete {
-                Vec::new()
-            } else {
-                vec![Gap {
-                    kind: GapKind::IncompleteObservation,
-                    subject: Some(GapSubject::registry(directory)),
-                    detail: "The engine collection was not read to its end.".into(),
-                }]
-            },
-            source: Source::new(
-                self.build.clone(),
-                "registry-items/v1",
-                Basis::LiveObservation,
-            ),
-        })
+        Ok(answer)
     }
 
     /// Record a read error so that `close` keeps the work directory. The error is returned
@@ -467,7 +406,9 @@ impl Game {
             .map_err(|_| Error::Supervisor("Observation read acknowledgement lost".into()))?
     }
 
-    /// The witnessed initialization pause. This does not advertise gameplay readiness.
+    /// Where the game is paused: after its registries load, or after all content loads with
+    /// `GameOptions::loaded_modifiers`. No world is loaded; this does not advertise gameplay
+    /// readiness.
     pub fn readiness(&self) -> GameReadiness {
         self.paused.readiness
     }
@@ -547,6 +488,66 @@ impl Drop for Game {
     fn drop(&mut self) {
         self.commands.take();
     }
+}
+
+/// The answer for one observed registry, or why it has none: no usable observation, a loader
+/// that did not run before the pause, or an item layout that the binding cannot read.
+fn registry_items_answer(
+    directory: &str,
+    observation: Option<&RegistryItems>,
+    build: &crate::BuildId,
+) -> Result<crate::Answer<Vec<String>>, Error> {
+    use crate::{Answer, Basis, Completeness, Gap, GapKind, GapSubject, Operation, Source};
+    let operation = Operation::RegistryItems;
+    let Some(observed) = observation.filter(|items| items.observed != Observed::Unavailable) else {
+        return Err(Error::Observation {
+            operation,
+            reason: observation.map_or_else(
+                || "The supervisor sent no observation of this registry".into(),
+                |items| items.diagnostics.join("; "),
+            ),
+        });
+    };
+    if observed.observed == Observed::NotLoaded {
+        return Err(Error::Unsupported {
+            operation,
+            reason: observed.diagnostics.first().cloned().unwrap_or_else(|| {
+                format!("the initial loader of {directory} did not run before the session paused")
+            }),
+        });
+    }
+    if observed.observed == Observed::Unsupported {
+        return Err(Error::Unsupported {
+            operation,
+            reason: format!(
+                "item observation of {directory} is unavailable: {}",
+                observed
+                    .diagnostics
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or("unsupported item layout")
+            ),
+        });
+    }
+    let complete = observed.observed == Observed::Complete;
+    Ok(Answer {
+        value: observed.items.clone(),
+        completeness: if complete {
+            Completeness::Complete
+        } else {
+            Completeness::Partial
+        },
+        gaps: if complete {
+            Vec::new()
+        } else {
+            vec![Gap {
+                kind: GapKind::IncompleteObservation,
+                subject: Some(GapSubject::registry(directory)),
+                detail: "The engine collection was not read to its end.".into(),
+            }]
+        },
+        source: Source::new(build.clone(), "registry-items/v1", Basis::LiveObservation),
+    })
 }
 
 /// Add where the kept work directory is to an error's reason. An error without a reason is

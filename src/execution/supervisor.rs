@@ -44,29 +44,27 @@ fn receive(input: &Receiver<Input>, budget: Duration) -> Result<Input, Superviso
         .recv_timeout(budget)
         .map_err(|_| SupervisorError("Controller disconnected or handshake timed out".into()))
 }
-fn reader(mut input: impl Read + Send + 'static) -> Receiver<Input> {
+fn reader(input: impl Read + Send + 'static) -> Receiver<Input> {
     let (send, receive) = mpsc::sync_channel(1);
     thread::spawn(move || {
-        let read = || -> Result<(), SupervisorError> {
-            let hello = protocol::read(&mut input)?;
-            send.send(Input::Hello(hello))
-                .map_err(|e| SupervisorError(e.to_string()))?;
-            let request = protocol::read(&mut input)?;
-            send.send(Input::Request(Box::new(request)))
-                .map_err(|e| SupervisorError(e.to_string()))?;
-            loop {
-                let control: Control = protocol::read(&mut input)?;
-                send.send(Input::Control(control))
-                    .map_err(|e| SupervisorError(e.to_string()))?;
-            }
-        };
-        let _ = {
-            let mut read = read;
-            read()
-        };
+        let _ = forward_input(input, &send);
         let _ = send.send(Input::Lost);
     });
     receive
+}
+/// Pass the hello, the request and then each control on until the input or the receiver fails.
+fn forward_input(mut input: impl Read, send: &SyncSender<Input>) -> Result<(), SupervisorError> {
+    let hello = protocol::read(&mut input)?;
+    send.send(Input::Hello(hello))
+        .map_err(|e| SupervisorError(e.to_string()))?;
+    let request = protocol::read(&mut input)?;
+    send.send(Input::Request(Box::new(request)))
+        .map_err(|e| SupervisorError(e.to_string()))?;
+    loop {
+        let control: Control = protocol::read(&mut input)?;
+        send.send(Input::Control(control))
+            .map_err(|e| SupervisorError(e.to_string()))?;
+    }
 }
 
 // Output cannot stall the resource owner. The writer thread owns no game or reservation.
@@ -210,7 +208,7 @@ fn run(
             return Ok(SessionOutcome::TimedOut);
         }
         let child = game.insert(plan.spawn_observed(&work, observer)?);
-        reservation.record_game(child.identity()?)?;
+        reservation.record_game(child.identity()?);
         if !child.suspended()? {
             return Err(SupervisorError(
                 "Child suspension was not established".into(),
@@ -314,13 +312,8 @@ fn finish_session(
         report.outcome = SessionOutcome::Failed(error.to_string());
     }
     if worker_stopped && !matches!(report.disposal, Disposal::Unconfirmed(_)) {
-        match reservation.disposed() {
-            Ok(()) => report.reservation_resolved = true,
-            Err(error) => {
-                report.outcome =
-                    SessionOutcome::Failed(format!("Disposal bookkeeping failed: {error}"))
-            }
-        }
+        reservation.disposed();
+        report.reservation_resolved = true;
     }
     if let Some(work) = work {
         write_report(work, reservation, report);
@@ -341,6 +334,16 @@ struct Session<'a> {
     build: crate::BuildId,
     startup: Duration,
     idle: Duration,
+}
+
+/// The loaded modifier table that the worker wrote, or `None` when it wrote none.
+fn read_modifier_table(work_directory: &Path) -> Result<Option<Vec<u8>>, SupervisorError> {
+    let path = work_directory.join("loaded-modifiers.json");
+    if !path.try_exists()? {
+        return Ok(None);
+    }
+    let table = files::read_bounded(&path, protocol::observation::MAX_MODIFIER_TABLE)?;
+    Ok(Some(table))
 }
 
 /// Wait for the pause, reduce the worker's stream once, send the answers, then serve controls
@@ -364,7 +367,8 @@ fn observe_session(
                 "External game invalidated isolation".into(),
             ));
         }
-        if observer.poll()? {
+        let worker_exited = observer.advance_worker()?;
+        if worker_exited {
             return Ok(SessionOutcome::WorkerLost);
         }
         if answers.is_none() {
@@ -409,29 +413,23 @@ fn observe_session(
                         session.build.clone(),
                     )
                 });
-                let modifiers = session.loaded_modifiers.map(|registries| {
-                    let path = session.work_directory.join("loaded-modifiers.json");
-                    let file = path
-                        .try_exists()?
-                        .then(|| {
-                            files::read_bounded(&path, protocol::observation::MAX_MODIFIER_TABLE)
-                        })
-                        .transpose()?;
-                    Ok::<_, SupervisorError>(
-                        loaded_modifiers::reduce(
+                let modifiers = match session.loaded_modifiers {
+                    Some(registries) => {
+                        let table = read_modifier_table(session.work_directory)?;
+                        let reduced = loaded_modifiers::reduce(
                             &records,
                             events.all(),
-                            file.as_deref(),
+                            table.as_deref(),
                             session.attempt,
                             registries,
-                        )
-                        .map_err(|reason| crate::Error::Observation {
+                        );
+                        Some(reduced.map_err(|reason| crate::Error::Observation {
                             operation: crate::Operation::LoadedModifiers,
                             reason,
-                        }),
-                    )
-                });
-                let modifiers = modifiers.transpose()?;
+                        }))
+                    }
+                    None => None,
+                };
                 output.send(Reply::Paused {
                     readiness,
                     fixture: Box::new(fixture),
@@ -558,11 +556,11 @@ mod tests {
         let output = store();
         let mut reservation = reserve(root.path(), "owned", output.path()).unwrap();
         let mut child = binding::test_child(output.path()).unwrap();
-        reservation.record_game(child.identity().unwrap()).unwrap();
+        reservation.record_game(child.identity().unwrap());
         assert!(child.suspended().unwrap());
         child.dispose(DISPOSAL_BUDGET).unwrap();
         assert!(binding::process_identity(child.pid()).is_err());
-        reservation.disposed().unwrap();
+        reservation.disposed();
         assert_eq!(reservation.snapshot().unwrap()["state"], "disposed");
     }
 
@@ -577,7 +575,7 @@ mod tests {
         let mut reservation = reserve(root.path(), "unit", output.path()).unwrap();
         let child = binding::test_child(output.path()).unwrap();
         let game_pid = child.pid();
-        reservation.record_game(child.identity().unwrap()).unwrap();
+        reservation.record_game(child.identity().unwrap());
         assert!(child.suspended().unwrap());
         let mut game = Some(child);
 
@@ -733,7 +731,7 @@ exec sleep 30
         drop(reservation);
         fs::write(root.path().join("prior.pending"), "old session").unwrap();
         let mut next = reserve(root.path(), "next", output.path()).unwrap();
-        next.disposed().unwrap();
+        next.disposed();
         assert_eq!(next.snapshot().unwrap()["state"], "disposed");
     }
 
@@ -743,7 +741,7 @@ exec sleep 30
         let root = store();
         let output = store();
         let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
-        reservation.disposed().unwrap();
+        reservation.disposed();
         fs::write(output.path().join("owner.json"), "existing file").unwrap();
         let mut report = SessionReport {
             attempt: "report".into(),

@@ -23,7 +23,7 @@ impl Observer {
     pub(crate) fn start(&mut self, _: u32) -> Result<(), SupervisorError> {
         unavailable()
     }
-    pub(crate) fn poll(&mut self) -> Result<bool, SupervisorError> {
+    pub(crate) fn advance_worker(&mut self) -> Result<bool, SupervisorError> {
         unavailable()
     }
     pub(crate) fn pause_witness(

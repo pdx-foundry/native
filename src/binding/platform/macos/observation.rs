@@ -71,6 +71,16 @@ fn command_output(command: &mut Command, budget: Duration) -> Result<String, Sup
     String::from_utf8(bytes).map_err(|error| SupervisorError(error.to_string()))
 }
 
+/// An LLDB command that prints the embedded Python version, the LLDB version and the `lldb`
+/// module path as one `NATIVE=` JSON line, which `discover` reads.
+const LLDB_IDENTITY_SCRIPT: &str = concat!(
+    "script import json,sys,lldb; ",
+    "print('NATIVE='+json.dumps(dict(",
+    "python=sys.version,",
+    "lldb=lldb.SBDebugger.GetVersionString(),",
+    "module=lldb.__file__)))",
+);
+
 fn discover() -> Result<Tool, SupervisorError> {
     let path = PathBuf::from(
         command_output(
@@ -80,7 +90,10 @@ fn discover() -> Result<Tool, SupervisorError> {
         .trim(),
     )
     .canonicalize()?;
-    let probe = command_output(Command::new(&path).args(["-b", "-x", "-o", "script import json,sys,lldb; print('NATIVE='+json.dumps(dict(python=sys.version,lldb=lldb.SBDebugger.GetVersionString(),module=lldb.__file__)))", "-o", "quit"]), Duration::from_secs(10))?;
+    let probe = command_output(
+        Command::new(&path).args(["-b", "-x", "-o", LLDB_IDENTITY_SCRIPT, "-o", "quit"]),
+        Duration::from_secs(10),
+    )?;
     let body = probe
         .lines()
         .find_map(|line| line.strip_prefix("NATIVE="))
@@ -223,8 +236,11 @@ impl Observer {
         Ok(())
     }
 
-    /// Poll without reaping: the process-group identity remains reserved until cleanup.
-    pub(crate) fn poll(&mut self) -> Result<bool, SupervisorError> {
+    /// Move the worker on by one step and report whether it exited. Grant the resume once its
+    /// hello is valid, kill the worker group when a worker-loss fault is ready, and check the
+    /// storage bounds. The worker is not reaped: the process-group identity remains reserved until
+    /// cleanup.
+    pub(crate) fn advance_worker(&mut self) -> Result<bool, SupervisorError> {
         let worker = self
             .worker
             .as_ref()

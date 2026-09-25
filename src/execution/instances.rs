@@ -56,15 +56,13 @@ impl Reservation {
             },
         })
     }
-    pub fn record_game(&mut self, identity: ProcessIdentity) -> Result<(), SupervisorError> {
+    pub fn record_game(&mut self, identity: ProcessIdentity) {
         self.report.game = Some(identity);
-        Ok(())
     }
     pub fn snapshot(&self) -> Result<serde_json::Value, SupervisorError> {
         Ok(serde_json::to_value(&self.report)?)
     }
-    pub fn disposed(&mut self) -> Result<(), SupervisorError> {
+    pub fn disposed(&mut self) {
         self.report.state = State::Disposed;
-        Ok(())
     }
 }
