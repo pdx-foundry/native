@@ -19,6 +19,9 @@ use super::decode::Instruction;
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
 
+/// The width of the engine's category mask, a 32-bit stack argument.
+const CATEGORY_MASK_BITS: u32 = 32;
+
 /// Name and revision of the modifier method.
 pub const MODIFIER_METHOD: &str = "modifier-declarations/v1";
 
@@ -98,7 +101,7 @@ pub fn analyze(input: &ModifierInput) -> Result<ModifierResult, InputError> {
     );
     let type_masks = arguments
         .iter()
-        .filter_map(|arguments| Some((arguments.modifier_type?, arguments.mask.ok()?)))
+        .filter_map(|arguments| arguments.modifier_type.zip(arguments.mask.ok()))
         .collect();
 
     let sites = arguments
@@ -119,9 +122,9 @@ pub fn category_names(
     input: &CategoryInput,
     masks: impl IntoIterator<Item = u64>,
 ) -> CategoryNames {
-    (0..32)
+    (0..CATEGORY_MASK_BITS)
         .map(|bit| 1u64 << bit)
-        .chain([u64::from(u32::MAX)])
+        .chain([(1u64 << CATEGORY_MASK_BITS) - 1])
         .chain(masks)
         .collect::<BTreeSet<_>>()
         .into_iter()
@@ -174,7 +177,10 @@ fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> Argument
                 .map(|token| token as u32 as u64)
                 .ok_or(Unresolved::new("token"));
             let mask = machine
-                .read(stack + input.category_offset, 4)
+                .read(
+                    stack + input.category_offset,
+                    u64::from(CATEGORY_MASK_BITS / 8),
+                )
                 .ok_or(Unresolved::new("category-mask"));
             Arguments {
                 token,
@@ -224,7 +230,7 @@ pub fn tags(categories: &CategoryNames, mask: u64) -> Tags {
     }
 
     let mut names = Vec::new();
-    for bit in (0..32).filter(|bit| mask >> bit & 1 == 1) {
+    for bit in (0..CATEGORY_MASK_BITS).filter(|bit| mask >> bit & 1 == 1) {
         match categories.get(&(1 << bit)) {
             Some(Ok(Some(name))) => names.push(name.clone()),
             Some(Ok(None)) => return Tags::Unresolved(Unresolved::new("unnamed-category")),

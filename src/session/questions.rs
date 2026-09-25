@@ -78,7 +78,9 @@ impl Native {
 
     /// Whether this build and host can answer an operation. This never starts a game; for a live
     /// operation it checks that the supervisor's tools can be found. Selected content is checked
-    /// when `start_game` is called.
+    /// when `start_game` is called. With recorded answers every operation is `Supported`; this
+    /// does not check that an answer file exists, so a question can still return
+    /// `Error::NotRecorded`.
     pub fn supports(&self, operation: Operation) -> Support {
         match &self.backend {
             Backend::Recorded(_) => Support::Supported,

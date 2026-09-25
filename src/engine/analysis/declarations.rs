@@ -383,9 +383,9 @@ fn register_values(rows: &[Instruction]) -> BTreeMap<&str, u64> {
 /// global offset table does.
 fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u64> {
     let mut values = BTreeMap::<&str, u64>::new();
-    let mut result = BTreeSet::from(["[x19]".to_owned()]);
-    let mut object_vtable = None;
-    let mut result_vtable = None;
+    let mut object_bases = BTreeSet::from(["[x19]".to_owned()]);
+    let mut x0_object_vtable = None;
+    let mut x19_object_vtable = None;
     for row in rows {
         let args: Vec<_> = row.operands.split(',').collect();
         let stored = match (row.operation.as_str(), args.as_slice()) {
@@ -396,13 +396,13 @@ fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u
         if let Some((first, base, post_indexed)) = stored.filter(|(_, base, _)| base.ends_with(']'))
         {
             let value = values.get(first).copied();
-            if result.contains(base) {
-                result_vtable = value.or(result_vtable);
+            if object_bases.contains(base) {
+                x19_object_vtable = value.or(x19_object_vtable);
             } else if base == "[x0]" {
-                object_vtable = value.or(object_vtable);
+                x0_object_vtable = value.or(x0_object_vtable);
             }
             if post_indexed {
-                result.remove(base);
+                object_bases.remove(base);
             }
             continue;
         }
@@ -421,7 +421,7 @@ fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u
                 }
             }
             ("mov", [dst, "x19"]) => {
-                result.insert(format!("[{dst}]"));
+                object_bases.insert(format!("[{dst}]"));
                 continue;
             }
             ("ldr", [reg, base, offset]) if base.starts_with('[') && offset.ends_with(']') => {
@@ -441,14 +441,14 @@ fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u
         }
         // A copy of `x19` stops being the object when the code writes its register.
         match (row.operation.as_str(), args.first()) {
-            ("bl" | "blr", _) => result.retain(|base| !caller_saved(base)),
+            ("bl" | "blr", _) => object_bases.retain(|base| !caller_saved(base)),
             (_, Some(destination)) if !matches!(*destination, "x19" | "w19") => {
-                result.remove(&format!("[{}]", destination.replacen('w', "x", 1)));
+                object_bases.remove(&format!("[{}]", destination.replacen('w', "x", 1)));
             }
             _ => {}
         }
     }
-    result_vtable.or(object_vtable)
+    x19_object_vtable.or(x0_object_vtable)
 }
 
 /// Whether `[xN]` names a register that a call can change.

@@ -67,11 +67,8 @@ fn matching_template(callee: &str, method: &str) -> bool {
     let Some((parameter, arguments)) = rest.split_once('>') else {
         return false;
     };
-    !parameter.is_empty()
+    is_simple_template_argument(parameter)
         && arguments == format!("(CReader&, {parameter}&, EScopeType)")
-        && parameter
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 fn matching_deferred_reference(callee: &str) -> bool {
@@ -81,12 +78,17 @@ fn matching_deferred_reference(callee: &str) -> bool {
     let Some((database, arguments)) = rest.split_once('>') else {
         return false;
     };
-    !database.is_empty()
+    is_simple_template_argument(database)
         && arguments
             == format!(
                 "(CGlobalDeferredDatabaseObject const&, CReader&, {database}::ValueType const**)"
             )
-        && database
+}
+
+/// A nonempty template argument of ASCII letters, digits and `_`.
+fn is_simple_template_argument(argument: &str) -> bool {
+    !argument.is_empty()
+        && argument
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
