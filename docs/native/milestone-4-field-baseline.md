@@ -7,9 +7,9 @@ Field discovery, reader classification and binding code are unchanged from Nativ
 columns and a modifier-answer repair; neither changes this field population. This is one
 `registry-fields/v3` run before SDK-563 or any Milestone 4 field method change.
 
-The [registry field notes](registry-fields.md#milestone-4-field-baseline-sdk-596) explain the
-failure shapes and the four identified signatures whose kinds remain unknown. This page holds the
-per-registry and per-reader counts. It measures operation completeness, not Atlas claim coverage.
+This page holds the starting population: totals, failure shapes, and per-registry and
+per-reader counts. It measures operation completeness, not Atlas claim coverage. The [registry
+field notes](registry-fields.md#sweep-on-m45-release) hold the current sweep.
 
 ## Reproduce
 
@@ -43,6 +43,35 @@ replacement; the Markdown tables preserve the measurements independently of rout
 One complete answer has zero root fields. Complete means the bounded root search completed;
 it does not establish nested grammar or runtime behavior. The run took 66.198 seconds after
 opening Native. Failed queries cannot be assigned to reader identities.
+
+## Unknown signatures and failure shapes
+
+Of the 232 unknown kinds, 221 fields have no single established reader identity. The other 11
+call one of four identified signatures:
+
+| Callee | Fields | Examples |
+| --- | ---: | --- |
+| `CVariableValue::Read(CReader&, EScopeType)` | 6 | `council_agendas#agenda_cost`; three fields in `country_limits/ship_of_size_limits`; `megastructures#overclock_cooldown`; `species_rights/purge_types#pop_decline_rate` |
+| `CReader::Read(CColor&)` | 3 | `governments/authorities#color`, `named_colors#color`, `patrons#color` |
+| `CReader::Read(CVector2FixedPoint&)` | 1 | `patrons#position` |
+| `CReader::Read(float&)` | 1 | `star_classes#icon_scale` |
+
+The example paths are below `common/`. The signature join names an already identified reader,
+not the semantics it accepts.
+
+Failure shapes in the public answers, excluding `OutsideMethod`:
+
+| Shape | Gap records | Registries |
+| --- | ---: | ---: |
+| Reader alternatives do not establish one shared reader | 221 | 80 |
+| Shared reader identified, broad value form unknown | 11 | 8 |
+| Root reader path could not be followed to its end | 101 | 101 |
+| Field reader not established on at least one path | 101 | 101 |
+| Required function or name table could not be read | 12 | 12 |
+| Reader paths have no recovered field name | 15 | 15 |
+
+The last row accounts for 61 unnamed paths. Rows overlap and cannot be added as independent
+failures; the 101 root-path gap records are not a count of all stopped paths.
 
 ## Per registry
 
