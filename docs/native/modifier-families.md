@@ -69,14 +69,16 @@ item's `CPersistent` base). Last, it inserts the item into the array at `+0x48`/
 - Only the database constructors write the `+0x70` word: 0 for every registry here, and 1 for
   `CJobTagDatabase` and `CTraitTagDatabase`.
 - `TPdxNullObject<Owner>::Initialize` constructs the null object with index -1 and an empty key
-  in its own storage. It is not an item.
+  in its own storage.
 
-Two registries break the per-item call:
+The method does not establish the per-item call for two registries:
 
 - `CJobTypeDatabase::CJobTypeDatabase()` constructs one `pop_jobs` item and inserts it without a
   call to `Read`. That is the one loaded job without generated names (365 of 366).
-- The `ReadExistingEntry` and `ReadNewEntry` of `resolution_categories` construct the item inline
-  and call `CPersistent::Read` directly.
+- The `ReadExistingEntry` and `ReadNewEntry` of `resolution_categories` construct the item inline,
+  without a constructor call, and then call `CPersistent::Read` directly. The method does not
+  follow inline construction (an `InlineConstruction` gap), so whether the engine runs the call
+  there is not established.
 
 ### Item keys
 
@@ -130,13 +132,16 @@ temporaries that are not fully written, so a copied flag byte can be unknown.
 The loaded table has 45,578 entries. The names, their order and every tag list equal the
 `modifiers.log` that the engine writes in the same session. The table has 571 declared names
 (they join `Native::modifiers`), 5,432 names that a returned family generates for a loaded item,
-and 39,576 unexplained names. No name has two families. Five declared names have other tags in
+and 39,576 unexplained names. No name has two families. The answer is `Partial`: the unjoined
+generation sites and the unexplained names are gaps. The layout derivation gives one complete
+table layout, with no partial layout and no failure. Five declared names have other tags in
 the loaded table, because content registers them again: `terraforming_cost_mult` has Planets and
 AI Economy; `starbase_shipyard_build_cost_mult` has Starbases and AI Economy; the two other
 `starbase_shipyard_*` names and `gdf_ship_alloys_cost_mult` have the six ship and station tags
 and AI Economy.
 
-`modifier_families` returns 50 families in 22 registries, in about 0.8 s for each registry. The
+`modifier_families` returns 50 families in 22 registries, in about 0.8 s for each registry. All 22
+answers are `Partial`; none is complete or failed. The
 last two columns are from one live `examples/loaded-modifiers.rs` session: the registry's loaded
 items, and how many of the names that the template gives for them are loaded.
 
@@ -165,9 +170,10 @@ items, and how many of the names that the template gives for them are loaded.
 | `common/zones` | `planet_{key}_build_speed_mult` | database | Always | 146 | 146 |
 
 `common/leader_classes`, `common/ship_sizes` and `common/espionage_operation_categories` are the
-other three registries; they return no family (see the gaps below). The templates of buildings,
-districts and bypass also equal all 680 registrations that the SDK-498 prototype hooks observed
-in two live runs.
+other three registries; they return no family (see the gaps below). The five build-speed and
+windup templates of buildings, districts and bypass also equal all 680 registrations that the
+SDK-498 prototype hooks observed in two live runs. That control does not cover the district and
+building maximum families.
 
 Tags come from the category mask of the registration. Economic categories and scripted modifiers
 pass a mask from an item field (for economic categories `+0x128`, the content's
@@ -264,7 +270,8 @@ Each of these gave a wrong answer once. Each now has an authored test with a neg
 - New memory of a loader must not have the address of memory that the database constructor
   reserved.
 
-**Assumptions** (not established): an item's key does not change after its constructor; a store
-to an unknown address or a call that the run does not follow changes neither the key, the held
-definition masks, the database's fields other than its item array, nor an item's vtable
-pointers; a thunk runs its root, also when it holds a copy of the root's body.
+**Assumptions** (not established): the null object is not an item of the database; an item's key
+does not change after its constructor; a store to an unknown address or a call that the run does not
+follow changes neither the key, the held definition masks, the database's fields other than its item
+array, nor an item's vtable pointers; a thunk runs its root, also when it holds a copy of the root's
+body.
