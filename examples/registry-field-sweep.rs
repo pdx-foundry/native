@@ -10,7 +10,9 @@
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::registry_field_stops::{self, FieldGap};
-use pdx_native::{Completeness, GapKind, Native, ReaderKind};
+use pdx_native::{
+    Answer, BuildId, Completeness, Error, Field, GapKind, Native, ReaderKind, Registry,
+};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
@@ -57,169 +59,222 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
     let image = Image::read(&bytes)?;
     let started = Instant::now();
     let registries = native.registries()?;
-    let mut cases = Vec::with_capacity(registries.value.len());
-    let mut reader_fields: BTreeMap<String, ReaderFields> = BTreeMap::new();
-    let mut complete = 0;
-    let mut partial = 0;
-    let mut failure = 0;
-    let mut unresolved = 0;
-    let mut fields_found = 0;
-    let mut unresolved_paths = 0;
-    let mut known_identities = 0;
-    let mut unknown_identities = 0;
-    let mut known_kinds = 0;
-    let mut unknown_kinds = 0;
-    let mut field_method: Option<String> = None;
-    let mut fields_by_kind: BTreeMap<ReaderKind, usize> = BTreeMap::new();
-    let mut missing_reader_fields = Vec::new();
-    let mut failure_shapes: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-    let mut stop_cases = Vec::new();
+    let mut report = SweepReport::default();
 
     for registry in &registries.value {
         let query_started = Instant::now();
         let run = registry_field_stops::run(&native, &registry.name);
         let elapsed_ms = query_started.elapsed().as_millis();
+
         match run {
             Ok(registry_field_stops::Run { answer, result }) => {
-                match &field_method {
-                    Some(method) if method != &answer.source.method => {
-                        return Err("Registry field methods differ within one sweep".into());
-                    }
-                    None => field_method = Some(answer.source.method.clone()),
-                    _ => {}
-                }
-                match answer.completeness {
-                    Completeness::Complete => complete += 1,
-                    Completeness::Partial => partial += 1,
-                }
-                for gap in &answer.gaps {
-                    if gap.kind != GapKind::OutsideMethod {
-                        failure_shapes
-                            .entry(gap.detail.clone())
-                            .or_default()
-                            .push(json!({
-                                "registry": registry.name,
-                                "kind": gap.kind,
-                                "subject": gap.subject,
-                            }));
-                    }
-                }
-                let path_gaps = answer
-                    .gaps
-                    .iter()
-                    .filter(|gap| gap.kind == GapKind::UnresolvedPath)
-                    .count();
-                unresolved_paths += path_gaps;
-                if path_gaps > 0 {
-                    unresolved += 1;
-                }
-                fields_found += answer.value.len();
-                for field in &answer.value {
-                    let name = format!("{}#{}", registry.name, field.name);
-                    *fields_by_kind.entry(field.reader.kind).or_default() += 1;
-                    if let Some(identity) = &field.reader.id {
-                        known_identities += 1;
-                        let id = serde_json::to_value(identity)?.as_str().unwrap().to_owned();
-                        let reader = reader_fields.entry(id).or_insert_with(|| ReaderFields {
-                            kind: field.reader.kind,
-                            fields: Vec::new(),
-                            registries: BTreeMap::new(),
-                        });
-                        reader
-                            .registries
-                            .insert(registry.name.clone(), answer.completeness);
-                        reader.fields.push(name);
-                    } else {
-                        unknown_identities += 1;
-                        missing_reader_fields.push(name);
-                    }
-                    if field.reader.kind == ReaderKind::Unknown {
-                        unknown_kinds += 1;
-                    } else {
-                        known_kinds += 1;
-                    }
-                }
-
-                stop_cases.extend(place_gaps(&image, &registry.name, result.gaps));
-
-                cases.push(json!({
-                    "registry": registry.name,
-                    "status": status(Some(answer.completeness)),
-                    "elapsed_ms": elapsed_ms,
-                    "answer": answer,
-                }));
+                let stops = place_gaps(&image, &registry.name, result.gaps);
+                report.add_answer(&registry.name, answer, stops, elapsed_ms)?;
             }
-            Err(error) => {
-                failure += 1;
-                failure_shapes
-                    .entry(error.to_string())
-                    .or_default()
-                    .push(json!({
-                        "registry": registry.name,
-                        "error": error,
-                    }));
-                cases.push(json!({
-                    "registry": registry.name,
-                    "status": status(None),
-                    "elapsed_ms": elapsed_ms,
-                    "error": error,
-                }));
-            }
+            Err(error) => report.add_failure(&registry.name, error, elapsed_ms),
         }
     }
-    let readers: BTreeMap<_, Value> = reader_fields
-        .into_iter()
-        .map(|(id, reader)| {
-            let complete = reader
-                .registries
-                .values()
-                .filter(|status| **status == Completeness::Complete)
-                .count();
-            let report = json!({
-                "kind": reader.kind,
-                "count": reader.fields.len(),
-                "fields": reader.fields,
-                "registry_answers": {
-                    "complete": complete,
-                    "partial": reader.registries.len() - complete,
-                    "failed": 0,
-                },
+
+    report.into_json(native.build(), started.elapsed().as_millis(), registries)
+}
+
+/// The report state gathered from each registry's query, in registry order.
+#[derive(Default)]
+struct SweepReport {
+    /// The one method that gave every answer. A failed query has no method.
+    field_method: Option<String>,
+    complete_queries: usize,
+    partial_queries: usize,
+    failed_queries: usize,
+    queries_with_unresolved_paths: usize,
+    unresolved_paths: usize,
+    /// Fields with a reader identity, by that identity.
+    readers: BTreeMap<String, ReaderFields>,
+    fields_by_reader_kind: BTreeMap<ReaderKind, usize>,
+    fields_without_reader_identity: Vec<String>,
+    failure_shapes: BTreeMap<String, Vec<Value>>,
+    stop_cases: Vec<StopCase>,
+    cases: Vec<Value>,
+}
+
+impl SweepReport {
+    /// Add one registry's answer and its placed internal gaps. Fails when the answer's method
+    /// differs from an earlier answer's.
+    fn add_answer(
+        &mut self,
+        registry: &str,
+        answer: Answer<Vec<Field>>,
+        stops: Vec<StopCase>,
+        elapsed_ms: u128,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match &self.field_method {
+            Some(method) if method != &answer.source.method => {
+                return Err("Registry field methods differ within one sweep".into());
+            }
+            None => self.field_method = Some(answer.source.method.clone()),
+            _ => {}
+        }
+
+        match answer.completeness {
+            Completeness::Complete => self.complete_queries += 1,
+            Completeness::Partial => self.partial_queries += 1,
+        }
+
+        for gap in &answer.gaps {
+            if gap.kind != GapKind::OutsideMethod {
+                self.failure_shapes
+                    .entry(gap.detail.clone())
+                    .or_default()
+                    .push(json!({
+                        "registry": registry,
+                        "kind": gap.kind,
+                        "subject": gap.subject,
+                    }));
+            }
+        }
+
+        let path_gaps = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.kind == GapKind::UnresolvedPath)
+            .count();
+        self.unresolved_paths += path_gaps;
+        if path_gaps > 0 {
+            self.queries_with_unresolved_paths += 1;
+        }
+
+        for field in &answer.value {
+            let name = format!("{registry}#{}", field.name);
+            *self
+                .fields_by_reader_kind
+                .entry(field.reader.kind)
+                .or_default() += 1;
+
+            let Some(identity) = &field.reader.id else {
+                self.fields_without_reader_identity.push(name);
+                continue;
+            };
+            let id = serde_json::to_value(identity)?.as_str().unwrap().to_owned();
+            let reader = self.readers.entry(id).or_insert_with(|| ReaderFields {
+                kind: field.reader.kind,
+                fields: Vec::new(),
+                registries: BTreeMap::new(),
             });
-            (id, report)
+            reader
+                .registries
+                .insert(registry.to_owned(), answer.completeness);
+            reader.fields.push(name);
+        }
+
+        self.stop_cases.extend(stops);
+        self.cases.push(json!({
+            "registry": registry,
+            "status": status(Some(answer.completeness)),
+            "elapsed_ms": elapsed_ms,
+            "answer": answer,
+        }));
+        Ok(())
+    }
+
+    fn add_failure(&mut self, registry: &str, error: Error, elapsed_ms: u128) {
+        self.failed_queries += 1;
+        self.failure_shapes
+            .entry(error.to_string())
+            .or_default()
+            .push(json!({
+                "registry": registry,
+                "error": error,
+            }));
+        self.cases.push(json!({
+            "registry": registry,
+            "status": status(None),
+            "elapsed_ms": elapsed_ms,
+            "error": error,
+        }));
+    }
+
+    /// The report. Fails when no query gave an answer, because then no method was established.
+    fn into_json(
+        self,
+        build: BuildId,
+        elapsed_ms: u128,
+        registries: Answer<Vec<Registry>>,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        let field_method = self
+            .field_method
+            .ok_or("No registry field method was established")?;
+        let known_identities: usize = self
+            .readers
+            .values()
+            .map(|reader| reader.fields.len())
+            .sum();
+        let unknown_identities = self.fields_without_reader_identity.len();
+        let fields_found = known_identities + unknown_identities;
+        let unknown_kinds = self
+            .fields_by_reader_kind
+            .get(&ReaderKind::Unknown)
+            .copied()
+            .unwrap_or_default();
+        let readers: BTreeMap<_, Value> = self
+            .readers
+            .into_iter()
+            .map(|(id, reader)| (id, reader.report()))
+            .collect();
+
+        Ok(json!({
+            "method": field_method,
+            "build": build,
+            "elapsed_ms": elapsed_ms,
+            "registry_count": registries.value.len(),
+            "registry_inventory": registries,
+            "summary": {
+                "complete_queries": self.complete_queries,
+                "partial_queries": self.partial_queries,
+                "failed_queries": self.failed_queries,
+                "queries_with_unresolved_paths": self.queries_with_unresolved_paths,
+                "fields_found": fields_found,
+                "unresolved_paths": self.unresolved_paths,
+                "known_reader_identities": known_identities,
+                "unknown_reader_identities": unknown_identities,
+                "known_reader_kinds": fields_found - unknown_kinds,
+                "unknown_reader_kinds": unknown_kinds,
+                "distinct_known_readers": readers.len(),
+            },
+            "readers": readers,
+            "fields_by_reader_kind": self.fields_by_reader_kind,
+            "fields_without_reader_identity": self.fields_without_reader_identity,
+            "failure_shapes": self.failure_shapes,
+            "stop_shapes": stop_shapes(&self.stop_cases),
+            "report_limits": {
+                "failure_shapes": "Grouped by public gap detail.",
+                "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
+                "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
+            },
+            "cases": self.cases,
+        }))
+    }
+}
+
+impl ReaderFields {
+    /// The reader's fields and the completeness of the registry answers that hold them. A failed
+    /// query holds no fields, so it never counts here.
+    fn report(self) -> Value {
+        let complete = self
+            .registries
+            .values()
+            .filter(|status| **status == Completeness::Complete)
+            .count();
+        json!({
+            "kind": self.kind,
+            "count": self.fields.len(),
+            "fields": self.fields,
+            "registry_answers": {
+                "complete": complete,
+                "partial": self.registries.len() - complete,
+                "failed": 0,
+            },
         })
-        .collect();
-    let field_method = field_method.ok_or("No registry field method was established")?;
-    Ok(json!({
-        "method": field_method,
-        "build": native.build(),
-        "elapsed_ms": started.elapsed().as_millis(),
-        "registry_count": registries.value.len(),
-        "registry_inventory": registries,
-        "summary": {
-            "complete_queries": complete,
-            "partial_queries": partial,
-            "failed_queries": failure,
-            "queries_with_unresolved_paths": unresolved,
-            "fields_found": fields_found,
-            "unresolved_paths": unresolved_paths,
-            "known_reader_identities": known_identities,
-            "unknown_reader_identities": unknown_identities,
-            "known_reader_kinds": known_kinds,
-            "unknown_reader_kinds": unknown_kinds,
-            "distinct_known_readers": readers.len(),
-        },
-        "readers": readers,
-        "fields_by_reader_kind": fields_by_kind,
-        "fields_without_reader_identity": missing_reader_fields,
-        "failure_shapes": failure_shapes,
-        "stop_shapes": stop_shapes(&stop_cases),
-        "report_limits": {
-            "failure_shapes": "Grouped by public gap detail.",
-            "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
-            "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
-        },
-        "cases": cases,
-    }))
+    }
 }
 
 /// Place each internal gap's stop, if it has one, in the image.
@@ -368,6 +423,101 @@ mod tests {
             "elapsed_ms": 10,
             "answer": { "value": value, "completeness": status, "gaps": [] },
         })
+    }
+
+    fn answer<T: serde::de::DeserializeOwned>(
+        method: &str,
+        completeness: &str,
+        value: Value,
+        gaps: Value,
+    ) -> Answer<T> {
+        serde_json::from_value(json!({
+            "value": value,
+            "completeness": completeness,
+            "gaps": gaps,
+            "source": {
+                "build": "build",
+                "native_version": "0",
+                "method": method,
+                "basis": "StaticAnalysis",
+            },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn the_summary_counts_each_query_and_field_once() {
+        let mut report = SweepReport::default();
+        let fields = json!([
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer" }, "conditional": false },
+            { "name": "icon", "reader": { "id": null, "kind": "Unknown" }, "conditional": false },
+        ]);
+        let gaps = json!([{ "kind": "UnresolvedPath", "subject": null, "detail": "path 1" }]);
+        report
+            .add_answer(
+                "common/a",
+                answer("fields/v1", "Partial", fields, gaps),
+                Vec::new(),
+                1,
+            )
+            .unwrap();
+        let fields = json!([
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer" }, "conditional": false },
+        ]);
+        report
+            .add_answer(
+                "common/b",
+                answer("fields/v1", "Complete", fields, json!([])),
+                Vec::new(),
+                1,
+            )
+            .unwrap();
+        report.add_failure("common/c", Error::Method("stopped".into()), 1);
+
+        let registries = answer("registries", "Complete", json!([]), json!([]));
+        let json = report
+            .into_json(registries.source.build.clone(), 1, registries)
+            .unwrap();
+
+        assert_eq!(
+            json["summary"],
+            json!({
+                "complete_queries": 1,
+                "partial_queries": 1,
+                "failed_queries": 1,
+                "queries_with_unresolved_paths": 1,
+                "fields_found": 3,
+                "unresolved_paths": 1,
+                "known_reader_identities": 2,
+                "unknown_reader_identities": 1,
+                "known_reader_kinds": 2,
+                "unknown_reader_kinds": 1,
+                "distinct_known_readers": 1,
+            })
+        );
+        assert_eq!(
+            json["readers"]["r1"]["registry_answers"],
+            json!({ "complete": 1, "partial": 1, "failed": 0 })
+        );
+        assert_eq!(
+            json["fields_without_reader_identity"],
+            json!(["common/a#icon"])
+        );
+    }
+
+    #[test]
+    fn a_sweep_answered_by_two_methods_is_refused() {
+        let mut report = SweepReport::default();
+        let first = answer("fields/v1", "Complete", json!([]), json!([]));
+        let second = answer("fields/v2", "Complete", json!([]), json!([]));
+
+        report.add_answer("common/a", first, Vec::new(), 1).unwrap();
+
+        assert!(
+            report
+                .add_answer("common/b", second, Vec::new(), 1)
+                .is_err()
+        );
     }
 
     #[test]
