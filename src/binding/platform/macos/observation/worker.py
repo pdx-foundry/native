@@ -57,11 +57,11 @@ def atomic(kind, name, value, limit=protocol.MAX_RECORD):
     return encoded
 
 
-def dropped_by_fault(kind, fields, registry_control):
+def dropped_by_fault(kind, fields, session_request, registry_control):
     """Whether a requested dropped-record fault leaves this record out of the trace. The record
     still takes its sequence number, so the trace shows the gap."""
-    if request['fixture_fault'] and request['control'] == protocol.CONTROL['dropped_record'] and kind == 'fixture':
-        dropped = ('field-read', 1) if request['fixture']['field_reads'] else ('registration-entry', 2)
+    if session_request['fixture_fault'] and session_request['control'] == protocol.CONTROL['dropped_record'] and kind == 'fixture':
+        dropped = ('field-read', 1) if session_request['fixture']['field_reads'] else ('registration-entry', 2)
         event = fields['event']
         if (event['kind'], event.get('ordinal')) == dropped:
             return True
@@ -73,7 +73,7 @@ def emit(kind, **fields):
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
-    if dropped_by_fault(kind, fields, control):
+    if dropped_by_fault(kind, fields, request, control):
         return
     path = ROOT / 'raw-trace.jsonl'
     limit = protocol.MAX_TRACE - 256 * 1024 if kind == 'registry-entry' else protocol.MAX_TRACE

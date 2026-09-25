@@ -52,7 +52,7 @@ fn reader(input: impl Read + Send + 'static) -> Receiver<Input> {
     });
     receive
 }
-/// Pass the hello, the request and then each control on until the input or the receiver fails.
+/// Forward the controller's messages until the input or the receiver fails.
 fn forward_input(mut input: impl Read, send: &SyncSender<Input>) -> Result<(), SupervisorError> {
     let hello = protocol::read(&mut input)?;
     send.send(Input::Hello(hello))

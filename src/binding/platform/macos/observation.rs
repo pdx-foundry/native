@@ -236,10 +236,9 @@ impl Observer {
         Ok(())
     }
 
-    /// Move the worker on by one step and report whether it exited. Grant the resume once its
-    /// hello is valid, kill the worker group when a worker-loss fault is ready, and check the
-    /// storage bounds. The worker is not reaped: the process-group identity remains reserved until
-    /// cleanup.
+    /// Move the worker on by one step and report whether it exited. This grants the resume and
+    /// carries out a ready worker-loss fault. It never reaps the worker: the process-group
+    /// identity remains reserved until cleanup.
     pub(crate) fn advance_worker(&mut self) -> Result<bool, SupervisorError> {
         let worker = self
             .worker
