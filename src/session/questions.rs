@@ -5,7 +5,7 @@ use crate::answer::{
     Field, Gap, GapKind, GapSubject, Operation, Reader, ReaderId, ReaderKind, Registry, ScopeId,
     ScopeReference, Source, Support,
 };
-use crate::binding::{Binding, VerifiedAnalysis};
+use crate::binding::{Binding, VerifiedAnalysis, unique_named_candidate};
 use crate::engine::analysis::{
     declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
@@ -259,11 +259,7 @@ impl Native {
         let operation = Operation::RegistryFields;
         let name = registry.trim_end_matches('/');
         let verified = self.verified_analysis(operation)?;
-        let mut matching = verified
-            .named_candidates()
-            .iter()
-            .filter(|c| c.directory == Directory::Named(name.to_owned()));
-        let (Some(candidate), None) = (matching.next(), matching.next()) else {
+        let Some(candidate) = unique_named_candidate(verified.named_candidates(), name) else {
             return Err(Error::UnknownRegistry {
                 name: registry.into(),
             });
