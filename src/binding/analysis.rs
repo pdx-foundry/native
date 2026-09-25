@@ -7,6 +7,7 @@ use std::{
 
 use super::binary::families::FamilyIndex;
 use super::{binary, installation::Installation};
+use crate::engine::analysis::decode::decode_arm64;
 use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::families::DatabaseLayout;
 use crate::{AnalysisError, UnavailableReason};
@@ -61,6 +62,91 @@ impl VerifiedAnalysis<'_> {
             (_, 0) => Err(format!("no symbol {name}")),
             _ => Err(format!("more than one symbol {name}")),
         }
+    }
+
+    /// The one call to the registry database's `LoadFromReader` in the first 256 bytes of its
+    /// loader, followed by `mov x0, sp` and a second call. Returns the reader's entry and the
+    /// loader address where the reader returns.
+    fn loader_reader_call(
+        &self,
+        load_entry: u64,
+        record: &crate::engine::analysis::discovery::CandidateRecord,
+    ) -> Result<Option<(u64, u64)>, AnalysisError> {
+        let expected_reader = format!(
+            "TSingleObjectGameDatabase<{}, {}, false>::LoadFromReader(CReader&, bool)",
+            record.database, record.owner_candidate
+        );
+        let code = binary::code_range(&self.executable, load_entry, 256)?;
+        let rows = decode_arm64(&code, load_entry).map_err(|_| AnalysisError::InvalidRange)?;
+        let matches: Vec<_> =
+            rows.windows(3)
+                .filter_map(|window| {
+                    let [call, after, cleanup] = window else {
+                        return None;
+                    };
+                    let target = call
+                        .operands
+                        .strip_prefix("#0x")
+                        .and_then(|hex| u64::from_str_radix(hex, 16).ok())?;
+                    (call.operation == "bl"
+                        && after.operation == "mov"
+                        && after.operands == "x0,sp"
+                        && cleanup.operation == "bl"
+                        && self.catalog.symbols.iter().any(|symbol| {
+                            symbol.address == target && symbol.name == expected_reader
+                        }))
+                    .then_some((target, after.address))
+                })
+                .collect();
+
+        Ok(matches.first().copied().filter(|_| matches.len() == 1))
+    }
+
+    /// The one `owner(int, CString const&)` constructor that the file reader calls directly.
+    /// The scan runs from the reader's entry to the next symbol, which must be at most 16 KiB
+    /// away.
+    fn reader_constructor_call(
+        &self,
+        reader_entry: u64,
+        owner: &str,
+    ) -> Result<Option<u64>, AnalysisError> {
+        let constructor_name = format!("{owner}::{owner}(int, CString const&)");
+        let constructors: Vec<_> = self
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == constructor_name)
+            .map(|symbol| symbol.address)
+            .collect();
+        let Some(next_symbol) = self
+            .catalog
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.address > reader_entry)
+            .map(|symbol| symbol.address)
+            .min()
+        else {
+            return Ok(None);
+        };
+        let Some(length) = next_symbol.checked_sub(reader_entry) else {
+            return Ok(None);
+        };
+        if length == 0 || length > 16 * 1024 {
+            return Ok(None);
+        }
+
+        let reader_code = binary::code_range(&self.executable, reader_entry, length)?;
+        let reader_rows =
+            decode_arm64(&reader_code, reader_entry).map_err(|_| AnalysisError::InvalidRange)?;
+        let called: std::collections::BTreeSet<_> = reader_rows
+            .iter()
+            .filter(|row| row.operation == "bl")
+            .filter_map(|row| row.operands.strip_prefix("#0x"))
+            .filter_map(|hex| u64::from_str_radix(hex, 16).ok())
+            .filter(|address| constructors.contains(address))
+            .collect();
+
+        Ok(called.first().copied().filter(|_| called.len() == 1))
     }
 
     /// Derive the loaded arrays from the executable readers before authorizing live access.
@@ -262,13 +348,11 @@ impl BoundAnalysis {
         &self,
         registry: &str,
     ) -> Result<Option<FixtureLoader>, AnalysisError> {
-        use crate::engine::analysis::decode::decode_arm64;
-
         let verified = self.verified()?;
         let Some(selected) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(None);
         };
-        let Some(address) = selected
+        let Some(load_entry) = selected
             .record
             .address
             .strip_prefix("0x")
@@ -276,34 +360,8 @@ impl BoundAnalysis {
         else {
             return Ok(None);
         };
-        let expected_reader = format!(
-            "TSingleObjectGameDatabase<{}, {}, false>::LoadFromReader(CReader&, bool)",
-            selected.record.database, selected.record.owner_candidate
-        );
-        let code = binary::code_range(&verified.executable, address, 256)?;
-        let rows = decode_arm64(&code, address).map_err(|_| AnalysisError::InvalidRange)?;
-        let matches: Vec<_> =
-            rows.windows(3)
-                .filter_map(|window| {
-                    let [call, after, cleanup] = window else {
-                        return None;
-                    };
-                    let target = call
-                        .operands
-                        .strip_prefix("#0x")
-                        .and_then(|hex| u64::from_str_radix(hex, 16).ok())?;
-                    (call.operation == "bl"
-                        && after.operation == "mov"
-                        && after.operands == "x0,sp"
-                        && cleanup.operation == "bl"
-                        && verified.catalog.symbols.iter().any(|symbol| {
-                            symbol.address == target && symbol.name == expected_reader
-                        }))
-                    .then_some((address, target, after.address))
-                })
-                .collect();
-        let Some((load_entry, reader_entry, reader_return)) =
-            matches.first().copied().filter(|_| matches.len() == 1)
+        let Some((reader_entry, reader_return)) =
+            verified.loader_reader_call(load_entry, &selected.record)?
         else {
             return Ok(None);
         };
@@ -317,43 +375,10 @@ impl BoundAnalysis {
         let (Some(member), None) = (members.next(), members.next()) else {
             return Ok(None);
         };
-        let constructor_name = format!("{owner}::{owner}(int, CString const&)");
-        let constructors: Vec<_> = verified
-            .catalog
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == constructor_name)
-            .map(|symbol| symbol.address)
-            .collect();
-        let Some(next_symbol) = verified
-            .catalog
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.address > reader_entry)
-            .map(|symbol| symbol.address)
-            .min()
-        else {
+        let Some(constructor_entry) = verified.reader_constructor_call(reader_entry, owner)? else {
             return Ok(None);
         };
-        let Some(length) = next_symbol.checked_sub(reader_entry) else {
-            return Ok(None);
-        };
-        if length == 0 || length > 16 * 1024 {
-            return Ok(None);
-        }
-        let reader_code = binary::code_range(&verified.executable, reader_entry, length)?;
-        let reader_rows =
-            decode_arm64(&reader_code, reader_entry).map_err(|_| AnalysisError::InvalidRange)?;
-        let called: std::collections::BTreeSet<_> = reader_rows
-            .iter()
-            .filter(|row| row.operation == "bl")
-            .filter_map(|row| row.operands.strip_prefix("#0x"))
-            .filter_map(|hex| u64::from_str_radix(hex, 16).ok())
-            .filter(|address| constructors.contains(address))
-            .collect();
-        let Some(&constructor_entry) = called.iter().next().filter(|_| called.len() == 1) else {
-            return Ok(None);
-        };
+
         Ok(Some(FixtureLoader {
             load_entry,
             reader_entry,
@@ -368,49 +393,18 @@ impl BoundAnalysis {
         &self,
         registry: &str,
     ) -> Result<Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>, AnalysisError> {
-        use crate::engine::analysis::fields::{self, ReaderJoin, Value};
-
         let verified = self.verified()?;
         let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(Vec::new());
         };
         let input = verified.field_input(candidate.record.clone())?;
-        let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
+        let result = crate::engine::analysis::fields::analyze(&input)
+            .map_err(|_| AnalysisError::InvalidRange)?;
+
         Ok(result
             .fields
             .iter()
-            .filter_map(|field| {
-                if field.readers.len() != 1
-                    || field
-                        .paths
-                        .iter()
-                        .any(|&path| !result.paths[path].conditions.is_empty())
-                {
-                    return None;
-                }
-                let ReaderJoin::Joined { callee, arguments } = &field.readers[0] else {
-                    return None;
-                };
-                if callee != "CReader::Read(CString&, bool)"
-                    || arguments.get("x0") != Some(&Value::Reader(0))
-                    || arguments.get("x8") != Some(&Value::Constant(field.token))
-                {
-                    return None;
-                }
-                let Some(Value::Owner(offset)) = arguments.get("x1") else {
-                    return None;
-                };
-                let (Ok(token), Ok(storage_offset)) =
-                    (u64::try_from(field.token), u64::try_from(*offset))
-                else {
-                    return None;
-                };
-                Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
-                    token,
-                    name: field.name.clone(),
-                    storage_offset,
-                })
-            })
+            .filter_map(|field| string_field_binding(field, &result.paths))
             .collect())
     }
 
@@ -465,6 +459,44 @@ impl BoundAnalysis {
             catalog,
         })
     }
+}
+
+/// The storage binding of a field that the root reader always reads as one `CString`: a single
+/// reader join with no path condition, a direct `CReader::Read(CString&, bool)` of the root
+/// reader with the field's token, into owner storage.
+fn string_field_binding(
+    field: &crate::engine::analysis::fields::RootField,
+    paths: &[crate::engine::analysis::fields::TokenPath],
+) -> Option<crate::protocol::observation::FixtureOutcomeFieldBinding> {
+    use crate::engine::analysis::fields::{ReaderJoin, Value};
+
+    let [ReaderJoin::Joined { callee, arguments }] = field.readers.as_slice() else {
+        return None;
+    };
+    let unconditional = field
+        .paths
+        .iter()
+        .all(|&path| paths[path].conditions.is_empty());
+    if !unconditional
+        || callee != "CReader::Read(CString&, bool)"
+        || arguments.get("x0") != Some(&Value::Reader(0))
+        || arguments.get("x8") != Some(&Value::Constant(field.token))
+    {
+        return None;
+    }
+    let Some(Value::Owner(offset)) = arguments.get("x1") else {
+        return None;
+    };
+    let (Ok(token), Ok(storage_offset)) = (u64::try_from(field.token), u64::try_from(*offset))
+    else {
+        return None;
+    };
+
+    Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
+        token,
+        name: field.name.clone(),
+        storage_offset,
+    })
 }
 
 #[cfg(test)]

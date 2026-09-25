@@ -90,11 +90,11 @@ pub struct Listing {
     pub rows: Vec<Row>,
 }
 
-/// Why a listing stops. Symbols give every extent, so each end is inferred: a local label or
-/// compiler-outlined code can place the real end elsewhere.
+/// Why a listing stops. No end proves where the function ends.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum End {
-    /// The next symbol starts here.
+    /// The next symbol starts here. This is only an inferred boundary: the symbol can be a local
+    /// label, or part of compiler-outlined code, so the real function end can be elsewhere.
     NextSymbol(String),
     /// The text section ends here.
     SectionEnd,
@@ -432,20 +432,29 @@ impl<'a> Image<'a> {
         }
 
         Ok((0..count as u64)
-            .map(|index| address + index * 8)
-            .map(|slot| Slot {
-                address: slot,
-                holds: self.slot_value(fixups, slot).unwrap_or_else(|| {
-                    match self.inventory.data_at(slot, 8) {
-                        Ok(raw) => format!(
-                            "no fixup; raw {:#x}",
-                            u64::from_le_bytes(raw.try_into().expect("8 bytes"))
-                        ),
-                        Err(_) => "no fixup; not in one section".into(),
-                    }
-                }),
+            .map(|index| {
+                let slot = address + index * 8;
+                let holds = self
+                    .slot_value(fixups, slot)
+                    .unwrap_or_else(|| self.raw_slot(slot));
+
+                Slot {
+                    address: slot,
+                    holds,
+                }
             })
             .collect())
+    }
+
+    /// What `slot` holds when no fixup names it: its stored word, when one section holds it.
+    fn raw_slot(&self, slot: u64) -> String {
+        match self.inventory.data_at(slot, 8) {
+            Ok(raw) => format!(
+                "no fixup; raw {:#x}",
+                u64::from_le_bytes(raw.try_into().expect("8 bytes"))
+            ),
+            Err(_) => "no fixup; not in one section".into(),
+        }
     }
 
     /// What the loader stores in `slot`, when a fixup names it.

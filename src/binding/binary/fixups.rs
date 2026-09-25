@@ -339,14 +339,14 @@ fn read_chain(
                 fixups.bound.insert(address);
 
                 let import = image.imports.get(ordinal)?;
-                if let Some(name) = exact_binding_name(import.name, import.addend, pointer_addend) {
-                    fixups.bindings.insert(address, name);
+                let exact = is_exact_import(import.addend, pointer_addend);
+                if exact {
+                    fixups.bindings.insert(address, display_name(import.name));
                 }
 
                 // Only same-image weak coalescing has an established local resolution.
-                if import.library == -3
-                    && import.addend == 0
-                    && pointer_addend == 0
+                if exact
+                    && import.library == -3
                     && let Some(value) = image.raw_symbols.get(import.name)
                 {
                     fixups.pointers.insert(address, *value);
@@ -454,8 +454,10 @@ fn cstring(bytes: &[u8], at: usize) -> Option<&str> {
     std::str::from_utf8(&bytes[..end]).ok()
 }
 
-fn exact_binding_name(raw: &str, import_addend: i64, pointer_addend: u8) -> Option<String> {
-    (import_addend == 0 && pointer_addend == 0).then(|| display_name(raw))
+/// Whether a bound slot holds the import itself: neither the import record nor the pointer adds
+/// an offset to it.
+fn is_exact_import(import_addend: i64, pointer_addend: u8) -> bool {
+    import_addend == 0 && pointer_addend == 0
 }
 
 #[cfg(test)]
@@ -496,13 +498,10 @@ mod tests {
     }
 
     #[test]
-    fn exact_bindings_require_zero_import_and_pointer_addends() {
-        assert_eq!(
-            exact_binding_name("_known", 0, 0).as_deref(),
-            Some("_known")
-        );
-        assert_eq!(exact_binding_name("_known", 1, 0), None);
-        assert_eq!(exact_binding_name("_known", 0, 1), None);
-        assert_eq!(exact_binding_name("_known", -1, 0), None);
+    fn exact_imports_require_zero_import_and_pointer_addends() {
+        assert!(is_exact_import(0, 0));
+        assert!(!is_exact_import(1, 0));
+        assert!(!is_exact_import(0, 1));
+        assert!(!is_exact_import(-1, 0));
     }
 }

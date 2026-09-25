@@ -201,10 +201,11 @@ fn graph(
         .filter(|(_, owner)| **owner == RootOf::UnnamedContent)
         .filter_map(|(function, _)| names.of(*function).find_map(post_read_class))
         .collect();
-    let unnamed_inputs = callers
+    let graph_functions = callers
         .iter()
-        .flat_map(|(function, callers)| callers.iter().chain([function]))
-        .copied()
+        .flat_map(|(callee, callers)| callers.iter().chain([callee]))
+        .copied();
+    let unnamed_inputs = graph_functions
         .filter(|&function| {
             names
                 .of(function)
@@ -505,10 +506,11 @@ fn forms(rows: &[Instruction], points: &BTreeSet<u64>) -> bool {
         let value = match (row.operation.as_str(), operands.as_slice()) {
             ("adrp", [_, page]) => parse_immediate(page),
             ("add", [_, source, addend, shift @ ..]) if matches!(shift, [] | ["lsl#12"]) => {
-                register(source)
-                    .and_then(|source| values.get(&source))
-                    .zip(parse_immediate(addend))
-                    .map(|(value, addend)| value.wrapping_add(addend << (12 * shift.len())))
+                let source_value = register(source).and_then(|source| values.get(&source));
+                let addend = parse_immediate(addend).map(|addend| addend << (12 * shift.len()));
+                source_value
+                    .zip(addend)
+                    .map(|(value, addend)| value.wrapping_add(addend))
             }
             ("mov", [_, source]) => {
                 register(source).and_then(|source| values.get(&source).copied())

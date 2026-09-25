@@ -52,6 +52,55 @@ fn initial_loader(candidate: &NamedCandidate, directory: &str) -> Result<u64, St
         .ok_or_else(|| format!("{directory}: initial loader entry is unavailable"))
 }
 
+/// The content directories that the private profile's mod replaces: each observed registry's
+/// directory and the fixture's registry.
+fn replaced_directories<'a>(
+    registries: &'a std::collections::BTreeMap<
+        String,
+        crate::protocol::observation::RegistryBinding,
+    >,
+    fixture: Option<&'a crate::FixtureRequest>,
+) -> std::collections::BTreeSet<&'a str> {
+    registries
+        .values()
+        .map(|registry| registry.directory.as_str())
+        .chain(fixture.map(crate::FixtureRequest::registry))
+        .collect()
+}
+
+/// Whether the private profile copies this pinned file. The launcher settings are pinned but
+/// are not registry content, and the fixture's files replace its whole registry directory.
+fn copies_pinned_file(relative: &str, fixture: Option<&crate::FixtureRequest>) -> bool {
+    let fixture_content =
+        fixture.is_some_and(|fixture| relative.starts_with(&format!("{}/", fixture.registry())));
+
+    relative != "launcher-settings.json" && !fixture_content
+}
+
+/// The mod descriptor that mounts `mount` in place of each replaced directory. Descriptor values
+/// are quoted without escapes, so a mount path with a quote or a line break is refused.
+fn registry_mod_descriptor(
+    mount: &std::path::Path,
+    replaced: &std::collections::BTreeSet<&str>,
+) -> Result<String, crate::supervisor::SupervisorError> {
+    let mount = mount
+        .to_str()
+        .filter(|path| !path.contains(['"', '\n', '\r']))
+        .ok_or_else(|| {
+            crate::supervisor::SupervisorError(
+                "Profile path cannot be represented in the mod file".into(),
+            )
+        })?;
+    let replace_paths: String = replaced
+        .iter()
+        .map(|directory| format!("replace_path=\"{directory}\"\n"))
+        .collect();
+
+    Ok(format!(
+        "name=\"Native pinned registries\"\npath=\"{mount}\"\n{replace_paths}"
+    ))
+}
+
 /// One pinned installation with the implementation that its exact build selects. This is the
 /// only binding value that the session and the supervisor see; target records and platform
 /// leaves stay below here.
@@ -435,6 +484,58 @@ impl ExecutionPlan {
         }
     }
 
+    /// Give field questions an outcome binding for the fixture registry: its loader, when the
+    /// build binding has none, and the string storage that its reader arguments prove. Returns
+    /// the registry's analyzed fields.
+    fn bind_fixture_registry(
+        &self,
+        registry: &str,
+        bindings: &mut crate::protocol::observation::FixtureBinding,
+    ) -> Result<Vec<crate::Field>, crate::supervisor::SupervisorError> {
+        use crate::supervisor::SupervisorError;
+
+        let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
+            SupervisorError("No static reader authority for fixture questions".into())
+        })?;
+        let analysis_error = |error: crate::AnalysisError| SupervisorError(error.to_string());
+        let bound = bindings
+            .outcome_registries
+            .iter()
+            .any(|binding| binding.registry == registry);
+        if !bound {
+            let Some(loader) = analysis.fixture_loader(registry).map_err(analysis_error)? else {
+                return Err(SupervisorError(
+                    "Fixture registry has no verified loader and owner boundary".into(),
+                ));
+            };
+            let mut selected = bindings.outcome_registries[0].clone();
+            selected.registry = registry.into();
+            selected.load_entry = loader.load_entry;
+            selected.reader_entry = loader.reader_entry;
+            selected.reader_return = loader.reader_return;
+            selected.constructor_entry = loader.constructor_entry;
+            selected.member_entry = loader.member_entry;
+            bindings.outcome_registries.push(selected);
+        }
+
+        let fields = analysis
+            .registry_fields(registry)
+            .map_err(analysis_error)?
+            .unwrap_or_default();
+        let string_fields = analysis
+            .fixture_string_fields(registry)
+            .map_err(analysis_error)?;
+        if let Some(binding) = bindings
+            .outcome_registries
+            .iter_mut()
+            .find(|binding| binding.registry == registry)
+        {
+            binding.fields = string_fields;
+        }
+
+        Ok(fields)
+    }
+
     fn fixture_setup(
         &self,
         fixture: &crate::FixtureRequest,
@@ -443,65 +544,11 @@ impl ExecutionPlan {
         let mut bindings = self.operation().fixture.clone().ok_or_else(|| {
             crate::supervisor::SupervisorError("No fixture binding for this build".into())
         })?;
-        if !fixture.field_questions.is_empty()
-            && !bindings
-                .outcome_registries
-                .iter()
-                .any(|binding| binding.registry == fixture.registry())
-        {
-            let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
-                crate::supervisor::SupervisorError(
-                    "No static reader authority for fixture questions".into(),
-                )
-            })?;
-            let template = &bindings.outcome_registries[0];
-            let Some(loader) = analysis
-                .fixture_loader(fixture.registry())
-                .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?
-            else {
-                return Err(crate::supervisor::SupervisorError(
-                    "Fixture registry has no verified loader and owner boundary".into(),
-                ));
-            };
-            let mut selected = template.clone();
-            selected.registry = fixture.registry().into();
-            selected.load_entry = loader.load_entry;
-            selected.reader_entry = loader.reader_entry;
-            selected.reader_return = loader.reader_return;
-            selected.constructor_entry = loader.constructor_entry;
-            selected.member_entry = loader.member_entry;
-            bindings.outcome_registries.push(selected);
-        }
         let fields = if fixture.field_questions.is_empty() {
             Vec::new()
         } else {
-            let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
-                crate::supervisor::SupervisorError(
-                    "No static reader authority for fixture questions".into(),
-                )
-            })?;
-            analysis
-                .registry_fields(fixture.registry())
-                .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?
-                .unwrap_or_default()
+            self.bind_fixture_registry(fixture.registry(), &mut bindings)?
         };
-        if !fixture.field_questions.is_empty() {
-            let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
-                crate::supervisor::SupervisorError(
-                    "No static reader authority for fixture questions".into(),
-                )
-            })?;
-            let derived = analysis
-                .fixture_string_fields(fixture.registry())
-                .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
-            if let Some(binding) = bindings
-                .outcome_registries
-                .iter_mut()
-                .find(|binding| binding.registry == fixture.registry())
-            {
-                binding.fields = derived;
-            }
-        }
         let questions = fixture
             .field_questions
             .iter()
@@ -606,14 +653,11 @@ impl ExecutionPlan {
         if let Some(fixture) = fixture {
             std::fs::create_dir_all(mount.join(fixture.registry()))?;
         }
-        for (relative, expected) in content {
-            if relative == "launcher-settings.json"
-                || fixture.is_some_and(|fixture| {
-                    relative.starts_with(&format!("{}/", fixture.registry()))
-                })
-            {
-                continue;
-            }
+
+        for (relative, expected) in content
+            .iter()
+            .filter(|(relative, _)| copies_pinned_file(relative, fixture))
+        {
             let source = self.installation().root().join(relative);
             let bytes = files::read_bounded(&source, 8 * 1024 * 1024)?;
             if files::sha256(&bytes) != *expected {
@@ -625,6 +669,7 @@ impl ExecutionPlan {
             std::fs::create_dir_all(target.parent().unwrap())?;
             files::write_new(&target, &bytes)?;
         }
+
         if let Some(fixture) = fixture {
             fixture
                 .validate()
@@ -633,26 +678,10 @@ impl ExecutionPlan {
                 files::write_new(&mount.join(relative), text.as_bytes())?;
             }
         }
-        let mount = mount
-            .to_str()
-            .filter(|path| !path.contains(['"', '\n', '\r']))
-            .ok_or_else(|| {
-                SupervisorError("Profile path cannot be represented in the mod file".into())
-            })?;
-        let mut replaced_paths: std::collections::BTreeSet<_> = registries
-            .values()
-            .map(|registry| registry.directory.as_str())
-            .collect();
-        if let Some(fixture) = fixture {
-            replaced_paths.insert(fixture.registry());
-        }
-        let replaced: String = replaced_paths
-            .into_iter()
-            .map(|directory| format!("replace_path=\"{directory}\"\n"))
-            .collect();
+
         files::write_new(
             &profile.join("mod/native_registry.mod"),
-            format!("name=\"Native pinned registries\"\npath=\"{mount}\"\n{replaced}").as_bytes(),
+            registry_mod_descriptor(&mount, &replaced_directories(registries, fixture))?.as_bytes(),
         )?;
         std::fs::write(
             profile.join("dlc_load.json"),

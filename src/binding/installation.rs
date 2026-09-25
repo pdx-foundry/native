@@ -132,25 +132,32 @@ pub(super) fn resolve_directory(hint: &Path) -> Result<PathBuf, OpenError> {
     }
 }
 
+/// The directory that holds the game content: the one that holds the `.app` bundle on macOS,
+/// otherwise the executable's own directory.
 fn installation_root(executable: &Path) -> PathBuf {
     let parent = executable
         .parent()
         .expect("canonical executable has a parent");
-    if parent.ends_with("Contents/MacOS")
-        && parent
-            .ancestors()
-            .nth(2)
-            .and_then(Path::extension)
-            .is_some_and(|extension| extension == "app")
-    {
-        parent
-            .ancestors()
-            .nth(3)
-            .expect("application path has three ancestors")
-            .into()
-    } else {
-        parent.into()
+    match app_bundle(parent) {
+        Some(bundle) => bundle
+            .parent()
+            .expect("canonical application bundle has a parent")
+            .into(),
+        None => parent.into(),
     }
+}
+
+/// The `.app` bundle whose `Contents/MacOS` directory holds the executable.
+fn app_bundle(executable_directory: &Path) -> Option<&Path> {
+    if !executable_directory.ends_with("Contents/MacOS") {
+        return None;
+    }
+    let bundle = executable_directory.parent()?.parent()?;
+
+    bundle
+        .extension()
+        .is_some_and(|extension| extension == "app")
+        .then_some(bundle)
 }
 
 fn content_snapshot(
