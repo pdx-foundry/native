@@ -25,8 +25,8 @@
 //! - A jump table is followed only when its entries are offsets from a code address. A table of
 //!   addresses, an unbounded index, an unreadable entry, a case outside the root or a default
 //!   case that reaches a call is a `JumpTable` gap that names the table and the root. When a wide
-//!   interval does not end at the rejection, a case without a known reader is treated as the
-//!   default.
+//!   interval that leaves through the table's guard does not end at the rejection, a case of
+//!   that table without a known reader is treated as the default.
 //! - Bit-field reads (`ubfx`, `and`) forget their result. A field read into a temporary reaches
 //!   its reader call, but the reader join stays missing.
 //! - Unknown instructions, unsupported addressing, missing symbols or names, conflicting token

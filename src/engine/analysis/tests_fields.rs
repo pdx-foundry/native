@@ -761,3 +761,68 @@ fn a_case_without_a_known_reader_can_only_reject_when_the_default_may_be_unseen(
     assert_eq!(gaps.len(), 1);
     assert!(gaps[0].reason.ends_with("which an unresolved path hides"));
 }
+
+#[test]
+fn a_word_copy_of_the_token_indexes_a_table() {
+    let mut input = halfword_table();
+    replace(&mut input, 0x1000, arm64!(at 0x1000; nop));
+    replace(&mut input, 0x1004, arm64!(at 0x1004; mov w8, w2)); // the index: the token itself
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #0; // token 0
+        adrp x2, extern 0x8000;
+        add x2, x2, #0; // "first_table_field"
+        bl extern 0x3000; // CToken::CToken
+        mov w1, #2; // token 2
+        adrp x2, extern 0x8000;
+        add x2, x2, #0x10; // "second_table_field"
+        bl extern 0x3000;
+        ret
+    );
+    let result = derive(input);
+
+    let fields: Vec<_> = result.fields.iter().map(|f| f.token).collect();
+    assert_eq!(fields, [0, 2], "{:?}", result.gaps);
+    assert!(result.partition_accounted);
+}
+
+#[test]
+fn an_unresolved_path_outside_a_table_guard_does_not_hide_its_default() {
+    // Tokens below 50 stop at an instruction that the walker does not run. The table's own
+    // guard sends its other tokens to the rejection, and token 102's case calls an unknown
+    // function.
+    let mut input = halfword_table();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #50;
+        b.lt extern 0x1058;
+        movn w8, #99; // -100
+        add w8, w2, w8;
+        cmp w8, #2;
+        b.hi extern 0x1030; // the table's guard
+        adrp x9, extern 0x8000;
+        add x9, x9, #0x40;
+        adr x10, extern 0x1030;
+        ldrh w11, [x9, x8, lsl #1];
+        add x10, x10, x11, lsl #2;
+        br x10;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        add x8, x0, #0x40; // token 100: entry 2
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        add x8, x0, #0x48; // token 102: entry 6
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x9000; // an unknown function
+        ret
+    );
+    let result = derive(input);
+
+    let fields: Vec<_> = result.fields.iter().map(|f| f.token).collect();
+    assert_eq!(fields, [100, 102]);
+    assert!(matches!(
+        result.fields[1].readers[..],
+        [ReaderJoin::Missing(_)]
+    ));
+    assert!(jump_table_gaps(&result).is_empty());
+}

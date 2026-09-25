@@ -26,6 +26,9 @@ struct TableCase {
     table: u64,
     /// The code address of the case.
     address: u64,
+    /// The last conditional branch before the jump, which sends the tokens outside the table
+    /// to the rest of the switch.
+    guard: Option<u64>,
 }
 #[derive(Clone)]
 struct State {
@@ -76,7 +79,8 @@ impl State {
         let value = if destination.starts_with('w') {
             match value {
                 Some(Value::Constant(v)) => Some(Value::Constant(v as u32 as i64)),
-                Some(Value::Token) => Some(Value::Token),
+                // A W-register write zero-extends, so a copy of the token is a token word.
+                Some(Value::Token) => Some(Value::TokenWord(0)),
                 Some(Value::TokenWord(offset)) => Some(Value::TokenWord(offset)),
                 _ => None,
             }
@@ -552,8 +556,10 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
                     && rejects
                     && matches!(state.registers.get("x0"), Some(Value::Owner(_)))
                     && state.registers.get("x1") == Some(&Value::Reader(0))
-                    && state.registers.get("x2") == Some(&Value::Token)
-                {
+                    && matches!(
+                        state.registers.get("x2"),
+                        Some(Value::Token | Value::TokenWord(0))
+                    ) {
                     PathOutcome::Rejected
                 } else {
                     if let Some(case) = state.table_case {
@@ -653,6 +659,11 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
                     leaves.push(state.finish(row.address, PathOutcome::Gap(unresolved)));
                     break;
                 }
+                let guard = state.path.iter().rev().copied().find(|address| {
+                    indexes
+                        .get(address)
+                        .is_some_and(|&index| rows[index].operation.starts_with("b."))
+                });
                 let data = &input.read_only_data;
                 let cases: Vec<_> = (low..=high)
                     .map(|token| (token, case_address(token, base, table_entry, shift, data)))
@@ -663,7 +674,11 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
                     match address.map(|address| (address, indexes.get(&address))) {
                         Some((address, Some(&pc))) => {
                             case.pc = pc;
-                            case.table_case = Some(TableCase { table, address });
+                            case.table_case = Some(TableCase {
+                                table,
+                                address,
+                                guard,
+                            });
                             pending.push(case);
                         }
                         Some((_, None)) => {
@@ -700,8 +715,9 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
 ///
 /// The switch's default case also serves the wide token intervals that no case handles. Every
 /// token has a name, so a default case may only reject; it never becomes a field. When a wide
-/// interval does not end at the rejection, the default may be past its end. A case is then kept
-/// only when it joins a known reader, which a default does not do.
+/// interval that leaves through the table's guard does not end at the rejection, the default
+/// may be past its end. A case of that table is then kept only when it joins a known reader,
+/// which a default does not do.
 fn reject_default_cases(
     leaves: &mut [TokenPath],
     table_readers: &[(usize, TableCase)],
@@ -713,19 +729,23 @@ fn reject_default_cases(
         .iter()
         .filter(|path| path.domain[0] != path.domain[1])
         .collect();
-    let default_may_be_unseen = wide_paths
-        .iter()
-        .any(|path| path.outcome != PathOutcome::Rejected);
     let default_code: BTreeSet<u64> = wide_paths
-        .into_iter()
+        .iter()
         .flat_map(|path| path.instructions.iter().copied())
         .collect();
+    let default_may_be_unseen = |guard: Option<u64>| {
+        wide_paths.iter().any(|path| {
+            guard.is_none_or(|guard| path.instructions.contains(&guard))
+                && path.outcome != PathOutcome::Rejected
+        })
+    };
+    let mut changed = Vec::new();
     for &(index, case) in table_readers {
-        let leaf = &mut leaves[index];
+        let leaf = &leaves[index];
         let joined = matches!(leaf.outcome, PathOutcome::Reader(ReaderJoin::Joined { .. }));
         let why = if default_code.contains(&case.address) {
             "its default case reaches a call other than the rejection"
-        } else if default_may_be_unseen && !joined {
+        } else if !joined && default_may_be_unseen(case.guard) {
             "a case without a known reader may be the default, which an unresolved path hides"
         } else {
             continue;
@@ -733,7 +753,10 @@ fn reject_default_cases(
         let obstacle = Obstacle::Unsupported;
         let unresolved = Unresolved::at("jump-table-default", leaf.terminal, entry, obstacle);
         push_table_gap(gaps, root, case.table, why, unresolved);
-        leaf.outcome = PathOutcome::Gap(unresolved);
+        changed.push((index, unresolved));
+    }
+    for (index, unresolved) in changed {
+        leaves[index].outcome = PathOutcome::Gap(unresolved);
     }
 }
 

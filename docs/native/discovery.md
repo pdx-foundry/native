@@ -119,8 +119,8 @@ default", fails on `CMissionType::ReadMember`. Its table for tokens 11653–1165
 and `on_fail` and `on_cancel` share one case that reads the same effect member (`+0x430`). That case
 ties for the most frequent target. The method uses a different rule. The switch's default block also
 serves the wide token intervals that no case handles. So a table case whose address a wide interval
-also reaches is the default, and it may only reject. When a wide interval does not end at the
-rejection, the default may be past its end. A case is then kept only when it joins a known reader,
+also reaches is the default, and it may only reject. When a wide interval that leaves through
+the table's guard does not end at the rejection, the default may be past its end. A case is then kept only when it joins a known reader,
 which a default does not do. Frequency is not used: a default can hold one slot, and an alias can
 hold as many as the default. In `CMissionType` all wide intervals end at the rejection, so the
 alias gives both fields.
