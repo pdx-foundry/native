@@ -60,7 +60,7 @@ unchanged at a recorded commit and reports the automatic rate per relationship, 
 reader identity. Failures in the sweep become follow-up tickets, never fixes inside the sweep.
 
 This replaces the per-ticket freeze and held-out tests of the Milestone 2 and 3 tickets
-(2026-09-23). Their transfer tables on the method pages stay as findings.
+(2026-09-23). Each method page keeps the failed shapes of those runs as pitfalls, not the runs.
 
 ### Write a method in one task
 

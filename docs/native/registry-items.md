@@ -45,17 +45,26 @@ installation. 161 registries returned `Complete`. A follow-up run established pr
 | `common/map_modes` | Unsupported: item key layout is not established |
 | `common/game_scenarios` | Unsupported: initial loader did not run before the startup deadline stopped the game |
 
-These are historical M45-observe results. On M45-release, SDK-567 derives the key offset from each
-selected registry's item constructor before the worker reads keys. The method established 148 of 164
-named registries; 16 with unresolved key storage refuse item reads. Both `common/bypass` and
-`common/map_modes` have keys at `+0x18`. On M45-release, one selected `common/map_modes` session
-returned eight complete live keys equal to its top-level source keys; another paused before its
-loader ran and returned `Unsupported`. SDK-573 repeated that session three times and each returned
-the eight keys, complete, about 22 seconds after launch; the live case `nonstandard_key` now
-requires them. The six generator registries of SDK-540 (`common/buildings`, `common/bypass`,
-`common/districts`, `common/megastructures`, `common/situations`, `common/zones`) return complete
-items in one session about 24 seconds after launch (live case `generator_registries`); the earlier
-`Unsupported` answers came from a session that paused at the worker's deadline (see [modifier
-families](modifier-families.md#modifier-families-sdk-540), SDK-573). The worker also checks key
-uniqueness, nonempty keys and control characters. SDK-551 covers custom, nested-definition and late
-loaders outside this template method.
+These are M45-observe results. On M45-release, the worker reads keys at the offset that the item
+constructor establishes before the session starts (see [modifier
+families](modifier-families.md#item-keys)): 156 of 164 named registries. The other eight refuse an
+item read with a reason; no key is read from an unestablished offset. `common/bypass` and
+`common/map_modes` have keys at `+0x18`. The live case `nonstandard_key` requires the eight
+`common/map_modes` keys, which equal its top-level source keys, about 22 seconds after launch. The
+live case `generator_registries` requires the six generator registries (`common/buildings`,
+`common/bypass`, `common/districts`, `common/megastructures`, `common/situations`,
+`common/zones`) to return 498, 10, 147, 164, 90 and 146 complete items in one session. Their
+loaders run on the launch thread, and the session pauses after registry initialization about 24
+seconds after launch. The worker also checks key uniqueness, nonempty keys and control characters.
+SDK-551 covers custom, nested-definition and late loaders outside this template method.
+
+**Pause cause.** A registry session pauses when every registry with an active hook has returned
+from its initial loader, or at the worker's deadline (170 seconds of the default 180-second
+startup budget). Only the deadline pauses with no loader returned. A registry whose loader the
+game did not reach is then `NotLoaded`. The worker's pause record carries its cause
+(`loaders-returned`, `content-loaded` or `deadline`), the reducer refuses a loaders-returned pause
+that omits an active loader, and a `NotLoaded` answer names the cause. One M45-release session
+paused at the deadline before any of the six generator registries loaded; why it did not reach
+them is not known. `close` keeps the work directory after a read error or a failed start, but
+that session's answers were `Unsupported` and its disposal was clean, so its work directory was
+removed.
