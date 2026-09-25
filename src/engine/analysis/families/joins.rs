@@ -83,7 +83,7 @@ pub enum SiteJoin {
     Unjoined(Reason),
 }
 
-/// Why a generation call is not joined, in order of precedence.
+/// Why a generation call is not joined. [`Reason::precedence`] selects the one that a call keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Reason {
     /// The call is inside the registration function.
@@ -94,6 +94,19 @@ pub enum Reason {
     UnnamedContent,
     /// No chain of callers reaches a root.
     NoRoot,
+}
+
+impl Reason {
+    /// The rank of this reason when a call's contexts give several; the call keeps the reason of
+    /// lowest rank.
+    fn precedence(self) -> u8 {
+        match self {
+            Self::RegistrationFunction => 0,
+            Self::UnnamedInput => 1,
+            Self::UnnamedContent => 2,
+            Self::NoRoot => 3,
+        }
+    }
 }
 
 /// One chain from a root down to a generation call.
@@ -115,15 +128,15 @@ pub fn join(graph: &Graph) -> Joins {
             continue;
         }
 
-        let mut reasons = BTreeSet::new();
+        let mut reasons = Vec::new();
         let contexts = contexts(graph, site.function);
         if contexts.is_empty() {
-            reasons.insert(Reason::NoRoot);
+            reasons.push(Reason::NoRoot);
         }
 
         for context in contexts {
             let RootOf::Registry { registry, receiver } = &graph.roots[&context.root] else {
-                reasons.insert(Reason::UnnamedContent);
+                reasons.push(Reason::UnnamedContent);
                 continue;
             };
             let registry = joins.registries.entry(registry.clone()).or_default();
@@ -133,7 +146,7 @@ pub fn join(graph: &Graph) -> Joins {
                 .any(|function| graph.unnamed_inputs.contains(function))
             {
                 registry.unnamed_input = true;
-                reasons.insert(Reason::UnnamedInput);
+                reasons.push(Reason::UnnamedInput);
                 continue;
             }
 
@@ -146,8 +159,9 @@ pub fn join(graph: &Graph) -> Joins {
             registry.path.extend(context.path);
         }
 
-        let join = match reasons.first() {
-            Some(reason) => SiteJoin::Unjoined(*reason),
+        let kept = reasons.into_iter().min_by_key(|reason| reason.precedence());
+        let join = match kept {
+            Some(reason) => SiteJoin::Unjoined(reason),
             None => SiteJoin::Joined,
         };
         joins.sites.insert(site.call, join);
