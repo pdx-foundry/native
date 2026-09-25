@@ -1,5 +1,5 @@
-//! What one executable image states without a target record: the selected slice, its symbols,
-//! its read-only strings and its code. Fixups are a separate layer that can fail on its own.
+//! What one executable image states without a target record: the selected slice, its symbols
+//! and its read-only strings. Fixups are a separate layer that can fail on its own.
 use std::collections::BTreeMap;
 
 use object::read::macho::{MachHeader, MachOFile64};
@@ -57,11 +57,6 @@ impl Inventory<'_> {
     /// done only when asked.
     pub fn identity(&self) -> Result<ImageIdentity, OpenError> {
         super::identify(self.bytes, &super::hash(self.bytes))
-    }
-
-    /// Executable code at `address`, under the same rules as [`super::code_range`].
-    pub fn code_range(&self, address: u64, length: u64) -> Result<Vec<u8>, AnalysisError> {
-        super::text_range(&self.file, address, length)
     }
 
     /// `length` bytes at `address` from the one section that holds them.

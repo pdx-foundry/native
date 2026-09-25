@@ -54,15 +54,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     let path = root.path().join("image");
     fs::write(&path, support::macho(&support::code())).unwrap();
     let (installation, _) = Installation::open(&path).unwrap();
-    // These tests read only the executable bytes, so the layout is never used.
-    let layout = SchedulerLayout {
-        start: 0,
-        end: 0,
-        offset: 0,
-        stride: 48,
-        count: 0,
-    };
-    let analysis = BoundAnalysis::new(layout, None, None, installation);
+    let analysis = BoundAnalysis::new(None, None, installation);
     (root, analysis)
 }
 
@@ -420,18 +412,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
     fs::write(&replacement, &image).unwrap();
     symlink(&original, &hint).unwrap();
     let (installation, _) = Installation::open(&hint).unwrap();
-    let analysis = BoundAnalysis::new(
-        SchedulerLayout {
-            start: 0,
-            end: 0,
-            offset: 0,
-            stride: 48,
-            count: 0,
-        },
-        None,
-        None,
-        installation,
-    );
+    let analysis = BoundAnalysis::new(None, None, installation);
     assert_eq!(analysis.executable().unwrap(), image);
     fs::remove_file(&hint).unwrap();
     symlink(&replacement, &hint).unwrap();

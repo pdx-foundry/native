@@ -7,12 +7,11 @@ use std::{
 
 use super::binary::families::FamilyIndex;
 use super::{binary, installation::Installation};
-use crate::engine::analysis::discovery::{SchedulerLayout, Symbol};
+use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::families::DatabaseLayout;
 use crate::{AnalysisError, UnavailableReason};
 
 pub(crate) struct BoundAnalysis {
-    layout: SchedulerLayout,
     declarations: Option<&'static super::targets::DeclarationRecipe>,
     /// Where a template database holds its items, when the build has a template layout.
     database: Option<DatabaseLayout>,
@@ -433,13 +432,11 @@ impl BoundAnalysis {
     }
 
     pub(super) fn new(
-        layout: SchedulerLayout,
         declarations: Option<&'static super::targets::DeclarationRecipe>,
         database: Option<DatabaseLayout>,
         installation: Installation,
     ) -> Self {
         Self {
-            layout,
             declarations,
             database,
             installation,
@@ -523,7 +520,7 @@ pub(crate) struct NamedCandidate {
 impl BoundAnalysis {
     fn build_catalog(&self, bytes: &[u8]) -> Result<Catalog, AnalysisError> {
         use crate::engine::analysis::{directories, discovery};
-        let input = binary::discovery::read(bytes, &self.layout)?;
+        let input = binary::discovery::read(bytes)?;
         let records = discovery::candidates(&input.symbols);
         let constructors = binary::constructors::read(bytes, &input, &records)?;
         let anchors = binary::constructors::anchors(&input);

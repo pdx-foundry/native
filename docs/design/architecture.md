@@ -70,9 +70,9 @@ src/
       unavailable/                 every other host: live operations are unsupported
     binary.rs                      thin object-crate integration and identity capture
     binary/                        executable readers for the static methods, including declarations.rs and language.rs
-      inventory.rs                 symbols, strings and code of any supported image; no target record
+      inventory.rs                 symbols and strings of any supported image; no target record
       fixups.rs                    chained fixups, or a diagnostic that names the unread form
-      discovery.rs                 registry discovery input: inventory, required fixups, scheduler window, vtables
+      discovery.rs                 registry discovery input: inventory, required fixups, vtables
     inspect.rs                     developer inspector, re-exported as the hidden internals::inspect
     machine.rs                     decoder/call-mechanism resolution
     machine/

@@ -4,12 +4,9 @@ pub mod declarations;
 pub mod decode;
 pub mod defines;
 pub mod directories;
+pub mod discovery;
 pub mod evaluate;
 pub mod families;
-// The startup scheduler remains a bounded test method while shared-template candidates are used
-// by the current static API.
-#[allow(dead_code)]
-pub mod discovery;
 pub mod fields;
 pub mod localization;
 pub mod modifier_table;

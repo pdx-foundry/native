@@ -56,23 +56,14 @@ pub(super) fn synthetic_variation() -> ResolvedObservation {
 }
 
 /// The static methods of one build: the executable identities that they check before each
-/// read, and the recipe's scheduling-table layout.
+/// read.
 pub(super) fn analysis(
     image: &ImageIdentity,
     installation: super::installation::Installation,
 ) -> Result<super::BoundAnalysis, OpenError> {
     machine::static_methods(image.architecture)?;
     let target = targets::lookup(image)?;
-    let recipe = target.discovery;
-    let layout = crate::engine::analysis::discovery::SchedulerLayout {
-        start: recipe.start,
-        end: recipe.end,
-        offset: recipe.offset,
-        stride: recipe.stride,
-        count: recipe.count,
-    };
     Ok(super::BoundAnalysis::new(
-        layout,
         target.declarations,
         groups::registry_layout(target.groups).map(groups::RegistryLayout::database),
         installation,

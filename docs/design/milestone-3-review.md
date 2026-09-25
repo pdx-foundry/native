@@ -349,9 +349,10 @@ This cleanup first did not hold up Milestone 4. Since 2026-09-24, N11 (SDK-602),
 before Milestone 4 ([section 8.1](#81-milestone-35-amendment-2026-09-24)). A9 stays with SDK-597 in
 Milestone 4.
 
-- **N11:** a separate conditional change, after SDK-579 or independently. Replace the scheduler
-  code-window dependency and pass parity before deleting scheduler code. Keep the live candidate
-  logic and preserve recovered layouts and failed cases.
+- **N11:** done in SDK-602. No live method read the scheduler code window, so the discovery input
+  no longer takes one; every static answer on M45-release stayed byte-identical. The scheduler
+  method is removed, the candidate logic stays, and the table facts and cases are in
+  [registry fields](../native/registry-fields.md#scheduler-table-on-m45-release).
 - **N12, A7 and A8:** remove stale wording and unused files after checking references and tests.
 - **N13:** remove the old sweep JSON only after M1 exists and any distinct old findings have a
   usable retained home. Keep the old Markdown summary.

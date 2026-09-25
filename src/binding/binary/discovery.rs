@@ -1,47 +1,25 @@
 use crate::AnalysisError;
-use crate::engine::analysis::discovery::{SchedulerLayout, StaticInput, VtableWitness};
+use crate::engine::analysis::discovery::{StaticInput, VtableWitness};
 use std::collections::BTreeMap;
 
 use super::fixups::{self, Fixups};
 use super::inventory::{self, Inventory};
 use super::u64_at;
 
-/// The image inventory, its required fixups, the scheduler window of the verified layout and the
-/// vtable witnesses.
-pub(in crate::binding) fn read(
-    bytes: &[u8],
-    layout: &SchedulerLayout,
-) -> Result<StaticInput, AnalysisError> {
+/// The image inventory, its required fixups and the vtable witnesses.
+pub(in crate::binding) fn read(bytes: &[u8]) -> Result<StaticInput, AnalysisError> {
     let inventory = inventory::read(bytes).map_err(|_| AnalysisError::InvalidRange)?;
     let fixups = fixups::read(&inventory).map_err(|_| AnalysisError::InvalidRange)?;
-    let code = scheduler_window(&inventory, layout)?;
     let vtables = vtables(&inventory, &fixups)?;
 
     Ok(StaticInput {
         symbols: inventory.symbols,
-        code,
-        layout: layout.clone(),
         pointers: fixups.pointers,
         global_bindings: fixups.bindings,
         bound_slots: fixups.bound,
         strings: inventory.strings,
         vtables,
     })
-}
-
-fn scheduler_window(
-    inventory: &Inventory<'_>,
-    layout: &SchedulerLayout,
-) -> Result<Vec<u8>, AnalysisError> {
-    let length = layout
-        .end
-        .checked_sub(layout.start)
-        .ok_or(AnalysisError::InvalidRange)?;
-    match length {
-        0 => Ok(Vec::new()),
-        1..=65536 => inventory.code_range(layout.start, length),
-        _ => Err(AnalysisError::InvalidRange),
-    }
 }
 
 /// Each vtable address point whose offset-to-top is plausible and whose type-info and member
