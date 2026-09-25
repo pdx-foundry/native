@@ -121,3 +121,13 @@ fn removed_scheduler_receiver_is_not_an_empty_success() {
             .all(|r| r.status == "gap")
     );
 }
+
+#[test]
+fn empty_scheduler_window_gives_gap_rows() {
+    let mut input = input();
+    input.code.clear();
+    input.layout.start = input.layout.end;
+    let (rows, _) = scheduler(&input).unwrap();
+    assert_eq!(rows.len(), input.layout.count);
+    assert!(rows.iter().all(|r| r.status == "gap"));
+}

@@ -1,5 +1,5 @@
-//! Bounded ARM64 instruction decoding. Every byte of a range is accounted for, or the range is
-//! an error.
+//! ARM64 instruction decoding. Every byte of a range is accounted for, or the range is an
+//! error.
 use capstone::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -29,59 +29,68 @@ impl std::fmt::Display for DecodeError {
 }
 impl std::error::Error for DecodeError {}
 
-/// Decode a nonempty, aligned ARM64 range of at most 4096 bytes. Unknown instructions,
-/// trailing bytes, and address overflow are errors; no bytes are skipped or invented.
-pub fn decode_arm64(bytes: &[u8], address: u64) -> Result<Vec<Instruction>, DecodeError> {
-    if bytes.is_empty()
-        || bytes.len() > 4096
-        || !bytes.len().is_multiple_of(4)
-        || !address.is_multiple_of(4)
-        || address.checked_add(bytes.len() as u64).is_none()
-    {
-        return Err(DecodeError(
-            "Invalid bounded ARM64 instruction range".into(),
-        ));
-    }
-    let decoder = Capstone::new()
+/// The most bytes that the decoder receives at once. Capstone holds every instruction of one call
+/// in memory, so a long range is decoded in parts of this size.
+const PART_BYTES: usize = 4096;
+
+thread_local! {
+    /// The pinned decoder, built once for each thread because a Capstone handle cannot move
+    /// between threads.
+    static DECODER: Result<Capstone, DecodeError> = Capstone::new()
         .arm64()
         .mode(arch::arm64::ArchMode::Arm)
         .build()
-        .map_err(|error| DecodeError(error.to_string()))?;
-    let decoded = decoder
-        .disasm_all(bytes, address)
-        .map_err(|error| DecodeError(error.to_string()))?;
-    if decoded.len() * 4 != bytes.len() {
-        return Err(DecodeError(
-            "Decoder did not consume the complete range".into(),
-        ));
+        .map_err(|error| DecodeError(error.to_string()));
+}
+
+/// Decode an aligned ARM64 range of any length; an empty range has no instructions. Unknown
+/// instructions, trailing bytes, and address overflow are errors; no bytes are skipped or
+/// invented.
+pub fn decode_arm64(bytes: &[u8], address: u64) -> Result<Vec<Instruction>, DecodeError> {
+    if !bytes.len().is_multiple_of(4)
+        || !address.is_multiple_of(4)
+        || address.checked_add(bytes.len() as u64).is_none()
+    {
+        return Err(DecodeError("Invalid ARM64 instruction range".into()));
     }
-    decoded
-        .iter()
-        .enumerate()
-        .map(|(index, instruction)| {
-            if instruction.address() != address + index as u64 * 4 {
-                return Err(DecodeError("Noncontiguous decoded instruction".into()));
+    DECODER.with(|decoder| {
+        let decoder = decoder.as_ref().map_err(Clone::clone)?;
+        let mut rows = Vec::with_capacity(bytes.len() / 4);
+        for (index, part) in bytes.chunks(PART_BYTES).enumerate() {
+            let decoded = decoder
+                .disasm_all(part, address + (index * PART_BYTES) as u64)
+                .map_err(|error| DecodeError(error.to_string()))?;
+            if decoded.len() * 4 != part.len() {
+                return Err(DecodeError(
+                    "Decoder did not consume the complete range".into(),
+                ));
             }
-            Ok(Instruction {
-                address: instruction.address(),
-                bytes: instruction
-                    .bytes()
-                    .try_into()
-                    .map_err(|_| DecodeError("Invalid ARM64 instruction size".into()))?,
-                operation: instruction
-                    .mnemonic()
-                    .ok_or_else(|| DecodeError("Missing instruction mnemonic".into()))?
-                    .to_ascii_lowercase(),
-                operands: instruction
-                    .op_str()
-                    .unwrap_or_default()
-                    .chars()
-                    .filter(|character| !character.is_ascii_whitespace())
-                    .collect::<String>()
-                    .to_ascii_lowercase(),
-            })
-        })
-        .collect()
+            for instruction in decoded.iter() {
+                if instruction.address() != address + rows.len() as u64 * 4 {
+                    return Err(DecodeError("Noncontiguous decoded instruction".into()));
+                }
+                rows.push(Instruction {
+                    address: instruction.address(),
+                    bytes: instruction
+                        .bytes()
+                        .try_into()
+                        .map_err(|_| DecodeError("Invalid ARM64 instruction size".into()))?,
+                    operation: instruction
+                        .mnemonic()
+                        .ok_or_else(|| DecodeError("Missing instruction mnemonic".into()))?
+                        .to_ascii_lowercase(),
+                    operands: instruction
+                        .op_str()
+                        .unwrap_or_default()
+                        .chars()
+                        .filter(|character| !character.is_ascii_whitespace())
+                        .collect::<String>()
+                        .to_ascii_lowercase(),
+                });
+            }
+        }
+        Ok(rows)
+    })
 }
 
 /// The destination register and page of an `adrp` word at `address`.

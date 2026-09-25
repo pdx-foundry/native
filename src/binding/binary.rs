@@ -60,8 +60,7 @@ pub(super) fn selected_slice(bytes: &[u8]) -> Result<&[u8], OpenError> {
     }
 }
 
-/// `length` bytes of executable code at `address`: at most 4096, aligned, and inside one text
-/// section.
+/// `length` bytes of executable code at `address`: nonempty, aligned, and inside one text section.
 pub(super) fn code_range(
     bytes: &[u8],
     address: u64,
@@ -77,7 +76,7 @@ fn text_range(
     address: u64,
     length: u64,
 ) -> Result<Vec<u8>, AnalysisError> {
-    if length == 0 || length > 4096 || !length.is_multiple_of(4) || !address.is_multiple_of(4) {
+    if length == 0 || !length.is_multiple_of(4) || !address.is_multiple_of(4) {
         return Err(AnalysisError::InvalidRange);
     }
     let end = address

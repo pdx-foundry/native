@@ -111,12 +111,9 @@ impl Code {
     pub fn decode(ranges: &[(u64, &[u8])]) -> Result<Self, InputError> {
         let mut rows = Vec::new();
         for (address, bytes) in ranges {
-            for (index, chunk) in bytes.chunks(4096).enumerate() {
-                rows.extend(
-                    decode_arm64(chunk, address + (index * 4096) as u64)
-                        .map_err(|error| InputError(error.to_string()))?,
-                );
-            }
+            rows.extend(
+                decode_arm64(bytes, *address).map_err(|error| InputError(error.to_string()))?,
+            );
         }
         Ok(Self::from_rows(rows))
     }
@@ -879,31 +876,22 @@ impl<'a> Machine<'a> {
 
     /// Run the instruction at `pc`.
     fn step(&mut self, pc: u64, operation: &Operation) -> Result<Flow, Halt> {
-        let Operation { mnemonic, operands } = operation;
-        let operands = operands.as_slice();
-        let mnemonic = &ordered_access(mnemonic).to_owned();
-        match (mnemonic.as_str(), operands) {
-            ("nop", []) => {}
-            (
-                "movi",
-                [
-                    Operand::Register(Register {
-                        name: Name::Vector(index),
-                        bytes,
-                        lane,
-                        ..
-                    }),
-                    Operand::Immediate(value),
-                    rest @ ..,
-                ],
-            ) => {
-                let shift = match rest {
-                    [] => 0,
-                    [Operand::Shift(Shift::Left, amount)] => *amount,
-                    _ => return Err(Halt::unsupported("movi-shift")),
-                };
-                self.vectors[*index] = Some(replicate((*value as u64) << shift, *lane, *bytes));
-            }
+        let mnemonic = ordered_access(&operation.mnemonic);
+        let operands = operation.operands.as_slice();
+        if self.step_move(mnemonic, operands)?
+            || self.step_integer(mnemonic, operands)?
+            || self.step_condition(mnemonic, operands)?
+            || self.step_vector(mnemonic, operands)?
+            || self.step_memory(mnemonic, operands)?
+        {
+            return Ok(Flow::Next);
+        }
+        self.step_control(pc, mnemonic, operands)
+    }
+
+    /// Run a move of a value or an address into a register. `false` when it is not one.
+    fn step_move(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
+        match (mnemonic, operands) {
             ("mov" | "movz", [destination, source]) => {
                 let value = self.operand(source)?;
                 self.assign(destination, value)?;
@@ -924,6 +912,17 @@ impl<'a> Machine<'a> {
                     .map(|prior| (prior & !mask) | (((*part as u64) & 0xffff) << shift));
                 self.assign(destination, value)?;
             }
+            ("adr" | "adrp", [destination, Operand::Immediate(address)]) => {
+                self.assign(destination, Some(*address as u64))?;
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// Run integer arithmetic, bit-field or extension. `false` when the instruction is not one.
+    fn step_integer(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
+        match (mnemonic, operands) {
             (
                 "add" | "sub" | "and" | "orr" | "eor" | "lsl" | "lsr" | "asr" | "mul",
                 [destination, left, right, rest @ ..],
@@ -1015,6 +1014,67 @@ impl<'a> Machine<'a> {
                 });
                 self.assign(destination, value)?;
             }
+            (
+                "ubfx",
+                [
+                    destination,
+                    source,
+                    Operand::Immediate(lsb),
+                    Operand::Immediate(width),
+                ],
+            ) => {
+                let value = self
+                    .operand(source)?
+                    .map(|value| (value >> *lsb) & low_bits(*width as u64));
+                self.assign(destination, value)?;
+            }
+            (
+                "bfi",
+                [
+                    destination,
+                    source,
+                    Operand::Immediate(lsb),
+                    Operand::Immediate(width),
+                ],
+            ) => {
+                let field = low_bits(*width as u64) << *lsb;
+                let value = self
+                    .operand(destination)?
+                    .zip(self.operand(source)?)
+                    .map(|(prior, source)| (prior & !field) | ((source << *lsb) & field));
+                self.assign(destination, value)?;
+            }
+            ("madd" | "msub" | "smaddl" | "umaddl", [destination, left, right, addend]) => {
+                let widen = |value: u64| match mnemonic {
+                    "smaddl" => extend("sxtw", value),
+                    "umaddl" => extend("uxtw", value),
+                    _ => value,
+                };
+                let product = self
+                    .operand(left)?
+                    .zip(self.operand(right)?)
+                    .map(|(left, right)| widen(left).wrapping_mul(widen(right)));
+                let value = product.zip(self.operand(addend)?).map(|(product, addend)| {
+                    if mnemonic == "msub" {
+                        addend.wrapping_sub(product)
+                    } else {
+                        addend.wrapping_add(product)
+                    }
+                });
+                self.assign(destination, value)?;
+            }
+            ("sxtb" | "sxth" | "sxtw" | "uxtb" | "uxth", [destination, source]) => {
+                let value = self.operand(source)?.map(|value| extend(mnemonic, value));
+                self.assign(destination, value)?;
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// Run a comparison or a conditional select. `false` when the instruction is not one.
+    fn step_condition(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
+        match (mnemonic, operands) {
             ("cinc" | "cneg", [destination, source, Operand::Condition(condition)]) => {
                 let value = self.operand(source)?;
                 let value = if self.holds(*condition)? {
@@ -1029,6 +1089,86 @@ impl<'a> Machine<'a> {
                     value
                 };
                 self.assign(destination, value)?;
+            }
+            ("cmp" | "cmn" | "tst", [left, right, rest @ ..]) => {
+                let wide = left.is_wide();
+                let left = self.operand(left)?;
+                let right = self.modified(right, rest)?;
+                self.set_flags(
+                    left.zip(right)
+                        .map(|(left, right)| Flags::compare(mnemonic, left, right, wide)),
+                );
+            }
+            (
+                "ccmp" | "ccmn",
+                [
+                    left,
+                    right,
+                    Operand::Immediate(fallback),
+                    Operand::Condition(condition),
+                ],
+            ) => {
+                if self.holds(*condition)? {
+                    let wide = left.is_wide();
+                    let left = self.operand(left)?;
+                    let right = self.operand(right)?;
+                    let kind = if mnemonic == "ccmp" { "cmp" } else { "cmn" };
+                    self.set_flags(
+                        left.zip(right)
+                            .map(|(left, right)| Flags::compare(kind, left, right, wide)),
+                    );
+                } else {
+                    self.set_flags(Some(Flags::from_bits(*fallback as u8)));
+                }
+            }
+            (
+                "csel" | "csinc" | "csinv" | "csneg",
+                [destination, left, right, Operand::Condition(condition)],
+            ) => {
+                let wide = destination.is_wide();
+                let value = if self.holds(*condition)? {
+                    self.operand(left)?
+                } else {
+                    self.operand(right)?.map(|value| match mnemonic {
+                        "csinc" => value.wrapping_add(1),
+                        "csinv" => !value,
+                        "csneg" => value.wrapping_neg(),
+                        _ => value,
+                    })
+                };
+                self.assign(destination, value.map(|value| truncate(value, wide)))?;
+            }
+            ("cset", [destination, Operand::Condition(condition)]) => {
+                let value = u64::from(self.holds(*condition)?);
+                self.assign(destination, Some(value))?;
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// Run a vector or floating-point instruction. `false` when the instruction is not one.
+    fn step_vector(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
+        match (mnemonic, operands) {
+            (
+                "movi",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        lane,
+                        ..
+                    }),
+                    Operand::Immediate(value),
+                    rest @ ..,
+                ],
+            ) => {
+                let shift = match rest {
+                    [] => 0,
+                    [Operand::Shift(Shift::Left, amount)] => *amount,
+                    _ => return Err(Halt::unsupported("movi-shift")),
+                };
+                self.vectors[*index] = Some(replicate((*value as u64) << shift, *lane, *bytes));
             }
             ("fmov", [Operand::Register(destination), Operand::Register(source)]) => {
                 let value = match source.name {
@@ -1181,114 +1321,14 @@ impl<'a> Machine<'a> {
                             (low | high) & mask
                         });
             }
-            (
-                "ubfx",
-                [
-                    destination,
-                    source,
-                    Operand::Immediate(lsb),
-                    Operand::Immediate(width),
-                ],
-            ) => {
-                let value = self
-                    .operand(source)?
-                    .map(|value| (value >> *lsb) & low_bits(*width as u64));
-                self.assign(destination, value)?;
-            }
-            (
-                "bfi",
-                [
-                    destination,
-                    source,
-                    Operand::Immediate(lsb),
-                    Operand::Immediate(width),
-                ],
-            ) => {
-                let field = low_bits(*width as u64) << *lsb;
-                let value = self
-                    .operand(destination)?
-                    .zip(self.operand(source)?)
-                    .map(|(prior, source)| (prior & !field) | ((source << *lsb) & field));
-                self.assign(destination, value)?;
-            }
-            ("madd" | "msub" | "smaddl" | "umaddl", [destination, left, right, addend]) => {
-                let widen = |value: u64| match mnemonic.as_str() {
-                    "smaddl" => extend("sxtw", value),
-                    "umaddl" => extend("uxtw", value),
-                    _ => value,
-                };
-                let product = self
-                    .operand(left)?
-                    .zip(self.operand(right)?)
-                    .map(|(left, right)| widen(left).wrapping_mul(widen(right)));
-                let value = product.zip(self.operand(addend)?).map(|(product, addend)| {
-                    if mnemonic == "msub" {
-                        addend.wrapping_sub(product)
-                    } else {
-                        addend.wrapping_add(product)
-                    }
-                });
-                self.assign(destination, value)?;
-            }
-            ("sxtb" | "sxth" | "sxtw" | "uxtb" | "uxth", [destination, source]) => {
-                let value = self.operand(source)?.map(|value| extend(mnemonic, value));
-                self.assign(destination, value)?;
-            }
-            ("cmp" | "cmn" | "tst", [left, right, rest @ ..]) => {
-                let wide = left.is_wide();
-                let left = self.operand(left)?;
-                let right = self.modified(right, rest)?;
-                self.set_flags(
-                    left.zip(right)
-                        .map(|(left, right)| Flags::compare(mnemonic, left, right, wide)),
-                );
-            }
-            (
-                "ccmp" | "ccmn",
-                [
-                    left,
-                    right,
-                    Operand::Immediate(fallback),
-                    Operand::Condition(condition),
-                ],
-            ) => {
-                if self.holds(*condition)? {
-                    let wide = left.is_wide();
-                    let left = self.operand(left)?;
-                    let right = self.operand(right)?;
-                    let kind = if mnemonic == "ccmp" { "cmp" } else { "cmn" };
-                    self.set_flags(
-                        left.zip(right)
-                            .map(|(left, right)| Flags::compare(kind, left, right, wide)),
-                    );
-                } else {
-                    self.set_flags(Some(Flags::from_bits(*fallback as u8)));
-                }
-            }
-            (
-                "csel" | "csinc" | "csinv" | "csneg",
-                [destination, left, right, Operand::Condition(condition)],
-            ) => {
-                let wide = destination.is_wide();
-                let value = if self.holds(*condition)? {
-                    self.operand(left)?
-                } else {
-                    self.operand(right)?.map(|value| match mnemonic.as_str() {
-                        "csinc" => value.wrapping_add(1),
-                        "csinv" => !value,
-                        "csneg" => value.wrapping_neg(),
-                        _ => value,
-                    })
-                };
-                self.assign(destination, value.map(|value| truncate(value, wide)))?;
-            }
-            ("cset", [destination, Operand::Condition(condition)]) => {
-                let value = u64::from(self.holds(*condition)?);
-                self.assign(destination, Some(value))?;
-            }
-            ("adr" | "adrp", [destination, Operand::Immediate(address)]) => {
-                self.assign(destination, Some(*address as u64))?;
-            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// Run a load or a store. `false` when the instruction is not one.
+    fn step_memory(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
+        match (mnemonic, operands) {
             (
                 "ldr" | "ldur",
                 [
@@ -1409,6 +1449,20 @@ impl<'a> Machine<'a> {
                     None => self.store_to_unknown(&[first, second]),
                 }
             }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// Run a branch, call, return or trap, or a `nop`. Every other instruction is unsupported.
+    fn step_control(
+        &mut self,
+        pc: u64,
+        mnemonic: &str,
+        operands: &[Operand],
+    ) -> Result<Flow, Halt> {
+        match (mnemonic, operands) {
+            ("nop", []) => {}
             ("b", [Operand::Immediate(target)]) => return Ok(Flow::Jump(*target as u64)),
             (branch, [Operand::Immediate(target)]) if branch.starts_with("b.") => {
                 let condition =

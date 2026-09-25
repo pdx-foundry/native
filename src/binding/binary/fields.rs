@@ -46,18 +46,10 @@ pub(in crate::binding) fn read(
             gaps.push(format!("unsupported function extent {name}"));
             continue;
         }
-        let mut code = Vec::new();
-        for offset in (0..length).step_by(4096) {
-            code.extend(super::code_range(
-                bytes,
-                start + offset,
-                (length - offset).min(4096),
-            )?);
-        }
         functions.push(Function {
             name: name.into(),
             address: start,
-            code,
+            code: super::code_range(bytes, start, length)?,
         });
     }
     Ok(FieldInput {

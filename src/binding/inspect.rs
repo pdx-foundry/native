@@ -647,31 +647,29 @@ struct Word {
     instruction: Option<Instruction>,
 }
 
-/// Decode `code` in the decoder's 4096-byte ranges. A range that does not decode is decoded
-/// word by word, so one data word does not hide the rest.
+/// Decode `code`. When it does not decode, each word is decoded on its own, so one data word
+/// does not hide the rest.
 fn decoded_words(code: &[u8], start: u64) -> Vec<Word> {
-    let mut words = Vec::new();
+    let decoded = decode_arm64(code, start).ok();
 
-    for (index, chunk) in code.chunks(4096).enumerate() {
-        let address = start + index as u64 * 4096;
-        let decoded = decode_arm64(chunk, address).ok();
-
-        for (offset, bytes) in chunk.as_chunks::<4>().0.iter().enumerate() {
-            let at = address + offset as u64 * 4;
+    code.as_chunks::<4>()
+        .0
+        .iter()
+        .enumerate()
+        .map(|(offset, bytes)| {
+            let at = start + offset as u64 * 4;
             let instruction = match &decoded {
                 Some(rows) => Some(rows[offset].clone()),
                 None => decode_arm64(bytes, at).ok().map(|mut rows| rows.remove(0)),
             };
 
-            words.push(Word {
+            Word {
                 address: at,
                 value: u32::from_le_bytes(*bytes),
                 instruction,
-            });
-        }
-    }
-
-    words
+            }
+        })
+        .collect()
 }
 
 /// Whether `rest` is a function's parameter list and qualifiers, such as `(CReader&, int)` or

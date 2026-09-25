@@ -104,13 +104,8 @@ pub(in crate::binding) fn scopes(
         "CEventTarget::ParseForSpecialValues(EScopeType, CString const&)",
     )?;
     let (address, special_code) = text.function(special_values)?;
-    let mut special_rows = Vec::new();
-    for (index, chunk) in special_code.chunks(4096).enumerate() {
-        special_rows.extend(
-            decode_arm64(chunk, address + (index * 4096) as u64)
-                .map_err(|_| AnalysisError::InvalidRange)?,
-        );
-    }
+    let special_rows =
+        decode_arm64(special_code, address).map_err(|_| AnalysisError::InvalidRange)?;
 
     Ok(ScopeInput {
         tokens: text.token_names(symbols, strings)?,
@@ -252,13 +247,8 @@ fn decoded<'a>(text: &Text, starts: impl IntoIterator<Item = &'a u64>) -> Code {
         let Ok((address, code)) = text.function(start) else {
             continue;
         };
-        let function: Result<Vec<_>, _> = code
-            .chunks(4096)
-            .enumerate()
-            .map(|(index, chunk)| decode_arm64(chunk, address + (index * 4096) as u64))
-            .collect();
-        if let Ok(function) = function {
-            rows.extend(function.into_iter().flatten());
+        if let Ok(function) = decode_arm64(code, address) {
+            rows.extend(function);
         }
     }
     Code::from_rows(rows)

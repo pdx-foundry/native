@@ -37,16 +37,11 @@ fn scheduler_window(
         .end
         .checked_sub(layout.start)
         .ok_or(AnalysisError::InvalidRange)?;
-    if length > 65536 {
-        return Err(AnalysisError::InvalidRange);
+    match length {
+        0 => Ok(Vec::new()),
+        1..=65536 => inventory.code_range(layout.start, length),
+        _ => Err(AnalysisError::InvalidRange),
     }
-
-    let mut code = Vec::new();
-    for offset in (0..length).step_by(4096) {
-        code.extend(inventory.code_range(layout.start + offset, (length - offset).min(4096))?);
-    }
-
-    Ok(code)
 }
 
 /// Each vtable address point whose offset-to-top is plausible and whose type-info and member
