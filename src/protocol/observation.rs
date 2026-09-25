@@ -61,18 +61,31 @@ pub(crate) struct ResumeGrant {
     pub worker: u32,
 }
 
+/// The worker's `CONTROL` map: each observation control's wire value under its Python name.
+///
+/// `ObservationControl` is the one list of controls. Its schema has one documented `const`
+/// alternative per variant, and the Python name is the wire value in snake case.
+fn python_controls() -> serde_json::Map<String, serde_json::Value> {
+    let schema = schemars::schema_for!(crate::protocol::session::ObservationControl);
+    let variants = schema
+        .get("oneOf")
+        .and_then(serde_json::Value::as_array)
+        .expect("each observation control is a documented unit variant");
+
+    variants
+        .iter()
+        .map(|variant| {
+            let wire = variant["const"]
+                .as_str()
+                .expect("each observation control has a string wire value");
+
+            (wire.replace('-', "_"), wire.into())
+        })
+        .collect()
+}
+
 pub(crate) fn python_bindings() -> String {
-    use crate::protocol::session::ObservationControl;
-    let controls = serde_json::json!({
-        "normal": ObservationControl::Normal,
-        "missing_hook": ObservationControl::MissingHook,
-        "late_hook": ObservationControl::LateHook,
-        "dropped_record": ObservationControl::DroppedRecord,
-        "missing_terminal": ObservationControl::MissingTerminal,
-        "access_failure": ObservationControl::AccessFailure,
-        "worker_loss": ObservationControl::WorkerLoss,
-        "worker_loss_before_activation": ObservationControl::WorkerLossBeforeActivation,
-    });
+    let controls = python_controls();
     let schemas = serde_json::json!({
         "request": schemars::schema_for!(WorkerRequest),
         "hello": schemars::schema_for!(WorkerHello),

@@ -1,4 +1,12 @@
 
+# How many of a schema's alternatives must accept a value, by combinator.
+ALTERNATIVE_RULES = {
+    'anyOf': lambda matches, alternatives: matches > 0,
+    'oneOf': lambda matches, alternatives: matches == 1,
+    'allOf': lambda matches, alternatives: matches == alternatives,
+}
+
+
 def validate(value, schema, root=None):
     """Validate the generated schema subset; unsupported constraints fail closed."""
     root = schema if root is None else root
@@ -16,7 +24,7 @@ def validate(value, schema, root=None):
         if not schema['$ref'].startswith(prefix):
             raise ValueError('external schema reference')
         validate(value, root['$defs'][schema['$ref'][len(prefix):]], root)
-    for key in ('anyOf', 'oneOf', 'allOf'):
+    for key, accepts in ALTERNATIVE_RULES.items():
         if key in schema:
             matches = 0
             for alternative in schema[key]:
@@ -25,8 +33,7 @@ def validate(value, schema, root=None):
                     matches += 1
                 except ValueError:
                     pass
-            expected = len(schema[key]) if key == 'allOf' else 1
-            if (key == 'anyOf' and matches == 0) or (key != 'anyOf' and matches != expected):
+            if not accepts(matches, len(schema[key])):
                 raise ValueError('schema alternatives do not match')
     if 'const' in schema and value != schema['const']:
         raise ValueError('constant mismatch')
