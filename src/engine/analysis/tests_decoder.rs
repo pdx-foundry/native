@@ -5,7 +5,6 @@ use crate::engine::analysis::decode::decode_arm64;
 #[test]
 fn decoder_requires_a_complete_aligned_range() {
     for (bytes, address) in [
-        (vec![], 0),
         (vec![0; 3], 0),
         (code(), 1),
         (code(), u64::MAX - 3),
@@ -13,6 +12,11 @@ fn decoder_requires_a_complete_aligned_range() {
     ] {
         assert!(decode_arm64(&bytes, address).is_err());
     }
+}
+
+#[test]
+fn decoder_gives_no_instructions_for_an_empty_range() {
+    assert_eq!(decode_arm64(&[], 0x1000), Ok(Vec::new()));
 }
 
 #[test]

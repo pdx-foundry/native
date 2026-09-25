@@ -43,11 +43,11 @@ thread_local! {
         .map_err(|error| DecodeError(error.to_string()));
 }
 
-/// Decode a nonempty, aligned ARM64 range of any length. Unknown instructions, trailing bytes,
-/// and address overflow are errors; no bytes are skipped or invented.
+/// Decode an aligned ARM64 range of any length; an empty range has no instructions. Unknown
+/// instructions, trailing bytes, and address overflow are errors; no bytes are skipped or
+/// invented.
 pub fn decode_arm64(bytes: &[u8], address: u64) -> Result<Vec<Instruction>, DecodeError> {
-    if bytes.is_empty()
-        || !bytes.len().is_multiple_of(4)
+    if !bytes.len().is_multiple_of(4)
         || !address.is_multiple_of(4)
         || address.checked_add(bytes.len() as u64).is_none()
     {
