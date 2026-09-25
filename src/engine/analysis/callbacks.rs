@@ -60,6 +60,15 @@ pub struct CallbackLayout {
     pub declaration_token_offset: u64,
 }
 
+impl CallbackLayout {
+    fn rule_array(self, family: RuleFamily) -> RuleArray {
+        match family {
+            RuleFamily::Scripted => self.scripted_rules,
+            RuleFamily::Weighted => self.weighted_rules,
+        }
+    }
+}
+
 /// An array of rule objects in the rule set: its offset and the size of one rule.
 #[derive(Debug, Clone, Copy)]
 pub struct RuleArray {
@@ -486,12 +495,8 @@ fn site_finding(
         }
         SiteCall::Forwarded { forwarder } => {
             let Some(inner) = &inner[forwarder] else {
-                let family = match input.forwarders[forwarder].kind {
-                    ForwarderKind::Fire { .. } => Family::OnAction,
-                    ForwarderKind::Rule { .. } => Family::GameRule,
-                };
                 return Some(SiteFinding::Unnamed {
-                    family,
+                    family: input.forwarders[forwarder].kind.family(),
                     reason: "forwarder-not-verified",
                 });
             };
@@ -765,10 +770,8 @@ fn rule_name(
     if !input.rule_owners.contains(&site.function) {
         return Err("rule-outside-the-rule-set");
     }
-    let facts = state.register(rule).as_ref().ok_or("rule-unknown")?;
-    let offset = match facts.iter().collect::<Vec<_>>().as_slice() {
-        [Fact::Argument(0, offset)] => *offset,
-        _ => return Err("rule-unknown"),
+    let Some(Fact::Argument(0, offset)) = names::sole_fact(state.register(rule)) else {
+        return Err("rule-unknown");
     };
     let enumeration = enumeration(input.layout, family, offset).ok_or("rule-offset")?;
     names
@@ -778,10 +781,7 @@ fn rule_name(
 }
 
 fn enumeration(layout: CallbackLayout, family: RuleFamily, offset: i64) -> Option<u64> {
-    let array = match family {
-        RuleFamily::Scripted => layout.scripted_rules,
-        RuleFamily::Weighted => layout.weighted_rules,
-    };
+    let array = layout.rule_array(family);
     let relative = u64::try_from(offset).ok()?.checked_sub(array.base)?;
     relative
         .is_multiple_of(array.stride)
@@ -789,8 +789,8 @@ fn enumeration(layout: CallbackLayout, family: RuleFamily, offset: i64) -> Optio
 }
 
 fn constant(value: &names::Value) -> Option<u64> {
-    match value.as_ref()?.iter().collect::<Vec<_>>().as_slice() {
-        [Fact::Constant(value)] => Some(*value),
+    match names::sole_fact(value)? {
+        Fact::Constant(value) => Some(value),
         _ => None,
     }
 }
@@ -810,10 +810,7 @@ fn forwarder_contexts(
     };
     let state = states.get(&site.address)?;
     let is_argument = |register: usize, argument: usize| {
-        state
-            .register(register)
-            .as_ref()
-            .is_some_and(|facts| facts.iter().collect::<Vec<_>>() == [&Fact::Argument(argument, 0)])
+        names::sole_fact(state.register(register)) == Some(Fact::Argument(argument, 0))
     };
 
     match (forwarder.kind, site.call) {
@@ -849,10 +846,7 @@ fn forwarder_contexts(
                 ..
             },
         ) if family == inner_family => {
-            let array = match family {
-                RuleFamily::Scripted => input.layout.scripted_rules,
-                RuleFamily::Weighted => input.layout.weighted_rules,
-            };
+            let array = input.layout.rule_array(family);
             let (base, passed) =
                 runner.probe(code, forwarder.function, site.address, enumeration, PROBE);
             let expected = base + array.base + PROBE * array.stride;
@@ -1012,9 +1006,8 @@ fn database_store(row: &Instruction, state: &State) -> Option<i64> {
         None => 0,
         Some(text) => names::immediate(text)?,
     };
-    let facts = state.register(base).as_ref()?;
-    match facts.iter().collect::<Vec<_>>().as_slice() {
-        [Fact::Argument(0, offset)] => Some(offset + displacement),
+    match names::sole_fact(state.register(base))? {
+        Fact::Argument(0, offset) => Some(offset + displacement),
         _ => None,
     }
 }

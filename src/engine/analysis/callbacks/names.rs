@@ -156,15 +156,8 @@ impl State {
 
     /// The stack offset in a register that holds exactly one.
     fn stack_offset(&self, index: usize) -> Option<i64> {
-        match self
-            .registers
-            .get(index)?
-            .as_ref()?
-            .iter()
-            .collect::<Vec<_>>()
-            .as_slice()
-        {
-            [Fact::Stack(offset)] => Some(*offset),
+        match sole_fact(self.registers.get(index)?)? {
+            Fact::Stack(offset) => Some(offset),
             _ => None,
         }
     }
@@ -188,6 +181,16 @@ fn join_values(left: &Value, right: &Value) -> Value {
 
 fn single(fact: Fact) -> Value {
     Some(BTreeSet::from([fact]))
+}
+
+/// The fact of a known value that holds exactly one.
+pub(super) fn sole_fact(value: &Value) -> Option<Fact> {
+    let facts = value.as_ref()?;
+    if facts.len() != 1 {
+        return None;
+    }
+
+    facts.first().copied()
 }
 
 /// Run the pass over one function and give `visit` the state before each instruction, once the
@@ -454,16 +457,7 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
 /// A call: follow the string functions, then make the caller-saved registers unknown and `x0`
 /// the call's result.
 fn call(address: u64, target: Option<u64>, strings: &StringFunctions, state: &mut State) {
-    let object = match state.registers[0]
-        .as_ref()
-        .map(|facts| facts.iter().collect::<Vec<_>>())
-    {
-        Some(facts) => match facts.as_slice() {
-            [Fact::Stack(offset)] => Some(*offset),
-            _ => None,
-        },
-        None => None,
-    };
+    let object = state.stack_offset(0);
 
     match target {
         Some(target) if strings.from_literal.contains(&target) => {
@@ -482,16 +476,9 @@ fn call(address: u64, target: Option<u64>, strings: &StringFunctions, state: &mu
         }
         Some(target) if strings.copy.contains(&target) => {
             if let Some(object) = object {
-                let text = match state.registers[1]
-                    .as_ref()
-                    .map(|f| f.iter().collect::<Vec<_>>())
-                {
-                    Some(facts) => match facts.as_slice() {
-                        [Fact::Stack(source)] => state.strings.get(source).cloned().flatten(),
-                        _ => None,
-                    },
-                    None => None,
-                };
+                let text = state
+                    .stack_offset(1)
+                    .and_then(|source| state.strings.get(&source).cloned().flatten());
                 state.strings.insert(object, text);
             } else {
                 forget_objects(state, 0);
@@ -708,42 +695,46 @@ fn clear_written(operation: &str, operands: &[&str], strings: &StringFunctions, 
         forget_stored_strings(operation, operands, strings.object_size, state);
     }
     // Pre- or post-index addressing writes the base register back, moved by its offset.
-    for (position, operand) in operands.iter().enumerate() {
-        let Some(inner) = operand.strip_prefix('[') else {
+    for position in 0..operands.len() {
+        let Some(WriteBack { base, amount }) = write_back(operands, position) else {
             continue;
         };
-        let (base, amount) = match inner.strip_suffix("]!") {
-            Some(pre) => {
-                let mut parts = pre.split(',');
-                (parts.next(), parts.next().and_then(immediate))
-            }
-            None => match operands.get(position + 1) {
-                Some(next) if next.starts_with('#') => (inner.strip_suffix(']'), immediate(next)),
-                _ => continue,
-            },
-        };
-        let Some(base) = base else {
-            continue;
-        };
-        if let Some(index) = register(base) {
+
+        if base == "sp" {
+            state.sp = state.sp.map(|sp| sp + amount.unwrap_or(0));
+        } else if let Some(index) = register(base) {
             let moved = amount.and_then(|amount| offset(state, base, amount));
             state.set(index, moved);
         }
     }
-    // Pre- or post-index addressing on the stack pointer moves it.
-    for (position, operand) in operands.iter().enumerate() {
-        let Some(inner) = operand.strip_prefix("[sp") else {
-            continue;
-        };
-        if let Some(pre) = inner.strip_suffix("]!") {
-            let amount = pre.strip_prefix(',').and_then(immediate).unwrap_or(0);
-            state.sp = state.sp.map(|sp| sp + amount);
-        } else if inner == "]"
-            && let Some(post) = operands.get(position + 1).and_then(|next| immediate(next))
-        {
-            state.sp = state.sp.map(|sp| sp + post);
-        }
+}
+
+/// The base register that a memory operand writes back, and the amount it moves by when that
+/// amount is known.
+struct WriteBack<'a> {
+    base: &'a str,
+    amount: Option<i64>,
+}
+
+/// The write-back of the operand at `position`: pre-index `[base,#amount]!` or post-index
+/// `[base],#amount`. `None` for any other operand.
+fn write_back<'a>(operands: &[&'a str], position: usize) -> Option<WriteBack<'a>> {
+    let inner = operands[position].strip_prefix('[')?;
+    if let Some(pre) = inner.strip_suffix("]!") {
+        let mut parts = pre.split(',');
+        return Some(WriteBack {
+            base: parts.next()?,
+            amount: parts.next().and_then(immediate),
+        });
     }
+
+    let next = operands
+        .get(position + 1)
+        .filter(|next| next.starts_with('#'))?;
+    Some(WriteBack {
+        base: inner.strip_suffix(']')?,
+        amount: immediate(next),
+    })
 }
 
 /// A store that the pass does not follow changes the slots and strings that it overlaps.
