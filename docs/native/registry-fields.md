@@ -174,9 +174,10 @@ commit `efba955e47897cf2b01773ade542ba3289151bd1`):
   not named definitions.
 - With two mods in normal and reversed order, the game selects one shared virtual filename.
   Separate duplicate files are processed in a/b order. A category duplicate reconstructs the same
-  object and keeps its numeric ID; a modifier duplicate reuses the owner. The final merged values
-  were not measured, and these runs do not establish a general extension policy, physical-file
-  resolution or "last value wins".
+  object and keeps its numeric ID; a modifier duplicate reuses the owner. On M45-observe the
+  category loader reads a `.bin` fixture. The final merged values were not measured, and these
+  runs do not establish a general extension policy, physical-file resolution or "last value
+  wins".
 - An engine exception before the end marker, with incomplete category fixtures, was not
   diagnosed.
 
