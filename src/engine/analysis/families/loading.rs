@@ -28,7 +28,8 @@
 //! an address of the vtables that code forms in a way that the binding's scan does not read.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::evaluate::{Call, Code, Exit, Machine, Unresolved};
+use super::super::evaluate::{Call, Code, Exit, Machine};
+use super::super::stop::Unresolved;
 use super::{DATABASE_SPAN, FamilyInput, ITEM_SPAN};
 
 /// Bytes of unknown memory that each pointer argument of a function receives.
@@ -253,7 +254,7 @@ impl<'r> Run<'r> {
             return Ok(Call::Return(Some(machine.reserve(ITEM_SPAN))));
         }
         if self.loading.constructors.contains(&target) {
-            let item = machine.register(0).ok_or(Unresolved("item-address"))?;
+            let item = machine.known_register(0, "item-address")?;
             for (&offset, &point) in &self.loading.vtables {
                 machine.write(item + offset, 8, point);
                 machine.protect(item + offset, 8);
@@ -289,7 +290,7 @@ impl<'r> Run<'r> {
                 Ending::Ignored
             }
             Ok(Exit::Stopped(_) | Exit::Reached) => Ending::Failed("stopped"),
-            Err(Unresolved(reason)) => Ending::Failed(reason),
+            Err(Unresolved { reason, .. }) => Ending::Failed(reason),
         }
     }
 

@@ -1,6 +1,7 @@
 //! Bounded reachability of token construction, with constant branch controls.
 use super::tokens::number;
 use crate::engine::analysis::decode::Instruction;
+use crate::engine::analysis::stop::{Bound, Obstacle, Unresolved};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -74,7 +75,8 @@ impl Constants {
             _ => None,
         }
     }
-    fn transfer(&mut self, row: &Instruction) -> Result<(), String> {
+    /// Run `row`. The error is the reason that it could not run.
+    fn transfer(&mut self, row: &Instruction) -> Result<(), &'static str> {
         let args: Vec<_> = row.operands.split(',').collect();
         match (row.operation.as_str(), args.as_slice()) {
             ("mov", [destination, source]) => self.assign(destination, self.value(source)),
@@ -99,9 +101,9 @@ impl Constants {
                     .strip_prefix("lsl")
                     .and_then(number)
                     .filter(|&n| n == 0 || n == 12)
-                    .ok_or("unsupported shifted token-construction arithmetic")?;
+                    .ok_or("shifted-arithmetic")?;
                 if !right.starts_with('#') {
-                    return Err("nonliteral shifted token-construction arithmetic".into());
+                    return Err("shifted-arithmetic");
                 }
                 let value = self
                     .value(left)
@@ -149,31 +151,29 @@ impl Constants {
                 }
             }
             ("nop", _) => {}
-            _ => {
-                return Err(format!(
-                    "unsupported token-construction instruction {}",
-                    row.operation
-                ));
-            }
+            _ => return Err("instruction"),
         }
         Ok(())
     }
 }
 
+/// The instructions that can run after `rows[index]`. The error is the reason that the walk
+/// cannot say, and what stopped it.
 fn successors(
     rows: &[Instruction],
     index: usize,
     state: &mut Constants,
     indexes: &BTreeMap<u64, usize>,
-) -> Result<Vec<usize>, String> {
+) -> Result<Vec<usize>, (&'static str, Obstacle)> {
     let row = &rows[index];
     let args: Vec<_> = row.operands.split(',').collect();
+    let unsupported = |reason| (reason, Obstacle::Unsupported);
     let target = || {
         args.last()
             .and_then(|s| number(s))
             .and_then(|a| indexes.get(&(a as u64)))
             .copied()
-            .ok_or_else(|| "token-construction branch leaves the recorded function".to_string())
+            .ok_or(("branch-target", Obstacle::OutsideCode))
     };
     let choose = |condition: Option<bool>, target: usize| match condition {
         Some(true) => vec![target],
@@ -184,10 +184,10 @@ fn successors(
         "ret" => Ok(vec![]),
         // An unconditional external branch ends this function (a tail call).
         "b" => {
-            let address =
-                args.last()
-                    .and_then(|s| number(s))
-                    .ok_or("invalid token-construction branch target")? as u64;
+            let address = args
+                .last()
+                .and_then(|s| number(s))
+                .ok_or(unsupported("branch-target"))? as u64;
             Ok(indexes.get(&address).copied().into_iter().collect())
         }
         "cbz" | "cbnz" if args.len() == 2 => Ok(choose(
@@ -199,7 +199,7 @@ fn successors(
         "tbz" | "tbnz" if args.len() == 3 => {
             let bit = number(args[1])
                 .filter(|&bit| (0..64).contains(&bit))
-                .ok_or("invalid token-construction bit test")?;
+                .ok_or(unsupported("bit-test"))?;
             Ok(choose(
                 state
                     .value(args[0])
@@ -209,22 +209,22 @@ fn successors(
         }
         condition if condition.starts_with("b.") => {
             if !matches!(&condition[2..], "eq" | "ne" | "lt" | "le" | "gt" | "ge") {
-                return Err("unsupported token-construction branch condition".into());
+                return Err(unsupported("branch-condition"));
             }
             Ok(choose(state.condition(&condition[2..]), target()?))
         }
         _ => {
-            state.transfer(row)?;
+            state.transfer(row).map_err(unsupported)?;
             Ok(vec![index + 1])
         }
     }
 }
 
 /// Join only equal constants at merges; loops monotonically lose uncertain facts.
-pub(super) fn reachable(rows: &[Instruction]) -> Result<BTreeSet<u64>, String> {
-    if rows.is_empty() {
-        return Err("empty token-construction function".into());
-    }
+pub(super) fn reachable(rows: &[Instruction]) -> Result<BTreeSet<u64>, Unresolved> {
+    let Some(entry) = rows.first().map(|row| row.address) else {
+        return Err(Unresolved::new("empty-function"));
+    };
     let indexes: BTreeMap<_, _> = rows
         .iter()
         .enumerate()
@@ -238,17 +238,27 @@ pub(super) fn reachable(rows: &[Instruction]) -> Result<BTreeSet<u64>, String> {
     let mut pending = VecDeque::from([0]);
     let mut queued = vec![false; rows.len()];
     queued[0] = true;
-    let mut budget = rows.len() * 40;
+    let visits = rows.len() * 40;
+    let mut budget = visits;
     while let Some(index) = pending.pop_front() {
+        let stop = |reason, obstacle| Unresolved::at(reason, rows[index].address, entry, obstacle);
         if budget == 0 {
-            return Err("token-construction control-flow budget exhausted".into());
+            return Err(stop("visit-limit", Obstacle::Bound(Bound::Visits(visits))));
         }
         budget -= 1;
         queued[index] = false;
         let mut state = states[index].expect("queued reachable state");
-        for next in successors(rows, index, &mut state, &indexes)? {
+        let nexts = successors(rows, index, &mut state, &indexes)
+            .map_err(|(reason, obstacle)| stop(reason, obstacle))?;
+        for next in nexts {
             if next >= rows.len() {
-                return Err("token construction falls past the recorded function".into());
+                let past = rows[index].address + 4;
+                return Err(Unresolved::at(
+                    "end-of-function",
+                    past,
+                    entry,
+                    Obstacle::OutsideCode,
+                ));
             }
             let changed = match &mut states[next] {
                 Some(previous) => previous.merge(state),

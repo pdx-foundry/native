@@ -39,7 +39,8 @@
 //! takes effect; the engine's handling of a name that is registered again.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
+use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
+use super::stop::Unresolved;
 
 pub mod joins;
 pub mod loading;
@@ -158,7 +159,7 @@ fn key_storage(
     constructors: &[u64],
 ) -> Result<u64, Unresolved> {
     if constructors.is_empty() {
-        return Err(Unresolved("constructor"));
+        return Err(Unresolved::new("constructor"));
     }
     let offsets: BTreeSet<_> = constructors
         .iter()
@@ -166,7 +167,7 @@ fn key_storage(
         .collect::<Result<_, _>>()?;
     (offsets.len() == 1)
         .then(|| *offsets.first().expect("one offset"))
-        .ok_or(Unresolved("key-storage-ambiguous"))
+        .ok_or(Unresolved::new("key-storage-ambiguous"))
 }
 
 /// Where a database holds its items: a pointer array and its count.
@@ -372,14 +373,16 @@ fn key_offset(
                 offsets.insert(offset);
             }
             (None, Ending::Ignored) => {}
-            (None, Ending::Returned | Ending::Failed) => return Err(Unresolved("key-storage")),
+            (None, Ending::Returned | Ending::Failed) => {
+                return Err(Unresolved::new("key-storage"));
+            }
         }
     }
 
     match offsets.len() {
         1 => Ok(offsets.pop_first().expect("one offset")),
-        0 => Err(Unresolved("key-storage")),
-        _ => Err(Unresolved("key-storage-ambiguous")),
+        0 => Err(Unresolved::new("key-storage")),
+        _ => Err(Unresolved::new("key-storage-ambiguous")),
     }
 }
 
@@ -490,7 +493,7 @@ fn root_paths(
     let mut records: Vec<(Vec<u64>, u64, Option<u64>, bool)> = Vec::new();
     let paths = machine.run_paths(root.function, &mut |target, machine| match target {
         Some(target) if target == input.registration => {
-            let site = machine.register(30).ok_or(Unresolved("call-site"))? - 4;
+            let site = machine.known_register(30, "call-site")? - 4;
             let mut calls: Vec<u64> = machine.entered_calls().collect();
             calls.push(site);
             let name = model.object_node(machine, machine.register(1), &mut arena);
@@ -643,7 +646,7 @@ fn root_families(
                     mask,
                     condition: condition(root, not_established, runs, calls, name),
                 }),
-                Err(Unresolved(reason)) => failures.push(reason),
+                Err(Unresolved { reason, .. }) => failures.push(reason),
             }
         }
     }
@@ -691,13 +694,13 @@ fn condition(
 /// The parts, bound and mask of one registered name, from every mask that the paths gave it.
 fn family(name: &Node, masks: &BTreeSet<&Option<u64>>) -> Result<Template, Unresolved> {
     if !name.is_resolved() {
-        return Err(Unresolved("name"));
+        return Err(Unresolved::new("name"));
     }
     if !name.parts.contains(&Part::ItemKey) {
-        return Err(Unresolved("no-item-key"));
+        return Err(Unresolved::new("no-item-key"));
     }
     let (Some(mask), None) = (masks.first(), masks.iter().nth(1)) else {
-        return Err(Unresolved("paths-disagree"));
+        return Err(Unresolved::new("paths-disagree"));
     };
 
     Ok((name.parts.clone(), name.limit, **mask))
@@ -992,7 +995,7 @@ mod tests {
             let result = self.analyze().unwrap();
             match (result.families.as_slice(), result.failures.len()) {
                 ([family], 0) => Ok(family.clone()),
-                ([], 1) => Err(Unresolved(result.failures.keys().next().unwrap())),
+                ([], 1) => Err(Unresolved::new(result.failures.keys().next().unwrap())),
                 _ => panic!("more than one outcome: {result:?}"),
             }
         }
@@ -1083,7 +1086,7 @@ mod tests {
         );
         assert_eq!(
             Fixture::only_family(&other_directive),
-            Err(Unresolved("name"))
+            Err(Unresolved::new("name"))
         );
     }
 
@@ -1170,7 +1173,7 @@ mod tests {
         let input = family_input(&[constructor(0x10), generator], &[0x464], Some(CONSTRUCTOR));
         assert_eq!(
             Fixture::only_family(&input),
-            Err(Unresolved("paths-disagree"))
+            Err(Unresolved::new("paths-disagree"))
         );
     }
 
@@ -1188,7 +1191,7 @@ mod tests {
             ],
         ));
         let input = family_input(&[constructor(0x10), generator], &[0x464], Some(CONSTRUCTOR));
-        assert_eq!(Fixture::only_family(&input), Err(Unresolved("name")));
+        assert_eq!(Fixture::only_family(&input), Err(Unresolved::new("name")));
     }
 
     /// Negative control: unresolved text that the code builds before the registration is
@@ -1257,7 +1260,7 @@ mod tests {
             ],
         ));
         let input = family_input(&[constructor(0x10), generator], &[0x464], Some(CONSTRUCTOR));
-        assert_eq!(Fixture::only_family(&input), Err(Unresolved("name")));
+        assert_eq!(Fixture::only_family(&input), Err(Unresolved::new("name")));
     }
 
     #[test]
@@ -1266,7 +1269,10 @@ mod tests {
         patch(&mut generator, 0x434, "mov", "x1,x0");
         patch(&mut generator, 0x438, "nop", "");
         let input = family_input(&[constructor(0x10), generator], &[0x464], Some(CONSTRUCTOR));
-        assert_eq!(Fixture::only_family(&input), Err(Unresolved("no-item-key")));
+        assert_eq!(
+            Fixture::only_family(&input),
+            Err(Unresolved::new("no-item-key"))
+        );
 
         let unreached = family_input(
             &[constructor(0x10), concatenating_generator()],
@@ -1304,13 +1310,13 @@ mod tests {
             Some(CONSTRUCTOR),
         );
         let result = missing.analyze().unwrap();
-        assert_eq!(result.key_offset, Err(Unresolved("key-storage")));
+        assert_eq!(result.key_offset, Err(Unresolved::new("key-storage")));
         assert!(result.families.is_empty());
 
         let no_constructor = family_input(&[concatenating_generator()], &[0x464], None);
         assert_eq!(
             no_constructor.analyze().unwrap().key_offset,
-            Err(Unresolved("constructor"))
+            Err(Unresolved::new("constructor"))
         );
     }
 
@@ -1485,7 +1491,7 @@ mod tests {
         let mut method = generator_method();
         patch(&mut method, 0x73c, "mov", "x2,#2");
         let fixture = item_fixture(method, &[METHOD, HELPER, SIZE]);
-        assert_eq!(fixture.only_family(), Err(Unresolved("name")));
+        assert_eq!(fixture.only_family(), Err(Unresolved::new("name")));
     }
 
     /// Negative control: a name part from an object other than the item, such as the key of a
@@ -1495,7 +1501,7 @@ mod tests {
         let mut method = generator_method();
         patch(&mut method, 0x708, "ldr", "x9,[x8,#0x200]");
         let fixture = item_fixture(method, &[METHOD, HELPER, SIZE]);
-        assert_eq!(fixture.only_family(), Err(Unresolved("name")));
+        assert_eq!(fixture.only_family(), Err(Unresolved::new("name")));
     }
 
     /// A call that the model does not follow receives the key object, and a store goes through
@@ -1799,6 +1805,9 @@ mod tests {
             constructors: Vec::new(),
             ..key
         };
-        assert_eq!(item_key_offset(&missing), Err(Unresolved("constructor")));
+        assert_eq!(
+            item_key_offset(&missing),
+            Err(Unresolved::new("constructor"))
+        );
     }
 }

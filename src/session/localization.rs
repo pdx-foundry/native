@@ -12,6 +12,7 @@ use crate::answer::{
     LocalizationDeclarations, LocalizationLink, LocalizationOutput, Operation, ScopeReference,
 };
 use crate::engine::analysis::localization::{self, Join, LocalizationResult, METHOD, Output};
+use crate::engine::analysis::stop::Unresolved;
 
 impl Native {
     /// Read the localization ("localisation") language from the engine's text tables: the
@@ -150,7 +151,7 @@ fn contexts(
                 });
             }
             Join::NoContext => {}
-            Join::Unresolved(reason) => {
+            Join::Unresolved(Unresolved { reason, .. }) => {
                 unresolved = true;
                 gaps.push(gap_for_subject(
                     GapKind::UnresolvedPath,
@@ -248,7 +249,7 @@ fn links(
                 Output::Contexts(values) => Target::Contexts(values.iter().copied().collect()),
                 Output::Various => Target::Various,
                 Output::Unchanged => Target::Unchanged,
-                Output::Unresolved(reason) => {
+                Output::Unresolved(Unresolved { reason, .. }) => {
                     gaps.push(gap_for_subject(
                         GapKind::UnresolvedPath,
                         Some(GapSubject::LocalizationLink { name: name.clone() }),
@@ -310,9 +311,12 @@ mod tests {
                 value: 7,
                 name: Some("Planet".into()),
                 commands: Err("rows"),
-                links: Ok(vec![("Planet".into(), Output::Unresolved("output"))]),
+                links: Ok(vec![(
+                    "Planet".into(),
+                    Output::Unresolved(Unresolved::new("output")),
+                )]),
             }],
-            joins: vec![(scope.clone(), Join::Unresolved("setter"))],
+            joins: vec![(scope.clone(), Join::Unresolved(Unresolved::new("setter")))],
             scope_table_missing: false,
         };
 

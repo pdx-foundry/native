@@ -79,30 +79,21 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
             "selected loader is not an executable-derived candidate".into(),
         ));
     }
-    let gap = |kind: &str, reason: String| FieldGap {
-        kind: kind.into(),
-        reason,
-        path: None,
-    };
     let mut gaps: Vec<_> = input
         .gaps
         .iter()
-        .map(|reason| gap("input-boundary", reason.clone()))
+        .map(|reason| FieldGap::new(FieldGapKind::InputBoundary, reason))
         .collect();
     let (tokens, token_gaps) = tokens::recover(input);
-    gaps.extend(
-        token_gaps
-            .into_iter()
-            .map(|reason| gap("token-table", reason)),
-    );
+    gaps.extend(token_gaps);
     let paths = dispatch::explore(input);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
     gaps.extend(path_gaps);
     let partition_accounted = inventory::partition_accounted(&paths);
     if !partition_accounted {
-        gaps.push(gap(
-            "token-partition",
-            "token intervals are missing or overlap".into(),
+        gaps.push(FieldGap::new(
+            FieldGapKind::TokenPartition,
+            "token intervals are missing or overlap",
         ));
     }
     Ok(RegistryFieldResult {

@@ -7,8 +7,10 @@
 //!
 //! It is not a general emulator. [`Machine::run`] follows one path with known register and memory
 //! values. A branch on an unknown value, an unsupported instruction, a jump outside the decoded
-//! code, or the step bound ends the run as [`Unresolved`]; nothing is guessed. A store to an
-//! unknown address makes every written byte unknown, because it may overwrite any of them.
+//! code, or the step bound ends the run as [`Unresolved`]; nothing is guessed. Its [`Stop`](super::stop::Stop) names
+//! the instruction, the function the run entered last, and the unknown value or spent bound. A
+//! store to an unknown address makes every written byte unknown, because it may overwrite any of
+//! them.
 //! The caller decides what each call returns, stops the run there, or enters the callee: the path
 //! then runs the callee's code and returns to the instruction after the call.
 //!
@@ -25,6 +27,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::decode::{Instruction, decode_arm64};
+use super::stop::{Bound, Obstacle, Unknown, Unresolved};
 
 /// The most instructions that one run may execute.
 const STEP_LIMIT: usize = 20_000;
@@ -54,10 +57,6 @@ const DYNAMIC_STACK: u64 = 0x10_0000;
 
 /// First address of scratch objects that a caller allocates.
 const OBJECT_BASE: u64 = 0x7ffe_0000_0000;
-
-/// A run could not be followed to its end.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Unresolved(pub &'static str);
 
 /// Read-only bytes that code can load: jump tables and string literals.
 #[derive(Debug, Clone, Default)]
@@ -230,6 +229,8 @@ enum Walk {
     /// Continue each branch at its address, with the flag states that remain possible on it
     /// when the decision was on unknown flags.
     Fork {
+        /// The instruction that decided on the unknown value.
+        at: u64,
         branches: Vec<(Option<u16>, u64)>,
         steps: usize,
     },
@@ -260,10 +261,16 @@ pub struct Machine<'a> {
     loop_visits: BTreeMap<u64, u32>,
     /// The return address of each entered call, innermost last.
     frames: Vec<u64>,
+    /// The entry of the present run.
+    entry: u64,
+    /// The instruction that the run is at, or the last one it ran.
+    pc: u64,
+    /// The target of each entered call, beside `frames`.
+    callees: Vec<u64>,
 }
 
 /// Where the paths of a run end, besides a return or a stop.
-enum Bound {
+enum Ends {
     /// [`Machine::run_paths`]: nowhere else.
     Unbounded,
     /// [`Machine::run_paths_to`].
@@ -314,6 +321,9 @@ impl<'a> Machine<'a> {
             unknown_stores: Vec::new(),
             loop_visits: BTreeMap::new(),
             frames: Vec::new(),
+            entry: 0,
+            pc: 0,
+            callees: Vec::new(),
         }
     }
 
@@ -343,6 +353,16 @@ impl<'a> Machine<'a> {
     /// The value of general register `index`, when it is known.
     pub fn register(&self, index: usize) -> Option<u64> {
         self.registers[index]
+    }
+
+    /// The value of general register `index`; when it is unknown, a stop for `reason` at the
+    /// instruction that the run is at, such as a call that a `calls` closure reads, or the last
+    /// one it ran.
+    pub fn known_register(&self, index: usize, reason: &'static str) -> Result<u64, Unresolved> {
+        self.registers[index].ok_or_else(|| {
+            let unknown = Obstacle::Unknown(Unknown::Register(index as u8));
+            self.stop(self.pc, reason, unknown)
+        })
     }
 
     /// The present stack pointer.
@@ -436,16 +456,30 @@ impl<'a> Machine<'a> {
         entry: u64,
         calls: &mut dyn FnMut(u64, &mut Machine<'a>) -> Result<Call, Unresolved>,
     ) -> Result<Exit, Unresolved> {
+        self.entry = entry;
         let mut pc = entry;
         for _ in 0..STEP_LIMIT {
+            self.pc = pc;
             let code = self.code;
-            let operation = code.rows.get(&pc).ok_or(Unresolved("outside-code"))?;
-            match self.step(pc, operation)? {
+            let operation = code
+                .rows
+                .get(&pc)
+                .ok_or_else(|| self.stop(pc, "outside-code", Obstacle::OutsideCode))?;
+            let flow = self
+                .step(pc, operation)
+                .map_err(|halt| self.stop(pc, halt.reason, halt.obstacle))?;
+            match flow {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) => pc = target,
-                Flow::Unknown { reason, .. } => return Err(Unresolved(reason)),
-                Flow::IndirectCall(_) | Flow::Trap => return Err(Unresolved("instruction")),
-                Flow::Call(target) => match calls(target, self)? {
+                Flow::Unknown { halt, .. } => {
+                    return Err(self.stop(pc, halt.reason, halt.obstacle));
+                }
+                Flow::IndirectCall(_) | Flow::Trap => {
+                    return Err(self.stop(pc, "instruction", Obstacle::Unsupported));
+                }
+                Flow::Call(target) => match calls(target, self)
+                    .map_err(|unresolved| self.locate_call(pc, unresolved))?
+                {
                     Call::Return(value) => {
                         self.returned_from_call(value);
                         pc += 4;
@@ -453,13 +487,13 @@ impl<'a> Machine<'a> {
                     Call::Stop => return Ok(Exit::Stopped(target)),
                     Call::Enter => pc = self.enter(pc, target),
                 },
-                Flow::Return => match self.frames.pop() {
+                Flow::Return => match self.leave() {
                     Some(caller) => pc = caller,
                     None => return Ok(Exit::Returned),
                 },
             }
         }
-        Err(Unresolved("step-limit"))
+        Err(self.stop(pc, "step-limit", Obstacle::Bound(Bound::Steps(STEP_LIMIT))))
     }
 
     /// Execute from `entry` along every path, and report how each path ended.
@@ -471,9 +505,9 @@ impl<'a> Machine<'a> {
     /// fails, so a later decision on the same flags follows every state that is still possible.
     ///
     /// `calls` receives the target of each call and tail call; see [`PathCalls`]. At most [`PATH_LIMIT`] paths are followed; a path that would
-    /// exceed the limit ends as `Unresolved("path-limit")`. Each path has its own step limit.
+    /// exceed the limit ends as `path-limit`. Each path has its own step limit.
     pub fn run_paths(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
-        self.follow(entry, &Bound::Unbounded, calls)
+        self.follow(entry, &Ends::Unbounded, calls)
     }
 
     /// Execute from `entry` along every path, as [`Machine::run_paths`] does, and join the
@@ -492,7 +526,7 @@ impl<'a> Machine<'a> {
     pub fn run_paths_joining(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
         let addresses = self.code.rows.keys().copied().collect();
         let heads = self.code.loop_heads(&addresses);
-        self.follow(entry, &Bound::Joining(heads), calls)
+        self.follow(entry, &Ends::Joining(heads), calls)
     }
 
     /// Execute from `entry` along every path that can arrive at the instruction at `site`, as
@@ -514,10 +548,11 @@ impl<'a> Machine<'a> {
             loop_heads: self.code.loop_heads(&reaching),
             reaching,
         };
-        self.follow(entry, &Bound::Site(site), calls)
+        self.follow(entry, &Ends::Site(site), calls)
     }
 
-    fn follow(self, entry: u64, bound: &Bound, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
+    fn follow(mut self, entry: u64, ends: &Ends, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
+        self.entry = entry;
         // Each pending walk says whether it resumes a split on flags at the instruction that
         // split, which it has already arrived at.
         let mut pending = vec![(self, entry, 0, false)];
@@ -527,16 +562,21 @@ impl<'a> Machine<'a> {
         let mut covered = 0;
 
         while let Some((mut machine, pc, steps, resumed)) = pending.pop() {
-            match machine.walk(pc, steps, resumed, bound, &mut joined, calls) {
+            match machine.walk(pc, steps, resumed, ends, &mut joined, calls) {
                 Walk::End(end) => {
                     covered += usize::from(end == Ok(Exit::Looped));
                     ended.push(Path { end, machine });
                 }
                 Walk::Leaves => {}
-                Walk::Fork { branches, steps } => {
+                Walk::Fork {
+                    at,
+                    branches,
+                    steps,
+                } => {
                     if ended.len() - covered + pending.len() + branches.len() > PATH_LIMIT {
+                        let limit = Obstacle::Bound(Bound::Paths(PATH_LIMIT));
                         ended.push(Path {
-                            end: Err(Unresolved("path-limit")),
+                            end: Err(machine.stop(at, "path-limit", limit)),
                             machine,
                         });
                         continue;
@@ -562,14 +602,14 @@ impl<'a> Machine<'a> {
         mut pc: u64,
         mut steps: usize,
         mut resumed: bool,
-        bound: &Bound,
+        ends: &Ends,
         joined: &mut BTreeMap<u64, HeadState>,
         calls: &mut PathCalls<'_, 'a>,
     ) -> Walk {
         while steps < STEP_LIMIT {
-            match bound {
-                Bound::Unbounded => {}
-                Bound::Site(site) => {
+            match ends {
+                Ends::Unbounded => {}
+                Ends::Site(site) => {
                     if pc == site.address {
                         return Walk::End(Ok(Exit::Reached));
                     }
@@ -577,42 +617,48 @@ impl<'a> Machine<'a> {
                         return Walk::Leaves;
                     }
                     if site.loop_heads.contains(&pc) && self.visit(pc) > LOOP_LIMIT {
-                        return Walk::End(Err(Unresolved("loop-limit")));
+                        let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
+                        return Walk::End(Err(self.stop(pc, "loop-limit", limit)));
                     }
                 }
                 // A walk that resumes a split on flags has joined at its instruction already.
-                Bound::Joining(heads) if heads.contains(&pc) && !resumed => {
+                Ends::Joining(heads) if heads.contains(&pc) && !resumed => {
                     match self.join(pc, joined) {
                         Ok(true) => {}
                         Ok(false) => return Walk::End(Ok(Exit::Looped)),
                         Err(unresolved) => return Walk::End(Err(unresolved)),
                     }
                 }
-                Bound::Joining(_) => {}
+                Ends::Joining(_) => {}
             }
             resumed = false;
+            self.pc = pc;
 
             steps += 1;
             let code = self.code;
             let Some(operation) = code.rows.get(&pc) else {
-                return Walk::End(Err(Unresolved("outside-code")));
+                return Walk::End(Err(self.stop(pc, "outside-code", Obstacle::OutsideCode)));
             };
             let flow = match self.step(pc, operation) {
                 Ok(flow) => flow,
-                Err(Unresolved("flags")) if let Some(condition) = operation.condition() => {
+                Err(halt)
+                    if halt == Halt::unknown_flags()
+                        && let Some(condition) = operation.condition() =>
+                {
                     let (holding, failing) = condition.split(self.possible_flags);
                     return Walk::Fork {
+                        at: pc,
                         branches: vec![(Some(holding), pc), (Some(failing), pc)],
                         steps: steps - 1,
                     };
                 }
-                Err(unresolved) => return Walk::End(Err(unresolved)),
+                Err(halt) => return Walk::End(Err(self.stop(pc, halt.reason, halt.obstacle))),
             };
 
             match flow {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) if !code.rows.contains_key(&target) => {
-                    match self.tail_call(target, calls) {
+                    match self.tail_call(pc, target, calls) {
                         Ok(Some(caller)) => pc = caller,
                         Ok(None) => return Walk::End(Ok(Exit::Returned)),
                         Err(end) => return Walk::End(end),
@@ -621,6 +667,7 @@ impl<'a> Machine<'a> {
                 Flow::Jump(target) => pc = target,
                 Flow::Unknown { target, .. } => {
                     return Walk::Fork {
+                        at: pc,
                         branches: vec![(None, target), (None, pc + 4)],
                         steps,
                     };
@@ -632,7 +679,7 @@ impl<'a> Machine<'a> {
                     }
                     Ok(Call::Stop) => return Walk::End(Ok(Exit::Stopped(target))),
                     Ok(Call::Enter) => pc = self.enter(pc, target),
-                    Err(unresolved) => return Walk::End(Err(unresolved)),
+                    Err(unresolved) => return Walk::End(Err(self.locate_call(pc, unresolved))),
                 },
                 Flow::IndirectCall(target) => match (calls(target, self), target) {
                     (Ok(Call::Return(value)), _) => {
@@ -644,11 +691,14 @@ impl<'a> Machine<'a> {
                     }
                     (Ok(Call::Enter), Some(target)) => pc = self.enter(pc, target),
                     (Ok(Call::Stop | Call::Enter), None) => {
-                        return Walk::End(Err(Unresolved("stopped-at-unknown-call")));
+                        let unknown = self.stop(pc, "stopped-at-unknown-call", Obstacle::Call);
+                        return Walk::End(Err(unknown));
                     }
-                    (Err(unresolved), _) => return Walk::End(Err(unresolved)),
+                    (Err(unresolved), _) => {
+                        return Walk::End(Err(self.locate_call(pc, unresolved)));
+                    }
                 },
-                Flow::Return => match self.frames.pop() {
+                Flow::Return => match self.leave() {
                     Some(caller) => pc = caller,
                     None => return Walk::End(Ok(Exit::Returned)),
                 },
@@ -656,7 +706,8 @@ impl<'a> Machine<'a> {
             }
         }
 
-        Walk::End(Err(Unresolved("step-limit")))
+        let limit = Obstacle::Bound(Bound::Steps(STEP_LIMIT));
+        Walk::End(Err(self.stop(pc, "step-limit", limit)))
     }
 
     /// Join this path's state with the facts kept at the loop head `pc`. Whether the path goes
@@ -671,7 +722,10 @@ impl<'a> Machine<'a> {
             || kept.labels != self.labels
         {
             return match self.visit(pc) {
-                visits if visits > LOOP_LIMIT => Err(Unresolved("loop-limit")),
+                visits if visits > LOOP_LIMIT => {
+                    let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
+                    Err(self.stop(pc, "loop-limit", limit))
+                }
                 _ => Ok(true),
             };
         }
@@ -722,7 +776,8 @@ impl<'a> Machine<'a> {
         }
         let widened = kept.widened + 1;
         if widened > JOIN_LIMIT {
-            return Err(Unresolved("join-limit"));
+            let limit = Obstacle::Bound(Bound::Joins(JOIN_LIMIT));
+            return Err(self.stop(pc, "join-limit", limit));
         }
         *kept = self.head_state(widened);
         Ok(true)
@@ -761,23 +816,48 @@ impl<'a> Machine<'a> {
     /// address where the path continues, or `None` when the outermost function returned.
     fn tail_call(
         &mut self,
+        pc: u64,
         target: u64,
         calls: &mut PathCalls<'_, 'a>,
     ) -> Result<Option<u64>, Result<Exit, Unresolved>> {
-        match calls(Some(target), self).map_err(Err)? {
+        let call = calls(Some(target), self).map_err(|unresolved| self.locate_call(pc, unresolved));
+        match call.map_err(Err)? {
             Call::Return(value) => {
                 self.returned_from_call(value);
-                Ok(self.frames.pop())
+                Ok(self.leave())
             }
             Call::Stop => Err(Ok(Exit::Stopped(target))),
-            Call::Enter => Err(Err(Unresolved("outside-code"))),
+            Call::Enter => Err(Err(self.stop(pc, "outside-code", Obstacle::OutsideCode))),
         }
     }
 
     /// Enter the call at `pc` to `target`, and return where the path continues.
     fn enter(&mut self, pc: u64, target: u64) -> u64 {
         self.frames.push(pc + 4);
+        self.callees.push(target);
         target
+    }
+
+    /// Return from the innermost entered call, and return where the path continues: `None` when
+    /// the outermost function returned.
+    fn leave(&mut self) -> Option<u64> {
+        self.callees.pop();
+        self.frames.pop()
+    }
+
+    /// The run stopped at `pc` for `reason`.
+    fn stop(&self, pc: u64, reason: &'static str, obstacle: Obstacle) -> Unresolved {
+        let entry = self.callees.last().copied().unwrap_or(self.entry);
+        Unresolved::at(reason, pc, entry, obstacle)
+    }
+
+    /// The `calls` closure refused the call at `pc`. A stop that the closure located, such as
+    /// one from a run of its own, stays.
+    fn locate_call(&self, pc: u64, unresolved: Unresolved) -> Unresolved {
+        match unresolved.stop {
+            Some(_) => unresolved,
+            None => self.stop(pc, unresolved.reason, Obstacle::Call),
+        }
     }
 
     /// A called function returned `value`; caller-saved registers and flags are unknown.
@@ -788,7 +868,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Run the instruction at `pc`.
-    fn step(&mut self, pc: u64, operation: &Operation) -> Result<Flow, Unresolved> {
+    fn step(&mut self, pc: u64, operation: &Operation) -> Result<Flow, Halt> {
         let Operation { mnemonic, operands } = operation;
         let operands = operands.as_slice();
         let mnemonic = &ordered_access(mnemonic).to_owned();
@@ -810,7 +890,7 @@ impl<'a> Machine<'a> {
                 let shift = match rest {
                     [] => 0,
                     [Operand::Shift(Shift::Left, amount)] => *amount,
-                    _ => return Err(Unresolved("movi-shift")),
+                    _ => return Err(Halt::unsupported("movi-shift")),
                 };
                 self.vectors[*index] = Some(replicate((*value as u64) << shift, *lane, *bytes));
             }
@@ -826,7 +906,7 @@ impl<'a> Machine<'a> {
                 let shift = match rest {
                     [] => 0,
                     [Operand::Shift(Shift::Left, amount)] => *amount,
-                    _ => return Err(Unresolved("movk-shift")),
+                    _ => return Err(Halt::unsupported("movk-shift")),
                 };
                 let mask = 0xffffu64 << shift;
                 let value = self
@@ -1017,7 +1097,7 @@ impl<'a> Machine<'a> {
                         8 => Ok(u128::from(
                             (f64::from_bits(left as u64) * f64::from_bits(right as u64)).to_bits(),
                         )),
-                        _ => Err(Unresolved("float-width")),
+                        _ => Err(Halt::unsupported("float-width")),
                     });
                 self.vectors[*index] = value.transpose()?;
             }
@@ -1322,7 +1402,7 @@ impl<'a> Machine<'a> {
             ("b", [Operand::Immediate(target)]) => return Ok(Flow::Jump(*target as u64)),
             (branch, [Operand::Immediate(target)]) if branch.starts_with("b.") => {
                 let condition =
-                    Condition::parse(&branch[2..]).ok_or(Unresolved("branch-condition"))?;
+                    Condition::parse(&branch[2..]).ok_or(Halt::unsupported("branch-condition"))?;
                 if self.holds(condition)? {
                     return Ok(Flow::Jump(*target as u64));
                 }
@@ -1331,7 +1411,7 @@ impl<'a> Machine<'a> {
                 let Some(value) = self.operand(register)? else {
                     return Ok(Flow::Unknown {
                         target: *target as u64,
-                        reason: "branch-value",
+                        halt: Halt::unknown_register("branch-value", register),
                     });
                 };
                 if (value == 0) == (mnemonic == "cbz") {
@@ -1349,7 +1429,7 @@ impl<'a> Machine<'a> {
                 let Some(value) = self.operand(register)? else {
                     return Ok(Flow::Unknown {
                         target: *target as u64,
-                        reason: "branch-value",
+                        halt: Halt::unknown_register("branch-value", register),
                     });
                 };
                 let set = value >> bit & 1 == 1;
@@ -1358,7 +1438,9 @@ impl<'a> Machine<'a> {
                 }
             }
             ("br", [register]) => {
-                let target = self.operand(register)?.ok_or(Unresolved("branch-value"))?;
+                let target = self
+                    .operand(register)?
+                    .ok_or(Halt::unknown_register("branch-value", register))?;
                 return Ok(Flow::Jump(target));
             }
             // A call puts its return address in the link register, so a `calls` closure can tell
@@ -1374,7 +1456,7 @@ impl<'a> Machine<'a> {
             }
             ("ret", []) => return Ok(Flow::Return),
             ("brk", [Operand::Immediate(_)]) => return Ok(Flow::Trap),
-            _ => return Err(Unresolved("instruction")),
+            _ => return Err(Halt::unsupported("instruction")),
         }
         Ok(Flow::Next)
     }
@@ -1385,7 +1467,7 @@ impl<'a> Machine<'a> {
         self.possible_flags = ALL_FLAG_STATES;
     }
 
-    fn holds(&self, condition: Condition) -> Result<bool, Unresolved> {
+    fn holds(&self, condition: Condition) -> Result<bool, Halt> {
         if let Some(flags) = self.flags {
             return Ok(condition.holds(flags));
         }
@@ -1393,26 +1475,26 @@ impl<'a> Machine<'a> {
         match condition.split(self.possible_flags) {
             (_, 0) => Ok(true),
             (0, _) => Ok(false),
-            _ => Err(Unresolved("flags")),
+            _ => Err(Halt::unknown_flags()),
         }
     }
 
-    fn operand(&self, operand: &Operand) -> Result<Option<u64>, Unresolved> {
+    fn operand(&self, operand: &Operand) -> Result<Option<u64>, Halt> {
         match operand {
             Operand::Immediate(value) => Ok(Some(*value as u64)),
             Operand::Register(register) => Ok(self.read_register(*register)),
-            _ => Err(Unresolved("operand")),
+            _ => Err(Halt::unsupported("operand")),
         }
     }
 
     /// A second source operand with its optional shift or extension.
-    fn modified(&self, operand: &Operand, rest: &[Operand]) -> Result<Option<u64>, Unresolved> {
+    fn modified(&self, operand: &Operand, rest: &[Operand]) -> Result<Option<u64>, Halt> {
         let value = self.operand(operand)?;
         match rest {
             [] => Ok(value),
             [Operand::Shift(kind, amount)] => Ok(value.map(|value| kind.apply(value, *amount))),
             [Operand::Extend(kind, amount)] => Ok(value.map(|value| extend(kind, value) << amount)),
-            _ => Err(Unresolved("operand")),
+            _ => Err(Halt::unsupported("operand")),
         }
     }
 
@@ -1426,9 +1508,9 @@ impl<'a> Machine<'a> {
         value.map(|value| truncate(value, register.wide))
     }
 
-    fn assign(&mut self, destination: &Operand, value: Option<u64>) -> Result<(), Unresolved> {
+    fn assign(&mut self, destination: &Operand, value: Option<u64>) -> Result<(), Halt> {
         let Operand::Register(register) = destination else {
-            return Err(Unresolved("destination"));
+            return Err(Halt::unsupported("destination"));
         };
         let value = value.map(|value| truncate(value, register.wide));
         match register.name {
@@ -1440,13 +1522,13 @@ impl<'a> Machine<'a> {
                 };
             }
             Name::General(index) => self.registers[index] = value,
-            Name::Vector(_) => return Err(Unresolved("destination")),
+            Name::Vector(_) => return Err(Halt::unsupported("destination")),
         }
         Ok(())
     }
 
     /// The effective address, applying pre- or post-index write-back to the base register.
-    fn address(&mut self, memory: &Memory, rest: &[Operand]) -> Result<Option<u64>, Unresolved> {
+    fn address(&mut self, memory: &Memory, rest: &[Operand]) -> Result<Option<u64>, Halt> {
         let base = self.read_register(memory.base);
         let index = match &memory.index {
             None => Some(0),
@@ -1468,7 +1550,7 @@ impl<'a> Machine<'a> {
                 self.assign(&Operand::Register(memory.base), updated)?;
                 Ok(base)
             }
-            _ => Err(Unresolved("addressing")),
+            _ => Err(Halt::unsupported("addressing")),
         }
     }
 
@@ -1505,13 +1587,49 @@ enum Flow {
     /// A conditional branch to `target` whose condition is unknown.
     Unknown {
         target: u64,
-        reason: &'static str,
+        halt: Halt,
     },
     Call(u64),
     /// A call through a register, whose target may be unknown.
     IndirectCall(Option<u64>),
     Return,
     Trap,
+}
+
+/// Why one instruction could not run. The run adds where, to make an [`Unresolved`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Halt {
+    reason: &'static str,
+    obstacle: Obstacle,
+}
+
+impl Halt {
+    fn unsupported(reason: &'static str) -> Self {
+        Self {
+            reason,
+            obstacle: Obstacle::Unsupported,
+        }
+    }
+
+    fn unknown_flags() -> Self {
+        Self {
+            reason: "flags",
+            obstacle: Obstacle::Unknown(Unknown::Flags),
+        }
+    }
+
+    /// `operand` is a register whose value is unknown.
+    fn unknown_register(reason: &'static str, operand: &Operand) -> Self {
+        let obstacle = match operand {
+            Operand::Register(Register {
+                name: Name::General(index),
+                ..
+            }) => Obstacle::Unknown(Unknown::Register(*index as u8)),
+            _ => Obstacle::Unsupported,
+        };
+
+        Self { reason, obstacle }
+    }
 }
 
 fn binary(mnemonic: &str, left: u64, right: u64, wide: bool) -> u64 {
@@ -1563,21 +1681,21 @@ fn replicate(value: u64, lane: u64, bytes: u64) -> u128 {
 }
 
 /// The bits of `value` as a float of `bytes` bytes, rounded to nearest as the processor does.
-fn float_bits(value: f64, bytes: u64) -> Result<u128, Unresolved> {
+fn float_bits(value: f64, bytes: u64) -> Result<u128, Halt> {
     match bytes {
         4 => Ok(u128::from((value as f32).to_bits())),
         8 => Ok(u128::from(value.to_bits())),
-        _ => Err(Unresolved("float-width")),
+        _ => Err(Halt::unsupported("float-width")),
     }
 }
 
 /// `fcvtzs`: the float in the low `bytes` bytes of `bits`, truncated toward zero to a signed
 /// integer. Out-of-range values saturate and NaN gives zero, as on the processor.
-fn truncated_integer(bits: u128, bytes: u64, wide: bool) -> Result<u64, Unresolved> {
+fn truncated_integer(bits: u128, bytes: u64, wide: bool) -> Result<u64, Halt> {
     let value = match bytes {
         4 => f64::from(f32::from_bits(bits as u32)),
         8 => f64::from_bits(bits as u64),
-        _ => return Err(Unresolved("float-width")),
+        _ => return Err(Halt::unsupported("float-width")),
     };
     Ok(if wide {
         value as i64 as u64
@@ -1635,13 +1753,13 @@ fn sign_extend(value: u64, width: u64, to_wide: bool) -> u64 {
 }
 
 /// Width in bytes and, for a signed load, whether it extends to 64 bits.
-fn load_width(mnemonic: &str, destination: &Operand) -> Result<(u64, Option<bool>), Unresolved> {
+fn load_width(mnemonic: &str, destination: &Operand) -> Result<(u64, Option<bool>), Halt> {
     let wide = destination.is_wide();
     let register_width = if wide { 8 } else { 4 };
     let suffix = mnemonic
         .strip_prefix("ldur")
         .or_else(|| mnemonic.strip_prefix("ldr"))
-        .ok_or(Unresolved("instruction"))?;
+        .ok_or(Halt::unsupported("instruction"))?;
     Ok(match suffix {
         "" => (register_width, None),
         "b" => (1, None),
@@ -1649,21 +1767,21 @@ fn load_width(mnemonic: &str, destination: &Operand) -> Result<(u64, Option<bool
         "sb" => (1, Some(wide)),
         "sh" => (2, Some(wide)),
         "sw" => (4, Some(true)),
-        _ => return Err(Unresolved("instruction")),
+        _ => return Err(Halt::unsupported("instruction")),
     })
 }
 
-fn store_width(mnemonic: &str, source: &Operand) -> Result<u64, Unresolved> {
+fn store_width(mnemonic: &str, source: &Operand) -> Result<u64, Halt> {
     let suffix = mnemonic
         .strip_prefix("stur")
         .or_else(|| mnemonic.strip_prefix("str"))
-        .ok_or(Unresolved("instruction"))?;
+        .ok_or(Halt::unsupported("instruction"))?;
     match suffix {
         "" if source.is_wide() => Ok(8),
         "" => Ok(4),
         "b" => Ok(1),
         "h" => Ok(2),
-        _ => Err(Unresolved("instruction")),
+        _ => Err(Halt::unsupported("instruction")),
     }
 }
 
@@ -2105,6 +2223,7 @@ impl Memory {
 mod tests {
     use super::*;
     use crate::engine::analysis::assembler::arm64;
+    use crate::engine::analysis::stop::Stop;
 
     fn rows(lines: &[(u64, &str, &str)]) -> Code {
         Code::from_rows(
@@ -2117,6 +2236,18 @@ mod tests {
                     operands: (*operands).into(),
                 }),
         )
+    }
+
+    /// A stop of a run that entered at 0x100.
+    fn stop_at(reason: &'static str, instruction: u64, obstacle: Obstacle) -> Unresolved {
+        Unresolved {
+            reason,
+            stop: Some(Stop {
+                instruction,
+                entry: 0x100,
+                obstacle,
+            }),
+        }
     }
 
     fn returned(code: &Code, data: &ReadOnlyData, input: u64) -> Result<Option<u64>, Unresolved> {
@@ -2183,7 +2314,14 @@ mod tests {
         let data = ReadOnlyData::new(vec![(0x1010, vec![0, 0, 2, 0])]);
         assert_eq!(returned(&code, &data, 0), Ok(Some(7)));
         assert_eq!(returned(&code, &data, 1), Ok(Some(9)));
-        assert_eq!(returned(&code, &data, 2), Err(Unresolved("branch-value")));
+        assert_eq!(
+            returned(&code, &data, 2),
+            Err(stop_at(
+                "branch-value",
+                0x114,
+                Obstacle::Unknown(Unknown::Register(10))
+            ))
+        );
     }
 
     #[test]
@@ -2260,9 +2398,19 @@ mod tests {
     fn unknown_values_and_instructions_are_unresolved() {
         let data = ReadOnlyData::default();
         let branch = rows(&[(0x100, "cbz", "x3,#0x100")]);
-        assert_eq!(returned(&branch, &data, 0), Err(Unresolved("branch-value")));
+        assert_eq!(
+            returned(&branch, &data, 0),
+            Err(stop_at(
+                "branch-value",
+                0x100,
+                Obstacle::Unknown(Unknown::Register(3))
+            ))
+        );
         let unknown = rows(&[(0x100, "fmla", "s0,s1,s2")]);
-        assert_eq!(returned(&unknown, &data, 0), Err(Unresolved("instruction")));
+        assert_eq!(
+            returned(&unknown, &data, 0),
+            Err(stop_at("instruction", 0x100, Obstacle::Unsupported))
+        );
         let store = rows(&[
             (0x100, "str", "x0,[sp]"),
             (0x104, "str", "x0,[x5]"),
@@ -2273,10 +2421,17 @@ mod tests {
         let outside = rows(&[(0x100, "b", "#0x200")]);
         assert_eq!(
             returned(&outside, &data, 0),
-            Err(Unresolved("outside-code"))
+            Err(stop_at("outside-code", 0x200, Obstacle::OutsideCode))
         );
         let spin = rows(&[(0x100, "b", "#0x100")]);
-        assert_eq!(returned(&spin, &data, 0), Err(Unresolved("step-limit")));
+        assert_eq!(
+            returned(&spin, &data, 0),
+            Err(stop_at(
+                "step-limit",
+                0x100,
+                Obstacle::Bound(Bound::Steps(STEP_LIMIT))
+            ))
+        );
     }
 
     #[test]
@@ -2361,7 +2516,7 @@ mod tests {
         assert_eq!(returned_values(&paths), [Some(0x10), Some(0x21)]);
         assert_eq!(
             returned(&code, &data, 0),
-            Err(Unresolved("flags")),
+            Err(stop_at("flags", 0x104, Obstacle::Unknown(Unknown::Flags))),
             "a single run still refuses the unknown flags"
         );
     }
@@ -2417,7 +2572,10 @@ mod tests {
             ]
         );
         let trap = rows(&[(0x100, "brk", "#0x1")]);
-        assert_eq!(returned(&trap, &data, 0), Err(Unresolved("instruction")));
+        assert_eq!(
+            returned(&trap, &data, 0),
+            Err(stop_at("instruction", 0x100, Obstacle::Unsupported))
+        );
     }
 
     #[test]
@@ -2766,10 +2924,11 @@ mod tests {
         let data = ReadOnlyData::default();
         let paths = Machine::new(&code, &data).run_paths_joining(0x100, &mut count_calls(0x900));
 
+        let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
         assert!(
             paths
                 .iter()
-                .any(|path| path.end == Err(Unresolved("loop-limit")))
+                .any(|path| path.end == Err(stop_at("loop-limit", 0x100, limit)))
         );
         assert!(!paths.iter().any(|path| path.end == Ok(Exit::Looped)));
     }
@@ -2790,10 +2949,11 @@ mod tests {
             .run_paths_to(0x100, 0x114, &mut |_, _| Ok(Call::Return(None)));
 
         assert!(paths.iter().any(|path| path.end == Ok(Exit::Reached)));
+        let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
         assert!(
             paths
                 .iter()
-                .any(|path| path.end == Err(Unresolved("loop-limit")))
+                .any(|path| path.end == Err(stop_at("loop-limit", 0x100, limit)))
         );
         assert!(paths.len() < PATH_LIMIT);
     }
@@ -2805,10 +2965,11 @@ mod tests {
         let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
 
         assert!(paths.len() <= PATH_LIMIT);
+        let limit = Obstacle::Bound(Bound::Paths(PATH_LIMIT));
         assert!(
             paths
                 .iter()
-                .any(|path| path.end == Err(Unresolved("path-limit")))
+                .any(|path| path.end == Err(stop_at("path-limit", 0x100, limit)))
         );
     }
 
@@ -2826,12 +2987,15 @@ mod tests {
         assert_eq!(returned_values(&returned), [Some(5)]);
 
         let refused = Machine::new(&code, &data)
-            .run_paths(0x100, &mut |_, _| Err(Unresolved("unknown-callee")));
-        assert_eq!(refused[0].end, Err(Unresolved("unknown-callee")));
+            .run_paths(0x100, &mut |_, _| Err(Unresolved::new("unknown-callee")));
+        assert_eq!(
+            refused[0].end,
+            Err(stop_at("unknown-callee", 0x100, Obstacle::Call))
+        );
 
         assert_eq!(
             Machine::new(&code, &data).run(0x100, &mut |_, _| Ok(Call::Stop)),
-            Err(Unresolved("outside-code"))
+            Err(stop_at("outside-code", 0x900, Obstacle::OutsideCode))
         );
     }
 
@@ -2862,7 +3026,7 @@ mod tests {
         assert_eq!(stopped[0].end, Ok(Exit::Stopped(0x900)));
         assert_eq!(
             returned(&code, &data, 0),
-            Err(Unresolved("instruction")),
+            Err(stop_at("instruction", 0x100, Obstacle::Unsupported)),
             "a single run still refuses an indirect call"
         );
     }
@@ -2872,7 +3036,10 @@ mod tests {
         let code = rows(&[(0x100, "b.eq", "#0x100")]);
         let data = ReadOnlyData::default();
 
-        assert_eq!(returned(&code, &data, 0), Err(Unresolved("flags")));
+        assert_eq!(
+            returned(&code, &data, 0),
+            Err(stop_at("flags", 0x100, Obstacle::Unknown(Unknown::Flags)))
+        );
     }
 
     #[test]
@@ -3000,7 +3167,105 @@ mod tests {
                 &rows(&[(0x100, "bl", "#0x200"), (0x104, "ret", "")]),
                 &[0x200]
             ),
-            [(Err(Unresolved("outside-code")), None)]
+            [(
+                Err(Unresolved {
+                    reason: "outside-code",
+                    stop: Some(Stop {
+                        instruction: 0x200,
+                        entry: 0x200,
+                        obstacle: Obstacle::OutsideCode,
+                    }),
+                }),
+                None
+            )]
+        );
+    }
+
+    /// Runs `ranges` from 0x100 along every path. A call to 0x200 is entered; every other call
+    /// returns an unknown value.
+    fn authored_paths(ranges: &[(u64, &[u8])]) -> Vec<Result<Exit, Unresolved>> {
+        let code = Code::decode(ranges).unwrap();
+        let data = ReadOnlyData::default();
+
+        Machine::new(&code, &data)
+            .run_paths(0x100, &mut |target, _| {
+                Ok(match target {
+                    Some(0x200) => Call::Enter,
+                    _ => Call::Return(None),
+                })
+            })
+            .into_iter()
+            .map(|path| path.end)
+            .collect()
+    }
+
+    #[test]
+    fn a_stop_at_an_unknown_value_names_the_register_and_the_entered_function() {
+        let caller = arm64!(at 0x100;
+            bl extern 0x200;
+            br x9 // x9 is unknown after the call
+        );
+        let callee = arm64!(at 0x200; mov x0, #1; ret);
+        assert_eq!(
+            authored_paths(&[(0x100, &caller), (0x200, &callee)]),
+            [Err(stop_at(
+                "branch-value",
+                0x104,
+                Obstacle::Unknown(Unknown::Register(9))
+            ))]
+        );
+
+        let callee = arm64!(at 0x200; br x3);
+        assert_eq!(
+            authored_paths(&[(0x100, &caller), (0x200, &callee)]),
+            [Err(Unresolved {
+                reason: "branch-value",
+                stop: Some(Stop {
+                    instruction: 0x200,
+                    entry: 0x200,
+                    obstacle: Obstacle::Unknown(Unknown::Register(3)),
+                }),
+            })]
+        );
+    }
+
+    #[test]
+    fn a_stop_at_a_spent_bound_names_the_bound() {
+        let spin = arm64!(at 0x100; b extern 0x100);
+        assert_eq!(
+            authored_paths(&[(0x100, &spin)]),
+            [Err(stop_at(
+                "step-limit",
+                0x100,
+                Obstacle::Bound(Bound::Steps(STEP_LIMIT))
+            ))]
+        );
+
+        let fork = arm64!(at 0x100;
+            add x0, x0, #1;
+            cbz x3, extern 0x100 // x3 is unknown, so every pass forks
+        );
+        let ends = authored_paths(&[(0x100, &fork)]);
+        let limit = Obstacle::Bound(Bound::Paths(PATH_LIMIT));
+        assert!(ends.contains(&Err(stop_at("path-limit", 0x104, limit))));
+    }
+
+    #[test]
+    fn a_closure_names_the_unknown_register_at_its_call() {
+        let code = Code::decode(&[(0x100, &arm64!(at 0x100; nop; bl extern 0x900; ret))]).unwrap();
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, machine| {
+            machine.known_register(1, "argument")?;
+            Ok(Call::Return(None))
+        });
+
+        assert_eq!(
+            paths[0].end,
+            Err(stop_at(
+                "argument",
+                0x104,
+                Obstacle::Unknown(Unknown::Register(1))
+            ))
         );
     }
 }

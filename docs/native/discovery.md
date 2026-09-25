@@ -48,9 +48,9 @@ Failure shapes in the current public answers, excluding `OutsideMethod`:
 | Reader paths have no recovered field name | 15 | 15 |
 
 The last row accounts for 61 unnamed paths. Rows overlap and cannot be added as independent
-failures; the 101 root-path gap records are not a count of all stopped paths. SDK-581 (which
-absorbed SDK-588 on 2026-09-24) still owns internal function/instruction/bound diagnostics and
-normalized cross-run diffs. This baseline groups the public reasons available before those changes.
+failures; the 101 root-path gap records are not a count of all stopped paths. This baseline groups
+the public reasons; [the stops behind them](#where-the-baseline-paths-stop-sdk-581) group the same
+run by internal stop.
 
 Council agendas has all ten fields, but its answer is partial because `agenda_cost` uses the
 unclassified `CVariableValue` reader. Establishing that broad kind alone will not meet the M4
@@ -63,6 +63,30 @@ category tags, independent of which known/unknown registration comes first. Regr
 equal tags, conflicts, known then unresolved and unresolved then known. The existing M45 modifier
 parity test passed without changes to its expected count, gaps or samples; no returned modifier has
 unresolved tags on this build. The explicit M45-release count assertion also passed at 164.
+
+### Where the baseline paths stop (SDK-581)
+
+Date: 2026-09-25, same executable and `registry-fields/v3` population as the baseline above; the
+public answers of all 164 registries are unchanged. `examples/registry-field-sweep.rs` groups each
+internal gap by the stop instruction's mnemonic, the method's reason and the obstacle. Counts are
+internal gaps: one per stopped path, plus one per path without a single named token.
+
+| Stop | Gaps | Functions |
+| --- | ---: | ---: |
+| Path without a single named token (no stop) | 341 | — |
+| `bl` to a reader whose arguments lack owner or reader provenance | 202 | 72 |
+| `ubfx` not run | 84 | 15 |
+| `b` (tail call) to a reader without that provenance | 80 | 37 |
+| `b.hi` on unknown flags | 47 | 33 |
+| `blr` not run | 27 | 16 |
+| `b.lt`, `b.ne`, `b.eq`, `b.ls`, `b.gt`, `b.le` on unknown flags | 36 | — |
+| `and`, `ccmp`, `stur`, `cmp`, `lsr`, `ret`, `cset`, `csel`, `ldrh`, `movi`, `movk` not run | 63 | — |
+| `ldrb` or `stp` with an addressing form that the walker does not read | 23 | 13 |
+| Root `ReadMember` missing or ambiguous (no stop) | 12 | — |
+
+The unknown-flags stops on `b.hi` are the bounded unsigned compare in front of a compiler jump
+table, the shape SDK-563 repairs; the `ldrb` and `ldrh` rows are the table loads. Rerun the
+sweep and use `--diff` against a report of this run to count the registries a repair changes.
 
 ## Reusable reference seam
 

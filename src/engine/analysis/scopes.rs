@@ -26,7 +26,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::InputError;
 use super::declarations::{ScopeOutcome, ScopeType, number, scope_mask};
 use super::decode::Instruction;
-use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
+use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
+use super::stop::Unresolved;
 
 /// Name and revision of the scope method.
 pub const SCOPE_METHOD: &str = "scope-declarations/v1";
@@ -95,7 +96,7 @@ pub struct Link {
 pub enum Output {
     Listed(Vec<ScopeType>),
     Various,
-    Unresolved(&'static str),
+    Unresolved(Unresolved),
 }
 
 /// Every link, including those that take data, and what could not be named or followed.
@@ -237,21 +238,21 @@ fn prefix_link(input: &ScopeInput, prefix: String, unnamed: &[u64]) -> Link {
         return Link {
             name,
             prefix: Some(prefix),
-            input: ScopeOutcome::Unresolved("literal-prefix"),
-            output: Output::Unresolved("literal-prefix"),
+            input: ScopeOutcome::Unresolved(Unresolved::new("literal-prefix")),
+            output: Output::Unresolved(Unresolved::new("literal-prefix")),
         };
     }
 
     let inputs = unnamed
         .iter()
         .map(|&token| match input_scopes(input, token) {
-            ScopeOutcome::Unresolved(reason) => Err(reason),
+            ScopeOutcome::Unresolved(unresolved) => Err(unresolved),
             scopes => Ok(scopes),
         });
     let outputs = unnamed
         .iter()
         .map(|&token| match output_scope(input, token) {
-            Output::Unresolved(reason) => Err(reason),
+            Output::Unresolved(unresolved) => Err(unresolved),
             output => Ok(output),
         });
     Link {
@@ -265,25 +266,25 @@ fn prefix_link(input: &ScopeInput, prefix: String, unnamed: &[u64]) -> Link {
 /// The one declaration that every token gives, or the reason there is none. The first unresolved
 /// declaration keeps its own reason.
 fn agreed<T: PartialEq>(
-    declarations: impl Iterator<Item = Result<T, &'static str>>,
-) -> Result<T, &'static str> {
+    declarations: impl Iterator<Item = Result<T, Unresolved>>,
+) -> Result<T, Unresolved> {
     let mut agreed = None;
     for declaration in declarations {
         let declaration = declaration?;
         match &agreed {
             None => agreed = Some(declaration),
-            Some(first) if *first != declaration => return Err("token-dependent"),
+            Some(first) if *first != declaration => return Err(Unresolved::new("token-dependent")),
             Some(_) => {}
         }
     }
-    agreed.ok_or("token-dependent")
+    agreed.ok_or(Unresolved::new("token-dependent"))
 }
 
 fn scope_of_token(input: &ScopeInput, token: u64) -> Result<u64, Unresolved> {
     let mut machine = Machine::new(&input.code, &input.data);
     machine.set_register(0, token);
     let exit = machine.run(input.functions.scope_of_token, &mut |_, _| {
-        Err(Unresolved("call"))
+        Err(Unresolved::new("call"))
     })?;
     returned_value(&machine, exit)
 }
@@ -317,14 +318,14 @@ fn is_link(input: &ScopeInput, token: u64) -> Result<bool, Unresolved> {
     match exit {
         Exit::Stopped(target) if target == functions.target_documentation => Ok(true),
         Exit::Stopped(target) if target == functions.token_type_count => Ok(false),
-        _ => Err(Unresolved("exit")),
+        _ => Err(Unresolved::new("exit")),
     }
 }
 
 fn input_scopes(input: &ScopeInput, token: u64) -> ScopeOutcome {
     match supported_scopes(input, token, 0) {
         Ok(mask) => scope_mask(mask, input.scope_names.as_deref()),
-        Err(Unresolved(reason)) => ScopeOutcome::Unresolved(reason),
+        Err(unresolved) => ScopeOutcome::Unresolved(unresolved),
     }
 }
 
@@ -332,7 +333,7 @@ fn input_scopes(input: &ScopeInput, token: u64) -> ScopeOutcome {
 /// of another target and adds to them, so a constructed target is followed the same way.
 fn supported_scopes(input: &ScopeInput, token: u64, depth: usize) -> Result<u64, Unresolved> {
     if depth > LINK_DEPTH {
-        return Err(Unresolved("link-depth"));
+        return Err(Unresolved::new("link-depth"));
     }
     let functions = &input.functions;
     let offset = input.token_offset;
@@ -342,16 +343,16 @@ fn supported_scopes(input: &ScopeInput, token: u64, depth: usize) -> Result<u64,
     machine.set_register(0, target);
 
     let exit = machine.run(functions.supported_scopes, &mut |callee, machine| {
-        let object = machine.register(0).ok_or(Unresolved("target"))?;
+        let object = machine.known_register(0, "target")?;
         if functions.target_constructor.contains(&callee) {
-            let token = machine.register(1).ok_or(Unresolved("target"))?;
+            let token = machine.known_register(1, "target")?;
             machine.write(object + offset, 4, token & 0xffff_ffff);
             return Ok(Call::Return(Some(object)));
         }
         if callee == functions.supported_scopes {
             let token = machine
                 .read(object + offset, 4)
-                .ok_or(Unresolved("target"))?;
+                .ok_or(Unresolved::new("target"))?;
             return Ok(Call::Return(Some(supported_scopes(
                 input,
                 token,
@@ -361,7 +362,7 @@ fn supported_scopes(input: &ScopeInput, token: u64, depth: usize) -> Result<u64,
         if functions.target_destructor.contains(&callee) {
             return Ok(Call::Return(None));
         }
-        Err(Unresolved("call"))
+        Err(Unresolved::new("call"))
     })?;
     returned_value(&machine, exit)
 }
@@ -372,14 +373,14 @@ fn output_scope(input: &ScopeInput, token: u64) -> Output {
     machine.set_register(1, 0);
     let scope_type = machine
         .run(input.functions.output_scope, &mut |_, _| {
-            Err(Unresolved("call"))
+            Err(Unresolved::new("call"))
         })
         .and_then(|exit| returned_value(&machine, exit));
 
     match scope_type {
         Ok(0) => Output::Various,
         Ok(scope_type) => output_names(input, scope_type),
-        Err(Unresolved(reason)) => Output::Unresolved(reason),
+        Err(unresolved) => Output::Unresolved(unresolved),
     }
 }
 
@@ -387,16 +388,16 @@ fn output_scope(input: &ScopeInput, token: u64) -> Output {
 fn output_names(input: &ScopeInput, scope_type: u64) -> Output {
     match scope_mask(scope_type, input.scope_names.as_deref()) {
         ScopeOutcome::Listed(names) => Output::Listed(names),
-        ScopeOutcome::Any => Output::Unresolved("scope-type"),
-        ScopeOutcome::Unresolved(reason) => Output::Unresolved(reason),
+        ScopeOutcome::Any => Output::Unresolved(Unresolved::new("scope-type")),
+        ScopeOutcome::Unresolved(unresolved) => Output::Unresolved(unresolved),
     }
 }
 
 fn returned_value(machine: &Machine, exit: Exit) -> Result<u64, Unresolved> {
     if exit != Exit::Returned {
-        return Err(Unresolved("exit"));
+        return Err(Unresolved::new("exit"));
     }
-    machine.register(0).ok_or(Unresolved("result"))
+    machine.known_register(0, "result")
 }
 
 /// Literal strings that end with `:` and that the special-value parser loads.
@@ -597,7 +598,10 @@ mod tests {
             event_target.input,
             ScopeOutcome::Listed(vec![scope(2, "country")])
         );
-        assert_eq!(event_target.output, Output::Unresolved("token-dependent"));
+        assert_eq!(
+            event_target.output,
+            Output::Unresolved(Unresolved::new("token-dependent"))
+        );
     }
 
     #[test]
@@ -609,9 +613,12 @@ mod tests {
         let event_target = result.links.last().unwrap();
         assert_eq!(
             event_target.input,
-            ScopeOutcome::Unresolved("literal-prefix")
+            ScopeOutcome::Unresolved(Unresolved::new("literal-prefix"))
         );
-        assert_eq!(event_target.output, Output::Unresolved("literal-prefix"));
+        assert_eq!(
+            event_target.output,
+            Output::Unresolved(Unresolved::new("literal-prefix"))
+        );
     }
 
     #[test]
@@ -621,6 +628,9 @@ mod tests {
             output_names(&input, 0b1010),
             Output::Listed(vec![scope(1, "planet"), scope(3, "ship")])
         );
-        assert_eq!(output_names(&input, 1), Output::Unresolved("scope-name"));
+        assert_eq!(
+            output_names(&input, 1),
+            Output::Unresolved(Unresolved::new("scope-name"))
+        );
     }
 }

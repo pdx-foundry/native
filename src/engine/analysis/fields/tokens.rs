@@ -1,6 +1,7 @@
-use super::{FieldInput, Function};
+use super::{FieldGap, FieldGapKind, FieldInput, Function};
 use crate::engine::analysis::decode::{Instruction, decode_arm64};
 use crate::engine::analysis::discovery::Symbol;
+use crate::engine::analysis::stop::{Obstacle, Unknown, Unresolved};
 use std::collections::BTreeMap;
 
 pub(super) fn number(operand: &str) -> Option<i64> {
@@ -77,26 +78,32 @@ pub(super) struct Token {
     pub constructor: u64,
     pub ambiguous: bool,
 }
-pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<String>) {
+pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<FieldGap>) {
     let rows = match function(input, "GetTokenArray()")
         .ok_or("token constructor function missing or ambiguous".into())
         .and_then(decode)
     {
         Ok(rows) => rows,
-        Err(reason) => return (BTreeMap::new(), vec![reason]),
+        Err(reason) => return (BTreeMap::new(), vec![token_table_gap(reason)]),
     };
     recover_decoded(&rows, &input.symbols, &input.strings)
+}
+fn token_table_gap(reason: impl Into<String>) -> FieldGap {
+    FieldGap::new(FieldGapKind::TokenTable, reason)
 }
 pub(super) fn recover_decoded(
     rows: &[Instruction],
     symbols: &[Symbol],
     strings: &BTreeMap<u64, String>,
-) -> (BTreeMap<i64, Token>, Vec<String>) {
+) -> (BTreeMap<i64, Token>, Vec<FieldGap>) {
     let mut tokens = BTreeMap::<i64, Token>::new();
     let mut gaps = Vec::new();
     let reachable = match super::control_flow::reachable(rows) {
         Ok(reachable) => reachable,
-        Err(reason) => return (tokens, vec![reason]),
+        Err(unresolved) => {
+            let gap = FieldGap::unresolved(FieldGapKind::TokenTable, unresolved);
+            return (tokens, vec![gap]);
+        }
     };
     let branch_targets: std::collections::BTreeSet<_> = rows
         .iter()
@@ -170,23 +177,29 @@ pub(super) fn recover_decoded(
         if branch_targets.contains(&row.address) {
             values.clear();
         }
-        let pair = values
-            .get("x1")
-            .zip(values.get("x2"))
-            .and_then(|(&token, &address)| {
-                strings.get(&(address as u64)).map(|name| (token, name))
-            });
-        let Some((token, name)) = pair else {
-            gaps.push(format!(
-                "unsupported token constructor arguments or missing literal at {:#x}",
+        let unknown = |index| {
+            let argument = Obstacle::Unknown(Unknown::Register(index));
+            let entry = rows[0].address;
+            let stop = Unresolved::at("constructor-argument", row.address, entry, argument);
+            FieldGap::unresolved(FieldGapKind::TokenTable, stop)
+        };
+        let (Some(&token), Some(&address)) = (values.get("x1"), values.get("x2")) else {
+            gaps.push(unknown(if values.contains_key("x1") { 2 } else { 1 }));
+            continue;
+        };
+        let Some(name) = strings.get(&(address as u64)) else {
+            gaps.push(token_table_gap(format!(
+                "no literal at {address:#x} for the token constructor call at {:#x}",
                 row.address
-            ));
+            )));
             continue;
         };
         if let Some(previous) = tokens.get_mut(&token) {
             if previous.name != *name {
                 previous.ambiguous = true;
-                gaps.push(format!("conflicting names for token {token}"));
+                gaps.push(token_table_gap(format!(
+                    "conflicting names for token {token}"
+                )));
             }
         } else {
             tokens.insert(
@@ -200,7 +213,9 @@ pub(super) fn recover_decoded(
         }
     }
     if tokens.is_empty() {
-        gaps.push("no literal token constructor pairs recovered".into());
+        gaps.push(token_table_gap(
+            "no literal token constructor pairs recovered",
+        ));
     }
     (tokens, gaps)
 }

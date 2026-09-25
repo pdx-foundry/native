@@ -12,6 +12,7 @@ use crate::engine::analysis::{
     declarations::ScopeOutcome,
     modifiers::{self, CATEGORY_METHOD, DefinitionSite, MODIFIER_METHOD, ModifierResult, Tags},
     scopes::{self, LINK_METHOD, LinkResult, Output, SCOPE_METHOD, ScopeResult},
+    stop::Unresolved,
 };
 
 impl Native {
@@ -148,7 +149,7 @@ pub(crate) fn normalized_modifiers(
             DefinitionSite::Declared { name, tags } => {
                 let category_tags = match tags {
                     Tags::Listed(tags) => DeclaredTags::Listed(tags.clone()),
-                    Tags::Unresolved(reason) => {
+                    Tags::Unresolved(Unresolved { reason, .. }) => {
                         gaps.push(gap(
                             GapKind::UnresolvedPath,
                             Some(name),
@@ -351,7 +352,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
         let input_scopes = match &link.input {
             ScopeOutcome::Any => DeclaredScopes::Any,
             ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
-            ScopeOutcome::Unresolved(reason) => {
+            ScopeOutcome::Unresolved(Unresolved { reason, .. }) => {
                 if *reason != "scope-table" {
                     gaps.push(gap(
                         GapKind::UnresolvedPath,
@@ -365,7 +366,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
         let output_scope = match &link.output {
             Output::Listed(types) => OutputScope::Listed(scope_references(types)),
             Output::Various => OutputScope::Various,
-            Output::Unresolved(reason) => {
+            Output::Unresolved(Unresolved { reason, .. }) => {
                 if *reason != "scope-table" {
                     gaps.push(gap(
                         GapKind::UnresolvedPath,
@@ -481,7 +482,7 @@ mod tests {
     #[test]
     fn unresolved_modifier_registration_is_kept_in_either_order() {
         let known = Tags::Listed(vec!["country".into()]);
-        let unknown = Tags::Unresolved("unreadable category mask");
+        let unknown = Tags::Unresolved(Unresolved::new("unreadable category mask"));
         let first = modifier_registrations(vec![known.clone(), unknown.clone()]);
         let second = modifier_registrations(vec![unknown, known]);
         assert_eq!(first, second);
@@ -516,7 +517,10 @@ mod tests {
                     "carrier".into(),
                     ScopeOutcome::Listed(vec![scope(1, "planet"), scope(3, "ship")]),
                 ),
-                ("unnamed".into(), ScopeOutcome::Unresolved("scope-name")),
+                (
+                    "unnamed".into(),
+                    ScopeOutcome::Unresolved(Unresolved::new("scope-name")),
+                ),
             ],
             unnamed_types: 0,
             unnamed_keywords: 0,

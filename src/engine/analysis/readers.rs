@@ -18,7 +18,7 @@ pub fn classify(readers: &[ReaderJoin]) -> Classification<'_> {
         .iter()
         .filter_map(|reader| match reader {
             ReaderJoin::Joined { callee, .. } => Some(callee.as_str()),
-            ReaderJoin::Missing { .. } => None,
+            ReaderJoin::Missing(_) => None,
         })
         .collect();
     let all_joined = !readers.is_empty()
@@ -94,6 +94,7 @@ fn matching_deferred_reference(callee: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::stop::Unresolved;
     use std::collections::BTreeMap;
 
     fn joined(callee: &str) -> ReaderJoin {
@@ -133,9 +134,7 @@ mod tests {
         ] {
             assert_eq!(classify(&[joined(callee)]).kind, ReaderKind::Unknown);
         }
-        let missing = ReaderJoin::Missing {
-            reason: "wrong provenance".into(),
-        };
+        let missing = ReaderJoin::Missing(Unresolved::new("reader-routing"));
         assert_eq!(
             classify(&[joined("CReader::Read(bool&)"), missing]).callee,
             None

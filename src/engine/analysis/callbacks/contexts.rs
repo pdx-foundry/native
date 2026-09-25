@@ -19,7 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{CallbackLayout, Context, Slot};
 use crate::engine::analysis::decode::Instruction;
-use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
+use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
+use crate::engine::analysis::stop::Unresolved;
 
 use super::names::StringFunctions;
 
@@ -126,7 +127,7 @@ impl Runner<'_> {
                     result.reached.push((literal, context));
                 }
                 Ok(_) => result.unresolved = Some("left-the-site"),
-                Err(Unresolved(reason)) => result.unresolved = Some(reason),
+                Err(Unresolved { reason, .. }) => result.unresolved = Some(reason),
             }
         }
         result
@@ -236,9 +237,9 @@ impl Runner<'_> {
                     self.follow(callee, inner, depth + 1);
                     Ok(Call::Return(None))
                 }
-                _ if followed => Err(Unresolved("call-depth")),
+                _ if followed => Err(Unresolved::new("call-depth")),
                 _ if (0..=8).any(|index| inner.register(index) == Some(object)) => {
-                    Err(Unresolved("scope-passed-on"))
+                    Err(Unresolved::new("scope-passed-on"))
                 }
                 _ => Ok(Call::Return(None)),
             }

@@ -9,8 +9,9 @@ use crate::binding::VerifiedAnalysis;
 use crate::engine::analysis::{
     declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
-    fields::{self, PathOutcome, RegistryFieldResult},
+    fields::{self, FieldGapKind, PathOutcome, RegistryFieldResult},
     readers,
+    stop::Unresolved,
 };
 use crate::{AnalysisError, UnavailableReason};
 use sha2::{Digest, Sha256};
@@ -212,7 +213,34 @@ impl Native {
     }
 
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
+        let name = registry.trim_end_matches('/');
+        let result = self.registry_field_result(registry)?;
+        let gaps = normalized_gaps(&result, name);
+        Ok(Answer {
+            value: normalized_fields(&result),
+            completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            },
+            gaps,
+            source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
+        })
+    }
+
+    /// The registry field method's own result, with every path and stop. Recorded answers do
+    /// not hold it.
+    pub(crate) fn registry_field_result(
+        &self,
+        registry: &str,
+    ) -> Result<RegistryFieldResult, Error> {
         let operation = Operation::RegistryFields;
+        if self.recorded().is_some() {
+            return Err(Error::Unsupported {
+                operation,
+                reason: "recorded answers do not hold the method's internal result".into(),
+            });
+        }
         let name = registry.trim_end_matches('/');
         let verified = self.verified_analysis(operation)?;
         let mut matching = verified
@@ -227,18 +255,7 @@ impl Native {
         let input = verified
             .field_input(candidate.record.clone())
             .map_err(|e| error(operation, e))?;
-        let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
-        let gaps = normalized_gaps(&result, name);
-        Ok(Answer {
-            value: normalized_fields(&result),
-            completeness: if gaps.iter().all(|gap| gap.kind == GapKind::OutsideMethod) {
-                Completeness::Complete
-            } else {
-                Completeness::Partial
-            },
-            gaps,
-            source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
-        })
+        fields::analyze(&input).map_err(|e| error(operation, e.into()))
     }
 }
 
@@ -264,7 +281,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                 let scopes = match scopes {
                     ScopeOutcome::Any => DeclaredScopes::Any,
                     ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
-                    ScopeOutcome::Unresolved(link) => {
+                    ScopeOutcome::Unresolved(Unresolved { reason: link, .. }) => {
                         if *link != "scope-table" {
                             gaps.push(Gap {
                                 kind: GapKind::UnresolvedPath,
@@ -405,16 +422,16 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         });
     }
     for gap in &result.gaps {
-        let (kind, detail) = match gap.kind.as_str() {
-            "input-boundary" | "token-table" => (
+        let (kind, detail) = match gap.kind {
+            FieldGapKind::InputBoundary | FieldGapKind::TokenTable => (
                 GapKind::UnreadableInput,
                 "A function or name table that the method needs could not be read.",
             ),
-            "reader-join" => (
+            FieldGapKind::ReaderJoin => (
                 GapKind::UnresolvedReader,
                 "The field's reader could not be established on at least one path.",
             ),
-            _ => (
+            FieldGapKind::UnresolvedTokenPath | FieldGapKind::TokenPartition => (
                 GapKind::UnresolvedPath,
                 "A path through the registry's reader could not be followed to its end.",
             ),
@@ -508,7 +525,7 @@ mod declaration_tests {
                     name: "known".into(),
                     description: "description".into(),
                     usage: "".into(),
-                    scopes: ScopeOutcome::Unresolved("scope-table"),
+                    scopes: ScopeOutcome::Unresolved(Unresolved::new("scope-table")),
                 },
             )],
             table_gaps: vec!["scope-table"],
@@ -529,5 +546,109 @@ mod declaration_tests {
                 .iter()
                 .any(|gap| gap.subject.as_ref().map(|subject| subject.name()) == Some("known"))
         );
+    }
+}
+
+#[cfg(test)]
+mod field_gap_tests {
+    use super::*;
+    use crate::engine::analysis::fields::{FieldGap, ReaderJoin, RootField, TokenPath};
+    use crate::engine::analysis::stop::{Obstacle, Unknown};
+    use std::collections::BTreeMap;
+
+    const REGISTRY: &str = "common/examples";
+
+    /// One field, `known`, whose only path joins a reader of a known kind, and `gaps`.
+    fn result(gaps: Vec<FieldGap>) -> RegistryFieldResult {
+        let reader = ReaderJoin::Joined {
+            callee: "CReader::Read(bool&)".into(),
+            arguments: BTreeMap::new(),
+        };
+        RegistryFieldResult {
+            fields: vec![RootField {
+                name: "known".into(),
+                token: 7,
+                constructor: 0x2000,
+                paths: vec![0],
+                readers: vec![reader.clone()],
+            }],
+            paths: vec![TokenPath {
+                domain: [7, 7],
+                conditions: vec![],
+                instructions: vec![0x1000],
+                terminal: 0x1000,
+                outcome: PathOutcome::Reader(reader),
+            }],
+            gaps,
+            partition_accounted: true,
+        }
+    }
+
+    /// The public gaps besides the method's boundary, which every answer carries.
+    fn public_gaps(gaps: Vec<FieldGap>) -> Vec<Gap> {
+        let mut public = normalized_gaps(&result(gaps), REGISTRY);
+        assert_eq!(public.remove(0).kind, GapKind::OutsideMethod);
+        public
+    }
+
+    #[test]
+    fn each_field_gap_kind_has_one_public_kind_and_subject() {
+        for (kind, public) in [
+            (FieldGapKind::InputBoundary, GapKind::UnreadableInput),
+            (FieldGapKind::TokenTable, GapKind::UnreadableInput),
+            (FieldGapKind::ReaderJoin, GapKind::UnresolvedReader),
+            (FieldGapKind::UnresolvedTokenPath, GapKind::UnresolvedPath),
+            (FieldGapKind::TokenPartition, GapKind::UnresolvedPath),
+        ] {
+            let registry_wide = public_gaps(vec![FieldGap::new(kind, "reason")]);
+            assert_eq!(registry_wide.len(), 1, "{kind:?}");
+            assert_eq!(registry_wide[0].kind, public, "{kind:?}");
+            assert_eq!(
+                registry_wide[0].subject,
+                Some(GapSubject::registry(REGISTRY))
+            );
+
+            let on_field = public_gaps(vec![FieldGap {
+                path: Some(0),
+                ..FieldGap::new(kind, "reason")
+            }]);
+            assert_eq!(on_field.len(), 1, "{kind:?}");
+            assert_eq!(on_field[0].kind, public, "{kind:?}");
+            assert_eq!(on_field[0].subject, Some(GapSubject::field("known")));
+        }
+    }
+
+    #[test]
+    fn gaps_of_one_public_kind_and_subject_become_one_gap() {
+        let public = public_gaps(vec![
+            FieldGap::new(FieldGapKind::InputBoundary, "first"),
+            FieldGap::new(FieldGapKind::TokenTable, "second"),
+            FieldGap {
+                path: Some(0),
+                ..FieldGap::new(FieldGapKind::ReaderJoin, "third")
+            },
+            FieldGap {
+                path: Some(0),
+                ..FieldGap::new(FieldGapKind::ReaderJoin, "fourth")
+            },
+        ]);
+
+        let kinds: Vec<_> = public.iter().map(|gap| gap.kind).collect();
+        assert_eq!(kinds, [GapKind::UnreadableInput, GapKind::UnresolvedReader]);
+    }
+
+    #[test]
+    fn a_located_stop_does_not_reach_public_text() {
+        let stop = Unresolved::at("flags", 0x1004, 0x1000, Obstacle::Unknown(Unknown::Flags));
+        let public = public_gaps(vec![FieldGap {
+            path: Some(0),
+            ..FieldGap::unresolved(FieldGapKind::ReaderJoin, stop)
+        }]);
+        let located = public_gaps(vec![FieldGap {
+            path: Some(0),
+            ..FieldGap::new(FieldGapKind::ReaderJoin, "flags")
+        }]);
+
+        assert_eq!(public, located);
     }
 }

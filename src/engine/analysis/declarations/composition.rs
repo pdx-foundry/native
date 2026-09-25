@@ -22,8 +22,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{DeclarationInput, Function, Site, decode, scopes, split_documentation, target};
 use crate::engine::analysis::{
     decode::Instruction,
-    evaluate::{Call, Code, Exit, Machine, PATH_LIMIT, ReadOnlyData, Unresolved},
+    evaluate::{Call, Code, Exit, Machine, PATH_LIMIT, ReadOnlyData},
     families::{Arena, Effect, Model, StringFunctions, StringLayout},
+    stop::Unresolved,
 };
 
 /// The most callers that the method follows above the function that contains a registration call.
@@ -89,7 +90,9 @@ impl<'a> Composer<'a> {
                         sites.push(site);
                         continue;
                     }
-                    Err(Unresolved(obstacle)) => obstacle,
+                    Err(Unresolved {
+                        reason: obstacle, ..
+                    }) => obstacle,
                 };
                 let callers: Vec<Step> = self
                     .input
@@ -134,8 +137,8 @@ impl<'a> Composer<'a> {
                 .composition
                 .bodies
                 .get(&function)
-                .ok_or(Unresolved("function-code"))?;
-            let rows = decode(body).map_err(|_| Unresolved("function-code"))?;
+                .ok_or(Unresolved::new("function-code"))?;
+            let rows = decode(body).map_err(|_| Unresolved::new("function-code"))?;
             self.rows.insert(function, rows);
         }
         Ok(&self.rows[&function])
@@ -196,16 +199,16 @@ impl<'a> Composer<'a> {
                         Exit::Stopped(target)
                             if composition.strings.never_return.contains(&target) => {}
                         Exit::Returned | Exit::Stopped(_) | Exit::Looped => {
-                            return Err(Unresolved("call-skipped"));
+                            return Err(Unresolved::new("call-skipped"));
                         }
                     }
                 }
             }
             if arrived.is_empty() {
-                return Err(Unresolved("call-unreached"));
+                return Err(Unresolved::new("call-unreached"));
             }
             if arrived.len() > PATH_LIMIT {
-                return Err(Unresolved("path-limit"));
+                return Err(Unresolved::new("path-limit"));
             }
             machines = arrived;
         }
@@ -217,7 +220,7 @@ impl<'a> Composer<'a> {
         let (Some((name, factory, documentation)), None) =
             (registrations.pop_first(), registrations.pop_first())
         else {
-            return Err(Unresolved("paths-disagree"));
+            return Err(Unresolved::new("paths-disagree"));
         };
         let (description, usage) = split_documentation(&documentation);
         Ok(Site::Declared {
@@ -251,7 +254,7 @@ impl Run<'_> {
                 })?;
                 match exit {
                     Exit::Returned => Ok(Call::Return(machine.register(0))),
-                    _ => Err(Unresolved("composer")),
+                    _ => Err(Unresolved::new("composer")),
                 }
             }
             Some(target) if composition.dynamic_token.contains(&target) => {
@@ -280,25 +283,30 @@ impl Run<'_> {
         machine: &Machine,
         arena: &mut Arena,
     ) -> Result<(String, u64, String), Unresolved> {
-        let token = machine.register(1).ok_or(Unresolved("token"))? & 0xffff_ffff;
+        let token = machine.known_register(1, "token")? & 0xffff_ffff;
         let name = if token >= DYNAMIC_TOKENS {
-            let node = machine.labelled(token).ok_or(Unresolved("token"))?;
-            arena.node(node).literal_text().ok_or(Unresolved("name"))?
+            let node = machine.labelled(token).ok_or(Unresolved::new("token"))?;
+            arena
+                .node(node)
+                .literal_text()
+                .ok_or(Unresolved::new("name"))?
         } else {
             self.input
                 .tokens
                 .get(&token)
                 .cloned()
-                .ok_or(Unresolved("token-table"))?
+                .ok_or(Unresolved::new("token-table"))?
         };
-        let entry = machine.register(2).ok_or(Unresolved("entry"))?;
-        let factory = machine.read(entry, 8).ok_or(Unresolved("entry-shape"))?;
+        let entry = machine.known_register(2, "entry")?;
+        let factory = machine
+            .read(entry, 8)
+            .ok_or(Unresolved::new("entry-shape"))?;
         let text = machine.read(entry + 8, 8);
         let node = self.model.text_node(machine, text, arena);
         let documentation = arena
             .node(node)
             .literal_text()
-            .ok_or(Unresolved("documentation"))?;
+            .ok_or(Unresolved::new("documentation"))?;
         Ok((name, factory, documentation))
     }
 }

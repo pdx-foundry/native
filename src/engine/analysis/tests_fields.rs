@@ -1,8 +1,9 @@
 //! The registry field method on small authored inputs.
 use crate::engine::analysis::{
-    assembler::arm64,
+    assembler::{Arm64, arm64},
     discovery::{Symbol, candidates},
-    fields::{self, FieldInput, Function, PathOutcome, ReaderJoin},
+    fields::{self, FieldGap, FieldGapKind, FieldInput, Function, PathOutcome, ReaderJoin},
+    stop::{Bound, Obstacle, Unknown, Unresolved},
 };
 use std::collections::BTreeMap;
 
@@ -115,7 +116,7 @@ fn clobbered_and_truncated_receivers_cannot_join() {
         assert_eq!(result.fields.len(), 1);
         assert!(matches!(
             result.fields[0].readers[0],
-            ReaderJoin::Missing { .. }
+            ReaderJoin::Missing(_)
         ));
     }
 }
@@ -126,13 +127,18 @@ fn unresolved_callee_and_missing_token_name_remain_gaps() {
     let result = derive(input);
     assert!(matches!(
         result.fields[0].readers[0],
-        ReaderJoin::Missing { .. }
+        ReaderJoin::Missing(_)
     ));
     let mut input = fixture();
     input.strings.clear();
     let result = derive(input);
     assert!(result.fields.is_empty());
-    assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == FieldGapKind::TokenTable)
+    );
 }
 #[test]
 fn clobbered_token_constructor_arguments_do_not_reuse_stale_values() {
@@ -140,7 +146,12 @@ fn clobbered_token_constructor_arguments_do_not_reuse_stale_values() {
     replace(&mut input, 0x2008, arm64!(at 0x2008; mov x2, xzr));
     let result = derive(input);
     assert!(result.fields.is_empty());
-    assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == FieldGapKind::TokenTable)
+    );
 }
 #[test]
 fn unsupported_rejection_body_is_not_a_successful_negative_result() {
@@ -153,7 +164,12 @@ fn unsupported_rejection_body_is_not_a_successful_negative_result() {
             .iter()
             .any(|p| matches!(p.outcome, PathOutcome::Rejected))
     );
-    assert!(result.gaps.iter().any(|g| g.kind == "reader-join"));
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == FieldGapKind::ReaderJoin)
+    );
 }
 #[test]
 fn altered_flags_and_external_branch_do_not_silently_drop_token_intervals() {
@@ -222,7 +238,12 @@ fn writeback_cannot_preserve_a_stale_token_name_pointer() {
     );
     let result = derive(input);
     assert!(result.fields.is_empty());
-    assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == FieldGapKind::TokenTable)
+    );
 }
 
 #[test]
@@ -231,11 +252,12 @@ fn cyclic_dispatch_is_bounded_and_visible() {
     replace(&mut input, 0x1010, arm64!(at 0x1010; b extern 0x1010));
     let result = derive(input);
     assert!(result.partition_accounted);
+    let cycle = Unresolved::at("cycle", 0x1010, 0x1000, Obstacle::Cycle);
     assert!(
         result
             .paths
             .iter()
-            .any(|p| matches!(&p.outcome,PathOutcome::Gap(reason) if reason.contains("cycle")))
+            .any(|p| p.outcome == PathOutcome::Gap(cycle))
     );
     assert!(result.fields.is_empty());
 }
@@ -262,7 +284,7 @@ fn an_unresolved_state_alternative_stays_attached_to_the_field() {
         result.fields[0]
             .readers
             .iter()
-            .any(|j| matches!(j, ReaderJoin::Missing { .. }))
+            .any(|j| matches!(j, ReaderJoin::Missing(_)))
     );
     assert!(
         result.fields[0]
@@ -287,7 +309,12 @@ fn a_branch_into_the_constructor_cannot_bypass_argument_provenance() {
     );
     let result = derive(input);
     assert!(result.fields.is_empty());
-    assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
+    assert!(
+        result
+            .gaps
+            .iter()
+            .any(|g| g.kind == FieldGapKind::TokenTable)
+    );
 }
 
 #[test]
@@ -304,7 +331,12 @@ fn unreachable_token_constructors_are_not_discovered() {
         input.functions[1].code = [skip, constructor].concat();
         let result = derive(input);
         assert!(result.fields.is_empty());
-        assert!(result.gaps.iter().any(|g| g.kind == "token-table"));
+        assert!(
+            result
+                .gaps
+                .iter()
+                .any(|g| g.kind == FieldGapKind::TokenTable)
+        );
     }
 }
 
@@ -395,4 +427,42 @@ fn token_constructor_reachability_stops_at_external_tail_calls() {
     let result = derive(input);
     assert_eq!(result.fields.len(), 1);
     assert_eq!(result.fields[0].token, 7);
+}
+#[test]
+fn a_path_that_stops_at_an_unknown_value_names_it_in_its_gap() {
+    let mut input = fixture();
+    replace(&mut input, 0x1000, arm64!(at 0x1000; cmp w1, #7)); // w1 is the reader, not the token
+    let result = derive(input);
+
+    let flags = Unresolved::at("flags", 0x1004, 0x1000, Obstacle::Unknown(Unknown::Flags));
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(flags));
+    assert!(result.gaps.contains(&FieldGap {
+        path: Some(0),
+        ..FieldGap::unresolved(FieldGapKind::ReaderJoin, flags)
+    }));
+}
+#[test]
+fn a_path_that_spends_its_step_bound_names_the_bound_in_its_gap() {
+    let mut root = Arm64::at(0x1000);
+    for _ in 0..500 {
+        arm64!(root; nop);
+    }
+    arm64!(root; b extern 0x5000); // CPersistent::ReadMember
+    let mut input = fixture();
+    input.functions[0].code = root.bytes();
+    let result = derive(input);
+
+    let spent = Unresolved::at(
+        "step-limit",
+        0x17d0,
+        0x1000,
+        Obstacle::Bound(Bound::Steps(500)),
+    );
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(spent));
+    assert!(result.gaps.contains(&FieldGap {
+        path: Some(0),
+        ..FieldGap::unresolved(FieldGapKind::ReaderJoin, spent)
+    }));
 }

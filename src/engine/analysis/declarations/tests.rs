@@ -111,7 +111,7 @@ fn declared(name: &str, description: &str, usage: &str) -> Site {
         name: name.into(),
         description: description.into(),
         usage: usage.into(),
-        scopes: ScopeOutcome::Unresolved("factory-create"),
+        scopes: ScopeOutcome::Unresolved(Unresolved::new("factory-create")),
     }
 }
 
@@ -421,7 +421,7 @@ fn a_scope_getter_that_reads_the_command_is_unresolved_on_its_declaration() {
 
     assert_eq!(
         followed(create, getter),
-        [win(ScopeOutcome::Unresolved("scope-mask"))]
+        [win(ScopeOutcome::Unresolved(Unresolved::new("scope-mask")))]
     );
 }
 

@@ -16,7 +16,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::decode::Instruction;
-use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved};
+use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
+use super::stop::Unresolved;
 
 /// Name and revision of the modifier method.
 pub const MODIFIER_METHOD: &str = "modifier-declarations/v1";
@@ -65,7 +66,7 @@ pub enum DefinitionSite {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tags {
     Listed(Vec<String>),
-    Unresolved(&'static str),
+    Unresolved(Unresolved),
 }
 
 /// Every definition site, every category name, and the input-wide counts. Category names cover
@@ -141,9 +142,9 @@ struct Arguments {
 impl Arguments {
     fn unreadable() -> Self {
         Self {
-            token: Err(Unresolved("site")),
+            token: Err(Unresolved::new("site")),
             modifier_type: None,
-            mask: Err(Unresolved("site")),
+            mask: Err(Unresolved::new("site")),
         }
     }
 }
@@ -171,10 +172,10 @@ fn definition_arguments(input: &ModifierInput, rows: &[Instruction]) -> Argument
             let token = machine
                 .register(0)
                 .map(|token| token as u32 as u64)
-                .ok_or(Unresolved("token"));
+                .ok_or(Unresolved::new("token"));
             let mask = machine
                 .read(stack + input.category_offset, 4)
-                .ok_or(Unresolved("category-mask"));
+                .ok_or(Unresolved::new("category-mask"));
             Arguments {
                 token,
                 modifier_type: machine.register(1).map(|value| value as u32 as u64),
@@ -193,7 +194,7 @@ fn definition_site(
     categories: &CategoryNames,
     Arguments { token, mask, .. }: Arguments,
 ) -> DefinitionSite {
-    if token == Err(Unresolved("site")) {
+    if matches!(token, Err(Unresolved { reason: "site", .. })) {
         return DefinitionSite::Unreadable;
     }
     let Some(name) = token.ok().and_then(|token| input.tokens.get(&token)) else {
@@ -201,7 +202,10 @@ fn definition_site(
     };
     let tags = match mask {
         Ok(mask) => tags(categories, mask),
-        Err(_) => Tags::Unresolved("category-mask"),
+        Err(unresolved) => Tags::Unresolved(Unresolved {
+            reason: "category-mask",
+            ..unresolved
+        }),
     };
     DefinitionSite::Declared {
         name: name.clone(),
@@ -214,7 +218,8 @@ fn definition_site(
 pub fn tags(categories: &CategoryNames, mask: u64) -> Tags {
     match categories.get(&mask) {
         Some(Ok(Some(name))) => return Tags::Listed(vec![name.clone()]),
-        Some(Err(_)) | None => return Tags::Unresolved("category-name"),
+        Some(Err(unresolved)) => return Tags::Unresolved(unresolved_category_name(*unresolved)),
+        None => return Tags::Unresolved(Unresolved::new("category-name")),
         Some(Ok(None)) => {}
     }
 
@@ -222,11 +227,22 @@ pub fn tags(categories: &CategoryNames, mask: u64) -> Tags {
     for bit in (0..32).filter(|bit| mask >> bit & 1 == 1) {
         match categories.get(&(1 << bit)) {
             Some(Ok(Some(name))) => names.push(name.clone()),
-            Some(Ok(None)) => return Tags::Unresolved("unnamed-category"),
-            Some(Err(_)) | None => return Tags::Unresolved("category-name"),
+            Some(Ok(None)) => return Tags::Unresolved(Unresolved::new("unnamed-category")),
+            Some(Err(unresolved)) => {
+                return Tags::Unresolved(unresolved_category_name(*unresolved));
+            }
+            None => return Tags::Unresolved(Unresolved::new("category-name")),
         }
     }
     Tags::Listed(names)
+}
+
+/// A category name that did not resolve, under the one reason that public gap text quotes.
+fn unresolved_category_name(unresolved: Unresolved) -> Unresolved {
+    Unresolved {
+        reason: "category-name",
+        ..unresolved
+    }
 }
 
 /// Run the category-name switch for one mask. `Ok(None)` means that the switch has no name for
@@ -240,23 +256,26 @@ fn category_name(input: &CategoryInput, mask: u64) -> Result<Option<String>, Unr
     let mut assigned = None;
     let exit = machine.run(input.category_name, &mut |target, machine| {
         if !input.assign_literal.contains(&target) {
-            return Err(Unresolved("call"));
+            return Err(Unresolved::new("call"));
         }
-        let literal = machine.register(1).ok_or(Unresolved("literal"))?;
-        let length = machine.register(2).ok_or(Unresolved("literal"))?;
-        let text = input.data.string(literal).ok_or(Unresolved("literal"))?;
+        let literal = machine.known_register(1, "literal")?;
+        let length = machine.known_register(2, "literal")?;
+        let text = input
+            .data
+            .string(literal)
+            .ok_or(Unresolved::new("literal"))?;
         assigned = Some(
             text.get(..length as usize)
-                .ok_or(Unresolved("literal"))?
+                .ok_or(Unresolved::new("literal"))?
                 .to_owned(),
         );
         Ok(Call::Return(Some(object)))
     })?;
     if exit != Exit::Returned {
-        return Err(Unresolved("exit"));
+        return Err(Unresolved::new("exit"));
     }
 
-    if machine.register(0).ok_or(Unresolved("result"))? & 1 == 0 {
+    if machine.known_register(0, "result")? & 1 == 0 {
         return Ok(None);
     }
     if let Some(text) = assigned {
@@ -264,17 +283,17 @@ fn category_name(input: &CategoryInput, mask: u64) -> Result<Option<String>, Unr
     }
     let length = machine
         .read(object + input.short_length_offset, 1)
-        .ok_or(Unresolved("short-string"))?;
+        .ok_or(Unresolved::new("short-string"))?;
     if length >= input.short_length_offset {
-        return Err(Unresolved("short-string"));
+        return Err(Unresolved::new("short-string"));
     }
     let bytes: Option<Vec<u8>> = (0..length)
         .map(|offset| machine.read(object + offset, 1).map(|byte| byte as u8))
         .collect();
-    let bytes = bytes.ok_or(Unresolved("short-string"))?;
+    let bytes = bytes.ok_or(Unresolved::new("short-string"))?;
     String::from_utf8(bytes)
         .map(Some)
-        .map_err(|_| Unresolved("short-string"))
+        .map_err(|_| Unresolved::new("short-string"))
 }
 
 #[cfg(test)]
@@ -385,8 +404,14 @@ mod tests {
             tags(&categories, 3),
             Tags::Listed(vec!["Pops".into(), "Ships".into()])
         );
-        assert_eq!(tags(&categories, 5), Tags::Unresolved("unnamed-category"));
-        assert_eq!(tags(&categories, 9), Tags::Unresolved("category-name"));
+        assert_eq!(
+            tags(&categories, 5),
+            Tags::Unresolved(Unresolved::new("unnamed-category"))
+        );
+        assert_eq!(
+            tags(&categories, 9),
+            Tags::Unresolved(Unresolved::new("category-name"))
+        );
     }
 
     #[test]
@@ -414,7 +439,7 @@ mod tests {
                 DefinitionSite::RuntimeToken,
                 DefinitionSite::Declared {
                     name: "fleet_speed".into(),
-                    tags: Tags::Unresolved("category-mask"),
+                    tags: Tags::Unresolved(Unresolved::new("category-mask")),
                 },
                 DefinitionSite::RuntimeToken,
             ]

@@ -12,7 +12,8 @@
 //! the same branches that it takes for that text. Strings that it builds are in the long form.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::evaluate::{Call, Machine, ReadOnlyData, Unresolved};
+use super::super::evaluate::{Call, Machine, ReadOnlyData};
+use super::super::stop::Unresolved;
 
 /// The longest text that the model reads or writes, in bytes.
 const TEXT_LIMIT: u64 = 4096;
@@ -372,7 +373,7 @@ impl Model<'_> {
         node: u64,
         arena: &Arena,
     ) -> Result<Call, Unresolved> {
-        let object = object.ok_or(Unresolved("string-object"))?;
+        let object = object.ok_or(Unresolved::new("string-object"))?;
         let text = match arena.node(node).text(self.key) {
             Some(text) => text,
             None => {
@@ -420,7 +421,7 @@ impl Model<'_> {
         capacity: u64,
         arena: &mut Arena,
     ) -> Result<Call, Unresolved> {
-        let buffer = machine.register(0).ok_or(Unresolved("format-buffer"))?;
+        let buffer = machine.known_register(0, "format-buffer")?;
         let format = machine
             .register(1)
             .and_then(|format| self.data.string(format));

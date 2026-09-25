@@ -255,3 +255,37 @@ fn a_base_register_that_is_only_read_keeps_its_page() {
     assert_eq!(writeback_base("x0,x1,[sp],#16"), None);
     assert_eq!(writeback_base("x0,[x9],#16"), Some(9));
 }
+
+#[test]
+fn a_stop_is_placed_at_its_instruction_function_and_entry() {
+    use crate::engine::analysis::stop::{Obstacle, Unknown};
+
+    let bytes = support::macho_image(6);
+    let image = Image::read(&bytes).unwrap();
+    let stop = Stop {
+        instruction: READ + 0x14,
+        entry: READ,
+        obstacle: Obstacle::Unknown(Unknown::Register(8)),
+    };
+    let placed = image.place_stop(stop);
+
+    assert_eq!(placed.place, "Probe::Read()+0x14");
+    assert_eq!(placed.function.as_deref(), Some("Probe::Read()"));
+    assert_eq!(placed.entry, "Probe::Read()");
+    let row = placed.row.as_ref().expect("a text instruction");
+    assert_eq!(
+        (row.operation.as_str(), row.operands.as_str()),
+        ("ldr", "x8,[x8]")
+    );
+    assert_eq!(
+        placed.to_string(),
+        format!("x8 unknown\n  {row}\n  at Probe::Read()+0x14; entered at {READ:#x} Probe::Read()")
+    );
+
+    let outside = image.place_stop(Stop {
+        instruction: SLOT,
+        ..stop
+    });
+    assert_eq!(outside.function, None);
+    assert_eq!(outside.row, None);
+}
