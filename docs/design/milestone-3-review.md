@@ -31,12 +31,14 @@ specific observation work. Those checks remain required; a static result cannot 
 
 **Milestone 4 can start before all repairs and cuts are finished.** Atlas integration runs
 alongside the first methods. Other repairs attach to the changes they serve; optional cleanup
-does not delay the milestone. Milestone 4 finishes only when the council agenda test, method
-fixture criteria, full-inventory measurements and Atlas integration checks pass.
+does not delay the milestone. *Amended 2026-09-24:* a Milestone 3.5 now comes first and holds the
+method tooling and the cleanup ([section 8.1](#81-milestone-35-amendment-2026-09-24)).
+Milestone 4 finishes only when the council agenda test, method fixture criteria, full-inventory
+measurements and Atlas integration checks pass.
 
 ## Review basis
 
-Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
+Status: agreed recommendation, revision 7, 2026-09-24. Accepted by Jackson: "Review is accepted." Revision 5 added the summary and expanded the action plan. Revision 6 records explicit agreement on G1 and G2, including the distinction between production validation and build-specific regression tests. Revision 7 records completed preparation and reconciles all remaining actions with Linear; it does not repeat the source review. Revision 8 (2026-09-24) records Jackson's Milestone 3.5 amendment in [section 8.1](#81-milestone-35-amendment-2026-09-24). Native reviewed at `866e2ea` (main), Atlas at its working tree (pin `866e2ea`, pdxscript pin `7cf9f15`). Every lead finding has a `path:line` that I read myself; items marked "agent-reported" were not re-read. Not run during the original review: `cargo fmt`, `clippy`, `cargo test`, `git log --stat` in either repository (no shell). CI at `866e2ea` runs fmt, clippy, test, doc and the Python codec tests on macOS and Linux (`.github/workflows/ci.yml:15-22`); its status was not checked. Findings below describe those reviewed revisions; section 8 records their current disposition.
 
 The findings of `docs/design/native-dx.md` are already ticketed (SDK-579 to SDK-595) and are not repeated; they appear only as dependencies.
 
@@ -210,7 +212,7 @@ a new start or exit gate.
 | N12/N13 and carried M2 N9; missing churn/files-per-operation measurements | [SDK-603](https://linear.app/unnamed-system/issue/SDK-603): preserve distinct old findings before removing duplicate artifacts; retain the historical measurement scope. |
 | A7/A8 and carried M2 A2/A6; optional pdxscript pin bump | [SDK-604](https://linear.app/unnamed-system/issue/SDK-604): check references before removal; record a disposition for the optional doc-only bump. |
 | Carried M2 R4 backend dispatch | [SDK-605](https://linear.app/unnamed-system/issue/SDK-605): finish dispatch at the existing Live/Recorded boundary; no new backend framework. |
-| Developer inspection, diagnostics, reporting and authoring guidance | [SDK-579](https://linear.app/unnamed-system/issue/SDK-579), SDK-581, [SDK-588](https://linear.app/unnamed-system/issue/SDK-588) and [SDK-589](https://linear.app/unnamed-system/issue/SDK-589). SDK-588 remains open after the baseline for stop diagnostics and cross-run diffs. |
+| Developer inspection, diagnostics, reporting and authoring guidance | [SDK-579](https://linear.app/unnamed-system/issue/SDK-579), [SDK-581](https://linear.app/unnamed-system/issue/SDK-581) and [SDK-589](https://linear.app/unnamed-system/issue/SDK-589). SDK-588 was merged into SDK-581 on 2026-09-24; the stop-diagnostic grouping and cross-run diffs that remained after the baseline live there. |
 | Long evaluator step function | [SDK-593](https://linear.app/unnamed-system/issue/SDK-593) now includes the bounded instruction-family split with unchanged behavior. |
 | Conditional shared type parser | [SDK-594](https://linear.app/unnamed-system/issue/SDK-594) requires checking for a demonstrated common shape; retaining separate parsers is a valid documented outcome. |
 | Shared Rust/Python hook names | SDK-574 includes generation from the protocol authority with the next live change. |
@@ -222,6 +224,32 @@ exception (M2 N5) stays under SDK-569's documented removal route; hidden `intern
 and its consumer boundary stay under SDK-579. Keep the live candidate code, symbol-keyed reader
 tables, callback forwarders, evaluator/family methods and profiling tools. [SDK-580](https://linear.app/unnamed-system/issue/SDK-580)
 owns the later build-anchor move. No broad rewrite or deletion is implied by the line counts.
+
+### 8.1 Milestone 3.5 amendment, 2026-09-24
+
+After reconciliation, Milestone 4 held 32 tickets: its ten method tickets, four gate tickets and
+about twenty repair, tooling and cleanup tickets from this review and from
+[native-dx.md](native-dx.md). Jackson chose a separate milestone between 3 and 4. This changes
+the rule above that repairs do not gate Milestone 4. The contents of the new milestone are
+limited to work that makes each method cheaper or safer to write, plus independent cleanup.
+
+| Change | Tickets |
+| --- | --- |
+| Moved to Milestone 3.5 (Foundations) | SDK-563 and SDK-569 (both block SDK-541); SDK-581 (DX 1, 2; SDK-588 merged into it on 2026-09-24); SDK-589 (DX 8); SDK-574 (now blocks SDK-598 and SDK-599); SDK-571; SDK-593 (DX 7, step 1); SDK-601 (R4); SDK-602 (N11); SDK-603 (N12, N13); SDK-604 (A7, A8); SDK-605; SDK-577 |
+| New in Milestone 3.5 | SDK-606, the test assembler helper, split from SDK-594 (DX 7) |
+| Out of Milestones 3.5 and 4 | SDK-594 (typed operands) and SDK-595. Neither blocks a method ticket |
+| Stay in Milestone 4 | SDK-541 to SDK-550, SDK-597, SDK-598, SDK-599, SDK-600 |
+
+The Milestone 4 exit gate in section 3 and the checks in section 9.5 do not change. SDK-569
+now passes in Milestone 3.5 and must still pass when Milestone 4 closes.
+
+The open prototype children of SDK-470 were closed on the same day. The inspector, stop
+diagnostics and sweep report let one task explore and deliver a method, so a separate prototype
+is not needed. Each prototype's unique cases were copied into its production ticket under
+"Carried from SDK-NNN". Work that no open ticket owned became SDK-607 (shared modifier-block
+grammar, from SDK-498), SDK-608 (event and pre_trigger contexts, from SDK-496), SDK-609 (live
+localisation checks, from SDK-500) and SDK-610 (define defaults and bounds, from SDK-504). SDK-480,
+SDK-486, SDK-506 and SDK-511 stay open. SDK-486 now also owns the archive of `.local/sdk-498/`.
 
 ## 9. Order of work
 
@@ -241,12 +269,14 @@ The following delivery tickets are assigned to Jackson in Milestone 4:
 | Public-API council agenda parity gate (R5) | [SDK-600](https://linear.app/unnamed-system/issue/SDK-600) |
 
 SDK-542, SDK-544 and SDK-550 now name their observation work and owner. SDK-563 and SDK-577
-are in Milestone 4. SDK-569 and SDK-563 are blocked by preparation; SDK-541 is blocked by both,
-and SDK-542 by preparation and SDK-569. Existing dependencies remain. SDK-548 and SDK-553 state
+were placed in Milestone 4; on 2026-09-24 both moved to Milestone 3.5 with SDK-569
+([section 8.1](#81-milestone-35-amendment-2026-09-24)). SDK-569 and SDK-563 are blocked by
+preparation; SDK-541 is blocked by both, and SDK-542 by preparation and SDK-569. Existing dependencies remain. SDK-548 and SDK-553 state
 that credited rates come from the live run, while recordings support reproduction.
 
-M1 uses the SDK-588 completeness report shape with current public diagnostics. SDK-588 remains
-open for SDK-581's internal stop diagnostics and normalized cross-run diffs. SDK-598 is a separate
+M1 used the sweep's completeness report shape with current public diagnostics. The internal
+stop diagnostics, the grouping by them and the normalized cross-run diffs are in SDK-581, which
+absorbed SDK-588 on 2026-09-24. SDK-598 is a separate
 weight-observation ticket: SDK-547's naval-capacity state reads are not assumed to evaluate weights.
 
 **Preparation verification, 2026-09-24:** R1's regression cases and existing M45 modifier parity
@@ -289,7 +319,10 @@ not run; preparation changes no live operation.
   schedule SDK-563 in M4 ahead of SDK-541. Preserve this order: **M1 baseline → shortcut guard
   and field-discovery repair → shared-reader methods**, with R6 alongside the first methods.
 
-### 9.2 First implementation work in Milestone 4
+### 9.2 First implementation work
+
+Since 2026-09-24, rows 1 to 3 are Milestone 3.5 work and row 4 starts Milestone 4
+([section 8.1](#81-milestone-35-amendment-2026-09-24)). The order does not change.
 
 | Order | Responsible area and action | Result needed before moving on |
 | --- | --- | --- |
@@ -302,14 +335,19 @@ not run; preparation changes no live operation.
 
 | Work | Schedule and completion check |
 | --- | --- |
-| R4: CString layout | With SDK-579, use one production layout fact and one worker helper; parity stays byte-identical. |
-| R7 and A10: typed identities and stable gap text | With the next live change, check that the Rust/Python wire agrees on serialized reader kinds, analysis gaps use enum variants, and Atlas publishes stable reasons rather than `Debug` output. |
+| R4: CString layout (SDK-601, Milestone 3.5) | With SDK-579, use one production layout fact and one worker helper; parity stays byte-identical. |
+| R7 and A10: typed identities and stable gap text | The Native parts (SDK-574, SDK-581) are Milestone 3.5 work; A10 stays with SDK-597 in Milestone 4. With the next live change, check that the Rust/Python wire agrees on serialized reader kinds, analysis gaps use enum variants, and Atlas publishes stable reasons rather than `Debug` output. |
 | SDK-544 numeric observation | Run the bounded decoder experiment inside the ticket. Preserve failures and continue from the obstacle; do not close the ticket while required fixture cases remain unmet. |
 | SDK-545 and SDK-549 observations | Start their assigned dependencies when these tickets approach implementation. Keep each ticket blocked until its required observation works. SDK-547's first bounded form still needs its own design. |
 | SDK-548 and SDK-550 | Start after SDK-542. SDK-548 uses the live run for credited rates; SDK-550 retains its fixture checks. |
-| Developer tooling | SDK-579, SDK-581 and SDK-589 can proceed alongside preparation where they do not change the unmeasured field population. SDK-593 is the natural point to split the evaluator's long `step` function. |
+| Developer tooling | SDK-579 is done. SDK-581, SDK-589, SDK-593 and SDK-606 are Milestone 3.5 work. SDK-593 is the natural point to split the evaluator's long `step` function. |
 
-### 9.4 Cleanup that does not hold up Milestone 4
+### 9.4 Cleanup
+
+This cleanup first did not hold up Milestone 4. Since 2026-09-24, N11 (SDK-602), N12 and N13
+(SDK-603), A7, A8 and the pdxscript-rs pin (SDK-604) are Milestone 3.5 work, so they now come
+before Milestone 4 ([section 8.1](#81-milestone-35-amendment-2026-09-24)). A9 stays with SDK-597 in
+Milestone 4.
 
 - **N11:** a separate conditional change, after SDK-579 or independently. Replace the scheduler
   code-window dependency and pass parity before deleting scheduler code. Keep the live candidate

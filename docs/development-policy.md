@@ -51,6 +51,15 @@ reader identity. Failures in the sweep become follow-up tickets, never fixes ins
 This replaces the per-ticket freeze and held-out tests of the Milestone 2 and 3 tickets
 (2026-09-23). Their transfer tables in the discovery notes stay as findings.
 
+### Write a method in one task
+
+Do not write a separate throwaway prototype first. In the method's own task, explore the
+executable with the developer inspector (`examples/inspect.rs`), record each finding and each
+failed shape in `docs/native/discovery.md`, and deliver the method with its authored tests and
+parity output. This replaces the prototype-then-port split (2026-09-24). Untracked work in
+`.local/` still holds acquired knowledge until its findings are recorded; preserve it as the next
+section says.
+
 ## Preserve acquired knowledge
 
 The valuable asset is the knowledge from prototypes and probes. It includes untracked source,

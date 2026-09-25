@@ -39,9 +39,9 @@ Windows is deferred, and support is now the exact catalogue entry plus its tests
 Mac remain outside the initial scope. A patch is not admitted automatically.
 
 SDK-445 is marked Done in Linear, but its text and result documents retain an open overall
-maintenance comparison. Do not derive economical maintenance from its status. SDK-485 is now the
-deferred update rehearsal on a second distinct Apple Silicon executable; its earlier Mac/Windows
-criterion is superseded. A second ARM64 target was not established in the retained records.
+maintenance comparison. Do not derive economical maintenance from its status. SDK-557 is the
+deferred update rehearsal on a second distinct Apple Silicon executable. It replaces SDK-485, which
+was closed on 2026-09-24; the earlier Mac/Windows criterion is superseded. A second ARM64 target was not established in the retained records.
 Partial wall intervals and run counts are not active human/agent labor measurements.
 
 Source: `sdk-testing` bundle, `sdk-testing/prototype/compatibility-harness/{apple-silicon,windows,windows-446}/`; Mac raw archive in `apple-silicon-baseline`; Windows raw archives in `linear-records/assets/3abce4f4-ee3d-4a66-bb4f-5ef058a2fb66` and `c7ff3152-650d-4148-bb86-a2b7ac72e306`. Local exported issue/comment records include SDK-476, SDK-485, SDK-445 and SDK-447–449. [Retrieval instructions](retrieval.md) explain nested archives.
