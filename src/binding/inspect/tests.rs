@@ -1,7 +1,6 @@
 use super::*;
 use crate::binding::binary::discovery;
 use crate::engine::analysis::analysis_support as support;
-use crate::engine::analysis::discovery::SchedulerLayout;
 
 const READ: u64 = 0x1_0000_1000;
 const HELPER: u64 = 0x1_0000_1020;
@@ -23,16 +22,6 @@ fn has_pointer(listing: &Listing) -> bool {
         .iter()
         .flat_map(|row| &row.notes)
         .any(|note| matches!(note, Note::Pointer(_)))
-}
-
-fn empty_layout() -> SchedulerLayout {
-    SchedulerLayout {
-        start: 0,
-        end: 0,
-        offset: 0,
-        stride: 48,
-        count: 0,
-    }
 }
 
 #[test]
@@ -103,7 +92,7 @@ fn an_unread_fixup_format_leaves_symbols_strings_and_code() {
         fixups::read(&inventory),
         Err(FixupDiagnostic::PointerFormat { format: 1, .. })
     ));
-    assert!(discovery::read(&bytes, &empty_layout()).is_err());
+    assert!(discovery::read(&bytes).is_err());
 }
 
 #[test]
@@ -121,7 +110,7 @@ fn a_read_fixup_format_resolves_slots() {
         format!("{HELPER:#x} _helper")
     );
 
-    let input = discovery::read(&bytes, &empty_layout()).unwrap();
+    let input = discovery::read(&bytes).unwrap();
     assert_eq!(input.pointers.get(&SLOT), Some(&HELPER));
 }
 

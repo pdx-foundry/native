@@ -186,6 +186,88 @@ commit `efba955e47897cf2b01773ade542ba3289151bd1`):
   revised before the economic-plan transfer. An engine exception before the end marker, with
   incomplete category fixtures, was not diagnosed.
 
+### Scheduler table on M45-release
+
+Native had a static scheduler method. No supported operation used it, and SDK-602 removed it. The
+code is at `git show 8d9a073:src/engine/analysis/discovery/scheduler.rs`, with its join in
+`discovery.rs` and its tests in `tests_discovery.rs` at the same commit. The facts below are for
+M45-release: executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`,
+ARM64 slice `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+
+- **Where.** The table is filled with literal values in
+  `NNullObjAndDatabaseInitUtil::SetupDatabases(CPdxArray<SDatabaseObjectFunctions, int>&, ...)`.
+  The fill runs from the function entry `0x1005eb938` to `0x1005eedf0` (exclusive): 13,496 bytes,
+  3,374 instructions. Scheduling begins at the end address, which was found by hand. After
+  `mov x19, sp`, the table is at `x19 + 96`: **198 rows of 48 bytes**.
+- **Row.** Six 8-byte slots: the name as a C-string address, then
+  `TGameDatabase<T>::CreateInstance()`, `DestroyInstance()`, zero (`stp x8, xzr`),
+  `InitInstance()` and `PostReadInitInstance()`. The code loads each function address from a
+  `__DATA_CONST,__got` slot. Without chained fixups, no function slot resolves. Row 0 is
+  `CNamedColorDatabase`: name `0x102df6f2f`, `CreateInstance` `0x10064c050`, stores at
+  `0x1005eb998`, `0x1005eb9a4` and `0x1005eb9b8`.
+- **Method.** Track `adrp`, `add #imm` and `ldr` through fixed-up pointers. A `str` or `stp` to
+  `[x19, #offset]` fills slots. A `mov` carries no value. A `bl` or `blr` clears the slots and the
+  volatile registers and records an unknown call. A `str`, `stp`, `stur` or `sub` that uses `sp`
+  or `x29` is stack or frame work and is skipped. Any other instruction clears every register
+  and records an unsupported instruction. A new value in `x19` invalidates the table owner. A row
+  is recovered when all six slots and the name string are known; a stored `xzr` is a known zero.
+- **Join.** A row names a candidate when a symbol at one of its function-slot addresses contains
+  the candidate's database type (a `C…Database` or `C…Manager` word).
+- **Result.** 198 of 198 rows recovered, with no row gaps. One unknown call: `blr x16` at
+  `0x1005eb960`, the `___chkstk_darwin` stack probe before `mov x19, sp`. 163 rows join exactly
+  one candidate, and no row joins two. 163 of the 164 candidates join a row;
+  `CGameScenarioDatabase` joins none. 35 rows are outside the template method: 2
+  `CStaticModifierDatabase`, 7 `CWeaponTagDatabase`, 10 `CStrategicResourceDatabase`,
+  26 `CShipBehaviorDatabase`, 27 `CAmbientObjectDatabase`, 28 `CEmpireFlagDatabase`,
+  29 `CGfxCultureDatabase`, 31 `CProjectileGfxDatabase`, 32 `CPortraitDatabase`,
+  36 `COpinionModifierDatabase`, 54 `CPlanetClassDatabase`, 69 `CAdvisorDatabase`,
+  73 `CPingMapDatabase`, 79 `CFallenEmpiresDatabase`, 84 `CShipDesignTemplatesDatabase`,
+  85 `CSpeciesNamesDatabase`, 86 `CNameListDatabase`, 89 `CDesignerDatabase`, 95 `CEventManager`,
+  97 `CSpecialProjectDatabase`, 99 `COnActionDatabase`, 101 `CTraitDatabase`,
+  104 `CPrescriptedSpeciesDatabase`, 105 `CDiploPhraseDatabase`, 106 `CMessageSystem`,
+  107 `CAlertSystem`, 108 `CTerraformDatabase`, 109 `CStartScreenMessageDatabase`,
+  110 `CSystemInitializerDataBase`, 112 `CGalaxyTemplateDatabase`, 113 `CWorldGfxDatabase`,
+  115 `CColorsDatabase`, 119 `CGameSettingsDatabase`, 123 `CEmpireDesignDatabase` and
+  128 `CScriptableLocalizationDatabase`.
+- **Authored cases.** These were the removed tests' inputs and outcomes. A value-clearing
+  instruction (`mov w8, #0`) before the name store leaves the name slot unknown. An unknown call
+  in the same place does the same and records an unknown-call gap. `add x19, x19, #8` makes a new
+  table owner and gives a row gap. With no symbols, the row stays and is outside the template.
+- **Pitfalls.** Without `mov x19, sp`, every row is a gap: never treat that as an empty table.
+  An empty range still gives every row, as gaps. The method rejected a stride other than 48, a
+  range over 64 KiB and an unaligned table offset. The row count is not a registry count.
+
+### Owner vtables on M45-release
+
+The owner rule above needs the persistent base's offset-to-top and the shared member-dispatch
+slot. SDK-602 removed an image-wide scan of these, which no live method read. It is at
+`git show 8d9a073:src/binding/binary/discovery.rs` (`vtables`). For new owner joins, use
+`vtable_group` in `binding/binary/families.rs`. It reads one class and checks its typeinfo.
+
+- **Scan.** From each `vtable for <class>` symbol up to the next symbol (at most 64 KiB), in
+  8-byte steps, the scan took a position as a vtable when two things held: its word was an
+  offset-to-top in `-4096..=0`, and the next word was a fixed-up pointer. The address point is
+  the position + 16. The member slot is the fixed-up pointer at the position + 56: the address
+  point + 40, which is slot 5.
+- **Result.** 15,371 address points in 12,876 classes; 2,593 have a non-zero offset-to-top. For
+  159 of the 164 candidate owners, the member slot of some vtable holds `ReadMember(CReader&,
+  int)`: through a `virtual override thunk` for 149, directly for 10. That base's offset-to-top is
+  -56 for 155 owners, -112 for 2, -64 for 1 and 0 for 1. There is no such vtable for
+  `CComponentSlotTemplate`, `CJobTag` and `CTraitTag`, which have no named reader, or for
+  `CStarbaseBuilding` and `CStarbaseModule`, which have one.
+- **Example.** `CTraditionCategory`: address point `0x103095310`, offset-to-top -56, member slot
+  `0x100cd92b0`, the thunk to `CTraditionCategory::ReadMember(CReader&, int)`.
+  `CMegaStructureType`: `0x1030b0860` (0, `InitPostRead`), `0x1030b08a8` (-56, the `ReadMember`
+  thunk).
+- **Pitfalls.** The scan did not check that the second word is the class's own typeinfo, so it
+  accepted false address points. For example, `CMegaStructureType` got `0x1030b08f8` (-64,
+  `~CMegaStructureTypeDatabase()`), and `CCouncilAgenda` got `0x10301b9d8`, whose member slot
+  holds `typeinfo for CCouncilAgenda`. Slot 5 holds the reader only in the persistent base;
+  other bases hold other functions there.
+- **Imports.** The chained fixups bind 29,695 slots to other images; 10,994 of them have a name
+  (for example `0x102ff4000` `_AcronymTag`). There are 303,281 local pointers. The catalogue keeps
+  the bound slots, and `internals::inspect` names imports from the fixups directly.
+
 SDK-551 owns custom, nested and late loaders; SDK-552 owns mounted selection and duplicates;
 SDK-543 owns identifier grammar. Symbols and addresses locate evidence on one build only; the
 prototype's synthetic identity is not a cross-build match.

@@ -20,7 +20,6 @@ pub(in crate::binding) struct Recipe {
     pub groups: &'static [BindingGroupId],
     pub default_registries: &'static [&'static str],
     pub strategy: StrategyId,
-    pub discovery: &'static DiscoveryRecipe,
     pub declarations: Option<&'static DeclarationRecipe>,
 }
 
@@ -55,7 +54,6 @@ pub(super) const M45_RELEASE: Recipe = Recipe {
     ],
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
-    discovery: &M45_DISCOVERY,
     declarations: Some(&M45_DECLARATIONS),
 };
 
@@ -91,21 +89,4 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         },
         declaration_token_offset: 0,
     },
-};
-
-/// The literal initialization of the startup scheduling table (SDK-489). It ends before
-/// scheduling begins.
-pub(in crate::binding) struct DiscoveryRecipe {
-    pub start: u64,
-    pub end: u64,
-    pub offset: u64,
-    pub stride: u64,
-    pub count: usize,
-}
-const M45_DISCOVERY: DiscoveryRecipe = DiscoveryRecipe {
-    start: 0x1005eb938,
-    end: 0x1005eedf0,
-    offset: 96,
-    stride: 48,
-    count: 198,
 };

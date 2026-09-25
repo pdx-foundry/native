@@ -70,9 +70,9 @@ src/
       unavailable/                 every other host: live operations are unsupported
     binary.rs                      thin object-crate integration and identity capture
     binary/                        executable readers for the static methods, including declarations.rs and language.rs
-      inventory.rs                 symbols, strings and code of any supported image; no target record
+      inventory.rs                 symbols and strings of any supported image; no target record
       fixups.rs                    chained fixups, or a diagnostic that names the unread form
-      discovery.rs                 registry discovery input: inventory, required fixups, scheduler window, vtables
+      discovery.rs                 registry discovery input: inventory and required fixups
     inspect.rs                     developer inspector, re-exported as the hidden internals::inspect
     machine.rs                     decoder/call-mechanism resolution
     machine/
@@ -205,8 +205,9 @@ Represent support as a **sparse set of exact-target compositions**. There is no 
 product of versions, platforms, methods, and operations.
 
 Each target record refers to an explicit recipe. Both are host-neutral Rust data: architecture,
-format, binding-group references, a live strategy identifier, and the static discovery layout,
-with no references to concrete platform types or function pointers. Records do not use `cfg`.
+format, binding-group references, a live strategy identifier, and the layout facts of the static
+declaration methods, with no references to concrete platform types or function pointers. Records
+do not use `cfg`.
 
 `binding::compose` looks up the record and recipe, resolves its binding groups and machine methods,
 and asks the compiled host's strategy resolver to turn a strategy identifier into an
@@ -246,7 +247,7 @@ const M45_RELEASE_RECIPE: Recipe = Recipe {
     groups: &[BindingGroupId::M45TemplateRegistryLayout],
     default_registries: &["common/traditions", "common/tradition_categories"],
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
-    discovery: &M45_DISCOVERY,
+    declarations: Some(&M45_DECLARATIONS),
 };
 ```
 
