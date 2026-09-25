@@ -212,7 +212,7 @@ a new start or exit gate.
 | N12/N13 and carried M2 N9; missing churn/files-per-operation measurements | [SDK-603](https://linear.app/unnamed-system/issue/SDK-603): preserve distinct old findings before removing duplicate artifacts; retain the historical measurement scope. |
 | A7/A8 and carried M2 A2/A6; optional pdxscript pin bump | [SDK-604](https://linear.app/unnamed-system/issue/SDK-604): check references before removal; record a disposition for the optional doc-only bump. |
 | Carried M2 R4 backend dispatch | [SDK-605](https://linear.app/unnamed-system/issue/SDK-605): finish dispatch at the existing Live/Recorded boundary; no new backend framework. |
-| Developer inspection, diagnostics, reporting and authoring guidance | [SDK-579](https://linear.app/unnamed-system/issue/SDK-579), SDK-581, [SDK-588](https://linear.app/unnamed-system/issue/SDK-588) and [SDK-589](https://linear.app/unnamed-system/issue/SDK-589). SDK-588 remains open after the baseline for stop diagnostics and cross-run diffs. |
+| Developer inspection, diagnostics, reporting and authoring guidance | [SDK-579](https://linear.app/unnamed-system/issue/SDK-579), [SDK-581](https://linear.app/unnamed-system/issue/SDK-581) and [SDK-589](https://linear.app/unnamed-system/issue/SDK-589). SDK-588 was merged into SDK-581 on 2026-09-24; the stop-diagnostic grouping and cross-run diffs that remained after the baseline live there. |
 | Long evaluator step function | [SDK-593](https://linear.app/unnamed-system/issue/SDK-593) now includes the bounded instruction-family split with unchanged behavior. |
 | Conditional shared type parser | [SDK-594](https://linear.app/unnamed-system/issue/SDK-594) requires checking for a demonstrated common shape; retaining separate parsers is a valid documented outcome. |
 | Shared Rust/Python hook names | SDK-574 includes generation from the protocol authority with the next live change. |
@@ -235,7 +235,7 @@ limited to work that makes each method cheaper or safer to write, plus independe
 
 | Change | Tickets |
 | --- | --- |
-| Moved to Milestone 3.5 (Foundations) | SDK-563 and SDK-569 (both block SDK-541); SDK-581 → SDK-588 (DX 1, 2); SDK-589 (DX 8); SDK-574 (now blocks SDK-598 and SDK-599); SDK-571; SDK-593 (DX 7, step 1); SDK-601 (R4); SDK-602 (N11); SDK-603 (N12, N13); SDK-604 (A7, A8); SDK-605; SDK-577 |
+| Moved to Milestone 3.5 (Foundations) | SDK-563 and SDK-569 (both block SDK-541); SDK-581 (DX 1, 2; SDK-588 merged into it on 2026-09-24); SDK-589 (DX 8); SDK-574 (now blocks SDK-598 and SDK-599); SDK-571; SDK-593 (DX 7, step 1); SDK-601 (R4); SDK-602 (N11); SDK-603 (N12, N13); SDK-604 (A7, A8); SDK-605; SDK-577 |
 | New in Milestone 3.5 | SDK-606, the test assembler helper, split from SDK-594 (DX 7) |
 | Out of Milestones 3.5 and 4 | SDK-594 (typed operands) and SDK-595. Neither blocks a method ticket |
 | Stay in Milestone 4 | SDK-541 to SDK-550, SDK-597, SDK-598, SDK-599, SDK-600 |
@@ -274,8 +274,9 @@ were placed in Milestone 4; on 2026-09-24 both moved to Milestone 3.5 with SDK-5
 preparation; SDK-541 is blocked by both, and SDK-542 by preparation and SDK-569. Existing dependencies remain. SDK-548 and SDK-553 state
 that credited rates come from the live run, while recordings support reproduction.
 
-M1 uses the SDK-588 completeness report shape with current public diagnostics. SDK-588 remains
-open for SDK-581's internal stop diagnostics and normalized cross-run diffs. SDK-598 is a separate
+M1 used the sweep's completeness report shape with current public diagnostics. The internal
+stop diagnostics, the grouping by them and the normalized cross-run diffs are in SDK-581, which
+absorbed SDK-588 on 2026-09-24. SDK-598 is a separate
 weight-observation ticket: SDK-547's naval-capacity state reads are not assumed to evaluate weights.
 
 **Preparation verification, 2026-09-24:** R1's regression cases and existing M45 modifier parity
@@ -339,7 +340,7 @@ Since 2026-09-24, rows 1 to 3 are Milestone 3.5 work and row 4 starts Milestone 
 | SDK-544 numeric observation | Run the bounded decoder experiment inside the ticket. Preserve failures and continue from the obstacle; do not close the ticket while required fixture cases remain unmet. |
 | SDK-545 and SDK-549 observations | Start their assigned dependencies when these tickets approach implementation. Keep each ticket blocked until its required observation works. SDK-547's first bounded form still needs its own design. |
 | SDK-548 and SDK-550 | Start after SDK-542. SDK-548 uses the live run for credited rates; SDK-550 retains its fixture checks. |
-| Developer tooling | SDK-579 is done. SDK-581, SDK-588, SDK-589, SDK-593 and SDK-606 are Milestone 3.5 work. SDK-593 is the natural point to split the evaluator's long `step` function. |
+| Developer tooling | SDK-579 is done. SDK-581, SDK-589, SDK-593 and SDK-606 are Milestone 3.5 work. SDK-593 is the natural point to split the evaluator's long `step` function. |
 
 ### 9.4 Cleanup
 

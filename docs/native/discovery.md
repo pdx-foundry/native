@@ -48,9 +48,9 @@ Failure shapes in the current public answers, excluding `OutsideMethod`:
 | Reader paths have no recovered field name | 15 | 15 |
 
 The last row accounts for 61 unnamed paths. Rows overlap and cannot be added as independent
-failures; the 101 root-path gap records are not a count of all stopped paths. SDK-581 and SDK-588
-still own internal function/instruction/bound diagnostics and normalized cross-run diffs. This
-baseline groups the public reasons available before those changes and leaves SDK-588 open.
+failures; the 101 root-path gap records are not a count of all stopped paths. SDK-581 (which
+absorbed SDK-588 on 2026-09-24) still owns internal function/instruction/bound diagnostics and
+normalized cross-run diffs. This baseline groups the public reasons available before those changes.
 
 Council agendas has all ten fields, but its answer is partial because `agenda_cost` uses the
 unclassified `CVariableValue` reader. Establishing that broad kind alone will not meet the M4
