@@ -624,10 +624,7 @@ fn assert_fixture_outcome(
     case: FixtureOutcomeCase,
     answer: &Answer<pdx_native::FixtureObservation>,
 ) -> Outcome {
-    use pdx_native::{
-        DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureRuntime, FixtureStorage,
-        ReaderKind,
-    };
+    use pdx_native::{DiagnosticCoverage, DiagnosticWindow};
 
     let expected_completeness = if matches!(
         case,
@@ -643,89 +640,115 @@ fn assert_fixture_outcome(
         return Err(format!("fixture completeness: {answer:?}").into());
     }
     let expected_coverage = match case {
-        FixtureOutcomeCase::DiagnosticsNotRequested => {
-            answer.value.diagnostic_coverage == DiagnosticCoverage::NotRequested
-        }
-        FixtureOutcomeCase::CategoryStorageUnsupported | FixtureOutcomeCase::MaximumQuestions => {
-            answer.value.diagnostic_coverage == DiagnosticCoverage::NotRequested
-        }
-        _ => {
-            answer.value.diagnostic_coverage
-                == (DiagnosticCoverage::Complete {
-                    window: DiagnosticWindow::FixtureFileLoad,
-                })
-        }
+        FixtureOutcomeCase::DiagnosticsNotRequested
+        | FixtureOutcomeCase::CategoryStorageUnsupported
+        | FixtureOutcomeCase::MaximumQuestions => DiagnosticCoverage::NotRequested,
+        _ => DiagnosticCoverage::Complete {
+            window: DiagnosticWindow::FixtureFileLoad,
+        },
     };
-    if !expected_coverage {
+    if answer.value.diagnostic_coverage != expected_coverage {
         return Err(format!("diagnostic coverage: {answer:?}").into());
     }
-    if matches!(case, FixtureOutcomeCase::CategoryUnsupported) {
-        let outcome = answer
-            .value
-            .field_outcomes
-            .first()
-            .ok_or("missing category outcome")?;
-        let [diagnostic] = answer.value.diagnostics.as_slice() else {
-            return Err(format!("missing category diagnostic: {answer:?}").into());
-        };
-        if !matches!(outcome.storage, FixtureStorage::Unavailable(_))
-            || !answer
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == GapKind::OutsideMethod)
-            || diagnostic.text != "Malformed token"
-            || diagnostic.stage != "reader-malformed-report"
-            || !matches!(&diagnostic.join,
+
+    match case {
+        FixtureOutcomeCase::CategoryUnsupported => assert_unsupported_category(answer),
+        FixtureOutcomeCase::CategoryStorageUnsupported => {
+            assert_unsupported_category_storage(answer)
+        }
+        FixtureOutcomeCase::MaximumQuestions => assert_maximum_questions(answer),
+        FixtureOutcomeCase::UnrelatedDefinitions => assert_unrelated_definitions(answer),
+        FixtureOutcomeCase::SameOwner => assert_same_owner(answer),
+        FixtureOutcomeCase::Valid
+        | FixtureOutcomeCase::Omitted
+        | FixtureOutcomeCase::Repeated
+        | FixtureOutcomeCase::Malformed
+        | FixtureOutcomeCase::Runtime
+        | FixtureOutcomeCase::UnknownField
+        | FixtureOutcomeCase::DiagnosticsNotRequested => assert_agenda_outcome(case, answer),
+    }
+}
+
+/// Checks a tradition-category question whose storage Native cannot read, with the diagnostic
+/// for its malformed value.
+fn assert_unsupported_category(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
+    use pdx_native::{DiagnosticJoin, FixtureStorage};
+
+    let outcome = answer
+        .value
+        .field_outcomes
+        .first()
+        .ok_or("missing category outcome")?;
+    let [diagnostic] = answer.value.diagnostics.as_slice() else {
+        return Err(format!("missing category diagnostic: {answer:?}").into());
+    };
+    if !matches!(outcome.storage, FixtureStorage::Unavailable(_))
+        || !answer
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::OutsideMethod)
+        || diagnostic.text != "Malformed token"
+        || diagnostic.stage != "reader-malformed-report"
+        || !matches!(&diagnostic.join,
                 DiagnosticJoin::Source { file, line: 3, definition: None, field: None, occurrence: None }
                 if file == "common/tradition_categories/native_fixture.txt")
-        {
-            return Err(format!("unsupported category outcome: {answer:?}").into());
-        }
-        return Ok(());
+    {
+        return Err(format!("unsupported category outcome: {answer:?}").into());
     }
-    if matches!(case, FixtureOutcomeCase::CategoryStorageUnsupported) {
-        let outcome = answer
-            .value
-            .field_outcomes
-            .first()
-            .ok_or("missing category storage outcome")?;
-        if outcome.reader.kind != ReaderKind::String
-            || outcome.reader.id.is_none()
-            || !matches!(outcome.storage, FixtureStorage::Unavailable(_))
-            || !answer
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == GapKind::OutsideMethod)
-            || answer
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == GapKind::IncompleteObservation)
-        {
-            return Err(format!("unsupported category storage: {answer:?}").into());
-        }
-        return Ok(());
+    Ok(())
+}
+
+/// Checks a tradition-category question without diagnostics: its reader is known, its storage
+/// is unavailable, and no observation is incomplete.
+fn assert_unsupported_category_storage(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
+    use pdx_native::{FixtureStorage, ReaderKind};
+
+    let outcome = answer
+        .value
+        .field_outcomes
+        .first()
+        .ok_or("missing category storage outcome")?;
+    if outcome.reader.kind != ReaderKind::String
+        || outcome.reader.id.is_none()
+        || !matches!(outcome.storage, FixtureStorage::Unavailable(_))
+        || !answer
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::OutsideMethod)
+        || answer
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::IncompleteObservation)
+    {
+        return Err(format!("unsupported category storage: {answer:?}").into());
     }
-    if matches!(case, FixtureOutcomeCase::MaximumQuestions) {
-        return assert_maximum_questions(answer);
+    Ok(())
+}
+
+/// Checks two fields of one tradition, which share its owner and definition line.
+fn assert_same_owner(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
+    let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
+        return Err(format!("same-owner outcomes: {answer:?}").into());
+    };
+    if tooltip.owner.is_none()
+        || tooltip.owner != agenda.owner
+        || tooltip.definition_line != Some(1)
+        || agenda.definition_line != Some(1)
+    {
+        return Err(format!("same-owner identity: {answer:?}").into());
     }
-    if matches!(case, FixtureOutcomeCase::UnrelatedDefinitions) {
-        return assert_unrelated_definitions(answer);
-    }
-    if matches!(case, FixtureOutcomeCase::SameOwner) {
-        let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
-            return Err(format!("same-owner outcomes: {answer:?}").into());
-        };
-        if tooltip.owner.is_none()
-            || tooltip.owner != agenda.owner
-            || tooltip.definition_line != Some(1)
-            || agenda.definition_line != Some(1)
-        {
-            return Err(format!("same-owner identity: {answer:?}").into());
-        }
-        assert_string_storage(tooltip, &[(2, 1, "tip")], Some("tip"))?;
-        assert_string_storage(agenda, &[(3, 1, "agenda")], Some("agenda"))?;
-        return Ok(());
-    }
+    assert_string_storage(tooltip, &[(2, 1, "tip")], Some("tip"))?;
+    assert_string_storage(agenda, &[(3, 1, "agenda")], Some("agenda"))
+}
+
+/// Checks the one `unlocks_agenda` question of the single-tradition cases: its identity, stored
+/// values, parser diagnostics and runtime outcome.
+fn assert_agenda_outcome(
+    case: FixtureOutcomeCase,
+    answer: &Answer<pdx_native::FixtureObservation>,
+) -> Outcome {
+    use pdx_native::{DiagnosticJoin, FixtureRuntime, ReaderKind};
+
     let outcome = answer
         .value
         .field_outcomes
@@ -960,7 +983,7 @@ async fn fixture_case(
     control: Fault,
     selection: Option<pdx_native::FixtureObservationKind>,
 ) -> Outcome {
-    use pdx_native::{Operation, ProcessingStage, Support};
+    use pdx_native::{Operation, Support};
     let recorded = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recorded.path());
@@ -992,95 +1015,7 @@ async fn fixture_case(
     let mut game = started?;
     let mut result = async {
         let first = game.observe_fixture().await;
-        match (&control, &first) {
-            (
-                Fault::MissingHook | Fault::LateHook,
-                Err(Error::Observation {
-                    operation: Operation::ObserveFixture,
-                    ..
-                }),
-            ) => {}
-            (Fault::DroppedRecord | Fault::MissingTerminal | Fault::AccessFailure, Ok(answer)) => {
-                if answer.completeness != Completeness::Partial || answer.gaps.is_empty() {
-                    return Err(format!(
-                        "{control:?}: expected partial fixture answer: {answer:?}"
-                    )
-                    .into());
-                }
-                let registration_only =
-                    selection == Some(pdx_native::FixtureObservationKind::RegistrationEntries);
-                let expected_registrations = if registration_only && control == Fault::DroppedRecord
-                {
-                    2
-                } else {
-                    3
-                };
-                let expected_reads = if registration_only {
-                    0
-                } else if control == Fault::DroppedRecord {
-                    1
-                } else {
-                    2
-                };
-                if answer.value.registration_entries.len() != expected_registrations
-                    || answer.value.field_reads.len() != expected_reads
-                {
-                    return Err(format!("{control:?}: established entries lost: {answer:?}").into());
-                }
-            }
-            (Fault::Normal, Ok(answer)) => {
-                let reads = &answer.value.field_reads;
-                let expected_registrations: &[u64] = if request
-                    .observations
-                    .contains(&pdx_native::FixtureObservationKind::RegistrationEntries)
-                {
-                    &[1, 2, 3]
-                } else {
-                    &[]
-                };
-                let expected_reads: &[(&str, u64, &str)] = if request
-                    .observations
-                    .contains(&pdx_native::FixtureObservationKind::CategoryFieldReads)
-                {
-                    &[
-                        ("common/tradition_categories/atlas.txt", 2, "tree_template"),
-                        ("common/tradition_categories/atlas.txt", 3, "traditions"),
-                    ]
-                } else {
-                    &[]
-                };
-                if answer.completeness != Completeness::Complete
-                    || !answer.gaps.is_empty()
-                    || answer.source.basis != Basis::LiveObservation
-                    || answer
-                        .value
-                        .registration_entries
-                        .iter()
-                        .map(|entry| entry.ordinal)
-                        .collect::<Vec<_>>()
-                        != expected_registrations
-                    || reads
-                        .iter()
-                        .map(|read| (read.file.as_str(), read.line, read.field.as_str()))
-                        .collect::<Vec<_>>()
-                        != expected_reads
-                    || (reads.len() == 2 && reads[0].owner != reads[1].owner)
-                    || reads
-                        .iter()
-                        .any(|read| read.stage != ProcessingStage::FieldReadEntry)
-                {
-                    return Err(format!("normal fixture: {answer:?}").into());
-                }
-            }
-            (_, answer) => {
-                return Err(format!("{control:?}: unexpected fixture result: {answer:?}").into());
-            }
-        }
-        if let Ok(answer) = &first
-            && answer.value.diagnostic_coverage != pdx_native::DiagnosticCoverage::NotRequested
-        {
-            return Err(format!("entry-only diagnostic coverage: {answer:?}").into());
-        }
+        assert_first_fixture_result(control, selection, &request, &first)?;
         for _ in 0..2 {
             let categories = game.registry_items(CATEGORIES).await?;
             if complete(&categories, CATEGORIES)? != 1
@@ -1095,32 +1030,7 @@ async fn fixture_case(
                 return Err("fixture read changed after registry query".into());
             }
         }
-        let recorded_native = Native::from_recorded_answers(recorded.path())?;
-        let mut recorded_game = recorded_native
-            .start_game(GameOptions::new(Command::new("must-not-start")).fixture(request.clone()))
-            .await?;
-        let expected = first.map(|mut answer| {
-            answer.source.basis = Basis::Recorded;
-            answer
-        });
-        if recorded_game.observe_fixture().await != expected {
-            return Err("recorded fixture differs from live answer".into());
-        }
-        if recorded_game.close().await? != Disposal::NotApplicable {
-            return Err("recorded fixture started a game".into());
-        }
-        let mut changed = request.clone();
-        changed.files.values_mut().next().unwrap().push('\n');
-        let mut absent = recorded_native
-            .start_game(GameOptions::new(Command::new("must-not-start")).fixture(changed))
-            .await?;
-        if !matches!(
-            absent.observe_fixture().await,
-            Err(Error::NotRecorded { .. })
-        ) {
-            return Err("different fixture used another file's answer".into());
-        }
-        absent.close().await?;
+        assert_fixture_replay(recorded.path(), &request, first).await?;
         Ok(())
     }
     .await;
@@ -1129,6 +1039,141 @@ async fn fixture_case(
         return Err("closed fixture session still answered".into());
     }
     result
+}
+
+/// Checks the first fixture answer against the fault and the selected observations.
+fn assert_first_fixture_result(
+    control: Fault,
+    selection: Option<pdx_native::FixtureObservationKind>,
+    request: &pdx_native::FixtureRequest,
+    first: &Result<Answer<pdx_native::FixtureObservation>, Error>,
+) -> Outcome {
+    use pdx_native::{Operation, ProcessingStage};
+
+    match (&control, first) {
+        (
+            Fault::MissingHook | Fault::LateHook,
+            Err(Error::Observation {
+                operation: Operation::ObserveFixture,
+                ..
+            }),
+        ) => {}
+        (Fault::DroppedRecord | Fault::MissingTerminal | Fault::AccessFailure, Ok(answer)) => {
+            if answer.completeness != Completeness::Partial || answer.gaps.is_empty() {
+                return Err(
+                    format!("{control:?}: expected partial fixture answer: {answer:?}").into(),
+                );
+            }
+            let registration_only =
+                selection == Some(pdx_native::FixtureObservationKind::RegistrationEntries);
+            let expected_registrations = if registration_only && control == Fault::DroppedRecord {
+                2
+            } else {
+                3
+            };
+            let expected_reads = if registration_only {
+                0
+            } else if control == Fault::DroppedRecord {
+                1
+            } else {
+                2
+            };
+            if answer.value.registration_entries.len() != expected_registrations
+                || answer.value.field_reads.len() != expected_reads
+            {
+                return Err(format!("{control:?}: established entries lost: {answer:?}").into());
+            }
+        }
+        (Fault::Normal, Ok(answer)) => {
+            let reads = &answer.value.field_reads;
+            let expected_registrations: &[u64] = if request
+                .observations
+                .contains(&pdx_native::FixtureObservationKind::RegistrationEntries)
+            {
+                &[1, 2, 3]
+            } else {
+                &[]
+            };
+            let expected_reads: &[(&str, u64, &str)] = if request
+                .observations
+                .contains(&pdx_native::FixtureObservationKind::CategoryFieldReads)
+            {
+                &[
+                    ("common/tradition_categories/atlas.txt", 2, "tree_template"),
+                    ("common/tradition_categories/atlas.txt", 3, "traditions"),
+                ]
+            } else {
+                &[]
+            };
+            if answer.completeness != Completeness::Complete
+                || !answer.gaps.is_empty()
+                || answer.source.basis != Basis::LiveObservation
+                || answer
+                    .value
+                    .registration_entries
+                    .iter()
+                    .map(|entry| entry.ordinal)
+                    .collect::<Vec<_>>()
+                    != expected_registrations
+                || reads
+                    .iter()
+                    .map(|read| (read.file.as_str(), read.line, read.field.as_str()))
+                    .collect::<Vec<_>>()
+                    != expected_reads
+                || (reads.len() == 2 && reads[0].owner != reads[1].owner)
+                || reads
+                    .iter()
+                    .any(|read| read.stage != ProcessingStage::FieldReadEntry)
+            {
+                return Err(format!("normal fixture: {answer:?}").into());
+            }
+        }
+        (_, answer) => {
+            return Err(format!("{control:?}: unexpected fixture result: {answer:?}").into());
+        }
+    }
+    if let Ok(answer) = first
+        && answer.value.diagnostic_coverage != pdx_native::DiagnosticCoverage::NotRequested
+    {
+        return Err(format!("entry-only diagnostic coverage: {answer:?}").into());
+    }
+    Ok(())
+}
+
+/// Replays the recorded fixture result without a game, and checks that a changed fixture file
+/// has no recorded answer.
+async fn assert_fixture_replay(
+    directory: &std::path::Path,
+    request: &pdx_native::FixtureRequest,
+    first: Result<Answer<pdx_native::FixtureObservation>, Error>,
+) -> Outcome {
+    let recorded_native = Native::from_recorded_answers(directory)?;
+    let mut recorded_game = recorded_native
+        .start_game(GameOptions::new(Command::new("must-not-start")).fixture(request.clone()))
+        .await?;
+    let expected = first.map(|mut answer| {
+        answer.source.basis = Basis::Recorded;
+        answer
+    });
+    if recorded_game.observe_fixture().await != expected {
+        return Err("recorded fixture differs from live answer".into());
+    }
+    if recorded_game.close().await? != Disposal::NotApplicable {
+        return Err("recorded fixture started a game".into());
+    }
+    let mut changed = request.clone();
+    changed.files.values_mut().next().unwrap().push('\n');
+    let mut absent = recorded_native
+        .start_game(GameOptions::new(Command::new("must-not-start")).fixture(changed))
+        .await?;
+    if !matches!(
+        absent.observe_fixture().await,
+        Err(Error::NotRecorded { .. })
+    ) {
+        return Err("different fixture used another file's answer".into());
+    }
+    absent.close().await?;
+    Ok(())
 }
 
 async fn fixture_outside_selection(native: &Native) -> Outcome {
@@ -1322,27 +1367,31 @@ fn source_keys_match(answer: &Answer<Vec<String>>, registry: &str) -> Outcome {
         if path.extension().is_none_or(|extension| extension != "txt") {
             continue;
         }
-        for line in std::fs::read_to_string(path)?.lines() {
-            if line.starts_with([' ', '\t', '#']) {
-                continue;
-            }
-            if let Some((key, _)) = line.split_once('=') {
-                let key = key.trim();
-                if !key.is_empty()
-                    && key.bytes().all(|byte| {
-                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
-                    })
-                {
-                    source.insert(key.to_owned());
-                }
-            }
-        }
+        let text = std::fs::read_to_string(path)?;
+        source.extend(text.lines().filter_map(source_key).map(str::to_owned));
     }
     let observed: BTreeSet<_> = answer.value.iter().cloned().collect();
     if observed != source {
         return Err(format!("{registry}: live keys differ from top-level source keys").into());
     }
     Ok(())
+}
+
+/// The top-level key that a source line assigns, if its name uses only lowercase letters, digits
+/// and underscores. An indented or commented line assigns none.
+fn source_key(line: &str) -> Option<&str> {
+    if line.starts_with([' ', '\t', '#']) {
+        return None;
+    }
+
+    let (key, _) = line.split_once('=')?;
+    let key = key.trim();
+    let is_plain_name = !key.is_empty()
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_');
+
+    is_plain_name.then_some(key)
 }
 
 async fn close_confirmed(game: &mut Game) -> Outcome {

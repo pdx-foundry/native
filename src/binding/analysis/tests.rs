@@ -52,7 +52,11 @@ use crate::engine::analysis::analysis_support as support;
 fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("image");
-    fs::write(&path, support::macho(&support::code())).unwrap();
+    fs::write(
+        &path,
+        support::macho_with_text(&support::sample_arm64_code()),
+    )
+    .unwrap();
     let (installation, _) = Installation::open(&path).unwrap();
     let analysis = BoundAnalysis::new(None, None, installation);
     (root, analysis)
@@ -363,7 +367,7 @@ fn cached_static_answers_refuse_changed_or_missing_executables() {
 fn reader_uses_verified_executable_bytes_without_content_or_live_tools() {
     let (root, binding) = fixture();
     assert!(!root.path().join("common").exists());
-    let image = support::macho(&support::code());
+    let image = support::macho_with_text(&support::sample_arm64_code());
     assert_eq!(binding.executable().unwrap(), image);
     fs::create_dir(root.path().join("common")).unwrap();
     fs::write(root.path().join("common/arbitrary.txt"), "content changed").unwrap();
@@ -404,7 +408,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
     use std::os::unix::fs::symlink;
 
     let root = tempfile::tempdir().unwrap();
-    let image = support::macho(&support::code());
+    let image = support::macho_with_text(&support::sample_arm64_code());
     let original = root.path().join("original");
     let replacement = root.path().join("replacement");
     let hint = root.path().join("hint");
@@ -430,7 +434,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
 
 #[test]
 fn range_reader_refuses_unmapped_truncated_misaligned_and_overlapping_sections() {
-    let bytes = support::macho(&support::code());
+    let bytes = support::macho_with_text(&support::sample_arm64_code());
     for (address, length) in [
         (0xffc, 4),
         (0x1028, 8),
@@ -469,7 +473,7 @@ fn range_reader_refuses_unmapped_truncated_misaligned_and_overlapping_sections()
 
 #[test]
 fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
-    let arm = support::macho(&support::code());
+    let arm = support::macho_with_text(&support::sample_arm64_code());
     let mut intel = arm.clone();
     intel[4..8].copy_from_slice(&0x01000007u32.to_le_bytes());
     let offset = 48u32;
@@ -494,7 +498,7 @@ fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
     fat.extend(arm);
     assert_eq!(
         binary::code_range(&fat, 0x1000, 44).unwrap(),
-        support::code()
+        support::sample_arm64_code()
     );
     fat[8..12].copy_from_slice(&0x0100000cu32.to_be_bytes());
     assert!(binary::code_range(&fat, 0x1000, 44).is_err());

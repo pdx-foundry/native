@@ -61,7 +61,7 @@ fn scope_code() -> Vec<Instruction> {
     ])
 }
 
-fn data() -> ReadOnlyData {
+fn callback_name_data() -> ReadOnlyData {
     let mut strings = vec![0u8; 0x20];
     strings[..7].copy_from_slice(b"on_test");
     strings[0x10..0x18].copy_from_slice(b"on_other");
@@ -189,7 +189,7 @@ impl Program {
                 (0x13, "weight_c".into()),
             ]),
             scope_names: None,
-            data: data(),
+            data: callback_name_data(),
             layout: layout(),
         }
     }
@@ -814,7 +814,7 @@ fn rule_function(offset: &'static str) -> Vec<(u64, &'static str, &'static str)>
     ]
 }
 
-fn rules(offset: &'static str, call: SiteCall, owned: bool) -> CallbacksResult {
+fn analyze_rule_function(offset: &'static str, call: SiteCall, owned: bool) -> CallbacksResult {
     let lines = rule_function(offset);
     let mut program = Program::new().function(&lines).site(0x3000, 0x3028, call);
     if owned {
@@ -835,7 +835,7 @@ const SCRIPTED_RULE: SiteCall = SiteCall::Rule {
 
 #[test]
 fn a_rule_is_named_by_its_offset_in_the_rule_set() {
-    let result = rules("x0,x0,#0xc0", SCRIPTED_RULE, true);
+    let result = analyze_rule_function("x0,x0,#0xc0", SCRIPTED_RULE, true);
 
     let findings = scripted(&result, "can_b");
     assert_eq!(
@@ -855,7 +855,7 @@ fn a_weighted_rule_uses_its_own_array() {
         rule: 0,
         scope: 1,
     };
-    let result = rules("x0,x0,#0x9cc0", weighted, true);
+    let result = analyze_rule_function("x0,x0,#0x9cc0", weighted, true);
 
     let weight = &result.rules[&("weight_c".to_owned(), RuleFamily::Weighted)];
     assert!(!weight.contexts.is_empty());
@@ -863,8 +863,8 @@ fn a_weighted_rule_uses_its_own_array() {
 
 #[test]
 fn a_rule_offset_that_is_not_a_rule_or_outside_the_rule_set_is_not_named() {
-    let misaligned = rules("x0,x0,#0xc8", SCRIPTED_RULE, true);
-    let outside = rules("x0,x0,#0xc0", SCRIPTED_RULE, false);
+    let misaligned = analyze_rule_function("x0,x0,#0xc8", SCRIPTED_RULE, true);
+    let outside = analyze_rule_function("x0,x0,#0xc0", SCRIPTED_RULE, false);
 
     assert!(scripted(&misaligned, "can_b").contexts.is_empty());
     assert_eq!(misaligned.unnamed[0].reason, "rule-offset");
@@ -1033,8 +1033,11 @@ fn a_call_that_receives_a_lower_stack_address_forgets_the_spill() {
 #[test]
 fn a_rule_offset_in_a_register_names_the_rule() {
     let mut lines = rule_function("x0,x19,x8");
-    lines[7] = (0x301c, "mov", "w8,#0xc0");
-    lines[6] = (0x3018, "nop", "");
+    let offset_in_register = [(0x3018, "nop", ""), (0x301c, "mov", "w8,#0xc0")];
+    for (address, operation, operands) in offset_in_register {
+        let row = lines.iter_mut().find(|row| row.0 == address).unwrap();
+        *row = (address, operation, operands);
+    }
     let mut program = Program::new()
         .function(&lines)
         .site(0x3000, 0x3028, SCRIPTED_RULE);

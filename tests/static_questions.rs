@@ -182,6 +182,12 @@ fn declarations_match_the_recorded_m45_inventory() {
             );
         }
     }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn declarations_give_the_scopes_of_known_m45_commands() {
+    let native = native();
     let effects = native.declarations(DeclarationKind::Effect).unwrap();
     let win = find(&effects.value, "win", |item| &item.name);
     assert_eq!(listed_names(&win.scopes), ["country"]);
@@ -991,7 +997,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let on_actions = real.on_actions().unwrap();
     let game_rules = real.game_rules().unwrap();
     let defines = real.defines().unwrap();
-    let unknown = real.registry_fields("common/no_such_registry");
+    let unknown_registry_error = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
     assert_eq!(recorded.build(), real.build());
@@ -1020,8 +1026,10 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.defines().unwrap();
     again.source.basis = defines.source.basis;
     assert_eq!(again, defines);
-    // Errors are recorded too.
-    assert_eq!(recorded.registry_fields("common/no_such_registry"), unknown);
+    assert_eq!(
+        recorded.registry_fields("common/no_such_registry"),
+        unknown_registry_error
+    );
     assert!(matches!(
         recorded.registry_fields("common/armies"),
         Err(Error::NotRecorded { .. })

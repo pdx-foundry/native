@@ -365,7 +365,8 @@ impl<'ast> Visit<'ast> for Checker<'_> {
 
     fn visit_expr_method_call(&mut self, item: &'ast ExprMethodCall) {
         if COMPARISON_METHODS.contains(&item.method.to_string().as_str())
-            && let [argument] = item.args.iter().collect::<Vec<_>>().as_slice()
+            && item.args.len() == 1
+            && let Some(argument) = item.args.first()
             && let Some(literal) = direct_literal(argument)
         {
             self.check_compared(&item.receiver, literal);
