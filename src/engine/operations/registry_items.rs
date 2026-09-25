@@ -155,17 +155,19 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                 key,
                 ..
             } => {
-                let valid = snapshot.is_some_and(|(expected_owner, count, thread)| {
+                let slot_witnessed = snapshot.is_some_and(|(expected_owner, count, thread)| {
                     owner == expected_owner && *index < count && thread == record.thread
                 }) && !ended
-                    && *index >= next_index
-                    && pointer(object)
-                    && !key.is_empty()
-                    && key.len() < 4095
-                    && !key.contains('\0')
-                    && keys.insert(key.clone())
-                    && objects.insert(object.clone());
-                if !valid {
+                    && *index >= next_index;
+                let key_readable = !key.is_empty() && key.len() < 4095 && !key.contains('\0');
+                let witnessed = slot_witnessed && pointer(object) && key_readable;
+
+                // Claim the key before the object: a new key stays claimed when its object repeats,
+                // and an object stays unclaimed when its key repeats.
+                let key_claimed = witnessed && keys.insert(key.clone());
+                let object_claimed = key_claimed && objects.insert(object.clone());
+
+                if !object_claimed {
                     diagnostics.push(
                         "Registry entry lacks a unique slot, owner, key, or thread witness".into(),
                     );
@@ -779,6 +781,23 @@ mod tests {
                 "{row} {field}"
             );
         }
+    }
+
+    #[test]
+    fn a_refused_entry_keeps_its_new_key_claimed_but_not_its_object() {
+        // Rows 7 to 9 are the entries, with objects 0x1800, 0x1808 and 0x1810.
+        let (mut records, owner, _) = session(&["first", "second", "third"]);
+        change(&mut records, 8, "object", json!("0x1800"));
+        change(&mut records, 9, "key", json!("second"));
+        assert_eq!(reduce(TRADITIONS, &records, &owner).items, ["first"]);
+
+        let (mut records, owner, _) = session(&["first", "second", "third"]);
+        change(&mut records, 8, "key", json!("first"));
+        change(&mut records, 9, "object", json!("0x1808"));
+        assert_eq!(
+            reduce(TRADITIONS, &records, &owner).items,
+            ["first", "third"]
+        );
     }
 
     #[test]
