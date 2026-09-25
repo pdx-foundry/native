@@ -14,3 +14,8 @@ Before you work on game launch, cleanup, injection, engine calls, memory layouts
 
 Native owns the platform and build methods. Atlas owns extraction fixtures, rule conclusions and coverage.
 The code and its tests are the authority for supported operations; the knowledge pages keep the experiments.
+
+Authored ARM64 in tests (`arm64!` in `src/engine/analysis/assembler.rs`) may carry inline
+comments that say what an instruction means to the test, such as `mov w1, #7 // token 7`. Assembly
+has no names to carry intent. This overrides the general rule against inline comments; do not
+restate what the instruction does.

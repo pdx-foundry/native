@@ -25,5 +25,5 @@ fn decoder_normalizes_operands_and_keeps_every_instruction() {
         .collect();
     assert_eq!(text, expected());
     assert_eq!(decoded[3].address, 0x100c);
-    assert_eq!(decoded[3].bytes, 0x9400000du32.to_le_bytes());
+    assert_eq!(decoded[3].bytes, code()[12..16]);
 }
