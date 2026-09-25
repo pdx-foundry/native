@@ -7,17 +7,22 @@ const DEFAULT_REGISTRIES: &[&str] = &[
     "common/council_agendas",
 ];
 
+/// Each known reader kind with its display label, in the order of the summary line.
+const KIND_LABELS: [(ReaderKind, &str); 7] = [
+    (ReaderKind::Boolean, "boolean"),
+    (ReaderKind::Integer, "integer"),
+    (ReaderKind::FixedPoint, "fixed-point"),
+    (ReaderKind::String, "string"),
+    (ReaderKind::Reference, "reference"),
+    (ReaderKind::Block, "block"),
+    (ReaderKind::Unknown, "unknown"),
+];
+
 fn kind_name(kind: ReaderKind) -> &'static str {
-    match kind {
-        ReaderKind::Boolean => "boolean",
-        ReaderKind::Integer => "integer",
-        ReaderKind::FixedPoint => "fixed-point",
-        ReaderKind::String => "string",
-        ReaderKind::Reference => "reference",
-        ReaderKind::Block => "block",
-        ReaderKind::Unknown => "unknown",
-        _ => "new-kind",
-    }
+    KIND_LABELS
+        .iter()
+        .find(|(known, _)| *known == kind)
+        .map_or("new-kind", |(_, label)| *label)
 }
 
 fn print_registry(registry: &str, fields: &[Field]) {
@@ -42,30 +47,14 @@ fn print_registry(registry: &str, fields: &[Field]) {
             println!("    {} [{identity}{conditional}]", field.name);
         }
     }
-    let unknown = fields
-        .iter()
-        .filter(|field| field.reader.kind == ReaderKind::Unknown)
-        .count();
+    let count_of = |kind: ReaderKind| by_kind.get(&kind).map_or(0, Vec::len);
+    let unknown = count_of(ReaderKind::Unknown);
     let missing_id = fields
         .iter()
         .filter(|field| field.reader.id.is_none())
         .count();
-    let counts = [
-        ReaderKind::Boolean,
-        ReaderKind::Integer,
-        ReaderKind::FixedPoint,
-        ReaderKind::String,
-        ReaderKind::Reference,
-        ReaderKind::Block,
-        ReaderKind::Unknown,
-    ]
-    .map(|kind| {
-        let count = fields
-            .iter()
-            .filter(|field| field.reader.kind == kind)
-            .count();
-        format!("{}={count}", kind_name(kind))
-    });
+    let counts = KIND_LABELS.map(|(kind, label)| format!("{label}={}", count_of(kind)));
+
     println!(
         "  total={} {}; unknown-readers={unknown}; missing-id={missing_id}",
         fields.len(),
