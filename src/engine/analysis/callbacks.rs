@@ -286,22 +286,9 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         .enumerate()
         .map(|(index, forwarder)| (forwarder.function, index))
         .collect();
-    let mut codes: BTreeMap<u64, Code> = BTreeMap::new();
 
     // Forwarders first: their own sites give the contexts and the check of their callers.
-    let mut inner: Vec<Option<SiteContexts>> = vec![None; input.forwarders.len()];
-    for (index, forwarder) in input.forwarders.iter().enumerate() {
-        if forwarder.kind.family() != family {
-            continue;
-        }
-        let sites: Vec<&Site> = input
-            .sites
-            .iter()
-            .filter(|site| site.function == forwarder.function)
-            .collect();
-        let code = code_for(&mut codes, &runner, input, forwarder.function);
-        inner[index] = forwarder_contexts(input, &runner, code, forwarder, &sites, &states);
-    }
+    let inner = verified_forwarders(input, &runner, &states, family);
 
     let lookup_uses = lookup_uses(input, &states);
     let lookup_names: BTreeMap<u64, Result<BTreeSet<String>, &'static str>> = input
@@ -315,7 +302,14 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
             _ => None,
         })
         .collect();
+    let sources = NameSources {
+        pulse: &pulse,
+        rule_names: &rule_names,
+        lookup_uses: &lookup_uses,
+        lookup_names: &lookup_names,
+    };
 
+    let mut codes: BTreeMap<u64, Code> = BTreeMap::new();
     for site in input.sites.iter().filter(in_family) {
         if forwarders.contains_key(&site.function) {
             continue;
@@ -325,92 +319,8 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
             continue;
         };
         let code = code_for(&mut codes, &runner, input, site.function);
-
-        match site.call {
-            SiteCall::Fire { name, scope } => {
-                let names = literal_names(input, state, name);
-                match scope {
-                    SiteScope::Register(scope) => {
-                        let found = runner.contexts(
-                            code,
-                            site.function,
-                            site.address,
-                            Subject::String(name),
-                            scope,
-                        );
-                        assembly.on_action_site(input, names, found);
-                    }
-                    SiteScope::BuiltByCallee => {
-                        assembly.on_action_names(names, Some("scope-built-by-callee"));
-                    }
-                }
-            }
-            SiteCall::Lookup { name } => {
-                if !lookup_uses.contains(&site.address) {
-                    let names = literal_names(input, state, name);
-                    assembly.on_action_names(names, Some("looked-up-only"));
-                }
-            }
-            SiteCall::FireList { list, scope } => {
-                let names = list_names(input, state, list, &pulse, &lookup_names);
-                let found = runner.contexts(
-                    code,
-                    site.function,
-                    site.address,
-                    Subject::List(list),
-                    scope,
-                );
-                assembly.on_action_site(input, names, found);
-            }
-            SiteCall::Rule {
-                family,
-                rule,
-                scope,
-            } => {
-                let name = rule_name(input, site, state, family, rule, &rule_names);
-                let found =
-                    runner.contexts(code, site.function, site.address, Subject::None, scope);
-                assembly.rule_site(family, name, found);
-            }
-            SiteCall::Forwarded { forwarder } => {
-                let Some(inner) = &inner[forwarder] else {
-                    let family = match input.forwarders[forwarder].kind {
-                        ForwarderKind::Fire { .. } => Family::OnAction,
-                        ForwarderKind::Rule { .. } => Family::GameRule,
-                    };
-                    assembly.unnamed(family, "forwarder-not-verified");
-                    continue;
-                };
-                match input.forwarders[forwarder].kind {
-                    ForwarderKind::Fire { name, scope } => {
-                        let names = literal_names(input, state, name);
-                        let found = match scope {
-                            Some(scope) => runner.contexts(
-                                code,
-                                site.function,
-                                site.address,
-                                Subject::String(name),
-                                scope,
-                            ),
-                            None => without_subject(inner),
-                        };
-                        assembly.on_action_site(input, names, found);
-                    }
-                    ForwarderKind::Rule {
-                        family,
-                        enumeration,
-                    } => {
-                        let name = match constant(state.register(enumeration)) {
-                            Some(value) => rule_names
-                                .get(&(family, value))
-                                .cloned()
-                                .ok_or("rule-not-declared"),
-                            None => Err("rule-not-constant"),
-                        };
-                        assembly.rule_site(family, name, inner.clone());
-                    }
-                }
-            }
+        if let Some(finding) = site_finding(input, &runner, code, site, state, &inner, &sources) {
+            assembly.record(input, finding);
         }
     }
 
@@ -445,12 +355,209 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
     Ok(assembly.result)
 }
 
+/// The contexts at the own site of each forwarder of `family` whose check succeeds, by the
+/// forwarder's index in `input.forwarders`. Every other forwarder has `None`.
+fn verified_forwarders(
+    input: &CallbacksInput,
+    runner: &Runner<'_>,
+    states: &BTreeMap<u64, State>,
+    family: Family,
+) -> Vec<Option<SiteContexts>> {
+    let mut codes: BTreeMap<u64, Code> = BTreeMap::new();
+    let mut inner: Vec<Option<SiteContexts>> = vec![None; input.forwarders.len()];
+    for (index, forwarder) in input.forwarders.iter().enumerate() {
+        if forwarder.kind.family() != family {
+            continue;
+        }
+        let sites: Vec<&Site> = input
+            .sites
+            .iter()
+            .filter(|site| site.function == forwarder.function)
+            .collect();
+        let code = code_for(&mut codes, runner, input, forwarder.function);
+        inner[index] = forwarder_contexts(input, runner, code, forwarder, &sites, states);
+    }
+
+    inner
+}
+
+/// The names that the name pass established outside single sites.
+struct NameSources<'a> {
+    /// The on_action database's cached pulse lists.
+    pulse: &'a BTreeMap<i64, u64>,
+    /// The declared rules by family and offset in the rule set.
+    rule_names: &'a BTreeMap<(RuleFamily, u64), String>,
+    /// Lookup calls whose list a firing site in the same function uses.
+    lookup_uses: &'a BTreeSet<u64>,
+    /// The names that each lookup call is given.
+    lookup_names: &'a BTreeMap<u64, Result<BTreeSet<String>, &'static str>>,
+}
+
+/// What one call site establishes about the names and contexts of its family.
+enum SiteFinding {
+    /// On_action names, with the contexts that arrive at the site.
+    OnActionContexts {
+        names: Result<BTreeSet<String>, &'static str>,
+        found: SiteContexts,
+    },
+    /// On_action names whose contexts the site does not give, and why.
+    OnActionNames {
+        names: Result<BTreeSet<String>, &'static str>,
+        reason: &'static str,
+    },
+    /// A rule name, with the contexts that arrive at the site.
+    Rule {
+        family: RuleFamily,
+        name: Result<String, &'static str>,
+        found: SiteContexts,
+    },
+    /// A site whose subject the method could not name.
+    Unnamed {
+        family: Family,
+        reason: &'static str,
+    },
+}
+
+/// What the site at `site` in `code` establishes, with the name-pass `state` before it. `inner`
+/// holds the checked contexts of each forwarder, as [`verified_forwarders`] gives them. A lookup
+/// whose list a firing site uses establishes nothing; the firing site names its list.
+fn site_finding(
+    input: &CallbacksInput,
+    runner: &Runner<'_>,
+    code: &Code,
+    site: &Site,
+    state: &State,
+    inner: &[Option<SiteContexts>],
+    sources: &NameSources<'_>,
+) -> Option<SiteFinding> {
+    let finding = match site.call {
+        SiteCall::Fire { name, scope } => {
+            let names = literal_names(input, state, name);
+            match scope {
+                SiteScope::Register(scope) => {
+                    let found = runner.contexts(
+                        code,
+                        site.function,
+                        site.address,
+                        Subject::String(name),
+                        scope,
+                    );
+                    SiteFinding::OnActionContexts { names, found }
+                }
+                SiteScope::BuiltByCallee => SiteFinding::OnActionNames {
+                    names,
+                    reason: "scope-built-by-callee",
+                },
+            }
+        }
+        SiteCall::Lookup { name } => {
+            if sources.lookup_uses.contains(&site.address) {
+                return None;
+            }
+            let names = literal_names(input, state, name);
+            SiteFinding::OnActionNames {
+                names,
+                reason: "looked-up-only",
+            }
+        }
+        SiteCall::FireList { list, scope } => {
+            let names = list_names(input, state, list, sources.pulse, sources.lookup_names);
+            let found = runner.contexts(
+                code,
+                site.function,
+                site.address,
+                Subject::List(list),
+                scope,
+            );
+            SiteFinding::OnActionContexts { names, found }
+        }
+        SiteCall::Rule {
+            family,
+            rule,
+            scope,
+        } => {
+            let name = rule_name(input, site, state, family, rule, sources.rule_names);
+            let found = runner.contexts(code, site.function, site.address, Subject::None, scope);
+            SiteFinding::Rule {
+                family,
+                name,
+                found,
+            }
+        }
+        SiteCall::Forwarded { forwarder } => {
+            let Some(inner) = &inner[forwarder] else {
+                let family = match input.forwarders[forwarder].kind {
+                    ForwarderKind::Fire { .. } => Family::OnAction,
+                    ForwarderKind::Rule { .. } => Family::GameRule,
+                };
+                return Some(SiteFinding::Unnamed {
+                    family,
+                    reason: "forwarder-not-verified",
+                });
+            };
+            match input.forwarders[forwarder].kind {
+                ForwarderKind::Fire { name, scope } => {
+                    let names = literal_names(input, state, name);
+                    let found = match scope {
+                        Some(scope) => runner.contexts(
+                            code,
+                            site.function,
+                            site.address,
+                            Subject::String(name),
+                            scope,
+                        ),
+                        None => without_subject(inner),
+                    };
+                    SiteFinding::OnActionContexts { names, found }
+                }
+                ForwarderKind::Rule {
+                    family,
+                    enumeration,
+                } => {
+                    let name = match constant(state.register(enumeration)) {
+                        Some(value) => sources
+                            .rule_names
+                            .get(&(family, value))
+                            .cloned()
+                            .ok_or("rule-not-declared"),
+                        None => Err("rule-not-constant"),
+                    };
+                    SiteFinding::Rule {
+                        family,
+                        name,
+                        found: inner.clone(),
+                    }
+                }
+            }
+        }
+    };
+
+    Some(finding)
+}
+
 #[derive(Default)]
 struct Assembly {
     result: CallbacksResult,
 }
 
 impl Assembly {
+    fn record(&mut self, input: &CallbacksInput, finding: SiteFinding) {
+        match finding {
+            SiteFinding::OnActionContexts { names, found } => {
+                self.on_action_site(input, names, found);
+            }
+            SiteFinding::OnActionNames { names, reason } => {
+                self.on_action_names(names, Some(reason));
+            }
+            SiteFinding::Rule {
+                family,
+                name,
+                found,
+            } => self.rule_site(family, name, found),
+            SiteFinding::Unnamed { family, reason } => self.unnamed(family, reason),
+        }
+    }
+
     fn unnamed(&mut self, family: Family, reason: &'static str) {
         self.result.unnamed.push(Unnamed { family, reason });
     }

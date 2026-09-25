@@ -103,7 +103,6 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
     for (index, word) in function.code.as_chunks::<4>().0.iter().enumerate() {
         let word = u32::from_le_bytes(*word);
         let address = function.address + index as u64 * 4;
-        let (rd, rn) = ((word & 31) as usize, ((word >> 5) & 31) as usize);
         if let Some((destination, page)) = adrp(word, address) {
             registers[destination] = Value::Constant(page);
         } else if let Some((destination, source, addend)) = add_immediate(word) {
@@ -117,13 +116,9 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
             if destination != 31 {
                 registers[destination] = value;
             }
-        } else if word & 0xffe0_ffe0 == 0xaa00_03e0 {
-            // mov xd, xm
-            registers[rd] = registers[((word >> 16) & 31) as usize];
-        } else if word & 0xfc00_0000 == 0x9400_0000 {
-            // bl target
-            let offset = ((word & 0x03ff_ffff) as i64) << 38 >> 36;
-            let target = (address as i64).wrapping_add(offset) as u64;
+        } else if let Some((destination, source)) = move_register(word) {
+            registers[destination] = registers[source];
+        } else if let Some(target) = branch_with_link(word, address) {
             if anchors.base_constructors.contains(&target) {
                 passed.push(match objects.iter().find(|(at, _)| *at == registers[1]) {
                     Some(&(_, literal)) if registers[1] != Value::Unknown => Passed::Built(literal),
@@ -146,15 +141,37 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
         } else {
             // Any other instruction may write its low register field, and a load or store with
             // writeback also writes its base register.
-            let pair_writeback = word & 0x3a00_0000 == 0x2800_0000 && word & 0x0080_0000 != 0;
-            let single_writeback = word & 0x3b20_0400 == 0x3800_0400;
-            if pair_writeback || single_writeback {
-                registers[rn] = Value::Unknown;
+            if let Some(base) = writeback_base(word) {
+                registers[base] = Value::Unknown;
             }
-            registers[rd] = Value::Unknown;
+            registers[(word & 31) as usize] = Value::Unknown;
         }
     }
     (built, passed)
+}
+
+/// The destination and source registers of a 64-bit register move, `mov xd, xm`, which is
+/// `orr xd, xzr, xm`.
+fn move_register(word: u32) -> Option<(usize, usize)> {
+    (word & 0xffe0_ffe0 == 0xaa00_03e0)
+        .then_some(((word & 31) as usize, (word >> 16 & 31) as usize))
+}
+
+/// The target of a `bl` word at `address`.
+fn branch_with_link(word: u32, address: u64) -> Option<u64> {
+    if word & 0xfc00_0000 != 0x9400_0000 {
+        return None;
+    }
+    let offset = ((word & 0x03ff_ffff) as i64) << 38 >> 36;
+    Some((address as i64).wrapping_add(offset) as u64)
+}
+
+/// The base register of a pre- or post-indexed load or store of one register or a pair, which
+/// writes the address back to its base.
+fn writeback_base(word: u32) -> Option<usize> {
+    let pair_writeback = word & 0x3a00_0000 == 0x2800_0000 && word & 0x0080_0000 != 0;
+    let single_writeback = word & 0x3b20_0400 == 0x3800_0400;
+    (pair_writeback || single_writeback).then_some((word >> 5 & 31) as usize)
 }
 
 /// The literal as a directory path without trailing `/`, when that path is nonempty.

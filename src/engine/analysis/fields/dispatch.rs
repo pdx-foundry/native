@@ -7,8 +7,10 @@ use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::stop::{Bound, Obstacle, Unknown, Unresolved};
 use std::collections::{BTreeMap, BTreeSet};
 
-const MIN: i64 = i32::MIN as i64;
-const MAX: i64 = i32::MAX as i64;
+/// The least token, since a token is a signed 32-bit word.
+const MIN_TOKEN: i64 = i32::MIN as i64;
+/// The greatest token.
+const MAX_TOKEN: i64 = i32::MAX as i64;
 const MAX_STATES: usize = 4096;
 /// The most instructions that one path may run.
 const MAX_PATH: usize = 500;
@@ -109,10 +111,13 @@ fn signed_word(value: i64) -> i64 {
 fn tokens_of_words([low, high]: [i64; 2], offset: i64) -> Vec<[i64; 2]> {
     let start = signed_word(low - offset);
     let end = start + (high - low);
-    if end <= MAX {
+    if end <= MAX_TOKEN {
         vec![[start, end]]
     } else {
-        vec![[start, MAX], [MIN, MIN + (end - MAX - 1)]]
+        vec![
+            [start, MAX_TOKEN],
+            [MIN_TOKEN, MIN_TOKEN + (end - MAX_TOKEN - 1)],
+        ]
     }
 }
 /// The token intervals in `domain` for which `condition` holds after `comparison`. A signed
@@ -123,11 +128,11 @@ fn intervals(domain: [i64; 2], condition: &str, comparison: Comparison) -> Optio
     let last = u32::MAX as i64;
     let ranges = match (condition, offset) {
         ("eq", 0) => vec![[pivot, pivot]],
-        ("ne", 0) => vec![[MIN, pivot - 1], [pivot + 1, MAX]],
-        ("le", 0) => vec![[MIN, pivot]],
-        ("lt", 0) => vec![[MIN, pivot - 1]],
-        ("gt", 0) => vec![[pivot + 1, MAX]],
-        ("ge", 0) => vec![[pivot, MAX]],
+        ("ne", 0) => vec![[MIN_TOKEN, pivot - 1], [pivot + 1, MAX_TOKEN]],
+        ("le", 0) => vec![[MIN_TOKEN, pivot]],
+        ("lt", 0) => vec![[MIN_TOKEN, pivot - 1]],
+        ("gt", 0) => vec![[pivot + 1, MAX_TOKEN]],
+        ("ge", 0) => vec![[pivot, MAX_TOKEN]],
         ("eq" | "ne" | "ls" | "hi" | "lo" | "hs", _) => {
             let words = match condition {
                 "eq" => vec![[word, word]],
@@ -482,7 +487,7 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
             ("sp".into(), Value::Stack(0)),
         ]),
         flags: None,
-        domain: [MIN, MAX],
+        domain: [MIN_TOKEN, MAX_TOKEN],
         conditions: vec![],
         path: vec![],
         table_case: None,
@@ -552,153 +557,33 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
                     continue;
                 }
                 let name = target.and_then(|a| names.get(&a).copied().flatten());
-                let outcome = if name == Some("CPersistent::ReadMember(CReader&, int)")
-                    && rejects
-                    && matches!(state.registers.get("x0"), Some(Value::Owner(_)))
-                    && state.registers.get("x1") == Some(&Value::Reader(0))
-                    && matches!(
-                        state.registers.get("x2"),
-                        Some(Value::Token | Value::TokenWord(0))
-                    ) {
-                    PathOutcome::Rejected
-                } else {
-                    if let Some(case) = state.table_case {
-                        table_readers.push((leaves.len(), case));
-                    }
-                    PathOutcome::Reader(reader_join(name, &state, row.address, entry))
-                };
+                let outcome = call_outcome(name, &state, rejects, row.address, entry);
+                if let (PathOutcome::Reader(_), Some(case)) = (&outcome, state.table_case) {
+                    table_readers.push((leaves.len(), case));
+                }
                 leaves.push(state.finish(row.address, outcome));
                 break;
             }
-            if let Some(condition) = row.operation.strip_prefix("b.") {
-                let target = number(&row.operands).and_then(|a| indexes.get(&(a as u64)));
-                let condition = match condition {
-                    "cs" => "hs",
-                    "cc" => "lo",
-                    condition => condition,
-                };
-                let split = match (state.flags, opposite(condition), target) {
-                    (None, _, _) => Err(stop("flags", Obstacle::Unknown(Unknown::Flags))),
-                    (_, None, _) => Err(stop("branch-condition", Obstacle::Unsupported)),
-                    (_, _, None) => Err(stop("branch-target", Obstacle::OutsideCode)),
-                    (Some(comparison), Some(inverse), Some(&target)) => {
-                        let taken = intervals(state.domain, condition, comparison);
-                        let not_taken = intervals(state.domain, inverse, comparison);
-                        match (taken, not_taken) {
-                            (Some(taken), Some(not_taken)) => Ok((taken, target, not_taken)),
-                            _ => Err(stop("branch-condition", Obstacle::Unsupported)),
-                        }
-                    }
-                };
-                let (taken, target, not_taken) = match split {
-                    Ok(split) => split,
-                    Err(unresolved) => {
-                        leaves.push(state.finish(row.address, PathOutcome::Gap(unresolved)));
-                        break;
-                    }
-                };
-                let taken = taken.into_iter().map(|domain| (domain, target));
-                let not_taken = not_taken.into_iter().map(|domain| (domain, state.pc));
-                for (domain, pc) in taken.chain(not_taken) {
-                    let mut next = state.clone();
-                    next.pc = pc;
-                    next.domain = domain;
-                    pending.push(next);
+            let branching = if let Some(condition) = row.operation.strip_prefix("b.") {
+                condition_branch(condition, row, &state, &indexes, entry)
+            } else if matches!(row.operation.as_str(), "cbz" | "cbnz")
+                && let [tested, target] = args.as_slice()
+            {
+                zero_test_branch(row, tested, target, &state, &indexes, entry)
+            } else if row.operation == "br" {
+                table_jump(row, &state, &rows, &indexes, &input.read_only_data, entry)
+            } else {
+                match apply(row, &mut state, entry) {
+                    Ok(()) => continue,
+                    Err(unresolved) => Branching::gap(&state, row.address, unresolved),
                 }
-                break;
+            };
+            for gap in branching.table_gaps {
+                push_table_gap(&mut tables, &root, gap.table, gap.why, gap.unresolved);
             }
-            if matches!(row.operation.as_str(), "cbz" | "cbnz") && args.len() == 2 {
-                let Some(&target) = number(args[1]).and_then(|a| indexes.get(&(a as u64))) else {
-                    let outside = stop("branch-target", Obstacle::OutsideCode);
-                    leaves.push(state.finish(row.address, PathOutcome::Gap(outside)));
-                    break;
-                };
-                let value = state.value(args[0]);
-                for taken in [false, true] {
-                    let zero = taken == (row.operation == "cbz");
-                    if let Some(Value::Constant(value)) = &value
-                        && (*value == 0) != zero
-                    {
-                        continue;
-                    }
-                    let mut next = state.clone();
-                    next.pc = if taken { target } else { state.pc };
-                    next.conditions.push(Condition {
-                        at: row.address,
-                        value: value.clone(),
-                        zero,
-                    });
-                    pending.push(next);
-                }
-                break;
-            }
-            if row.operation == "br" {
-                let mut table_gap = |table: u64, why: &str, unresolved: Unresolved| {
-                    push_table_gap(&mut tables, &root, table, why, unresolved);
-                };
-                let (base, table_entry, shift) = match state.value(&row.operands) {
-                    Some(Value::TableTarget { base, entry, shift }) => (base, entry, shift),
-                    other => {
-                        let unresolved = if let Some(Value::TableEntry(table_entry)) = other {
-                            let unresolved = stop("jump-table", Obstacle::Unsupported);
-                            table_gap(table_entry.table, "its entries are addresses", unresolved);
-                            unresolved
-                        } else {
-                            stop("branch-value", unestablished(&state, &row.operands))
-                        };
-                        leaves.push(state.finish(row.address, PathOutcome::Gap(unresolved)));
-                        break;
-                    }
-                };
-                let table = table_entry.table;
-                let [low, high] = state.domain;
-                if high - low >= MAX_TABLE_ENTRIES as i64 {
-                    let bound = Obstacle::Bound(Bound::TableEntries(MAX_TABLE_ENTRIES));
-                    let unresolved = stop("jump-table", bound);
-                    table_gap(table, "its index is not bounded", unresolved);
-                    leaves.push(state.finish(row.address, PathOutcome::Gap(unresolved)));
-                    break;
-                }
-                let guard = state.path.iter().rev().copied().find(|address| {
-                    indexes
-                        .get(address)
-                        .is_some_and(|&index| rows[index].operation.starts_with("b."))
-                });
-                let data = &input.read_only_data;
-                let cases: Vec<_> = (low..=high)
-                    .map(|token| (token, case_address(token, base, table_entry, shift, data)))
-                    .collect();
-                for (token, address) in cases {
-                    let mut case = state.clone();
-                    case.domain = [token, token];
-                    match address.map(|address| (address, indexes.get(&address))) {
-                        Some((address, Some(&pc))) => {
-                            case.pc = pc;
-                            case.table_case = Some(TableCase {
-                                table,
-                                address,
-                                guard,
-                            });
-                            pending.push(case);
-                        }
-                        Some((_, None)) => {
-                            let unresolved = stop("jump-table-case", Obstacle::OutsideCode);
-                            table_gap(table, "a case is outside the reader", unresolved);
-                            leaves.push(case.finish(row.address, PathOutcome::Gap(unresolved)));
-                        }
-                        None => {
-                            let unresolved = stop("jump-table-entry", Obstacle::Unsupported);
-                            table_gap(table, "an entry could not be read", unresolved);
-                            leaves.push(case.finish(row.address, PathOutcome::Gap(unresolved)));
-                        }
-                    }
-                }
-                break;
-            }
-            if let Err(unresolved) = apply(row, &mut state, entry) {
-                leaves.push(state.finish(row.address, PathOutcome::Gap(unresolved)));
-                break;
-            }
+            leaves.extend(branching.ended);
+            pending.extend(branching.continued);
+            break;
         }
     }
     reject_default_cases(&mut leaves, &table_readers, &mut tables, &root, entry);
@@ -708,6 +593,231 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
             .then(a.conditions.cmp(&b.conditions))
     });
     (leaves, tables)
+}
+
+/// The paths that one branch continues and ends, and the jump tables it could not decode.
+#[derive(Default)]
+struct Branching {
+    /// The states to walk later, in the order they join the worklist.
+    continued: Vec<State>,
+    ended: Vec<TokenPath>,
+    table_gaps: Vec<TableGap>,
+}
+impl Branching {
+    /// A branch that ends `state` at `at` in `unresolved`.
+    fn gap(state: &State, at: u64, unresolved: Unresolved) -> Self {
+        Self {
+            ended: vec![state.finish(at, PathOutcome::Gap(unresolved))],
+            ..Self::default()
+        }
+    }
+
+    /// End `state` at `at` in `unresolved`, which the undecoded jump table `table` causes.
+    fn end_in_table_gap(
+        &mut self,
+        state: &State,
+        at: u64,
+        table: u64,
+        why: &'static str,
+        unresolved: Unresolved,
+    ) {
+        self.table_gaps.push(TableGap {
+            table,
+            why,
+            unresolved,
+        });
+        self.ended
+            .push(state.finish(at, PathOutcome::Gap(unresolved)));
+    }
+}
+
+/// A jump table that could not be decoded, and why.
+struct TableGap {
+    table: u64,
+    why: &'static str,
+    unresolved: Unresolved,
+}
+
+/// The outcome of a path that ends at a direct call to `name` at `at`. The call is the base
+/// rejection when `rejects` says that `CPersistent::ReadMember` rejects and the call passes it
+/// the owner, the reader and the token; otherwise it is a reader call. `entry` is the root
+/// function.
+fn call_outcome(
+    name: Option<&str>,
+    state: &State,
+    rejects: bool,
+    at: u64,
+    entry: u64,
+) -> PathOutcome {
+    if name == Some("CPersistent::ReadMember(CReader&, int)")
+        && rejects
+        && matches!(state.registers.get("x0"), Some(Value::Owner(_)))
+        && state.registers.get("x1") == Some(&Value::Reader(0))
+        && matches!(
+            state.registers.get("x2"),
+            Some(Value::Token | Value::TokenWord(0))
+        )
+    {
+        PathOutcome::Rejected
+    } else {
+        PathOutcome::Reader(reader_join(name, state, at, entry))
+    }
+}
+
+/// The paths on each side of the conditional branch `row`, each limited to the token
+/// intervals that take that side. `entry` is the root function.
+fn condition_branch(
+    condition: &str,
+    row: &Instruction,
+    state: &State,
+    indexes: &BTreeMap<u64, usize>,
+    entry: u64,
+) -> Branching {
+    let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
+    let target = number(&row.operands).and_then(|a| indexes.get(&(a as u64)));
+    let condition = match condition {
+        "cs" => "hs",
+        "cc" => "lo",
+        condition => condition,
+    };
+    let split = match (state.flags, opposite(condition), target) {
+        (None, _, _) => Err(stop("flags", Obstacle::Unknown(Unknown::Flags))),
+        (_, None, _) => Err(stop("branch-condition", Obstacle::Unsupported)),
+        (_, _, None) => Err(stop("branch-target", Obstacle::OutsideCode)),
+        (Some(comparison), Some(inverse), Some(&target)) => {
+            let taken = intervals(state.domain, condition, comparison);
+            let not_taken = intervals(state.domain, inverse, comparison);
+            match (taken, not_taken) {
+                (Some(taken), Some(not_taken)) => Ok((taken, target, not_taken)),
+                _ => Err(stop("branch-condition", Obstacle::Unsupported)),
+            }
+        }
+    };
+    let (taken, target, not_taken) = match split {
+        Ok(split) => split,
+        Err(unresolved) => return Branching::gap(state, row.address, unresolved),
+    };
+    let taken = taken.into_iter().map(|domain| (domain, target));
+    let not_taken = not_taken.into_iter().map(|domain| (domain, state.pc));
+    let mut continued = Vec::new();
+    for (domain, pc) in taken.chain(not_taken) {
+        let mut next = state.clone();
+        next.pc = pc;
+        next.domain = domain;
+        continued.push(next);
+    }
+    Branching {
+        continued,
+        ..Branching::default()
+    }
+}
+
+/// The paths on each side of the zero test `row` of the register `tested`, which branches to
+/// `target`. A side that a known value cannot take is dropped. `entry` is the root function.
+fn zero_test_branch(
+    row: &Instruction,
+    tested: &str,
+    target: &str,
+    state: &State,
+    indexes: &BTreeMap<u64, usize>,
+    entry: u64,
+) -> Branching {
+    let Some(&target) = number(target).and_then(|a| indexes.get(&(a as u64))) else {
+        let outside = Unresolved::at("branch-target", row.address, entry, Obstacle::OutsideCode);
+        return Branching::gap(state, row.address, outside);
+    };
+    let value = state.value(tested);
+    let mut continued = Vec::new();
+    for taken in [false, true] {
+        let zero = taken == (row.operation == "cbz");
+        if let Some(Value::Constant(value)) = &value
+            && (*value == 0) != zero
+        {
+            continue;
+        }
+        let mut next = state.clone();
+        next.pc = if taken { target } else { state.pc };
+        next.conditions.push(Condition {
+            at: row.address,
+            value: value.clone(),
+            zero,
+        });
+        continued.push(next);
+    }
+    Branching {
+        continued,
+        ..Branching::default()
+    }
+}
+
+/// A path for each case of the jump through a table at `row`, and a gap when the table cannot
+/// be decoded or a case cannot be followed. `entry` is the root function.
+fn table_jump(
+    row: &Instruction,
+    state: &State,
+    rows: &[Instruction],
+    indexes: &BTreeMap<u64, usize>,
+    data: &[DataSection],
+    entry: u64,
+) -> Branching {
+    let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
+    let mut branching = Branching::default();
+    let (base, table_entry, shift) = match state.value(&row.operands) {
+        Some(Value::TableTarget { base, entry, shift }) => (base, entry, shift),
+        Some(Value::TableEntry(table_entry)) => {
+            let unresolved = stop("jump-table", Obstacle::Unsupported);
+            let why = "its entries are addresses";
+            branching.end_in_table_gap(state, row.address, table_entry.table, why, unresolved);
+            return branching;
+        }
+        _ => {
+            let unresolved = stop("branch-value", unestablished(state, &row.operands));
+            return Branching::gap(state, row.address, unresolved);
+        }
+    };
+    let table = table_entry.table;
+    let [low, high] = state.domain;
+    if high - low >= MAX_TABLE_ENTRIES as i64 {
+        let bound = Obstacle::Bound(Bound::TableEntries(MAX_TABLE_ENTRIES));
+        let unresolved = stop("jump-table", bound);
+        let why = "its index is not bounded";
+        branching.end_in_table_gap(state, row.address, table, why, unresolved);
+        return branching;
+    }
+    let guard = state.path.iter().rev().copied().find(|address| {
+        indexes
+            .get(address)
+            .is_some_and(|&index| rows[index].operation.starts_with("b."))
+    });
+    let cases: Vec<_> = (low..=high)
+        .map(|token| (token, case_address(token, base, table_entry, shift, data)))
+        .collect();
+    for (token, address) in cases {
+        let mut case = state.clone();
+        case.domain = [token, token];
+        match address.map(|address| (address, indexes.get(&address))) {
+            Some((address, Some(&pc))) => {
+                case.pc = pc;
+                case.table_case = Some(TableCase {
+                    table,
+                    address,
+                    guard,
+                });
+                branching.continued.push(case);
+            }
+            Some((_, None)) => {
+                let unresolved = stop("jump-table-case", Obstacle::OutsideCode);
+                let why = "a case is outside the reader";
+                branching.end_in_table_gap(&case, row.address, table, why, unresolved);
+            }
+            None => {
+                let unresolved = stop("jump-table-entry", Obstacle::Unsupported);
+                let why = "an entry could not be read";
+                branching.end_in_table_gap(&case, row.address, table, why, unresolved);
+            }
+        }
+    }
+    branching
 }
 
 /// Turn the reader paths of jump-table default cases into gaps. `table_readers` holds the index
@@ -769,7 +879,7 @@ mod tests {
             pc: 0,
             registers: BTreeMap::new(),
             flags: None,
-            domain: [MIN, MAX],
+            domain: [MIN_TOKEN, MAX_TOKEN],
             conditions: vec![],
             path: vec![],
             table_case: None,
@@ -786,19 +896,22 @@ mod tests {
     }
     #[test]
     fn unsigned_conditions_on_a_token_word_split_at_the_signed_boundary() {
-        let all = [MIN, MAX];
+        let all = [MIN_TOKEN, MAX_TOKEN];
         let range = |offset, pivot| Comparison { offset, pivot };
         assert_eq!(intervals(all, "ls", range(-100, 2)), Some(vec![[100, 102]]));
         assert_eq!(
             intervals(all, "hi", range(-100, 2)),
-            Some(vec![[103, MAX], [MIN, 99]])
+            Some(vec![[103, MAX_TOKEN], [MIN_TOKEN, 99]])
         );
         assert_eq!(
             intervals(all, "hi", range(0, 10)),
-            Some(vec![[11, MAX], [MIN, -1]])
+            Some(vec![[11, MAX_TOKEN], [MIN_TOKEN, -1]])
         );
         assert_eq!(intervals([0, 50], "eq", range(-100, 2)), Some(vec![]));
         assert_eq!(intervals(all, "gt", range(-100, 2)), None);
-        assert_eq!(intervals(all, "gt", range(0, 2)), Some(vec![[3, MAX]]));
+        assert_eq!(
+            intervals(all, "gt", range(0, 2)),
+            Some(vec![[3, MAX_TOKEN]])
+        );
     }
 }

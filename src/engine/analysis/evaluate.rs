@@ -219,6 +219,16 @@ pub struct Path<'a> {
     pub machine: Machine<'a>,
 }
 
+/// A path that waits to be walked from `pc`, after `steps` steps.
+struct PendingWalk<'a> {
+    machine: Machine<'a>,
+    pc: u64,
+    steps: usize,
+    /// The walk runs again the instruction that split on unknown flags, with the flag states of
+    /// one side. The path has already joined at that instruction if it is a loop head.
+    resumes_flag_split: bool,
+}
+
 enum Walk {
     End(Result<Exit, Unresolved>),
     /// The path can no longer arrive at the site of [`Machine::run_paths_to`].
@@ -548,16 +558,25 @@ impl<'a> Machine<'a> {
 
     fn follow(mut self, entry: u64, ends: &Ends, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
         self.entry = entry;
-        // Each pending walk says whether it resumes a split on flags at the instruction that
-        // split, which it has already arrived at.
-        let mut pending = vec![(self, entry, 0, false)];
+        let mut pending = vec![PendingWalk {
+            machine: self,
+            pc: entry,
+            steps: 0,
+            resumes_flag_split: false,
+        }];
         let mut ended = Vec::new();
         let mut joined = BTreeMap::new();
         // Paths that a joined state covers end at once and add no work, so they do not count.
         let mut covered = 0;
 
-        while let Some((mut machine, pc, steps, resumed)) = pending.pop() {
-            match machine.walk(pc, steps, resumed, ends, &mut joined, calls) {
+        while let Some(PendingWalk {
+            mut machine,
+            pc,
+            steps,
+            resumes_flag_split,
+        }) = pending.pop()
+        {
+            match machine.walk(pc, steps, resumes_flag_split, ends, &mut joined, calls) {
                 Walk::End(end) => {
                     covered += usize::from(end == Ok(Exit::Looped));
                     ended.push(Path { end, machine });
@@ -582,7 +601,12 @@ impl<'a> Machine<'a> {
                         if let Some(states) = states {
                             branch.possible_flags = states;
                         }
-                        pending.push((branch, pc, steps, states.is_some()));
+                        pending.push(PendingWalk {
+                            machine: branch,
+                            pc,
+                            steps,
+                            resumes_flag_split: states.is_some(),
+                        });
                     }
                 }
             }
@@ -596,7 +620,7 @@ impl<'a> Machine<'a> {
         &mut self,
         mut pc: u64,
         mut steps: usize,
-        mut resumed: bool,
+        mut resumes_flag_split: bool,
         ends: &Ends,
         joined: &mut BTreeMap<u64, HeadState>,
         calls: &mut PathCalls<'_, 'a>,
@@ -618,7 +642,7 @@ impl<'a> Machine<'a> {
                     }
                 }
                 // A walk that resumes a split on flags has joined at its instruction already.
-                Ends::Joining(heads) if heads.contains(&pc) && !resumed => {
+                Ends::Joining(heads) if heads.contains(&pc) && !resumes_flag_split => {
                     match self.join(pc, joined) {
                         Ok(true) => {}
                         Ok(false) => return Walk::End(Ok(Exit::Looped)),
@@ -627,7 +651,7 @@ impl<'a> Machine<'a> {
                 }
                 Ends::Joining(_) => {}
             }
-            resumed = false;
+            resumes_flag_split = false;
 
             steps += 1;
             let code = self.code;
