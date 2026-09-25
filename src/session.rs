@@ -206,35 +206,11 @@ impl Native {
         } else {
             None
         };
-        let fault = options
-            .fault
-            .map(|(directory, control)| crate::protocol::session::Fault {
-                registry: directory,
-                control,
-            });
         let id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_nanos());
         let work = std::env::temp_dir().join(format!("pdx-native-{}-{id}", std::process::id()));
-        let request = crate::protocol::session::SessionRequest {
-            installation: binding.installation_location(),
-            build: binding.build().into(),
-            // The supervisor creates this directory; `work` holds nothing else.
-            work_directory: work.join("session"),
-            startup_seconds: options
-                .fixture
-                .as_ref()
-                .map_or(options.startup_seconds, |fixture| {
-                    options.startup_seconds.min(fixture.deadline_seconds)
-                }),
-            idle_seconds: options.idle_seconds,
-            registries: registries.clone(),
-            fault,
-            fixture: options.fixture.clone(),
-            fixture_fault: options.fixture_fault,
-            loaded_modifiers: modifiers.as_ref().map(ModifierJoin::registries),
-            modifier_fault: options.modifier_fault,
-        };
+        let request = session_request(binding, &options, &registries, &work, modifiers.as_ref());
         request.validate().map_err(|error| Error::Startup {
             reason: error.to_string(),
             disposal: Disposal::NotApplicable,
@@ -252,5 +228,44 @@ impl Native {
             modifiers,
         };
         crate::game::start(options.supervisor, request, session).await
+    }
+}
+
+/// The supervisor's request for one live session. A fixture's deadline also bounds startup.
+fn session_request(
+    binding: &Binding,
+    options: &crate::GameOptions,
+    registries: &[String],
+    work: &std::path::Path,
+    modifiers: Option<&ModifierJoin>,
+) -> crate::protocol::session::SessionRequest {
+    let startup_seconds = options
+        .fixture
+        .as_ref()
+        .map_or(options.startup_seconds, |fixture| {
+            options.startup_seconds.min(fixture.deadline_seconds)
+        });
+    let fault =
+        options
+            .fault
+            .as_ref()
+            .map(|(directory, control)| crate::protocol::session::Fault {
+                registry: directory.clone(),
+                control: *control,
+            });
+
+    crate::protocol::session::SessionRequest {
+        installation: binding.installation_location(),
+        build: binding.build().into(),
+        // The supervisor creates this directory; `work` holds nothing else.
+        work_directory: work.join("session"),
+        startup_seconds,
+        idle_seconds: options.idle_seconds,
+        registries: registries.to_vec(),
+        fault,
+        fixture: options.fixture.clone(),
+        fixture_fault: options.fixture_fault,
+        loaded_modifiers: modifiers.map(ModifierJoin::registries),
+        modifier_fault: options.modifier_fault,
     }
 }

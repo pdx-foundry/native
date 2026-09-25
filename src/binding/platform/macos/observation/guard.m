@@ -21,6 +21,12 @@ __attribute__((constructor)) static void install(void) {
         replace([NSWindow class], @selector(orderFrontRegardless), (IMP)suppressNoArg);
         replace([NSWindow class], @selector(orderWindow:relativeTo:), (IMP)suppressOrder);
         const char *path = getenv("SPIKE_GUARD_LOG");
-        if (path) { FILE *f = fopen(path, "a"); if (f) { fprintf(f, "installed pid=%d arch=arm64\n", getpid()); fclose(f); } }
+        if (path) {
+            FILE *log_file = fopen(path, "a");
+            if (log_file) {
+                fprintf(log_file, "installed pid=%d arch=arm64\n", getpid());
+                fclose(log_file);
+            }
+        }
     }
 }

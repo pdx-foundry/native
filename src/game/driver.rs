@@ -32,6 +32,16 @@ pub(super) fn run(
     state.send_modify(|state| state.finished = Some(result));
 }
 
+/// The control that the caller's stop request asks for: `Game::close` stores 1 and
+/// `Game::cancel` stores 2, each only once.
+fn requested_stop(stop: &AtomicU8) -> Option<Control> {
+    match stop.load(Ordering::SeqCst) {
+        0 => None,
+        2 => Some(Control::Cancel),
+        _ => Some(Control::Close),
+    }
+}
+
 struct SupervisorChild(Option<Child>);
 impl Drop for SupervisorChild {
     fn drop(&mut self) {
@@ -69,10 +79,8 @@ fn connect(
     std::thread::spawn(move || {
         loop {
             let reply = protocol::read::<Reply>(&mut input);
-            let last = !reply
-                .as_ref()
-                .is_ok_and(|reply| !matches!(reply, Reply::Finished(_) | Reply::Rejected(_)));
-            if send.send(reply).is_err() || last {
+            let terminal = matches!(&reply, Err(_) | Ok(Reply::Finished(_) | Reply::Rejected(_)));
+            if send.send(reply).is_err() || terminal {
                 break;
             }
         }
@@ -98,13 +106,8 @@ fn connect(
     let mut sequence = 0_u64;
     let mut ending = false;
     loop {
-        if !ending && stop.load(Ordering::SeqCst) != 0 {
+        if !ending && let Some(control) = requested_stop(&stop) {
             ending = true;
-            let control = if stop.load(Ordering::SeqCst) == 2 {
-                Control::Cancel
-            } else {
-                Control::Close
-            };
             protocol::write(
                 output_pipe
                     .as_mut()
