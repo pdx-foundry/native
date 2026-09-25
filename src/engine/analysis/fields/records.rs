@@ -119,14 +119,6 @@ pub struct FieldGap {
     /// Related path index, when applicable.
     pub path: Option<usize>,
 }
-/// A shared-reader contract that the SDK-487 experiment left unresolved.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ReaderContractGap {
-    /// Label of the contract. It does not establish a reader kind.
-    pub reader: String,
-    /// Missing contract properties.
-    pub reason: String,
-}
 /// The root fields of one registry. This is bounded routing knowledge, never a complete schema.
 #[derive(Debug, Clone, Serialize)]
 pub struct RegistryFieldResult {
@@ -138,8 +130,4 @@ pub struct RegistryFieldResult {
     pub gaps: Vec<FieldGap>,
     /// Whether all token intervals are accounted for; this does not close path gaps.
     pub partition_accounted: bool,
-    /// Always false for this method; shared-reader semantics are not established.
-    pub complete_registry: bool,
-    /// Named shared-reader blockers, where applicable.
-    pub blocking_readers: Vec<ReaderContractGap>,
 }

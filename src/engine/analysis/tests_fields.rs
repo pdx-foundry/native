@@ -84,7 +84,6 @@ fn discovers_unknown_name_and_excludes_pivot_and_rejection_tokens() {
         2
     );
     assert!(result.partition_accounted);
-    assert!(!result.complete_registry);
 }
 #[test]
 fn unsupported_instruction_preserves_obligation_and_does_not_invent_fields() {

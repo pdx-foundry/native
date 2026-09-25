@@ -73,9 +73,9 @@ impl GameOptions {
         self
     }
     /// Select the content directories whose initial loads this session observes. Use names from
-    /// `Native::registries`. Choose 1 to 164 unique names before `start_game`; an empty or
-    /// duplicate selection is refused. Include the fixture's registry when using `fixture`.
-    /// Without a selection, the build's defaults are observed.
+    /// `Native::registries`. Choose one or more unique names before `start_game`; an empty,
+    /// duplicate or unknown selection is refused. Include the fixture's registry when using
+    /// `fixture`. Without a selection, the build's defaults are observed.
     pub fn registries<I, S>(mut self, names: I) -> Self
     where
         I: IntoIterator<Item = S>,

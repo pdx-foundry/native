@@ -67,6 +67,72 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
 }
 
 #[test]
+fn session_admission_follows_the_registries_that_the_executable_declares() {
+    use crate::binding::{Binding, ExecutionPlan, compose};
+    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+    use crate::protocol::session::SessionRequest;
+
+    // More registries than M45-release declares: the count is a property of the build.
+    let names: Vec<String> = (0..200)
+        .map(|index| format!("common/synthetic_{index}"))
+        .collect();
+    let (root, analysis) = fixture();
+    let candidates = names
+        .iter()
+        .map(|name| NamedCandidate {
+            record: CandidateRecord {
+                database: "CSyntheticDatabase".into(),
+                owner_candidate: "CSyntheticOwner".into(),
+                loader: "loader".into(),
+                address: "0x1000".into(),
+                initial_loader: Some("0x2000".into()),
+                has_named_member_reader: false,
+            },
+            directory: Directory::Named(name.clone()),
+        })
+        .collect();
+    let catalog = Catalog {
+        candidates,
+        symbols: Vec::new(),
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+
+    let (installation, _) = Installation::open(&root.path().join("image")).unwrap();
+    let plan = ExecutionPlan {
+        binding: Binding {
+            analysis: Some(std::sync::Arc::new(analysis)),
+            operation: Some(compose::synthetic_variation()),
+            installation,
+        },
+    };
+    let request = SessionRequest {
+        installation: root.path().into(),
+        build: "synthetic".into(),
+        work_directory: root.path().join("unused"),
+        startup_seconds: 1,
+        idle_seconds: 1,
+        registries: names.clone(),
+        fault: None,
+        fixture: None,
+        fixture_fault: None,
+        loaded_modifiers: None,
+        modifier_fault: None,
+    };
+    request.validate().unwrap();
+    assert_eq!(
+        plan.registry_bindings(&request.registries).unwrap().len(),
+        200
+    );
+
+    let mut unknown = names;
+    unknown.push("common/undeclared".into());
+    assert!(plan.registry_bindings(&unknown).is_err());
+}
+
+#[test]
 fn static_support_checks_the_pinned_executable_without_requiring_content() {
     use crate::{Native, Operation, Support};
     for mutation in ["changed", "missing"] {

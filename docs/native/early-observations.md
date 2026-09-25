@@ -136,3 +136,9 @@ source-located `Malformed token` diagnostic even while its storage result is una
 The root-field analysis does not yet derive the read-entry hook and token selection as
 one general operation. Replace these names and token constants when that operation can
 select a field from the exact-build binding and pass an unfamiliar-category transfer.
+
+This is the only entry in the locality gate's exception list (`tests/locality.rs`). It covers
+the registry check in `src/fixture.rs`. Since SDK-569, the fixture reducer takes the category
+field names and their count from the binding's `FixtureBinding.fields`, not from its own
+constants. The reducer's three registration entries are part of the same window and are
+removed with this exception.

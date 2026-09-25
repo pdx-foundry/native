@@ -89,9 +89,10 @@ impl SessionRequest {
                     })
             })
         };
+        // The supervisor checks each name against the registries it discovers in the opened
+        // executable, so the number of names follows the build.
         let selection = |names: &[String]| {
-            names.len() <= 164
-                && names.iter().all(|name| valid(name))
+            names.iter().all(|name| valid(name))
                 && names
                     .iter()
                     .collect::<std::collections::BTreeSet<_>>()
@@ -100,7 +101,7 @@ impl SessionRequest {
         };
         if self.registries.is_empty() || !selection(&self.registries) {
             return Err(SupervisorError(
-                "Expected 1 to 164 unique registry content directories".into(),
+                "Expected one or more unique registry content directories".into(),
             ));
         }
         if self
@@ -109,7 +110,7 @@ impl SessionRequest {
             .is_some_and(|names| !selection(names))
         {
             return Err(SupervisorError(
-                "Expected at most 164 unique modifier family registries".into(),
+                "Expected unique modifier family registries".into(),
             ));
         }
         if let Some(fixture) = &self.fixture
@@ -321,6 +322,23 @@ mod tests {
         assert!(without.validate().is_err());
         let mut repeated = request();
         repeated.loaded_modifiers = Some(vec!["common/zones".into(), "common/zones".into()]);
+        assert!(repeated.validate().is_err());
+    }
+
+    #[test]
+    fn the_selection_size_follows_the_build_and_names_stay_unique() {
+        let names: Vec<String> = (0..200).map(|index| format!("common/r{index}")).collect();
+        let mut large = request();
+        large.registries = names.clone();
+        large.loaded_modifiers = Some(names.clone());
+        assert!(large.validate().is_ok());
+
+        let mut empty = request();
+        empty.registries = Vec::new();
+        assert!(empty.validate().is_err());
+
+        let mut repeated = large;
+        repeated.registries.push(names[0].clone());
         assert!(repeated.validate().is_err());
     }
 }

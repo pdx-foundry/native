@@ -414,7 +414,6 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
                 GapKind::UnresolvedReader,
                 "The field's reader could not be established on at least one path.",
             ),
-            "reader-contract" => continue,
             _ => (
                 GapKind::UnresolvedPath,
                 "A path through the registry's reader could not be followed to its end.",
