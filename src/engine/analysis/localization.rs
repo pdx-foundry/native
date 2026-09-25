@@ -183,24 +183,27 @@ pub fn analyze(input: &LocalizationInput) -> Result<LocalizationResult, InputErr
 /// Contexts that a link output or a scope type selects but that have no table entry, so that
 /// every reference in the result names a context of the result.
 fn selected_without_tables(contexts: &[Context], joins: &[(ScopeType, Join)]) -> BTreeSet<u64> {
-    let outputs = contexts
+    let mut selected = BTreeSet::new();
+
+    for links in contexts
         .iter()
         .filter_map(|context| context.links.as_ref().ok())
-        .flatten()
-        .filter_map(|(_, output)| match output {
-            Output::Contexts(values) => Some(values.iter().copied()),
-            _ => None,
-        })
-        .flatten();
-    let joined = joins.iter().filter_map(|(_, join)| match join {
-        Join::Context(value) => Some(*value),
-        _ => None,
-    });
+    {
+        for (_, output) in links {
+            if let Output::Contexts(values) = output {
+                selected.extend(values.iter().copied());
+            }
+        }
+    }
 
-    outputs
-        .chain(joined)
-        .filter(|value| !contexts.iter().any(|context| context.value == *value))
-        .collect()
+    for (_, join) in joins {
+        if let Join::Context(value) = join {
+            selected.insert(*value);
+        }
+    }
+
+    selected.retain(|value| !contexts.iter().any(|context| context.value == *value));
+    selected
 }
 
 /// Run the constructor and read each context's three table entries.
@@ -338,7 +341,7 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
             return Ok(Call::Stop);
         }
 
-        call(input, field, target, machine)
+        update_context_for_call(input, field, target, machine)
     });
 
     let mut contexts = BTreeSet::new();
@@ -403,7 +406,7 @@ fn join(input: &LocalizationInput, bit: usize) -> Join {
             return Ok(Call::Return(Some(object)));
         }
 
-        call(input, field, target, machine)
+        update_context_for_call(input, field, target, machine)
     });
 
     let mut contexts = BTreeSet::new();
@@ -430,7 +433,7 @@ fn join(input: &LocalizationInput, bit: usize) -> Join {
 /// A call from a link function or the scope-object setter. A known setter runs on a copy of the
 /// machine and its context is kept; any other call, including one through a register whose
 /// target is unknown, may change the context, so the context becomes unknown.
-fn call(
+fn update_context_for_call(
     input: &LocalizationInput,
     field: u64,
     target: Option<u64>,
