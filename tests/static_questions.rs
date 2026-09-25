@@ -236,7 +236,8 @@ fn modifier_declarations_match_the_recorded_m45_boundary() {
 /// Templates checked by hand against the M45-release disassembly of each database generator,
 /// item post-read function and shared helper. The five of buildings, districts and bypass also
 /// matched every registration of two SDK-498 live runs with renamed private content; the
-/// SDK-566 live run matched the others against the loaded table (`docs/native/discovery.md`).
+/// SDK-566 live run matched the others against the loaded table
+/// (`docs/native/modifier-families.md`).
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn modifier_families_match_the_recorded_m45_generators() {

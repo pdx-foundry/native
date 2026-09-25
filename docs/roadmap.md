@@ -118,9 +118,9 @@ rate; its failures return as new reader shapes, not as handwritten answers. The
   ([review, section 8.1](design/milestone-3-review.md#81-milestone-35-amendment-2026-09-24)).
 - **A method is written in one task (2026-09-24).** The inspector (SDK-579), stop diagnostics
   and the sweep report (both SDK-581, which absorbed SDK-588 on 2026-09-24) replace the
-  throwaway prototype. One task explores with
-  the inspector, records findings and failed shapes in `docs/native/discovery.md`, and delivers the
-  method with its authored tests. The open prototype children of SDK-470 are closed. Their unique
+  throwaway prototype. One task explores with the inspector, records findings and failed shapes
+  on the method's page in `docs/native/` (indexed by `discovery.md`), and delivers the method with
+  its authored tests. The open prototype children of SDK-470 are closed. Their unique
   cases moved into the production tickets; four remainders became SDK-607 to SDK-610.
 
 ## Milestones

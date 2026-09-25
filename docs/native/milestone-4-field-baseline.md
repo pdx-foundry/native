@@ -7,9 +7,9 @@ Field discovery, reader classification and binding code are unchanged from Nativ
 columns and a modifier-answer repair; neither changes this field population. This is one
 `registry-fields/v3` run before SDK-563 or any Milestone 4 field method change.
 
-The [discovery notes](discovery.md#milestone-4-field-baseline-sdk-596) explain the failure shapes
-and the four identified signatures whose kinds remain unknown. This page holds the per-registry
-and per-reader counts. It measures operation completeness, not Atlas claim coverage.
+The [registry field notes](registry-fields.md#milestone-4-field-baseline-sdk-596) explain the
+failure shapes and the four identified signatures whose kinds remain unknown. This page holds the
+per-registry and per-reader counts. It measures operation completeness, not Atlas claim coverage.
 
 ## Reproduce
 

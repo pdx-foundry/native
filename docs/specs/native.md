@@ -327,8 +327,9 @@ criterion, not a gap that permits the ticket to close. Existing SDK-547 runtime/
 and SDK-550 script-expansion bounds are the only accepted exclusions.
 
 Each method runs unchanged over its full discovered registry or command inventory, with complete,
-partial and failed counts and distinct failure shapes in `docs/native/discovery.md`. SDK-569 must
-pass. Per-ticket freeze commits and held-out selection are not required.
+partial and failed counts and distinct failure shapes on the method's page in `docs/native/`
+(indexed by `docs/native/discovery.md`). SDK-569 must pass. Per-ticket freeze commits and
+held-out selection are not required.
 
 SDK-597 owns Atlas integration: two established conditional branches and one unresolved branch
 must survive assembly, verification, comparison and coverage; an established argument must not

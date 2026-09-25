@@ -12,11 +12,12 @@ and SDK-544 owns numeric conversion limits. SDK-486 owns the archive of the untr
 `.local/sdk-498/` prototype.
 
 **Implemented 2026-09-23:** `Native::modifier_families` (SDK-540) recovers these templates and three
-more registries from the executable. See [discovery](discovery.md#modifier-families-sdk-540).
-`Game::loaded_modifiers` (SDK-564) returns the loaded inventory and classifies each entry; see
-[discovery](discovery.md#the-loaded-modifier-inventory-sdk-564). SDK-566 adds the item post-read code and the
-shared helpers of item 5 below; see
-[discovery](discovery.md#modifier-families-from-post-read-code-and-shared-helpers-sdk-566).
+more registries from the executable. See [modifier
+families](modifier-families.md#modifier-families-sdk-540). `Game::loaded_modifiers` (SDK-564)
+returns the loaded inventory and classifies each entry; see [modifier
+families](modifier-families.md#the-loaded-modifier-inventory-sdk-564). SDK-566 adds the item
+post-read code and the shared helpers of item 5 below; see [modifier
+families](modifier-families.md#modifier-families-from-post-read-code-and-shared-helpers-sdk-566).
 
 ## Target and experiment
 
@@ -63,10 +64,11 @@ The sets are disjoint. Two new district names, `sdk498_district_*_max_add` and
 `sdk498_district_*_max_mult`, are in that unexplained set. Their existence proves that the
 district build-speed result is incomplete; name resemblance is not a recovered generation rule.
 
-Five built-in names acquired different loaded category tags, as already found in
-[declaration discovery](discovery.md): `terraforming_cost_mult`, the three
-`starbase_shipyard_*build_cost_mult` variants, and `gdf_ship_alloys_cost_mult`.
-Keep executable declarations distinct from the loaded table after later registrations.
+Five built-in names acquired different loaded category tags, as already found in [declaration
+discovery](engine-commands.md#modifiers-categories-scopes-and-links-sdk-536):
+`terraforming_cost_mult`, the three `starbase_shipyard_*build_cost_mult` variants, and
+`gdf_ship_alloys_cost_mult`. Keep executable declarations distinct from the loaded table after later
+registrations.
 
 ## How to implement the static question
 
