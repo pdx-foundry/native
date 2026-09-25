@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{
     InputError,
     decode::{Instruction, decode_arm64},
+    stop::Unresolved,
 };
 mod composition;
 
@@ -73,7 +74,7 @@ pub enum Site {
 pub enum ScopeOutcome {
     Any,
     Listed(Vec<ScopeType>),
-    Unresolved(&'static str),
+    Unresolved(Unresolved),
 }
 
 /// One scope type: its bit in the engine's scope-type mask, which identifies it, and the engine's
@@ -469,7 +470,7 @@ fn caller_saved(base: &str) -> bool {
 fn scopes(input: &DeclarationInput, factory: u64) -> ScopeOutcome {
     let command = match command_vtable(input, factory) {
         Ok(command) => command,
-        Err(link) => return ScopeOutcome::Unresolved(link),
+        Err(link) => return ScopeOutcome::Unresolved(Unresolved::new(link)),
     };
     let Some(rows) = input
         .pointers
@@ -477,11 +478,11 @@ fn scopes(input: &DeclarationInput, factory: u64) -> ScopeOutcome {
         .and_then(|address| input.functions.get(address))
         .and_then(|body| decode(body).ok())
     else {
-        return ScopeOutcome::Unresolved("scope-getter");
+        return ScopeOutcome::Unresolved(Unresolved::new("scope-getter"));
     };
     match constant_return(&rows) {
         Some(mask) => scope_mask(mask, input.scope_names.as_deref()),
-        None => ScopeOutcome::Unresolved("scope-mask"),
+        None => ScopeOutcome::Unresolved(Unresolved::new("scope-mask")),
     }
 }
 
@@ -528,7 +529,7 @@ pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
         return ScopeOutcome::Any;
     }
     let Some(names) = names else {
-        return ScopeOutcome::Unresolved("scope-table");
+        return ScopeOutcome::Unresolved(Unresolved::new("scope-table"));
     };
     let mut listed = Vec::new();
     for index in 0..64 {
@@ -536,7 +537,7 @@ pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
             continue;
         }
         let Some(name) = names.get(index).filter(|name| !name.is_empty()) else {
-            return ScopeOutcome::Unresolved("scope-name");
+            return ScopeOutcome::Unresolved(Unresolved::new("scope-name"));
         };
         listed.push(ScopeType {
             bit: index,

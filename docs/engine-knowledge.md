@@ -42,6 +42,36 @@ Callers are direct `bl` and `b` only; a string reference is `adr`, or `adrp` the
 function with no branch or write between them. The inspector reads ARM64 images only. The entry
 is `pdx_native::internals::inspect`, which is not a consumer API.
 
+### Where a method stopped
+
+On a catalogued build, `--registry-fields DIRECTORY` runs the registry field method and prints
+each token path that stopped: the reason, the obstacle (an unknown register or flags, a spent
+bound, an unsupported instruction, code outside the read function, a cycle, or a call that was not
+followed), the stop instruction with its symbol and offset, where the walk entered code, and the
+path's last instructions. Then it prints every internal gap before normalization.
+
+```sh
+cargo run --release --example inspect -- --registry-fields common/megastructures
+```
+
+The static methods locate their stops with one diagnostic (`Unresolved` and `Stop` in
+`src/engine/analysis/stop.rs`). The internal results of registry fields, scopes, scope links,
+localization, modifiers and modifier families keep it. Callbacks and defines keep only the reason word,
+since they combine reasons across paths. Declaration scopes are read without a walk, so they have
+no stop.
+Public answers quote only the reason word; no address reaches them. `pdx_native::internals::registry_field_stops::run` runs the registry field
+method once and returns its internal result with the public answer derived from it, as
+`Native::registry_fields` derives it; it is not a consumer API.
+
+`examples/registry-field-sweep.rs` runs every registry and groups the internal gaps by stop
+instruction kind and obstacle, then by function. `--diff BEFORE AFTER` lists the registries whose
+normalized answer changed between two reports; two runs on the same build give an empty diff.
+
+```sh
+cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > after.json
+cargo run --release --example registry-field-sweep -- --diff before.json after.json
+```
+
 ## Private prototype bundles
 
 The prototype sources, raw captures, logs, disassembly and exported Linear records are not in

@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::analysis::stop::{Obstacle, Stop};
 
 fn rows(base: u64, instructions: &[(&str, String)]) -> Vec<Instruction> {
     instructions
@@ -110,11 +111,31 @@ fn derives_changed_headers_entries_and_lookup() {
 fn refuses_unknown_instructions_and_unlabelled_fields() {
     let mut unknown = input(layout());
     unknown.documentation[8].operation = "unsupported".into();
-    assert_eq!(derive(&unknown), Err(Unresolved("instruction")));
+    assert_eq!(
+        derive(&unknown),
+        Err(Unresolved {
+            reason: "instruction",
+            stop: Some(Stop {
+                instruction: 0x1020,
+                entry: 0x1000,
+                obstacle: Obstacle::Unsupported,
+            }),
+        })
+    );
     let mut unlabelled = input(layout());
     unlabelled.documentation[8].operation = "mov".into();
     unlabelled.documentation[8].operands = "w0,#1".into();
-    assert_eq!(derive(&unlabelled), Err(Unresolved("modifier-mask-offset")));
+    assert_eq!(
+        derive(&unlabelled),
+        Err(Unresolved {
+            reason: "modifier-mask-offset",
+            stop: Some(Stop {
+                instruction: 0x1024,
+                entry: 0x1000,
+                obstacle: Obstacle::Call,
+            }),
+        })
+    );
 }
 
 #[test]
@@ -125,13 +146,16 @@ fn refuses_inconsistent_stride_count_and_lookup() {
     let mut count = input(layout());
     count.documentation[2].operation = "nop".into();
     count.documentation[2].operands.clear();
-    assert_eq!(derive(&count), Err(Unresolved("modifier-array-header")));
+    assert_eq!(
+        derive(&count),
+        Err(Unresolved::new("modifier-array-header"))
+    );
     let mut lookup = input(layout());
     lookup.get_string[14].operands = "x0,w19,w19,x8".into();
-    assert_eq!(derive(&lookup), Err(Unresolved("lexer-index")));
+    assert_eq!(derive(&lookup), Err(Unresolved::new("lexer-index")));
     let mut rebuild = input(layout());
     rebuild.get_string[9].operation = "b.ne".into();
-    assert_eq!(derive(&rebuild), Err(Unresolved("lexer-lookup-shape")));
+    assert_eq!(derive(&rebuild), Err(Unresolved::new("lexer-lookup-shape")));
 }
 
 #[test]
@@ -155,6 +179,6 @@ fn refuses_arithmetic_disguised_as_an_adjacent_field() {
     changed.documentation[13].operands = "#0x1018".into();
     assert_eq!(
         derive(&changed),
-        Err(Unresolved("modifier-field-transformation"))
+        Err(Unresolved::new("modifier-field-transformation"))
     );
 }

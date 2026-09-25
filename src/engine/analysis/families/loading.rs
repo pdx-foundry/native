@@ -28,7 +28,8 @@
 //! an address of the vtables that code forms in a way that the binding's scan does not read.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::evaluate::{Call, Code, Exit, Machine, Unresolved};
+use super::super::evaluate::{Call, Code, Exit, Machine};
+use super::super::stop::Unresolved;
 use super::{DATABASE_SPAN, FamilyInput, ITEM_SPAN};
 
 /// Bytes of unknown memory that each pointer argument of a function receives.
@@ -93,7 +94,7 @@ pub enum NotEstablished {
     /// A path of the function could not be followed.
     Unfollowed {
         function: String,
-        reason: &'static str,
+        unresolved: Unresolved,
     },
 }
 
@@ -175,10 +176,10 @@ impl<'r> Run<'r> {
                         }
                     }
                     Ending::Ignored => {}
-                    Ending::Failed(reason) => {
+                    Ending::Failed(unresolved) => {
                         return Err(NotEstablished::Unfollowed {
                             function: constructor.name.clone(),
-                            reason,
+                            unresolved,
                         });
                     }
                 }
@@ -188,11 +189,11 @@ impl<'r> Run<'r> {
         match self.loading.database_constructors.first() {
             None => Err(NotEstablished::Unfollowed {
                 function: "the database constructor".into(),
-                reason: "no-symbol",
+                unresolved: Unresolved::new("no-symbol"),
             }),
             Some(constructor) if databases.is_empty() => Err(NotEstablished::Unfollowed {
                 function: constructor.name.clone(),
-                reason: "never-returns",
+                unresolved: Unresolved::new("never-returns"),
             }),
             Some(_) => Ok(databases),
         }
@@ -234,10 +235,10 @@ impl<'r> Run<'r> {
                     });
                 }
                 Ending::Returned | Ending::Covered | Ending::Ignored => {}
-                Ending::Failed(reason) => {
+                Ending::Failed(unresolved) => {
                     return Err(NotEstablished::Unfollowed {
                         function: loader.name.clone(),
-                        reason,
+                        unresolved,
                     });
                 }
             }
@@ -253,7 +254,7 @@ impl<'r> Run<'r> {
             return Ok(Call::Return(Some(machine.reserve(ITEM_SPAN))));
         }
         if self.loading.constructors.contains(&target) {
-            let item = machine.register(0).ok_or(Unresolved("item-address"))?;
+            let item = machine.known_register(0, "item-address")?;
             for (&offset, &point) in &self.loading.vtables {
                 machine.write(item + offset, 8, point);
                 machine.protect(item + offset, 8);
@@ -288,8 +289,8 @@ impl<'r> Run<'r> {
             Ok(Exit::Stopped(target)) if self.input.strings.never_return.contains(target) => {
                 Ending::Ignored
             }
-            Ok(Exit::Stopped(_) | Exit::Reached) => Ending::Failed("stopped"),
-            Err(Unresolved(reason)) => Ending::Failed(reason),
+            Ok(Exit::Stopped(_) | Exit::Reached) => Ending::Failed(Unresolved::new("stopped")),
+            Err(unresolved) => Ending::Failed(*unresolved),
         }
     }
 
@@ -342,7 +343,7 @@ enum Ending {
     Covered,
     /// The path does not finish: it throws or traps.
     Ignored,
-    Failed(&'static str),
+    Failed(Unresolved),
 }
 
 #[cfg(test)]

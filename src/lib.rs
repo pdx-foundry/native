@@ -45,10 +45,11 @@ pub use session::Native;
 pub(crate) use api::UnavailableReason;
 pub(crate) use engine::analysis::AnalysisError;
 
-/// Live fault controls for Native's own integration tests, and the executable inspector for
-/// Native's developers. Not a consumer API.
+/// Live fault controls for Native's own integration tests, and the executable inspector and
+/// registry field stops for Native's developers. Not a consumer API.
 #[doc(hidden)]
 pub mod internals {
     pub use crate::binding::inspect;
     pub use crate::protocol::session::ObservationControl;
+    pub use crate::session::registry_field_stops;
 }

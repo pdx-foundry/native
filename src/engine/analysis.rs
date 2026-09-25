@@ -16,6 +16,7 @@ pub mod modifier_table;
 pub mod modifiers;
 pub mod readers;
 pub mod scopes;
+pub mod stop;
 
 #[cfg(test)]
 #[path = "analysis/analysis_support.rs"]

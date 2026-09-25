@@ -8,8 +8,9 @@ use std::collections::BTreeMap;
 
 use super::{
     decode::Instruction,
-    evaluate::{Call, Code, Exit, Machine, ReadOnlyData, Unresolved},
+    evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
     families::{Arena, Effect, Model, StringFunctions, StringLayout},
+    stop::Unresolved,
 };
 
 /// Code and named anchors for the two readers, independent of any build layout.
@@ -62,10 +63,10 @@ pub fn derive(input: &Input) -> Result<Layout, Unresolved> {
     let mut layout = definition_header(input)?;
     let entries = definition_reads(input, layout, 2, false)?;
     if definition_reads(input, layout, 2, true)? != entries {
-        return Err(Unresolved("modifier-field-transformation"));
+        return Err(Unresolved::new("modifier-field-transformation"));
     }
     let [(token, mask), (next_token, next_mask)] = entries.as_slice() else {
-        return Err(Unresolved("modifier-entry-count"));
+        return Err(Unresolved::new("modifier-entry-count"));
     };
     layout.token_offset = *token;
     layout.mask_offset = *mask;
@@ -75,20 +76,20 @@ pub fn derive(input: &Input) -> Result<Layout, Unresolved> {
         || next_token.checked_sub(*token) != Some(layout.definition_stride)
         || next_mask.checked_sub(*mask) != Some(layout.definition_stride)
     {
-        return Err(Unresolved("modifier-entry-layout"));
+        return Err(Unresolved::new("modifier-entry-layout"));
     }
     for count in [0, 1] {
         if definition_reads(input, layout, count, false)? != entries[..count as usize] {
-            return Err(Unresolved("modifier-array-count"));
+            return Err(Unresolved::new("modifier-array-count"));
         }
     }
     let lookup = lookup_fields(input)?;
     layout.lookup = lookup
         .data
         .checked_sub(layout.array_data_offset)
-        .ok_or(Unresolved("lexer-array-header"))?;
+        .ok_or(Unresolved::new("lexer-array-header"))?;
     if layout.lookup.checked_add(layout.array_count_offset) != Some(lookup.count) {
-        return Err(Unresolved("lexer-array-header"));
+        return Err(Unresolved::new("lexer-array-header"));
     }
     layout.lookup_size = lookup.required;
     layout.lookup_stride = lookup.stride;
@@ -101,7 +102,7 @@ fn definition_header(input: &Input) -> Result<Layout, Unresolved> {
     let entry = input
         .documentation
         .first()
-        .ok_or(Unresolved("modifier-code"))?
+        .ok_or(Unresolved::new("modifier-code"))?
         .address;
     let mut headers = Vec::new();
     for rows in input.documentation.windows(5) {
@@ -211,7 +212,7 @@ fn definition_reads(
     let get_string = input
         .get_string
         .first()
-        .ok_or(Unresolved("lexer-code"))?
+        .ok_or(Unresolved::new("lexer-code"))?
         .address;
     let end = machine.run(input.documentation[0].address, &mut |target, machine| {
         if target == input.logger {
@@ -219,33 +220,35 @@ fn definition_reads(
         }
         if target == get_string {
             if token.is_some() || found.len() >= count as usize {
-                return Err(Unresolved("modifier-token-call"));
+                return Err(Unresolved::new("modifier-token-call"));
             }
             token = Some(
                 machine
                     .register(0)
                     .and_then(|value| labels.get(&value).copied())
-                    .ok_or(Unresolved("modifier-token-offset"))?,
+                    .ok_or(Unresolved::new("modifier-token-offset"))?,
             );
             return Ok(Call::Return(Some(string)));
         }
         if target == input.category_name {
-            let token = token.take().ok_or(Unresolved("modifier-category-call"))?;
+            let token = token
+                .take()
+                .ok_or(Unresolved::new("modifier-category-call"))?;
             let mask = machine
                 .register(0)
                 .and_then(|value| labels.get(&value).copied())
-                .ok_or(Unresolved("modifier-mask-offset"))?;
+                .ok_or(Unresolved::new("modifier-mask-offset"))?;
             found.push((token, mask));
             // A successful category lookup bypasses the fallback loop over individual bits.
             return Ok(Call::Return(Some(1)));
         }
         match model.call(Some(target), machine, &mut arena)? {
             Effect::Followed(call) => Ok(call),
-            Effect::Other => Err(Unresolved("modifier-call")),
+            Effect::Other => Err(Unresolved::new("modifier-call")),
         }
     })?;
     if end != Exit::Stopped(input.logger) || token.is_some() || found.len() != count as usize {
-        return Err(Unresolved("modifier-loop"));
+        return Err(Unresolved::new("modifier-loop"));
     }
     Ok(found)
 }
@@ -267,7 +270,7 @@ fn lookup_guard(rows: &[Instruction]) -> Result<u64, Unresolved> {
             guards.push(
                 constant_register(&rows[..2], base)?
                     .checked_add(offset)
-                    .ok_or(Unresolved("lexer-guard"))?,
+                    .ok_or(Unresolved::new("lexer-guard"))?,
             );
         }
     }
@@ -320,7 +323,7 @@ fn lookup_fields(input: &Input) -> Result<Lookup, Unresolved> {
         };
         let count = constant_register(&rows[..2], base)?
             .checked_add(offset)
-            .ok_or(Unresolved("lexer-count"))?;
+            .ok_or(Unresolved::new("lexer-count"))?;
         let Some((destination, base, offset)) = load(data) else {
             continue;
         };
@@ -329,7 +332,7 @@ fn lookup_fields(input: &Input) -> Result<Lookup, Unresolved> {
         }
         let data = constant_register(std::slice::from_ref(page), base)?
             .checked_add(offset)
-            .ok_or(Unresolved("lexer-data"))?;
+            .ok_or(Unresolved::new("lexer-data"))?;
         let Some((_, stride)) = stride.operands.split_once(',') else {
             continue;
         };
@@ -367,15 +370,15 @@ fn verify_lookup(input: &Input, lookup: &Lookup) -> Result<(), Unresolved> {
             if target == input.rebuild_lookup {
                 Ok(Call::Stop)
             } else {
-                Err(Unresolved("lexer-call"))
+                Err(Unresolved::new("lexer-call"))
             }
         })?;
         if count == required {
             if end != Exit::Returned || machine.register(0) != Some(data + token * lookup.stride) {
-                return Err(Unresolved("lexer-index"));
+                return Err(Unresolved::new("lexer-index"));
             }
         } else if end != Exit::Stopped(input.rebuild_lookup) {
-            return Err(Unresolved("lexer-rebuild-check"));
+            return Err(Unresolved::new("lexer-rebuild-check"));
         }
     }
     Ok(())
@@ -385,7 +388,7 @@ fn one<T>(mut values: Vec<T>, reason: &'static str) -> Result<T, Unresolved> {
     if values.len() == 1 {
         Ok(values.remove(0))
     } else {
-        Err(Unresolved(reason))
+        Err(Unresolved::new(reason))
     }
 }
 
@@ -426,7 +429,7 @@ fn constant_register(rows: &[Instruction], register: usize) -> Result<u64, Unres
             .iter()
             .any(|row| !matches!(row.operation.as_str(), "adrp" | "add"))
     {
-        return Err(Unresolved("global-address"));
+        return Err(Unresolved::new("global-address"));
     }
     rows.push(Instruction {
         address: rows.last().unwrap().address + 4,
@@ -438,12 +441,12 @@ fn constant_register(rows: &[Instruction], register: usize) -> Result<u64, Unres
     let code = Code::from_rows(rows);
     let data = ReadOnlyData::default();
     let mut machine = Machine::new(&code, &data);
-    if machine.run(entry, &mut |_, _| Err(Unresolved("global-call")))? != Exit::Returned {
-        return Err(Unresolved("global-address"));
+    if machine.run(entry, &mut |_, _| Err(Unresolved::new("global-call")))? != Exit::Returned {
+        return Err(Unresolved::new("global-address"));
     }
     machine
         .register(register)
-        .ok_or(Unresolved("global-address"))
+        .ok_or(Unresolved::new("global-address"))
 }
 
 #[cfg(test)]

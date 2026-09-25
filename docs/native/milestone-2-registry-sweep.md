@@ -5,7 +5,7 @@ Run on 2026-09-21 against the exact M45-observe executable
 The method was `registry-fields/v2`; no method or binding change preceded the run.
 [`milestone-2-registry-sweep.json`](milestone-2-registry-sweep.json) retains every answer,
 gap, error, reader identity and query time. The same sweep can be rerun with
-`cargo run --example registry_field_sweep -- "$STELLARIS_PATH"`; the current
+`cargo run --example registry-field-sweep -- "$STELLARIS_PATH"`; the current
 `registry-fields/v3` method gives a new result, not a reproduction of these v2 answers.
 
 | Measure | Result |

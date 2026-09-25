@@ -11,6 +11,7 @@ mod language;
 mod loaded_modifiers;
 mod localization;
 pub(crate) mod questions;
+pub mod registry_field_stops;
 
 #[derive(Debug)]
 enum Backend {

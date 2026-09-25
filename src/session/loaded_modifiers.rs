@@ -107,7 +107,7 @@ impl Native {
                     Some(&registry),
                     format!(
                         "the place of the item key could not be established at {}; no family of this registry explains a name",
-                        reason.0
+                        reason.reason
                     ),
                 ));
             }
@@ -301,7 +301,7 @@ impl JoinTables {
 mod tests {
     use super::*;
     use crate::answer::{GenerationCondition, NamePart};
-    use crate::engine::analysis::evaluate::Unresolved;
+    use crate::engine::analysis::stop::Unresolved;
     use crate::protocol::observation::ModifierEntry;
 
     const COLONY: u64 = 0x4000_0000;
@@ -316,7 +316,7 @@ mod tests {
             (ECONOMY, Ok(Some("AI Economy".into()))),
             (COLONY | ECONOMY, Ok(None)),
             (SHIPS | ECONOMY, Ok(Some("Ship Economy".into()))),
-            (0x2, Err(Unresolved("category-name"))),
+            (0x2, Err(Unresolved::new("category-name"))),
         ])
     }
 

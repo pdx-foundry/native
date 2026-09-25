@@ -1,5 +1,5 @@
 use super::tokens::Token;
-use super::{FieldGap, PathOutcome, ReaderJoin, RootField, TokenPath};
+use super::{FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RootField, TokenPath};
 use std::collections::BTreeMap;
 
 pub(super) fn fields_and_gaps(
@@ -26,15 +26,12 @@ pub(super) fn fields_and_gaps(
         let join = match &path.outcome {
             PathOutcome::Rejected => continue,
             PathOutcome::Reader(join) => join.clone(),
-            PathOutcome::Gap(reason) => ReaderJoin::Missing {
-                reason: reason.clone(),
-            },
+            PathOutcome::Gap(unresolved) => ReaderJoin::Missing(*unresolved),
         };
-        if let ReaderJoin::Missing { reason } = &join {
+        if let ReaderJoin::Missing(unresolved) = join {
             gaps.push(FieldGap {
-                kind: "reader-join".into(),
-                reason: reason.clone(),
                 path: Some(index),
+                ..FieldGap::unresolved(FieldGapKind::ReaderJoin, unresolved)
             });
         }
         // An obstruction on another state alternative must stay attached to an established field.
@@ -45,10 +42,11 @@ pub(super) fn fields_and_gaps(
             field.readers.push(join);
         } else {
             gaps.push(FieldGap {
-                kind: "unresolved-token-path".into(),
-                reason: "non-singleton, missing/ambiguous token name, or unestablished member path"
-                    .into(),
                 path: Some(index),
+                ..FieldGap::new(
+                    FieldGapKind::UnresolvedTokenPath,
+                    "non-singleton, missing/ambiguous token name, or unestablished member path",
+                )
             });
         }
     }

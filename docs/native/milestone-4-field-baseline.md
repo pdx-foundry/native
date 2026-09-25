@@ -14,7 +14,7 @@ and per-reader counts. It measures operation completeness, not Atlas claim cover
 ## Reproduce
 
 ```sh
-cargo run --release --example registry_field_sweep -- "$STELLARIS_PATH" > field-baseline.json
+cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > field-baseline.json
 ```
 
 Use the exact executable above. The original report is `.local/sdk-596/field-baseline.json`.

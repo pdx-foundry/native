@@ -137,9 +137,10 @@ fn collect_read_evidence(
                     }
                     _ => evidence.failure = Some("reader key arguments could not be resolved"),
                 },
-                Err(super::evaluate::Unresolved("loop-limit" | "path-limit")) => {
-                    evidence.failure = Some("reader path exceeds the table-search limit")
-                }
+                Err(super::stop::Unresolved {
+                    reason: "loop-limit" | "path-limit",
+                    ..
+                }) => evidence.failure = Some("reader path exceeds the table-search limit"),
                 _ => evidence.failure = Some("reader call path could not be followed"),
             }
         }

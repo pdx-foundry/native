@@ -1,4 +1,5 @@
 use crate::engine::analysis::discovery::{CandidateRecord, Symbol};
+use crate::engine::analysis::stop::{Stop, Unresolved};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -66,10 +67,7 @@ pub enum ReaderJoin {
         arguments: BTreeMap<String, Value>,
     },
     /// A root-token path exists but its reader relationship could not be established.
-    Missing {
-        /// Exact unresolved boundary.
-        reason: String,
-    },
+    Missing(Unresolved),
 }
 /// Terminal disposition of a bounded root-token path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -79,7 +77,7 @@ pub enum PathOutcome {
     /// Root path reaches a reader boundary or an unresolved helper.
     Reader(ReaderJoin),
     /// Instruction or provenance obstruction; no field claim follows solely from this path.
-    Gap(String),
+    Gap(Unresolved),
 }
 /// Every token domain and state alternative remains visible, including rejected paths.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -109,15 +107,53 @@ pub struct RootField {
     /// Token-to-reader join or explicit missing join for every listed path.
     pub readers: Vec<ReaderJoin>,
 }
+/// What kind of obligation a [`FieldGap`] leaves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FieldGapKind {
+    /// A function or name that the input should hold could not be collected.
+    InputBoundary,
+    /// The token constructor function could not be read into names.
+    TokenTable,
+    /// A path's reader could not be established.
+    ReaderJoin,
+    /// A path has no single named token.
+    UnresolvedTokenPath,
+    /// The paths do not account for every token interval.
+    TokenPartition,
+}
+
 /// A remaining obligation, separate from a discovered field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FieldGap {
-    /// Stable category for consumers.
-    pub kind: String,
+    /// What kind of obligation remains.
+    pub kind: FieldGapKind,
     /// Human-readable boundary or missing fact.
     pub reason: String,
+    /// Where the walk through code stopped, when a walk stopped.
+    pub stop: Option<Stop>,
     /// Related path index, when applicable.
     pub path: Option<usize>,
+}
+
+impl FieldGap {
+    /// A gap that no walk located and no path holds.
+    pub fn new(kind: FieldGapKind, reason: impl Into<String>) -> Self {
+        Self {
+            kind,
+            reason: reason.into(),
+            stop: None,
+            path: None,
+        }
+    }
+
+    /// A gap for a walk that could not follow code.
+    pub fn unresolved(kind: FieldGapKind, unresolved: Unresolved) -> Self {
+        Self {
+            stop: unresolved.stop,
+            ..Self::new(kind, unresolved.reason)
+        }
+    }
 }
 /// The root fields of one registry. This is bounded routing knowledge, never a complete schema.
 #[derive(Debug, Clone, Serialize)]

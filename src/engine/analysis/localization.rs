@@ -22,7 +22,8 @@ use std::collections::BTreeSet;
 
 use super::InputError;
 use super::declarations::ScopeType;
-use super::evaluate::{Call, Code, Exit, Machine, Path, ReadOnlyData, Unresolved};
+use super::evaluate::{Call, Code, Exit, Machine, Path, ReadOnlyData};
+use super::stop::Unresolved;
 
 /// Name and revision of this static method.
 pub const METHOD: &str = "localization-declarations/v1";
@@ -120,7 +121,7 @@ pub enum Output {
     Various,
     /// Every path returns without changing the context.
     Unchanged,
-    Unresolved(&'static str),
+    Unresolved(Unresolved),
 }
 
 /// The context that a scope type selects.
@@ -129,7 +130,7 @@ pub enum Join {
     Context(u64),
     /// Every path returned without selecting a context.
     NoContext,
-    Unresolved(&'static str),
+    Unresolved(Unresolved),
 }
 
 /// The three table entries of one context. `None` is an entry that could not be read; `Some(0)`
@@ -211,7 +212,7 @@ fn tables(input: &LocalizationInput) -> Result<Vec<(u64, Entries)>, InputError> 
 
     let exit = machine
         .run(input.functions.text_constructor, &mut |_, _| Ok(Call::Stop))
-        .map_err(|Unresolved(reason)| InputError(format!("text constructor: {reason}")))?;
+        .map_err(|Unresolved { reason, .. }| InputError(format!("text constructor: {reason}")))?;
     if exit != Exit::Returned {
         return Err(InputError("text constructor makes a call".into()));
     }
@@ -271,7 +272,7 @@ fn rows(
     machine.set_register(0, count_address);
     let exit = machine
         .run(getter, &mut |_, _| Ok(Call::Stop))
-        .map_err(|Unresolved(reason)| reason)?;
+        .map_err(|Unresolved { reason, .. }| reason)?;
     if exit != Exit::Returned {
         return Err("row-getter-call");
     }
@@ -306,7 +307,7 @@ fn context_name(input: &LocalizationInput, value: u64) -> Option<String> {
     let mut literals = BTreeSet::new();
     let paths = machine.run_paths(input.functions.context_name, &mut |target, machine| {
         if !target.is_some_and(|target| input.functions.string_from_literal.contains(&target)) {
-            return Err(Unresolved("name-call"));
+            return Err(Unresolved::new("name-call"));
         }
 
         literals.insert(machine.register(1));
@@ -345,7 +346,7 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
     let mut unchanged = false;
     for path in paths {
         match path_context(&path, field, scope_object) {
-            Err(reason) => return Output::Unresolved(reason),
+            Err(unresolved) => return Output::Unresolved(unresolved),
             Ok(PathContext::ScopeObject) => various = true,
             Ok(PathContext::Unchanged) => unchanged = true,
             Ok(PathContext::Trapped) => {}
@@ -357,9 +358,11 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
 
     let changed = various || !contexts.is_empty();
     match (changed, unchanged) {
-        (true, true) => Output::Unresolved("some-paths-leave-the-context-unchanged"),
+        (true, true) => {
+            Output::Unresolved(Unresolved::new("some-paths-leave-the-context-unchanged"))
+        }
         (false, true) => Output::Unchanged,
-        (false, false) => Output::Unresolved("no-path-returns"),
+        (false, false) => Output::Unresolved(Unresolved::new("no-path-returns")),
         (true, false) if various => Output::Various,
         (true, false) => Output::Contexts(contexts),
     }
@@ -406,8 +409,10 @@ fn join(input: &LocalizationInput, bit: usize) -> Join {
     let mut contexts = BTreeSet::new();
     for path in &paths {
         match path_context(path, field, input.functions.scope_object) {
-            Err(reason) => return Join::Unresolved(reason),
-            Ok(PathContext::ScopeObject) => return Join::Unresolved("scope-object-recursion"),
+            Err(unresolved) => return Join::Unresolved(unresolved),
+            Ok(PathContext::ScopeObject) => {
+                return Join::Unresolved(Unresolved::new("scope-object-recursion"));
+            }
             Ok(PathContext::Unchanged | PathContext::Trapped) => {}
             Ok(PathContext::Selected(value)) => {
                 contexts.insert(value);
@@ -418,7 +423,7 @@ fn join(input: &LocalizationInput, bit: usize) -> Join {
     match contexts.into_iter().collect::<Vec<_>>().as_slice() {
         [] => Join::NoContext,
         [value] => Join::Context(*value),
-        _ => Join::Unresolved("several-contexts"),
+        _ => Join::Unresolved(Unresolved::new("several-contexts")),
     }
 }
 
@@ -442,7 +447,7 @@ fn call(
         Ok(Call::Return(None))
     })?;
     if exit != Exit::Returned {
-        return Err(Unresolved("setter-stopped"));
+        return Err(Unresolved::new("setter-stopped"));
     }
 
     match setter.read(field, 4) {
@@ -461,18 +466,14 @@ enum PathContext {
     ScopeObject,
 }
 
-fn path_context(
-    path: &Path<'_>,
-    field: u64,
-    scope_object: u64,
-) -> Result<PathContext, &'static str> {
+fn path_context(path: &Path<'_>, field: u64, scope_object: u64) -> Result<PathContext, Unresolved> {
     match path.end {
-        Err(Unresolved(reason)) => Err(reason),
+        Err(unresolved) => Err(unresolved),
         Ok(Exit::Stopped(target)) if target == scope_object => Ok(PathContext::ScopeObject),
-        Ok(Exit::Stopped(_) | Exit::Reached | Exit::Looped) => Err("stopped"),
+        Ok(Exit::Stopped(_) | Exit::Reached | Exit::Looped) => Err(Unresolved::new("stopped")),
         Ok(Exit::Trapped) => Ok(PathContext::Trapped),
         Ok(Exit::Returned) => match path.machine.read(field, 4) {
-            None => Err("context-unknown"),
+            None => Err(Unresolved::new("context-unknown")),
             Some(UNCHANGED) => Ok(PathContext::Unchanged),
             Some(value) => Ok(PathContext::Selected(value)),
         },
@@ -767,17 +768,17 @@ mod tests {
         assert_eq!(link(country, "Broken"), &Output::Unchanged);
         assert_eq!(
             link(country, "Mixed"),
-            &Output::Unresolved("some-paths-leave-the-context-unchanged"),
+            &Output::Unresolved(Unresolved::new("some-paths-leave-the-context-unchanged")),
             "a link that may leave the context unchanged has no definite output"
         );
         assert_eq!(
             link(country, "Indirect"),
-            &Output::Unresolved("context-unknown"),
+            &Output::Unresolved(Unresolved::new("context-unknown")),
             "an indirect call may change the context"
         );
         assert_eq!(
             link(country, "Lost"),
-            &Output::Unresolved("context-unknown")
+            &Output::Unresolved(Unresolved::new("context-unknown"))
         );
     }
 
@@ -804,7 +805,10 @@ mod tests {
             [
                 ("zero", Join::NoContext),
                 ("country", Join::Context(1)),
-                ("split", Join::Unresolved("several-contexts")),
+                (
+                    "split",
+                    Join::Unresolved(Unresolved::new("several-contexts"))
+                ),
                 ("hidden", Join::Context(5)),
             ]
         );

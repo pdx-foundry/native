@@ -22,6 +22,7 @@ use super::binary::families::{register, written_registers};
 use super::binary::fixups::{self, FixupDiagnostic, Fixups};
 use super::binary::inventory::{self, Inventory};
 use crate::engine::analysis::decode::{Instruction, add_immediate, adrp, decode_arm64};
+use crate::engine::analysis::stop::Stop;
 
 /// Why an inspection could not be made.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,6 +165,21 @@ pub struct StringReference {
     pub at: u64,
     /// The symbol and offset of `at`.
     pub place: String,
+}
+
+/// Where and why a method stopped, placed in the image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlacedStop {
+    /// The instruction, the entry and the obstacle.
+    pub stop: Stop,
+    /// The symbol and offset of the instruction.
+    pub place: String,
+    /// The text symbol that holds the instruction, or `None` outside every text symbol.
+    pub function: Option<String>,
+    /// The instruction, or `None` when the address is not an aligned text address.
+    pub row: Option<Row>,
+    /// The symbol and offset where the walk last entered code.
+    pub entry: String,
 }
 
 /// One 8-byte data slot and what it holds.
@@ -447,10 +463,39 @@ impl<'a> Image<'a> {
             .then(|| "an import without an exact name".into())
     }
 
+    /// Place a method's stop: the instruction, the function that holds it and where the walk
+    /// entered code.
+    pub fn place_stop(&self, stop: Stop) -> PlacedStop {
+        PlacedStop {
+            stop,
+            place: self.place(stop.instruction),
+            function: self.function_at(stop.instruction).map(str::to_owned),
+            row: self
+                .disassemble(stop.instruction, 4)
+                .ok()
+                .and_then(|listing| listing.rows.into_iter().next()),
+            entry: self.place(stop.entry),
+        }
+    }
+
+    /// The text symbol that holds `address`.
+    pub fn function_at(&self, address: u64) -> Option<&str> {
+        let text_end = self.text.address + self.text.code.len() as u64;
+        if !(self.text.address..text_end).contains(&address) {
+            return None;
+        }
+
+        let symbols = &self.inventory.symbols;
+        symbols[..symbols.partition_point(|symbol| symbol.address <= address)]
+            .last()
+            .filter(|symbol| symbol.address >= self.text.address)
+            .map(|symbol| symbol.name.as_str())
+    }
+
     /// Where `address` is. In code, the preceding symbol and offset. In data, symbols have no
     /// size, so a data address that is not a symbol is named by its section and offset, after
     /// the preceding symbol.
-    fn place(&self, address: u64) -> String {
+    pub fn place(&self, address: u64) -> String {
         let Some((section_start, section)) = self.inventory.section_of(address) else {
             return "outside every section".into();
         };
@@ -821,6 +866,25 @@ impl fmt::Display for StringReference {
             formatter,
             "{:#x}  in {}  = {:#x} {:?}",
             self.at, self.place, self.string_address, self.text
+        )
+    }
+}
+
+impl fmt::Display for PlacedStop {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(formatter, "{}", self.stop.obstacle)?;
+        match &self.row {
+            Some(row) => writeln!(formatter, "  {row}")?,
+            None => writeln!(
+                formatter,
+                "  {:#x}  not in the text section",
+                self.stop.instruction
+            )?,
+        }
+        write!(
+            formatter,
+            "  at {}; entered at {:#x} {}",
+            self.place, self.stop.entry, self.entry
         )
     }
 }

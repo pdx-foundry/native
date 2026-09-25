@@ -133,7 +133,7 @@ fn normalized_families(
                 subject,
                 format!(
                     "the place of the item key could not be established at {}; no name of the registry's code was followed",
-                    reason.0
+                    reason.reason
                 ),
             ));
         }
@@ -227,9 +227,13 @@ fn not_established(reason: &NotEstablished) -> String {
         NotEstablished::Unread { function } => format!(
             "a path of {function} keeps an item that it constructed without running its post-read code"
         ),
-        NotEstablished::Unfollowed { function, reason } => {
-            format!("a path of {function} could not be followed at {reason}")
-        }
+        NotEstablished::Unfollowed {
+            function,
+            unresolved,
+        } => format!(
+            "a path of {function} could not be followed at {}",
+            unresolved.reason
+        ),
     }
 }
 
@@ -276,7 +280,7 @@ fn template(family: &ModifierFamily) -> String {
 mod tests {
     use super::*;
     use crate::GapSubject;
-    use crate::engine::analysis::evaluate::Unresolved;
+    use crate::engine::analysis::stop::Unresolved;
 
     fn categories() -> CategoryNames {
         BTreeMap::from([
@@ -412,7 +416,7 @@ mod tests {
         );
 
         let missing_key = FamilyResult {
-            key_offset: Err(Unresolved("key-storage")),
+            key_offset: Err(Unresolved::new("key-storage")),
             families: Vec::new(),
             failures: BTreeMap::new(),
         };

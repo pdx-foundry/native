@@ -31,6 +31,11 @@ opt-level = 3
 [profile.dev.package.cpp_demangle]
 opt-level = 3
 
+# The sweep's report and diff logic has unit tests, which `cargo test` runs.
+[[example]]
+name = "registry-field-sweep"
+test = true
+
 # The live tests start the real game. This binary is also their supervisor process, so it has
 # its own `main` in place of the standard test harness.
 [[test]]

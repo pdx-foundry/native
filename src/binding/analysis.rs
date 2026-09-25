@@ -77,8 +77,12 @@ impl VerifiedAnalysis<'_> {
             string_tag_offset,
         )
         .map_err(|error| format!("modifier table input: {error}"))?;
-        crate::engine::analysis::modifier_table::derive(&input)
-            .map_err(|reason| format!("modifier table layout was not established: {}", reason.0))
+        crate::engine::analysis::modifier_table::derive(&input).map_err(|reason| {
+            format!(
+                "modifier table layout was not established: {}",
+                reason.reason
+            )
+        })
     }
 
     /// Establish the key's item-relative offset from the selected registry's constructor.
@@ -95,7 +99,7 @@ impl VerifiedAnalysis<'_> {
         )
         .map_err(|error| format!("item key storage analysis failed: {error}"))?;
         crate::engine::analysis::families::item_key_offset(&input)
-            .map_err(|reason| format!("item key storage was not established at {}", reason.0))
+            .map_err(|reason| format!("item key storage was not established at {}", reason.reason))
     }
 
     pub(in crate::binding) fn declaration_input(

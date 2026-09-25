@@ -1,5 +1,6 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
+use pdx_native::internals::registry_field_stops;
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
     DeclaredTags, Define, EntryContext, EntryScope, Error, Field, GapKind, LinkData,
@@ -904,6 +905,17 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
         native.registry_fields("common/no_such_registry"),
         Err(Error::UnknownRegistry { .. })
     ));
+}
+
+/// The developer entry that the sweep uses gives the public answer from its one run.
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn the_developer_run_gives_the_public_registry_field_answer() {
+    let native = native();
+    for registry in ["common/traditions", "common/megastructures"] {
+        let run = registry_field_stops::run(&native, registry).unwrap();
+        assert_eq!(run.answer, native.registry_fields(registry).unwrap());
+    }
 }
 
 #[test]
