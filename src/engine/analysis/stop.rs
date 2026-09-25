@@ -9,7 +9,7 @@ use std::fmt;
 use serde::Serialize;
 
 /// A walk through code, or a method's reading of its result, could not be followed to its end.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct Unresolved {
     /// A short name for the obstruction, such as `branch-value`. Public gap text may quote it.
     pub reason: &'static str,
@@ -43,7 +43,7 @@ impl Unresolved {
 }
 
 /// Where a walk through code stopped, and what stopped it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct Stop {
     /// The instruction that could not run or could not be followed, or where a bound ran out.
     pub instruction: u64,
@@ -56,7 +56,7 @@ pub struct Stop {
 }
 
 /// What stopped a walk at its instruction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum Obstacle {
     /// The instruction needs a value that the walk does not know.
     Unknown(Unknown),
@@ -73,7 +73,7 @@ pub enum Obstacle {
 }
 
 /// A value that a walk did not know.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum Unknown {
     /// The general register `x0` to `x30`, or `sp` as 31.
     Register(u8),
@@ -82,7 +82,7 @@ pub enum Unknown {
 }
 
 /// A bound of a walk, with its size.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum Bound {
     /// Instructions that one path may run.
     Steps(usize),

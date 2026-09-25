@@ -477,9 +477,7 @@ impl<'a> Machine<'a> {
                 Flow::IndirectCall(_) | Flow::Trap => {
                     return Err(self.stop(pc, "instruction", Obstacle::Unsupported));
                 }
-                Flow::Call(target) => match calls(target, self)
-                    .map_err(|unresolved| self.locate_call(pc, unresolved))?
-                {
+                Flow::Call(target) => match self.hand_over(pc, |machine| calls(target, machine))? {
                     Call::Return(value) => {
                         self.returned_from_call(value);
                         pc += 4;
@@ -607,6 +605,7 @@ impl<'a> Machine<'a> {
         calls: &mut PathCalls<'_, 'a>,
     ) -> Walk {
         while steps < STEP_LIMIT {
+            self.pc = pc;
             match ends {
                 Ends::Unbounded => {}
                 Ends::Site(site) => {
@@ -632,7 +631,6 @@ impl<'a> Machine<'a> {
                 Ends::Joining(_) => {}
             }
             resumed = false;
-            self.pc = pc;
 
             steps += 1;
             let code = self.code;
@@ -672,32 +670,34 @@ impl<'a> Machine<'a> {
                         steps,
                     };
                 }
-                Flow::Call(target) => match calls(Some(target), self) {
-                    Ok(Call::Return(value)) => {
-                        self.returned_from_call(value);
-                        pc += 4;
+                Flow::Call(target) => {
+                    match self.hand_over(pc, |machine| calls(Some(target), machine)) {
+                        Ok(Call::Return(value)) => {
+                            self.returned_from_call(value);
+                            pc += 4;
+                        }
+                        Ok(Call::Stop) => return Walk::End(Ok(Exit::Stopped(target))),
+                        Ok(Call::Enter) => pc = self.enter(pc, target),
+                        Err(unresolved) => return Walk::End(Err(unresolved)),
                     }
-                    Ok(Call::Stop) => return Walk::End(Ok(Exit::Stopped(target))),
-                    Ok(Call::Enter) => pc = self.enter(pc, target),
-                    Err(unresolved) => return Walk::End(Err(self.locate_call(pc, unresolved))),
-                },
-                Flow::IndirectCall(target) => match (calls(target, self), target) {
-                    (Ok(Call::Return(value)), _) => {
-                        self.returned_from_call(value);
-                        pc += 4;
+                }
+                Flow::IndirectCall(target) => {
+                    match (self.hand_over(pc, |machine| calls(target, machine)), target) {
+                        (Ok(Call::Return(value)), _) => {
+                            self.returned_from_call(value);
+                            pc += 4;
+                        }
+                        (Ok(Call::Stop), Some(target)) => {
+                            return Walk::End(Ok(Exit::Stopped(target)));
+                        }
+                        (Ok(Call::Enter), Some(target)) => pc = self.enter(pc, target),
+                        (Ok(Call::Stop | Call::Enter), None) => {
+                            let unknown = self.stop(pc, "stopped-at-unknown-call", Obstacle::Call);
+                            return Walk::End(Err(unknown));
+                        }
+                        (Err(unresolved), _) => return Walk::End(Err(unresolved)),
                     }
-                    (Ok(Call::Stop), Some(target)) => {
-                        return Walk::End(Ok(Exit::Stopped(target)));
-                    }
-                    (Ok(Call::Enter), Some(target)) => pc = self.enter(pc, target),
-                    (Ok(Call::Stop | Call::Enter), None) => {
-                        let unknown = self.stop(pc, "stopped-at-unknown-call", Obstacle::Call);
-                        return Walk::End(Err(unknown));
-                    }
-                    (Err(unresolved), _) => {
-                        return Walk::End(Err(self.locate_call(pc, unresolved)));
-                    }
-                },
+                }
                 Flow::Return => match self.leave() {
                     Some(caller) => pc = caller,
                     None => return Walk::End(Ok(Exit::Returned)),
@@ -820,7 +820,7 @@ impl<'a> Machine<'a> {
         target: u64,
         calls: &mut PathCalls<'_, 'a>,
     ) -> Result<Option<u64>, Result<Exit, Unresolved>> {
-        let call = calls(Some(target), self).map_err(|unresolved| self.locate_call(pc, unresolved));
+        let call = self.hand_over(pc, |machine| calls(Some(target), machine));
         match call.map_err(Err)? {
             Call::Return(value) => {
                 self.returned_from_call(value);
@@ -851,13 +851,23 @@ impl<'a> Machine<'a> {
         Unresolved::at(reason, pc, entry, obstacle)
     }
 
-    /// The `calls` closure refused the call at `pc`. A stop that the closure located, such as
-    /// one from a run of its own, stays.
-    fn locate_call(&self, pc: u64, unresolved: Unresolved) -> Unresolved {
-        match unresolved.stop {
+    /// Give the call at `pc` to `call`, which may run other code on this machine. The run is
+    /// then again at `pc`, in the code it entered. A refusal that `call` did not locate is
+    /// located at `pc`; one that it located, such as a stop of its own run, stays.
+    fn hand_over(
+        &mut self,
+        pc: u64,
+        call: impl FnOnce(&mut Self) -> Result<Call, Unresolved>,
+    ) -> Result<Call, Unresolved> {
+        let entry = self.entry;
+        let result = call(self);
+        self.entry = entry;
+        self.pc = pc;
+
+        result.map_err(|unresolved| match unresolved.stop {
             Some(_) => unresolved,
             None => self.stop(pc, unresolved.reason, Obstacle::Call),
-        }
+        })
     }
 
     /// A called function returned `value`; caller-saved registers and flags are unknown.
@@ -3265,6 +3275,58 @@ mod tests {
                 "argument",
                 0x104,
                 Obstacle::Unknown(Unknown::Register(1))
+            ))
+        );
+    }
+
+    #[test]
+    fn a_read_at_a_reached_site_names_the_site() {
+        let code = Code::decode(&[(
+            0x100,
+            &arm64!(at 0x100;
+                mov x1, #1;
+                b extern 0x10c;
+                nop;
+                bl extern 0x900 // the site; x2 is unknown here
+            ),
+        )])
+        .unwrap();
+        let data = ReadOnlyData::default();
+        let paths =
+            Machine::new(&code, &data).run_paths_to(0x100, 0x10c, &mut |_, _| Ok(Call::Stop));
+
+        assert_eq!(paths[0].end, Ok(Exit::Reached));
+        assert_eq!(
+            paths[0].machine.known_register(2, "argument"),
+            Err(stop_at(
+                "argument",
+                0x10c,
+                Obstacle::Unknown(Unknown::Register(2))
+            ))
+        );
+    }
+
+    #[test]
+    fn a_run_that_a_closure_makes_does_not_change_the_outer_entry() {
+        let outer = arm64!(at 0x100;
+            bl extern 0x200; // the closure runs 0x200 itself
+            br x9 // x9 is unknown after the call
+        );
+        let inner = arm64!(at 0x200; mov x0, #1; ret);
+        let code = Code::decode(&[(0x100, &outer), (0x200, &inner)]).unwrap();
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |target, machine| {
+            let exit = machine.run(target.unwrap(), &mut |_, _| Ok(Call::Stop))?;
+            assert_eq!(exit, Exit::Returned);
+            Ok(Call::Return(machine.register(0)))
+        });
+
+        assert_eq!(
+            paths[0].end,
+            Err(stop_at(
+                "branch-value",
+                0x104,
+                Obstacle::Unknown(Unknown::Register(9))
             ))
         );
     }

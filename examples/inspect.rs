@@ -110,12 +110,15 @@ fn print_registry_fields(image: &Image, registry: &str, result: &RegistryFieldRe
         }
     }
 
-    println!("\ngaps");
+    println!("\ngaps; a path's stop is shown with its path above");
     for gap in &result.gaps {
         let path = gap
             .path
             .map_or(String::new(), |path| format!(" (path {path})"));
         println!("  {:?}{path}: {}", gap.kind, gap.reason);
+        if let (Some(stop), None) = (gap.stop, gap.path) {
+            println!("{}", image.place_stop(stop));
+        }
     }
 }
 

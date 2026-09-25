@@ -54,9 +54,12 @@ path's last instructions. Then it prints every internal gap before normalization
 cargo run --release --example inspect -- --registry-fields common/megastructures
 ```
 
-Every static method that walks code keeps the same diagnostic (`Unresolved` and `Stop` in
-`src/engine/analysis/stop.rs`) in its internal result. Public answers quote only the reason word;
-no address reaches them. `pdx_native::internals::registry_field_stops` returns the registry field
+The static methods locate their stops with one diagnostic (`Unresolved` and `Stop` in
+`src/engine/analysis/stop.rs`). The internal results of registry fields, scopes, scope links,
+localization, modifiers and modifier families keep it. Callbacks and defines keep only the reason word,
+since they combine reasons across paths. Declaration scopes are read without a walk, so they have
+no stop.
+Public answers quote only the reason word; no address reaches them. `pdx_native::internals::registry_field_stops` returns the registry field
 method's internal result; it is not a consumer API.
 
 `examples/registry-field-sweep.rs` runs every registry and groups the internal gaps by stop

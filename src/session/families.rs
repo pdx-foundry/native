@@ -227,9 +227,13 @@ fn not_established(reason: &NotEstablished) -> String {
         NotEstablished::Unread { function } => format!(
             "a path of {function} keeps an item that it constructed without running its post-read code"
         ),
-        NotEstablished::Unfollowed { function, reason } => {
-            format!("a path of {function} could not be followed at {reason}")
-        }
+        NotEstablished::Unfollowed {
+            function,
+            unresolved,
+        } => format!(
+            "a path of {function} could not be followed at {}",
+            unresolved.reason
+        ),
     }
 }
 
