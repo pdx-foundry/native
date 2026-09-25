@@ -157,9 +157,10 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
     (built, passed)
 }
 
-fn text(strings: &BTreeMap<u64, String>, literal: u64) -> Option<String> {
-    let text = strings.get(&literal)?.trim_end_matches('/');
-    (!text.is_empty()).then(|| text.to_owned())
+/// The literal as a directory path without trailing `/`, when that path is nonempty.
+fn directory_path(strings: &BTreeMap<u64, String>, literal: u64) -> Option<String> {
+    let path = strings.get(&literal)?.trim_end_matches('/');
+    (!path.is_empty()).then(|| path.to_owned())
 }
 
 /// The argument of every base-constructor call in one constructor body.
@@ -173,7 +174,7 @@ pub fn arguments(
         .into_iter()
         .map(|passed| match passed {
             Passed::Built(literal) => {
-                text(strings, literal).map_or(Argument::Unknown, Argument::Literal)
+                directory_path(strings, literal).map_or(Argument::Unknown, Argument::Literal)
             }
             Passed::Other(Value::Constant(global)) => Argument::Global(global),
             Passed::Other(_) => Argument::Unknown,
@@ -191,10 +192,10 @@ pub fn globals(
     let mut found: BTreeMap<u64, BTreeSet<String>> = BTreeMap::new();
     for initializer in initializers {
         for built in scan(initializer, anchors).0 {
-            if let (Value::Constant(global), Some(text)) =
-                (built.destination, text(strings, built.literal))
+            if let (Value::Constant(global), Some(path)) =
+                (built.destination, directory_path(strings, built.literal))
             {
-                found.entry(global).or_default().insert(text);
+                found.entry(global).or_default().insert(path);
             }
         }
     }

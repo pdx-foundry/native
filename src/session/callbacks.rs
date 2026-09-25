@@ -45,8 +45,13 @@ impl Native {
     /// ```
     pub fn on_actions(&self) -> Result<Answer<Vec<OnAction>>, Error> {
         self.answer("on_actions", None, || {
-            let result = self.callbacks(Operation::OnActions, Family::OnAction)?;
-            Ok(normalized_on_actions(&result.0, &result.1, self.build()))
+            let (callbacks, scope_names) =
+                self.callbacks(Operation::OnActions, Family::OnAction)?;
+            Ok(normalized_on_actions(
+                &callbacks,
+                &scope_names,
+                self.build(),
+            ))
         })
     }
 
@@ -58,8 +63,13 @@ impl Native {
     /// gap.
     pub fn game_rules(&self) -> Result<Answer<Vec<GameRule>>, Error> {
         self.answer("game_rules", None, || {
-            let result = self.callbacks(Operation::GameRules, Family::GameRule)?;
-            Ok(normalized_game_rules(&result.0, &result.1, self.build()))
+            let (callbacks, scope_names) =
+                self.callbacks(Operation::GameRules, Family::GameRule)?;
+            Ok(normalized_game_rules(
+                &callbacks,
+                &scope_names,
+                self.build(),
+            ))
         })
     }
 

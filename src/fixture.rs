@@ -27,11 +27,12 @@ pub enum FixtureWindow {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FixtureFieldQuestion {
-    /// Content directory that owns the definition.
+    /// Content directory that owns the definition. It must equal the fixture file's directory.
     pub registry: String,
-    /// Definition key as observed by the engine.
+    /// Definition key as observed by the engine. Nonempty, at most 128 bytes of ASCII letters,
+    /// digits, `_`, `-`, `.` or `:`.
     pub definition: String,
-    /// Root field name.
+    /// Root field name, with the same character and length limits as `definition`.
     pub field: String,
     /// Whether parser diagnostics from the file-load window are requested.
     pub diagnostics: bool,
@@ -71,7 +72,9 @@ pub struct FixtureRequest {
     pub files: BTreeMap<String, String>,
     /// A nonempty set of the requested event kinds, with no duplicates.
     pub observations: Vec<FixtureObservationKind>,
-    /// Bounded field-outcome questions. Each definition and field pair must be unique.
+    /// At most 32 field-outcome questions, sorted in ascending `Ord` order. Each
+    /// `(registry, definition, field)` identity must be unique. `field_outcomes` sorts its
+    /// questions.
     pub field_questions: Vec<FixtureFieldQuestion>,
     /// The engine phase in which to observe the fixture.
     pub window: FixtureWindow,
@@ -96,9 +99,10 @@ impl FixtureRequest {
         }
     }
 
-    /// Request field outcomes for one registry file. Existing
-    /// registration and category-read selections are not added; callers may add registration
-    /// entries, while category field reads require tradition categories.
+    /// Request field outcomes for one registry file. The questions are sorted into the
+    /// canonical order that validation requires. Existing registration and category-read
+    /// selections are not added; callers may add registration entries, while category field
+    /// reads require tradition categories.
     pub fn field_outcomes(
         path: impl Into<String>,
         text: impl Into<String>,
@@ -126,26 +130,13 @@ impl FixtureRequest {
         let Some((registry, filename)) = path.rsplit_once('/') else {
             return Err(reject("Fixture files must be under a registry directory"));
         };
-        if registry.len() > 256
-            || registry.split('/').any(|part| {
-                part.is_empty()
-                    || part.len() > 128
-                    || !part
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-            })
-        {
+        if registry.len() > 256 || !registry.split('/').all(is_path_component) {
             return Err(reject("Fixture registry path has an invalid component"));
         }
         let Some(stem) = filename.strip_suffix(".txt") else {
             return Err(reject("The fixture must have a .txt extension"));
         };
-        if stem.is_empty()
-            || stem.len() > 128
-            || !stem
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-        {
+        if !is_path_component(stem) {
             return Err(reject(
                 "The fixture filename must contain only letters, digits, underscores or hyphens",
             ));
@@ -251,6 +242,15 @@ impl FixtureRequest {
             .expect("fixture serializes");
         format!("{:x}/{:x}", files.finalize(), Sha256::digest(question))
     }
+}
+
+/// A nonempty directory or filename stem of at most 128 ASCII letters, digits, `_` or `-`.
+fn is_path_component(part: &str) -> bool {
+    !part.is_empty()
+        && part.len() <= 128
+        && part
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 /// What happened at an engine entry point. Neither stage establishes successful storage,

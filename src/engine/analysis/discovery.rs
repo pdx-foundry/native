@@ -23,35 +23,39 @@ pub fn candidates(symbols: &[Symbol]) -> Vec<CandidateRecord> {
     }
     let mut result = Vec::new();
     for symbol in symbols {
-        let Some(args) = symbol
+        let Some(template_arguments) = symbol
             .name
             .strip_prefix("TSingleObjectGameDatabase<")
             .and_then(|s| s.strip_suffix(">::LoadFile(char const*, bool)"))
         else {
             continue;
         };
-        let args: Vec<_> = args.split(',').map(str::trim).collect();
-        if args.len() != 3
-            || !matches!(args[2], "true" | "false")
-            || args[..2]
+        let template_arguments: Vec<_> = template_arguments.split(',').map(str::trim).collect();
+        let [database, owner_candidate, template_flag] = template_arguments[..] else {
+            continue;
+        };
+        if !matches!(template_flag, "true" | "false")
+            || [database, owner_candidate]
                 .iter()
-                .any(|s| s.is_empty() || s.contains(['<', '>']))
+                .any(|name| name.is_empty() || name.contains(['<', '>']))
         {
             continue;
         }
         result.push(CandidateRecord {
-            database: args[0].into(),
-            owner_candidate: args[1].into(),
+            database: database.into(),
+            owner_candidate: owner_candidate.into(),
             loader: symbol.name.clone(),
             address: format!("{:#x}", symbol.address),
             initial_loader: {
-                let init = format!("TSingleObjectGameDatabase<{}>::Init()", args.join(", "));
+                let init = format!(
+                    "TSingleObjectGameDatabase<{database}, {owner_candidate}, {template_flag}>::Init()"
+                );
                 entries.get(init.as_str()).and_then(|addresses| {
                     (addresses.len() == 1).then(|| format!("{:#x}", addresses[0]))
                 })
             },
             has_named_member_reader: names
-                .contains(format!("{}::ReadMember(CReader&, int)", args[1]).as_str()),
+                .contains(format!("{owner_candidate}::ReadMember(CReader&, int)").as_str()),
         });
     }
     result.sort_by(|a, b| a.database.cmp(&b.database).then(a.address.cmp(&b.address)));
