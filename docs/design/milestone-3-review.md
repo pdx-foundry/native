@@ -32,8 +32,9 @@ specific observation work. Those checks remain required; a static result cannot 
 **Milestone 4 can start before all repairs and cuts are finished.** Atlas integration runs
 alongside the first methods. Other repairs attach to the changes they serve; optional cleanup
 does not delay the milestone. *Amended 2026-09-24:* a Milestone 3.5 now comes first and holds the
-method tooling and the cleanup ([section 8.1](#81-milestone-35-amendment-2026-09-24)). Milestone 4 finishes only when the council agenda test, method
-fixture criteria, full-inventory measurements and Atlas integration checks pass.
+method tooling and the cleanup ([section 8.1](#81-milestone-35-amendment-2026-09-24)).
+Milestone 4 finishes only when the council agenda test, method fixture criteria, full-inventory
+measurements and Atlas integration checks pass.
 
 ## Review basis
 
@@ -268,8 +269,9 @@ The following delivery tickets are assigned to Jackson in Milestone 4:
 | Public-API council agenda parity gate (R5) | [SDK-600](https://linear.app/unnamed-system/issue/SDK-600) |
 
 SDK-542, SDK-544 and SDK-550 now name their observation work and owner. SDK-563 and SDK-577
-are in Milestone 4. SDK-569 and SDK-563 are blocked by preparation; SDK-541 is blocked by both,
-and SDK-542 by preparation and SDK-569. Existing dependencies remain. SDK-548 and SDK-553 state
+were placed in Milestone 4; on 2026-09-24 both moved to Milestone 3.5 with SDK-569
+([section 8.1](#81-milestone-35-amendment-2026-09-24)). SDK-569 and SDK-563 are blocked by
+preparation; SDK-541 is blocked by both, and SDK-542 by preparation and SDK-569. Existing dependencies remain. SDK-548 and SDK-553 state
 that credited rates come from the live run, while recordings support reproduction.
 
 M1 uses the SDK-588 completeness report shape with current public diagnostics. SDK-588 remains
@@ -316,7 +318,10 @@ not run; preparation changes no live operation.
   schedule SDK-563 in M4 ahead of SDK-541. Preserve this order: **M1 baseline → shortcut guard
   and field-discovery repair → shared-reader methods**, with R6 alongside the first methods.
 
-### 9.2 First implementation work in Milestone 4
+### 9.2 First implementation work
+
+Since 2026-09-24, rows 1 to 3 are Milestone 3.5 work and row 4 starts Milestone 4
+([section 8.1](#81-milestone-35-amendment-2026-09-24)). The order does not change.
 
 | Order | Responsible area and action | Result needed before moving on |
 | --- | --- | --- |
@@ -329,14 +334,19 @@ not run; preparation changes no live operation.
 
 | Work | Schedule and completion check |
 | --- | --- |
-| R4: CString layout | With SDK-579, use one production layout fact and one worker helper; parity stays byte-identical. |
-| R7 and A10: typed identities and stable gap text | With the next live change, check that the Rust/Python wire agrees on serialized reader kinds, analysis gaps use enum variants, and Atlas publishes stable reasons rather than `Debug` output. |
+| R4: CString layout (SDK-601, Milestone 3.5) | With SDK-579, use one production layout fact and one worker helper; parity stays byte-identical. |
+| R7 and A10: typed identities and stable gap text | The Native parts (SDK-574, SDK-581) are Milestone 3.5 work; A10 stays with SDK-597 in Milestone 4. With the next live change, check that the Rust/Python wire agrees on serialized reader kinds, analysis gaps use enum variants, and Atlas publishes stable reasons rather than `Debug` output. |
 | SDK-544 numeric observation | Run the bounded decoder experiment inside the ticket. Preserve failures and continue from the obstacle; do not close the ticket while required fixture cases remain unmet. |
 | SDK-545 and SDK-549 observations | Start their assigned dependencies when these tickets approach implementation. Keep each ticket blocked until its required observation works. SDK-547's first bounded form still needs its own design. |
 | SDK-548 and SDK-550 | Start after SDK-542. SDK-548 uses the live run for credited rates; SDK-550 retains its fixture checks. |
-| Developer tooling | SDK-579, SDK-581 and SDK-589 can proceed alongside preparation where they do not change the unmeasured field population. SDK-593 is the natural point to split the evaluator's long `step` function. |
+| Developer tooling | SDK-579 is done. SDK-581, SDK-588, SDK-589, SDK-593 and SDK-606 are Milestone 3.5 work. SDK-593 is the natural point to split the evaluator's long `step` function. |
 
-### 9.4 Cleanup that does not hold up Milestone 4
+### 9.4 Cleanup
+
+This cleanup first did not hold up Milestone 4. Since 2026-09-24, N11 (SDK-602), N12 and N13
+(SDK-603), A7, A8 and the pdxscript-rs pin (SDK-604) are Milestone 3.5 work, so they now come
+before Milestone 4 ([section 8.1](#81-milestone-35-amendment-2026-09-24)). A9 stays with SDK-597 in
+Milestone 4.
 
 - **N11:** a separate conditional change, after SDK-579 or independently. Replace the scheduler
   code-window dependency and pass parity before deleting scheduler code. Keep the live candidate
