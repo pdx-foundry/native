@@ -385,10 +385,7 @@ impl<'a> Text<'a> {
     ) -> Option<Vec<String>> {
         let start = unique(symbols, "NEventScope::GetScopeName(EScopeType, bool)").ok()?;
         let code = self.bytes(start, self.function_length(start)).ok()?;
-        let mut rows = Vec::new();
-        for (index, chunk) in code.chunks(4096).enumerate() {
-            rows.extend(decode_arm64(chunk, start + (index * 4096) as u64).ok()?);
-        }
+        let rows = decode_arm64(code, start).ok()?;
         let mut names = BTreeMap::new();
         for window in rows.windows(3) {
             let [test, page, offset] = window else {

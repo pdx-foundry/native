@@ -34,15 +34,7 @@ pub(super) fn decode(function: &Function) -> Result<Vec<Instruction>, String> {
     if function.code.is_empty() || function.code.len() > 1024 * 1024 {
         return Err("missing or oversized function bytes".into());
     }
-    let mut instructions = Vec::new();
-    for (i, chunk) in function.code.chunks(4096).enumerate() {
-        let address = function
-            .address
-            .checked_add((i * 4096) as u64)
-            .ok_or("function address overflow")?;
-        instructions.extend(decode_arm64(chunk, address).map_err(|e| e.to_string())?);
-    }
-    Ok(instructions)
+    decode_arm64(&function.code, function.address).map_err(|e| e.to_string())
 }
 pub(super) fn function<'a>(input: &'a FieldInput, name: &str) -> Option<&'a Function> {
     let mut matches = input.functions.iter().filter(|f| f.name == name);

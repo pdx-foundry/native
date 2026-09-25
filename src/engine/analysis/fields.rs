@@ -60,13 +60,8 @@ pub(crate) fn literal_token_names(
     symbols: &[crate::engine::analysis::discovery::Symbol],
     strings: &BTreeMap<u64, String>,
 ) -> Result<BTreeMap<u64, String>, InputError> {
-    let mut rows = Vec::new();
-    for (index, chunk) in code.chunks(4096).enumerate() {
-        rows.extend(
-            super::decode::decode_arm64(chunk, address + (index * 4096) as u64)
-                .map_err(|error| InputError(error.to_string()))?,
-        );
-    }
+    let rows = super::decode::decode_arm64(code, address)
+        .map_err(|error| InputError(error.to_string()))?;
     let (tokens, _) = tokens::recover_decoded(&rows, symbols, strings);
     Ok(tokens
         .into_iter()

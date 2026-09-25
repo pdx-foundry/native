@@ -86,12 +86,7 @@ pub fn scheduler(input: &StaticInput) -> Result<SchedulerDerivation, String> {
     {
         return Err("invalid scheduler bounds".into());
     }
-    let mut instructions = Vec::new();
-    for (i, chunk) in input.code.chunks(4096).enumerate() {
-        instructions.extend(
-            decode_arm64(chunk, layout.start + (i * 4096) as u64).map_err(|e| e.to_string())?,
-        );
-    }
+    let instructions = decode_arm64(&input.code, layout.start).map_err(|e| e.to_string())?;
     extract(input, &instructions)
 }
 fn extract(

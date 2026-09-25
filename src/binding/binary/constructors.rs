@@ -25,14 +25,7 @@ fn body(bytes: &[u8], starts: &[u64], address: u64) -> Result<Option<Constructor
     if length == 0 || length > LIMIT || !length.is_multiple_of(4) {
         return Ok(None);
     }
-    let mut code = Vec::new();
-    for offset in (0..length).step_by(4096) {
-        code.extend(super::code_range(
-            bytes,
-            address + offset,
-            (length - offset).min(4096),
-        )?);
-    }
+    let code = super::code_range(bytes, address, length)?;
     Ok(Some(Constructor { address, code }))
 }
 

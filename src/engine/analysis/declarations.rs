@@ -155,14 +155,7 @@ fn registrar_of(input: &DeclarationInput, row: &Instruction) -> Option<Registrar
 }
 
 fn decode(function: &Function) -> Result<Vec<Instruction>, InputError> {
-    let mut rows = Vec::new();
-    for (index, chunk) in function.code.chunks(4096).enumerate() {
-        rows.extend(
-            decode_arm64(chunk, function.address + (index * 4096) as u64)
-                .map_err(|error| InputError(error.to_string()))?,
-        );
-    }
-    Ok(rows)
+    decode_arm64(&function.code, function.address).map_err(|error| InputError(error.to_string()))
 }
 
 fn target(row: &Instruction) -> Option<u64> {

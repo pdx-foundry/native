@@ -328,9 +328,5 @@ fn scope_functions(symbols: &[Symbol]) -> ScopeFunctions {
 /// Decode one whole function; `None` when a part of it does not decode.
 fn decoded(text: &Text, start: u64) -> Option<Vec<Instruction>> {
     let (address, code) = text.function(start).ok()?;
-    let mut rows = Vec::new();
-    for (index, chunk) in code.chunks(4096).enumerate() {
-        rows.extend(decode_arm64(chunk, address + (index * 4096) as u64).ok()?);
-    }
-    Some(rows)
+    decode_arm64(code, address).ok()
 }

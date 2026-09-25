@@ -25,13 +25,7 @@ pub(in crate::binding) fn read(
         let rows = text
             .function(symbol.address)
             .ok()
-            .and_then(|(address, code)| {
-                let mut rows = Vec::new();
-                for (index, chunk) in code.chunks(4096).enumerate() {
-                    rows.extend(decode_arm64(chunk, address + (index * 4096) as u64).ok()?);
-                }
-                Some(rows)
-            })
+            .and_then(|(address, code)| decode_arm64(code, address).ok())
             .ok_or("define helper could not be decoded");
         sites.push(ReadSite {
             symbol: symbol.name.clone(),
