@@ -1,6 +1,7 @@
 //! Reduce the bounded fixture window. Native joins addresses internally, then replaces them
 //! with session-local owner identities. Only witnessed read entries leave this module.
 use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
+use crate::protocol::observation::FixtureFieldBinding;
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
     Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
@@ -108,8 +109,11 @@ fn parse_reader_kind(kind: &str) -> ReaderKind {
     }
 }
 
+/// `category_fields` are the field tokens that the build's category window reads, from its
+/// fixture binding.
 pub(crate) fn reduce(
     request: &FixtureRequest,
+    category_fields: &[FixtureFieldBinding],
     records: &[WorkerRecord],
     owner_events: &[OwnerEvent],
     build: BuildId,
@@ -125,7 +129,7 @@ pub(crate) fn reduce(
         .field_questions
         .iter()
         .any(|question| question.diagnostics);
-    if !request.field_questions.is_empty() && request.registry() != "common/tradition_categories" {
+    if !request.field_questions.is_empty() {
         hooks.extend(["fixture:constructor", "fixture:reader", "fixture:member"]);
         if diagnostics_requested {
             hooks.extend(["fixture:malformed", "fixture:unexpected"]);
@@ -137,7 +141,7 @@ pub(crate) fn reduce(
             reason: "Fixture hook activation before resume was not established".into(),
         });
     };
-    let mut window = Window::new(request, thread, resumed);
+    let mut window = Window::new(request, category_fields, thread, resumed);
     for record in records {
         // The terminal closes this question's window. Later registry record loss does not
         // revoke it; damaged transport still removes the terminal in read_worker_stream.
@@ -224,6 +228,7 @@ enum DiagnosticTerminalState {
 
 struct Window<'a> {
     request: &'a FixtureRequest,
+    category_fields: &'a [FixtureFieldBinding],
     thread: u64,
     resumed: u64,
     next_sequence: u64,
@@ -251,9 +256,15 @@ struct Window<'a> {
 }
 
 impl<'a> Window<'a> {
-    fn new(request: &'a FixtureRequest, thread: u64, resumed: u64) -> Self {
+    fn new(
+        request: &'a FixtureRequest,
+        category_fields: &'a [FixtureFieldBinding],
+        thread: u64,
+        resumed: u64,
+    ) -> Self {
         Self {
             request,
+            category_fields,
             thread,
             resumed,
             next_sequence: 1,
@@ -460,11 +471,14 @@ impl<'a> Window<'a> {
             && file == self.request.file()
             && line > 0
             && line <= self.request.files[file].lines().count() as u64
-            && matches!(field, "tree_template" | "traditions")
+            && self
+                .category_fields
+                .iter()
+                .any(|binding| binding.name == field)
             && super::registry_items::pointer(owner)
             && self.owner.as_ref().is_none_or(|expected| expected == owner)
             && ordinal > self.last_field_ordinal
-            && ordinal <= 2;
+            && ordinal <= self.category_fields.len() as u64;
         if !valid {
             self.window_gap("A field read lacks a matching file, owner, line, order or loader");
             return;
@@ -1000,6 +1014,18 @@ mod tests {
     use serde_json::{Value, json};
 
     const FILE: &str = "common/tradition_categories/atlas.txt";
+
+    /// The category field tokens of the M45-release fixture binding.
+    fn category_fields() -> Vec<FixtureFieldBinding> {
+        [(16793, "tree_template"), (14263, "traditions")]
+            .into_iter()
+            .map(|(token, name)| FixtureFieldBinding {
+                token,
+                name: name.into(),
+            })
+            .collect()
+    }
+
     fn request() -> FixtureRequest {
         FixtureRequest::new(
             FILE,
@@ -1191,7 +1217,14 @@ mod tests {
         let fixture = |event: Value| json!({"kind":"fixture", "event":event});
         let mut events = vec![
             json!({"kind":"launch-stopped", "error":"success", "pid":42, "triple":"arm64-macos", "frames":[{"function":"_dyld_start"}]}),
-            json!({"kind":"hooks-active-before-resume", "hooks":{"fixture:load":hook}}),
+            json!({"kind":"hooks-active-before-resume", "hooks":{
+                "fixture:load":hook,
+                "fixture:constructor":hook,
+                "fixture:reader":hook,
+                "fixture:member":hook,
+                "fixture:malformed":hook,
+                "fixture:unexpected":hook
+            }}),
             json!({"kind":"resume","error":"success"}),
             fixture(json!({"kind":"load-start","file":"common/tradition_categories/sample.txt"})),
             fixture(
@@ -1336,6 +1369,7 @@ mod tests {
     fn answer(events: Vec<Value>) -> Answer<FixtureObservation> {
         reduce(
             &request(),
+            &category_fields(),
             &records(events),
             &owner(),
             BuildId("build".into()),
@@ -1376,6 +1410,65 @@ mod tests {
     }
 
     #[test]
+    fn category_reads_follow_the_bound_fields() {
+        let reduce_with = |fields: &[(u64, &str)], events: Vec<Value>| {
+            let fields: Vec<_> = fields
+                .iter()
+                .map(|&(token, name)| FixtureFieldBinding {
+                    token,
+                    name: name.into(),
+                })
+                .collect();
+
+            reduce(
+                &request(),
+                &fields,
+                &records(events),
+                &owner(),
+                BuildId("build".into()),
+            )
+            .unwrap()
+            .completeness
+        };
+        let mut renamed_events = events();
+        renamed_events[8]["event"]["field"] = json!("template");
+
+        let renamed = [(1, "template"), (2, "traditions")];
+        assert_eq!(
+            reduce_with(&renamed, renamed_events),
+            Completeness::Complete
+        );
+        assert_eq!(reduce_with(&renamed, events()), Completeness::Partial);
+        assert_eq!(
+            reduce_with(&[(1, "tree_template")], events()),
+            Completeness::Partial
+        );
+    }
+
+    #[test]
+    fn category_field_questions_require_the_outcome_hooks() {
+        for hook in [
+            "fixture:constructor",
+            "fixture:reader",
+            "fixture:member",
+            "fixture:malformed",
+            "fixture:unexpected",
+        ] {
+            let mut events = category_outcome_events();
+            events[1]["hooks"].as_object_mut().unwrap().remove(hook);
+
+            let result = reduce(
+                &category_outcome_request(),
+                &category_fields(),
+                &records(events),
+                &owner(),
+                BuildId("b".into()),
+            );
+            assert!(result.is_err(), "{hook}");
+        }
+    }
+
+    #[test]
     fn every_activation_fact_is_required_before_any_complete_answer() {
         for (index, pointer, value) in [
             (0, "/pid", json!(99)),
@@ -1394,7 +1487,13 @@ mod tests {
             *changed[index].pointer_mut(pointer).unwrap() = value;
             assert!(
                 matches!(
-                    reduce(&request(), &records(changed), &owner(), BuildId("b".into())),
+                    reduce(
+                        &request(),
+                        &category_fields(),
+                        &records(changed),
+                        &owner(),
+                        BuildId("b".into())
+                    ),
                     Err(Error::Observation { .. })
                 ),
                 "{pointer}"
@@ -1403,9 +1502,27 @@ mod tests {
         for index in [0, 1, 2] {
             let mut changed = events();
             changed.remove(index);
-            assert!(reduce(&request(), &records(changed), &owner(), BuildId("b".into())).is_err());
+            assert!(
+                reduce(
+                    &request(),
+                    &category_fields(),
+                    &records(changed),
+                    &owner(),
+                    BuildId("b".into())
+                )
+                .is_err()
+            );
         }
-        assert!(reduce(&request(), &records(events()), &[], BuildId("b".into())).is_err());
+        assert!(
+            reduce(
+                &request(),
+                &category_fields(),
+                &records(events()),
+                &[],
+                BuildId("b".into())
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1469,9 +1586,15 @@ mod tests {
         let mut lost = owner();
         lost.push(OwnerEvent::WorkerExited { returncode: -9 });
         assert_eq!(
-            reduce(&request(), &records(events()), &lost, BuildId("b".into()))
-                .unwrap()
-                .completeness,
+            reduce(
+                &request(),
+                &category_fields(),
+                &records(events()),
+                &lost,
+                BuildId("b".into())
+            )
+            .unwrap()
+            .completeness,
             Completeness::Partial
         );
     }
@@ -1497,7 +1620,14 @@ mod tests {
         raw.push('{');
         let (records, damage) = event_stream::read_worker_stream(raw.as_bytes(), "attempt");
         assert!(damage.is_some());
-        let answer = reduce(&request(), &records, &owner(), BuildId("b".into())).unwrap();
+        let answer = reduce(
+            &request(),
+            &category_fields(),
+            &records,
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap();
         assert_eq!(answer.completeness, Completeness::Partial);
         assert_eq!(answer.value.field_reads.len(), 2);
     }
@@ -1506,6 +1636,7 @@ mod tests {
     fn field_storage_diagnostics_and_runtime_are_independent() {
         let complete = reduce(
             &field_request(false),
+            &category_fields(),
             &records(field_events()),
             &owner(),
             BuildId("b".into()),
@@ -1532,6 +1663,7 @@ mod tests {
 
         let runtime = reduce(
             &field_request(true),
+            &category_fields(),
             &records(field_events()),
             &owner(),
             BuildId("b".into()),
@@ -1553,6 +1685,7 @@ mod tests {
         missing_diagnostic_terminal.remove(10);
         let partial = reduce(
             &field_request(false),
+            &category_fields(),
             &records(missing_diagnostic_terminal),
             &owner(),
             BuildId("b".into()),
@@ -1570,6 +1703,7 @@ mod tests {
         unjoined_diagnostic[7]["event"]["line"] = json!(0);
         let partial = reduce(
             &field_request(false),
+            &category_fields(),
             &records(unjoined_diagnostic),
             &owner(),
             BuildId("b".into()),
@@ -1586,6 +1720,7 @@ mod tests {
         inconsistent_subjoin[7]["event"]["line"] = json!(3);
         let partial = reduce(
             &field_request(false),
+            &category_fields(),
             &records(inconsistent_subjoin),
             &owner(),
             BuildId("b".into()),
@@ -1616,6 +1751,7 @@ mod tests {
         ] {
             let answer = reduce(
                 &field_request(false),
+                &category_fields(),
                 &records(unavailable_field_events(reader_kind)),
                 &owner(),
                 BuildId("b".into()),
@@ -1640,7 +1776,14 @@ mod tests {
             event.pointer("/event/kind").and_then(Value::as_str) != Some("diagnostics-unavailable")
         });
         renumber(&mut events);
-        let answer = reduce(&request, &records(events), &owner(), BuildId("b".into())).unwrap();
+        let answer = reduce(
+            &request,
+            &category_fields(),
+            &records(events),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap();
         assert_eq!(answer.completeness, Completeness::Partial);
         assert!(
             answer
@@ -1660,6 +1803,7 @@ mod tests {
     fn diagnostics_require_requested_supported_intact_terminals() {
         let not_requested = reduce(
             &field_request_without_diagnostics(),
+            &category_fields(),
             &records(no_diagnostic_events()),
             &owner(),
             BuildId("b".into()),
@@ -1673,6 +1817,7 @@ mod tests {
 
         let unsupported = reduce(
             &category_outcome_request(),
+            &category_fields(),
             &records(category_outcome_events()),
             &owner(),
             BuildId("b".into()),
@@ -1717,6 +1862,7 @@ mod tests {
         for events in cases {
             let answer = reduce(
                 &field_request(false),
+                &category_fields(),
                 &records(events),
                 &owner(),
                 BuildId("b".into()),
@@ -1738,6 +1884,7 @@ mod tests {
         assert!(damage.is_some());
         let answer = reduce(
             &field_request(false),
+            &category_fields(),
             &records,
             &owner(),
             BuildId("b".into()),
@@ -1763,6 +1910,7 @@ mod tests {
         wrong_authority[9]["event"]["reader_id"] = Value::Null;
         let answer = reduce(
             &field_request(false),
+            &category_fields(),
             &records(wrong_authority),
             &owner(),
             BuildId("b".into()),
@@ -1782,6 +1930,7 @@ mod tests {
         missing_final[9]["event"]["unavailable"] = json!("Final storage read failed");
         let answer = reduce(
             &field_request(false),
+            &category_fields(),
             &records(missing_final),
             &owner(),
             BuildId("b".into()),
@@ -1802,6 +1951,7 @@ mod tests {
         renumber(&mut storage_after_terminal);
         let answer = reduce(
             &field_request(false),
+            &category_fields(),
             &records(storage_after_terminal),
             &owner(),
             BuildId("b".into()),
@@ -1814,6 +1964,7 @@ mod tests {
         renumber(&mut missing_terminal);
         let answer = reduce(
             &field_request(true),
+            &category_fields(),
             &records(missing_terminal),
             &owner(),
             BuildId("b".into()),
@@ -1829,6 +1980,7 @@ mod tests {
     fn owner_identity_follows_the_engine_object_and_ignores_addresses() {
         let expected = reduce(
             &two_field_request(),
+            &category_fields(),
             &records(two_field_events()),
             &owner(),
             BuildId("b".into()),
@@ -1847,6 +1999,7 @@ mod tests {
         }
         let relocated = reduce(
             &two_field_request(),
+            &category_fields(),
             &records(relocated),
             &owner(),
             BuildId("b".into()),
@@ -1856,6 +2009,7 @@ mod tests {
 
         let different = reduce(
             &different_owner_request(),
+            &category_fields(),
             &records(different_owner_events()),
             &owner(),
             BuildId("b".into()),
@@ -1887,6 +2041,7 @@ mod tests {
         renumber(&mut missing_field_terminal);
         let partial = reduce(
             &field_request(false),
+            &category_fields(),
             &records(missing_field_terminal),
             &owner(),
             BuildId("b".into()),
@@ -1907,6 +2062,7 @@ mod tests {
         renumber(&mut duplicate_field_terminal);
         let partial = reduce(
             &field_request(false),
+            &category_fields(),
             &records(duplicate_field_terminal),
             &owner(),
             BuildId("b".into()),
@@ -1922,6 +2078,7 @@ mod tests {
         missing_end.pop();
         let partial = reduce(
             &field_request(false),
+            &category_fields(),
             &records(missing_end),
             &owner(),
             BuildId("b".into()),
@@ -1934,6 +2091,7 @@ mod tests {
         wrong_diagnostic_count[10]["event"]["count"] = json!(2);
         let partial = reduce(
             &field_request(false),
+            &category_fields(),
             &records(wrong_diagnostic_count),
             &owner(),
             BuildId("b".into()),

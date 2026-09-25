@@ -105,17 +105,10 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
             "token intervals are missing or overlap".into(),
         ));
     }
-    gaps.push(gap(
-        "reader-contract",
-        "Routing does not establish shared-reader semantics or complete registry membership."
-            .into(),
-    ));
     Ok(RegistryFieldResult {
         fields,
         paths,
         gaps,
         partition_accounted,
-        complete_registry: false,
-        blocking_readers: inventory::blocking_readers(&input.selection.owner_candidate),
     })
 }

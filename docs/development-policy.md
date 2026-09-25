@@ -32,7 +32,17 @@ engine fact has one home:
   specification's format: claim, conditions, obstacle, removal route. It is never a branch.
 
 An unfamiliar shape becomes a typed gap. A repair lands in the shared module that owns the shape.
-Review checks this. A static gate (SDK-569) enforces it.
+Review checks this. The locality gate, `tests/locality.rs`, enforces it in `cargo test`. It scans
+all production code except the binding authority, and it fails on the following:
+
+- a content directory;
+- an engine class, registry, field or command selected by a comparison;
+- the registry count of a build;
+- a build or version test.
+
+Test code may name build-specific registries, fields and counts, because they are regression
+expectations. Each recorded manual exception is one entry in the gate's list, with its reason and
+removal route.
 
 ### Measuring method transfer
 

@@ -1,5 +1,5 @@
 use super::tokens::Token;
-use super::{FieldGap, PathOutcome, ReaderContractGap, ReaderJoin, RootField, TokenPath};
+use super::{FieldGap, PathOutcome, ReaderJoin, RootField, TokenPath};
 use std::collections::BTreeMap;
 
 pub(super) fn fields_and_gaps(
@@ -69,25 +69,4 @@ pub(super) fn partition_accounted(paths: &[TokenPath]) -> bool {
     }
     partition_accounted &= cursor == i32::MAX as i64 + 1;
     partition_accounted
-}
-
-pub(super) fn blocking_readers(owner: &str) -> Vec<ReaderContractGap> {
-    if owner == "CCouncilAgenda" {
-        // Retained SDK-487 failed-completeness obligations, not discovery seeds or reader kinds.
-        [
-            ("scoped-integer-value","Expression representation, repeated reads, evaluation and coercion are not established."),
-            ("trigger-clause","Shared operators, validation lifecycle and ROOT/PREV scope contracts are not established."),
-            ("effect-clause","Shared operators, validation lifecycle and ROOT/PREV scope contracts are not established."),
-            ("graphical-modifier","Inherited members, dynamic modifiers and post-read behavior are not established."),
-            ("ai-weight","Scaled/complex grammar and evaluation are not established across indirect calls, loops and jump tables."),
-        ]
-        .into_iter()
-        .map(|(reader, reason)| ReaderContractGap {
-            reader: reader.into(),
-            reason: reason.into(),
-        })
-        .collect()
-    } else {
-        vec![]
-    }
 }

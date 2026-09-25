@@ -1,5 +1,8 @@
 //! A source-level boundary check for Atlas's Native consumer.
 
+#[path = "support/source.rs"]
+mod source;
+
 use proc_macro2::{TokenStream, TokenTree};
 use std::{
     path::{Path, PathBuf},
@@ -7,7 +10,7 @@ use std::{
 };
 use syn::{
     Attribute, ExprLit, ExprMethodCall, ExprUnsafe, ItemForeignMod, ItemImpl, ItemTrait, ItemUse,
-    Lit, LitInt, LitStr, Macro, Meta, Signature, UseTree, parse::Parser, punctuated::Punctuated,
+    Lit, LitInt, Macro, Meta, Signature, UseTree, parse::Parser, punctuated::Punctuated,
     visit::Visit,
 };
 
@@ -172,7 +175,7 @@ impl Checker {
             Lit::Int(value) if is_native_integer(value) => {
                 self.reject("native constant", value.to_string());
             }
-            Lit::Str(value) if is_build_literal(value) => {
+            Lit::Str(value) if source::has_build_shape(&value.value()) => {
                 self.reject("build/version literal", value.value());
             }
             _ => {}
@@ -443,17 +446,6 @@ fn is_native_integer(value: &LitInt) -> bool {
         .filter(|character| *character != '_')
         .count()
         >= 4
-}
-
-fn is_build_literal(value: &LitStr) -> bool {
-    let text = value.value();
-    let parts: Vec<_> = text.split('.').collect();
-    let version = parts.len() >= 2
-        && parts.iter().all(|part| {
-            !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
-        });
-    let hash = text.len() == 64 && text.chars().all(|character| character.is_ascii_hexdigit());
-    version || hash
 }
 
 fn violations(file: &Path, source: &str) -> Vec<Violation> {

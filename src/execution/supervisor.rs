@@ -236,6 +236,7 @@ fn run(
                 attempt: &report.attempt,
                 registries: request.registries.clone(),
                 fixture: request.fixture.as_ref(),
+                category_fields: plan.category_fields(),
                 loaded_modifiers: request.loaded_modifiers.as_deref(),
                 build: crate::BuildId(request.build.clone()),
                 startup: Duration::from_secs(request.startup_seconds),
@@ -333,6 +334,8 @@ struct Session<'a> {
     /// Internal names of the registries that the session observes.
     registries: Vec<String>,
     fixture: Option<&'a crate::FixtureRequest>,
+    /// The field tokens that the bound category fixture window reads.
+    category_fields: &'a [crate::protocol::observation::FixtureFieldBinding],
     /// The registries whose item keys the modifier observation reads, when it is requested.
     loaded_modifiers: Option<&'a [String]>,
     build: crate::BuildId,
@@ -400,6 +403,7 @@ fn observe_session(
                 let fixture = session.fixture.map(|request| {
                     crate::engine::operations::fixture::reduce(
                         request,
+                        session.category_fields,
                         &records,
                         events.all(),
                         session.build.clone(),
@@ -657,6 +661,7 @@ exec sleep 30
             attempt: "unit",
             registries: vec![registry.into()],
             fixture: None,
+            category_fields: &[],
             loaded_modifiers: None,
             build: crate::BuildId("unit".into()),
             startup: Duration::from_secs(3),

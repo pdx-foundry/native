@@ -298,6 +298,15 @@ impl ExecutionPlan {
             .as_ref()
             .expect("an opened installation has an operation")
     }
+    /// The field tokens that this build's category fixture window reads. Empty when the build
+    /// has no category fixture binding.
+    pub fn category_fields(&self) -> &[crate::protocol::observation::FixtureFieldBinding] {
+        self.operation()
+            .fixture
+            .as_ref()
+            .map_or(&[], |fixture| &fixture.fields)
+    }
+
     pub fn integrity(&self) -> Result<(), crate::supervisor::SupervisorError> {
         match self.binding.target_integrity() {
             None => Ok(()),
