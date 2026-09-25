@@ -92,17 +92,17 @@ fn installation() -> (TempDir, Binding) {
 fn executable_replacement_permanently_invalidates_the_context() {
     let (directory, binding) = installation();
     let context = crate::Native::from_binding(binding);
-    assert_eq!(context.blocking_reasons(), []);
+    assert_eq!(context.blocking_reasons(context.bound()), []);
     fs::write(directory.path().join("stellaris"), "changed executable").unwrap();
     assert!(
         context
-            .blocking_reasons()
+            .blocking_reasons(context.bound())
             .contains(&UnavailableReason::TargetChanged)
     );
     fs::write(directory.path().join("stellaris"), "authored test bytes").unwrap();
     assert!(
         context
-            .blocking_reasons()
+            .blocking_reasons(context.bound())
             .contains(&UnavailableReason::TargetChanged)
     );
 }
@@ -123,7 +123,7 @@ fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
         }
         assert!(
             context
-                .blocking_reasons()
+                .blocking_reasons(context.bound())
                 .contains(&UnavailableReason::ContentChanged),
             "{mutation}"
         );
@@ -137,20 +137,28 @@ fn selected_sessions_ignore_unselected_default_content() {
     fs::write(root.path().join("common/traditions/test.txt"), "changed").unwrap();
     assert!(
         context
-            .blocking_reasons()
+            .blocking_reasons(context.bound())
             .contains(&UnavailableReason::ContentChanged)
     );
-    assert!(context.selected_blocking_reasons().is_empty());
+    assert!(
+        context
+            .selected_blocking_reasons(context.bound())
+            .is_empty()
+    );
 
     let (root, binding) = installation();
     fs::remove_dir_all(root.path().join("common/tradition_categories")).unwrap();
     let context = crate::Native::from_binding(binding);
     assert!(
         context
-            .blocking_reasons()
+            .blocking_reasons(context.bound())
             .contains(&UnavailableReason::InputUnavailable)
     );
-    assert!(context.selected_blocking_reasons().is_empty());
+    assert!(
+        context
+            .selected_blocking_reasons(context.bound())
+            .is_empty()
+    );
 }
 
 #[test]
@@ -160,7 +168,7 @@ fn missing_inputs_never_become_empty_success() {
     fs::remove_file(directory.path().join("stellaris")).unwrap();
     assert!(
         context
-            .blocking_reasons()
+            .blocking_reasons(context.bound())
             .contains(&UnavailableReason::InputUnavailable)
     );
 }
@@ -315,7 +323,7 @@ fn content_parent_symlinks_are_unavailable() {
     .unwrap();
     assert!(
         context
-            .blocking_reasons()
+            .blocking_reasons(context.bound())
             .contains(&UnavailableReason::InputUnavailable)
     );
 }

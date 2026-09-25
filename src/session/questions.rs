@@ -1,11 +1,11 @@
 //! Static questions: answered from the executable, with no game process.
-use super::Native;
+use super::{Backend, Native};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
     Field, Gap, GapKind, GapSubject, Operation, Reader, ReaderId, ReaderKind, Registry, ScopeId,
     ScopeReference, Source, Support,
 };
-use crate::binding::VerifiedAnalysis;
+use crate::binding::{Binding, VerifiedAnalysis};
 use crate::engine::analysis::{
     declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
@@ -35,9 +35,9 @@ pub(super) fn error(operation: Operation, error: AnalysisError) -> Error {
 impl Native {
     /// Opaque identity of the exact game build, as stamped on every answer.
     pub fn build(&self) -> BuildId {
-        match self.recorded() {
-            Some(recorded) => recorded.build.clone(),
-            None => BuildId(self.bound().build().into()),
+        match &self.backend {
+            Backend::Live { binding, .. } => BuildId(binding.build().into()),
+            Backend::Recorded(answers) => answers.build.clone(),
         }
     }
 
@@ -49,27 +49,48 @@ impl Native {
         subject: Option<&str>,
         method: impl FnOnce() -> Result<Answer<T>, Error>,
     ) -> Result<Answer<T>, Error> {
-        if let Some(directory) = self.recorded() {
-            return directory.read(question, subject);
-        }
+        let recorder = match &self.backend {
+            Backend::Recorded(answers) => return answers.read(question, subject),
+            Backend::Live { recorder, .. } => recorder,
+        };
         let answer = method();
-        if let Some(directory) = self.recorder() {
+        if let Some(directory) = recorder {
             crate::recorded::write(directory, &self.build(), question, subject, &answer)?;
         }
         answer
+    }
+
+    /// Run a method whose own result recorded answers do not hold. With recorded answers this is
+    /// `Error::Unsupported`. The result is not written to a recorder.
+    pub(super) fn method_result<T>(
+        &self,
+        operation: Operation,
+        method: impl FnOnce() -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        match &self.backend {
+            Backend::Recorded(_) => Err(Error::Unsupported {
+                operation,
+                reason: "recorded answers do not hold the method's internal result".into(),
+            }),
+            Backend::Live { .. } => method(),
+        }
     }
 
     /// Whether this build and host can answer an operation. This never starts a game; for a live
     /// operation it checks that the supervisor's tools can be found. Selected content is checked
     /// when `start_game` is called.
     pub fn supports(&self, operation: Operation) -> Support {
-        if self.recorded().is_some() {
-            return Support::Supported;
+        match &self.backend {
+            Backend::Recorded(_) => Support::Supported,
+            Backend::Live { binding, .. } => self.live_support(binding, operation),
         }
-        if operation == Operation::ObserveFixture && !self.bound().has_fixture_method() {
+    }
+
+    fn live_support(&self, binding: &Binding, operation: Operation) -> Support {
+        if operation == Operation::ObserveFixture && !binding.has_fixture_method() {
             return Support::Unsupported("this build has no fixture observation recipe".into());
         }
-        if operation.is_declaration() && !self.bound().has_declarations_method() {
+        if operation.is_declaration() && !binding.has_declarations_method() {
             return Support::Unsupported("this build has no declaration recipe".into());
         }
         match operation {
@@ -84,18 +105,18 @@ impl Native {
             | Operation::ScopeLinks
             | Operation::LocalizationDeclarations
             | Operation::OnActions
-            | Operation::GameRules => match &self.bound().analysis {
+            | Operation::GameRules => match &binding.analysis {
                 Some(analysis) => match analysis.executable() {
                     Ok(_) => Support::Supported,
                     Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
                 },
                 None => Support::Unsupported("this build has no static analysis recipe".into()),
             },
-            Operation::LoadedModifiers if !self.bound().has_modifier_table_method() => {
+            Operation::LoadedModifiers if !binding.has_modifier_table_method() => {
                 Support::Unsupported("this build has no loaded modifier table recipe".into())
             }
             Operation::RegistryItems | Operation::ObserveFixture | Operation::LoadedModifiers => {
-                match self.selected_blocking_reasons() {
+                match self.selected_blocking_reasons(binding) {
                     reasons if reasons.is_empty() => Support::Supported,
                     reasons => Support::Unsupported(format!("{reasons:?}")),
                 }
@@ -236,19 +257,12 @@ impl Native {
         }
     }
 
-    /// The registry field method's own result, with every path and stop. Recorded answers do
-    /// not hold it.
+    /// The registry field method's own result, with every path and stop.
     pub(crate) fn registry_field_result(
         &self,
         registry: &str,
     ) -> Result<RegistryFieldResult, Error> {
         let operation = Operation::RegistryFields;
-        if self.recorded().is_some() {
-            return Err(Error::Unsupported {
-                operation,
-                reason: "recorded answers do not hold the method's internal result".into(),
-            });
-        }
         let name = registry.trim_end_matches('/');
         let verified = self.verified_analysis(operation)?;
         let mut matching = verified

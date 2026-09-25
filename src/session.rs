@@ -15,7 +15,11 @@ pub mod registry_field_stops;
 
 #[derive(Debug)]
 enum Backend {
-    Live(Arc<Binding>),
+    Live {
+        binding: Arc<Binding>,
+        /// Write every answer to this directory as it is returned.
+        recorder: Option<Arc<std::path::PathBuf>>,
+    },
     Recorded(Arc<crate::recorded::Answers>),
 }
 
@@ -24,8 +28,6 @@ enum Backend {
 #[derive(Debug)]
 pub struct Native {
     backend: Backend,
-    /// Write every answer to this directory as it is returned.
-    recorder: Option<Arc<std::path::PathBuf>>,
     /// The first executable change and the first default-content change seen by this context.
     /// Each stays invalidated even when the original bytes return.
     target_invalidated: Arc<Mutex<Option<UnavailableReason>>>,
@@ -50,21 +52,25 @@ impl Native {
     ) -> Result<Self, crate::Error> {
         Ok(Self {
             backend: Backend::Recorded(Arc::new(crate::recorded::Answers::open(directory.into())?)),
-            recorder: None,
             target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
         })
     }
     /// Write every answer, and every error, to this directory as it is returned. A later
     /// `from_recorded_answers` on the same directory then gives the same answers without a game.
+    /// Recorded answers are not written again.
     pub fn record_answers_to(mut self, directory: impl Into<std::path::PathBuf>) -> Self {
-        self.recorder = Some(Arc::new(directory.into()));
+        if let Backend::Live { recorder, .. } = &mut self.backend {
+            *recorder = Some(Arc::new(directory.into()));
+        }
         self
     }
     pub(crate) fn from_binding(binding: Binding) -> Self {
         Self {
-            backend: Backend::Live(Arc::new(binding)),
-            recorder: None,
+            backend: Backend::Live {
+                binding: Arc::new(binding),
+                recorder: None,
+            },
             target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
         }
@@ -73,31 +79,22 @@ impl Native {
     /// the recorded files before it reaches this.
     pub(crate) fn bound(&self) -> &Arc<Binding> {
         match &self.backend {
-            Backend::Live(binding) => binding,
+            Backend::Live { binding, .. } => binding,
             Backend::Recorded(_) => panic!("recorded answers have no installation binding"),
         }
     }
-    pub(crate) fn recorded(&self) -> Option<&crate::recorded::Answers> {
-        match &self.backend {
-            Backend::Recorded(answers) => Some(answers),
-            Backend::Live(_) => None,
-        }
-    }
-    pub(crate) fn recorder(&self) -> Option<&std::path::Path> {
-        self.recorder.as_deref().map(|path| path.as_path())
-    }
-    fn target_integrity(&self) -> Option<UnavailableReason> {
+    fn target_integrity(&self, binding: &Binding) -> Option<UnavailableReason> {
         let mut invalidated = self
             .target_invalidated
             .lock()
             .expect("target integrity lock");
         if invalidated.is_none() {
-            *invalidated = self.bound().target_integrity();
+            *invalidated = binding.target_integrity();
         }
         invalidated.clone()
     }
-    fn integrity(&self) -> Option<UnavailableReason> {
-        if let Some(reason) = self.target_integrity() {
+    fn integrity(&self, binding: &Binding) -> Option<UnavailableReason> {
+        if let Some(reason) = self.target_integrity(binding) {
             return Some(reason);
         }
         let mut invalidated = self
@@ -105,19 +102,18 @@ impl Native {
             .lock()
             .expect("default content integrity lock");
         if invalidated.is_none() {
-            *invalidated = self.bound().default_content_integrity();
+            *invalidated = binding.default_content_integrity();
         }
         invalidated.clone()
     }
     /// Every reason why a game session cannot start now. This may start the host's debugger
     /// tools to check them; it never starts the game.
-    pub(crate) fn blocking_reasons(&self) -> Vec<UnavailableReason> {
-        self.bound().blocking_reasons(self.integrity(), true)
+    pub(crate) fn blocking_reasons(&self, binding: &Binding) -> Vec<UnavailableReason> {
+        binding.blocking_reasons(self.integrity(binding), true)
     }
     /// Method and host availability without a particular content selection.
-    pub(crate) fn selected_blocking_reasons(&self) -> Vec<UnavailableReason> {
-        self.bound()
-            .blocking_reasons(self.target_integrity(), false)
+    pub(crate) fn selected_blocking_reasons(&self, binding: &Binding) -> Vec<UnavailableReason> {
+        binding.blocking_reasons(self.target_integrity(binding), false)
     }
     /// Start a supervised game and wait until it is paused after its registries load, or after
     /// all content loads with `GameOptions::loaded_modifiers`. The game never loads a world. With recorded answers, no process starts; the fixture selects its recording and launch options are ignored.
@@ -132,9 +128,12 @@ impl Native {
         if let Some(fixture) = &options.fixture {
             fixture.validate()?;
         }
-        if let Backend::Recorded(answers) = &self.backend {
-            return Ok(crate::Game::recorded(answers.clone(), options.fixture));
-        }
+        let (binding, recorder) = match &self.backend {
+            Backend::Recorded(answers) => {
+                return Ok(crate::Game::recorded(answers.clone(), options.fixture));
+            }
+            Backend::Live { binding, recorder } => (binding, recorder),
+        };
         if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.startup_seconds)
             || !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.idle_seconds)
         {
@@ -143,16 +142,16 @@ impl Native {
                 disposal: Disposal::NotApplicable,
             });
         }
-        if options.fixture.is_some() && !self.bound().has_fixture_method() {
+        if options.fixture.is_some() && !binding.has_fixture_method() {
             return Err(Error::Unsupported {
                 operation: Operation::ObserveFixture,
                 reason: "this build has no fixture observation recipe".into(),
             });
         }
         let reasons = if options.registries.is_some() {
-            self.selected_blocking_reasons()
+            self.selected_blocking_reasons(binding)
         } else {
-            self.blocking_reasons()
+            self.blocking_reasons(binding)
         };
         if reasons.contains(&UnavailableReason::TargetChanged) {
             return Err(Error::BuildChanged);
@@ -172,7 +171,7 @@ impl Native {
         let registries = options
             .registries
             .clone()
-            .unwrap_or_else(|| self.bound().default_registries());
+            .unwrap_or_else(|| binding.default_registries());
         if let Some(fixture) = &options.fixture
             && !registries.iter().any(|name| name == fixture.registry())
         {
@@ -197,7 +196,7 @@ impl Native {
             }
         }
         let modifiers = if options.loaded_modifiers {
-            if !self.bound().has_modifier_table_method() {
+            if !binding.has_modifier_table_method() {
                 return Err(Error::Unsupported {
                     operation: Operation::LoadedModifiers,
                     reason: "this build has no loaded modifier table recipe".into(),
@@ -218,8 +217,8 @@ impl Native {
             .map_or(0, |elapsed| elapsed.as_nanos());
         let work = std::env::temp_dir().join(format!("pdx-native-{}-{id}", std::process::id()));
         let request = crate::protocol::session::SessionRequest {
-            installation: self.bound().installation_location(),
-            build: self.bound().build().into(),
+            installation: binding.installation_location(),
+            build: binding.build().into(),
             // The supervisor creates this directory; `work` holds nothing else.
             work_directory: work.join("session"),
             startup_seconds: options
@@ -247,7 +246,7 @@ impl Native {
         let session = crate::game::Session {
             observed: registries.into_iter().collect(),
             build: self.build(),
-            recorder: self.recorder.clone(),
+            recorder: recorder.clone(),
             work,
             fixture: options.fixture,
             modifiers,

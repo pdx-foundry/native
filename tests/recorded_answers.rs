@@ -1,8 +1,9 @@
 //! Recorded answers stand in for an installation and a game. No process starts in these tests.
+use pdx_native::internals::registry_field_stops;
 use pdx_native::{
     Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal,
     EntryScope, Error, GameOptions, GapKind, GapSubject, GenerationCondition, LinkData,
-    LocalizationOutput, Native, OutputScope, ReaderKind, RuleKind, Support,
+    LocalizationOutput, Native, Operation, OutputScope, ReaderKind, RuleKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -388,6 +389,24 @@ fn a_question_with_no_file_is_not_recorded_and_never_an_empty_answer() {
     }
     fs::write(root.path().join("registries.json"), "damaged").unwrap();
     assert!(matches!(native.registries(), Err(Error::Recorded(_))));
+}
+
+#[test]
+fn recorded_answers_hold_no_method_result_and_are_not_recorded_again() {
+    let root = recorded();
+    let copy = tempfile::tempdir().unwrap();
+    let native = Native::from_recorded_answers(root.path())
+        .unwrap()
+        .record_answers_to(copy.path());
+    assert!(matches!(
+        registry_field_stops::run(&native, "common/traditions"),
+        Err(Error::Unsupported {
+            operation: Operation::RegistryFields,
+            ..
+        })
+    ));
+    assert_eq!(native.registries().unwrap().source.basis, Basis::Recorded);
+    assert_eq!(fs::read_dir(copy.path()).unwrap().count(), 0);
 }
 
 #[test]
