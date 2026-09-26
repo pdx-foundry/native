@@ -245,14 +245,6 @@ fn session_request(
         .map_or(options.startup_seconds, |fixture| {
             options.startup_seconds.min(fixture.deadline_seconds)
         });
-    let fault =
-        options
-            .fault
-            .as_ref()
-            .map(|(directory, control)| crate::protocol::session::Fault {
-                registry: directory.clone(),
-                control: *control,
-            });
 
     crate::protocol::session::SessionRequest {
         installation: binding.installation_location(),
@@ -262,10 +254,8 @@ fn session_request(
         startup_seconds,
         idle_seconds: options.idle_seconds,
         registries: registries.to_vec(),
-        fault,
+        fault: options.fault.clone(),
         fixture: options.fixture.clone(),
-        fixture_fault: options.fixture_fault,
         loaded_modifiers: modifiers.map(ModifierJoin::registries),
-        modifier_fault: options.modifier_fault,
     }
 }

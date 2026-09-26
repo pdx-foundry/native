@@ -99,9 +99,9 @@ const SUPERVISOR_EXPORTS: &[&str] = &["serve", "SupervisorError"];
 /// The hidden `GameOptions` methods that inject observation faults for Native's own tests.
 const FAULT_HOOKS: &[&str] = &["fault", "fixture_fault", "modifier_fault"];
 
-/// A fault hook, or the hidden `ObservationControl` type that the hooks take.
+/// A fault hook or one of its hidden control types.
 fn is_hidden_test_hook(name: &str) -> bool {
-    FAULT_HOOKS.contains(&name) || name == "ObservationControl"
+    FAULT_HOOKS.contains(&name) || matches!(name, "ObservationControl" | "ObservationTarget")
 }
 
 #[derive(Debug)]

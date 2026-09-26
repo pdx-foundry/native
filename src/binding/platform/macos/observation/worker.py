@@ -6,6 +6,7 @@ registry has returned, it holds the game at that point until the supervisor rele
 session that reads the loaded modifier table holds the game where the engine's modifier
 documentation returns instead, after all content has loaded. Engine locations arrive in the
 request, from Native's binding groups."""
+from collections import namedtuple
 import hashlib
 import json
 import os
@@ -15,23 +16,55 @@ import traceback
 import protocol
 
 ROOT = Path(__file__).resolve().parent.parent
-request = protocol.decode('request', (ROOT / 'worker-request.json').read_bytes())
+request = None
 sequence = 0
-finished = False
 entry_thread = None
 breakpoints = {}
-control = protocol.CONTROL['normal']
-registry = None
-registry_owner = None
 registry_owners = {}
-returned_registries = []
-session_active = set()
-# True when the modifier hook was active before resume: the documentation point then owns the pause.
-modifier_active = False
-safe_pause = False
-# Why the game is held: 'loaders-returned', 'content-loaded' or 'deadline'. Set with safe_pause.
-pause_cause = None
-callback_active = False
+fixture = None
+modifiers = None
+
+
+class SessionProgress:
+    """Observed boundaries and failures; observers never choose the session's pause."""
+    def __init__(self, active_registries=(), modifier_active=False):
+        self.active_registries = set(active_registries)
+        if modifier_active:
+            self.pause_owner = 'modifiers'
+        elif self.active_registries:
+            self.pause_owner = 'registries'
+        else:
+            self.pause_owner = None
+        self.returned_registries = []
+        self.modifier_returned = False
+        self.callback_active = False
+        self.callback_failed = False
+        self.worker_loss_ready = False
+        self.deadline_stopped = False
+
+
+PauseDecision = namedtuple('PauseDecision', ['stop', 'cause'])
+progress = SessionProgress()
+
+
+def decide_pause(state):
+    """Choose continuation, a witnessed pause, or a stop without a safe pause."""
+    if state.callback_active:
+        return PauseDecision(False, None)
+    if state.callback_failed or state.worker_loss_ready:
+        return PauseDecision(True, None)
+    if state.pause_owner == 'modifiers' and state.modifier_returned:
+        return PauseDecision(True, 'content-loaded')
+    if state.pause_owner == 'registries' and state.active_registries.issubset(state.returned_registries):
+        return PauseDecision(True, 'loaders-returned')
+    if state.deadline_stopped:
+        return PauseDecision(True, 'deadline')
+    return PauseDecision(state.pause_owner is None, None)
+
+
+def fault_control(session_request, target):
+    fault = session_request['fault']
+    return fault['control'] if fault and fault['target'] == target else protocol.CONTROL['normal']
 
 
 class UnsupportedKeyLayout(Exception):
@@ -57,15 +90,16 @@ def atomic(kind, name, value, limit=protocol.MAX_RECORD):
     return encoded
 
 
-def dropped_by_fault(kind, fields, session_request, registry_control):
+def dropped_by_fault(kind, fields, session_request):
     """Whether a requested dropped-record fault leaves this record out of the trace. The record
     still takes its sequence number, so the trace shows the gap."""
-    if session_request['fixture_fault'] and session_request['control'] == protocol.CONTROL['dropped_record'] and kind == 'fixture':
+    if fault_control(session_request, 'fixture') == protocol.CONTROL['dropped_record'] and kind == 'fixture':
         dropped = ('field-read', 1) if session_request['fixture']['field_reads'] else ('registration-entry', 2)
         event = fields['event']
         if (event['kind'], event.get('ordinal')) == dropped:
             return True
-    return registry_control == protocol.CONTROL['dropped_record'] and kind == 'registry-entry' and fields['index'] == 0
+    return (kind == 'registry-entry' and fields['index'] == 0
+            and fault_control(session_request, {'registry': fields['name']}) == protocol.CONTROL['dropped_record'])
 
 
 def emit(kind, **fields):
@@ -73,7 +107,7 @@ def emit(kind, **fields):
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
-    if dropped_by_fault(kind, fields, request, control):
+    if dropped_by_fault(kind, fields, request):
         return
     path = ROOT / 'raw-trace.jsonl'
     limit = protocol.MAX_TRACE - 256 * 1024 if kind == 'registry-entry' else protocol.MAX_TRACE
@@ -130,8 +164,7 @@ def hook_state():
             for name, bp in breakpoints.items()}
 
 
-def registry_begin(frame):
-    global registry_owner
+def registry_begin(frame, registry, registry_owner):
     process = frame.GetThread().GetProcess()
     thread = frame.GetThread().GetThreadID()
     if registry_owner is not None or thread != entry_thread:
@@ -148,13 +181,12 @@ def registry_begin(frame):
     hook.SetScriptCallbackFunction('worker.callback')
     if hook.GetNumResolvedLocations() != 1:
         raise RuntimeError('registry return hook unresolved')
-    breakpoints['registry-return:' + registry['name']] = hook
+    breakpoints[protocol.HOOK['registry_return'] + registry['name']] = hook
     emit('registry-load-start', name=registry['name'], owner=hex(registry_owner), directory=directory, thread=thread)
-    return False
+    return registry_owner
 
 
-def registry_snapshot(frame):
-    global finished
+def registry_snapshot(frame, registry, registry_owner, control):
     process = frame.GetThread().GetProcess()
     thread = frame.GetThread().GetThreadID()
     if thread != entry_thread:
@@ -166,7 +198,7 @@ def registry_snapshot(frame):
     if directory != registry['directory']:
         raise RuntimeError('registry receiver directory mismatch: ' + directory)
     emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
-    returned_registries.append(registry['name'])
+    progress.returned_registries.append(registry['name'])
     if registry['key_offset'] is None:
         raise UnsupportedKeyLayout(registry['key_unavailable'] or 'item key storage was not established')
     if control == protocol.CONTROL['access_failure']:
@@ -196,44 +228,31 @@ def registry_snapshot(frame):
         raise RuntimeError('registry changed during snapshot')
     if control != protocol.CONTROL['missing_terminal']:
         emit('registry-end', name=registry['name'], owner=hex(owner), count=count, producerLastSequence=sequence + 1, thread=thread)
-    finished = True
-    return True
+    return False
 
 
 def registry_callback(frame, name):
-    global registry, registry_owner, control, finished, safe_pause, pause_cause
-    is_return = name.startswith('registry-return:')
-    selected = name.split(':', 1)[1]
+    is_return = name.startswith(protocol.HOOK['registry_return'])
+    prefix = protocol.HOOK['registry_return'] if is_return else protocol.HOOK['registry']
+    selected = name.removeprefix(prefix)
     registry = request['registries'][selected]
     registry_owner = registry_owners.get(selected)
-    control = request['control'] if selected == request['control_registry'] else protocol.CONTROL['normal']
+    control = fault_control(request, {'registry': selected})
     try:
         if not is_return:
-            result = registry_begin(frame)
-            registry_owners[selected] = registry_owner
+            registry_owners[selected] = registry_begin(frame, registry, registry_owner)
             breakpoints[name].SetEnabled(False)
-            return result
+            return False
         breakpoints[name].SetEnabled(False)
-        registry_snapshot(frame)
+        return registry_snapshot(frame, registry, registry_owner, control)
     except (UnsupportedKeyLayout, TraceStorageBound) as error:
         emit('registry-unsupported', name=selected, reason=str(error), thread=frame.GetThread().GetThreadID())
     except Exception:
         emit('registry-unavailable', name=selected, reason=traceback.format_exc(), thread=frame.GetThread().GetThreadID())
-        # Continue only after this callback proved its actual loader-return boundary.
-        if selected not in returned_registries:
-            finished = True
-            safe_pause = False
-            return True
-    if control == protocol.CONTROL['worker_loss']:
-        return True
-    if modifier_active:
-        finished = False
-        return False
-    finished = session_active.issubset(set(returned_registries))
-    safe_pause = finished
-    if finished:
-        pause_cause = 'loaders-returned'
-    return finished
+        # A failed read can continue only after the loader-return boundary was witnessed.
+        if selected not in progress.returned_registries:
+            progress.callback_failed = True
+    return False
 
 
 class FixtureObserver:
@@ -248,7 +267,7 @@ class FixtureObserver:
         self.requested_definitions = {item['definition'] for item in config['questions']}
         self.question_by_token = {(item['definition'], item['token']): item for item in config['questions'] if item['token'] is not None}
         self.diagnostics_requested = any(item['diagnostics'] for item in config['questions'])
-        self.control = request['control'] if request['fixture_fault'] else protocol.CONTROL['normal']
+        self.control = fault_control(request, 'fixture')
         self.registrations = 0
         self.field_count = 0
         self.loading = False
@@ -264,21 +283,21 @@ class FixtureObserver:
 
     def hooks(self):
         load_entry = self.outcome_binding['load_entry'] if self.questions and self.outcome_binding else self.bindings['load_entry']
-        hooks = [('fixture:load', load_entry)]
+        hooks = [(protocol.HOOK['fixture_load'], load_entry)]
         if self.config['registration_entries']:
-            hooks.append(('fixture:registration', self.bindings['registration_entry']))
+            hooks.append((protocol.HOOK['fixture_registration'], self.bindings['registration_entry']))
         if self.config['field_reads']:
-            hooks.append(('fixture:field', self.bindings['field_entry']))
+            hooks.append((protocol.HOOK['fixture_field'], self.bindings['field_entry']))
         if self.questions and self.outcome_binding:
             hooks.extend([
-                ('fixture:constructor', self.outcome_binding['constructor_entry']),
-                ('fixture:reader', self.outcome_binding['reader_entry']),
-                ('fixture:member', self.outcome_binding['member_entry']),
+                (protocol.HOOK['fixture_constructor'], self.outcome_binding['constructor_entry']),
+                (protocol.HOOK['fixture_reader'], self.outcome_binding['reader_entry']),
+                (protocol.HOOK['fixture_member'], self.outcome_binding['member_entry']),
             ])
             if self.diagnostics_requested:
                 hooks.extend([
-                    ('fixture:malformed', self.outcome_binding['malformed_entry']),
-                    ('fixture:unexpected', self.outcome_binding['unexpected_entry']),
+                    (protocol.HOOK['fixture_malformed'], self.outcome_binding['malformed_entry']),
+                    (protocol.HOOK['fixture_unexpected'], self.outcome_binding['unexpected_entry']),
                 ])
         return hooks
 
@@ -350,7 +369,7 @@ class FixtureObserver:
         self.loading = True
         self.emit('load-start', thread, file=file)
         for index, question in self.questions.items():
-            supported = (question['unavailable'] is None and question['reader_kind'] == 'String'
+            supported = (question['unavailable'] is None and question['reader_kind'] == protocol.READER_KIND['string']
                 and question['reader_id'] is not None and question['token'] is not None
                 and question['storage_offset'] is not None)
             self.emit('field-authority', thread, question=index,
@@ -366,7 +385,7 @@ class FixtureObserver:
         hook.SetScriptCallbackFunction('worker.callback')
         if hook.GetNumResolvedLocations() != 1:
             raise RuntimeError('fixture return hook unresolved')
-        breakpoints['fixture:return'] = hook
+        breakpoints[protocol.HOOK['fixture_return']] = hook
         if self.control == protocol.CONTROL['access_failure']:
             uint(process, 0)
             raise RuntimeError('access failure unexpectedly read zero')
@@ -387,7 +406,7 @@ class FixtureObserver:
         if file != self.config['file']:
             return False
         self.constructor_count += 1
-        dynamic = 'fixture:constructor-return:' + str(self.constructor_count)
+        dynamic = protocol.HOOK['fixture_constructor_return'] + str(self.constructor_count)
         self.pending_constructors[dynamic] = dict(owner=owner, definition=key, line=line)
         self.return_hook(frame, dynamic)
         return False
@@ -421,7 +440,7 @@ class FixtureObserver:
         file, line = self.location(process, reader)
         if file != self.config['file']:
             raise RuntimeError('fixture member source differs from selected file')
-        dynamic = 'fixture:member-return:' + str(index) + ':' + str(self.occurrences[index])
+        dynamic = protocol.HOOK['fixture_member_return'] + str(index) + ':' + str(self.occurrences[index])
         self.pending_fields[dynamic] = dict(question=index, owner=owner, reader=reader,
             line=line, occurrence=self.occurrences[index], field=question['field'], definition=definition)
         self.return_hook(frame, dynamic)
@@ -490,7 +509,7 @@ class FixtureObserver:
         self.returned = True
         self.finish_questions(process, thread)
         for key, hook in breakpoints.items():
-            if key.startswith('fixture:'):
+            if key.startswith(protocol.HOOK['fixture']):
                 hook.SetEnabled(False)
         self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
         if self.control != protocol.CONTROL['missing_terminal']:
@@ -505,34 +524,31 @@ class FixtureObserver:
         registers = request['machine']['registers']
         if thread != entry_thread:
             raise RuntimeError('fixture callback differs from the launch thread')
-        if name == 'fixture:registration':
+        if name == protocol.HOOK['fixture_registration']:
             return self.on_registration(thread, name)
-        if name == 'fixture:load':
+        if name == protocol.HOOK['fixture_load']:
             return self.on_load(frame, process, thread, registers)
-        if name == 'fixture:constructor':
+        if name == protocol.HOOK['fixture_constructor']:
             return self.on_constructor(frame, process, registers)
-        if name == 'fixture:reader':
+        if name == protocol.HOOK['fixture_reader']:
             if self.loading and not self.returned:
                 self.active_reader = register(frame, registers['reader'])
             return False
-        if name.startswith('fixture:constructor-return:'):
+        if name.startswith(protocol.HOOK['fixture_constructor_return']):
             return self.on_constructor_return(thread, name)
-        if name == 'fixture:member':
+        if name == protocol.HOOK['fixture_member']:
             return self.on_member(frame, process, registers)
-        if name.startswith('fixture:member-return:'):
+        if name.startswith(protocol.HOOK['fixture_member_return']):
             return self.on_member_return(process, thread, name)
-        if name == 'fixture:malformed':
+        if name == protocol.HOOK['fixture_malformed']:
             return self.on_diagnostic(frame, process, thread, registers, 'reader-malformed-report')
-        if name == 'fixture:unexpected':
+        if name == protocol.HOOK['fixture_unexpected']:
             return self.on_diagnostic(frame, process, thread, registers, 'reader-unexpected-report')
-        if name == 'fixture:field':
+        if name == protocol.HOOK['fixture_field']:
             return self.on_field(frame, process, thread, registers, name)
-        if name == 'fixture:return':
+        if name == protocol.HOOK['fixture_return']:
             return self.on_return(process, thread)
         return False
-
-
-fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
 
 
 # Bounds that no plausible table exceeds; each bounds a read before it is made.
@@ -545,11 +561,11 @@ class ModifierObserver:
     function has just named every entry through the lexer, so the lexer's lookup is current."""
     def __init__(self, binding):
         self.binding = binding
-        self.control = request['control'] if request['modifier_fault'] else protocol.CONTROL['normal']
+        self.control = fault_control(request, 'modifiers')
         self.entered = False
 
     def hooks(self):
-        return [('modifiers:documentation', self.binding['documentation_entry'])]
+        return [(protocol.HOOK['modifiers_documentation'], self.binding['documentation_entry'])]
 
     def load(self, target, address):
         return target.ResolveFileAddress(address).GetLoadAddress(target)
@@ -635,7 +651,6 @@ class ModifierObserver:
             return {'unavailable': str(error)}
 
     def on_return(self, frame, name):
-        global finished, safe_pause, pause_cause
         breakpoints[name].SetEnabled(False)
         process = frame.GetThread().GetProcess()
         target = process.GetTarget()
@@ -657,17 +672,14 @@ class ModifierObserver:
         except Exception:
             emit('modifier-unavailable', reason=traceback.format_exc(), thread=thread)
         # The return of the documentation function is the witnessed boundary of this pause.
-        finished = True
-        safe_pause = True
-        pause_cause = 'content-loaded'
-        return True
+        progress.modifier_returned = True
+        return False
 
     def callback(self, frame, name):
-        global finished, safe_pause
         thread = frame.GetThread().GetThreadID()
         if thread != entry_thread:
             raise RuntimeError('modifier documentation runs on another thread than the launch')
-        if name == 'modifiers:return':
+        if name == protocol.HOOK['modifiers_return']:
             return self.on_return(frame, name)
         if self.entered:
             raise RuntimeError('modifier documentation entered more than once')
@@ -681,39 +693,45 @@ class ModifierObserver:
         hook.SetScriptCallbackFunction('worker.callback')
         if hook.GetNumResolvedLocations() != 1:
             raise RuntimeError('modifier documentation return hook unresolved')
-        breakpoints['modifiers:return'] = hook
+        breakpoints[protocol.HOOK['modifiers_return']] = hook
         return False
 
 
-modifiers = ModifierObserver(request['modifiers']) if request['modifiers'] else None
-
-
 def callback(frame, loc, _):
-    global finished, callback_active
-    callback_active = True
+    progress.callback_active = True
+    worker_loss_ready = False
     try:
         name = next(key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID())
-        if name.startswith('fixture:'):
+        if name.startswith(protocol.HOOK['fixture']):
             try:
-                return fixture.callback(frame, name)
+                worker_loss_ready = fixture.callback(frame, name)
             except Exception:
                 fixture.emit('unavailable', frame.GetThread().GetThreadID(), reason=traceback.format_exc())
-                return False
-        if name.startswith('modifiers:'):
-            return modifiers.callback(frame, name)
-        return registry_callback(frame, name)
+        elif name.startswith(protocol.HOOK['modifiers']):
+            worker_loss_ready = modifiers.callback(frame, name)
+        else:
+            worker_loss_ready = registry_callback(frame, name)
     except Exception:
+        progress.callback_failed = True
         emit('callback-error', error=traceback.format_exc())
-        finished = True
-        return True
     finally:
-        callback_active = False
+        if worker_loss_ready:
+            progress.worker_loss_ready = True
+        progress.callback_active = False
+    return decide_pause(progress).stop
 
 
 def run(debugger):
-    global entry_thread, session_active, safe_pause, modifier_active, pause_cause
+    global request, entry_thread, progress, fixture, modifiers
     import lldb
     import sys
+    request = protocol.decode('request', (ROOT / 'worker-request.json').read_bytes())
+    progress = SessionProgress()
+    fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
+    modifiers = ModifierObserver(request['modifiers']) if request['modifiers'] else None
+    control = request['fault']['control'] if request['fault'] else protocol.CONTROL['normal']
+    modifier_active = False
+    active_registries = set()
     source_hashes = {name: sha(ROOT / 'source' / name) for name in request['source_hashes']}
     target_hash = sha(request['executable'])
     if request['version'] != protocol.VERSION or source_hashes != request['source_hashes'] or target_hash != request['target']:
@@ -721,27 +739,28 @@ def run(debugger):
     atomic('hello', 'hello.json', dict(version=protocol.VERSION, attempt=request['attempt'],
         game=request['game'], worker=os.getpid(), target=target_hash, source_hashes=source_hashes,
         python=sys.version, lldb=lldb.SBDebugger.GetVersionString(), module=lldb.__file__))
-    if request['control'] == protocol.CONTROL['worker_loss_before_activation']:
+    if control == protocol.CONTROL['worker_loss_before_activation']:
         emit('worker-loss-ready')
         (ROOT / 'worker-loss-ready').touch(exist_ok=False)
         while True:
             time.sleep(.1)
     debugger.SetAsync(True)
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
-    hooks = [('registry:' + name, value['load_entry']) for name, value in request['registries'].items()]
-    controlled_hook = 'registry:' + request['control_registry'] if request['control_registry'] else None
+    hooks = [(protocol.HOOK['registry'] + name, value['load_entry']) for name, value in request['registries'].items()]
+    fault_target = request['fault']['target'] if request['fault'] else None
+    controlled_hook = protocol.HOOK['registry'] + fault_target['registry'] if isinstance(fault_target, dict) else None
     if modifiers:
         hooks.extend(modifiers.hooks())
     if fixture:
         hooks.extend(fixture.hooks())
-        if request['fixture_fault']:
-            controlled_hook = 'fixture:field' if request['fixture']['field_reads'] else 'fixture:registration'
+        if fault_target == 'fixture':
+            controlled_hook = protocol.HOOK['fixture_field'] if request['fixture']['field_reads'] else protocol.HOOK['fixture_registration']
     for name, address in hooks:
-        if name == controlled_hook and request['control'] == protocol.CONTROL['missing_hook']:
+        if name == controlled_hook and control == protocol.CONTROL['missing_hook']:
             continue
         hook = target.BreakpointCreateBySBAddress(target.ResolveFileAddress(address))
         hook.SetScriptCallbackFunction('worker.callback')
-        if name == controlled_hook and request['control'] == protocol.CONTROL['late_hook']:
+        if name == controlled_hook and control == protocol.CONTROL['late_hook']:
             hook.SetEnabled(False)
         breakpoints[name] = hook
     emit('hooks-requested')
@@ -761,19 +780,19 @@ def run(debugger):
     for name, _ in hooks:
         hook = state.get(name)
         if hook and hook['enabled'] and hook['locations'] == 1 and hook['resolved'] == 1 and hook['hits'] == 0:
-            if name.startswith('registry:'):
-                session_active.add(name.split(':', 1)[1])
-            elif name.startswith('modifiers:'):
+            if name.startswith(protocol.HOOK['registry']):
+                active_registries.add(name.removeprefix(protocol.HOOK['registry']))
+            elif name.startswith(protocol.HOOK['modifiers']):
                 modifier_active = True
         else:
-            if name.startswith('modifiers:'):
+            if name.startswith(protocol.HOOK['modifiers']):
                 emit('modifier-unavailable', reason='required modifier hook missing or late before resume')
-            elif name.startswith('fixture:'):
+            elif name.startswith(protocol.HOOK['fixture']):
                 fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
             else:
-                emit('registry-unavailable', name=name.split(':', 1)[1], reason='required registry hook missing or late before resume')
-    # An active modifier hook is enough: its documentation point owns the pause.
-    if not session_active and not modifier_active:
+                emit('registry-unavailable', name=name.removeprefix(protocol.HOOK['registry']), reason='required registry hook missing or late before resume')
+    progress = SessionProgress(active_registries, modifier_active)
+    if decide_pause(progress).stop:
         return
     emit('hooks-active-before-resume', hooks=state)
     deadline = time.monotonic() + 15
@@ -787,28 +806,31 @@ def run(debugger):
         raise RuntimeError('foreign resume acknowledgement')
     emit('resume', error=str(process.Continue()))
     deadline = time.monotonic() + request['deadline_seconds']
-    while time.monotonic() < deadline and process.IsValid() and not finished:
+    while time.monotonic() < deadline and process.IsValid() and not decide_pause(progress).stop:
         if process.GetState() in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
             break
         if process.GetState() == lldb.eStateStopped and any(t.GetStopReason() == lldb.eStopReasonException for t in process):
             emit('native-exception', reason='native exception stopped the bounded observation')
             break
         time.sleep(.02)
-    if not finished and process.IsValid() and process.GetState() == lldb.eStateRunning:
+    if not decide_pause(progress).stop and process.IsValid() and process.GetState() == lldb.eStateRunning:
         stop_error = process.Stop()
         stop_deadline = time.monotonic() + 2
         while process.GetState() != lldb.eStateStopped and time.monotonic() < stop_deadline:
             time.sleep(.02)
         # A callback that completed while the game was being stopped owns the pause and its cause.
-        if not finished:
-            safe_pause = stop_error.Success() and process.GetState() == lldb.eStateStopped and not callback_active
-            pause_cause = 'deadline'
-    if safe_pause and process.GetState() == lldb.eStateStopped:
-        emit('session-paused', returned=returned_registries, cause=pause_cause, thread=entry_thread)
+        if not decide_pause(progress).stop:
+            progress.deadline_stopped = stop_error.Success() and process.GetState() == lldb.eStateStopped and not progress.callback_active
+    decision = decide_pause(progress)
+    # The supervisor must kill the worker for this fault; do not let LLDB quit first.
+    while progress.worker_loss_ready and time.monotonic() < deadline:
+        time.sleep(.02)
+    if decision.cause and process.GetState() == lldb.eStateStopped:
+        emit('session-paused', returned=progress.returned_registries, cause=decision.cause, thread=entry_thread)
         paused_thread = process.GetThreadByID(entry_thread)
         paused_pc = paused_thread.GetFrameAtIndex(0).GetPC()
         witness = dict(attempt=request['attempt'], game=request['game'], worker=os.getpid(),
-            thread=entry_thread, returned=returned_registries, generation=0)
+            thread=entry_thread, returned=progress.returned_registries, generation=0)
         atomic('pause', 'session-paused.json', witness)
         while not (ROOT / 'session-release').exists():
             if not process.IsValid() or process.GetState() != lldb.eStateStopped or paused_thread.GetFrameAtIndex(0).GetPC() != paused_pc:

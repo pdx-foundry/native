@@ -24,12 +24,44 @@ class ProtocolTests(unittest.TestCase):
                        outcome_registries=[outcome]))
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
-                       registries={}, control_registry=None, control=wire.CONTROL['normal'], deadline_seconds=180,
-                       fixture=fixture, fixture_fault=False, modifiers=None, modifier_fault=False)
+                       registries={}, fault=None, deadline_seconds=180,
+                       fixture=fixture, modifiers=None)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
         fixture['bindings']['fields'][0]['token'] = 'not an integer'
         with self.assertRaises(ValueError):
             wire.encode('request', request)
+
+    def test_every_reader_kind_round_trips_in_fixture_events(self):
+        schema_values = {variant['const'] for variant in wire.SCHEMAS['reader_kind']['oneOf']}
+        self.assertEqual(set(wire.READER_KIND.values()), schema_values)
+        for kind in wire.READER_KIND.values():
+            with self.subTest(kind=kind):
+                self.assertEqual(wire.decode('reader_kind', wire.encode('reader_kind', kind)), kind)
+                event = dict(kind='field-authority', question=0, reader_id=None,
+                             reader_kind=kind, storage_supported=False, unavailable='unsupported')
+                row = dict(run='a', seq=1, thread=7, kind='fixture', event=event)
+                self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
+        for kind in ['string', 'Unsupported', 1, None]:
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                wire.encode('reader_kind', kind)
+
+    def test_fault_wire_has_one_target_and_kind(self):
+        request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
+                       source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
+                       registries={}, fault=None, deadline_seconds=180, fixture=None, modifiers=None)
+        for target in [{'registry': 'common/traditions'}, 'fixture', 'modifiers']:
+            for control in wire.CONTROL.values():
+                with self.subTest(target=target, control=control):
+                    value = dict(request, fault=dict(target=target, control=control))
+                    self.assertEqual(wire.decode('request', wire.encode('request', value)), value)
+        for fault in [dict(target='missing', control='worker-loss'),
+                      dict(target='fixture', control='missing'),
+                      dict(target={'registry': 'one', 'fixture': None}, control='worker-loss'),
+                      dict(control='worker-loss')]:
+            with self.subTest(fault=fault), self.assertRaises(ValueError):
+                wire.encode('request', dict(request, fault=fault))
+        with self.assertRaises(ValueError):
+            wire.encode('request', dict(request, fixture_fault=True))
 
     def test_modifier_table_is_typed_and_bounded_by_its_own_limit(self):
         table = dict(attempt='a', entries=[dict(name='pop_happiness', mask=1)],

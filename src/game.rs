@@ -6,7 +6,9 @@
 use crate::{
     Disposal, Error, GameReadiness,
     engine::operations::registry_items::{Observed, RegistryItems},
-    protocol::session::{ObservationControl, SessionOutcome, SessionRequest},
+    protocol::session::{
+        Fault, ObservationControl, ObservationTarget, SessionOutcome, SessionRequest,
+    },
 };
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::{
@@ -28,13 +30,11 @@ pub struct GameOptions {
     /// Seconds that a paused game may stay idle, 1 to 180. Each answer restarts it. The default
     /// is 180.
     pub idle_seconds: u64,
-    /// A deliberate fault and the content directory of the registry that receives it.
-    pub(crate) fault: Option<(String, ObservationControl)>,
+    /// A deliberate fault and the observation that receives it.
+    pub(crate) fault: Option<Fault>,
     pub(crate) fixture: Option<crate::FixtureRequest>,
-    pub(crate) fixture_fault: Option<ObservationControl>,
     pub(crate) registries: Option<Vec<String>>,
     pub(crate) loaded_modifiers: bool,
-    pub(crate) modifier_fault: Option<ObservationControl>,
 }
 impl GameOptions {
     /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
@@ -46,10 +46,8 @@ impl GameOptions {
             idle_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
             fault: None,
             fixture: None,
-            fixture_fault: None,
             registries: None,
             loaded_modifiers: false,
-            modifier_fault: None,
         }
     }
     /// Run the game on until all content has loaded, and read the loaded modifier table where
@@ -58,13 +56,6 @@ impl GameOptions {
     /// observed; one whose initial loader does not run before that point is not loaded.
     pub fn loaded_modifiers(mut self) -> Self {
         self.loaded_modifiers = true;
-        self
-    }
-    /// Inject a fault into the modifier observation for Native's live tests. Only
-    /// `WorkerLoss`; requires `loaded_modifiers`.
-    #[doc(hidden)]
-    pub fn modifier_fault(mut self, control: ObservationControl) -> Self {
-        self.modifier_fault = Some(control);
         self
     }
     /// Prepare one fixed fixture before launch. Registry queries observe this mounted content.
@@ -89,17 +80,17 @@ impl GameOptions {
         );
         self
     }
-    /// Inject a fixture fault for Native’s live tests. Requires a prepared fixture.
+    /// Inject a fault into a selected observation for Native's live tests. Fixture faults
+    /// require a prepared fixture; modifier faults support only `WorkerLoss`.
     #[doc(hidden)]
-    pub fn fixture_fault(mut self, control: ObservationControl) -> Self {
-        self.fixture_fault = Some(control);
-        self
-    }
-    /// Inject a deliberate fault into the observation of one registry, named by its content
-    /// directory. Only Native's live tests use this; see `tests/live.rs`.
-    #[doc(hidden)]
-    pub fn fault(mut self, registry: &str, control: ObservationControl) -> Self {
-        self.fault = Some((registry.trim_end_matches('/').into(), control));
+    pub fn fault(mut self, target: ObservationTarget, control: ObservationControl) -> Self {
+        let target = match target {
+            ObservationTarget::Registry(directory) => {
+                ObservationTarget::Registry(directory.trim_end_matches('/').into())
+            }
+            target => target,
+        };
+        self.fault = Some(Fault { target, control });
         self
     }
 }

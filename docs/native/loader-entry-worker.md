@@ -10,6 +10,26 @@ content boundary matched. The fixture remained the retained category containing
 `tree_template` at line 2 and `traditions` at line 3. The trial ran on ARM64 macOS 26.6.2
 (25G83), Xcode LLDB 2100.0.17.203 with embedded Python 3.9.6; the parent used Python 3.13.5.
 
+## Current pause and fault ownership
+
+`worker.py::decide_pause` makes the session's pause decision from observed progress. Activation
+selects the latest active boundary: modifier documentation return when that hook is active,
+otherwise the returns of all active registry loaders. A fixture never owns the pause. No active
+owner means no resume. A failed callback before its boundary stops without a safe-pause witness;
+a failed snapshot after a witnessed return can still reach the selected pause. The decision waits
+for a callback to finish before publishing its boundary. A confirmed deadline stop is a separate
+pause cause and cannot replace a completed boundary or failed callback.
+
+The private request carries one fault with an observation target and a control kind. The hidden
+`GameOptions::fault` selects a registry, the fixture or the modifier table. Session validation
+requires the selected observation; modifier faults remain restricted to worker loss. The worker
+holds a worker-loss stop for the supervisor to kill it, without publishing a safe pause.
+
+`src/protocol/hooks.rs` owns shared hook names and dynamic prefixes. The generated Python codec
+uses those names and the serde values of `ReaderKind`; fixture events retain that type through
+reduction. Game-free checks are in `tools/observation/test_worker.py` and `test_protocol.py`.
+The existing fake-worker supervisor test checks the paused answer and cleanup.
+
 ## Final matrix
 
 Final evidence is `sdk-515-loader-entry-review/trial-03/` inside the bundle below. All attempts

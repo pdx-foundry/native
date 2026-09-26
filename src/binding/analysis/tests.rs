@@ -113,9 +113,7 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
         registries: names.clone(),
         fault: None,
         fixture: None,
-        fixture_fault: None,
         loaded_modifiers: None,
-        modifier_fault: None,
     };
     request.validate().unwrap();
     assert_eq!(

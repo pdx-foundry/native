@@ -5,10 +5,11 @@ use crate::supervisor::SupervisorError;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::io::{Read, Write};
 
+pub(crate) mod hooks;
 pub(crate) mod observation;
 pub(crate) mod session;
 
-const VERSION: u32 = 8;
+const VERSION: u32 = 9;
 /// A `Paused` reply holds the items of every observed registry, which the worker's stream
 /// bounds, and the loaded modifier table, which its file bounds; the other messages are small.
 const MAX_MESSAGE: usize = observation::MAX_TRACE + observation::MAX_MODIFIER_TABLE + 64 * 1024;

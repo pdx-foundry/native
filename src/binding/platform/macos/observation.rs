@@ -141,9 +141,7 @@ impl Observer {
             registries,
             fault,
             fixture,
-            fixture_fault,
             modifiers,
-            modifier_fault,
             startup_seconds,
             machine,
             package,
@@ -170,15 +168,9 @@ impl Observer {
             source_hashes,
             machine: machine.clone(),
             registries: registries.clone(),
-            control_registry: fault.map(|fault| fault.registry.clone()),
-            control: fixture_fault
-                .or(modifier_fault)
-                .or_else(|| fault.map(|fault| fault.control))
-                .unwrap_or_default(),
+            fault: fault.cloned(),
             fixture,
-            fixture_fault: fixture_fault.is_some(),
             modifiers,
-            modifier_fault: modifier_fault.is_some(),
             deadline_seconds: worker_deadline_seconds(startup_seconds),
         };
         Ok(Self {
@@ -266,9 +258,11 @@ impl Observer {
             }
         }
         if matches!(
-            self.request.control,
-            crate::protocol::session::ObservationControl::WorkerLoss
-                | crate::protocol::session::ObservationControl::WorkerLossBeforeActivation
+            self.request.fault.as_ref().map(|fault| fault.control),
+            Some(
+                crate::protocol::session::ObservationControl::WorkerLoss
+                    | crate::protocol::session::ObservationControl::WorkerLossBeforeActivation
+            )
         ) && self.output.join("worker-loss-ready").try_exists()?
         {
             self.kill_group()?;
@@ -494,12 +488,9 @@ pub(crate) fn test_observer(
             source_hashes: BTreeMap::new(),
             machine: crate::binding::machine::resolve(object::Architecture::Aarch64).unwrap(),
             registries,
-            control_registry: None,
-            control: crate::protocol::session::ObservationControl::Normal,
+            fault: None,
             fixture: None,
-            fixture_fault: false,
             modifiers: None,
-            modifier_fault: false,
             deadline_seconds: 1,
         },
         tool: Tool {
