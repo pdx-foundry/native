@@ -1,5 +1,6 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
+use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Trace, Unresolved};
 use pdx_native::internals::{command_grammar_stops, registry_field_stops, trace_causes};
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
@@ -987,102 +988,117 @@ fn the_developer_run_gives_the_public_registry_field_answer() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn traced_questions_match_untraced_questions() {
+    let untraced = observe(&native());
     // Each `Native` caches its analysis, so the traced questions need their own.
-    let untraced = native();
-    let traced = native();
-    trace_causes(|| {
-        for kind in [DeclarationKind::Trigger, DeclarationKind::Effect] {
-            assert_eq!(traced.declarations(kind), untraced.declarations(kind));
-        }
-        assert_eq!(traced.modifiers(), untraced.modifiers());
-        assert_eq!(traced.modifier_categories(), untraced.modifier_categories());
-        assert_eq!(traced.scopes(), untraced.scopes());
-        assert_eq!(traced.scope_links(), untraced.scope_links());
-        assert_eq!(
-            traced.localization_declarations(),
-            untraced.localization_declarations()
-        );
-        assert_eq!(traced.on_actions(), untraced.on_actions());
-        assert_eq!(traced.game_rules(), untraced.game_rules());
-        assert_eq!(traced.defines(), untraced.defines());
-        let families: BTreeMap<String, Value> = expected("modifier-families.json");
-        for registry in families.keys() {
-            assert_eq!(
-                traced.modifier_families(registry),
-                untraced.modifier_families(registry),
-                "{registry}"
-            );
-        }
+    let traced_native = native();
+    let traced = trace_causes(|| observe(&traced_native));
 
-        for registry in [
-            "common/council_agendas",
-            "common/megastructures",
-            "common/tradition_categories",
-            "common/traditions",
-        ] {
-            let traced = registry_field_stops::run(&traced, registry).unwrap();
-            let untraced = registry_field_stops::run(&untraced, registry).unwrap();
-            assert_eq!(traced.answer, untraced.answer, "{registry}");
-            assert_eq!(traced.result.paths, untraced.result.paths, "{registry}");
-            assert_eq!(traced.result.gaps, untraced.result.gaps, "{registry}");
-        }
+    assert_eq!(traced.answers, untraced.answers);
+    assert_eq!(traced.fields, untraced.fields);
+    assert_eq!(traced.grammars, untraced.grammars);
+    assert!(untraced.receiver_failures.iter().all(Option::is_none));
+    for trace in &traced.receiver_failures {
+        let trace = trace.as_ref().expect("a traced receiver failure");
+        assert!(trace.causes().next().is_some());
+    }
+}
 
-        let controls = ["and", "or", "not", "if", "else_if", "else"].map(|name| (false, name));
-        let effects = [
-            "if",
-            "else_if",
-            "else",
-            "hidden_effect",
-            "random_list",
-            "every_owned_planet",
-            "pop_change_ethic",
-            "pop_force_add_ethic",
-            "remove_random_starbase_building",
-            "remove_random_starbase_module",
-        ]
-        .map(|name| (true, name));
-        let triggers = [
-            "has_relation_flag",
-            "is_war_participant",
-            "pop_ethic_amount",
-            "reverse_has_relation_flag",
-            "has_country_flag",
-            "exists",
-        ]
-        .map(|name| (false, name));
-        for (effect, name) in controls.into_iter().chain(effects).chain(triggers) {
-            let kind = if effect {
-                DeclarationKind::Effect
-            } else {
-                DeclarationKind::Trigger
-            };
-            let traced = command_grammar_stops::run(&traced, kind, name).unwrap();
-            let untraced = command_grammar_stops::run(&untraced, kind, name).unwrap();
-            assert_eq!(traced.answer, untraced.answer, "{kind:?}/{name}");
-            match (&traced.result, &untraced.result) {
-                (Err(traced), Err(untraced)) => assert_eq!(traced, untraced, "{kind:?}/{name}"),
-                (Ok(traced), Ok(untraced)) => {
-                    assert_eq!(traced.stops, untraced.stops, "{kind:?}/{name}");
-                    assert_eq!(
-                        traced.fields.paths, untraced.fields.paths,
-                        "{kind:?}/{name}"
-                    );
-                }
-                _ => panic!("{kind:?}/{name}: tracing changed whether the receiver joined"),
-            }
-        }
+/// What tracing must not change on one `Native`: every static answer, the internal results of
+/// four registries and 22 commands, and the traces of three known receiver failures.
+struct Observed {
+    answers: Vec<Value>,
+    fields: Vec<(Value, Vec<TokenPath>, Vec<FieldGap>)>,
+    grammars: Vec<(Value, GrammarOutcome)>,
+    receiver_failures: Vec<Option<Box<Trace>>>,
+}
 
-        for (kind, name) in [
-            (DeclarationKind::Effect, "pop_change_ethic"),
-            (DeclarationKind::Trigger, "exists"),
-            (DeclarationKind::Trigger, "has_country_flag"),
-        ] {
-            let run = command_grammar_stops::run(&traced, kind, name).unwrap();
-            let unresolved = run.result.err().expect("the receiver join stops");
-            let trace = unresolved.trace.expect("a traced receiver failure");
-            assert!(trace.causes().next().is_some(), "{kind:?}/{name}");
-        }
-    });
+type GrammarOutcome = Result<(Vec<Unresolved>, Vec<TokenPath>), Unresolved>;
+
+fn observe(native: &Native) -> Observed {
+    let mut answers = Vec::new();
+    for kind in [DeclarationKind::Trigger, DeclarationKind::Effect] {
+        answers.push(json!(native.declarations(kind)));
+    }
+    answers.push(json!(native.modifiers()));
+    answers.push(json!(native.modifier_categories()));
+    answers.push(json!(native.scopes()));
+    answers.push(json!(native.scope_links()));
+    answers.push(json!(native.localization_declarations()));
+    answers.push(json!(native.on_actions()));
+    answers.push(json!(native.game_rules()));
+    answers.push(json!(native.defines()));
+    let families: BTreeMap<String, Value> = expected("modifier-families.json");
+    for registry in families.keys() {
+        answers.push(json!(native.modifier_families(registry)));
+    }
+
+    let fields = [
+        "common/council_agendas",
+        "common/megastructures",
+        "common/tradition_categories",
+        "common/traditions",
+    ]
+    .map(|registry| {
+        let run = registry_field_stops::run(native, registry).unwrap();
+        (json!(run.answer), run.result.paths, run.result.gaps)
+    })
+    .into();
+
+    let triggers = [
+        "and",
+        "or",
+        "not",
+        "if",
+        "else_if",
+        "else",
+        "has_relation_flag",
+        "is_war_participant",
+        "pop_ethic_amount",
+        "reverse_has_relation_flag",
+        "has_country_flag",
+        "exists",
+    ]
+    .map(|name| (DeclarationKind::Trigger, name));
+    let effects = [
+        "if",
+        "else_if",
+        "else",
+        "hidden_effect",
+        "random_list",
+        "every_owned_planet",
+        "pop_change_ethic",
+        "pop_force_add_ethic",
+        "remove_random_starbase_building",
+        "remove_random_starbase_module",
+    ]
+    .map(|name| (DeclarationKind::Effect, name));
+    let grammars = triggers
+        .into_iter()
+        .chain(effects)
+        .map(|(kind, name)| {
+            let run = command_grammar_stops::run(native, kind, name).unwrap();
+            let outcome = run.result.map(|result| (result.stops, result.fields.paths));
+            (json!(run.answer), outcome)
+        })
+        .collect();
+
+    let receiver_failures = [
+        (DeclarationKind::Effect, "pop_change_ethic"),
+        (DeclarationKind::Trigger, "exists"),
+        (DeclarationKind::Trigger, "has_country_flag"),
+    ]
+    .map(|(kind, name)| {
+        let run = command_grammar_stops::run(native, kind, name).unwrap();
+        run.result.err().expect("the receiver join stops").trace
+    })
+    .into();
+
+    Observed {
+        answers,
+        fields,
+        grammars,
+        receiver_failures,
+    }
 }
 
 #[test]

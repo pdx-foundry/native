@@ -247,12 +247,13 @@ pub enum CauseKind {
     /// A call returned no known value in `x0`, or left a caller-saved register or the flags
     /// unknown.
     Call,
-    /// The method made memory unknown, such as an object that an unrecognized call may change.
+    /// The method made known memory unknown, such as an object that an unrecognized call may
+    /// change.
     Invalidated,
-    /// A store to an unknown address may have written the value.
+    /// A store to an unknown address may have written known memory.
     UnknownStore,
-    /// Paths joined at this loop head, and other paths may have known or lost the value
-    /// differently.
+    /// Paths that joined at this loop head disagreed on the value: one knew it and another did
+    /// not, or they knew different values.
     Join,
 }
 
@@ -272,7 +273,7 @@ impl fmt::Display for CauseKind {
             Self::Call => "call",
             Self::Invalidated => "invalidated by the method",
             Self::UnknownStore => "store to an unknown address",
-            Self::Join => "paths joined",
+            Self::Join => "paths disagreed where they joined",
         })
     }
 }

@@ -145,6 +145,58 @@ fn a_reload_from_overwritten_memory_names_the_store_and_not_an_earlier_loss() {
 }
 
 #[test]
+fn memory_lost_again_keeps_the_cause_that_first_lost_it() {
+    let bytes = arm64!(at 0x100;
+        str xzr, [sp];
+        str xzr, [x7]; // x7 is unknown: the saved value is lost here
+        str xzr, [x8]; // x8 is unknown, but the saved value is already lost
+        ldr x1, [sp];
+        br x1
+    );
+    let code = authored(&bytes);
+    let data = ReadOnlyData::default();
+    let paths = every_path(&code, &data);
+    let trace = stop_trace(&paths[0]);
+    assert_eq!(causes(trace), [cause(CauseKind::UnknownStore, 0x104)]);
+
+    let bytes = arm64!(at 0x100;
+        str xzr, [sp];
+        bl extern 0x900; // the method forgets the saved value here
+        bl extern 0x900; // and again
+        ldr x1, [sp];
+        br x1
+    );
+    let code = authored(&bytes);
+    let paths = traced(&code, &data, |machine| {
+        machine.run_paths(ENTRY, &mut |_, machine| {
+            machine.forget(STACK_TOP, 8);
+            Ok(Call::Return(None))
+        })
+    });
+    let trace = stop_trace(&paths[0]);
+    assert_eq!(causes(trace), [cause(CauseKind::Invalidated, 0x104)]);
+    assert!(!trace.unrecorded);
+
+    let bytes = arm64!(at 0x100;
+        nop; // no instruction writes the value
+        bl extern 0x900; // the method forgets it here
+        bl extern 0x900; // and again
+        ldr x1, [sp];
+        br x1
+    );
+    let code = authored(&bytes);
+    let paths = traced(&code, &data, |machine| {
+        machine.run_paths(ENTRY, &mut |_, machine| {
+            machine.forget(STACK_TOP, 8);
+            Ok(Call::Return(None))
+        })
+    });
+    let trace = stop_trace(&paths[0]);
+    assert_eq!(causes(trace), [cause(CauseKind::Invalidated, 0x104)]);
+    assert!(trace.unrecorded, "the value was never known");
+}
+
+#[test]
 fn a_memory_instruction_gives_each_value_only_its_own_causes() {
     let data = ReadOnlyData::default();
 
@@ -292,7 +344,7 @@ fn a_value_lost_where_paths_join_names_the_join_and_every_earlier_cause() {
 }
 
 #[test]
-fn an_arrival_that_the_joined_facts_cover_keeps_its_causes_for_a_later_widening() {
+fn a_join_is_a_cause_only_where_the_joined_paths_disagree() {
     let bytes = arm64!(at 0x100;
         mov x19, #0;
         str xzr, [sp];
@@ -303,6 +355,7 @@ fn an_arrival_that_the_joined_facts_cover_keeps_its_causes_for_a_later_widening(
         cbnz x6, extern 0x10c;
         ldr x1, [sp];
         br x1;
+        str xzr, [sp];
         str xzr, [x8]; // x8 is unknown: the second cause
         b extern 0x10c
     );
@@ -318,11 +371,19 @@ fn an_arrival_that_the_joined_facts_cover_keeps_its_causes_for_a_later_widening(
         .map(|path| causes(stop_trace(path)))
         .collect();
 
-    let join = cause(CauseKind::Join, 0x10c);
-    let covered = cause(CauseKind::UnknownStore, 0x124);
-    assert!(!traces.is_empty());
-    assert!(traces.iter().all(|trace| trace.contains(&join)));
-    assert!(traces.iter().any(|trace| trace.contains(&covered)));
+    let first = cause(CauseKind::UnknownStore, 0x108);
+    let covered = cause(CauseKind::UnknownStore, 0x128);
+    assert!(
+        traces.contains(&vec![first]),
+        "a path that leaves on its first pass met no join"
+    );
+    assert!(traces.contains(&vec![first, covered]));
+    assert!(
+        traces
+            .iter()
+            .flatten()
+            .all(|cause| cause.kind != CauseKind::Join)
+    );
 }
 
 #[test]
@@ -340,7 +401,8 @@ fn flags_and_memory_that_the_joined_paths_disagree_on_name_the_join() {
     );
     let code = authored(&bytes);
     let data = ReadOnlyData::default();
-    let paths = joining_paths(&code, &data);
+    let mut paths = joining_paths(&code, &data);
+    paths.retain(|path| path.end != Ok(Exit::Looped)); // a covered arrival's state is discarded
     let join = cause(CauseKind::Join, 0x10c);
 
     let unknown_flags: Vec<_> = paths

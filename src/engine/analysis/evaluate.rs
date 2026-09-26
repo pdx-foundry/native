@@ -459,10 +459,10 @@ impl<'a> Machine<'a> {
 
     /// Make `width` bytes at `address` unknown, such as a field that a call may have written.
     pub fn forget(&mut self, address: u64, width: u64) {
+        self.trace_forgetting(address, width);
         for offset in 0..width {
             self.memory.insert(address + offset, None);
         }
-        self.trace_forgotten(address, width);
     }
 
     /// Load `width` little-endian bytes, when every byte is known.
@@ -758,9 +758,6 @@ impl<'a> Machine<'a> {
     /// on: `false` when the kept facts cover its state.
     fn join(&mut self, pc: u64, joined: &mut BTreeMap<u64, HeadState>) -> Result<bool, Unresolved> {
         let Some(kept) = joined.get_mut(&pc) else {
-            if let Some(arrival) = self.arrival() {
-                self.trace_join(None, &arrival);
-            }
             joined.insert(pc, self.head_state(0));
             return Ok(true);
         };
@@ -826,7 +823,7 @@ impl<'a> Machine<'a> {
             return Ok(false);
         }
         if let Some(arrival) = &arrival {
-            self.trace_join(Some(kept), arrival);
+            self.trace_join(kept, arrival);
         }
         let widened = kept.widened + 1;
         if widened > JOIN_LIMIT {
@@ -935,10 +932,11 @@ impl<'a> Machine<'a> {
 
     /// A called function returned `value`; caller-saved registers and flags are unknown.
     fn returned_from_call(&mut self, value: Option<u64>) {
+        let lost = if value.is_some() { 1..=18 } else { 0..=18 };
         self.registers[0] = value;
-        self.registers[1..=18].fill(None);
+        self.registers[lost.clone()].fill(None);
         self.set_flags(None);
-        self.trace_call(value.is_some());
+        self.trace_call(lost);
     }
 
     /// Run the instruction at `pc`.
@@ -1751,10 +1749,10 @@ impl<'a> Machine<'a> {
                 .iter()
                 .any(|(start, end)| (*start..*end).contains(address))
             {
-                *byte = None;
                 if tracing {
-                    overwritten.push(*address);
+                    overwritten.push((*address, byte.is_some()));
                 }
+                *byte = None;
             }
         }
         self.trace_unknown_store(&overwritten);

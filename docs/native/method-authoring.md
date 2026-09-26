@@ -47,14 +47,19 @@ A stop at an unknown register or flags, and the `factory-return` and `command-vt
 checks, then list each cause with its instruction and code entry:
 
 - a call that returned no known value, or clobbered a caller-saved register or the flags;
-- memory that the method invalidated, such as an object after an unrecognized call;
-- a store to an unknown address;
-- a loop head where paths joined.
+- known memory that the method invalidated, such as an object after an unrecognized call;
+- a store to an unknown address that may have overwritten known memory;
+- a loop head where the joined paths disagreed on the value.
 
-The run follows the value through moves, loads and stores on its own path. Limits:
+The run follows the value through moves, loads and stores on its own path. Memory that becomes
+unknown again keeps its first recorded cause. Memory that was never known gains the first cause
+recorded for it and stays marked as partly unrecorded. Limits:
 
 - A trace keeps at most `CAUSE_LIMIT` (4) causes and says when it dropped more.
-- More than one cause means any of them may apply. After a join, no trace names a single cause.
+- More than one cause means any of them may apply. Where joined paths lost a value for different
+  reasons, the trace lists each.
+- A path that went on from a loop head does not learn the causes of a later arrival there that
+  its facts already cover. That arrival's causes reach only paths that widen the facts later.
 - An unrecorded part means that the value was unknown when the walk began, was in memory that
   the path never wrote, or passed through a vector register. Vector registers are not traced.
 - Only walks of the shared evaluator (`evaluate.rs`) are traced. Registry field token paths

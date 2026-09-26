@@ -4,13 +4,16 @@
 //! Tracing is a developer diagnostic that [`trace_causes`] turns on. It never changes a value, a
 //! path or an end. A traced machine computes what an untraced one computes, and keeps a [`Trace`]
 //! beside each unknown register, the flags and each unknown byte. A value's trace is read only
-//! while the value is unknown, and every write of an unknown value sets it.
+//! while the value is unknown, and every write of an unknown value sets it. Memory that may have
+//! been overwritten while it was already unknown keeps its first recorded cause, since that is
+//! where it stopped being known.
 //!
 //! An instruction's unknown register reads collect in the machine's inputs, and an unknown value
 //! that the instruction computes takes them. A memory instruction divides its inputs, so that a
 //! stored value, a loaded value and a written-back base each take only their own.
 use std::cell::Cell;
 use std::collections::BTreeMap;
+use std::ops::RangeInclusive;
 
 use super::{HeadState, Machine};
 use crate::engine::analysis::stop::{Cause, CauseKind, Obstacle, Trace, Unknown, Unresolved};
@@ -77,6 +80,21 @@ impl Traces {
             .get(&address)
             .copied()
             .unwrap_or(Trace::UNRECORDED)
+    }
+
+    /// `cause` may have overwritten the byte at `address`, which was `known` or not. A byte
+    /// with a recorded cause keeps it, since it stopped being known there first. Any other byte
+    /// gains `cause`; a byte that was never known keeps its unrecorded part.
+    fn overwrite(&mut self, address: u64, known: bool, cause: Trace) {
+        let mut trace = if known {
+            Trace::default()
+        } else {
+            self.byte(address)
+        };
+        if trace.causes().next().is_none() {
+            trace.merge(&cause);
+            self.memory.insert(address, trace);
+        }
     }
 
     fn read(&self, trace: &Trace) {
@@ -222,38 +240,42 @@ impl Machine<'_> {
         }
     }
 
-    /// The method made `width` bytes at `address` unknown. Before any walk, no instruction is
-    /// the cause.
-    pub(super) fn trace_forgotten(&mut self, address: u64, width: u64) {
-        let trace = match self.entry {
+    /// The method is about to make `width` bytes at `address` unknown. Before any walk, no
+    /// instruction is the cause.
+    pub(super) fn trace_forgetting(&mut self, address: u64, width: u64) {
+        if self.traces.is_none() {
+            return;
+        }
+        let cause = match self.entry {
             0 => Trace::UNRECORDED,
             _ => self.cause(CauseKind::Invalidated),
         };
+        let bytes: Vec<_> = (address..address + width)
+            .map(|address| (address, self.byte(address).is_some()))
+            .collect();
         if let Some(traces) = &mut self.traces {
-            for address in address..address + width {
-                traces.memory.insert(address, trace);
+            for (address, known) in bytes {
+                traces.overwrite(address, known, cause);
             }
         }
     }
 
-    /// The present instruction stores to an unknown address, which made the bytes at
-    /// `addresses` unknown.
-    pub(super) fn trace_unknown_store(&mut self, addresses: &[u64]) {
-        let trace = self.cause(CauseKind::UnknownStore);
+    /// The present instruction stores to an unknown address, which may have overwritten each
+    /// of `bytes`: an address and whether its byte was known.
+    pub(super) fn trace_unknown_store(&mut self, bytes: &[(u64, bool)]) {
+        let cause = self.cause(CauseKind::UnknownStore);
         if let Some(traces) = &mut self.traces {
-            for &address in addresses {
-                traces.memory.insert(address, trace);
+            for &(address, known) in bytes {
+                traces.overwrite(address, known, cause);
             }
         }
     }
 
-    /// The call at the present instruction returned: `x0` unless the caller gave its value, the
-    /// other caller-saved registers and the flags are unknown because of it.
-    pub(super) fn trace_call(&mut self, returned_known: bool) {
+    /// The call at the present instruction returned and left `registers` and the flags unknown.
+    pub(super) fn trace_call(&mut self, registers: RangeInclusive<usize>) {
         let trace = self.cause(CauseKind::Call);
         if let Some(traces) = &mut self.traces {
-            let first = if returned_known { 1 } else { 0 };
-            traces.registers[first..=18].fill(trace);
+            traces.registers[registers].fill(trace);
             traces.flags = trace;
         }
     }
@@ -269,45 +291,47 @@ impl Machine<'_> {
         })
     }
 
-    /// Give each value that is unknown as the path leaves the loop head at the present
-    /// instruction a join there, with the causes of each side that did not know it: `kept`, the
-    /// facts of earlier arrivals, and `arrival`, this path as it came. So no trace names a single
-    /// cause after a join, where other paths may have lost the value for other reasons.
-    pub(super) fn trace_join(&mut self, kept: Option<&HeadState>, arrival: &Arrival) {
+    /// Give each value that the join at the present instruction left unknown the causes of each
+    /// side that did not know it: `kept`, the facts of earlier arrivals, and `arrival`, this path
+    /// as it came. When a side knew the value, the paths disagreed, and the join is a cause too.
+    pub(super) fn trace_join(&mut self, kept: &HeadState, arrival: &Arrival) {
         let join = self.cause(CauseKind::Join);
         let data = self.data;
-        let kept_traces = kept.and_then(|kept| kept.traces.as_deref());
-        let Some(traces) = &mut self.traces else {
+        let (Some(traces), Some(kept_traces)) = (&mut self.traces, kept.traces.as_deref()) else {
             return;
+        };
+        let joined = |kept: Option<Trace>, arrival: Option<Trace>| match (kept, arrival) {
+            (Some(mut kept), Some(arrival)) => {
+                kept.merge(&arrival);
+                kept
+            }
+            (kept, arrival) => {
+                let mut trace = join;
+                for side in [kept, arrival].into_iter().flatten() {
+                    trace.merge(&side);
+                }
+                trace
+            }
         };
 
         for index in 0..self.registers.len() {
-            if self.registers[index].is_some() {
-                continue;
+            if self.registers[index].is_none() {
+                traces.registers[index] = joined(
+                    kept.registers[index]
+                        .is_none()
+                        .then(|| kept_traces.registers[index]),
+                    arrival.registers[index]
+                        .is_none()
+                        .then(|| arrival.traces.registers[index]),
+                );
             }
-            let mut trace = join;
-            if let (Some(kept), Some(kept_traces)) = (kept, kept_traces)
-                && kept.registers[index].is_none()
-            {
-                trace.merge(&kept_traces.registers[index]);
-            }
-            if arrival.registers[index].is_none() {
-                trace.merge(&arrival.traces.registers[index]);
-            }
-            traces.registers[index] = trace;
         }
 
         if self.flags.is_none() {
-            let mut trace = join;
-            if let (Some(kept), Some(kept_traces)) = (kept, kept_traces)
-                && kept.flags.is_none()
-            {
-                trace.merge(&kept_traces.flags);
-            }
-            if !arrival.flags_known {
-                trace.merge(&arrival.traces.flags);
-            }
-            traces.flags = trace;
+            traces.flags = joined(
+                kept.flags.is_none().then_some(kept_traces.flags),
+                (!arrival.flags_known).then_some(arrival.traces.flags),
+            );
         }
 
         let byte_in = |memory: &BTreeMap<u64, Option<u8>>, address: u64| {
@@ -317,19 +341,17 @@ impl Machine<'_> {
                 .unwrap_or_else(|| data.byte(address))
         };
         for (&address, byte) in &self.memory {
-            if byte.is_some() {
-                continue;
+            if byte.is_none() {
+                let trace = joined(
+                    byte_in(&kept.memory, address)
+                        .is_none()
+                        .then(|| kept_traces.byte(address)),
+                    byte_in(&arrival.memory, address)
+                        .is_none()
+                        .then(|| arrival.traces.byte(address)),
+                );
+                traces.memory.insert(address, trace);
             }
-            let mut trace = join;
-            if let (Some(kept), Some(kept_traces)) = (kept, kept_traces)
-                && byte_in(&kept.memory, address).is_none()
-            {
-                trace.merge(&kept_traces.byte(address));
-            }
-            if byte_in(&arrival.memory, address).is_none() {
-                trace.merge(&arrival.traces.byte(address));
-            }
-            traces.memory.insert(address, trace);
         }
     }
 
