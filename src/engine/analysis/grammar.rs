@@ -5,8 +5,8 @@ use super::{
     declarations::{self, CommandReader, DeclarationInput},
     discovery::Symbol,
     fields::{
-        self, Condition, DataSection, DispatchInput, Function, PathOutcome, ReaderJoin,
-        RegistryFieldResult, Token, TokenPath, Value,
+        self, Condition, DataSection, DispatchInput, FieldGap, PathOutcome, ReaderJoin, RootField,
+        Token, TokenPath, Value,
     },
     stop::Unresolved,
 };
@@ -33,7 +33,6 @@ pub struct GrammarInput {
     pub child_layout: ChildLayout,
     pub numeric_decoder: u64,
     pub reader_token_offset: u64,
-    pub functions: Vec<Function>,
     pub symbols: Vec<Symbol>,
     pub data: Vec<DataSection>,
     pub tokens: BTreeMap<i64, Token>,
@@ -51,12 +50,20 @@ pub struct GrammarResult {
     #[cfg(test)]
     pub reader: CommandReader,
     pub reader_name: String,
+    pub reader_kind: crate::ReaderKind,
+    pub reader_family: BlockFamily,
     pub member_name: String,
     pub numeric: Option<Box<GrammarResult>>,
     pub ordering: Vec<ordering::Rule>,
-    pub fields: RegistryFieldResult,
+    pub fields: ChildFields,
     pub families: Vec<BlockFamily>,
     pub stops: Vec<Unresolved>,
+}
+
+pub struct ChildFields {
+    pub fields: Vec<RootField>,
+    pub paths: Vec<TokenPath>,
+    pub gaps: Vec<FieldGap>,
 }
 
 /// Follow only member delegates that receive the original token, reader and owner.
@@ -93,12 +100,12 @@ fn analyze_reader(
         return Err(Unresolved::new("command-reader-name"));
     }
     let reader_name = read_names.first().unwrap().to_string();
-    let dispatch = DispatchInput {
-        functions: &input.functions,
-        symbols: &input.symbols,
-        read_only_data: &input.data,
-        reader_token_offset: Some(input.reader_token_offset),
-    };
+    let dispatch = DispatchInput::command(
+        &input.declarations.functions,
+        &input.symbols,
+        &input.data,
+        input.reader_token_offset,
+    );
     let root_family = input.families.get(root).copied();
     let (paths, mut gaps) = if root_family.is_some() {
         (Vec::new(), Vec::new())
@@ -162,8 +169,7 @@ fn analyze_reader(
             }
             continue;
         }
-        let member = callee.ends_with("::ReadMember(CReader&, int)")
-            || callee.ends_with("::ReadMember(CReader&, int, EScopeType)");
+        let member = crate::engine::analysis::readers::is_member(callee);
         if !member {
             leaves.push(path);
             continue;
@@ -223,25 +229,24 @@ fn analyze_reader(
     } else {
         None
     };
+    let (reader_kind, reader_family) = super::readers::entry(&reader_name);
     stops.sort();
     stops.dedup();
     Ok(GrammarResult {
         #[cfg(test)]
         reader,
+        reader_kind,
+        reader_family,
         reader_name,
         member_name: root.into(),
         numeric,
         ordering,
         families,
         stops,
-        fields: RegistryFieldResult {
-            persistent: Default::default(),
+        fields: ChildFields {
             fields,
             paths: leaves,
             gaps,
-            uses: vec![],
-            collections: vec![],
-            partition_accounted: false,
         },
     })
 }
@@ -276,6 +281,7 @@ fn translate_value(value: &mut Value, offset: i64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::fields::Function;
     use crate::engine::analysis::{
         assembler::{Arm64, arm64},
         declarations::{Composition, Function as Body, ParserSlots, ScopeSlots},
@@ -379,7 +385,6 @@ mod tests {
             numeric_decoder: 0x8000,
             reader_token_offset: 0x38,
             declarations,
-            functions,
             symbols,
             data: vec![],
             tokens: BTreeMap::from([(
@@ -678,14 +683,13 @@ mod tests {
                 ],
             ),
         ] {
-            let input = native
+            let (input, inventory) = native
                 .bound()
                 .analysis
                 .as_ref()
                 .unwrap()
                 .grammar_input(kind)
                 .unwrap();
-            let inventory = declarations::analyze(&input.declarations).unwrap();
             let mut found = BTreeSet::new();
             for (_, site) in inventory.sites {
                 let declarations::Site::Declared { name, factory, .. } = site else {

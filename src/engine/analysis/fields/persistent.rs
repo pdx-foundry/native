@@ -76,14 +76,13 @@ pub(super) fn discover(
                     if !(owner..owner + SPAN).contains(&receiver) {
                         return Err(Unresolved::new("persistent-constructor-owner"));
                     }
-                    machine.forget(receiver, owner + SPAN - receiver);
-                    for (&offset, &point) in vtables {
-                        let at = receiver
-                            .checked_add(offset)
-                            .filter(|at| *at <= owner + SPAN - 8)
-                            .ok_or(Unresolved::new("persistent-vtable-bound"))?;
-                        machine.write(at, 8, point);
-                    }
+                    crate::engine::analysis::receivers::install_vtables(
+                        machine,
+                        receiver,
+                        owner + SPAN,
+                        vtables,
+                    )
+                    .ok_or(Unresolved::new("persistent-vtable-bound"))?;
                     return Ok(Call::Return(None));
                 }
                 machine.forget(owner, SPAN);

@@ -1,5 +1,4 @@
-use super::Function;
-use super::tokens::{decode, function, names_by_address, number, register};
+use super::tokens::{FunctionView, decode, function, names_by_address, number, register};
 use super::{
     Condition, DataSection, FieldGap, FieldGapKind, FieldInput, PathOutcome, ReaderJoin,
     TableEntry, TokenPath, Value,
@@ -21,11 +20,39 @@ const MAX_TABLE_ENTRIES: usize = 1024;
 
 /// Executable inputs shared by registry fields and command member dispatch.
 pub(crate) struct DispatchInput<'a> {
-    pub functions: &'a [Function],
+    functions: Vec<FunctionView<'a>>,
     pub symbols: &'a [Symbol],
     pub read_only_data: &'a [DataSection],
     pub reader_token_offset: Option<u64>,
+    pub member_delegates: bool,
 }
+impl<'a> DispatchInput<'a> {
+    pub(crate) fn command(
+        functions: &'a BTreeMap<u64, crate::engine::analysis::declarations::Function>,
+        symbols: &'a [Symbol],
+        read_only_data: &'a [DataSection],
+        reader_token_offset: u64,
+    ) -> Self {
+        Self {
+            functions: symbols
+                .iter()
+                .filter_map(|symbol| {
+                    let body = functions.get(&symbol.address)?;
+                    Some(FunctionView {
+                        name: &symbol.name,
+                        address: body.address,
+                        code: &body.code,
+                    })
+                })
+                .collect(),
+            symbols,
+            read_only_data,
+            reader_token_offset: Some(reader_token_offset),
+            member_delegates: true,
+        }
+    }
+}
+
 /// A comparison of the token word `token + offset` with a constant.
 #[derive(Clone, Copy)]
 struct Comparison {
@@ -328,14 +355,7 @@ fn push_table_gap(
     }
 }
 fn rejection(input: &DispatchInput<'_>, names: &BTreeMap<u64, Option<&str>>) -> bool {
-    let Some(base) = function(
-        input.functions,
-        input.symbols,
-        "CPersistent::ReadMember(CReader&, int)",
-    ) else {
-        return false;
-    };
-    let Ok(rows) = decode(base) else {
+    let Some((_, rows)) = decode_root(input, "CPersistent::ReadMember(CReader&, int)") else {
         return false;
     };
     rows.len() == 2
@@ -346,16 +366,22 @@ fn rejection(input: &DispatchInput<'_>, names: &BTreeMap<u64, Option<&str>>) -> 
             == Some("CReader::ReportUnexpected()")
 }
 /// The reader that the call at `at` joins. `entry` is the root function.
-fn reader_join(name: Option<&str>, state: &State, at: u64, entry: u64, tail: bool) -> ReaderJoin {
+fn reader_join(
+    name: Option<&str>,
+    state: &State,
+    at: u64,
+    entry: u64,
+    tail: bool,
+    member_delegates: bool,
+) -> ReaderJoin {
     let Some(name) = name else {
         return ReaderJoin::Missing(Unresolved::at("callee", at, entry, Obstacle::Call));
     };
     let get = |key: &str| state.registers.get(key);
     let owner = |value: Option<&Value>| matches!(value, Some(Value::Owner(_)));
-    let joined = if name.ends_with("::ReadMember(CReader&, int)")
-        || name.ends_with("::ReadMember(CReader&, int, EScopeType)")
-    {
-        owner(get("x0"))
+    let joined = if crate::engine::analysis::readers::is_member(name) {
+        member_delegates
+            && owner(get("x0"))
             && get("x1") == Some(&Value::Reader(0))
             && matches!(get("x2"), Some(Value::Token | Value::TokenWord(0)))
     } else if name.ends_with("::Read(CReader&, EScopeType)") {
@@ -573,9 +599,9 @@ fn apply(
 /// The entry address and instructions of the root function, or `None` when the image has no
 /// single root function or its code does not decode.
 fn decode_root(input: &DispatchInput<'_>, root: &str) -> Option<(u64, Vec<Instruction>)> {
-    let function = function(input.functions, input.symbols, root)?;
-    let rows = decode(function).ok()?;
-    Some((function.address, rows))
+    let body = function(input.functions.iter().copied(), input.symbols, root)?;
+    let rows = decode(body).ok()?;
+    Some((body.address, rows))
 }
 
 /// Every token path through the root, and the jump tables in it that could not be decoded.
@@ -587,10 +613,11 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
     let root = format!("{owner}::ReadMember(CReader&, int)");
     explore_member(
         &DispatchInput {
-            functions: &input.functions,
+            functions: input.functions.iter().map(FunctionView::from).collect(),
             symbols: &input.symbols,
             read_only_data: &input.read_only_data,
             reader_token_offset: None,
+            member_delegates: false,
         },
         &root,
     )
@@ -686,6 +713,7 @@ pub(crate) fn explore_member(
                     row.address,
                     entry,
                     row.operation == "b",
+                    input.member_delegates,
                 );
                 if let (PathOutcome::Reader(_), Some(case)) = (&outcome, state.table_case) {
                     table_readers.push((leaves.len(), case));
@@ -778,6 +806,7 @@ fn call_outcome(
     at: u64,
     entry: u64,
     tail: bool,
+    member_delegates: bool,
 ) -> PathOutcome {
     if name == Some("CReader::ReportUnexpected()")
         && state.registers.get("x0") == Some(&Value::Reader(0))
@@ -802,7 +831,7 @@ fn call_outcome(
             Obstacle::Call,
         )))
     } else {
-        PathOutcome::Reader(reader_join(name, state, at, entry, tail))
+        PathOutcome::Reader(reader_join(name, state, at, entry, tail, member_delegates))
     }
 }
 
@@ -894,6 +923,19 @@ fn values_branch(
                 Obstacle::Unsupported,
             ),
         );
+    }
+    if let Value::Constant(value) = tested {
+        let equal = pivots.contains(value);
+        let mut next = state.clone();
+        next.pc = if equal == (condition == "eq") {
+            target
+        } else {
+            state.pc
+        };
+        return Branching {
+            continued: vec![next],
+            ..Branching::default()
+        };
     }
     let mut continued = Vec::new();
     let token_offset = match tested {

@@ -21,15 +21,13 @@ impl Native {
         kind: DeclarationKind,
         name: &str,
     ) -> Result<Answer<CommandGrammar>, Error> {
-        let subject = format!("{}/{}", kind.subject(), name);
+        let subject = recorded_subject(kind, name);
         self.answer("command_grammar", Some(&subject), || {
             let operation = Operation::CommandGrammar;
-            let input = self
+            let (input, declarations) = self
                 .declaration_analysis(operation)?
                 .grammar_input(kind)
                 .map_err(|failure| error(operation, failure))?;
-            let declarations = declarations::analyze(&input.declarations)
-                .map_err(|failure| Error::Method(failure.to_string()))?;
             let factory = registered_factory(&declarations, name);
             let result = match factory {
                 Ok(Some(factory)) => grammar::analyze(&input, factory),
@@ -43,6 +41,20 @@ impl Native {
             };
             Ok(normalize(result, name, self.build()))
         })
+    }
+}
+
+/// Encode only non-plain names in a separate namespace so no path normalization aliases them.
+fn recorded_subject(kind: DeclarationKind, name: &str) -> String {
+    let plain = !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_');
+    if plain {
+        format!("{}/{}", kind.subject(), name)
+    } else {
+        let encoded: String = name.bytes().map(|byte| format!("{byte:02x}")).collect();
+        format!("{}/encoded/x{encoded}", kind.subject())
     }
 }
 
@@ -72,14 +84,12 @@ fn registered_factory(
     if factories.len() > 1 {
         return Err(Unresolved::new("ambiguous-command-factory"));
     }
-    if factories.is_empty()
-        && declarations.sites.iter().any(|(_, site)| {
-            matches!(
-                site,
-                Site::Unreadable { name: None, .. } | Site::RuntimeToken { .. }
-            )
-        })
-    {
+    if declarations.sites.iter().any(|(_, site)| {
+        matches!(
+            site,
+            Site::Unreadable { name: None, .. } | Site::RuntimeToken { .. }
+        )
+    }) {
         return Err(Unresolved::new("incomplete-command-inventory"));
     }
     Ok(factories.first().copied())
@@ -103,35 +113,29 @@ fn normalize(
     };
     let mut gaps = Vec::new();
     let mut gap = |kind, detail: String| {
-        gaps.push(Gap {
+        let gap = Gap {
             kind,
             subject: Some(GapSubject::answer_item(name)),
             detail,
-        })
+        };
+        if !gaps.contains(&gap) {
+            gaps.push(gap);
+        }
     };
     match result {
         Err(stop) => gap(GapKind::UnresolvedReader, stop.reason.into()),
         Ok(result) => {
             let identity =
                 super::fields::concrete_reader_id(&result.reader_name, &result.member_name);
-            let joins = [crate::engine::analysis::fields::ReaderJoin::Joined {
-                callee: result.reader_name,
-                arguments: Default::default(),
-                tail: false,
-            }];
-            let classification = crate::engine::analysis::readers::classify(&joins);
             value.reader = Reader {
                 id: Some(identity),
-                kind: classification.kind,
-                family: classification.family,
+                kind: result.reader_kind,
+                family: result.reader_family,
             };
-            let keys: Vec<_> = result
-                .fields
-                .fields
-                .iter()
-                .map(|field| super::fields::field(field, &result.fields))
-                .collect();
-            value.fixed_keys = GrammarProperty::Partial(keys);
+            let keys = super::fields::grammar_fields(&result.fields.fields, &result.fields.paths);
+            if !keys.is_empty() {
+                value.fixed_keys = GrammarProperty::Partial(keys);
+            }
             if !result.families.is_empty() {
                 value.child_families = GrammarProperty::Partial(result.families);
             }
@@ -248,6 +252,134 @@ mod tests {
             registered_factory(&partial, "example"),
             Err(Unresolved::new("command-registration"))
         );
+    }
+
+    #[test]
+    fn unnamed_registrations_keep_known_factories_ambiguous() {
+        for unknown in [
+            Site::RuntimeToken { obstacle: "token" },
+            Site::Unreadable {
+                name: None,
+                what: "name",
+            },
+        ] {
+            let result = inventory(vec![declared(1), unknown]);
+            assert_eq!(
+                registered_factory(&result, "example"),
+                Err(Unresolved::new("incomplete-command-inventory"))
+            );
+        }
+    }
+
+    #[test]
+    fn recorded_command_names_cannot_overwrite_other_names() {
+        let root = tempfile::tempdir().unwrap();
+        let build = crate::BuildId("authored".into());
+        let names = [
+            "if",
+            "if/",
+            "if//",
+            "/if",
+            "if/../if",
+            "",
+            "IF",
+            "encoded",
+            "encoded/x69662f",
+        ];
+        for name in names {
+            let answer: Result<Answer<CommandGrammar>, Error> = Err(Error::UnknownCommand {
+                kind: DeclarationKind::Effect,
+                name: name.into(),
+            });
+            crate::recorded::write(
+                root.path(),
+                &build,
+                "command_grammar",
+                Some(&recorded_subject(DeclarationKind::Effect, name)),
+                &answer,
+            )
+            .unwrap();
+        }
+        let native = Native::from_recorded_answers(root.path()).unwrap();
+        for name in names {
+            assert_eq!(
+                native.command_grammar(DeclarationKind::Effect, name),
+                Err(Error::UnknownCommand {
+                    kind: DeclarationKind::Effect,
+                    name: name.into()
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn nested_numeric_grammar_reports_each_gap_once() {
+        let make = |numeric| grammar::GrammarResult {
+            reader: declarations::CommandReader {
+                vtable: 1,
+                read: 2,
+                member: 3,
+            },
+            reader_name: "CEffect::Read(CReader&, EScopeType)".into(),
+            reader_kind: ReaderKind::Block,
+            reader_family: BlockFamily::Effect,
+            member_name: "CEntry::ReadMember(CReader&, int, EScopeType)".into(),
+            numeric,
+            ordering: vec![],
+            families: vec![BlockFamily::Effect],
+            stops: vec![Unresolved::new("reader-routing")],
+            fields: grammar::ChildFields {
+                fields: vec![],
+                paths: vec![],
+                gaps: vec![],
+            },
+        };
+        let result = make(Some(Box::new(make(None))));
+        let answer = normalize(Ok(result), "example", crate::BuildId("authored".into()));
+        assert_eq!(answer.gaps.len(), 3);
+        for kind in [
+            GapKind::OutsideMethod,
+            GapKind::ReaderSemantics,
+            GapKind::UnresolvedPath,
+        ] {
+            assert_eq!(answer.gaps.iter().filter(|gap| gap.kind == kind).count(), 1);
+        }
+        assert!(matches!(
+            answer.value.numeric_keys,
+            GrammarProperty::Partial(Some(_))
+        ));
+    }
+
+    #[test]
+    fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
+        let result = grammar::GrammarResult {
+            reader: declarations::CommandReader {
+                vtable: 1,
+                read: 2,
+                member: 3,
+            },
+            reader_name: "CCustom::Read(CReader&)".into(),
+            member_name: "CCustom::ReadMember(CReader&, int)".into(),
+            reader_kind: ReaderKind::Unknown,
+            reader_family: BlockFamily::Unknown,
+            numeric: None,
+            ordering: vec![],
+            families: vec![],
+            stops: vec![],
+            fields: grammar::ChildFields {
+                fields: vec![],
+                paths: vec![],
+                gaps: vec![],
+            },
+        };
+        let answer = normalize(Ok(result), "example", crate::BuildId("authored".into()));
+        assert!(answer.value.reader.id.is_some());
+        assert_eq!(answer.value.reader.kind, ReaderKind::Unknown);
+        assert_eq!(answer.value.reader.family, BlockFamily::Unknown);
+        assert_eq!(answer.value.fixed_keys, GrammarProperty::Unresolved);
+        assert_eq!(answer.value.child_families, GrammarProperty::Unresolved);
+        assert_eq!(answer.value.numeric_keys, GrammarProperty::Unresolved);
+        assert_eq!(answer.value.ordering, GrammarProperty::Unresolved);
     }
 
     #[test]

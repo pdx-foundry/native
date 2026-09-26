@@ -1108,6 +1108,8 @@ fn persistent_family_requires_constructor_agreement_and_no_later_invalidation() 
             _ => unreachable!(),
         }
         let fields = crate::session::questions::normalized_fields(&derive(input));
+        assert!(fields[0].reader.id.is_none(), "{missing}");
+        assert_eq!(fields[0].reader.kind, crate::ReaderKind::Block);
         assert_eq!(
             fields[0].reader.family,
             crate::BlockFamily::Unknown,
@@ -1140,5 +1142,84 @@ fn persistent_family_follows_owner_aliases_and_inline_vtable_installation() {
             crate::BlockFamily::Modifier,
             "inline={inline}"
         );
+    }
+}
+
+#[test]
+fn member_delegates_are_not_terminal_registry_field_readers() {
+    for name in [
+        "CBase::ReadMember(CReader&, int)",
+        "CBase::ReadMember(CReader&, int, EScopeType)",
+    ] {
+        let mut input = fixture();
+        input.symbols.push(Symbol {
+            name: name.into(),
+            address: 0x9100,
+        });
+        input.functions[0].code = arm64!(at 0x1000;
+            cmp w2, #7;
+            b.eq extern 0x1010;
+            add x0, x0, #0x38;
+            b extern 0x5000;
+            b extern 0x9100
+        );
+        let result = derive(input);
+        assert!(
+            matches!(result.fields[0].readers[0], ReaderJoin::Missing(_)),
+            "{name}"
+        );
+        let fields = crate::session::questions::normalized_fields(&result);
+        assert!(fields[0].reader.id.is_none());
+        assert_eq!(fields[0].reader.kind, crate::ReaderKind::Unknown);
+    }
+}
+
+#[test]
+fn known_comparisons_do_not_invent_unreachable_readers() {
+    for value in [0, 1, 2] {
+        for conditional_compare in [false, true] {
+            for equal_branch in [false, true] {
+                let mut input = fixture();
+                input.symbols.push(Symbol {
+                    name: "CReader::Read(CString&, bool)".into(),
+                    address: 0x4100,
+                });
+                let mut code = Arm64::at(0x1000);
+                arm64!(code;
+                    cmp w2, #7;
+                    b.eq extern 0x1010;
+                    add x0, x0, #0x38;
+                    b extern 0x5000;
+                    mov w8, #value;
+                    cmp w8, #0
+                );
+                if conditional_compare {
+                    arm64!(code; ccmp w8, #1, #4, ne);
+                }
+                arm64!(code; add x9, x0, #0x40; mov x0, x1; mov x1, x9);
+                let taken = code.here() + 8;
+                if equal_branch {
+                    arm64!(code; b.eq extern taken as usize);
+                } else {
+                    arm64!(code; b.ne extern taken as usize);
+                }
+                arm64!(code; b extern 0x4000; b extern 0x4100);
+                input.functions[0].code = code.bytes();
+                let result = derive(input);
+                let fields = crate::session::questions::normalized_fields(&result);
+                assert_eq!(fields[0].read.len(), 1);
+                assert_eq!(fields[0].read[0].condition, crate::FieldCondition::Always);
+                let equal = value == 0 || (conditional_compare && value == 1);
+                let kind = if equal == equal_branch {
+                    crate::ReaderKind::String
+                } else {
+                    crate::ReaderKind::Integer
+                };
+                assert_eq!(
+                    fields[0].reader.kind, kind,
+                    "{value} {conditional_compare} {equal_branch}"
+                );
+            }
+        }
     }
 }

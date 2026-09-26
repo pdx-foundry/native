@@ -461,7 +461,7 @@ impl ExecutionPlan {
         let reader_kind = field
             .map(|field| field.reader.kind)
             .unwrap_or(crate::ReaderKind::Unknown);
-        let unavailable = match (field, exact) {
+        let storage_unavailable = match (field, exact) {
             (None, _) => Some("The field is not established by registry_fields".into()),
             (Some(field), _) if field.reader.kind != crate::ReaderKind::String => Some(format!(
                 "The {:?} reader has no storage decoder in this method",
@@ -485,7 +485,7 @@ impl ExecutionPlan {
             reader_family: field.map_or(crate::BlockFamily::Unknown, |field| field.reader.family),
             token: exact.map(|field| field.token),
             storage_offset: exact.and_then(|field| field.storage_offset),
-            unavailable,
+            storage_unavailable,
         }
     }
 

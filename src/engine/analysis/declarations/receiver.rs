@@ -42,16 +42,8 @@ pub(super) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u
                 .iter()
                 .find_map(|(&at, &size)| (at..at + size).contains(&receiver).then_some(at + size))
                 .ok_or(Unresolved::new("constructor-outside-allocation"))?;
-            // The constructor summary gives its own base subobjects, not later embedded
-            // objects. Forget the remaining allocation before installing those points.
-            machine.forget(receiver, end - receiver);
-            for (&offset, &point) in vtables {
-                let at = receiver
-                    .checked_add(offset)
-                    .filter(|at| *at <= end.saturating_sub(8))
-                    .ok_or(Unresolved::new("constructor-vtable-bound"))?;
-                machine.write(at, 8, point);
-            }
+            crate::engine::analysis::receivers::install_vtables(machine, receiver, end, vtables)
+                .ok_or(Unresolved::new("constructor-vtable-bound"))?;
             return Ok(Call::Return(None));
         }
         let objects: Vec<_> = machine

@@ -45,7 +45,7 @@ pub(crate) struct FixtureLoader {
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Vec<u8>,
     catalog: &'a Catalog,
-    persistent: Option<&'static super::targets::recipes::PersistentRecipe>,
+    persistent: Option<&'static super::targets::PersistentRecipe>,
 }
 
 impl VerifiedAnalysis<'_> {
@@ -623,18 +623,28 @@ impl BoundAnalysis {
     pub(crate) fn grammar_input(
         &self,
         kind: crate::DeclarationKind,
-    ) -> Result<crate::engine::analysis::grammar::GrammarInput, AnalysisError> {
+    ) -> Result<
+        (
+            crate::engine::analysis::grammar::GrammarInput,
+            crate::engine::analysis::declarations::DeclarationResult,
+        ),
+        AnalysisError,
+    > {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
-        binary::grammar::read(
+        let declarations = verified.declaration_input(kind, recipe)?;
+        let inventory = crate::engine::analysis::declarations::analyze(&declarations)
+            .map_err(AnalysisError::Input)?;
+        let input = binary::grammar::read(
             &verified.executable,
             &verified.catalog.symbols,
             &verified.catalog.strings,
-            &verified.catalog.pointers,
             &verified.catalog.bound_slots,
-            kind,
+            declarations,
+            &inventory,
             recipe,
-        )
+        )?;
+        Ok((input, inventory))
     }
 
     pub(crate) fn modifier_input(

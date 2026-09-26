@@ -264,7 +264,7 @@ def interpret_fixture_log(text, file, file_prefix, line_prefix, returned):
     prefix = re.escape(file_prefix + file + line_prefix)
     lines = {int(match) for match in re.findall(prefix + r'([0-9]+)', text)}
     line = next(iter(lines)) if len(lines) == 1 else None
-    stage = 'engine-validation-log' if returned else 'engine-parser-log'
+    stage = protocol.DIAGNOSTIC_STAGE['engine_validation'] if returned else protocol.DIAGNOSTIC_STAGE['engine_parser']
     return dict(text=text, stage=stage, file=file, line=line)
 
 
@@ -296,18 +296,22 @@ class FixtureObserver:
         self.diagnostics = 0
         self.active_reader = None
 
+    def validation_hooks(self):
+        if not self.validation:
+            return []
+        binding = self.bindings['validation']
+        return [
+            (protocol.HOOK['fixture_log'], binding['log_entry']),
+            (protocol.HOOK['fixture_unformatted_log'], binding['unformatted_log_entry']),
+            (protocol.HOOK['fixture_stream_log'], binding['stream_log_entry']),
+            (protocol.HOOK['fixture_sourced_log'], binding['sourced_log_entry']),
+            (protocol.HOOK['fixture_validated'], binding['complete_entry']),
+        ]
+
     def hooks(self):
         load_entry = self.outcome_binding['load_entry'] if self.questions and self.outcome_binding else self.bindings['load_entry']
         hooks = [(protocol.HOOK['fixture_load'], load_entry)]
-        if self.validation:
-            binding = self.bindings['validation']
-            hooks.extend([
-                (protocol.HOOK['fixture_log'], binding['log_entry']),
-                (protocol.HOOK['fixture_unformatted_log'], binding['unformatted_log_entry']),
-                (protocol.HOOK['fixture_stream_log'], binding['stream_log_entry']),
-                (protocol.HOOK['fixture_sourced_log'], binding['sourced_log_entry']),
-                (protocol.HOOK['fixture_validated'], binding['complete_entry']),
-            ])
+        hooks.extend(self.validation_hooks())
         if self.config['registration_entries']:
             hooks.append((protocol.HOOK['fixture_registration'], self.bindings['registration_entry']))
         if self.config['field_reads']:
@@ -349,7 +353,7 @@ class FixtureObserver:
 
     def finish_questions(self, process, thread):
         for index, question in self.questions.items():
-            unavailable = question['unavailable']
+            unavailable = question['storage_unavailable']
             owner = self.definitions.get(question['definition'])
             if unavailable:
                 self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
@@ -403,12 +407,12 @@ class FixtureObserver:
         self.loading = True
         self.emit('load-start', thread, file=file)
         for index, question in self.questions.items():
-            supported = (question['unavailable'] is None and question['reader_kind'] == protocol.READER_KIND['string']
+            supported = (question['storage_unavailable'] is None and question['reader_kind'] == protocol.READER_KIND['string']
                 and question['reader_id'] is not None and question['token'] is not None
                 and question['storage_offset'] is not None)
             self.emit('field-authority', thread, question=index,
                 reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
-                storage_supported=supported, unavailable=question['unavailable'])
+                storage_supported=supported, unavailable=question['storage_unavailable'])
         if self.questions and self.outcome_binding:
             return_address = process.GetTarget().ResolveFileAddress(self.outcome_binding['reader_return'])
             hook = process.GetTarget().BreakpointCreateBySBAddress(return_address)
@@ -466,7 +470,7 @@ class FixtureObserver:
         question = self.question_by_token.get((definition, token))
         if question is None:
             return False
-        if not question['parsing'] and question['unavailable'] is not None:
+        if not question['parsing'] and question['storage_unavailable'] is not None:
             return False
         index = question['index']
         self.occurrences[index] += 1
@@ -497,7 +501,7 @@ class FixtureObserver:
             self.emit('field-parse', thread, question=pending['question'], file=file, line=line,
                 definition=pending['definition'], field=pending['field'], owner=hex(pending['owner']),
                 occurrence=pending['occurrence'], returned=True)
-        if question['unavailable'] is not None:
+        if question['storage_unavailable'] is not None:
             return False
         value = self.stored_string(process, pending['owner'] + question['storage_offset'])
         self.emit('field-storage', thread, question=pending['question'], file=self.config['file'],
@@ -603,9 +607,8 @@ class FixtureObserver:
             self.finish_diagnostics(thread)
         self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
         if self.validation:
-            retained = [protocol.HOOK[key] for key in ['fixture_log', 'fixture_unformatted_log',
-                        'fixture_stream_log', 'fixture_sourced_log', 'fixture_validated',
-                        'fixture_malformed', 'fixture_unexpected']]
+            retained = {name for name, _ in self.validation_hooks()}
+            retained.update([protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']])
             for key, hook in breakpoints.items():
                 if key.startswith(protocol.HOOK['fixture']) and key not in retained:
                     hook.SetEnabled(False)
@@ -655,9 +658,9 @@ class FixtureObserver:
         if name.startswith(protocol.HOOK['fixture_member_return']):
             return self.on_member_return(process, thread, name)
         if name == protocol.HOOK['fixture_malformed']:
-            return self.on_diagnostic(frame, process, thread, registers, 'reader-malformed-report')
+            return self.on_diagnostic(frame, process, thread, registers, protocol.DIAGNOSTIC_STAGE['reader_malformed'])
         if name == protocol.HOOK['fixture_unexpected']:
-            return self.on_diagnostic(frame, process, thread, registers, 'reader-unexpected-report')
+            return self.on_diagnostic(frame, process, thread, registers, protocol.DIAGNOSTIC_STAGE['reader_unexpected'])
         if name == protocol.HOOK['fixture_field']:
             return self.on_field(frame, process, thread, registers, name)
         if name == protocol.HOOK['fixture_return']:

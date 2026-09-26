@@ -1,7 +1,10 @@
 //! Reduce the bounded fixture window. Native joins addresses internally, then replaces them
 //! with session-local owner identities. Only witnessed read entries leave this module.
 use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
-use crate::protocol::{hooks, observation::FixtureFieldBinding};
+use crate::protocol::{
+    hooks,
+    observation::{FixtureFieldBinding, diagnostic_stage},
+};
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
     Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
@@ -259,6 +262,10 @@ enum DiagnosticTerminalState {
     Unavailable(String),
 }
 
+fn parsed_line(occurrence: &ParsedFieldOccurrence, line: u64) -> bool {
+    line >= occurrence.line && occurrence.return_line.is_some_and(|end| line <= end)
+}
+
 struct Window<'a> {
     request: &'a FixtureRequest,
     category_fields: &'a [FixtureFieldBinding],
@@ -413,7 +420,14 @@ impl<'a> Window<'a> {
             self.window_gap("A requested fixture observation was unavailable");
             return;
         }
-        if record.thread != Some(self.thread) || record.seq <= self.resumed || self.ended {
+        let sourced_engine_log = self.validation_requested()
+            && matches!(event, FixtureEvent::Diagnostic {
+                stage, file: Some(file), definition: None, field: None, occurrence: None, ..
+            } if matches!(stage.as_str(), diagnostic_stage::ENGINE_PARSER | diagnostic_stage::ENGINE_VALIDATION)
+                && file == self.request.file());
+        let matching_thread = record.thread == Some(self.thread)
+            || (sourced_engine_log && record.thread.is_some_and(|thread| thread != 0));
+        if !matching_thread || record.seq <= self.resumed || self.ended {
             self.window_gap("A fixture event has no matching activation, thread or open window");
             return;
         }
@@ -820,12 +834,12 @@ impl<'a> Window<'a> {
         }
         let reader_report = matches!(
             stage.as_str(),
-            "reader-malformed-report" | "reader-unexpected-report"
+            diagnostic_stage::READER_MALFORMED | diagnostic_stage::READER_UNEXPECTED
         );
         let engine_log = self.validation_requested()
             && match stage.as_str() {
-                "engine-parser-log" => !self.returned,
-                "engine-validation-log" => self.returned,
+                diagnostic_stage::ENGINE_PARSER => !self.returned,
+                diagnostic_stage::ENGINE_VALIDATION => self.returned,
                 _ => false,
             };
         if !reader_report && !engine_log {
@@ -1013,10 +1027,7 @@ impl<'a> Window<'a> {
                         .is_some_and(|items| {
                             items.iter().any(|item| {
                                 item.occurrence == occurrence
-                                    && raw.line.is_some_and(|line| {
-                                        line >= item.line
-                                            && item.return_line.is_some_and(|end| line <= end)
-                                    })
+                                    && raw.line.is_some_and(|line| parsed_line(item, line))
                             })
                         })
                         || self.occurrences.get(&(*index as u64)).is_some_and(|items| {
@@ -1138,9 +1149,7 @@ impl<'a> Window<'a> {
             .iter()
             .flat_map(|(question, occurrences)| {
                 occurrences.iter().filter_map(move |occurrence| {
-                    (line >= occurrence.line
-                        && occurrence.return_line.is_some_and(|end| line <= end))
-                    .then_some((*question, occurrence.occurrence))
+                    parsed_line(occurrence, line).then_some((*question, occurrence.occurrence))
                 })
             });
         let Some((index, occurrence)) = matches.next() else {
@@ -1491,6 +1500,76 @@ mod tests {
                 window: DiagnosticWindow::FixtureFileLoadAndValidation
             }
         ));
+    }
+
+    #[test]
+    fn engine_diagnostics_keep_background_threads_without_relaxing_parser_ownership() {
+        for deferred in [false, true] {
+            let mut events = validation_events();
+            let index = events
+                .iter()
+                .position(|event| event["event"]["kind"] == "diagnostic")
+                .unwrap();
+            let mut diagnostic = events.remove(index);
+            diagnostic["thread"] = json!(8);
+            if deferred {
+                events.insert(index, diagnostic);
+            } else {
+                diagnostic["event"]["stage"] = json!("engine-parser-log");
+                let at = events
+                    .iter()
+                    .position(|event| event["event"]["kind"] == "load-returned")
+                    .unwrap();
+                events.insert(at, diagnostic);
+            }
+            renumber(&mut events);
+            let answer = validation_answer(events);
+            assert_eq!(answer.value.diagnostics.len(), 1);
+            assert!(matches!(
+                answer.value.diagnostics[0].join,
+                DiagnosticJoin::Source {
+                    line: 3,
+                    occurrence: Some(1),
+                    ..
+                }
+            ));
+            assert!(matches!(
+                answer.value.diagnostic_coverage,
+                DiagnosticCoverage::Complete { .. }
+            ));
+        }
+        for (kind, pointer, value) in [
+            ("diagnostic", "/thread", json!(0)),
+            ("diagnostic", "/thread", Value::Null),
+            ("diagnostic", "/event/file", json!("other.txt")),
+            (
+                "diagnostic",
+                "/event/stage",
+                json!("reader-malformed-report"),
+            ),
+            ("diagnostic", "/event/occurrence", json!(1)),
+            ("diagnostic", "/event/line", Value::Null),
+            ("load-start", "/thread", json!(8)),
+            ("field-parse", "/thread", json!(8)),
+            ("validation-complete", "/thread", json!(8)),
+            ("diagnostics-terminal", "/thread", json!(8)),
+        ] {
+            let mut events = validation_events();
+            let event = events
+                .iter_mut()
+                .find(|event| event["event"]["kind"] == kind)
+                .unwrap();
+            event["thread"] = json!(8);
+            *event.pointer_mut(pointer).unwrap() = value;
+            let answer = validation_answer(events);
+            assert!(
+                !matches!(
+                    answer.value.diagnostic_coverage,
+                    DiagnosticCoverage::Complete { .. }
+                ),
+                "{kind} {pointer}"
+            );
+        }
     }
 
     #[test]

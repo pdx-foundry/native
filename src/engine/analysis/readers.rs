@@ -45,6 +45,17 @@ pub fn classify(readers: &[ReaderJoin]) -> Classification<'_> {
     }
 }
 
+/// The two member-dispatch signatures supported by the token path evaluator.
+pub(crate) fn is_member(callee: &str) -> bool {
+    callee.ends_with("::ReadMember(CReader&, int)")
+        || callee.ends_with("::ReadMember(CReader&, int, EScopeType)")
+}
+
+/// Broad facts about an established reader entry, independent of routing provenance.
+pub(crate) fn entry(callee: &str) -> (ReaderKind, BlockFamily) {
+    (classify_callee(callee), family_of_callee(callee))
+}
+
 fn family_of_callee(callee: &str) -> BlockFamily {
     if matching_template(callee, "ReadTrigger") || callee == "CTrigger::Read(CReader&, EScopeType)"
     {

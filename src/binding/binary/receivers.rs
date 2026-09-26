@@ -62,7 +62,7 @@ pub(super) fn persistent(
     pointers: &BTreeMap<u64, u64>,
     bound_slots: &BTreeSet<u64>,
     owner: &str,
-    recipe: &super::super::targets::recipes::PersistentRecipe,
+    recipe: &super::super::targets::PersistentRecipe,
 ) -> Result<crate::engine::analysis::fields::PersistentInput, AnalysisError> {
     use crate::engine::analysis::fields::{ConcreteReader, PersistentInput};
     let text = super::declarations::Text::read(bytes, symbols)?;

@@ -74,7 +74,8 @@ selection gaps respectively.
 
 Keep `Reader.family` on both field summaries and read alternatives. `Unknown` is unresolved;
 `NotApplicable` belongs to a scalar reader. Concrete persistent receivers can refine reader IDs.
-IDs remain opaque within a build. Do not convert a conditional family into an unconditional claim.
+Nested collection IDs also now include their concrete member reader, so their IDs change from v5.
+Unjoined generic persistent destinations have no ID. IDs remain opaque within a build. Do not convert a conditional family into an unconditional claim.
 
 `Native::command_grammar(kind, name)` returns independent `GrammarProperty` values. Preserve
 partial fixed keys, nested numeric-child grammar, ordering conditions, and unresolved siblings.

@@ -133,7 +133,7 @@ observed deferred engine-log source; its isolated rerun passed in 88 seconds.
 
 ## Population measurement
 
-The unchanged method ran on 2026-09-26 over both full declaration inventories in 251 seconds,
+After review repairs, the method ran on 2026-09-26 over both full declaration inventories in 265 seconds,
 reusing one executable-derived input per inventory. No command or field name selects production
 behavior. The six target commands in each inventory are reported separately from all other
 commands. Unresolved entries remain in every denominator; neither inventory had unnamed entries.
@@ -146,11 +146,17 @@ commands. Unresolved entries remain in every denominator; neither inventory had 
 | Other effects | 1,068 | 931 | 743 | 1 | 0 |
 
 All 2,170 grammar answers are partial; none failed as an operation and none claims a complete
-property. An established reader gives a partial fixed-key list, which may be empty. Zero in this
+property. Established fixed keys give a partial list; no established keys leaves that property unresolved. Zero in this
 table means unresolved, not an established absence. `random_list` has no established outer child
 family: its numeric entry grammar dispatches effect children. The same numeric method transfers
 to `locked_random_list`. Other commands remain outside the control-sample acceptance matrix;
 shared dispatch facts do not establish their full argument grammar or live acceptance.
+
+Reader identity and value kind are measured separately. Of all 1,096 triggers, 137 have an
+established block kind and 959 retain an unknown kind; for 1,074 effects the counts are 463 and
+611. All twelve target controls have an established block kind and their trigger/effect family.
+Fixed-key facts occur in 184 trigger and 498 effect answers, including four controls in each
+inventory. Remaining fixed-key properties are unresolved, not proven empty.
 
 The 234 unresolved trigger receivers split into 206 `factory-return` and 28 `command-vtable`
 stops. The 137 unresolved effect receivers split into 134 `command-vtable`, two `factory-terminal`,
@@ -160,10 +166,10 @@ answers and 179 effect answers. Other recurring diagnostics are `reader-routing`
 child families, branch values/conditions, and flags. These counts are distinct command answers per
 reason; one answer may have several reasons. Numeric-child gaps belong to their outer command.
 
-The same revision ran `registry-field-sweep` over all 164 discovered registries in 151 seconds:
+The same revision ran `registry-field-sweep` over all 164 discovered registries in 148 seconds:
 10 complete field inventories, 154 partial, zero failed. This measures field discovery, not
-complete grammar. It retained 1,564 root fields: 989 with reader identity, 575 without; 974 with a
-known broad kind, 590 unknown. There are 41 distinct established root reader identities.
+complete grammar. It retained 1,564 root fields: 915 with reader identity, 649 without; 974 with a
+known broad kind, 590 unknown. There are 40 distinct established root reader identities.
 
 | Field level | Trigger | Effect | Modifier | Not applicable | Unknown | Total |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -227,12 +233,32 @@ targets, and weight grammar remain with SDK-544, SDK-549, SDK-543, and SDK-545. 
 is still partial. Neither this method's static facts nor its parser samples satisfy the entire
 Milestone 4 gate or the later Atlas composition and live coverage run.
 
-
 ## Verification
 
 Formatting, Clippy across all targets with warnings denied, rustdoc with warnings denied,
-`cargo test --workspace --locked`, 34 Python worker tests, and all 21 installed M45 parity tests
-passed. The required LARP style review found two duplicated responsibilities: log-source
+`cargo test --workspace --locked` (415 unit tests plus integration, example and documentation
+tests), 36 Python worker tests, and all 21 installed M45 parity tests passed on the final revision. The required LARP style review found two duplicated responsibilities: log-source
 interpretation mixed with emission, and concrete read/member identity construction in three
 normalizers. Both were separated without changing the observed facts or serialized identities.
-The full regression suite and Python tests passed again after these changes.
+The final regression suite, Python tests and parity passed after the PR and architecture repairs.
+All six trigger/effect validation probes passed again, followed by the repeated block parser case.
+An earlier overlapping unit/live run invalidated two live sessions; the final run serialized
+these checks and passed. The architecture review and follow-up style finding were verified before
+repair; see the [finding dispositions](command-grammar-review.md).
+
+## PR review repairs
+
+Review found seven edge cases. Command recording now encodes non-plain names in a separate
+namespace, preserving exact lookup names without trailing-slash collisions. An unnamed registration
+keeps even an otherwise matching factory unresolved. Numeric child grammars merge identical gaps
+only once, and population failure counts count each command once per reason.
+
+Known constant equality comparisons now take only the feasible branch, including the followed
+conditional-comparison form. Registry field dispatch keeps member delegates unresolved; only the
+command walk that follows those delegates treats them as delegation boundaries. Generic persistent
+fields have no reader ID until their concrete destination joins, preserving the broad block kind.
+
+Source-correlated engine-log diagnostics may arrive on another nonzero game thread in the bounded
+validation window. They retain sequence, file, stage and terminal checks. Owner reads, parser
+entries/returns and completion markers still require the activation thread. Authored controls cover
+both allowed log stages and wrong source, stage, occurrence, thread and terminal evidence.

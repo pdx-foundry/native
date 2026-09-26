@@ -15,7 +15,7 @@ pub(in crate::binding) fn read(
     pointers: &BTreeMap<u64, u64>,
     bound_slots: &BTreeSet<u64>,
     selection: CandidateRecord,
-    persistent_recipe: Option<&super::super::targets::recipes::PersistentRecipe>,
+    persistent_recipe: Option<&super::super::targets::PersistentRecipe>,
 ) -> Result<FieldInput, AnalysisError> {
     let mut functions = Vec::new();
     let mut gaps = Vec::new();

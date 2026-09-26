@@ -81,14 +81,8 @@ pub(super) fn reader(
                     (at > VTABLE && (at..at + size).contains(&receiver)).then_some(at + size)
                 })
                 .ok_or(Unresolved::new("numeric-constructor-allocation"))?;
-            machine.forget(receiver, end - receiver);
-            for (&offset, &point) in vtables {
-                let at = receiver
-                    .checked_add(offset)
-                    .filter(|at| *at <= end.saturating_sub(8))
-                    .ok_or(Unresolved::new("numeric-constructor-bound"))?;
-                machine.write(at, 8, point);
-            }
+            crate::engine::analysis::receivers::install_vtables(machine, receiver, end, vtables)
+                .ok_or(Unresolved::new("numeric-constructor-bound"))?;
             return Ok(Call::Return(None));
         }
         let object = machine.known_register(0, "numeric-child-receiver")?;

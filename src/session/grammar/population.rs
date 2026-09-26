@@ -34,12 +34,11 @@ fn m45_command_grammar_population() {
             ],
         ),
     ] {
-        let input = native
+        let (input, inventory) = native
             .declaration_analysis(Operation::CommandGrammar)
             .unwrap()
             .grammar_input(kind)
             .unwrap();
-        let inventory = declarations::analyze(&input.declarations).unwrap();
         let mut names = BTreeSet::new();
         let mut unnamed = 0;
         for (_, site) in &inventory.sites {
@@ -74,6 +73,12 @@ fn m45_command_grammar_population() {
                     .entry(format!("{group}.reader_identity"))
                     .or_default() += 1;
             }
+            *counts
+                .entry(format!(
+                    "{group}.reader_kind.{:?}",
+                    answer.value.reader.kind
+                ))
+                .or_default() += 1;
             for (property, status) in [
                 ("child_families", state(&answer.value.child_families)),
                 ("fixed_keys", state(&answer.value.fixed_keys)),
@@ -84,11 +89,9 @@ fn m45_command_grammar_population() {
                     .entry(format!("{group}.{property}.{status}"))
                     .or_default() += 1;
             }
-            for gap in &answer.gaps {
-                failures
-                    .entry(gap.detail.clone())
-                    .or_default()
-                    .push(name.clone());
+            let reasons: BTreeSet<_> = answer.gaps.iter().map(|gap| gap.detail.clone()).collect();
+            for reason in reasons {
+                failures.entry(reason).or_default().push(name.clone());
             }
             cases.push(json!({"name": name, "group": group, "answer": answer}));
         }

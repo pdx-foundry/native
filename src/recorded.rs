@@ -8,7 +8,8 @@
 //! `registry_items/<registry>.json` and `modifier_families/<registry>.json`, where `<registry>` is
 //! the content directory, such as `common/traditions`. The language
 //! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json` and `defines.json`, and
-//! `declarations/<kind>.json`. Fixture answers use
+//! `declarations/<kind>.json`. Command grammar uses `command_grammar/<kind>/<name>.json` for
+//! plain names; other names use an injective hex component under `<kind>/encoded/`. Fixture answers use
 //! `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys, not provenance.
 //! The loaded modifier inventory uses `loaded_modifiers.json`, or
 //! `loaded_modifiers/<files-hash>/<request-hash>.json` for a session with a fixture.

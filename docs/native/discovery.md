@@ -47,3 +47,6 @@ The method classifies the target of each direct `GetValue`, `GetArrayValue` or
 named value from a namespace table. Shipped define entries, defaults, comments, bounds and uses
 are not established here. SDK-610 owns the broader extraction question, and Atlas owns the
 comparison with shipped content and config.
+
+The [SDK-542 architecture review verification](command-grammar-review.md) records confirmed
+repairs and the evidence for retained reader, family and observation boundaries.

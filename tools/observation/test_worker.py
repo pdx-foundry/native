@@ -211,7 +211,7 @@ class ParserObservationTests(unittest.TestCase):
         self.file = 'common/traditions/example.txt'
         question = dict(index=0, definition='one', field='potential', token=1,
                         parsing=True, diagnostics=True, runtime=False, reader_id='block', reader_family='Trigger',
-                        reader_kind='Block', storage_offset=None, unavailable='No storage decoder')
+                        reader_kind='Block', storage_offset=None, storage_unavailable='No storage decoder')
         self.observer = worker.FixtureObserver(dict(validation=False, file=self.file,
             bindings=dict(fields=[], outcome_registries=[]), questions=[question]))
         self.observer.loading = True
@@ -239,6 +239,21 @@ class ParserObservationTests(unittest.TestCase):
         self.assertEqual([call.kwargs['occurrence'] for call in calls], [1, 1])
         self.assertFalse(self.observer.pending_fields)
 
+    def test_validation_return_keeps_all_bound_logs_and_disables_parser_entries(self):
+        self.observer.validation = True
+        self.observer.bindings['validation'] = dict(log_entry=1, unformatted_log_entry=2,
+            stream_log_entry=3, sourced_log_entry=4, complete_entry=5)
+        self.observer.finish_questions = Mock()
+        retained = [name for name, _ in self.observer.validation_hooks()]
+        retained += [protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']]
+        parser_entry = protocol.HOOK['fixture_member']
+        for name in retained + [parser_entry]:
+            worker.breakpoints[name] = Mock()
+        self.observer.on_return(Mock(), 7)
+        for name in retained:
+            worker.breakpoints[name].SetEnabled.assert_not_called()
+        worker.breakpoints[parser_entry].SetEnabled.assert_called_once_with(False)
+
     def test_unbound_parser_does_not_report_a_complete_empty_observation(self):
         self.observer.questions[0]['token'] = None
         self.observer.finish_questions(Mock(), 7)
@@ -262,6 +277,19 @@ class ParserObservationTests(unittest.TestCase):
             self.assertEqual(call.kwargs['line'], 3)
             self.assertEqual(call.kwargs['stage'],
                 'engine-validation-log' if returned else 'engine-parser-log')
+
+    def test_engine_log_callback_keeps_its_background_thread(self):
+        self.observer.bindings['validation'] = dict(log_text_register='x4',
+            source_file_prefix='file: ', source_line_prefix=' line: ')
+        self.observer.returned = True
+        self.frame.GetThread.return_value.GetThreadID.return_value = 8
+        self.observer.stored_string = Mock(return_value=f'file: {self.file} line: 3')
+        with patch.object(worker, 'entry_thread', 7), \
+                patch.object(worker, 'request', {'machine': {'registers': {}}}), \
+                patch.object(worker, 'register', return_value=1):
+            self.observer.callback(self.frame, protocol.HOOK['fixture_log'])
+        self.assertEqual(self.observer.emit.call_args.args, ('diagnostic', 8))
+        self.assertEqual(self.observer.emit.call_args.kwargs['stage'], 'engine-validation-log')
 
     def test_unresolved_or_ambiguous_log_source_is_retained(self):
         for text in [f'Unknown command @ {self.file}',

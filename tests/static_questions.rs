@@ -1053,7 +1053,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn control_grammar_preserves_shared_readers_and_partial_properties() {
-    use pdx_native::{BlockFamily, GrammarProperty};
+    use pdx_native::{BlockFamily, GrammarProperty, ReaderKind};
     let native = native();
     assert_eq!(
         native.supports(Operation::CommandGrammar),
@@ -1084,6 +1084,12 @@ fn control_grammar_preserves_shared_readers_and_partial_properties() {
             assert_eq!(answer.source.method, "command-grammar/v1");
             assert_eq!(answer.completeness, Completeness::Partial);
             assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
+            assert_eq!(
+                answer.value.reader.kind,
+                ReaderKind::Block,
+                "{kind:?}/{name}"
+            );
+            assert_eq!(answer.value.reader.family, family, "{kind:?}/{name}");
             let child = if name == "random_list" {
                 let GrammarProperty::Partial(Some(child)) = &answer.value.numeric_keys else {
                     panic!("weighted child grammar missing");

@@ -60,9 +60,7 @@ pub(super) fn rule(input: &GrammarInput, path: &TokenPath) -> Option<Rule> {
     }
     let outcome = match input.families.get(callee) {
         Some(&family) => super::OrderOutcome::Family(family),
-        None if callee.ends_with("::ReadMember(CReader&, int, EScopeType)")
-            || callee.ends_with("::ReadMember(CReader&, int)") =>
-        {
+        None if crate::engine::analysis::readers::is_member(callee) => {
             return None;
         }
         None => super::OrderOutcome::Reader(join.clone()),
