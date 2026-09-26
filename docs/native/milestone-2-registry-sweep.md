@@ -3,10 +3,9 @@
 Run on 2026-09-21 against the exact M45-observe executable
 `3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216`.
 The method was `registry-fields/v2`; no method or binding change preceded the run.
-[`milestone-2-registry-sweep.json`](milestone-2-registry-sweep.json) retains every answer,
-gap, error, reader identity and query time. The same sweep can be rerun with
-`cargo run --example registry-field-sweep -- "$STELLARIS_PATH"`; the current
-`registry-fields/v3` method gives a new result, not a reproduction of these v2 answers.
+The full report, with every answer, gap, reader identity and query time, was removed in
+SDK-603. Retrieve it with `git show 866e2ea:docs/native/milestone-2-registry-sweep.json`.
+The current method gives a new result, not a reproduction of these v2 answers.
 
 | Measure | Result |
 | --- | ---: |
@@ -27,5 +26,19 @@ The next reader identities cover 119 block fields and 101 block fields. Every qu
 finished; no method time or resource limit stopped this run. The method still reports
 its own bounded-search gaps. For example, `common/ai_budget` has an unresolved path.
 
-The JSON is the frozen baseline for later repairs. Once a case informs a repair, it is
-a regression case, not a held-out transfer test.
+## Comparison with the Milestone 4 baseline
+
+The [Milestone 4 field baseline](milestone-4-field-baseline.md) ran `registry-fields/v3` on
+M45-release. Compared with this report, it has the same 164 registries. Outside
+`common/megastructures` it has the same fields, reader identities, reader kinds and gaps.
+There are two differences:
+
+- **Five megastructure fields.** v3 on M45-release adds `overclock_loc_key`,
+  `overclock_cooldown`, `dismantle_possible`, `dismantle_potential` and
+  `should_ai_dismantle`, and one broad-form gap for `overclock_cooldown`. On M45-observe the
+  compiler dispatched these tokens through a jump table that v2 did not follow. The
+  [registry field notes](registry-fields.md#compiler-jump-tables) hold this finding.
+- **Completeness.** v2 reported every answer as partial. v3 derives completeness and reports
+  28 answers as complete.
+
+Reader IDs come from callee names, so the same 19 IDs appear on both builds.
