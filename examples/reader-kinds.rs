@@ -48,7 +48,10 @@ fn print_registry(registry: &str, fields: &[Field]) {
             } else {
                 ""
             };
-            println!("    {} [{identity}{conditional}]", field.name);
+            println!(
+                "    {} [{identity}{conditional}, family={:?}]",
+                field.name, field.reader.family
+            );
         }
     }
     let count_of = |kind: ReaderKind| by_kind.get(&kind).map_or(0, Vec::len);

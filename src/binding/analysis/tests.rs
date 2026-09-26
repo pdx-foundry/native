@@ -6,10 +6,10 @@ use std::fs;
 fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = native.bound().analysis.as_ref().unwrap();
-    let fields = analysis.fixture_string_fields("common/traditions").unwrap();
+    let fields = analysis.fixture_fields("common/traditions").unwrap();
     let found: Vec<_> = fields
         .iter()
-        .map(|field| (field.name.as_str(), field.token, field.storage_offset))
+        .filter_map(|field| Some((field.name.as_str(), field.token, field.storage_offset?)))
         .collect();
     assert_eq!(
         found,
@@ -39,11 +39,11 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
             member_entry: 0x100ae2950,
         })
     );
-    let relic_fields = analysis.fixture_string_fields("common/relics").unwrap();
+    let relic_fields = analysis.fixture_fields("common/relics").unwrap();
     assert!(
         relic_fields
             .iter()
-            .any(|field| field.name == "portrait" && field.storage_offset == 728)
+            .any(|field| field.name == "portrait" && field.storage_offset == Some(728))
     );
 }
 
@@ -500,4 +500,37 @@ fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
     );
     fat[8..12].copy_from_slice(&0x0100000cu32.to_be_bytes());
     assert!(binary::code_range(&fat, 0x1000, 44).is_err());
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn m45_persistent_field_families() {
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let verified = native
+        .bound()
+        .analysis
+        .as_ref()
+        .unwrap()
+        .verified()
+        .unwrap();
+    for registry in ["common/traditions", "common/council_agendas"] {
+        let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
+        let input = verified.field_input(candidate.record.clone()).unwrap();
+        let result = crate::engine::analysis::fields::analyze(&input).unwrap();
+        eprintln!(
+            "destinations={:?}; gaps={:?}",
+            result.persistent, result.gaps
+        );
+        let fields = crate::session::questions::normalized_fields(&result);
+        assert_eq!(
+            fields
+                .iter()
+                .find(|field| field.name == "modifier")
+                .unwrap()
+                .reader
+                .family,
+            crate::BlockFamily::Modifier,
+            "{registry}"
+        );
+    }
 }

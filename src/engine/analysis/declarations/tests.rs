@@ -66,6 +66,7 @@ fn input(
         register_entry: BTreeSet::from([REGISTER]),
         entry_helpers: BTreeSet::from([HELPER]),
         operator_new: BTreeSet::from([NEW]),
+        constructors: BTreeMap::new(),
         functions: functions
             .into_iter()
             .map(|function| (function.address, function))
@@ -81,6 +82,10 @@ fn input(
         slots: ScopeSlots {
             create: 0x10,
             supported_scopes: 0x80,
+        },
+        parser_slots: ParserSlots {
+            read: 0x10,
+            member: 0x18,
         },
         scope_names: Some(vec!["none".into()]),
         composition,
@@ -109,6 +114,7 @@ fn composition(bodies: Vec<Function>, callers: BTreeMap<u64, Vec<(u64, u64)>>) -
 fn declared(name: &str, description: &str, usage: &str) -> Site {
     Site::Declared {
         name: name.into(),
+        factory: FACTORY,
         description: description.into(),
         usage: usage.into(),
         scopes: ScopeOutcome::Unresolved(Unresolved::new("factory-create")),
@@ -350,6 +356,51 @@ fn constant_getter(address: u64, mask: u32) -> Function {
     function(code)
 }
 
+#[test]
+fn command_reader_retains_receiver_identity_and_requires_both_virtual_methods() {
+    const READ: u64 = 0xb000;
+    const MEMBER: u64 = 0xb100;
+    let create = create(|body| {
+        body.address(8, VTABLE);
+        arm64!(body; str x8, [x19]);
+    });
+    let mut input = input(
+        vec![win_registrar()],
+        vec![create, constant_getter(READ, 0), constant_getter(MEMBER, 0)],
+        composition(vec![], BTreeMap::new()),
+    );
+    input.pointers = BTreeMap::from([
+        (FACTORY + 0x10, CREATE),
+        (VTABLE + 0x80, SCOPE_GETTER),
+        (VTABLE + 0x10, READ),
+        (VTABLE + 0x18, MEMBER),
+    ]);
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Ok(CommandReader {
+            vtable: VTABLE,
+            read: READ,
+            member: MEMBER
+        })
+    );
+    input.pointers.remove(&(VTABLE + 0x18));
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("command-member-slot"))
+    );
+    input.pointers.insert(VTABLE + 0x18, MEMBER);
+    input.functions.remove(&MEMBER);
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("command-reader-body"))
+    );
+    input.pointers.remove(&(FACTORY + 0x10));
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("factory-create"))
+    );
+}
+
 /// `win` with a create method, a command vtable at `VTABLE`, and its scope getter.
 fn followed(create: Function, scope_getter: Function) -> Vec<Site> {
     let mut input = input(
@@ -376,6 +427,7 @@ fn scope(bit: usize, name: &str) -> ScopeType {
 fn win(scopes: ScopeOutcome) -> Site {
     Site::Declared {
         name: "win".into(),
+        factory: FACTORY,
         description: "Wins the game".into(),
         usage: "win = yes".into(),
         scopes,
@@ -481,5 +533,110 @@ fn constant_getter_ends_at_return() {
     assert_eq!(
         constant_return(&[row("ldr", "x0,[x1]"), row("ret", "")]),
         None
+    );
+}
+
+#[test]
+fn command_reader_requires_every_factory_path_to_return_the_same_live_vtable() {
+    const OTHER: u64 = VTABLE + 0x1000;
+    let mut body = Arm64::at(CREATE);
+    body.prologue();
+    arm64!(body; mov w0, #16);
+    body.call(NEW);
+    arm64!(body; mov x19, x0);
+    body.address(8, VTABLE);
+    arm64!(body; str x8, [x19]);
+    let branch = body.here();
+    arm64!(body; cbz x3, extern (branch + 16) as usize);
+    body.address(8, OTHER);
+    arm64!(body; str x8, [x19]; mov x0, x19);
+    body.epilogue();
+    arm64!(body; ret);
+    let mut input = input(
+        vec![],
+        vec![function(body)],
+        composition(vec![], BTreeMap::new()),
+    );
+    input.pointers.insert(FACTORY + 0x10, CREATE);
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("ambiguous-command-vtable"))
+    );
+
+    let erased = create(|body| {
+        body.address(8, VTABLE);
+        arm64!(body; str x8, [x19]; str x4, [x19]);
+    });
+    input.functions.insert(CREATE, erased);
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("command-vtable"))
+    );
+
+    let wrong = create(|body| {
+        body.address(8, VTABLE);
+        arm64!(body; str x8, [x20]);
+    });
+    input.functions.insert(CREATE, wrong);
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("command-vtable"))
+    );
+}
+
+#[test]
+fn factory_joins_constructor_subobjects_without_conflating_their_readers() {
+    const CONSTRUCTOR: u64 = 0xc000;
+    const MEMBER_VTABLE: u64 = 0x35000;
+    const READ: u64 = 0xb000;
+    const MEMBER: u64 = 0xb100;
+    let mut body = Arm64::at(CREATE);
+    body.prologue();
+    arm64!(body; mov w0, #128);
+    body.call(NEW);
+    arm64!(body; mov x19, x0);
+    body.address(8, VTABLE);
+    arm64!(body; str x8, [x19]; add x0, x19, #32);
+    body.call(CONSTRUCTOR);
+    arm64!(body; mov x0, x19);
+    body.epilogue();
+    arm64!(body; ret);
+    let mut input = input(
+        vec![],
+        vec![
+            function(body),
+            constant_getter(READ, 0),
+            constant_getter(MEMBER, 0),
+        ],
+        composition(vec![], BTreeMap::new()),
+    );
+    input.pointers = BTreeMap::from([
+        (FACTORY + 0x10, CREATE),
+        (VTABLE + 0x10, READ),
+        (VTABLE + 0x18, MEMBER),
+    ]);
+    input.constructors.insert(
+        CONSTRUCTOR,
+        BTreeMap::from([(0, MEMBER_VTABLE), (8, MEMBER_VTABLE + 0x80)]),
+    );
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Ok(CommandReader {
+            vtable: VTABLE,
+            read: READ,
+            member: MEMBER
+        })
+    );
+    input.constructors.clear();
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("command-vtable"))
+    );
+    input
+        .constructors
+        .insert(CONSTRUCTOR, BTreeMap::from([(128, MEMBER_VTABLE)]));
+    assert_eq!(
+        command_reader(&input, FACTORY).unwrap_err().reason,
+        "constructor-vtable-bound"
     );
 }

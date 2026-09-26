@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import time
 import traceback
 import protocol
@@ -27,7 +28,7 @@ modifiers = None
 
 class SessionProgress:
     """Observed boundaries and failures; observers never choose the session's pause."""
-    def __init__(self, active_registries=(), modifier_active=False):
+    def __init__(self, active_registries=(), modifier_active=False, fixture_validation=False):
         self.active_registries = set(active_registries)
         if modifier_active:
             self.pause_owner = 'modifiers'
@@ -37,6 +38,7 @@ class SessionProgress:
             self.pause_owner = None
         self.returned_registries = []
         self.modifier_returned = False
+        self.fixture_validation_pending = fixture_validation
         self.callback_active = False
         self.callback_failed = False
         self.worker_loss_ready = False
@@ -53,9 +55,9 @@ def decide_pause(state):
         return PauseDecision(False, None)
     if state.callback_failed or state.worker_loss_ready:
         return PauseDecision(True, None)
-    if state.pause_owner == 'modifiers' and state.modifier_returned:
+    if state.pause_owner == 'modifiers' and state.modifier_returned and not state.fixture_validation_pending:
         return PauseDecision(True, 'content-loaded')
-    if state.pause_owner == 'registries' and state.active_registries.issubset(state.returned_registries):
+    if state.pause_owner == 'registries' and state.active_registries.issubset(state.returned_registries) and not state.fixture_validation_pending:
         return PauseDecision(True, 'loaders-returned')
     if state.deadline_stopped:
         return PauseDecision(True, 'deadline')
@@ -255,6 +257,17 @@ def registry_callback(frame, name):
     return False
 
 
+def interpret_fixture_log(text, file, file_prefix, line_prefix, returned):
+    """Keep a matching file's diagnostic, with a line only when its source is unambiguous."""
+    if file not in text:
+        return None
+    prefix = re.escape(file_prefix + file + line_prefix)
+    lines = {int(match) for match in re.findall(prefix + r'([0-9]+)', text)}
+    line = next(iter(lines)) if len(lines) == 1 else None
+    stage = protocol.DIAGNOSTIC_STAGE['engine_validation'] if returned else protocol.DIAGNOSTIC_STAGE['engine_parser']
+    return dict(text=text, stage=stage, file=file, line=line)
+
+
 class FixtureObserver:
     """One file's parser window; registry callbacks own the eventual session pause."""
     def __init__(self, config):
@@ -267,6 +280,8 @@ class FixtureObserver:
         self.requested_definitions = {item['definition'] for item in config['questions']}
         self.question_by_token = {(item['definition'], item['token']): item for item in config['questions'] if item['token'] is not None}
         self.diagnostics_requested = any(item['diagnostics'] for item in config['questions'])
+        self.validation = config['validation']
+        self.validation_finished = False
         self.control = fault_control(request, 'fixture')
         self.registrations = 0
         self.field_count = 0
@@ -281,9 +296,22 @@ class FixtureObserver:
         self.diagnostics = 0
         self.active_reader = None
 
+    def validation_hooks(self):
+        if not self.validation:
+            return []
+        binding = self.bindings['validation']
+        return [
+            (protocol.HOOK['fixture_log'], binding['log_entry']),
+            (protocol.HOOK['fixture_unformatted_log'], binding['unformatted_log_entry']),
+            (protocol.HOOK['fixture_stream_log'], binding['stream_log_entry']),
+            (protocol.HOOK['fixture_sourced_log'], binding['sourced_log_entry']),
+            (protocol.HOOK['fixture_validated'], binding['complete_entry']),
+        ]
+
     def hooks(self):
         load_entry = self.outcome_binding['load_entry'] if self.questions and self.outcome_binding else self.bindings['load_entry']
         hooks = [(protocol.HOOK['fixture_load'], load_entry)]
+        hooks.extend(self.validation_hooks())
         if self.config['registration_entries']:
             hooks.append((protocol.HOOK['fixture_registration'], self.bindings['registration_entry']))
         if self.config['field_reads']:
@@ -325,21 +353,31 @@ class FixtureObserver:
 
     def finish_questions(self, process, thread):
         for index, question in self.questions.items():
-            unavailable = question['unavailable']
+            unavailable = question['storage_unavailable']
             owner = self.definitions.get(question['definition'])
             if unavailable:
                 self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
-                    reader_id=question['reader_id'], reader_kind=question['reader_kind'],
+                    reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
                     final_value=None, unavailable=unavailable)
             elif owner is None:
                 self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
-                    reader_id=question['reader_id'], reader_kind=question['reader_kind'],
+                    reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
                     final_value=None, unavailable='Requested definition constructor was not observed')
             else:
                 value = self.stored_string(process, owner['owner'] + question['storage_offset'])
                 self.emit('field-terminal', thread, question=index, owner=hex(owner['owner']),
                     definition_line=owner['line'], reader_id=question['reader_id'],
-                    reader_kind=question['reader_kind'], final_value=value, unavailable=None)
+                    reader_kind=question['reader_kind'], reader_family=question['reader_family'], final_value=value, unavailable=None)
+            if question['parsing']:
+                parsing_unavailable = None
+                if question['token'] is None:
+                    parsing_unavailable = 'No proven field token for parser observation'
+                elif owner is None:
+                    parsing_unavailable = 'Requested definition constructor was not observed'
+                self.emit('parsing-terminal', thread, question=index,
+                    count=self.occurrences[index], unavailable=parsing_unavailable)
+
+    def finish_diagnostics(self, thread):
         if self.diagnostics_requested:
             if self.outcome_binding:
                 self.emit('diagnostics-terminal', thread, count=self.diagnostics)
@@ -369,12 +407,12 @@ class FixtureObserver:
         self.loading = True
         self.emit('load-start', thread, file=file)
         for index, question in self.questions.items():
-            supported = (question['unavailable'] is None and question['reader_kind'] == protocol.READER_KIND['string']
+            supported = (question['storage_unavailable'] is None and question['reader_kind'] == protocol.READER_KIND['string']
                 and question['reader_id'] is not None and question['token'] is not None
                 and question['storage_offset'] is not None)
             self.emit('field-authority', thread, question=index,
-                reader_id=question['reader_id'], reader_kind=question['reader_kind'],
-                storage_supported=supported, unavailable=question['unavailable'])
+                reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
+                storage_supported=supported, unavailable=question['storage_unavailable'])
         if self.questions and self.outcome_binding:
             return_address = process.GetTarget().ResolveFileAddress(self.outcome_binding['reader_return'])
             hook = process.GetTarget().BreakpointCreateBySBAddress(return_address)
@@ -432,6 +470,8 @@ class FixtureObserver:
         question = self.question_by_token.get((definition, token))
         if question is None:
             return False
+        if not question['parsing'] and question['storage_unavailable'] is not None:
+            return False
         index = question['index']
         self.occurrences[index] += 1
         if self.occurrences[index] > 128:
@@ -443,6 +483,10 @@ class FixtureObserver:
         dynamic = protocol.HOOK['fixture_member_return'] + str(index) + ':' + str(self.occurrences[index])
         self.pending_fields[dynamic] = dict(question=index, owner=owner, reader=reader,
             line=line, occurrence=self.occurrences[index], field=question['field'], definition=definition)
+        if question['parsing']:
+            self.emit('field-parse', frame.GetThread().GetThreadID(), question=index,
+                file=file, line=line, definition=definition, field=question['field'],
+                owner=hex(owner), occurrence=self.occurrences[index], returned=False)
         self.return_hook(frame, dynamic)
         return False
 
@@ -452,6 +496,13 @@ class FixtureObserver:
         if pending is None:
             return False
         question = self.questions[pending['question']]
+        if question['parsing']:
+            file, line = self.location(process, pending['reader'])
+            self.emit('field-parse', thread, question=pending['question'], file=file, line=line,
+                definition=pending['definition'], field=pending['field'], owner=hex(pending['owner']),
+                occurrence=pending['occurrence'], returned=True)
+        if question['storage_unavailable'] is not None:
+            return False
         value = self.stored_string(process, pending['owner'] + question['storage_offset'])
         self.emit('field-storage', thread, question=pending['question'], file=self.config['file'],
             line=pending['line'], definition=pending['definition'], field=pending['field'],
@@ -459,7 +510,7 @@ class FixtureObserver:
         return False
 
     def on_diagnostic(self, frame, process, thread, registers, stage):
-        if not self.loading or self.returned:
+        if not self.loading or self.validation_finished or (self.returned and not self.validation):
             return False
         if self.diagnostics >= 128:
             raise RuntimeError('fixture diagnostic bound exceeded')
@@ -480,6 +531,50 @@ class FixtureObserver:
             definition=pending.get('definition') if pending else None,
             field=pending.get('field') if pending else None,
             occurrence=pending.get('occurrence') if pending else None)
+        return False
+
+    def on_log(self, frame, process, thread, stream=False):
+        if not self.loading or self.validation_finished:
+            return False
+        binding = self.bindings['validation']
+        if stream:
+            text = string(process, register(frame, binding['stream_log_text_register']))
+        else:
+            text = self.stored_string(process, register(frame, binding['log_text_register']))
+        return self.emit_log(text, thread)
+
+    def on_sourced_log(self, frame, process, thread):
+        if not self.loading or self.validation_finished:
+            return False
+        binding = self.bindings['validation']
+        owner = register(frame, binding['sourced_log_owner_register'])
+        source = self.stored_string(process, owner + binding['sourced_log_source_offset'])
+        if self.config['file'] not in source:
+            return False
+        text = self.stored_string(process, register(frame, binding['sourced_log_text_register']))
+        return self.emit_log(text + ' at ' + source, thread)
+
+    def emit_log(self, text, thread):
+        binding = self.bindings['validation']
+        diagnostic = interpret_fixture_log(text, self.config['file'],
+            binding['source_file_prefix'], binding['source_line_prefix'], self.returned)
+        if diagnostic is None:
+            return False
+        if self.diagnostics >= 128:
+            raise RuntimeError('fixture diagnostic bound exceeded')
+        self.diagnostics += 1
+        self.emit('diagnostic', thread, **diagnostic,
+            definition=None, field=None, occurrence=None)
+        return False
+
+    def on_validated(self, thread):
+        if not self.validation or not self.returned or self.validation_finished:
+            raise RuntimeError('fixture validation has no completed file load')
+        self.validation_finished = True
+        self.emit('validation-complete', thread, file=self.config['file'])
+        self.finish_diagnostics(thread)
+        self.finish(thread)
+        progress.fixture_validation_pending = False
         return False
 
     def on_field(self, frame, process, thread, registers, name):
@@ -508,20 +603,42 @@ class FixtureObserver:
             raise RuntimeError('fixture return has no matching loader entry')
         self.returned = True
         self.finish_questions(process, thread)
+        if not self.validation:
+            self.finish_diagnostics(thread)
+        self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
+        if self.validation:
+            retained = {name for name, _ in self.validation_hooks()}
+            retained.update([protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']])
+            for key, hook in breakpoints.items():
+                if key.startswith(protocol.HOOK['fixture']) and key not in retained:
+                    hook.SetEnabled(False)
+        else:
+            self.finish(thread)
+        return False
+
+    def finish(self, thread):
         for key, hook in breakpoints.items():
             if key.startswith(protocol.HOOK['fixture']):
                 hook.SetEnabled(False)
-        self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
         if self.control != protocol.CONTROL['missing_terminal']:
             self.emit('end', thread, registrations=self.registrations, field_reads=self.field_count,
                 field_outcomes=len(self.questions), diagnostics=self.diagnostics,
                 producer_last_sequence=sequence + 1)
-        return False
 
     def callback(self, frame, name):
         process = frame.GetThread().GetProcess()
         thread = frame.GetThread().GetThreadID()
         registers = request['machine']['registers']
+        if name == protocol.HOOK['fixture_log']:
+            return self.on_log(frame, process, thread)
+        if name == protocol.HOOK['fixture_stream_log']:
+            return self.on_log(frame, process, thread, stream=True)
+        if name == protocol.HOOK['fixture_sourced_log']:
+            return self.on_sourced_log(frame, process, thread)
+        if name == protocol.HOOK['fixture_unformatted_log']:
+            if self.loading and not self.validation_finished:
+                raise RuntimeError('engine diagnostic formatting failed inside the observation window')
+            return False
         if thread != entry_thread:
             raise RuntimeError('fixture callback differs from the launch thread')
         if name == protocol.HOOK['fixture_registration']:
@@ -541,13 +658,15 @@ class FixtureObserver:
         if name.startswith(protocol.HOOK['fixture_member_return']):
             return self.on_member_return(process, thread, name)
         if name == protocol.HOOK['fixture_malformed']:
-            return self.on_diagnostic(frame, process, thread, registers, 'reader-malformed-report')
+            return self.on_diagnostic(frame, process, thread, registers, protocol.DIAGNOSTIC_STAGE['reader_malformed'])
         if name == protocol.HOOK['fixture_unexpected']:
-            return self.on_diagnostic(frame, process, thread, registers, 'reader-unexpected-report')
+            return self.on_diagnostic(frame, process, thread, registers, protocol.DIAGNOSTIC_STAGE['reader_unexpected'])
         if name == protocol.HOOK['fixture_field']:
             return self.on_field(frame, process, thread, registers, name)
         if name == protocol.HOOK['fixture_return']:
             return self.on_return(process, thread)
+        if name == protocol.HOOK['fixture_validated']:
+            return self.on_validated(thread)
         return False
 
 
@@ -791,7 +910,7 @@ def run(debugger):
                 fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
             else:
                 emit('registry-unavailable', name=name.removeprefix(protocol.HOOK['registry']), reason='required registry hook missing or late before resume')
-    progress = SessionProgress(active_registries, modifier_active)
+    progress = SessionProgress(active_registries, modifier_active, bool(fixture and fixture.validation))
     if decide_pause(progress).stop:
         return
     emit('hooks-active-before-resume', hooks=state)

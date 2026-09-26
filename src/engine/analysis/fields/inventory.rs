@@ -2,7 +2,7 @@ use super::tokens::Token;
 use super::{FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RootField, TokenPath};
 use std::collections::BTreeMap;
 
-pub(super) fn fields_and_gaps(
+pub(crate) fn fields_and_gaps(
     paths: &[TokenPath],
     tokens: &BTreeMap<i64, Token>,
 ) -> (Vec<RootField>, Vec<FieldGap>) {

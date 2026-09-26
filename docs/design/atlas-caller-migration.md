@@ -52,7 +52,7 @@ execution, field storage, validation, schema completeness or rule coverage.
 
 ## Field answer migration (SDK-541 / SDK-597)
 
-`registry_fields` still returns `Answer<Vec<Field>>`, with method `registry-fields/v5`.
+`registry_fields` still returns `Answer<Vec<Field>>`, with method `registry-fields/v6`.
 The former `Field.conditional` Boolean is replaced by paired `read` alternatives. Each
 alternative retains its `condition` and `outcome` (`Read`, `Rejected`, or `Unresolved`).
 Never combine the condition from one alternative with another's reader or shape.
@@ -69,6 +69,23 @@ this build, so independent selections may share it. An empty use list does not p
 of runtime conditions. SDK-597 owns this snapshot migration and SDK-546 consumes the naming
 relationships. SDK-627 and SDK-628 retain the remaining default/domain/occurrence and enclosing
 selection gaps respectively.
+
+## Block and command grammar migration (SDK-542 / SDK-597 / SDK-625)
+
+Keep `Reader.family` on both field summaries and read alternatives. `Unknown` is unresolved;
+`NotApplicable` belongs to a scalar reader. Concrete persistent receivers can refine reader IDs.
+Nested collection IDs also now include their concrete member reader, so their IDs change from v5.
+Unjoined generic persistent destinations have no ID. IDs remain opaque within a build. Do not convert a conditional family into an unconditional claim.
+
+`Native::command_grammar(kind, name)` returns independent `GrammarProperty` values. Preserve
+partial fixed keys, nested numeric-child grammar, ordering conditions, and unresolved siblings.
+A routing rule does not impose runtime order. `limit` is a child key, not a registered command.
+
+For fixture conclusions, request `.with_parsing()` on each question and `.through_validation()`
+on the field-outcome request when deferred errors matter. Require witnessed complete parsing and
+complete relevant diagnostic coverage for acceptance. Keep storage and runtime separate. Recorded
+answers give no new live coverage credit. The [method contract](../native/command-grammar.md#consumer-boundary)
+names the SDK-597, SDK-625 and SDK-600 responsibilities and remaining gates.
 
 ## Local caller and checks
 

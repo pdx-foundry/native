@@ -47,6 +47,7 @@ src/
   game.rs                          Game: live session or recorded back end
   game/driver.rs                   the thread that talks to the supervisor process
   fixture.rs                       consumer fixture request and normalized observation types
+  grammar.rs                       partial child grammar and conditional routing types
   recorded.rs                      recorded answers: read, write, NotRecorded
   supervisor.rs                    public consumer-hosted supervisor entry point
   work_directory.rs                file rules of a session's work directory

@@ -19,6 +19,20 @@ pub(super) fn fixture(
             file_name_offset: 0x20,
             string_tag_offset: M45_TEMPLATE_LAYOUT.string_tag_offset,
             file_line_offset: 8,
+            validation: Some(crate::protocol::observation::FixtureValidationBinding {
+                log_entry: 0x10250896c,
+                log_text_register: "x4".into(),
+                unformatted_log_entry: 0x102508a40,
+                stream_log_entry: 0x102123a14,
+                stream_log_text_register: "x1".into(),
+                sourced_log_entry: 0x101d222b8,
+                sourced_log_text_register: "x1".into(),
+                sourced_log_owner_register: "x0".into(),
+                sourced_log_source_offset: 0x28,
+                complete_entry: 0x100972384,
+                source_file_prefix: "file: ".into(),
+                source_line_prefix: " line: ".into(),
+            }),
             fields: [(16793, "tree_template"), (14263, "traditions")]
                 .into_iter()
                 .map(

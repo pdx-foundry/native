@@ -45,6 +45,7 @@ pub(crate) struct FixtureLoader {
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Vec<u8>,
     catalog: &'a Catalog,
+    persistent: Option<&'static super::targets::PersistentRecipe>,
 }
 
 impl VerifiedAnalysis<'_> {
@@ -326,6 +327,7 @@ impl VerifiedAnalysis<'_> {
             &self.catalog.pointers,
             &self.catalog.bound_slots,
             selection,
+            self.persistent,
         )
     }
 }
@@ -390,8 +392,8 @@ impl BoundAnalysis {
         }))
     }
 
-    /// Derive string storage from the root dispatch's proven reader arguments.
-    pub(crate) fn fixture_string_fields(
+    /// Bind root field tokens, with string storage only when reader arguments prove it.
+    pub(crate) fn fixture_fields(
         &self,
         registry: &str,
     ) -> Result<Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>, AnalysisError> {
@@ -406,7 +408,14 @@ impl BoundAnalysis {
         Ok(result
             .fields
             .iter()
-            .filter_map(|field| string_field_binding(field, &result.paths))
+            .filter_map(|field| {
+                Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
+                    token: u64::try_from(field.token).ok()?,
+                    name: field.name.clone(),
+                    storage_offset: string_field_binding(field, &result.paths)
+                        .and_then(|binding| binding.storage_offset),
+                })
+            })
             .collect())
     }
 
@@ -457,6 +466,7 @@ impl BoundAnalysis {
             .as_ref()
             .map_err(Clone::clone)?;
         Ok(VerifiedAnalysis {
+            persistent: self.declarations.map(|recipe| &recipe.persistent),
             executable,
             catalog,
         })
@@ -502,7 +512,7 @@ fn string_field_binding(
     Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
         token,
         name: field.name.clone(),
-        storage_offset,
+        storage_offset: Some(storage_offset),
     })
 }
 
@@ -608,6 +618,33 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::declarations::DeclarationInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.declaration_input(kind, recipe)
+    }
+
+    pub(crate) fn grammar_input(
+        &self,
+        kind: crate::DeclarationKind,
+    ) -> Result<
+        (
+            crate::engine::analysis::grammar::GrammarInput,
+            crate::engine::analysis::declarations::DeclarationResult,
+        ),
+        AnalysisError,
+    > {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        let verified = self.verified()?;
+        let declarations = verified.declaration_input(kind, recipe)?;
+        let inventory = crate::engine::analysis::declarations::analyze(&declarations)
+            .map_err(AnalysisError::Input)?;
+        let input = binary::grammar::read(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &verified.catalog.strings,
+            &verified.catalog.bound_slots,
+            declarations,
+            &inventory,
+            recipe,
+        )?;
+        Ok((input, inventory))
     }
 
     pub(crate) fn modifier_input(

@@ -14,6 +14,7 @@ mod execution;
 mod field;
 mod fixture;
 mod game;
+mod grammar;
 mod protocol;
 mod recorded;
 mod session;
@@ -22,7 +23,7 @@ mod work_directory;
 pub mod supervisor;
 
 pub use answer::{
-    Answer, Basis, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
+    Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
     DeclaredScopes, DeclaredTags, Define, DefineValueType, Disposal, EntryContext, EntryScope,
     Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName, GenerationCondition, LinkData,
     LoadedContent, LoadedModifier, LoadedModifiers, LocalizationCommand, LocalizationContext,
@@ -41,10 +42,13 @@ pub use field::{
 pub use fixture::{
     DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,
     FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureObservationKind,
-    FixtureOwnerId, FixtureRequest, FixtureRuntime, FixtureStorage, FixtureWindow, ProcessingStage,
-    RegistrationEntry, StoredStringOccurrence,
+    FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime, FixtureStorage, FixtureWindow,
+    ParsedFieldOccurrence, ProcessingStage, RegistrationEntry, StoredStringOccurrence,
 };
 pub use game::{Game, GameOptions};
+pub use grammar::{
+    ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, CommandGrammar, GrammarProperty,
+};
 pub use session::Native;
 
 pub(crate) use api::UnavailableReason;

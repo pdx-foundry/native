@@ -53,10 +53,14 @@ mod control_flow;
 mod dispatch;
 mod inventory;
 mod nested;
+mod persistent;
 mod records;
 mod tokens;
 mod uses;
+pub(crate) use dispatch::{DispatchInput, explore_member};
+pub(crate) use inventory::fields_and_gaps;
 pub use records::*;
+pub(crate) use tokens::{Token, recover_decoded};
 pub(crate) use uses::has_owner_receiver;
 
 use super::InputError;
@@ -80,7 +84,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v5";
+pub const METHOD: &str = "registry-fields/v6";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
@@ -127,7 +131,10 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
         gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,
             "Local Boolean selections only: enclosing reachability, loop winner, callees, indirect callers, unsupported transfers and method bounds remain unresolved."));
     }
+    let (persistent, persistent_gaps) = persistent::discover(input, &fields);
+    gaps.extend(persistent_gaps);
     Ok(RegistryFieldResult {
+        persistent,
         uses,
         collections,
         fields,

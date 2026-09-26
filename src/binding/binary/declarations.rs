@@ -80,12 +80,17 @@ pub(in crate::binding) fn read(
         register_entry: BTreeSet::from([register_entry]),
         entry_helpers,
         operator_new,
+        constructors: BTreeMap::new(),
         functions,
         pointers: pointers.clone(),
         strings: strings.clone(),
         slots: ScopeSlots {
             create: recipe.create_slot,
             supported_scopes: scope_slot,
+        },
+        parser_slots: match kind {
+            DeclarationKind::Effect => recipe.effect_parser,
+            DeclarationKind::Trigger => recipe.trigger_parser,
         },
         scope_names,
         composition: composition(bytes, symbols, &text, &entry_calls, database, recipe)?,

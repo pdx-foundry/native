@@ -92,6 +92,7 @@ struct SweepReport {
     readers: BTreeMap<String, ReaderFields>,
     fields_by_reader_kind: BTreeMap<ReaderKind, usize>,
     field_shapes: BTreeMap<String, usize>,
+    field_families: BTreeMap<String, usize>,
     fields_without_reader_identity: Vec<String>,
     failure_shapes: BTreeMap<String, Vec<Value>>,
     stop_cases: Vec<StopCase>,
@@ -145,6 +146,7 @@ impl SweepReport {
         }
 
         count_shapes(&answer.value, &mut self.field_shapes, false);
+        count_families(&answer.value, &mut self.field_families, "root");
         for field in &answer.value {
             let name = format!("{registry}#{}", field.name);
             *self
@@ -245,6 +247,7 @@ impl SweepReport {
             "readers": readers,
             "fields_by_reader_kind": self.fields_by_reader_kind,
             "field_shapes": self.field_shapes,
+            "field_families": self.field_families,
             "fields_without_reader_identity": self.fields_without_reader_identity,
             "failure_shapes": self.failure_shapes,
             "stop_shapes": stop_shapes(&self.stop_cases),
@@ -255,6 +258,17 @@ impl SweepReport {
             },
             "cases": self.cases,
         }))
+    }
+}
+
+fn count_families(fields: &[Field], counts: &mut BTreeMap<String, usize>, level: &str) {
+    for field in fields {
+        *counts
+            .entry(format!("{level}.{:?}", field.reader.family))
+            .or_default() += 1;
+        if let pdx_native::FieldMembers::Fields(children) = &field.members {
+            count_families(children, counts, "nested");
+        }
     }
 }
 

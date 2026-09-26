@@ -11,10 +11,14 @@ names the method owners, not every shared decoder or evaluator they use. It cove
 methods and their live loaded-modifier join; other live observations are in
 [early observations](early-observations.md).
 
+The SDK-542 extraction, parser checks, population counts and consumer contract are in
+[nested command grammar](command-grammar.md).
+
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v5` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#sdk-541-sweep-on-m45-release) |
+| `Native::registry_fields` | `registry-fields/v6` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#sdk-541-sweep-on-m45-release) |
+| `Native::command_grammar` | `command-grammar/v1` | `grammar.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -43,3 +47,6 @@ The method classifies the target of each direct `GetValue`, `GetArrayValue` or
 named value from a namespace table. Shipped define entries, defaults, comments, bounds and uses
 are not established here. SDK-610 owns the broader extraction question, and Atlas owns the
 comparison with shipped content and config.
+
+The [SDK-542 architecture review verification](command-grammar-review.md) records confirmed
+repairs and the evidence for retained reader, family and observation boundaries.

@@ -30,27 +30,47 @@ pub(super) fn register(operand: &str) -> Option<String> {
     let index: u8 = digits.parse().ok()?;
     (index <= 30).then(|| format!("x{index}"))
 }
-pub(super) fn decode(function: &Function) -> Result<Vec<Instruction>, String> {
+/// Named function input borrowed from either registry or command discovery.
+#[derive(Clone, Copy)]
+pub(super) struct FunctionView<'a> {
+    pub name: &'a str,
+    pub address: u64,
+    pub code: &'a [u8],
+}
+
+impl<'a> From<&'a Function> for FunctionView<'a> {
+    fn from(function: &'a Function) -> Self {
+        Self {
+            name: &function.name,
+            address: function.address,
+            code: &function.code,
+        }
+    }
+}
+
+pub(super) fn decode(function: FunctionView<'_>) -> Result<Vec<Instruction>, String> {
     if function.code.is_empty() || function.code.len() > 1024 * 1024 {
         return Err("missing or oversized function bytes".into());
     }
-    decode_arm64(&function.code, function.address).map_err(|e| e.to_string())
+    decode_arm64(function.code, function.address).map_err(|e| e.to_string())
 }
-pub(super) fn function<'a>(input: &'a FieldInput, name: &str) -> Option<&'a Function> {
-    let mut matches = input.functions.iter().filter(|f| f.name == name);
+
+pub(super) fn function<'a>(
+    functions: impl IntoIterator<Item = FunctionView<'a>>,
+    symbols: &[Symbol],
+    name: &str,
+) -> Option<FunctionView<'a>> {
+    let mut matches = functions.into_iter().filter(|f| f.name == name);
     let first = matches.next()?;
     if matches.next().is_some() {
         return None;
     }
-    let mut symbols = input.symbols.iter().filter(|s| s.name == name);
+    let mut symbols = symbols.iter().filter(|s| s.name == name);
     let symbol = symbols.next()?;
     (symbol.address == first.address && symbols.all(|s| s.address == first.address))
         .then_some(first)
 }
-pub(super) fn symbol_names(input: &FieldInput) -> BTreeMap<u64, Option<&str>> {
-    names_by_address(&input.symbols)
-}
-fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
+pub(super) fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
     let mut names = BTreeMap::new();
     for symbol in symbols {
         names
@@ -65,15 +85,19 @@ fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
     names
 }
 #[derive(Debug)]
-pub(super) struct Token {
+pub(crate) struct Token {
     pub name: String,
     pub constructor: u64,
     pub ambiguous: bool,
 }
 pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<FieldGap>) {
-    let rows = match function(input, "GetTokenArray()")
-        .ok_or("token constructor function missing or ambiguous".into())
-        .and_then(decode)
+    let rows = match function(
+        input.functions.iter().map(FunctionView::from),
+        &input.symbols,
+        "GetTokenArray()",
+    )
+    .ok_or("token constructor function missing or ambiguous".into())
+    .and_then(decode)
     {
         Ok(rows) => rows,
         Err(reason) => return (BTreeMap::new(), vec![token_table_gap(reason)]),
@@ -83,7 +107,7 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<FieldGap
 fn token_table_gap(reason: impl Into<String>) -> FieldGap {
     FieldGap::new(FieldGapKind::TokenTable, reason)
 }
-pub(super) fn recover_decoded(
+pub(crate) fn recover_decoded(
     rows: &[Instruction],
     symbols: &[Symbol],
     strings: &BTreeMap<u64, String>,
@@ -210,4 +234,42 @@ pub(super) fn recover_decoded(
         ));
     }
     (tokens, gaps)
+}
+
+#[cfg(test)]
+mod function_tests {
+    use super::*;
+
+    #[test]
+    fn borrowed_functions_keep_name_address_and_body_guards() {
+        let body = Function {
+            name: "root".into(),
+            address: 0x1000,
+            code: 0xd65f03c0_u32.to_le_bytes().to_vec(),
+        };
+        let view = FunctionView::from(&body);
+        let symbol = Symbol {
+            name: body.name.clone(),
+            address: body.address,
+        };
+        let symbols = [symbol.clone(), symbol];
+        let found = function([view], &symbols, "root").unwrap();
+        assert_eq!(found.code.as_ptr(), body.code.as_ptr());
+        assert!(decode(found).is_ok());
+        assert!(function([view, view], &symbols, "root").is_none());
+        let mut conflicting = symbols;
+        conflicting[1].address += 4;
+        assert!(function([view], &conflicting, "root").is_none());
+        assert!(function([view], &[], "root").is_none());
+        assert!(function([view], &conflicting, "other").is_none());
+        for bytes in [vec![], vec![0; 1024 * 1024 + 4]] {
+            assert!(
+                decode(FunctionView {
+                    code: &bytes,
+                    ..view
+                })
+                .is_err()
+            );
+        }
+    }
 }
