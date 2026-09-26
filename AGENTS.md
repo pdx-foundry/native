@@ -23,6 +23,9 @@ comments that say what an instruction means to the test, such as `mov w1, #7 // 
 has no names to carry intent. This overrides the general rule against inline comments; do not
 restate what the instruction does.
 
+The RustRover MCP is available and can be used for rename refactoring, searching, and viewing code
+inspections (such as warnings and errors).
+
 ## Documentation
 
 ### Policy and design
