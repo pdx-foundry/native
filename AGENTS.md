@@ -12,6 +12,9 @@ records, or Cargo features. Public names prefer clarity to brevity (`registry_fi
 Before you work on game launch, cleanup, injection, engine calls, memory layouts or discovery, read the
 [engine knowledge index](docs/engine-knowledge.md). Match the exact build before you reuse a finding.
 
+`STELLARIS_PATH` is set in the development environment and names the installed game. Use it in
+commands for `cargo parity`, the ignored M45 tests and `examples/inspect`; do not write the path.
+
 Native owns the platform and build methods. Atlas owns extraction fixtures, rule conclusions and coverage.
 The code and its tests are the authority for supported operations; the knowledge pages keep the experiments.
 
