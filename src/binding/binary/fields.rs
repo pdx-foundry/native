@@ -15,6 +15,7 @@ pub(in crate::binding) fn read(
     pointers: &BTreeMap<u64, u64>,
     bound_slots: &BTreeSet<u64>,
     selection: CandidateRecord,
+    persistent_recipe: Option<&super::super::targets::recipes::PersistentRecipe>,
 ) -> Result<FieldInput, AnalysisError> {
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
@@ -64,7 +65,20 @@ pub(in crate::binding) fn read(
             &mut gaps,
         )?;
     }
+    let persistent = persistent_recipe
+        .map(|recipe| {
+            super::receivers::persistent(
+                bytes,
+                symbols,
+                pointers,
+                bound_slots,
+                &selection.owner_candidate,
+                recipe,
+            )
+        })
+        .transpose()?;
     Ok(FieldInput {
+        persistent,
         objects,
         selection,
         symbols: symbols.to_vec(),
@@ -75,7 +89,7 @@ pub(in crate::binding) fn read(
     })
 }
 
-fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisError> {
+pub(super) fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisError> {
     let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
     let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
     file.sections()

@@ -160,6 +160,9 @@ enum Case {
     FixtureOutcome(FixtureOutcomeCase),
     FixtureTransfer,
     FixtureRelicPortrait,
+    FixtureBlockParsing,
+    FixtureBlockValidation(&'static str, &'static str, Option<&'static str>),
+    FixtureEffectValidation(&'static str, &'static str, Option<&'static str>),
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -284,6 +287,197 @@ fn cases() -> Vec<(String, Case)> {
         "fixture_transfer_relic_portrait".into(),
         Case::FixtureRelicPortrait,
     ));
+    cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
+    for (name, child, stage) in [
+        ("valid", "always = yes", None),
+        (
+            "wrong_scope",
+            "is_planet_class = pc_barren",
+            Some("engine-parser-log"),
+        ),
+        (
+            "unknown",
+            "native_unknown_trigger = yes",
+            Some("engine-validation-log"),
+        ),
+    ] {
+        cases.push((
+            format!("fixture_block_validation_{name}"),
+            Case::FixtureBlockValidation(name, child, stage),
+        ));
+    }
+    for (name, child, stage) in [
+        ("valid", "set_country_flag = native_fixture_flag", None),
+        (
+            "wrong_scope",
+            "set_planet_class = pc_barren",
+            Some("engine-parser-log"),
+        ),
+        (
+            "unknown",
+            "native_unknown_effect = yes",
+            Some("engine-validation-log"),
+        ),
+    ] {
+        cases.push((
+            format!("fixture_effect_validation_{name}"),
+            Case::FixtureEffectValidation(name, child, stage),
+        ));
+    }
+    for (name, accepted, rejected) in [
+        (
+            "and",
+            "and = { always = yes }",
+            "and = { is_planet_class = pc_barren }",
+        ),
+        (
+            "or",
+            "or = { always = yes }",
+            "or = { is_planet_class = pc_barren }",
+        ),
+        (
+            "not",
+            "not = { always = no }",
+            "not = { is_planet_class = pc_barren }",
+        ),
+        (
+            "if",
+            "if = { limit = { always = yes } always = yes }",
+            "if = { limit = { always = yes } is_planet_class = pc_barren }",
+        ),
+        (
+            "else_if",
+            "if = { limit = { always = no } always = yes } else_if = { limit = { always = yes } always = yes }",
+            "if = { limit = { always = no } always = yes } else_if = { limit = { always = yes } is_planet_class = pc_barren }",
+        ),
+        (
+            "else",
+            "if = { limit = { always = no } always = yes } else = { always = yes }",
+            "if = { limit = { always = no } always = yes } else = { is_planet_class = pc_barren }",
+        ),
+    ] {
+        cases.push((
+            format!("fixture_control_trigger_{name}_accepted"),
+            Case::FixtureBlockValidation(name, accepted, None),
+        ));
+        cases.push((
+            format!("fixture_control_trigger_{name}_rejected"),
+            Case::FixtureBlockValidation(name, rejected, Some("engine-parser-log")),
+        ));
+    }
+    for (name, accepted, rejected) in [
+        (
+            "if",
+            "if = { limit = { always = yes } set_country_flag = native_fixture_flag }",
+            "if = { limit = { always = yes } native_unknown_effect = yes }",
+        ),
+        (
+            "else_if",
+            "if = { limit = { always = no } set_country_flag = native_fixture_flag } else_if = { limit = { always = yes } set_country_flag = native_fixture_flag }",
+            "if = { limit = { always = no } set_country_flag = native_fixture_flag } else_if = { limit = { always = yes } native_unknown_effect = yes }",
+        ),
+        (
+            "else",
+            "if = { limit = { always = no } set_country_flag = native_fixture_flag } else = { set_country_flag = native_fixture_flag }",
+            "if = { limit = { always = no } set_country_flag = native_fixture_flag } else = { native_unknown_effect = yes }",
+        ),
+        (
+            "hidden_effect",
+            "hidden_effect = { set_country_flag = native_fixture_flag }",
+            "hidden_effect = { native_unknown_effect = yes }",
+        ),
+        (
+            "random_list",
+            "random_list = { 10 = { set_country_flag = native_first } 90 = { set_country_flag = native_second } }",
+            "random_list = { 10 = { native_unknown_effect = yes } }",
+        ),
+        (
+            "every_owned_planet",
+            "every_owned_planet = { limit = { always = yes } set_planet_flag = native_fixture_flag }",
+            "every_owned_planet = { limit = { always = yes } native_unknown_effect = yes }",
+        ),
+    ] {
+        cases.push((
+            format!("fixture_control_effect_{name}_accepted"),
+            Case::FixtureEffectValidation(name, accepted, None),
+        ));
+        cases.push((
+            format!("fixture_control_effect_{name}_rejected"),
+            Case::FixtureEffectValidation(name, rejected, Some("engine-validation-log")),
+        ));
+    }
+    for (name, child) in [
+        ("empty_limit", "if = { limit = { } always = yes }"),
+        ("missing_limit", "if = { always = yes }"),
+        (
+            "repeated_limit",
+            "if = { limit = { always = yes } limit = { always = no } always = yes }",
+        ),
+        (
+            "late_limit",
+            "if = { always = yes limit = { always = yes } }",
+        ),
+    ] {
+        cases.push((
+            format!("fixture_control_edge_trigger_{name}"),
+            Case::FixtureBlockValidation(name, child, None),
+        ));
+    }
+    for (name, child) in [
+        (
+            "empty_limit",
+            "if = { limit = { } set_country_flag = native_fixture_flag }",
+        ),
+        (
+            "missing_limit",
+            "if = { set_country_flag = native_fixture_flag }",
+        ),
+        (
+            "repeated_limit",
+            "if = { limit = { always = yes } limit = { always = no } set_country_flag = native_fixture_flag }",
+        ),
+        (
+            "late_limit",
+            "if = { set_country_flag = native_fixture_flag limit = { always = yes } }",
+        ),
+        (
+            "else_first",
+            "if = { limit = { } else = { set_country_flag = native_fixture_flag } }",
+        ),
+        (
+            "else_after_effect",
+            "if = { limit = { } set_country_flag = native_first else = { set_country_flag = native_second } }",
+        ),
+        (
+            "else_after_if",
+            "if = { limit = { } if = { limit = { } set_country_flag = native_first } else = { set_country_flag = native_second } }",
+        ),
+        (
+            "weighted_zero",
+            "random_list = { 0 = { set_country_flag = native_first } 10 = { set_country_flag = native_second } }",
+        ),
+    ] {
+        cases.push((
+            format!("fixture_control_edge_effect_{name}"),
+            Case::FixtureEffectValidation(name, child, None),
+        ));
+    }
+    cases.push((
+        "fixture_control_edge_effect_weighted_nonnumeric".into(),
+        Case::FixtureEffectValidation(
+            "weighted_nonnumeric",
+            "random_list = { not_a_weight = { set_country_flag = native_fixture_flag } }",
+            Some("reader-unexpected-report"),
+        ),
+    ));
+    cases.push((
+        "fixture_control_edge_effect_malformed".into(),
+        Case::FixtureEffectValidation(
+            "malformed",
+            "if = { limit = yes set_country_flag = native_fixture_flag }",
+            Some("engine-validation-log"),
+        ),
+    ));
     cases.push((
         "fixture_field_reads_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
@@ -334,6 +528,13 @@ fn cases() -> Vec<(String, Case)> {
 
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
+        Case::FixtureBlockParsing => fixture_block_parsing(native).await,
+        Case::FixtureBlockValidation(name, child, stage) => {
+            fixture_block_validation(native, name, "potential", child, stage).await
+        }
+        Case::FixtureEffectValidation(name, child, stage) => {
+            fixture_block_validation(native, name, "on_enabled", child, stage).await
+        }
         Case::Normal => normal(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
@@ -497,6 +698,103 @@ async fn fixture_relic_portrait(native: &Native) -> Outcome {
         Ok(())
     }
     .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn fixture_block_parsing(native: &Native) -> Outcome {
+    use pdx_native::{FixtureFieldQuestion, FixtureParsing, FixtureRequest, FixtureStorage};
+
+    let request = FixtureRequest::field_outcomes(
+        "common/traditions/native_blocks.txt",
+        "native_blocks = {\n potential = {\n  and = { always = yes }\n }\n potential = { always = no }\n}\n",
+        [FixtureFieldQuestion::new(TRADITIONS, "native_blocks", "potential").with_parsing()],
+    );
+    let mut game = native
+        .start_game(options().registries([TRADITIONS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let [outcome] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("block outcomes: {answer:?}").into());
+        };
+        let FixtureParsing::Observed {
+            occurrences,
+            completeness: Completeness::Complete,
+        } = &outcome.parsing
+        else {
+            return Err(format!("block parser observation: {answer:?}").into());
+        };
+        if occurrences.len() != 2
+            || occurrences[0].line != 2
+            || occurrences[0].return_line.is_none()
+            || occurrences[1].line != 5
+            || occurrences[1].return_line.is_none()
+            || outcome.owner.is_none()
+            || !matches!(outcome.storage, FixtureStorage::Unavailable(_))
+            || answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::IncompleteObservation)
+        {
+            return Err(format!("block parser joins: {answer:?}").into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+async fn fixture_block_validation(
+    native: &Native,
+    name: &str,
+    field: &str,
+    child: &str,
+    diagnostic_stage: Option<&str>,
+) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureFieldQuestion, FixtureParsing,
+        FixtureRequest,
+    };
+
+    let expected_family = if field == "potential" {
+        pdx_native::BlockFamily::Trigger
+    } else {
+        pdx_native::BlockFamily::Effect
+    };
+    let file = format!("common/traditions/native_validation_{name}.txt");
+    let request = FixtureRequest::field_outcomes(
+        &file,
+        format!("native_validation = {{\n {field} = {{\n  {child}\n }}\n}}\n"),
+        [FixtureFieldQuestion::new(TRADITIONS, "native_validation", field).with_parsing()],
+    )
+    .through_validation();
+    let mut game = native
+        .start_game(options().registries([TRADITIONS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if !matches!(answer.value.diagnostic_coverage,
+            DiagnosticCoverage::Complete { window: DiagnosticWindow::FixtureFileLoadAndValidation })
+            || !matches!(answer.value.field_outcomes.first().map(|field| &field.parsing),
+                Some(FixtureParsing::Observed { completeness: Completeness::Complete, occurrences }) if occurrences.len() == 1)
+            || answer.value.field_outcomes.first().is_none_or(|field|
+                field.reader.family != expected_family)
+        {
+            return Err(format!("validation coverage: {answer:?}").into());
+        }
+        match diagnostic_stage {
+            None if !answer.value.diagnostics.is_empty() =>
+                return Err(format!("valid fixture diagnostics: {answer:?}").into()),
+            Some(stage) if !answer.value.diagnostics.iter().any(|diagnostic|
+                diagnostic.stage == stage && matches!(&diagnostic.join,
+                    DiagnosticJoin::Source { file: source, line: 3, .. } if source == &file)) =>
+                return Err(format!("missing {stage} source diagnostic: {answer:?}").into()),
+            _ => {}
+        }
+        Ok(())
+    }.await;
     and_close(&mut result, &mut game).await;
     result
 }

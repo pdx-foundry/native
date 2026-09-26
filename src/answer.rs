@@ -228,6 +228,8 @@ pub enum Operation {
     RegistryFields,
     /// `Native::declarations`
     Declarations,
+    /// `Native::command_grammar`
+    CommandGrammar,
     /// `Native::modifiers`
     Modifiers,
     /// `Native::modifier_categories`
@@ -294,6 +296,7 @@ impl Operation {
         Self::Registries,
         Self::RegistryFields,
         Self::Declarations,
+        Self::CommandGrammar,
         Self::Modifiers,
         Self::ModifierCategories,
         Self::ModifierFamilies,
@@ -314,6 +317,7 @@ impl Operation {
             Self::Registries => "registries",
             Self::RegistryFields => "registry_fields",
             Self::Declarations => "declarations",
+            Self::CommandGrammar => "command_grammar",
             Self::Modifiers => "modifiers",
             Self::ModifierCategories => "modifier_categories",
             Self::ModifierFamilies => "modifier_families",
@@ -334,6 +338,7 @@ impl Operation {
             self,
             Self::Defines
                 | Self::Declarations
+                | Self::CommandGrammar
                 | Self::Modifiers
                 | Self::ModifierCategories
                 | Self::ModifierFamilies
@@ -364,6 +369,7 @@ mod operation_tests {
             | Operation::Registries
             | Operation::RegistryFields
             | Operation::Declarations
+            | Operation::CommandGrammar
             | Operation::Modifiers
             | Operation::ModifierCategories
             | Operation::ModifierFamilies
@@ -374,7 +380,7 @@ mod operation_tests {
             | Operation::GameRules
             | Operation::RegistryItems
             | Operation::ObserveFixture
-            | Operation::LoadedModifiers => 15,
+            | Operation::LoadedModifiers => 16,
         }
     }
 
@@ -440,6 +446,13 @@ pub enum Error {
         /// The name asked for.
         name: String,
     },
+    /// No registration with this name was found in the selected command inventory.
+    UnknownCommand {
+        /// The inventory asked for.
+        kind: DeclarationKind,
+        /// The command name asked for.
+        name: String,
+    },
     /// The method failed on an input that it should handle.
     Method(String),
     /// The game session did not establish this observation. Other observations may be available.
@@ -485,6 +498,7 @@ impl std::fmt::Display for Error {
             Self::FixtureRequest { reason } => write!(f, "Invalid fixture request: {reason}"),
             Self::BuildChanged => f.write_str("the executable changed after it was opened"),
             Self::UnknownRegistry { name } => write!(f, "no registry is named {name}"),
+            Self::UnknownCommand { kind, name } => write!(f, "no {kind:?} command is named {name}"),
             Self::Method(reason) => write!(f, "the method failed: {reason}"),
             Self::Observation { operation, reason } => {
                 write!(f, "{operation:?} was not observed: {reason}")
@@ -988,6 +1002,39 @@ pub struct Reader {
     pub id: Option<ReaderId>,
     /// Value form that the reader accepts.
     pub kind: ReaderKind,
+    /// Command family accepted by a block reader, independently of its full grammar.
+    #[serde(default)]
+    pub family: BlockFamily,
+}
+
+/// The child command family established for a reader.
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
+#[non_exhaustive]
+pub enum BlockFamily {
+    /// Trigger commands.
+    Trigger,
+    /// Effect commands.
+    Effect,
+    /// Modifier entries; their detailed grammar is not established.
+    Modifier,
+    /// The family is not established, including conflicting or missing alternatives.
+    #[default]
+    Unknown,
+    /// An established scalar reader has no child command family.
+    NotApplicable,
 }
 
 /// Opaque identity of a shared reader within one build.

@@ -13,6 +13,7 @@ use super::{
     stop::Unresolved,
 };
 mod composition;
+mod receiver;
 
 pub use composition::{CALLER_DEPTH, Composition};
 
@@ -33,6 +34,53 @@ pub struct ScopeSlots {
     pub supported_scopes: u64,
 }
 
+/// Parser slots relative to a command's constructor-installed vtable address point.
+#[derive(Debug, Clone, Copy)]
+pub struct ParserSlots {
+    pub read: u64,
+    pub member: u64,
+}
+
+/// Concrete virtual reader binding. Equal read callees alone do not establish equal grammars.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandReader {
+    pub vtable: u64,
+    pub read: u64,
+    pub member: u64,
+}
+
+/// Resolve the registered factory and retain both reader methods of its concrete receiver.
+pub fn command_reader(input: &DeclarationInput, factory: u64) -> Result<CommandReader, Unresolved> {
+    let vtable = receiver::factory_vtable(input, factory)?;
+    reader_at_vtable(input, vtable)
+}
+
+/// Resolve both methods at an established concrete receiver vtable.
+pub(crate) fn reader_at_vtable(
+    input: &DeclarationInput,
+    vtable: u64,
+) -> Result<CommandReader, Unresolved> {
+    let slots = input.parser_slots;
+    let read = input
+        .pointers
+        .get(&(vtable + slots.read))
+        .copied()
+        .ok_or_else(|| Unresolved::new("command-read-slot"))?;
+    let member = input
+        .pointers
+        .get(&(vtable + slots.member))
+        .copied()
+        .ok_or_else(|| Unresolved::new("command-member-slot"))?;
+    if !input.functions.contains_key(&read) || !input.functions.contains_key(&member) {
+        return Err(Unresolved::new("command-reader-body"));
+    }
+    Ok(CommandReader {
+        vtable,
+        read,
+        member,
+    })
+}
+
 /// Executable-derived input for one command kind.
 pub struct DeclarationInput {
     pub tokens: BTreeMap<u64, String>,
@@ -44,10 +92,13 @@ pub struct DeclarationInput {
     /// documentation text in `x2`.
     pub entry_helpers: BTreeSet<u64>,
     pub operator_new: BTreeSet<u64>,
+    /// Constructor entries available for concrete receiver joins.
+    pub constructors: BTreeMap<u64, BTreeMap<u64, u64>>,
     pub functions: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
     pub strings: BTreeMap<u64, String>,
     pub slots: ScopeSlots,
+    pub parser_slots: ParserSlots,
     pub scope_names: Option<Vec<String>>,
     pub composition: Composition,
 }
@@ -60,6 +111,8 @@ pub enum Site {
         description: String,
         usage: String,
         scopes: ScopeOutcome,
+        /// Entry factory retained for independent parser and receiver analysis.
+        factory: u64,
     },
     /// The code composes the token at run time, and the method stopped at `obstacle`.
     RuntimeToken { obstacle: &'static str },
@@ -177,7 +230,7 @@ pub(crate) fn number(text: &str) -> Option<u64> {
 fn site(input: &DeclarationInput, rows: &[Instruction]) -> Site {
     let name = match literal_name(input, rows) {
         Ok(name) => name,
-        Err(site) => return site,
+        Err(site) => return *site,
     };
     let Some(new_index) = rows.iter().rposition(|row| {
         row.operation == "bl"
@@ -202,7 +255,7 @@ fn site(input: &DeclarationInput, rows: &[Instruction]) -> Site {
 fn helper_site(input: &DeclarationInput, rows: &[Instruction], helper: u64) -> Site {
     let name = match literal_name(input, rows) {
         Ok(name) => name,
-        Err(site) => return site,
+        Err(site) => return *site,
     };
     let documentation = register_values(rows).get("x2").copied();
     let (Some(factory), Some(documentation)) = (helper_factory(input, helper), documentation)
@@ -228,12 +281,13 @@ fn declared(input: &DeclarationInput, name: String, factory: u64, documentation:
         description,
         usage,
         scopes: scopes(input, factory),
+        factory,
     }
 }
 
 /// The name of the literal token in `w1`, set since the previous registration call. A token that
 /// the code computes is a `RuntimeToken`.
-fn literal_name(input: &DeclarationInput, rows: &[Instruction]) -> Result<String, Site> {
+fn literal_name(input: &DeclarationInput, rows: &[Instruction]) -> Result<String, Box<Site>> {
     let site_start = rows
         .iter()
         .rposition(|row| registrar_of(input, row).is_some())
@@ -255,10 +309,12 @@ fn literal_name(input: &DeclarationInput, rows: &[Instruction]) -> Result<String
             break;
         }
     }
-    let token = token.ok_or(Site::RuntimeToken { obstacle: "token" })?;
-    input.tokens.get(&token).cloned().ok_or(Site::Unreadable {
-        name: None,
-        what: "token-table",
+    let token = token.ok_or_else(|| Box::new(Site::RuntimeToken { obstacle: "token" }))?;
+    input.tokens.get(&token).cloned().ok_or_else(|| {
+        Box::new(Site::Unreadable {
+            name: None,
+            what: "token-table",
+        })
     })
 }
 

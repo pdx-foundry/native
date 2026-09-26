@@ -100,6 +100,7 @@ impl Native {
             | Operation::Registries
             | Operation::RegistryFields
             | Operation::Declarations
+            | Operation::CommandGrammar
             | Operation::Modifiers
             | Operation::ModifierCategories
             | Operation::ModifierFamilies
@@ -289,6 +290,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                 description,
                 usage,
                 scopes,
+                ..
             } => {
                 let scopes = match scopes {
                     ScopeOutcome::Any => DeclaredScopes::Any,
@@ -545,6 +547,7 @@ mod declaration_tests {
                     1,
                     Site::Declared {
                         name: "known".into(),
+                        factory: 0,
                         description: "description".into(),
                         usage: "".into(),
                         scopes: ScopeOutcome::Listed(vec![ScopeType {
@@ -590,6 +593,7 @@ mod declaration_tests {
                 1,
                 Site::Declared {
                     name: "known".into(),
+                    factory: 0,
                     description: "description".into(),
                     usage: "".into(),
                     scopes: ScopeOutcome::Unresolved(Unresolved::new("scope-table")),
@@ -633,6 +637,7 @@ mod field_gap_tests {
             tail: true,
         };
         RegistryFieldResult {
+            persistent: Default::default(),
             uses: vec![],
             collections: vec![],
             fields: vec![RootField {

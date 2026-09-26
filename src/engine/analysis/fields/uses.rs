@@ -737,6 +737,7 @@ mod tests {
     fn input(code: Vec<u8>) -> FieldInput {
         let symbols = vec![Symbol { name: "TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::LoadFile(char const*, bool)".into(), address: 0x7000 }];
         FieldInput {
+            persistent: None,
             selection: candidates(&symbols).remove(0),
             symbols,
             functions: vec![Function {
@@ -757,6 +758,7 @@ mod tests {
             data_offset: Some(8),
             class: "CChild".into(),
             fields: Box::new(RegistryFieldResult {
+                persistent: Default::default(),
                 fields: vec![
                     member("inherit", 8, 0x10, "CReader::Read(bool&)"),
                     member("text", 9, 0x18, "CReader::Read(CString&, bool)"),

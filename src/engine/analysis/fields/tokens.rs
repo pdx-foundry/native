@@ -36,21 +36,22 @@ pub(super) fn decode(function: &Function) -> Result<Vec<Instruction>, String> {
     }
     decode_arm64(&function.code, function.address).map_err(|e| e.to_string())
 }
-pub(super) fn function<'a>(input: &'a FieldInput, name: &str) -> Option<&'a Function> {
-    let mut matches = input.functions.iter().filter(|f| f.name == name);
+pub(super) fn function<'a>(
+    functions: &'a [Function],
+    symbols: &[Symbol],
+    name: &str,
+) -> Option<&'a Function> {
+    let mut matches = functions.iter().filter(|f| f.name == name);
     let first = matches.next()?;
     if matches.next().is_some() {
         return None;
     }
-    let mut symbols = input.symbols.iter().filter(|s| s.name == name);
+    let mut symbols = symbols.iter().filter(|s| s.name == name);
     let symbol = symbols.next()?;
     (symbol.address == first.address && symbols.all(|s| s.address == first.address))
         .then_some(first)
 }
-pub(super) fn symbol_names(input: &FieldInput) -> BTreeMap<u64, Option<&str>> {
-    names_by_address(&input.symbols)
-}
-fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
+pub(super) fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
     let mut names = BTreeMap::new();
     for symbol in symbols {
         names
@@ -65,13 +66,13 @@ fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
     names
 }
 #[derive(Debug)]
-pub(super) struct Token {
+pub(crate) struct Token {
     pub name: String,
     pub constructor: u64,
     pub ambiguous: bool,
 }
 pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<FieldGap>) {
-    let rows = match function(input, "GetTokenArray()")
+    let rows = match function(&input.functions, &input.symbols, "GetTokenArray()")
         .ok_or("token constructor function missing or ambiguous".into())
         .and_then(decode)
     {
@@ -83,7 +84,7 @@ pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<FieldGap
 fn token_table_gap(reason: impl Into<String>) -> FieldGap {
     FieldGap::new(FieldGapKind::TokenTable, reason)
 }
-pub(super) fn recover_decoded(
+pub(crate) fn recover_decoded(
     rows: &[Instruction],
     symbols: &[Symbol],
     strings: &BTreeMap<u64, String>,

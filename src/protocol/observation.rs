@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/14";
+pub(crate) const VERSION: &str = "native-observation/16";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 /// Bound of the loaded modifier table file.
@@ -112,7 +112,21 @@ mod tests {
             assert_eq!(serde_json::to_value(kind).unwrap(), *value);
             let event = serde_json::json!({
                 "kind": "field-authority", "question": 0, "reader_id": null,
-                "reader_kind": value, "storage_supported": false, "unavailable": "unsupported"
+                "reader_kind": value, "reader_family": "Unknown", "storage_supported": false, "unavailable": "unsupported"
+            });
+            let typed: crate::engine::operations::fixture::FixtureEvent =
+                serde_json::from_value(event.clone()).unwrap();
+            assert_eq!(serde_json::to_value(typed).unwrap(), event);
+        }
+    }
+
+    #[test]
+    fn every_block_family_round_trips_through_reader_authority() {
+        for value in super::python_variants(schemars::schema_for!(crate::BlockFamily)).values() {
+            let event = serde_json::json!({
+                "kind": "field-authority", "question": 0, "reader_id": null,
+                "reader_kind": "Block", "reader_family": value,
+                "storage_supported": false, "unavailable": "unsupported"
             });
             let typed: crate::engine::operations::fixture::FixtureEvent =
                 serde_json::from_value(event.clone()).unwrap();
@@ -161,6 +175,25 @@ pub(crate) struct FixtureBinding {
     pub file_line_offset: u64,
     pub fields: Vec<FixtureFieldBinding>,
     pub outcome_registries: Vec<FixtureOutcomeRegistryBinding>,
+    pub validation: Option<FixtureValidationBinding>,
+}
+
+/// Formatted logger arguments and the terminal after content validation on one exact build.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureValidationBinding {
+    pub log_entry: u64,
+    pub log_text_register: String,
+    pub unformatted_log_entry: u64,
+    pub stream_log_entry: u64,
+    pub stream_log_text_register: String,
+    pub sourced_log_entry: u64,
+    pub sourced_log_text_register: String,
+    pub sourced_log_owner_register: String,
+    pub sourced_log_source_offset: u64,
+    pub complete_entry: u64,
+    pub source_file_prefix: String,
+    pub source_line_prefix: String,
 }
 
 /// A field token selected by the exact-build recipe.
@@ -186,13 +219,13 @@ pub(crate) struct FixtureOutcomeRegistryBinding {
     pub fields: Vec<FixtureOutcomeFieldBinding>,
 }
 
-/// One field's exact token and owner-relative storage.
+/// One field's exact token and optional proven string storage.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixtureOutcomeFieldBinding {
     pub token: u64,
     pub name: String,
-    pub storage_offset: u64,
+    pub storage_offset: Option<u64>,
 }
 
 /// One public question resolved against static reader evidence and exact live bindings.
@@ -202,10 +235,12 @@ pub(crate) struct FixtureQuestionSetup {
     pub index: u64,
     pub definition: String,
     pub field: String,
+    pub parsing: bool,
     pub diagnostics: bool,
     pub runtime: bool,
     pub reader_id: Option<String>,
     pub reader_kind: crate::ReaderKind,
+    pub reader_family: crate::BlockFamily,
     pub token: Option<u64>,
     pub storage_offset: Option<u64>,
     pub unavailable: Option<String>,
@@ -218,6 +253,7 @@ pub(crate) struct FixtureSetup {
     pub file: String,
     pub registration_entries: bool,
     pub field_reads: bool,
+    pub validation: bool,
     pub questions: Vec<FixtureQuestionSetup>,
     pub bindings: FixtureBinding,
 }

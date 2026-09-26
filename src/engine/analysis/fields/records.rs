@@ -41,6 +41,9 @@ pub struct FieldInput {
     /// Constructed persistent classes directly reached from the root.
     #[serde(default)]
     pub objects: Vec<ObjectReader>,
+    /// Constructor evidence for generic persistent member destinations.
+    #[serde(default)]
+    pub persistent: Option<PersistentInput>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
 }
@@ -59,6 +62,12 @@ pub enum Value {
     Stack(i64),
     /// Load from a known base, with byte width.
     Load(Box<Value>, u8),
+    /// An address offset from a loaded or computed value.
+    Offset(Box<Value>, i64),
+    /// An address formed by adding a scaled index.
+    Indexed(Box<Value>, Box<Value>, u8),
+    /// Boolean result of comparing a value with any listed constant.
+    EqualsAny(Box<Value>, Vec<i64>),
     /// The original field token plus a constant, as a zero-extended 32-bit word.
     TokenWord(i64),
     /// A jump-table entry that the token selects.
@@ -205,6 +214,8 @@ impl FieldGap {
 pub struct RegistryFieldResult {
     /// Local use-time storage selections with unresolved enclosing context.
     pub uses: Vec<StorageSelection>,
+    /// Concrete methods established at owner-relative persistent destinations.
+    pub persistent: BTreeMap<i64, ConcreteReader>,
     /// Established nested object collections.
     pub collections: Vec<CollectionField>,
     /// Named root fields, with explicit reader alternatives.
@@ -262,4 +273,22 @@ pub struct StorageSelection {
     pub tested: Vec<String>,
     /// Whether the tested field is zero on this selection's branch.
     pub zero: bool,
+}
+
+/// Concrete methods and independently established family at one vtable address point.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConcreteReader {
+    pub read: String,
+    pub member: String,
+    pub family: crate::BlockFamily,
+}
+
+/// Exact executable inputs for owner constructor evaluation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistentInput {
+    pub constructors: Vec<Function>,
+    pub summaries: BTreeMap<u64, BTreeMap<u64, u64>>,
+    pub pointers: BTreeMap<u64, u64>,
+    pub never_return: Vec<u64>,
+    pub readers: BTreeMap<u64, ConcreteReader>,
 }

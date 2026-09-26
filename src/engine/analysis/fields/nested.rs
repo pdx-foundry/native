@@ -152,6 +152,7 @@ pub(super) fn discover(
             data_offset: object.data_offset,
             class: object.class.clone(),
             fields: Box::new(RegistryFieldResult {
+                persistent: Default::default(),
                 uses: Vec::new(),
                 fields,
                 paths,

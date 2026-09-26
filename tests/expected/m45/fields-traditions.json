@@ -11,7 +11,8 @@
      "Read": {
       "reader": {
        "id": "325efaa17499c32d",
-       "kind": "String"
+       "kind": "String",
+       "family": "NotApplicable"
       },
       "shape": {
        "repeat": "Replace",
@@ -23,7 +24,8 @@
   ],
   "reader": {
    "id": "325efaa17499c32d",
-   "kind": "String"
+   "kind": "String",
+   "family": "NotApplicable"
   },
   "shape": {
    "repeat": "Replace",
@@ -61,7 +63,8 @@
      "Read": {
       "reader": {
        "id": "325efaa17499c32d",
-       "kind": "String"
+       "kind": "String",
+       "family": "NotApplicable"
       },
       "shape": {
        "repeat": "Replace",
@@ -73,7 +76,8 @@
   ],
   "reader": {
    "id": "325efaa17499c32d",
-   "kind": "String"
+   "kind": "String",
+   "family": "NotApplicable"
   },
   "shape": {
    "repeat": "Replace",
@@ -111,7 +115,8 @@
      "Read": {
       "reader": {
        "id": "e044b50825a1841d",
-       "kind": "Block"
+       "kind": "Block",
+       "family": "Trigger"
       },
       "shape": {
        "repeat": "Unknown",
@@ -123,7 +128,8 @@
   ],
   "reader": {
    "id": "e044b50825a1841d",
-   "kind": "Block"
+   "kind": "Block",
+   "family": "Trigger"
   },
   "shape": {
    "repeat": "Unknown",
@@ -143,7 +149,8 @@
      "Read": {
       "reader": {
        "id": "e044b50825a1841d",
-       "kind": "Block"
+       "kind": "Block",
+       "family": "Trigger"
       },
       "shape": {
        "repeat": "Unknown",
@@ -155,7 +162,8 @@
   ],
   "reader": {
    "id": "e044b50825a1841d",
-   "kind": "Block"
+   "kind": "Block",
+   "family": "Trigger"
   },
   "shape": {
    "repeat": "Unknown",
@@ -175,7 +183,8 @@
      "Read": {
       "reader": {
        "id": "6e28a363faf61c52",
-       "kind": "Block"
+       "kind": "Block",
+       "family": "Effect"
       },
       "shape": {
        "repeat": "Unknown",
@@ -187,7 +196,8 @@
   ],
   "reader": {
    "id": "6e28a363faf61c52",
-   "kind": "Block"
+   "kind": "Block",
+   "family": "Effect"
   },
   "shape": {
    "repeat": "Unknown",
@@ -242,7 +252,8 @@
      "Read": {
       "reader": {
        "id": "6e28a363faf61c52",
-       "kind": "Block"
+       "kind": "Block",
+       "family": "Effect"
       },
       "shape": {
        "repeat": "Unknown",
@@ -254,7 +265,8 @@
   ],
   "reader": {
    "id": "6e28a363faf61c52",
-   "kind": "Block"
+   "kind": "Block",
+   "family": "Effect"
   },
   "shape": {
    "repeat": "Unknown",
@@ -293,7 +305,8 @@
   ],
   "reader": {
    "id": null,
-   "kind": "Unknown"
+   "kind": "Unknown",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Unknown",
@@ -312,8 +325,9 @@
     "outcome": {
      "Read": {
       "reader": {
-       "id": "97942c9a3d3c9c1b",
-       "kind": "Block"
+       "id": "f08cb83d92484a89",
+       "kind": "Block",
+       "family": "Unknown"
       },
       "shape": {
        "repeat": "Unknown",
@@ -324,8 +338,9 @@
    }
   ],
   "reader": {
-   "id": "97942c9a3d3c9c1b",
-   "kind": "Block"
+   "id": "f08cb83d92484a89",
+   "kind": "Block",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Unknown",
@@ -345,7 +360,8 @@
      "Read": {
       "reader": {
        "id": "325efaa17499c32d",
-       "kind": "String"
+       "kind": "String",
+       "family": "NotApplicable"
       },
       "shape": {
        "repeat": "Replace",
@@ -357,7 +373,8 @@
   ],
   "reader": {
    "id": "325efaa17499c32d",
-   "kind": "String"
+   "kind": "String",
+   "family": "NotApplicable"
   },
   "shape": {
    "repeat": "Replace",
@@ -382,7 +399,8 @@
         "Read": {
          "reader": {
           "id": "325efaa17499c32d",
-          "kind": "String"
+          "kind": "String",
+          "family": "NotApplicable"
          },
          "shape": {
           "repeat": "Replace",
@@ -394,7 +412,8 @@
      ],
      "reader": {
       "id": "325efaa17499c32d",
-      "kind": "String"
+      "kind": "String",
+      "family": "NotApplicable"
      },
      "shape": {
       "repeat": "Replace",
@@ -449,7 +468,8 @@
         "Read": {
          "reader": {
           "id": "97942c9a3d3c9c1b",
-          "kind": "Block"
+          "kind": "Block",
+          "family": "Unknown"
          },
          "shape": {
           "repeat": "Unknown",
@@ -461,7 +481,8 @@
      ],
      "reader": {
       "id": "97942c9a3d3c9c1b",
-      "kind": "Block"
+      "kind": "Block",
+      "family": "Unknown"
      },
      "shape": {
       "repeat": "Unknown",
@@ -481,7 +502,8 @@
         "Read": {
          "reader": {
           "id": "325efaa17499c32d",
-          "kind": "String"
+          "kind": "String",
+          "family": "NotApplicable"
          },
          "shape": {
           "repeat": "Replace",
@@ -493,7 +515,8 @@
      ],
      "reader": {
       "id": "325efaa17499c32d",
-      "kind": "String"
+      "kind": "String",
+      "family": "NotApplicable"
      },
      "shape": {
       "repeat": "Replace",
@@ -531,7 +554,8 @@
         "Read": {
          "reader": {
           "id": "325efaa17499c32d",
-          "kind": "String"
+          "kind": "String",
+          "family": "NotApplicable"
          },
          "shape": {
           "repeat": "Replace",
@@ -543,7 +567,8 @@
      ],
      "reader": {
       "id": "325efaa17499c32d",
-      "kind": "String"
+      "kind": "String",
+      "family": "NotApplicable"
      },
      "shape": {
       "repeat": "Replace",
@@ -581,7 +606,8 @@
         "Read": {
          "reader": {
           "id": "e044b50825a1841d",
-          "kind": "Block"
+          "kind": "Block",
+          "family": "Trigger"
          },
          "shape": {
           "repeat": "Unknown",
@@ -593,7 +619,8 @@
      ],
      "reader": {
       "id": "e044b50825a1841d",
-      "kind": "Block"
+      "kind": "Block",
+      "family": "Trigger"
      },
      "shape": {
       "repeat": "Unknown",
@@ -613,7 +640,8 @@
         "Read": {
          "reader": {
           "id": "6e28a363faf61c52",
-          "kind": "Block"
+          "kind": "Block",
+          "family": "Effect"
          },
          "shape": {
           "repeat": "Unknown",
@@ -625,7 +653,8 @@
      ],
      "reader": {
       "id": "6e28a363faf61c52",
-      "kind": "Block"
+      "kind": "Block",
+      "family": "Effect"
      },
      "shape": {
       "repeat": "Unknown",
@@ -680,7 +709,8 @@
         "Read": {
          "reader": {
           "id": "6e28a363faf61c52",
-          "kind": "Block"
+          "kind": "Block",
+          "family": "Effect"
          },
          "shape": {
           "repeat": "Unknown",
@@ -692,7 +722,8 @@
      ],
      "reader": {
       "id": "6e28a363faf61c52",
-      "kind": "Block"
+      "kind": "Block",
+      "family": "Effect"
      },
      "shape": {
       "repeat": "Unknown",
@@ -731,7 +762,8 @@
      ],
      "reader": {
       "id": null,
-      "kind": "Unknown"
+      "kind": "Unknown",
+      "family": "Unknown"
      },
      "shape": {
       "repeat": "Unknown",
@@ -751,7 +783,8 @@
         "Read": {
          "reader": {
           "id": "325efaa17499c32d",
-          "kind": "String"
+          "kind": "String",
+          "family": "NotApplicable"
          },
          "shape": {
           "repeat": "Replace",
@@ -763,7 +796,8 @@
      ],
      "reader": {
       "id": "325efaa17499c32d",
-      "kind": "String"
+      "kind": "String",
+      "family": "NotApplicable"
      },
      "shape": {
       "repeat": "Replace",
@@ -783,7 +817,8 @@
         "Read": {
          "reader": {
           "id": "b894933b2b2853a5",
-          "kind": "Boolean"
+          "kind": "Boolean",
+          "family": "NotApplicable"
          },
          "shape": {
           "repeat": "Replace",
@@ -795,7 +830,8 @@
      ],
      "reader": {
       "id": "b894933b2b2853a5",
-      "kind": "Boolean"
+      "kind": "Boolean",
+      "family": "NotApplicable"
      },
      "shape": {
       "repeat": "Replace",
@@ -815,7 +851,8 @@
         "Read": {
          "reader": {
           "id": "b894933b2b2853a5",
-          "kind": "Boolean"
+          "kind": "Boolean",
+          "family": "NotApplicable"
          },
          "shape": {
           "repeat": "Replace",
@@ -827,7 +864,8 @@
      ],
      "reader": {
       "id": "b894933b2b2853a5",
-      "kind": "Boolean"
+      "kind": "Boolean",
+      "family": "NotApplicable"
      },
      "shape": {
       "repeat": "Replace",
@@ -847,7 +885,8 @@
         "Read": {
          "reader": {
           "id": "b894933b2b2853a5",
-          "kind": "Boolean"
+          "kind": "Boolean",
+          "family": "NotApplicable"
          },
          "shape": {
           "repeat": "Replace",
@@ -859,7 +898,8 @@
      ],
      "reader": {
       "id": "b894933b2b2853a5",
-      "kind": "Boolean"
+      "kind": "Boolean",
+      "family": "NotApplicable"
      },
      "shape": {
       "repeat": "Replace",
@@ -879,7 +919,8 @@
         "Read": {
          "reader": {
           "id": "97942c9a3d3c9c1b",
-          "kind": "Block"
+          "kind": "Block",
+          "family": "Unknown"
          },
          "shape": {
           "repeat": "Unknown",
@@ -891,7 +932,8 @@
      ],
      "reader": {
       "id": "97942c9a3d3c9c1b",
-      "kind": "Block"
+      "kind": "Block",
+      "family": "Unknown"
      },
      "shape": {
       "repeat": "Unknown",
@@ -908,8 +950,9 @@
     "outcome": {
      "Read": {
       "reader": {
-       "id": "2ff735a2dc27a565",
-       "kind": "Block"
+       "id": "3e4a6b47b20070ea",
+       "kind": "Block",
+       "family": "Unknown"
       },
       "shape": {
        "repeat": "Accumulate",
@@ -920,8 +963,9 @@
    }
   ],
   "reader": {
-   "id": "2ff735a2dc27a565",
-   "kind": "Block"
+   "id": "3e4a6b47b20070ea",
+   "kind": "Block",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Accumulate",
@@ -940,8 +984,9 @@
     "outcome": {
      "Read": {
       "reader": {
-       "id": "97942c9a3d3c9c1b",
-       "kind": "Block"
+       "id": "1c2988588f7e8eaa",
+       "kind": "Block",
+       "family": "Modifier"
       },
       "shape": {
        "repeat": "Unknown",
@@ -952,8 +997,9 @@
    }
   ],
   "reader": {
-   "id": "97942c9a3d3c9c1b",
-   "kind": "Block"
+   "id": "1c2988588f7e8eaa",
+   "kind": "Block",
+   "family": "Modifier"
   },
   "shape": {
    "repeat": "Unknown",

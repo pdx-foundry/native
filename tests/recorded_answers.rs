@@ -637,3 +637,63 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
     assert_eq!(rules[1].kind, RuleKind::Weighted);
     assert!(rules[1].entries.is_empty());
 }
+
+#[test]
+fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands() {
+    use pdx_native::{BlockFamily, CommandGrammar, GrammarProperty};
+    let root = recorded();
+    let value = json!({
+        "reader": {"id": "shared-control-reader", "kind": "Block", "family": "Effect"},
+        "child_families": {"Known": ["Effect"]},
+        "fixed_keys": {"Partial": []},
+        "numeric_keys": {"Partial": {
+            "reader": {"id": "weighted-entry", "kind": "Block", "family": "Effect"},
+            "child_families": {"Partial": ["Effect"]},
+            "fixed_keys": "Unresolved",
+            "numeric_keys": "Unresolved",
+            "ordering": "Unresolved"
+        }},
+        "ordering": {"Partial": [{
+            "child": "else",
+            "conditions": [{"First": false}, {"Previous": {"keys": ["if", "else_if"], "matches": true}}],
+            "outcome": {"Dispatch": "Effect"}
+        }]}
+    });
+    let grammar: CommandGrammar = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&grammar).unwrap(), value);
+    write(
+        root.path(),
+        "command_grammar/effect/if.json",
+        json!({"Ok": {
+            "value": value, "completeness": "Partial",
+            "gaps": [{"kind": "ReaderSemantics", "subject": null, "detail": "Ordering unresolved."}],
+            "source": source()
+        }}),
+    );
+    let error = Error::UnknownCommand {
+        kind: DeclarationKind::Effect,
+        name: "limit".into(),
+    };
+    write(
+        root.path(),
+        "command_grammar/effect/limit.json",
+        json!({"Err": error}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    assert_eq!(
+        native.supports(Operation::CommandGrammar),
+        Support::Supported
+    );
+    let answer = native
+        .command_grammar(DeclarationKind::Effect, "if")
+        .unwrap();
+    assert_eq!(answer.value, grammar);
+    assert_eq!(answer.value.reader.family, BlockFamily::Effect);
+    assert_eq!(answer.value.fixed_keys, GrammarProperty::Partial(vec![]));
+    assert_eq!(answer.completeness, Completeness::Partial);
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(
+        native.command_grammar(DeclarationKind::Effect, "limit"),
+        Err(error)
+    );
+}

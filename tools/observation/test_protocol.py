@@ -17,7 +17,7 @@ class ProtocolTests(unittest.TestCase):
                        fields=[dict(token=10001, name='custom_tooltip',
                        storage_offset=448)])
         fixture = dict(file='common/tradition_categories/atlas.txt', registration_entries=True,
-                       field_reads=True, questions=[], bindings=dict(registration_entry=4096, load_entry=8192,
+                       field_reads=True, validation=False, questions=[], bindings=dict(validation=None, registration_entry=4096, load_entry=8192,
                        field_entry=12288, reader_lexer_offset=48, lexer_file_offset=8,
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,
                        fields=[dict(token=16793, name='tree_template'), dict(token=14263, name='traditions')],
@@ -38,7 +38,7 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.assertEqual(wire.decode('reader_kind', wire.encode('reader_kind', kind)), kind)
                 event = dict(kind='field-authority', question=0, reader_id=None,
-                             reader_kind=kind, storage_supported=False, unavailable='unsupported')
+                             reader_kind=kind, reader_family='Unknown', storage_supported=False, unavailable='unsupported')
                 row = dict(run='a', seq=1, thread=7, kind='fixture', event=event)
                 self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
         for kind in ['string', 'Unsupported', 1, None]:

@@ -1,4 +1,4 @@
-mod recipes;
+pub(in crate::binding) mod recipes;
 mod records;
 
 use super::binary::ImageIdentity;

@@ -1,9 +1,11 @@
-use super::tokens::{decode, function, number, register, symbol_names};
+use super::Function;
+use super::tokens::{decode, function, names_by_address, number, register};
 use super::{
     Condition, DataSection, FieldGap, FieldGapKind, FieldInput, PathOutcome, ReaderJoin,
     TableEntry, TokenPath, Value,
 };
 use crate::engine::analysis::decode::Instruction;
+use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::stop::{Bound, Obstacle, Unknown, Unresolved};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -16,6 +18,14 @@ const MAX_STATES: usize = 4096;
 const MAX_PATH: usize = 500;
 /// The most tokens that one jump through a table may select.
 const MAX_TABLE_ENTRIES: usize = 1024;
+
+/// Executable inputs shared by registry fields and command member dispatch.
+pub(crate) struct DispatchInput<'a> {
+    pub functions: &'a [Function],
+    pub symbols: &'a [Symbol],
+    pub read_only_data: &'a [DataSection],
+    pub reader_token_offset: Option<u64>,
+}
 /// A comparison of the token word `token + offset` with a constant.
 #[derive(Clone, Copy)]
 struct Comparison {
@@ -33,10 +43,16 @@ struct TableCase {
     guard: Option<u64>,
 }
 #[derive(Clone)]
+enum Flags {
+    Token(Comparison),
+    Values { tested: Value, pivots: Vec<i64> },
+}
+
+#[derive(Clone)]
 struct State {
     pc: usize,
     registers: BTreeMap<String, Value>,
-    flags: Option<Comparison>,
+    flags: Option<Flags>,
     domain: [i64; 2],
     conditions: Vec<Condition>,
     path: Vec<u64>,
@@ -100,6 +116,10 @@ fn offset(value: Value, amount: i64) -> Option<Value> {
         Value::Reader(v) => v.checked_add(amount).map(Value::Reader),
         Value::Stack(v) => v.checked_add(amount).map(Value::Stack),
         Value::Constant(v) => v.checked_add(amount).map(Value::Constant),
+        Value::Offset(base, previous) => previous
+            .checked_add(amount)
+            .map(|offset| Value::Offset(base, offset)),
+        Value::Load(..) | Value::Indexed(..) => Some(Value::Offset(Box::new(value), amount)),
         _ => None,
     }
 }
@@ -179,6 +199,20 @@ fn memory(operand: &str) -> Option<(&str, i64)> {
     register(base)?;
     Some((base, number(amount)?))
 }
+/// Stack pair access and its optional pre- or post-index base update.
+fn pair_memory(operand: &str) -> Option<(&str, i64, Option<i64>)> {
+    if let Some(address) = operand.strip_suffix('!') {
+        let (base, amount) = memory(address)?;
+        return Some((base, amount, Some(amount)));
+    }
+    if let Some((address, amount)) = operand.split_once("],") {
+        let base = address.strip_prefix('[')?;
+        register(base)?;
+        return Some((base, 0, Some(number(amount)?)));
+    }
+    memory(operand).map(|(base, amount)| (base, amount, None))
+}
+
 /// The base, index register and index extension of a register-offset address.
 fn indexed(address: &str) -> Option<(&str, &str, &str)> {
     let interior = address.strip_prefix('[')?.strip_suffix(']')?;
@@ -293,8 +327,12 @@ fn push_table_gap(
         gaps.push(gap);
     }
 }
-fn rejection(input: &FieldInput, names: &BTreeMap<u64, Option<&str>>) -> bool {
-    let Some(base) = function(input, "CPersistent::ReadMember(CReader&, int)") else {
+fn rejection(input: &DispatchInput<'_>, names: &BTreeMap<u64, Option<&str>>) -> bool {
+    let Some(base) = function(
+        input.functions,
+        input.symbols,
+        "CPersistent::ReadMember(CReader&, int)",
+    ) else {
         return false;
     };
     let Ok(rows) = decode(base) else {
@@ -314,7 +352,15 @@ fn reader_join(name: Option<&str>, state: &State, at: u64, entry: u64, tail: boo
     };
     let get = |key: &str| state.registers.get(key);
     let owner = |value: Option<&Value>| matches!(value, Some(Value::Owner(_)));
-    let joined = if name.starts_with("CReader::Read(") {
+    let joined = if name.ends_with("::ReadMember(CReader&, int)")
+        || name.ends_with("::ReadMember(CReader&, int, EScopeType)")
+    {
+        owner(get("x0"))
+            && get("x1") == Some(&Value::Reader(0))
+            && matches!(get("x2"), Some(Value::Token | Value::TokenWord(0)))
+    } else if name.ends_with("::Read(CReader&, EScopeType)") {
+        owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
+    } else if name.starts_with("CReader::Read(") {
         get("x0") == Some(&Value::Reader(0)) && owner(get("x1"))
     } else if name == "CVariableValue::Read(CReader&, EScopeType)" {
         owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
@@ -348,7 +394,12 @@ fn unestablished(state: &State, base: &str) -> Obstacle {
     }
 }
 /// Run `row`. `entry` is the root function, where a stop is entered.
-fn apply(row: &Instruction, state: &mut State, entry: u64) -> Result<(), Unresolved> {
+fn apply(
+    row: &Instruction,
+    state: &mut State,
+    entry: u64,
+    reader_token_offset: Option<u64>,
+) -> Result<(), Unresolved> {
     let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
     let unsupported = |reason| stop(reason, Obstacle::Unsupported);
     if let Some((destination, entry)) = table_load(row, state) {
@@ -366,7 +417,34 @@ fn apply(row: &Instruction, state: &mut State, entry: u64) -> Result<(), Unresol
             };
             state.flags = match (offset, state.value(right)) {
                 (Some(offset), Some(Value::Constant(pivot))) if left.starts_with('w') => {
-                    Some(Comparison { offset, pivot })
+                    Some(Flags::Token(Comparison { offset, pivot }))
+                }
+                (_, Some(Value::Constant(pivot))) => {
+                    state.value(left).map(|tested| Flags::Values {
+                        tested,
+                        pivots: vec![pivot],
+                    })
+                }
+                _ => None,
+            };
+        }
+        ("ccmp", [left, right, "#4", "ne"]) => {
+            let previous = match state.flags.take() {
+                Some(Flags::Token(Comparison { offset, pivot })) => {
+                    Some((Value::TokenWord(offset), vec![pivot]))
+                }
+                Some(Flags::Values { tested, pivots }) => Some((tested, pivots)),
+                None => None,
+            };
+            state.flags = match (previous, state.value(left), state.value(right)) {
+                (Some((tested, mut pivots)), Some(current), Some(Value::Constant(pivot)))
+                    if tested == current
+                        || matches!((&tested, &current), (Value::TokenWord(0), Value::Token)) =>
+                {
+                    pivots.push(pivot);
+                    pivots.sort();
+                    pivots.dedup();
+                    Some(Flags::Values { tested, pivots })
                 }
                 _ => None,
             };
@@ -399,22 +477,26 @@ fn apply(row: &Instruction, state: &mut State, entry: u64) -> Result<(), Unresol
         }
         ("add", [destination, left, right, shift]) if destination.starts_with('x') => {
             let shift = shift.strip_prefix("lsl").and_then(number);
-            let (Some(Value::Constant(base)), Some(Value::TableEntry(entry)), Some(shift)) =
+            let (Some(base), Some(index), Some(shift)) =
                 (state.value(left), state.value(right), shift)
             else {
                 return Err(unsupported("instruction"));
             };
-            let shift = u8::try_from(shift).map_err(|_| unsupported("instruction"))?;
-            state.assign(
-                destination,
-                Some(Value::TableTarget {
+            let shift = u8::try_from(shift)
+                .ok()
+                .filter(|shift| *shift < 64)
+                .ok_or_else(|| unsupported("instruction"))?;
+            let value = match (base, index) {
+                (Value::Constant(base), Value::TableEntry(entry)) => Value::TableTarget {
                     base: base as u64,
                     entry,
                     shift,
-                }),
-            );
+                },
+                (base, index) => Value::Indexed(Box::new(base), Box::new(index), shift),
+            };
+            state.assign(destination, Some(value));
         }
-        ("ldr" | "ldrb" | "str" | "strb", _) => {
+        ("ldr" | "ldrb" | "ldrsw" | "ldur" | "str" | "strb", _) => {
             let Some((operand, address)) = row.operands.split_once(',') else {
                 return Err(unsupported("memory-operands"));
             };
@@ -426,13 +508,21 @@ fn apply(row: &Instruction, state: &mut State, entry: u64) -> Result<(), Unresol
             if row.operation.starts_with("ld") {
                 let width = if row.operation == "ldrb" {
                     1
+                } else if row.operation == "ldrsw" {
+                    4
                 } else if operand.starts_with('x') {
                     8
                 } else {
                     4
                 };
                 // A load retains origin as a load, never as the original receiver or pointer.
-                let value = location.map(|v| Value::Load(Box::new(v), width));
+                let value = location.map(|v| {
+                    if width == 4 && matches!(v, Value::Reader(offset) if Some(offset as u64) == reader_token_offset) {
+                        Value::Token
+                    } else {
+                        Value::Load(Box::new(v), width)
+                    }
+                });
                 let key = register(operand).ok_or_else(|| unsupported("load-destination"))?;
                 state.registers.remove(&key);
                 if let Some(value) = value {
@@ -449,16 +539,24 @@ fn apply(row: &Instruction, state: &mut State, entry: u64) -> Result<(), Unresol
             else {
                 return Err(unsupported("pair-operands"));
             };
-            let (base, amount) = memory(address).ok_or_else(|| unsupported("addressing"))?;
-            if !matches!(
-                state.value(base).and_then(|v| offset(v, amount)),
-                Some(Value::Stack(_))
-            ) {
+            let (base, amount, update) =
+                pair_memory(address).ok_or_else(|| unsupported("addressing"))?;
+            let location = state.value(base).and_then(|v| offset(v, amount));
+            if !matches!(location, Some(Value::Stack(_))) {
                 return Err(stop("pair-address", unestablished(state, base)));
             }
+            let updated =
+                update.and_then(|amount| state.value(base).and_then(|v| offset(v, amount)));
             if row.operation == "ldp" {
+                if update.is_some() && [register(first), register(second)].contains(&register(base))
+                {
+                    return Err(unsupported("pair-writeback-alias"));
+                }
                 state.assign(first, None);
                 state.assign(second, None);
+            }
+            if update.is_some() {
+                state.assign(base, updated);
             }
         }
         // Bit-field reads do not set flags; their result is not followed.
@@ -474,8 +572,8 @@ fn apply(row: &Instruction, state: &mut State, entry: u64) -> Result<(), Unresol
 
 /// The entry address and instructions of the root function, or `None` when the image has no
 /// single root function or its code does not decode.
-fn decode_root(input: &FieldInput, root: &str) -> Option<(u64, Vec<Instruction>)> {
-    let function = function(input, root)?;
+fn decode_root(input: &DispatchInput<'_>, root: &str) -> Option<(u64, Vec<Instruction>)> {
+    let function = function(input.functions, input.symbols, root)?;
     let rows = decode(function).ok()?;
     Some((function.address, rows))
 }
@@ -487,6 +585,22 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
 
 pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>, Vec<FieldGap>) {
     let root = format!("{owner}::ReadMember(CReader&, int)");
+    explore_member(
+        &DispatchInput {
+            functions: &input.functions,
+            symbols: &input.symbols,
+            read_only_data: &input.read_only_data,
+            reader_token_offset: None,
+        },
+        &root,
+    )
+}
+
+/// Bounded token paths through a proven member-reader function.
+pub(crate) fn explore_member(
+    input: &DispatchInput<'_>,
+    root: &str,
+) -> (Vec<TokenPath>, Vec<FieldGap>) {
     let initial = State {
         pc: 0,
         registers: BTreeMap::from([
@@ -502,7 +616,7 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
         path: vec![],
         table_case: None,
     };
-    let Some((entry, rows)) = decode_root(input, &root) else {
+    let Some((entry, rows)) = decode_root(input, root) else {
         let missing = Unresolved::new("root-function");
         return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);
     };
@@ -512,7 +626,7 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
         .enumerate()
         .map(|(i, r)| (r.address, i))
         .collect();
-    let names = symbol_names(input);
+    let names = names_by_address(input.symbols);
     let rejects = rejection(input, &names);
     let mut pending = vec![initial];
     let mut leaves = Vec::new();
@@ -586,22 +700,22 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
             {
                 zero_test_branch(row, tested, target, &state, &indexes, entry)
             } else if row.operation == "br" {
-                table_jump(row, &state, &rows, &indexes, &input.read_only_data, entry)
+                table_jump(row, &state, &rows, &indexes, input.read_only_data, entry)
             } else {
-                match apply(row, &mut state, entry) {
+                match apply(row, &mut state, entry, input.reader_token_offset) {
                     Ok(()) => continue,
                     Err(unresolved) => Branching::gap(&state, row.address, unresolved),
                 }
             };
             for gap in branching.table_gaps {
-                push_table_gap(&mut tables, &root, gap.table, gap.why, gap.unresolved);
+                push_table_gap(&mut tables, root, gap.table, gap.why, gap.unresolved);
             }
             leaves.extend(branching.ended);
             pending.extend(branching.continued);
             break;
         }
     }
-    reject_default_cases(&mut leaves, &table_readers, &mut tables, &root, entry);
+    reject_default_cases(&mut leaves, &table_readers, &mut tables, root, entry);
     leaves.sort_by(|a, b| {
         a.domain
             .cmp(&b.domain)
@@ -665,6 +779,11 @@ fn call_outcome(
     entry: u64,
     tail: bool,
 ) -> PathOutcome {
+    if name == Some("CReader::ReportUnexpected()")
+        && state.registers.get("x0") == Some(&Value::Reader(0))
+    {
+        return PathOutcome::Rejected;
+    }
     if name == Some("CPersistent::ReadMember(CReader&, int)")
         && rejects
         && matches!(state.registers.get("x0"), Some(Value::Owner(_)))
@@ -675,6 +794,13 @@ fn call_outcome(
         )
     {
         PathOutcome::Rejected
+    } else if name == Some("CPersistent::ReadMember(CReader&, int)") {
+        PathOutcome::Reader(ReaderJoin::Missing(Unresolved::at(
+            "base-rejection",
+            at,
+            entry,
+            Obstacle::Call,
+        )))
     } else {
         PathOutcome::Reader(reader_join(name, state, at, entry, tail))
     }
@@ -696,18 +822,30 @@ fn condition_branch(
         "cc" => "lo",
         condition => condition,
     };
-    let split = match (state.flags, opposite(condition), target) {
+    if let Some(Flags::Values { tested, pivots }) = &state.flags {
+        return values_branch(
+            condition,
+            row,
+            state,
+            target.copied(),
+            tested,
+            pivots,
+            entry,
+        );
+    }
+    let split = match (&state.flags, opposite(condition), target) {
         (None, _, _) => Err(stop("flags", Obstacle::Unknown(Unknown::Flags))),
         (_, None, _) => Err(stop("branch-condition", Obstacle::Unsupported)),
         (_, _, None) => Err(stop("branch-target", Obstacle::OutsideCode)),
-        (Some(comparison), Some(inverse), Some(&target)) => {
-            let taken = intervals(state.domain, condition, comparison);
-            let not_taken = intervals(state.domain, inverse, comparison);
+        (Some(Flags::Token(comparison)), Some(inverse), Some(&target)) => {
+            let taken = intervals(state.domain, condition, *comparison);
+            let not_taken = intervals(state.domain, inverse, *comparison);
             match (taken, not_taken) {
                 (Some(taken), Some(not_taken)) => Ok((taken, target, not_taken)),
                 _ => Err(stop("branch-condition", Obstacle::Unsupported)),
             }
         }
+        _ => unreachable!("value flags handled above"),
     };
     let (taken, target, not_taken) = match split {
         Ok(split) => split,
@@ -721,6 +859,82 @@ fn condition_branch(
         next.pc = pc;
         next.domain = domain;
         continued.push(next);
+    }
+    Branching {
+        continued,
+        ..Branching::default()
+    }
+}
+
+/// Conditional comparisons preserve a union of equalities, including state-dependent ones.
+fn values_branch(
+    condition: &str,
+    row: &Instruction,
+    state: &State,
+    target: Option<usize>,
+    tested: &Value,
+    pivots: &[i64],
+    entry: u64,
+) -> Branching {
+    let Some(target) = target else {
+        return Branching::gap(
+            state,
+            row.address,
+            Unresolved::at("branch-target", row.address, entry, Obstacle::OutsideCode),
+        );
+    };
+    if !matches!(condition, "eq" | "ne") {
+        return Branching::gap(
+            state,
+            row.address,
+            Unresolved::at(
+                "branch-condition",
+                row.address,
+                entry,
+                Obstacle::Unsupported,
+            ),
+        );
+    }
+    let mut continued = Vec::new();
+    let token_offset = match tested {
+        Value::Token => Some(0),
+        Value::TokenWord(offset) => Some(*offset),
+        _ => None,
+    };
+    for equal in [true, false] {
+        let domains = if let Some(offset) = token_offset {
+            let mut remaining = vec![state.domain];
+            let mut equal_domains = Vec::new();
+            for &pivot in pivots {
+                let comparison = Comparison { offset, pivot };
+                let mut next = Vec::new();
+                for domain in remaining {
+                    equal_domains.extend(intervals(domain, "eq", comparison).unwrap());
+                    next.extend(intervals(domain, "ne", comparison).unwrap());
+                }
+                remaining = next;
+            }
+            if equal { equal_domains } else { remaining }
+        } else {
+            vec![state.domain]
+        };
+        for domain in domains {
+            let mut next = state.clone();
+            next.domain = domain;
+            next.pc = if equal == (condition == "eq") {
+                target
+            } else {
+                state.pc
+            };
+            if token_offset.is_none() {
+                next.conditions.push(Condition {
+                    at: row.address,
+                    value: Some(Value::EqualsAny(Box::new(tested.clone()), pivots.to_vec())),
+                    zero: !equal,
+                });
+            }
+            continued.push(next);
+        }
     }
     Branching {
         continued,

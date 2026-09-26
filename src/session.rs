@@ -8,6 +8,7 @@ mod callbacks;
 mod defines;
 mod families;
 mod fields;
+mod grammar;
 mod language;
 mod loaded_modifiers;
 mod localization;

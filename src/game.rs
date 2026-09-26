@@ -557,6 +557,7 @@ fn name_kept_work(mut error: Error, work: &Path) -> Error {
         }
         Error::BuildChanged
         | Error::UnknownRegistry { .. }
+        | Error::UnknownCommand { .. }
         | Error::Closed
         | Error::NotRecorded { .. } => {}
     }

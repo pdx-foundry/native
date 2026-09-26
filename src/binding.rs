@@ -468,18 +468,23 @@ impl ExecutionPlan {
                 field.reader.kind
             )),
             (Some(_), None) => Some("No exact-build storage binding for this field".into()),
+            (Some(_), Some(binding)) if binding.storage_offset.is_none() => {
+                Some("No proven string storage for this field".into())
+            }
             _ => None,
         };
         crate::protocol::observation::FixtureQuestionSetup {
             index: index as u64,
             definition: question.definition.clone(),
             field: question.field.clone(),
+            parsing: question.parsing,
             diagnostics: question.diagnostics,
             runtime: question.runtime,
             reader_id: field.and_then(|field| field.reader.id.as_ref().map(|id| id.0.clone())),
             reader_kind,
+            reader_family: field.map_or(crate::BlockFamily::Unknown, |field| field.reader.family),
             token: exact.map(|field| field.token),
-            storage_offset: exact.map(|field| field.storage_offset),
+            storage_offset: exact.and_then(|field| field.storage_offset),
             unavailable,
         }
     }
@@ -522,15 +527,13 @@ impl ExecutionPlan {
             .registry_fields(registry)
             .map_err(analysis_error)?
             .unwrap_or_default();
-        let string_fields = analysis
-            .fixture_string_fields(registry)
-            .map_err(analysis_error)?;
+        let fixture_fields = analysis.fixture_fields(registry).map_err(analysis_error)?;
         if let Some(binding) = bindings
             .outcome_registries
             .iter_mut()
             .find(|binding| binding.registry == registry)
         {
-            binding.fields = string_fields;
+            binding.fields = fixture_fields;
         }
 
         Ok(fields)
@@ -544,6 +547,12 @@ impl ExecutionPlan {
         let mut bindings = self.operation().fixture.clone().ok_or_else(|| {
             crate::supervisor::SupervisorError("No fixture binding for this build".into())
         })?;
+        let validation = fixture.window == crate::FixtureWindow::InitialFileLoadAndValidation;
+        if validation && bindings.validation.is_none() {
+            return Err(crate::supervisor::SupervisorError(
+                "No fixture validation binding for this build".into(),
+            ));
+        }
         let fields = if fixture.field_questions.is_empty() {
             Vec::new()
         } else {
@@ -562,6 +571,7 @@ impl ExecutionPlan {
             registration_entries: fixture
                 .requests(crate::FixtureObservationKind::RegistrationEntries),
             field_reads: fixture.requests(crate::FixtureObservationKind::CategoryFieldReads),
+            validation,
             questions,
             bindings,
         })

@@ -1,5 +1,5 @@
 //! Conservative classification of already-joined shared readers.
-use crate::answer::ReaderKind;
+use crate::answer::{BlockFamily, ReaderKind};
 use crate::engine::analysis::fields::ReaderJoin;
 use std::collections::BTreeSet;
 
@@ -10,6 +10,8 @@ pub struct Classification<'a> {
     pub callee: Option<&'a str>,
     /// Conservative broad value form.
     pub kind: ReaderKind,
+    /// Established block family, separately from the reader identity.
+    pub family: BlockFamily,
 }
 
 /// Classify a reader only after every alternative joins the same callee.
@@ -26,9 +28,38 @@ pub fn classify(readers: &[ReaderJoin]) -> Classification<'_> {
             .iter()
             .all(|reader| matches!(reader, ReaderJoin::Joined { .. }));
     let callee = (all_joined && callees.len() == 1).then(|| *callees.first().unwrap());
+    let kind = callee.map_or(ReaderKind::Unknown, classify_callee);
+    let families: Vec<_> = callees
+        .iter()
+        .map(|callee| family_of_callee(callee))
+        .collect();
+    let family = families.first().copied().unwrap_or(BlockFamily::Unknown);
     Classification {
         callee,
-        kind: callee.map_or(ReaderKind::Unknown, classify_callee),
+        kind,
+        family: if all_joined && families.iter().all(|candidate| *candidate == family) {
+            family
+        } else {
+            BlockFamily::Unknown
+        },
+    }
+}
+
+fn family_of_callee(callee: &str) -> BlockFamily {
+    if matching_template(callee, "ReadTrigger") || callee == "CTrigger::Read(CReader&, EScopeType)"
+    {
+        BlockFamily::Trigger
+    } else if matching_template(callee, "ReadEffect")
+        || callee == "CEffect::Read(CReader&, EScopeType)"
+    {
+        BlockFamily::Effect
+    } else if matches!(
+        classify_callee(callee),
+        ReaderKind::Block | ReaderKind::Unknown
+    ) {
+        BlockFamily::Unknown
+    } else {
+        BlockFamily::NotApplicable
     }
 }
 
@@ -48,7 +79,10 @@ fn classify_callee(callee: &str) -> ReaderKind {
             ReaderKind::FixedPoint
         }
         "CReader::Read(CString&, bool)" => ReaderKind::String,
-        "CReader::Read(CPersistent&)" | "CPersistent::Read(CReader&)" => ReaderKind::Block,
+        "CReader::Read(CPersistent&)"
+        | "CPersistent::Read(CReader&)"
+        | "CTrigger::Read(CReader&, EScopeType)"
+        | "CEffect::Read(CReader&, EScopeType)" => ReaderKind::Block,
         _ if matching_template(callee, "ReadTrigger")
             || matching_template(callee, "ReadEffect") =>
         {
@@ -96,8 +130,10 @@ fn is_simple_template_argument(argument: &str) -> bool {
 /// Registers that affect a supported reader call, excluding caller scratch state.
 pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
     if callee == "CReader::Read(CString&, bool)"
-        || matching_template(callee, "ReadTrigger")
-        || matching_template(callee, "ReadEffect")
+        || matches!(
+            family_of_callee(callee),
+            BlockFamily::Trigger | BlockFamily::Effect
+        )
         || matching_deferred_reference(callee)
     {
         Some(&["x0", "x1", "x2"])
@@ -118,7 +154,12 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     };
     let destination = if matching_deferred_reference(callee) {
         "x2"
-    } else if callee == "CVariableValue::Read(CReader&, EScopeType)" {
+    } else if matches!(
+        callee.as_str(),
+        "CVariableValue::Read(CReader&, EScopeType)"
+            | "CTrigger::Read(CReader&, EScopeType)"
+            | "CEffect::Read(CReader&, EScopeType)"
+    ) {
         "x0"
     } else if call_arguments(callee).is_some() {
         "x1"
@@ -188,5 +229,50 @@ mod tests {
             .kind,
             ReaderKind::Unknown
         );
+    }
+
+    #[test]
+    fn block_family_requires_all_reader_alternatives_to_agree() {
+        let trigger = joined(
+            "void NParserUtil::ReadTrigger<CRootTrigger>(CReader&, CRootTrigger&, EScopeType)",
+        );
+        let effect =
+            joined("void NParserUtil::ReadEffect<CEffect>(CReader&, CEffect&, EScopeType)");
+        assert_eq!(
+            classify(std::slice::from_ref(&trigger)).family,
+            BlockFamily::Trigger
+        );
+        assert_eq!(
+            classify(std::slice::from_ref(&effect)).family,
+            BlockFamily::Effect
+        );
+        let direct = joined("CTrigger::Read(CReader&, EScopeType)");
+        let same_family = [trigger.clone(), direct];
+        assert_eq!(classify(&same_family).family, BlockFamily::Trigger);
+        assert_eq!(classify(&same_family).callee, None);
+        assert_eq!(
+            classify(&[trigger.clone(), effect]).family,
+            BlockFamily::Unknown
+        );
+        assert_eq!(
+            classify(&[
+                trigger,
+                ReaderJoin::Missing(Unresolved::new("missing-path"))
+            ])
+            .family,
+            BlockFamily::Unknown
+        );
+        for callee in [
+            "CPersistent::Read(CReader&)",
+            "CReader::Read(CPersistent&)",
+            "void NParserUtil::ReadTrigger<A>(CReader&, B&, EScopeType)",
+        ] {
+            assert_eq!(classify(&[joined(callee)]).family, BlockFamily::Unknown);
+        }
+        assert_eq!(
+            classify(&[joined("CReader::Read(int&)")]).family,
+            BlockFamily::NotApplicable
+        );
+        assert_eq!(classify(&[]).family, BlockFamily::Unknown);
     }
 }

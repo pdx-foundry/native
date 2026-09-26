@@ -21,6 +21,8 @@ pub enum FixtureWindow {
     InitialCategoryLoad,
     /// Initial parsing of the supplied file, ending when its reader returns to `LoadFile`.
     InitialFileLoad,
+    /// Initial parsing and subsequent validation, ending at the bound content-loaded point.
+    InitialFileLoadAndValidation,
 }
 
 /// One field whose parser outcome is requested for a named definition.
@@ -34,6 +36,9 @@ pub struct FixtureFieldQuestion {
     pub definition: String,
     /// Root field name, with the same character and length limits as `definition`.
     pub field: String,
+    /// Whether to witness field-reader entries and returns independently of storage.
+    #[serde(default)]
+    pub parsing: bool,
     /// Whether parser diagnostics from the file-load window are requested.
     pub diagnostics: bool,
     /// Whether a runtime outcome is requested. This initial-load method reports it unavailable.
@@ -51,9 +56,16 @@ impl FixtureFieldQuestion {
             registry: registry.into(),
             definition: definition.into(),
             field: field.into(),
+            parsing: false,
             diagnostics: true,
             runtime: false,
         }
+    }
+
+    /// Also observe parser entries and returns, including fields with no storage decoder.
+    pub fn with_parsing(mut self) -> Self {
+        self.parsing = true;
+        self
     }
 
     /// Also request the runtime dimension, which is outside the initial-load method.
@@ -117,6 +129,13 @@ impl FixtureRequest {
             window: FixtureWindow::InitialFileLoad,
             deadline_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
         }
+    }
+
+    /// Keep diagnostic observation open through the engine's content-loaded boundary.
+    /// Requires at least one field question with diagnostics enabled. No world is loaded.
+    pub fn through_validation(mut self) -> Self {
+        self.window = FixtureWindow::InitialFileLoadAndValidation;
+        self
     }
 
     pub(crate) fn validate(&self) -> Result<(), Error> {
@@ -189,8 +208,18 @@ impl FixtureRequest {
         if self.field_questions.is_empty() && self.window != FixtureWindow::InitialCategoryLoad {
             return Err(reject("Read-entry observations use InitialCategoryLoad"));
         }
-        if !self.field_questions.is_empty() && self.window != FixtureWindow::InitialFileLoad {
-            return Err(reject("Field outcomes use InitialFileLoad"));
+        if !self.field_questions.is_empty() && self.window == FixtureWindow::InitialCategoryLoad {
+            return Err(reject("Field outcomes require a file-load window"));
+        }
+        if self.window == FixtureWindow::InitialFileLoadAndValidation
+            && !self
+                .field_questions
+                .iter()
+                .any(|question| question.diagnostics)
+        {
+            return Err(reject(
+                "Validation observation requires a diagnostic question",
+            ));
         }
         if self.window == FixtureWindow::InitialCategoryLoad
             && registry != "common/tradition_categories"
@@ -319,6 +348,34 @@ pub enum FixtureStorage {
     },
 }
 
+/// One witnessed invocation of a field's parser. A return does not establish validity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParsedFieldOccurrence {
+    /// One-based source line at entry to the field reader.
+    pub line: u64,
+    /// One-based occurrence of this field on the requested definition.
+    pub occurrence: u64,
+    /// Source line when the same invocation returned, or `None` if its return was lost.
+    pub return_line: Option<u64>,
+}
+
+/// Parser invocations observed independently of storage decoding and diagnostics.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FixtureParsing {
+    /// The caller did not request parser entries and returns.
+    #[default]
+    NotRequested,
+    /// The field's parser could not be observed within a verified owner boundary.
+    Unavailable(String),
+    /// Entries and returns within the fixture file load. Empty means omission only when complete.
+    Observed {
+        /// Source-ordered reader invocations, including invocations without a return.
+        occurrences: Vec<ParsedFieldOccurrence>,
+        /// Whether the entries, returns, owner and terminal counts all joined.
+        completeness: crate::Completeness,
+    },
+}
+
 /// Runtime state for a requested field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FixtureRuntime {
@@ -379,6 +436,8 @@ pub enum DiagnosticCoverage {
 pub enum DiagnosticWindow {
     /// Parser diagnostics emitted while the selected fixture file loaded.
     FixtureFileLoad,
+    /// Reader reports and source-located engine logs through the content-loaded boundary.
+    FixtureFileLoadAndValidation,
 }
 
 /// Parser and runtime outcomes for one requested definition field.
@@ -394,6 +453,9 @@ pub struct FixtureFieldOutcome {
     pub definition_line: Option<u64>,
     /// Shared reader established by Native's static method.
     pub reader: crate::Reader,
+    /// Parser entries and returns; independent of stored values and diagnostic coverage.
+    #[serde(default)]
+    pub parsing: FixtureParsing,
     /// Independently observed parser storage.
     pub storage: FixtureStorage,
     /// Indices into `FixtureObservation::diagnostics`.

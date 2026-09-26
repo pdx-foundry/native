@@ -5,9 +5,9 @@ use crate::protocol::{hooks, observation::FixtureFieldBinding};
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
     Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
-    FixtureObservationKind as Kind, FixtureOwnerId, FixtureRequest, FixtureRuntime, FixtureStorage,
-    Gap, GapKind, GapSubject, Operation, ProcessingStage, Reader, ReaderId, ReaderKind,
-    RegistrationEntry, Source, StoredStringOccurrence,
+    FixtureObservationKind as Kind, FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime,
+    FixtureStorage, Gap, GapKind, GapSubject, Operation, ParsedFieldOccurrence, ProcessingStage,
+    Reader, ReaderId, ReaderKind, RegistrationEntry, Source, StoredStringOccurrence,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,6 +42,8 @@ pub(crate) enum FixtureEvent {
         question: u64,
         reader_id: Option<String>,
         reader_kind: ReaderKind,
+        #[serde(default)]
+        reader_family: crate::BlockFamily,
         storage_supported: bool,
         unavailable: Option<String>,
     },
@@ -54,6 +56,21 @@ pub(crate) enum FixtureEvent {
         owner: String,
         occurrence: u64,
         value: String,
+    },
+    FieldParse {
+        question: u64,
+        file: String,
+        line: u64,
+        definition: String,
+        field: String,
+        owner: String,
+        occurrence: u64,
+        returned: bool,
+    },
+    ParsingTerminal {
+        question: u64,
+        count: u64,
+        unavailable: Option<String>,
     },
     Diagnostic {
         text: String,
@@ -70,6 +87,8 @@ pub(crate) enum FixtureEvent {
         definition_line: Option<u64>,
         reader_id: Option<String>,
         reader_kind: ReaderKind,
+        #[serde(default)]
+        reader_family: crate::BlockFamily,
         final_value: Option<String>,
         unavailable: Option<String>,
     },
@@ -78,6 +97,9 @@ pub(crate) enum FixtureEvent {
     },
     DiagnosticsUnavailable {
         reason: String,
+    },
+    ValidationComplete {
+        file: String,
     },
     LoadReturned {
         file: String,
@@ -117,6 +139,15 @@ pub(crate) fn reduce(
         .field_questions
         .iter()
         .any(|question| question.diagnostics);
+    if request.window == crate::FixtureWindow::InitialFileLoadAndValidation {
+        hooks.extend([
+            hooks::FIXTURE_LOG,
+            hooks::FIXTURE_UNFORMATTED_LOG,
+            hooks::FIXTURE_STREAM_LOG,
+            hooks::FIXTURE_SOURCED_LOG,
+            hooks::FIXTURE_VALIDATED,
+        ]);
+    }
     if !request.field_questions.is_empty() {
         hooks.extend([
             hooks::FIXTURE_CONSTRUCTOR,
@@ -236,6 +267,7 @@ struct Window<'a> {
     next_sequence: u64,
     loading: bool,
     returned: bool,
+    validated: bool,
     registrations_ended: bool,
     ended: bool,
     owner: Option<String>,
@@ -245,6 +277,9 @@ struct Window<'a> {
     definitions: BTreeMap<String, DefinitionState>,
     field_authorities: BTreeMap<u64, FieldAuthorityState>,
     occurrences: BTreeMap<u64, Vec<StoredStringOccurrence>>,
+    parse_occurrences: BTreeMap<u64, Vec<ParsedFieldOccurrence>>,
+    parsing_terminals: BTreeMap<u64, Option<String>>,
+    parsing_issues: BTreeSet<u64>,
     field_terminals: BTreeMap<u64, FieldTerminalState>,
     diagnostic_indices: BTreeMap<u64, Vec<usize>>,
     field_issues: BTreeSet<u64>,
@@ -272,6 +307,7 @@ impl<'a> Window<'a> {
             next_sequence: 1,
             loading: false,
             returned: false,
+            validated: false,
             registrations_ended: false,
             ended: false,
             owner: None,
@@ -281,6 +317,9 @@ impl<'a> Window<'a> {
             definitions: BTreeMap::new(),
             field_authorities: BTreeMap::new(),
             occurrences: BTreeMap::new(),
+            parse_occurrences: BTreeMap::new(),
+            parsing_terminals: BTreeMap::new(),
+            parsing_issues: BTreeSet::new(),
             field_terminals: BTreeMap::new(),
             diagnostic_indices: BTreeMap::new(),
             field_issues: BTreeSet::new(),
@@ -342,6 +381,16 @@ impl<'a> Window<'a> {
         );
     }
 
+    fn parsing_gap(&mut self, question: u64, detail: &str) {
+        self.parsing_issues.insert(question);
+        let subject = self
+            .request
+            .field_questions
+            .get(question as usize)
+            .map(|question| GapSubject::field(question.field.clone()));
+        self.push_gap(GapKind::IncompleteObservation, subject, detail);
+    }
+
     fn public_owner(&mut self, native_owner: &str) -> FixtureOwnerId {
         if let Some(owner) = self.owner_ids.get(native_owner) {
             return owner.clone();
@@ -389,21 +438,43 @@ impl<'a> Window<'a> {
                 question,
                 reader_id,
                 reader_kind,
+                reader_family,
                 storage_supported,
                 unavailable,
             } => self.accept_field_authority(
                 *question,
                 reader_id,
                 reader_kind,
+                reader_family,
                 *storage_supported,
                 unavailable,
             ),
             FixtureEvent::FieldStorage { .. } => self.accept_field_storage(event),
+            FixtureEvent::FieldParse { .. } => self.accept_field_parse(event),
+            FixtureEvent::ParsingTerminal {
+                question,
+                count,
+                unavailable,
+            } => self.accept_parsing_terminal(*question, *count, unavailable),
             FixtureEvent::Diagnostic { .. } => self.accept_diagnostic(event),
             FixtureEvent::FieldTerminal { .. } => self.accept_field_terminal(event),
             FixtureEvent::DiagnosticsTerminal { count } => self.accept_diagnostics_terminal(*count),
             FixtureEvent::DiagnosticsUnavailable { reason } => {
                 self.accept_diagnostics_unavailable(reason)
+            }
+            FixtureEvent::ValidationComplete { file } => {
+                if !self.validation_requested()
+                    || !self.returned
+                    || self.validated
+                    || self.diagnostic_terminal.is_some()
+                    || file != self.request.file()
+                {
+                    self.diagnostic_gap(
+                        "The validation boundary has no matching completed fixture load",
+                    );
+                } else {
+                    self.validated = true;
+                }
             }
             FixtureEvent::LoadReturned { file, field_count } => {
                 self.accept_load_returned(file, *field_count)
@@ -531,6 +602,7 @@ impl<'a> Window<'a> {
         question: u64,
         reader_id: &Option<String>,
         reader_kind: &ReaderKind,
+        reader_family: &crate::BlockFamily,
         storage_supported: bool,
         unavailable: &Option<String>,
     ) {
@@ -545,6 +617,7 @@ impl<'a> Window<'a> {
         let reader = Reader {
             id: reader_id.clone().map(ReaderId),
             kind: *reader_kind,
+            family: *reader_family,
         };
         let coherent = if storage_supported {
             reader.kind == ReaderKind::String && reader.id.is_some() && unavailable.is_none()
@@ -619,6 +692,109 @@ impl<'a> Window<'a> {
             });
     }
 
+    fn accept_field_parse(&mut self, event: &FixtureEvent) {
+        let FixtureEvent::FieldParse {
+            question,
+            file,
+            line,
+            definition,
+            field,
+            owner,
+            occurrence,
+            returned,
+        } = event
+        else {
+            unreachable!("field-parse handler received another event")
+        };
+        let Some(asked) = self.request.field_questions.get(*question as usize) else {
+            self.window_gap("A parser event names an unknown question");
+            return;
+        };
+        let owner_joins = self
+            .definitions
+            .get(definition)
+            .is_some_and(|known| &known.native_owner == owner);
+        if !asked.parsing
+            || !self.loading
+            || self.returned
+            || self.parsing_terminals.contains_key(question)
+            || self.field_terminals.contains_key(question)
+            || !self.field_authorities.contains_key(question)
+            || !self.is_fixture_line(file, *line)
+            || definition != &asked.definition
+            || field != &asked.field
+            || !owner_joins
+        {
+            self.parsing_gap(
+                *question,
+                "A parser invocation lacks its requested source, owner or open window",
+            );
+            return;
+        }
+        let invocations = self.parse_occurrences.entry(*question).or_default();
+        if *returned {
+            let Some(entry) = invocations.last_mut().filter(|entry| {
+                entry.occurrence == *occurrence
+                    && entry.return_line.is_none()
+                    && *line >= entry.line
+            }) else {
+                self.parsing_gap(*question, "A parser return has no matching open invocation");
+                return;
+            };
+            entry.return_line = Some(*line);
+        } else {
+            if *occurrence != invocations.len() as u64 + 1
+                || *occurrence > 128
+                || invocations
+                    .last()
+                    .is_some_and(|entry| entry.return_line.is_none())
+            {
+                self.parsing_gap(
+                    *question,
+                    "Parser invocations are repeated, nested or out of order",
+                );
+                return;
+            }
+            invocations.push(ParsedFieldOccurrence {
+                line: *line,
+                occurrence: *occurrence,
+                return_line: None,
+            });
+        }
+    }
+
+    fn accept_parsing_terminal(&mut self, question: u64, count: u64, unavailable: &Option<String>) {
+        let Some(asked) = self.request.field_questions.get(question as usize) else {
+            self.window_gap("A parser terminal names an unknown question");
+            return;
+        };
+        let occurrences = self
+            .parse_occurrences
+            .get(&question)
+            .map_or(&[][..], Vec::as_slice);
+        let witnessed = if unavailable.is_some() {
+            count == 0 && occurrences.is_empty()
+        } else {
+            self.definitions.contains_key(&asked.definition)
+                && count == occurrences.len() as u64
+                && occurrences.iter().all(|entry| entry.return_line.is_some())
+        };
+        if !asked.parsing
+            || !self.loading
+            || self.returned
+            || self.parsing_terminals.contains_key(&question)
+            || !witnessed
+        {
+            self.parsing_gap(
+                question,
+                "The parser terminal disagrees with its owner, invocations or window",
+            );
+        }
+        self.parsing_terminals
+            .entry(question)
+            .or_insert_with(|| unavailable.clone());
+    }
+
     fn accept_diagnostic(&mut self, event: &FixtureEvent) {
         let FixtureEvent::Diagnostic {
             text,
@@ -632,16 +808,27 @@ impl<'a> Window<'a> {
         else {
             unreachable!("diagnostic handler received another event")
         };
-        if !self.diagnostics_requested || !self.loading || self.returned {
+        if !self.diagnostics_requested
+            || !self.loading
+            || self.validated
+            || (self.returned && !self.validation_requested())
+        {
             self.diagnostic_gap("A parser diagnostic is outside its requested window");
         }
         if self.diagnostic_terminal.is_some() {
             self.diagnostic_gap("A parser diagnostic arrived after its terminal");
         }
-        if !matches!(
+        let reader_report = matches!(
             stage.as_str(),
             "reader-malformed-report" | "reader-unexpected-report"
-        ) {
+        );
+        let engine_log = self.validation_requested()
+            && match stage.as_str() {
+                "engine-parser-log" => !self.returned,
+                "engine-validation-log" => self.returned,
+                _ => false,
+            };
+        if !reader_report && !engine_log {
             self.diagnostic_gap("A parser diagnostic names an unknown engine stage");
         }
         self.raw_diagnostics.push(RawDiagnostic {
@@ -662,6 +849,7 @@ impl<'a> Window<'a> {
             definition_line,
             reader_id,
             reader_kind,
+            reader_family,
             final_value,
             unavailable,
         } = event
@@ -681,6 +869,7 @@ impl<'a> Window<'a> {
             .get(question)
             .is_some_and(|authority| {
                 authority.reader.kind == *reader_kind
+                    && authority.reader.family == *reader_family
                     && authority.reader.id.as_ref().map(|id| &id.0) == reader_id.as_ref()
             });
         if !authority_matches {
@@ -725,7 +914,7 @@ impl<'a> Window<'a> {
     fn accept_diagnostics_terminal(&mut self, count: u64) {
         if !self.diagnostics_requested
             || !self.loading
-            || self.returned
+            || !self.at_diagnostic_terminal()
             || self.diagnostic_terminal.is_some()
             || count != self.raw_diagnostics.len() as u64
         {
@@ -739,7 +928,7 @@ impl<'a> Window<'a> {
     fn accept_diagnostics_unavailable(&mut self, reason: &str) {
         if !self.diagnostics_requested
             || !self.loading
-            || self.returned
+            || !self.at_diagnostic_terminal()
             || self.diagnostic_terminal.is_some()
             || !self.raw_diagnostics.is_empty()
         {
@@ -759,6 +948,18 @@ impl<'a> Window<'a> {
             self.window_gap("The loader return disagrees with the field reads");
         }
         self.returned = true;
+    }
+
+    fn validation_requested(&self) -> bool {
+        self.request.window == crate::FixtureWindow::InitialFileLoadAndValidation
+    }
+
+    fn at_diagnostic_terminal(&self) -> bool {
+        if self.validation_requested() {
+            self.validated
+        } else {
+            !self.returned
+        }
     }
 
     fn accept_end(
@@ -785,6 +986,7 @@ impl<'a> Window<'a> {
         }
         if diagnostics != self.raw_diagnostics.len() as u64
             || (self.diagnostics_requested != self.diagnostic_terminal.is_some())
+            || (self.validation_requested() && !self.validated)
         {
             self.diagnostic_gap("The fixture terminal disagrees with the diagnostic window");
         }
@@ -805,11 +1007,23 @@ impl<'a> Window<'a> {
             .find(|(index, question)| {
                 question.definition == *definition
                     && question.field == *field
-                    && self.occurrences.get(&(*index as u64)).is_some_and(|items| {
-                        items.iter().any(|item| {
-                            item.occurrence == occurrence && raw.line == Some(item.line)
+                    && (self
+                        .parse_occurrences
+                        .get(&(*index as u64))
+                        .is_some_and(|items| {
+                            items.iter().any(|item| {
+                                item.occurrence == occurrence
+                                    && raw.line.is_some_and(|line| {
+                                        line >= item.line
+                                            && item.return_line.is_some_and(|end| line <= end)
+                                    })
+                            })
                         })
-                    })
+                        || self.occurrences.get(&(*index as u64)).is_some_and(|items| {
+                            items.iter().any(|item| {
+                                item.occurrence == occurrence && raw.line == Some(item.line)
+                            })
+                        }))
             })
             .map_or(QuestionLink::Unmatched, |(index, _)| {
                 QuestionLink::Question(index as u64)
@@ -817,7 +1031,8 @@ impl<'a> Window<'a> {
     }
 
     fn finish_diagnostics(&mut self) {
-        for raw in std::mem::take(&mut self.raw_diagnostics) {
+        for mut raw in std::mem::take(&mut self.raw_diagnostics) {
+            self.join_diagnostic_source(&mut raw);
             let source = match (&raw.file, raw.line) {
                 (Some(file), Some(line)) if self.is_fixture_line(file, line) => {
                     Some((file.clone(), line))
@@ -891,7 +1106,11 @@ impl<'a> Window<'a> {
                         && !self.diagnostic_issue =>
                 {
                     DiagnosticCoverage::Complete {
-                        window: DiagnosticWindow::FixtureFileLoad,
+                        window: if self.validation_requested() {
+                            DiagnosticWindow::FixtureFileLoadAndValidation
+                        } else {
+                            DiagnosticWindow::FixtureFileLoad
+                        },
                     }
                 }
                 _ => {
@@ -902,6 +1121,38 @@ impl<'a> Window<'a> {
                 }
             }
         };
+    }
+
+    fn join_diagnostic_source(&self, raw: &mut RawDiagnostic) {
+        if raw.definition.is_some() || raw.field.is_some() || raw.occurrence.is_some() {
+            return;
+        }
+        let (Some(file), Some(line)) = (&raw.file, raw.line) else {
+            return;
+        };
+        if !self.is_fixture_line(file, line) {
+            return;
+        }
+        let mut matches = self
+            .parse_occurrences
+            .iter()
+            .flat_map(|(question, occurrences)| {
+                occurrences.iter().filter_map(move |occurrence| {
+                    (line >= occurrence.line
+                        && occurrence.return_line.is_some_and(|end| line <= end))
+                    .then_some((*question, occurrence.occurrence))
+                })
+            });
+        let Some((index, occurrence)) = matches.next() else {
+            return;
+        };
+        if matches.next().is_some() || self.parsing_issues.contains(&index) {
+            return;
+        }
+        let question = &self.request.field_questions[index as usize];
+        raw.definition = Some(question.definition.clone());
+        raw.field = Some(question.field.clone());
+        raw.occurrence = Some(occurrence);
     }
 
     fn finish_fields(&mut self) {
@@ -915,8 +1166,16 @@ impl<'a> Window<'a> {
                 Reader {
                     id: None,
                     kind: ReaderKind::Unknown,
+                    family: crate::BlockFamily::Unknown,
                 },
                 |authority| authority.reader.clone(),
+            );
+            let parsing = self.finish_parsing(
+                index,
+                &question,
+                authority
+                    .as_ref()
+                    .is_some_and(|authority| authority.coherent),
             );
             let storage = if authority
                 .as_ref()
@@ -994,10 +1253,50 @@ impl<'a> Window<'a> {
                     .map(|definition| definition.public_owner.clone()),
                 definition_line: definition.as_ref().map(|definition| definition.line),
                 reader,
+                parsing,
                 storage,
                 diagnostics: self.diagnostic_indices.remove(&index).unwrap_or_default(),
                 runtime,
             });
+        }
+    }
+
+    fn finish_parsing(
+        &mut self,
+        index: u64,
+        question: &crate::FixtureFieldQuestion,
+        authority_established: bool,
+    ) -> FixtureParsing {
+        if !question.parsing {
+            return FixtureParsing::NotRequested;
+        }
+        let terminal = self.parsing_terminals.remove(&index);
+        if terminal.is_none() {
+            self.parsing_gap(index, "The parser observation terminal is missing");
+        }
+        if !authority_established {
+            self.parsing_gap(
+                index,
+                "The parser observation has no coherent field authority",
+            );
+        }
+        if let Some(Some(reason)) = terminal {
+            self.parsing_gap(index, &reason);
+            return FixtureParsing::Unavailable(reason);
+        }
+        let occurrences = self.parse_occurrences.remove(&index).unwrap_or_default();
+        let complete = self.ended
+            && self.returned
+            && self.stream_intact
+            && !self.parsing_issues.contains(&index)
+            && self.definitions.contains_key(&question.definition);
+        FixtureParsing::Observed {
+            occurrences,
+            completeness: if complete {
+                Completeness::Complete
+            } else {
+                Completeness::Partial
+            },
         }
     }
 
@@ -1012,7 +1311,7 @@ impl<'a> Window<'a> {
             },
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v1", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v2", Basis::LiveObservation),
         }
     }
 }
@@ -1083,6 +1382,282 @@ mod tests {
         let mut request = field_request(false);
         request.field_questions[0].diagnostics = false;
         request
+    }
+
+    fn block_parsing_request() -> FixtureRequest {
+        FixtureRequest::field_outcomes(
+            "common/traditions/sample.txt",
+            "sample = {\n potential = {\n  and = { always = yes }\n }\n}\n",
+            [
+                crate::FixtureFieldQuestion::new("common/traditions", "sample", "potential")
+                    .with_parsing(),
+            ],
+        )
+    }
+
+    fn block_parsing_events() -> Vec<Value> {
+        field_outcome_session(
+            vec![
+                json!({"kind":"load-start","file":"common/traditions/sample.txt"}),
+                json!({"kind":"field-authority","question":0,"reader_id":"block-reader","reader_kind":"Block","storage_supported":false,"unavailable":"No block storage decoder"}),
+                json!({"kind":"definition","file":"common/traditions/sample.txt","line":1,"definition":"sample","owner":"0x2000"}),
+                json!({"kind":"field-parse","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"potential","owner":"0x2000","occurrence":1,"returned":false}),
+                json!({"kind":"diagnostic","text":"Rejected nested child","stage":"reader-unexpected-report","file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"potential","occurrence":1}),
+                json!({"kind":"field-parse","question":0,"file":"common/traditions/sample.txt","line":4,"definition":"sample","field":"potential","owner":"0x2000","occurrence":1,"returned":true}),
+                json!({"kind":"field-terminal","question":0,"owner":null,"definition_line":null,"reader_id":"block-reader","reader_kind":"Block","final_value":null,"unavailable":"No block storage decoder"}),
+                json!({"kind":"parsing-terminal","question":0,"count":1,"unavailable":null}),
+                json!({"kind":"diagnostics-terminal","count":1}),
+                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
+            ],
+            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":1,"diagnostics":1}),
+        )
+    }
+
+    fn block_parsing_answer(events: Vec<Value>) -> Answer<FixtureObservation> {
+        reduce(
+            &block_parsing_request(),
+            &[],
+            &records(events),
+            &owner(),
+            BuildId("build".into()),
+        )
+        .unwrap()
+    }
+
+    fn validation_events() -> Vec<Value> {
+        let mut events = block_parsing_events();
+        let hooks = &mut events[1]["hooks"];
+        hooks["fixture:log"] = hooks["fixture:malformed"].clone();
+        hooks["fixture:unformatted-log"] = hooks["fixture:malformed"].clone();
+        hooks["fixture:stream-log"] = hooks["fixture:malformed"].clone();
+        hooks["fixture:sourced-log"] = hooks["fixture:malformed"].clone();
+        hooks["fixture:validated"] = hooks["fixture:malformed"].clone();
+        let diagnostic = events
+            .iter_mut()
+            .find(|event| event["event"]["kind"] == "diagnostic")
+            .unwrap();
+        diagnostic["event"]["stage"] = json!("engine-validation-log");
+        for key in ["definition", "field", "occurrence"] {
+            diagnostic["event"][key] = Value::Null;
+        }
+        let diagnostic = events.remove(
+            events
+                .iter()
+                .position(|event| event["event"]["kind"] == "diagnostic")
+                .unwrap(),
+        );
+        let terminal = events.remove(
+            events
+                .iter()
+                .position(|event| event["event"]["kind"] == "diagnostics-terminal")
+                .unwrap(),
+        );
+        let end = events.pop().unwrap();
+        events.push(diagnostic);
+        let mut validated = terminal.clone();
+        validated["event"] =
+            json!({"kind":"validation-complete","file":"common/traditions/sample.txt"});
+        events.extend([validated, terminal, end]);
+        renumber(&mut events);
+        events
+    }
+
+    fn validation_answer(events: Vec<Value>) -> Answer<FixtureObservation> {
+        reduce(
+            &block_parsing_request().through_validation(),
+            &[],
+            &records(events),
+            &owner(),
+            BuildId("build".into()),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn deferred_diagnostics_join_to_witnessed_nested_parsing() {
+        let answer = validation_answer(validation_events());
+        assert_eq!(answer.value.diagnostics[0].stage, "engine-validation-log");
+        assert!(matches!(
+            answer.value.diagnostics[0].join,
+            DiagnosticJoin::Source {
+                line: 3,
+                occurrence: Some(1),
+                ..
+            }
+        ));
+        assert!(matches!(
+            answer.value.diagnostic_coverage,
+            DiagnosticCoverage::Complete {
+                window: DiagnosticWindow::FixtureFileLoadAndValidation
+            }
+        ));
+    }
+
+    #[test]
+    fn validation_requires_hooks_boundaries_and_intact_diagnostics() {
+        for missing in [
+            "validation-complete",
+            "diagnostics-terminal",
+            "load-returned",
+            "end",
+        ] {
+            let mut events = validation_events();
+            events.retain(|event| event["event"]["kind"] != missing);
+            renumber(&mut events);
+            let answer = validation_answer(events);
+            assert!(
+                !matches!(
+                    answer.value.diagnostic_coverage,
+                    DiagnosticCoverage::Complete { .. }
+                ),
+                "{missing}"
+            );
+        }
+        for hook in [
+            "fixture:log",
+            "fixture:unformatted-log",
+            "fixture:stream-log",
+            "fixture:sourced-log",
+            "fixture:validated",
+            "fixture:malformed",
+            "fixture:unexpected",
+        ] {
+            let mut events = validation_events();
+            events[1]["hooks"].as_object_mut().unwrap().remove(hook);
+            assert!(
+                reduce(
+                    &block_parsing_request().through_validation(),
+                    &[],
+                    &records(events),
+                    &owner(),
+                    BuildId("build".into())
+                )
+                .is_err(),
+                "{hook}"
+            );
+        }
+        for (kind, key, value) in [
+            ("diagnostic", "line", Value::Null),
+            ("diagnostic", "stage", json!("engine-parser-log")),
+            ("validation-complete", "file", json!("other.txt")),
+            ("diagnostics-terminal", "count", json!(0)),
+        ] {
+            let mut events = validation_events();
+            let event = events
+                .iter_mut()
+                .find(|event| event["event"]["kind"] == kind)
+                .unwrap();
+            event["event"][key] = value;
+            let answer = validation_answer(events);
+            assert!(
+                !matches!(
+                    answer.value.diagnostic_coverage,
+                    DiagnosticCoverage::Complete { .. }
+                ),
+                "{kind} {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn block_parsing_is_independent_of_storage_and_keeps_nested_diagnostics() {
+        let answer = block_parsing_answer(block_parsing_events());
+        let field = &answer.value.field_outcomes[0];
+        assert_eq!(
+            field.parsing,
+            FixtureParsing::Observed {
+                occurrences: vec![ParsedFieldOccurrence {
+                    line: 2,
+                    occurrence: 1,
+                    return_line: Some(4)
+                }],
+                completeness: Completeness::Complete,
+            }
+        );
+        assert!(matches!(field.storage, FixtureStorage::Unavailable(_)));
+        assert_eq!(field.diagnostics, [0]);
+        assert!(matches!(
+            answer.value.diagnostics[0].join,
+            DiagnosticJoin::Source {
+                line: 3,
+                occurrence: Some(1),
+                ..
+            }
+        ));
+        assert!(matches!(
+            answer.value.diagnostic_coverage,
+            DiagnosticCoverage::Complete { .. }
+        ));
+    }
+
+    #[test]
+    fn block_parsing_requires_paired_invocations_and_matching_terminals() {
+        for kind in [
+            "field-parse",
+            "parsing-terminal",
+            "definition",
+            "field-authority",
+            "load-returned",
+            "end",
+        ] {
+            let mut events = block_parsing_events();
+            let index = events
+                .iter()
+                .position(|event| event["event"]["kind"] == kind)
+                .unwrap();
+            events.remove(index);
+            renumber(&mut events);
+            let answer = block_parsing_answer(events);
+            assert!(
+                !matches!(
+                    answer.value.field_outcomes[0].parsing,
+                    FixtureParsing::Observed {
+                        completeness: Completeness::Complete,
+                        ..
+                    }
+                ),
+                "{kind}"
+            );
+        }
+        for (kind, key, value) in [
+            ("field-parse", "owner", json!("0x3000")),
+            ("field-parse", "occurrence", json!(2)),
+            ("field-parse", "line", json!(99)),
+            ("parsing-terminal", "count", json!(0)),
+        ] {
+            let mut events = block_parsing_events();
+            let event = events
+                .iter_mut()
+                .find(|event| event["event"]["kind"] == kind)
+                .unwrap();
+            event["event"][key] = value;
+            let answer = block_parsing_answer(events);
+            assert!(
+                !matches!(
+                    answer.value.field_outcomes[0].parsing,
+                    FixtureParsing::Observed {
+                        completeness: Completeness::Complete,
+                        ..
+                    }
+                ),
+                "{kind} {key}"
+            );
+        }
+        let mut events = block_parsing_events();
+        let index = events
+            .iter()
+            .position(|event| event["event"]["returned"] == true)
+            .unwrap();
+        events.remove(index);
+        renumber(&mut events);
+        let answer = block_parsing_answer(events);
+        assert!(matches!(
+            answer.value.field_outcomes[0].parsing,
+            FixtureParsing::Observed {
+                completeness: Completeness::Partial,
+                ..
+            }
+        ));
     }
 
     /// Worker records for an owned session that activates every field-outcome hook, then emits

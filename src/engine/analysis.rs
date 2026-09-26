@@ -8,6 +8,7 @@ pub mod discovery;
 pub mod evaluate;
 pub mod families;
 pub mod fields;
+pub mod grammar;
 pub mod localization;
 pub mod modifier_table;
 pub mod modifiers;

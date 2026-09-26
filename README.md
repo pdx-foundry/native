@@ -18,6 +18,7 @@ let native = Native::open("/path/to/Stellaris")?;
 let registries = native.registries()?;                      // Answer<Vec<Registry>>
 let fields = native.registry_fields("common/traditions")?;  // Answer<Vec<Field>>
 let effects = native.declarations(DeclarationKind::Effect)?; // Answer<Vec<Declaration>>
+let grammar = native.command_grammar(DeclarationKind::Effect, "random_list")?;
 let modifiers = native.modifiers()?;                        // Answer<Vec<ModifierDeclaration>>
 let categories = native.modifier_categories()?;             // Answer<Vec<ModifierCategory>>
 let families = native.modifier_families("common/bypass")?;  // Answer<Vec<ModifierFamily>>
@@ -149,14 +150,17 @@ For parser outcomes, use `FixtureRequest::field_outcomes` with one or more
 `FixtureFieldQuestion` values. The file may be in `common/traditions` or
 `common/tradition_categories`. Each outcome keeps these dimensions separate:
 
+- `FixtureParsing` contains source-located entry/return occurrences when `.with_parsing()` is
+  requested. Block parsing needs no storage decoder; a return does not establish runtime success.
 - `FixtureStorage` contains actual String storage after each joined occurrence and an optional
   file-terminal value, or a typed unavailable reason. Its own completeness keeps witnessed values
   when a later record or terminal is missing. A complete zero-occurrence result requires a
   witnessed definition constructor and completed file-load window.
 - `diagnostics` preserves messages captured at the engine reader-report stage, with a source join
-  or a missing-join reason. `DiagnosticCoverage::Complete` covers only parser diagnostics during
-  this file load. `NotRequested` is distinct from unsupported or incomplete collection. It does
-  not claim later validation.
+  or a missing-join reason. `DiagnosticCoverage::Complete` names its bounded window.
+  `.through_validation()` extends field outcomes through the bound post-read validation point,
+  including source-correlated engine-log errors. `NotRequested` remains distinct from unsupported
+  or incomplete collection. Neither window claims runtime validation.
 - `FixtureRuntime` distinguishes `NotRequested` from `Unavailable`. Runtime is outside this
   initial-load method, so a runtime request makes the answer partial with an `OutsideMethod` gap.
 
@@ -211,6 +215,7 @@ registries.json
 registry_fields/common/traditions.json
 declarations/effect.json
 declarations/trigger.json
+command_grammar/effect/random_list.json
 modifiers.json
 modifier_categories.json
 modifier_families/common/bypass.json

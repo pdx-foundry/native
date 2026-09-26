@@ -997,6 +997,10 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let on_actions = real.on_actions().unwrap();
     let game_rules = real.game_rules().unwrap();
     let defines = real.defines().unwrap();
+    let grammar = real
+        .command_grammar(DeclarationKind::Effect, "random_list")
+        .unwrap();
+    let unknown_command = real.command_grammar(DeclarationKind::Effect, "native_missing_command");
     let unknown_registry_error = real.registry_fields("common/no_such_registry");
 
     let recorded = Native::from_recorded_answers(directory.path()).unwrap();
@@ -1026,6 +1030,16 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.defines().unwrap();
     again.source.basis = defines.source.basis;
     assert_eq!(again, defines);
+    let mut again = recorded
+        .command_grammar(DeclarationKind::Effect, "random_list")
+        .unwrap();
+    assert_eq!(again.source.basis, Basis::Recorded);
+    again.source.basis = grammar.source.basis;
+    assert_eq!(again, grammar);
+    assert_eq!(
+        recorded.command_grammar(DeclarationKind::Effect, "native_missing_command"),
+        unknown_command
+    );
     assert_eq!(
         recorded.registry_fields("common/no_such_registry"),
         unknown_registry_error
@@ -1034,6 +1048,70 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
         recorded.registry_fields("common/armies"),
         Err(Error::NotRecorded { .. })
     ));
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn control_grammar_preserves_shared_readers_and_partial_properties() {
+    use pdx_native::{BlockFamily, GrammarProperty};
+    let native = native();
+    assert_eq!(
+        native.supports(Operation::CommandGrammar),
+        pdx_native::Support::Supported
+    );
+    for (kind, family, names) in [
+        (
+            DeclarationKind::Trigger,
+            BlockFamily::Trigger,
+            ["and", "or", "not", "if", "else_if", "else"],
+        ),
+        (
+            DeclarationKind::Effect,
+            BlockFamily::Effect,
+            [
+                "if",
+                "else_if",
+                "else",
+                "hidden_effect",
+                "random_list",
+                "every_owned_planet",
+            ],
+        ),
+    ] {
+        let mut identities = BTreeMap::new();
+        for name in names {
+            let answer = native.command_grammar(kind, name).unwrap();
+            assert_eq!(answer.source.method, "command-grammar/v1");
+            assert_eq!(answer.completeness, Completeness::Partial);
+            assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
+            let child = if name == "random_list" {
+                let GrammarProperty::Partial(Some(child)) = &answer.value.numeric_keys else {
+                    panic!("weighted child grammar missing");
+                };
+                assert_ne!(answer.value.reader.id, child.reader.id);
+                child.as_ref()
+            } else {
+                &answer.value
+            };
+            assert_eq!(child.child_families, GrammarProperty::Partial(vec![family]));
+            if kind == DeclarationKind::Effect && ["if", "else_if", "else"].contains(&name) {
+                let GrammarProperty::Partial(rules) = &answer.value.ordering else {
+                    panic!("conditional reader routing missing");
+                };
+                assert_eq!(rules.len(), 3);
+            }
+            identities.insert(name, answer.value.reader.id);
+        }
+        assert_eq!(identities["if"], identities["else_if"]);
+        assert_eq!(identities["if"], identities["else"]);
+        if kind == DeclarationKind::Trigger {
+            assert_eq!(identities["or"], identities["not"]);
+        }
+        assert!(matches!(
+            native.command_grammar(kind, "limit"),
+            Err(Error::UnknownCommand { .. })
+        ));
+    }
 }
 
 #[test]
@@ -1052,10 +1130,11 @@ fn field_shapes_agree_with_sdk533_omitted_and_repeated_storage() {
     for outcome in observed["outcomes"].as_array().unwrap() {
         let name = outcome["question"]["field"].as_str().unwrap();
         let field = fields.iter().find(|field| field.name == name).unwrap();
-        assert_eq!(
-            serde_json::to_value(&field.reader).unwrap(),
-            outcome["reader"]
-        );
+        let historical_reader: pdx_native::Reader =
+            serde_json::from_value(outcome["reader"].clone()).unwrap();
+        assert_eq!(field.reader.id, historical_reader.id);
+        assert_eq!(field.reader.kind, historical_reader.kind);
+        assert_eq!(field.reader.family, pdx_native::BlockFamily::NotApplicable);
         let storage = &outcome["storage"]["String"];
         assert_eq!(storage["completeness"], "Complete");
         let occurrences = storage["occurrences"].as_array().unwrap();

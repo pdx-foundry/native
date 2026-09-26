@@ -17,7 +17,46 @@ pub(super) fn reader(joins: &[ReaderJoin]) -> Reader {
             ReaderId(format!("{digest:x}")[..16].to_owned())
         }),
         kind: classification.kind,
+        family: classification.family,
     }
+}
+
+/// One identity for a concrete read/member pair across field and command answers.
+pub(super) fn concrete_reader_id(read: &str, member: &str) -> ReaderId {
+    let digest = Sha256::digest(format!("{read}:{member}").as_bytes());
+    ReaderId(format!("{digest:x}")[..16].into())
+}
+
+fn field_reader(joins: &[ReaderJoin], result: &RegistryFieldResult) -> Reader {
+    let mut alternatives = Vec::new();
+    for join in joins {
+        let mut selected = reader(std::slice::from_ref(join));
+        if matches!(join, ReaderJoin::Joined { callee, .. } if callee == "CReader::Read(CPersistent&)" )
+            && let Some(concrete) =
+                readers::destination(join).and_then(|offset| result.persistent.get(&offset))
+        {
+            selected.id = Some(concrete_reader_id(&concrete.read, &concrete.member));
+            selected.family = concrete.family;
+        }
+        alternatives.push(selected);
+    }
+    let mut joined = reader(joins);
+    if let Some(first) = alternatives.first() {
+        joined.id = alternatives
+            .iter()
+            .all(|reader| reader.id == first.id)
+            .then(|| first.id.clone())
+            .flatten();
+        joined.family = if alternatives
+            .iter()
+            .all(|reader| reader.family == first.family)
+        {
+            first.family
+        } else {
+            crate::BlockFamily::Unknown
+        };
+    }
+    joined
 }
 
 fn shape(join: &ReaderJoin) -> FieldShape {
@@ -81,7 +120,7 @@ fn ordinary_field(field: &RootField, result: &RegistryFieldResult) -> Field {
         .map(|(conditions, outcome)| {
             let outcome = match outcome {
                 PathOutcome::Reader(join @ ReaderJoin::Joined { .. }) => FieldReadOutcome::Read {
-                    reader: reader(std::slice::from_ref(join)),
+                    reader: field_reader(std::slice::from_ref(join), result),
                     shape: shape(join),
                 },
                 PathOutcome::Rejected => FieldReadOutcome::Rejected,
@@ -120,9 +159,20 @@ fn ordinary_field(field: &RootField, result: &RegistryFieldResult) -> Field {
             RepeatBehavior::Unknown
         },
     };
+    let mut reader = field_reader(&field.readers, result);
+    if read.iter().any(|alternative| match &alternative.outcome {
+        FieldReadOutcome::Read {
+            reader: alternative,
+            ..
+        } => alternative.family != reader.family,
+        FieldReadOutcome::Unresolved => true,
+        FieldReadOutcome::Rejected => false,
+    }) {
+        reader.family = crate::BlockFamily::Unknown;
+    }
     Field {
         name: field.name.clone(),
-        reader: reader(&field.readers),
+        reader,
         shape,
         read,
         members: if shape.value == ValueShape::Scalar {
@@ -140,11 +190,14 @@ fn collection_field(
     field: &RootField,
     collection: &crate::engine::analysis::fields::CollectionField,
 ) -> Field {
-    let reader = reader(&[ReaderJoin::Joined {
-        callee: "CPersistent::Read(CReader&)".into(),
-        arguments: Default::default(),
-        tail: false,
-    }]);
+    let reader = Reader {
+        id: Some(concrete_reader_id(
+            "CPersistent::Read(CReader&)",
+            &format!("{}::ReadMember(CReader&, int)", collection.class),
+        )),
+        kind: ReaderKind::Block,
+        family: crate::BlockFamily::Unknown,
+    };
     let shape = FieldShape {
         value: ValueShape::Block,
         repeat: RepeatBehavior::Accumulate,

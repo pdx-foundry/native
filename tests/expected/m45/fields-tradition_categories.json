@@ -12,7 +12,8 @@
   ],
   "reader": {
    "id": null,
-   "kind": "Unknown"
+   "kind": "Unknown",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Unknown",
@@ -32,7 +33,8 @@
      "Read": {
       "reader": {
        "id": "e044b50825a1841d",
-       "kind": "Block"
+       "kind": "Block",
+       "family": "Trigger"
       },
       "shape": {
        "repeat": "Unknown",
@@ -44,7 +46,8 @@
   ],
   "reader": {
    "id": "e044b50825a1841d",
-   "kind": "Block"
+   "kind": "Block",
+   "family": "Trigger"
   },
   "shape": {
    "repeat": "Unknown",
@@ -63,8 +66,9 @@
     "outcome": {
      "Read": {
       "reader": {
-       "id": "97942c9a3d3c9c1b",
-       "kind": "Block"
+       "id": "f08cb83d92484a89",
+       "kind": "Block",
+       "family": "Unknown"
       },
       "shape": {
        "repeat": "Unknown",
@@ -75,8 +79,9 @@
    }
   ],
   "reader": {
-   "id": "97942c9a3d3c9c1b",
-   "kind": "Block"
+   "id": "f08cb83d92484a89",
+   "kind": "Block",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Unknown",
@@ -97,7 +102,8 @@
   ],
   "reader": {
    "id": null,
-   "kind": "Unknown"
+   "kind": "Unknown",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Unknown",
@@ -118,7 +124,8 @@
   ],
   "reader": {
    "id": null,
-   "kind": "Unknown"
+   "kind": "Unknown",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Unknown",
@@ -139,7 +146,8 @@
   ],
   "reader": {
    "id": null,
-   "kind": "Unknown"
+   "kind": "Unknown",
+   "family": "Unknown"
   },
   "shape": {
    "repeat": "Unknown",
@@ -159,7 +167,8 @@
      "Read": {
       "reader": {
        "id": "325efaa17499c32d",
-       "kind": "String"
+       "kind": "String",
+       "family": "NotApplicable"
       },
       "shape": {
        "repeat": "Replace",
@@ -171,7 +180,8 @@
   ],
   "reader": {
    "id": "325efaa17499c32d",
-   "kind": "String"
+   "kind": "String",
+   "family": "NotApplicable"
   },
   "shape": {
    "repeat": "Replace",

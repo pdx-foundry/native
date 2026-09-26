@@ -2,6 +2,7 @@
 //! operations. A recipe is host-neutral data.
 use crate::binding::groups::M45_TEMPLATE_LAYOUT;
 use crate::engine::analysis::callbacks::{CallbackLayout, RuleArray};
+use crate::engine::analysis::declarations::ParserSlots;
 use crate::engine::analysis::localization::TextLayout;
 
 // Each group is one build's bindings, so its name starts with the build.
@@ -24,12 +25,26 @@ pub(in crate::binding) struct Recipe {
     pub declarations: Option<&'static DeclarationRecipe>,
 }
 
+/// Virtual reader slots and shared family methods on the selected build.
+pub(in crate::binding) struct PersistentRecipe {
+    pub read_slot: u64,
+    pub member_slot: u64,
+    pub families: &'static [(&'static str, crate::BlockFamily)],
+}
+
 /// Layout facts that the declaration methods need on this exact build.
 pub(in crate::binding) struct DeclarationRecipe {
     /// Virtual slots used by the two command families.
     pub create_slot: u64,
     pub trigger_scope_slot: u64,
     pub effect_scope_slot: u64,
+    pub trigger_parser: ParserSlots,
+    pub effect_parser: ParserSlots,
+    pub persistent: PersistentRecipe,
+    pub command_children: crate::engine::analysis::grammar::ChildLayout,
+    pub numeric_key_reader: &'static str,
+    pub reader_token_offset: u64,
+    pub child_families: &'static [(&'static str, crate::BlockFamily)],
     /// Stack offset of the category argument of the modifier definition call.
     pub modifier_category_offset: u64,
     /// Stack offset of the category argument of the call that registers a generated modifier.
@@ -62,6 +77,39 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     create_slot: 0x10,
     trigger_scope_slot: 0x78,
     effect_scope_slot: 0x80,
+    trigger_parser: ParserSlots {
+        read: 0x30,
+        member: 0x38,
+    },
+    effect_parser: ParserSlots {
+        read: 0x10,
+        member: 0x18,
+    },
+    persistent: PersistentRecipe {
+        read_slot: 0x20,
+        member_slot: 0x28,
+        families: &[(
+            "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::Read(CReader&)",
+            crate::BlockFamily::Modifier,
+        )],
+    },
+    command_children: crate::engine::analysis::grammar::ChildLayout {
+        data: 0x10,
+        count: 0x1c,
+        token: 0x20,
+    },
+    numeric_key_reader: "CToken::ReadValue(int&) const",
+    reader_token_offset: 0x38,
+    child_families: &[
+        (
+            "CTriggerCollectionBase::ReadMember(CReader&, int, EScopeType)",
+            crate::BlockFamily::Trigger,
+        ),
+        (
+            "CEffect::ReadMember(CReader&, int, EScopeType)",
+            crate::BlockFamily::Effect,
+        ),
+    ],
     modifier_category_offset: 0x4,
     dynamic_modifier_category_offset: 0x0,
     event_target_token_offset: 0x58,

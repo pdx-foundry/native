@@ -1,6 +1,6 @@
 # Registry fields
 
-`Native::registry_fields(registry)` (`registry-fields/v5`) gives root fields, reader and storage shapes,
+`Native::registry_fields(registry)` (`registry-fields/v6`) gives root fields, reader and storage shapes,
 loader alternatives, nested object fields and local stored-value selections. `Native::registries()` gives the registries. The module
 comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` describe the methods.
 This page holds the current sweep, the engine facts, the gaps and the prototype findings. The
@@ -396,3 +396,12 @@ slot. SDK-602 removed an image-wide scan of these, which no live method read. It
 SDK-551 owns custom, nested and late loaders; SDK-552 owns mounted selection and duplicates;
 SDK-543 owns identifier grammar. Symbols and addresses locate evidence on one build only; the
 prototype's synthetic identity is not a cross-build match.
+
+
+## SDK-542 block families
+
+Version 6 adds conservative block families to fields and their conditional read alternatives.
+Generic persistent destinations are joined to constructor-installed virtual readers; a shared
+`CPersistent::Read` call alone does not give a concrete identity. The full 164-registry sweep,
+unknown-family denominator, constructor limits and parser checks are recorded in
+[nested command grammar](command-grammar.md#population-measurement).

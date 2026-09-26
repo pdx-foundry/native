@@ -228,6 +228,7 @@ impl<'a> Composer<'a> {
             description,
             usage,
             scopes: scopes(input, factory),
+            factory,
         })
     }
 }

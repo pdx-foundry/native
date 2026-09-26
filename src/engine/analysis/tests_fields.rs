@@ -16,6 +16,7 @@ fn fixture() -> FieldInput {
         Symbol{name:"CPersistent::ReadMember(CReader&, int)".into(),address:0x5000},Symbol{name:"CReader::ReportUnexpected()".into(),address:0x6000},
     ];
     FieldInput {
+        persistent: None,
         objects: vec![],
         selection: candidates(&symbols).remove(0),
         symbols,
@@ -95,6 +96,63 @@ fn discovers_unknown_name_and_excludes_pivot_and_rejection_tokens() {
         2
     );
     assert!(result.partition_accounted);
+}
+
+#[test]
+fn block_family_follows_proven_arguments_and_preserves_conditional_conflicts() {
+    use crate::BlockFamily;
+    use crate::engine::analysis::readers::classify;
+    let mut input = fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name =
+        "void NParserUtil::ReadTrigger<CRootTrigger>(CReader&, CRootTrigger&, EScopeType)".into();
+    assert_eq!(
+        classify(&derive(input.clone()).fields[0].readers).family,
+        BlockFamily::Trigger
+    );
+    input.symbols.push(Symbol {
+        address: 0x4100,
+        name: "void NParserUtil::ReadEffect<CEffect>(CReader&, CEffect&, EScopeType)".into(),
+    });
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        ldrb w8, [x0, #0x30]; // conditional owner state
+        add x9, x0, #0x40;
+        mov x0, x1;
+        mov x1, x9;
+        cbz w8, extern 0x1028;
+        b extern 0x4000;
+        b extern 0x4100
+    );
+    let result = derive(input.clone());
+    assert_eq!(result.fields[0].readers.len(), 2);
+    assert_eq!(
+        classify(&result.fields[0].readers).family,
+        BlockFamily::Unknown
+    );
+    for path in result.paths.iter().filter(|path| path.domain == [7, 7]) {
+        assert_eq!(path.conditions.len(), 1);
+        let PathOutcome::Reader(join) = &path.outcome else {
+            panic!("{path:?}")
+        };
+        assert!(matches!(
+            classify(std::slice::from_ref(join)).family,
+            BlockFamily::Trigger | BlockFamily::Effect
+        ));
+    }
+    replace(&mut input, 0x1028, arm64!(at 0x1028; ret));
+    let result = derive(input);
+    assert_eq!(
+        classify(&result.fields[0].readers).family,
+        BlockFamily::Unknown
+    );
 }
 #[test]
 fn unsupported_instruction_preserves_obligation_and_does_not_invent_fields() {
@@ -948,6 +1006,139 @@ fn reconstruction_invalidates_the_previous_persistent_read() {
         assert!(
             derive(input).collections.is_empty(),
             "{class} at {position:#x}"
+        );
+    }
+}
+
+fn persistent_fixture() -> FieldInput {
+    use crate::engine::analysis::fields::{ConcreteReader, PersistentInput};
+    let mut input = fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CReader::Read(CPersistent&)".into();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor; mov x19, x0; add x0, x0, #0x40; bl extern 0xa000; mov x0, x19);
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    input.persistent = Some(PersistentInput {
+        constructors: vec![Function {
+            name: "CExample::CExample()".into(),
+            address: 0x9000,
+            code: constructor.bytes(),
+        }],
+        summaries: BTreeMap::from([(0xa000, BTreeMap::from([(0, 0xb000)]))]),
+        pointers: BTreeMap::new(),
+        never_return: vec![],
+        readers: BTreeMap::from([(
+            0xb000,
+            ConcreteReader {
+                read: "shared persistent read".into(),
+                member: "modifier member".into(),
+                family: crate::BlockFamily::Modifier,
+            },
+        )]),
+    });
+    input
+}
+
+#[test]
+fn persistent_family_and_identity_follow_the_constructed_destination() {
+    let first = crate::session::questions::normalized_fields(&derive(persistent_fixture()));
+    assert_eq!(first[0].reader.family, crate::BlockFamily::Modifier);
+    let mut input = persistent_fixture();
+    let concrete = input
+        .persistent
+        .as_mut()
+        .unwrap()
+        .readers
+        .get_mut(&0xb000)
+        .unwrap();
+    concrete.member = "another member".into();
+    concrete.family = crate::BlockFamily::Trigger;
+    let second = crate::session::questions::normalized_fields(&derive(input));
+    assert_eq!(second[0].reader.family, crate::BlockFamily::Trigger);
+    assert_ne!(first[0].reader.id, second[0].reader.id);
+    for alternative in &first[0].read {
+        if let crate::FieldReadOutcome::Read { reader, .. } = &alternative.outcome {
+            assert_eq!(reader.family, crate::BlockFamily::Modifier);
+        }
+    }
+}
+
+#[test]
+fn persistent_family_requires_constructor_agreement_and_no_later_invalidation() {
+    for missing in [
+        "constructor",
+        "summary",
+        "destination",
+        "conflict",
+        "unknown_call",
+    ] {
+        let mut input = persistent_fixture();
+        let binding = input.persistent.as_mut().unwrap();
+        match missing {
+            "constructor" => binding.constructors.clear(),
+            "summary" => binding.summaries.clear(),
+            "destination" => {
+                binding
+                    .summaries
+                    .insert(0xa000, BTreeMap::from([(8, 0xb000)]));
+            }
+            "conflict" => {
+                let mut body = Arm64::at(0xc000);
+                arm64!(body; str xzr, [x0, #0x40]; ret);
+                binding.constructors.push(Function {
+                    name: "alternative".into(),
+                    address: 0xc000,
+                    code: body.bytes(),
+                });
+            }
+            "unknown_call" => {
+                let mut body = Arm64::at(0x9000);
+                body.prologue();
+                arm64!(body; mov x19, x0; add x0, x0, #0x40; bl extern 0xa000; bl extern 0xc000; mov x0, x19);
+                body.epilogue();
+                arm64!(body; ret);
+                binding.constructors[0].code = body.bytes();
+            }
+            _ => unreachable!(),
+        }
+        let fields = crate::session::questions::normalized_fields(&derive(input));
+        assert_eq!(
+            fields[0].reader.family,
+            crate::BlockFamily::Unknown,
+            "{missing}"
+        );
+    }
+}
+
+#[test]
+fn persistent_family_follows_owner_aliases_and_inline_vtable_installation() {
+    for inline in [false, true] {
+        let mut input = persistent_fixture();
+        let binding = input.persistent.as_mut().unwrap();
+        if inline {
+            binding.constructors[0].code = arm64!(at 0x9000;
+                mov x8, #0xb000;
+                str x8, [x0, #0x40];
+                ret
+            );
+            binding.summaries.clear();
+        }
+        binding.constructors.push(Function {
+            name: "CExample::CExample(alias)".into(),
+            address: 0xc000,
+            code: arm64!(at 0xc000; b extern 0x9000),
+        });
+        let fields = crate::session::questions::normalized_fields(&derive(input));
+        assert_eq!(
+            fields[0].reader.family,
+            crate::BlockFamily::Modifier,
+            "inline={inline}"
         );
     }
 }
