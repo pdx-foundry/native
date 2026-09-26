@@ -16,6 +16,7 @@ fn fixture() -> FieldInput {
         Symbol{name:"CPersistent::ReadMember(CReader&, int)".into(),address:0x5000},Symbol{name:"CReader::ReportUnexpected()".into(),address:0x6000},
     ];
     FieldInput {
+        objects: vec![],
         selection: candidates(&symbols).remove(0),
         symbols,
         strings: BTreeMap::from([(0x8000, "new_engine_field".into())]),
@@ -825,4 +826,128 @@ fn an_unresolved_path_outside_a_table_guard_does_not_hide_its_default() {
         [ReaderJoin::Missing(_)]
     ));
     assert!(jump_table_gaps(&result).is_empty());
+}
+
+fn nested_fixture() -> FieldInput {
+    use fields::ObjectReader;
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        bl extern 0x9000; // allocation
+        mov x21, x0;
+        bl extern 0x9100; // constructor
+        str x21, [sp];
+        ldr x8, [x21];
+        ldr x8, [x8, #0x20];
+        mov x0, x21;
+        mov x1, x20;
+        blr x8; // persistent read
+        add x0, x19, #0x40; // collection
+        mov x2, sp;
+        bl extern 0x9300; // append same object
+        ret
+    );
+    input.symbols.extend([
+        Symbol {
+            name: "operator new(unsigned long)".into(),
+            address: 0x9000,
+        },
+        Symbol {
+            name: "CChild::CChild()".into(),
+            address: 0x9100,
+        },
+        Symbol {
+            name: "CPersistent::Read(CReader&)".into(),
+            address: 0x9200,
+        },
+    ]);
+    input.symbols.push(Symbol {
+        name: "CChild::ReadMember(CReader&, int)".into(),
+        address: 0xb000,
+    });
+    input.functions.push(Function {
+        name: "CChild::ReadMember(CReader&, int)".into(),
+        address: 0xb000,
+        code: arm64!(at 0xb000;
+            cmp w2, #7;
+            b.eq extern 0xb010;
+            add x0, x0, #0x38;
+            b extern 0x5000;
+            add x8, x0, #0x10;
+            mov x0, x1;
+            mov x1, x8;
+            b extern 0x4000
+        ),
+    });
+    input.objects.push(ObjectReader {
+        class: "CChild".into(),
+        constructors: vec![0x9100],
+        vtables: [(0, 0xa000)].into(),
+        pointers: [(0xa020, 0x9200)].into(),
+        read: 0x9200,
+        insert: vec![0x9300],
+        data_offset: Some(8),
+    });
+    input
+}
+
+#[test]
+fn nested_fields_require_the_constructed_read_object_to_reach_its_collection() {
+    let result = derive(nested_fixture());
+    assert_eq!(result.collections.len(), 1);
+    assert_eq!(result.collections[0].offset, 0x40);
+    assert_eq!(
+        result.collections[0].fields.fields[0].name,
+        "new_engine_field"
+    );
+    for address in [0x1020, 0x1038, 0x1040] {
+        let mut input = nested_fixture();
+        replace(&mut input, address, arm64!(at address; mov x0, x3));
+        assert!(derive(input).collections.is_empty(), "{address:#x}");
+    }
+}
+
+#[test]
+fn resetting_collection_storage_does_not_establish_accumulation() {
+    for insertion in [0x1044, 0x1048] {
+        let mut input = nested_fixture();
+        let instruction = arm64!(at insertion; str wzr, [x19, #0x54]);
+        let index = (insertion - 0x1000) as usize;
+        input.functions[0].code.splice(index..index, instruction);
+        assert!(derive(input).collections.is_empty());
+    }
+}
+
+#[test]
+fn reconstruction_invalidates_the_previous_persistent_read() {
+    for (class, position) in [
+        ("CChild", 0x3c),
+        ("COther", 0x3c),
+        ("CChild", 0x48),
+        ("COther", 0x48),
+    ] {
+        let mut input = nested_fixture();
+        let mut replacement = input.objects[0].clone();
+        replacement.class = class.into();
+        replacement.constructors = vec![0x9400];
+        input.objects.push(replacement);
+        let constructor = if class == "CChild" { 0x9100 } else { 0x9400 };
+        let address = 0x1000 + position as u64;
+        let reconstruct = arm64!(at address;
+            mov x0, x21;
+            bl extern constructor
+        );
+        input.functions[0]
+            .code
+            .splice(position..position, reconstruct);
+        assert!(
+            derive(input).collections.is_empty(),
+            "{class} at {position:#x}"
+        );
+    }
 }

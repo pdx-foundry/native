@@ -38,6 +38,9 @@ pub struct FieldInput {
     pub strings: BTreeMap<u64, String>,
     /// Read-only data sections, which hold the root's jump tables.
     pub read_only_data: Vec<DataSection>,
+    /// Constructed persistent classes directly reached from the root.
+    #[serde(default)]
+    pub objects: Vec<ObjectReader>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
 }
@@ -101,6 +104,8 @@ pub enum ReaderJoin {
         callee: String,
         /// Proven argument values at the call boundary.
         arguments: BTreeMap<String, Value>,
+        /// The root returns through this call, with no unexamined continuation.
+        tail: bool,
     },
     /// A root-token path exists but its reader relationship could not be established.
     Missing(Unresolved),
@@ -157,6 +162,8 @@ pub enum FieldGapKind {
     UnresolvedTokenPath,
     /// The paths do not account for every token interval.
     TokenPartition,
+    /// Local runtime selections retain an unresolved enclosing context or method bound.
+    RuntimeSelection,
     /// A jump table in the root reader could not be decoded.
     JumpTable,
 }
@@ -196,6 +203,10 @@ impl FieldGap {
 /// The root fields of one registry. This is bounded routing knowledge, never a complete schema.
 #[derive(Debug, Clone, Serialize)]
 pub struct RegistryFieldResult {
+    /// Local use-time storage selections with unresolved enclosing context.
+    pub uses: Vec<StorageSelection>,
+    /// Established nested object collections.
+    pub collections: Vec<CollectionField>,
     /// Named root fields, with explicit reader alternatives.
     pub fields: Vec<RootField>,
     /// Full bounded token-path ledger.
@@ -204,4 +215,51 @@ pub struct RegistryFieldResult {
     pub gaps: Vec<FieldGap>,
     /// Whether all token intervals are accounted for; this does not close path gaps.
     pub partition_accounted: bool,
+}
+
+/// A persistent object's executable-derived constructor and virtual reader bindings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjectReader {
+    /// Demangled class name associated with these constructors and readers.
+    pub class: String,
+    /// Constructor entry addresses in the verified executable.
+    pub constructors: Vec<u64>,
+    /// Byte offsets within the object mapped to executable vtable address points.
+    pub vtables: BTreeMap<u64, u64>,
+    /// Executable pointer-slot addresses mapped to their resolved pointer values.
+    pub pointers: BTreeMap<u64, u64>,
+    /// Entry address of the persistent reader called on the constructed object.
+    pub read: u64,
+    /// Entry addresses of insertion specializations accepting this object's pointer.
+    pub insert: Vec<u64>,
+    /// Byte offset of the pointer buffer within the collection, if proven.
+    pub data_offset: Option<u64>,
+}
+
+/// A root field that reads constructed objects into an owner collection.
+#[derive(Debug, Clone, Serialize)]
+pub struct CollectionField {
+    /// Root loader token that constructs, reads, and inserts an object.
+    pub token: i64,
+    /// Collection byte offset relative to the owning object.
+    pub offset: u64,
+    /// Buffer-pointer byte offset relative to the collection, if proven.
+    pub data_offset: Option<u64>,
+    /// Demangled class name of the inserted object.
+    pub class: String,
+    /// Loader fields and gaps discovered for the inserted object's class.
+    pub fields: Box<RegistryFieldResult>,
+}
+
+/// A conditional selection of a stored field in an owner method.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StorageSelection {
+    /// Demangled owner method in which the local selection occurs.
+    pub method: String,
+    /// Selected storage field path from the registry root.
+    pub field: Vec<String>,
+    /// Boolean field path tested by the local selection.
+    pub tested: Vec<String>,
+    /// Whether the tested field is zero on this selection's branch.
+    pub zero: bool,
 }

@@ -308,7 +308,7 @@ fn rejection(input: &FieldInput, names: &BTreeMap<u64, Option<&str>>) -> bool {
             == Some("CReader::ReportUnexpected()")
 }
 /// The reader that the call at `at` joins. `entry` is the root function.
-fn reader_join(name: Option<&str>, state: &State, at: u64, entry: u64) -> ReaderJoin {
+fn reader_join(name: Option<&str>, state: &State, at: u64, entry: u64, tail: bool) -> ReaderJoin {
     let Some(name) = name else {
         return ReaderJoin::Missing(Unresolved::at("callee", at, entry, Obstacle::Call));
     };
@@ -331,6 +331,7 @@ fn reader_join(name: Option<&str>, state: &State, at: u64, entry: u64) -> Reader
         ReaderJoin::Joined {
             callee: name.into(),
             arguments: state.registers.clone(),
+            tail,
         }
     } else {
         ReaderJoin::Missing(Unresolved::at("reader-routing", at, entry, Obstacle::Call))
@@ -481,10 +482,11 @@ fn decode_root(input: &FieldInput, root: &str) -> Option<(u64, Vec<Instruction>)
 
 /// Every token path through the root, and the jump tables in it that could not be decoded.
 pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    let root = format!(
-        "{}::ReadMember(CReader&, int)",
-        input.selection.owner_candidate
-    );
+    explore_owner(input, &input.selection.owner_candidate)
+}
+
+pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>, Vec<FieldGap>) {
+    let root = format!("{owner}::ReadMember(CReader&, int)");
     let initial = State {
         pc: 0,
         registers: BTreeMap::from([
@@ -563,7 +565,14 @@ pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
                     continue;
                 }
                 let name = target.and_then(|a| names.get(&a).copied().flatten());
-                let outcome = call_outcome(name, &state, rejects, row.address, entry);
+                let outcome = call_outcome(
+                    name,
+                    &state,
+                    rejects,
+                    row.address,
+                    entry,
+                    row.operation == "b",
+                );
                 if let (PathOutcome::Reader(_), Some(case)) = (&outcome, state.table_case) {
                     table_readers.push((leaves.len(), case));
                 }
@@ -654,6 +663,7 @@ fn call_outcome(
     rejects: bool,
     at: u64,
     entry: u64,
+    tail: bool,
 ) -> PathOutcome {
     if name == Some("CPersistent::ReadMember(CReader&, int)")
         && rejects
@@ -666,7 +676,7 @@ fn call_outcome(
     {
         PathOutcome::Rejected
     } else {
-        PathOutcome::Reader(reader_join(name, state, at, entry))
+        PathOutcome::Reader(reader_join(name, state, at, entry, tail))
     }
 }
 

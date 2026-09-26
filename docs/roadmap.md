@@ -196,6 +196,13 @@ Milestone 4 completes only when all of these hold:
 
 The [specification](specs/native.md#milestone-4-shared-reader-acceptance) records the same contract.
 
+**SDK-541 dependency audit, 2026-09-25:** tradition inheritance affects the names and icons
+selected at use time, although the parser reads the fields without those tests. SDK-541 retains
+the inheritance condition-to-field extraction; SDK-546 depends on it for conditional naming
+templates. SDK-597 must preserve the processing stage and unresolved context. This is not a
+new exclusion from SDK-600. The exact-build findings and remaining work are in
+[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance-sdk-541).
+
 Milestone 3 needs only the static context (SDK-527), so its first tickets are unblocked as soon as
 that ticket is done. The blocking relations in Linear are the authority for what can start.
 

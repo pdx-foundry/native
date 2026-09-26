@@ -7,6 +7,7 @@ pub(crate) use loaded_modifiers::ModifierJoin;
 mod callbacks;
 mod defines;
 mod families;
+mod fields;
 mod language;
 mod loaded_modifiers;
 mod localization;

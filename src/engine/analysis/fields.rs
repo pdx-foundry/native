@@ -15,8 +15,14 @@
 //! attached to that field.
 //!
 //! Limits of this revision:
-//! - It stops at the first external delegate. Owner helpers, inherited readers beyond the
-//!   verified base rejection, indirect calls, dynamic names and nested grammars are boundaries.
+//! - Root dispatch stops at the first external delegate. A second bounded pass can prove that
+//!   a field allocates, constructs, virtually reads and inserts the same persistent object on
+//!   every path. Its named child fields are then derived to depth one.
+//! - Direct const owner methods supply local Boolean storage selections separately from loader
+//!   conditions. Other signatures do not establish the original receiver and remain unresolved.
+//!   Collection provenance is joined across loops; the enclosing selection context is unresolved.
+//!   The use walk bounds each register to 16 origins and each function to 64 visits per instruction
+//!   in aggregate. A local arm stops after 256 instructions. Unknown transfers lose provenance.
 //! - It does not carry argument provenance through unknown calls, and does not assume that a
 //!   stack restore recovers provenance.
 //! - Root traversal: at most 500 instructions per path, 4,096 states and 1,024 tokens per jump
@@ -40,15 +46,18 @@
 //! triggers, effects, graphical modifiers and AI weight.
 //!
 //! What the result does not establish: the template loader and owner symbol relationship is
-//! static, not observed live ownership. Dispatch stops at a delegate or an obstruction, so nested
-//! grammars, post-read behavior and dynamic names stay open. Names come only from literal engine
+//! static, not observed live ownership. Deeper grammars, full post-read behavior and dynamic names
+//! stay open. Names come only from literal engine
 //! token constructors; no config or content file is an authority.
 mod control_flow;
 mod dispatch;
 mod inventory;
+mod nested;
 mod records;
 mod tokens;
+mod uses;
 pub use records::*;
+pub(crate) use uses::has_owner_receiver;
 
 use super::InputError;
 use std::collections::BTreeMap;
@@ -71,7 +80,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v4";
+pub const METHOD: &str = "registry-fields/v5";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
@@ -112,7 +121,15 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
             "token intervals are missing or overlap",
         ));
     }
+    let collections = nested::discover(input, &fields, &tokens);
+    let uses = uses::discover(input, &fields, &collections);
+    if !collections.is_empty() {
+        gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,
+            "Local Boolean selections only: enclosing reachability, loop winner, callees, indirect callers, unsupported transfers and method bounds remain unresolved."));
+    }
     Ok(RegistryFieldResult {
+        uses,
+        collections,
         fields,
         paths,
         gaps,

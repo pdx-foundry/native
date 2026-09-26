@@ -48,7 +48,7 @@ fn classify_callee(callee: &str) -> ReaderKind {
             ReaderKind::FixedPoint
         }
         "CReader::Read(CString&, bool)" => ReaderKind::String,
-        "CReader::Read(CPersistent&)" => ReaderKind::Block,
+        "CReader::Read(CPersistent&)" | "CPersistent::Read(CReader&)" => ReaderKind::Block,
         _ if matching_template(callee, "ReadTrigger")
             || matching_template(callee, "ReadEffect") =>
         {
@@ -93,6 +93,44 @@ fn is_simple_template_argument(argument: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
+/// Registers that affect a supported reader call, excluding caller scratch state.
+pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
+    if callee == "CReader::Read(CString&, bool)"
+        || matching_template(callee, "ReadTrigger")
+        || matching_template(callee, "ReadEffect")
+        || matching_deferred_reference(callee)
+    {
+        Some(&["x0", "x1", "x2"])
+    } else if classify_callee(callee) != ReaderKind::Unknown {
+        Some(&["x0", "x1"])
+    } else {
+        None
+    }
+}
+
+/// The owner-derived output object of a supported shared reader.
+pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
+    let ReaderJoin::Joined {
+        callee, arguments, ..
+    } = join
+    else {
+        return None;
+    };
+    let destination = if matching_deferred_reference(callee) {
+        "x2"
+    } else if callee == "CVariableValue::Read(CReader&, EScopeType)" {
+        "x0"
+    } else if call_arguments(callee).is_some() {
+        "x1"
+    } else {
+        return None;
+    };
+    match arguments.get(destination) {
+        Some(super::fields::Value::Owner(offset)) => Some(*offset),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,6 +141,7 @@ mod tests {
         ReaderJoin::Joined {
             callee: callee.into(),
             arguments: BTreeMap::new(),
+            tail: true,
         }
     }
 

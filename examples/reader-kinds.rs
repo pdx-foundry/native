@@ -39,7 +39,11 @@ fn print_registry(registry: &str, fields: &[Field]) {
                 .id
                 .as_ref()
                 .map_or("missing-id", |_| "shared-id");
-            let conditional = if field.conditional {
+            let conditional = if field
+                .read
+                .iter()
+                .any(|alternative| alternative.condition != pdx_native::FieldCondition::Always)
+            {
                 ", conditional"
             } else {
                 ""

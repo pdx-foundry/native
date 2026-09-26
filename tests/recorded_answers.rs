@@ -8,6 +8,13 @@ use pdx_native::{
 use serde_json::json;
 use std::{fs, path::Path};
 
+fn recorded_field(name: &str, kind: &str) -> serde_json::Value {
+    json!({ "name": name, "reader": { "id": if kind == "Unknown" { None } else { Some(name) }, "kind": kind },
+        "shape": { "value": "Unknown", "repeat": "Unknown" },
+        "read": [{ "condition": "Unresolved", "outcome": "Unresolved" }],
+        "members": "Unresolved", "domain": "Unknown", "default": "Unknown", "uses": [] })
+}
+
 fn source() -> serde_json::Value {
     json!({ "build": "example-build", "native_version": "0.1.0",
             "method": "example/v1", "basis": "LiveObservation" })
@@ -65,13 +72,13 @@ fn recorded() -> tempfile::TempDir {
         root.path(),
         "registry_fields/common/traditions.json",
         json!({ "Ok": { "value": [
-            { "name": "boolean", "reader": { "id": "boolean", "kind": "Boolean" }, "conditional": false },
-            { "name": "integer", "reader": { "id": "integer", "kind": "Integer" }, "conditional": false },
-            { "name": "fixed", "reader": { "id": "fixed", "kind": "FixedPoint" }, "conditional": false },
-            { "name": "string", "reader": { "id": "string", "kind": "String" }, "conditional": false },
-            { "name": "reference", "reader": { "id": "reference", "kind": "Reference" }, "conditional": false },
-            { "name": "block", "reader": { "id": "block", "kind": "Block" }, "conditional": false },
-            { "name": "unknown", "reader": { "id": null, "kind": "Unknown" }, "conditional": true }
+            recorded_field("boolean", "Boolean"),
+            recorded_field("integer", "Integer"),
+            recorded_field("fixed", "FixedPoint"),
+            recorded_field("string", "String"),
+            recorded_field("reference", "Reference"),
+            recorded_field("block", "Block"),
+            recorded_field("unknown", "Unknown")
         ], "completeness": "Partial",
             "gaps": [{ "kind": "ReaderSemantics", "subject": {"kind": "field", "name": "unknown"}, "detail": "Example." }],
             "source": source() } }),

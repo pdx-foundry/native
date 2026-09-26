@@ -50,6 +50,26 @@ another build are refused. The recorder writes this metadata even when the quest
 Disposal belongs to the session, separately from the answers. Item names establish no fixture
 execution, field storage, validation, schema completeness or rule coverage.
 
+## Field answer migration (SDK-541 / SDK-597)
+
+`registry_fields` still returns `Answer<Vec<Field>>`, with method `registry-fields/v5`.
+The former `Field.conditional` Boolean is replaced by paired `read` alternatives. Each
+alternative retains its `condition` and `outcome` (`Read`, `Rejected`, or `Unresolved`).
+Never combine the condition from one alternative with another's reader or shape.
+
+Keep `shape.value`, `shape.repeat`, `members`, `domain`, `default`, and `uses` in snapshots.
+Replacement and accumulation describe storage, not allowed occurrence counts. `Unknown`
+is an unanswered fact. `members: Fields` can still have gaps; an empty child inventory does
+not prove an empty grammar.
+
+`uses` describes local selection of stored data in an engine method, separately from parser
+acceptance. Its condition can be `All([Unresolved, FieldZero { path, zero }])`; retain both
+terms and the registry-relative nested path. A use ID identifies the containing method on
+this build, so independent selections may share it. An empty use list does not prove absence
+of runtime conditions. SDK-597 owns this snapshot migration and SDK-546 consumes the naming
+relationships. SDK-627 and SDK-628 retain the remaining default/domain/occurrence and enclosing
+selection gaps respectively.
+
 ## Local caller and checks
 
 The caller has `describe`, `live` and `recorded` commands. Both live and recorded modes call

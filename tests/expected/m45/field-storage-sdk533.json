@@ -1,0 +1,72 @@
+{
+  "origin": "tests/fixtures/native/m45/observe_fixture/62585613913e159dc6ad87b58d9ca8953d0e1c083b114f19176a229394fe21b7/060911555a331bded42c93bf9562f98530b28191d9824340a12a4d2a5ebae035.json",
+  "source": {
+    "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+    "native_version": "0.1.0",
+    "method": "observe-fixture/v1",
+    "basis": "LiveObservation"
+  },
+  "outcomes": [
+    {
+      "question": {
+        "registry": "common/traditions",
+        "definition": "atlas_omitted",
+        "field": "unlocks_agenda",
+        "diagnostics": true,
+        "runtime": false
+      },
+      "file": "common/traditions/atlas_frozen.txt",
+      "owner": 2,
+      "definition_line": 14,
+      "reader": {
+        "id": "325efaa17499c32d",
+        "kind": "String"
+      },
+      "storage": {
+        "String": {
+          "occurrences": [],
+          "final_value": "",
+          "completeness": "Complete"
+        }
+      },
+      "diagnostics": [],
+      "runtime": "NotRequested"
+    },
+    {
+      "question": {
+        "registry": "common/traditions",
+        "definition": "atlas_repeated",
+        "field": "unlocks_agenda",
+        "diagnostics": true,
+        "runtime": false
+      },
+      "file": "common/traditions/atlas_frozen.txt",
+      "owner": 3,
+      "definition_line": 15,
+      "reader": {
+        "id": "325efaa17499c32d",
+        "kind": "String"
+      },
+      "storage": {
+        "String": {
+          "occurrences": [
+            {
+              "line": 16,
+              "occurrence": 1,
+              "value": "atlas_first"
+            },
+            {
+              "line": 17,
+              "occurrence": 2,
+              "value": "atlas_second"
+            }
+          ],
+          "final_value": "atlas_second",
+          "completeness": "Complete"
+        }
+      },
+      "diagnostics": [],
+      "runtime": "NotRequested"
+    }
+  ]
+}
