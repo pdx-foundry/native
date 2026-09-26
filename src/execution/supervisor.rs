@@ -502,7 +502,7 @@ fn observe_session(
     }
 }
 
-/// Leave the owner details, the run summary and the report in the work directory. Native keeps
+/// Leave the owner details, the report and the run summary in the work directory. Native keeps
 /// the directory after a failure, and a caller that was lost never received the report.
 fn write_report(
     work_directory: &Path,
@@ -518,15 +518,16 @@ fn write_report(
         report.reservation_resolved = false;
         report.outcome = SessionOutcome::Failed("Session bookkeeping failed".into());
     }
-    // The summary is a developer aid: its failure must not change what `close` returns.
-    if let Err(error) = run_summary::write(work_directory, report, run) {
-        eprintln!("{}: {error}", run_summary::FILE);
-    }
-    // Write the report last, so that it names every earlier failure.
+    // The report names every bookkeeping failure before it.
     if let Err(error) = files::write_json(&work_directory.join("report.json"), report) {
         report.diagnostics.push(format!("report.json: {error}"));
         report.reservation_resolved = false;
         report.outcome = SessionOutcome::Failed("Session bookkeeping failed".into());
+    }
+    // The summary follows the final report. It is a developer aid, so its own failure must not
+    // change what `close` returns.
+    if let Err(error) = run_summary::write(work_directory, report, run) {
+        eprintln!("{}: {error}", run_summary::FILE);
     }
 }
 
@@ -884,6 +885,38 @@ exec sleep 30
             "the session ended before its pause"
         );
         assert_eq!(summary["observations"]["modifiers"], "not-requested");
+    }
+
+    #[test]
+    fn the_summary_follows_a_report_that_could_not_be_written() {
+        let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
+        let root = store();
+        let output = store();
+        let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
+        reservation.disposed();
+        fs::write(output.path().join("report.json"), "existing file").unwrap();
+        let mut report = SessionReport {
+            attempt: "report".into(),
+            outcome: SessionOutcome::Completed,
+            disposal: Disposal::Confirmed,
+            reservation_resolved: true,
+            diagnostics: Vec::new(),
+        };
+        write_report(
+            output.path(),
+            &reservation,
+            &mut report,
+            &RunRecord::new(&SessionRequest::test()),
+        );
+        let summary: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.path().join(run_summary::FILE)).unwrap())
+                .unwrap();
+
+        assert!(!report.reservation_resolved);
+        assert_eq!(
+            summary["outcome"],
+            serde_json::json!({"Failed": "Session bookkeeping failed"})
+        );
     }
 
     #[test]

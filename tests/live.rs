@@ -2331,9 +2331,13 @@ fn kept_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Vec<String> 
 /// summary, and a later passing case removes only its own directory. Uses stand-in directories
 /// with this process's prefix; starts no game.
 fn failed_cases_keep_their_work_directories() -> Outcome {
+    // A unique run keeps stale stand-ins of an earlier process with this number out of the check.
+    let run = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
     let make = |name: &str| -> std::io::Result<std::path::PathBuf> {
         let work = std::env::temp_dir().join(format!(
-            "pdx-native-{}-retention-{name}",
+            "pdx-native-{}-retention-{run}-{name}",
             std::process::id()
         ));
         std::fs::create_dir_all(work.join("session"))?;

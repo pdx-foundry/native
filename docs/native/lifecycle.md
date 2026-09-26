@@ -50,7 +50,7 @@ Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibil
 ## Live-run summary
 
 Every session that owns a work directory ends with `session/run-summary.json`, written by the
-supervisor after `owner.json` and before `report.json`. It is a developer aid; its failure is
+supervisor after `owner.json` and `report.json`, so it states the final outcome. It is a developer aid; its failure is
 printed on the supervisor's standard error and never changes the outcome or `close`. The live
 harness (`tests/live.rs`) sets the hidden `GameOptions::keep_work_directory`, so `close` keeps
 the directory. A passing case removes it; a failing case keeps it and prints
