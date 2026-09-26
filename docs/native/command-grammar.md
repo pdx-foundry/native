@@ -214,8 +214,17 @@ The development reports are retained under `.local/sdk-542/`; they are measureme
 inputs. Authored tests cover missing/ambiguous static evidence and observation-integrity faults.
 The live matrix has one accepted and one source-located rejected sample per target command, all
 14 limit/order/weight/malformed edge cases, trigger and effect diagnostic probes, and repeated
-block-entry/return observations. Each malformed case uses its own game session. No parser sample
-claims stored block values, weight arithmetic, scope propagation, or runtime meaning.
+block-entry/return observations. No parser sample claims stored block values, weight arithmetic,
+scope propagation, or runtime meaning.
+
+A validation window lasts until all content has loaded, about 74 seconds on M45-release, whatever
+the fixture holds. So the well-formed samples of one block field share one session
+(`fixture_control_triggers`, `fixture_control_effects`). Each sample is its own five-line
+definition, and it is checked alone. An accepted sample must have no diagnostic on its lines. A
+rejected sample needs a diagnostic of its stage on its child's line. A diagnostic that no sample
+owns fails the case. The nonnumeric weight and the malformed `limit` each keep their own session:
+a reader report or a malformed block can upset the parsing of the definitions after it. A fixture
+holds at most 32 questions, which bounds a batch.
 
 ## Consumer boundary
 
