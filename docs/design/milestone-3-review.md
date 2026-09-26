@@ -259,8 +259,8 @@ a new start or exit gate.
 | R3 runtime weight and scope-availability observations | [SDK-598](https://linear.app/unnamed-system/issue/SDK-598) blocks SDK-545; [SDK-599](https://linear.app/unnamed-system/issue/SDK-599) blocks SDK-549. |
 | R4 CString layout and worker flag helper | [SDK-601](https://linear.app/unnamed-system/issue/SDK-601), alongside SDK-579; distinct from SDK-580's larger anchor move. |
 | R5 council agenda public-API test and M4 acceptance checks | [SDK-600](https://linear.app/unnamed-system/issue/SDK-600), with SDK-541 to SDK-550 retaining their own fixture criteria. |
-| R6, A9/G1, Atlas R7/A10; carried M2 A5 | [SDK-597](https://linear.app/unnamed-system/issue/SDK-597): four integration cases, category owners and stable published gap reasons. |
-| The 755 gaps without owners | SDK-597 explicitly requires a follow-up per failure shape or an accepted-gap note, with ticket mappings in docs. This triage is still open; solving every gap is not an integration prerequisite. |
+| R6, A9/G1, Atlas R7/A10; carried M2 A5 | [SDK-597](https://linear.app/unnamed-system/issue/SDK-597): first slice (R6 cases 1, 3 in part, 4; category owners; stable published gap reasons; first live re-record with SDK-577). [SDK-625](https://linear.app/unnamed-system/issue/SDK-625): R6 case 2, the remaining claim types, fixture conclusions and the final live run ([section 8.2](#82-atlas-integration-split-2026-09-25)). |
+| The 755 gaps without owners | [SDK-626](https://linear.app/unnamed-system/issue/SDK-626) requires a follow-up per failure shape or an accepted-gap note, with ticket mappings in docs. Solving every gap is not an integration prerequisite. |
 | Native R7 and carried M2 R6 identity cleanup | [SDK-574](https://linear.app/unnamed-system/issue/SDK-574) owns serde ReaderKind on the worker wire; [SDK-581](https://linear.app/unnamed-system/issue/SDK-581) owns the FieldGap enum and normalization. |
 | Jump-table repair | [SDK-563](https://linear.app/unnamed-system/issue/SDK-563), moved to M4; blocked by SDK-579 and completed preparation, and blocking SDK-541. |
 | Atlas display-name identity repair | [SDK-577](https://linear.app/unnamed-system/issue/SDK-577), M4, in the same change as SDK-597's first live re-record ([section 8.1](#81-milestone-35-amendment-2026-09-24)). |
@@ -274,7 +274,7 @@ a new start or exit gate.
 | Conditional shared type parser | [SDK-594](https://linear.app/unnamed-system/issue/SDK-594) requires checking for a demonstrated common shape; retaining separate parsers is a valid documented outcome. |
 | Shared Rust/Python hook names | SDK-574 includes generation from the protocol authority with the next live change. |
 | Prepared-operation design and modifier contexts | [SDK-547](https://linear.app/unnamed-system/issue/SDK-547) begins with its own bounded design. SDK-598 separately owns weight observations. |
-| Live measurement credit; full inventories and failure shapes | [SDK-548](https://linear.app/unnamed-system/issue/SDK-548), [SDK-553](https://linear.app/unnamed-system/issue/SDK-553), SDK-597 and SDK-600 retain live-only credit and method acceptance requirements. Recordings remain reproduction inputs. |
+| Live measurement credit; full inventories and failure shapes | [SDK-548](https://linear.app/unnamed-system/issue/SDK-548), [SDK-553](https://linear.app/unnamed-system/issue/SDK-553), SDK-597, SDK-625 and SDK-600 retain live-only credit and method acceptance requirements. Recordings remain reproduction inputs. |
 
 Retained decisions are constraints, not missing implementation tickets: the category read-entry
 exception (M2 N5) stays under SDK-569's documented removal route; hidden `internals` (M2 N6)
@@ -314,6 +314,24 @@ grammar, from SDK-498), SDK-608 (event and pre_trigger contexts, from SDK-496), 
 localisation checks, from SDK-500) and SDK-610 (define defaults and bounds, from SDK-504). SDK-480,
 SDK-486, SDK-506 and SDK-511 stay open. SDK-486 now also owns the archive of `.local/sdk-498/`.
 
+### 8.2 Atlas integration split, 2026-09-25
+
+SDK-597 was written to stay open for the whole milestone, "extending integration as later
+shared-reader answers land". That is the shape this review rejected for the gate test (R5): one
+ticket that cannot close until every method lands, or closes early with weakened checks. It also
+mixed three kinds of work with different timing. Jackson split it:
+
+| Ticket | Contents | Timing |
+| --- | --- | --- |
+| [SDK-597](https://linear.app/unnamed-system/issue/SDK-597) | R6 case 1 (conditional branches), case 3 for shape, condition and block family, case 4 (shared directories); G1 owner categories; R7/A10 stable gap reasons; the first live re-record with SDK-577 in the same change | After SDK-541 and SDK-542, which now block it |
+| [SDK-625](https://linear.app/unnamed-system/issue/SDK-625) | R6 case 2 (partial command grammars, after SDK-548); case 3 for numeric, weight, naming and scope context; fixture conclusions kept apart from static answers; the final live coverage run with build and source revisions | Blocked by SDK-544 to SDK-546 and SDK-548 to SDK-550; increments may land after each method ticket |
+| [SDK-626](https://linear.app/unnamed-system/issue/SDK-626) | Triage of the 755 unowned gaps by failure shape: an owned follow-up or an accepted-gap note per shape | No blockers; before the final run where possible |
+
+SDK-600's fourth completion criterion names SDK-597 and SDK-625. The exit gate in section 3
+and the checks in section 9.5 do not change; "R6's four Atlas cases" are now met across the
+two tickets. The same day, the merge of PR #78 (a docs-only change that named both in its
+title) had moved SDK-597 and SDK-577 to Done through the GitHub automation; both are open work.
+
 ## 9. Order of work
 
 This is the recommended sequence for carrying out the review. **Starting Milestone 4 does not
@@ -326,7 +344,7 @@ The following delivery tickets are assigned to Jackson in Milestone 4:
 
 | Responsibility | Ticket |
 | --- | --- |
-| Atlas composition and fixture conclusions (R6, G1) | [SDK-597](https://linear.app/unnamed-system/issue/SDK-597) |
+| Atlas composition and fixture conclusions (R6, G1) | [SDK-597](https://linear.app/unnamed-system/issue/SDK-597) first slice; [SDK-625](https://linear.app/unnamed-system/issue/SDK-625) remainder and final live run; [SDK-626](https://linear.app/unnamed-system/issue/SDK-626) gap triage ([section 8.2](#82-atlas-integration-split-2026-09-25)) |
 | Runtime weight observations blocking SDK-545 | [SDK-598](https://linear.app/unnamed-system/issue/SDK-598) |
 | Scope availability observations blocking SDK-549 | [SDK-599](https://linear.app/unnamed-system/issue/SDK-599) |
 | Public-API council agenda parity gate (R5) | [SDK-600](https://linear.app/unnamed-system/issue/SDK-600) |
@@ -435,8 +453,9 @@ Milestone 4.
 - [ ] Each method has run over its full applicable inventory, unchanged during that run, with
   complete, partial and failed counts and distinct failure shapes recorded. Commands use the
   whole command inventory, as required by the development policy.
-- [ ] R6's four Atlas cases pass through assembly, verification, comparison and coverage.
-  Unresolved branches and sibling arguments receive no unearned coverage credit.
+- [ ] R6's four Atlas cases pass through assembly, verification, comparison and coverage
+  (cases 1, 3 in part and 4 in SDK-597; case 2 and the rest of case 3 in SDK-625). Unresolved
+  branches and sibling arguments receive no unearned coverage credit.
 - [ ] The Atlas result and coverage measurement identify the build and source revisions.
   Recorded answers remain reproduction inputs; credited rates come from the live run.
 

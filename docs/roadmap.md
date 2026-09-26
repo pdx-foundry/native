@@ -116,6 +116,12 @@ rate; its failures return as new reader shapes, not as handwritten answers. The
   safer to write, and the independent cleanup. Refactors that block no method (SDK-594, SDK-595)
   are in neither milestone. This amends the review's rule that repairs do not gate Milestone 4
   ([review, section 8.1](design/milestone-3-review.md#81-milestone-35-amendment-2026-09-24)).
+- **The Atlas integration ticket is split (2026-09-25).** SDK-597 stayed open across the whole
+  milestone by design, the same shape as a gate ticket merged into its first method. It now holds
+  only the first slice, delivered after SDK-541 and SDK-542. SDK-625 holds the later answer
+  types and the final live coverage run; it is blocked by SDK-544 to SDK-546 and SDK-548 to
+  SDK-550. SDK-626 holds the triage of the 755 unowned gaps, which is ticket writing rather than
+  integration code and has no blockers.
 - **A method is written in one task (2026-09-24).** The inspector (SDK-579), stop diagnostics
   and the sweep report (both SDK-581, which absorbed SDK-588 on 2026-09-24) replace the
   throwaway prototype. One task explores with the inspector, records findings and failed shapes
@@ -137,7 +143,7 @@ and private-directory cleanup. This work has no Linear tickets.
 | 2 | Registry schema | Static analysis context; registry candidates and ownership; items for every registry; seedless field discovery; reader binding; public fixture observation; separate parse, validation and runtime outcomes; full tradition observations to frozen Atlas. In Atlas: the first rule snapshot, then the `.cwt` comparison tool that reads it. | Rust results equal retained results (164 named template registries that agree with every live-observed directory; 10 agenda fields); the tradition snapshot raises coverage above the baseline and is compared with the config | SDK-527 to SDK-534, SDK-558, SDK-524 |
 | 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | Each of the five `script-docs` logs and each config name list has an engine-derived answer in the snapshot, with its gaps in the ledger; the per-area coverage figures are recorded | SDK-535 to SDK-540, SDK-562, SDK-564 to SDK-568; Atlas: SDK-570 |
 | 3.5 | Foundations | Shortcut guard; jump-table repair; stop diagnostics and the sweep report; test assembler helper; method-authoring guide; one pause owner in the worker; the review's refactors and cleanup | The shortcut guard passes; the 32 megastructure jump-table fields are found; a failed path is located from one inspector run; the sweep report groups failures by stop diagnostic; every refactor keeps parity output byte-identical | SDK-563, SDK-569, SDK-571, SDK-574, SDK-581, SDK-589, SDK-593, SDK-601 to SDK-606 |
-| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method ticket ends with one run over its full registry or command inventory. | The council agenda test, method fixture criteria and Atlas integration checks below pass; full-inventory counts and failure shapes are recorded | SDK-541 to SDK-550; preparation SDK-596; Atlas SDK-597 and SDK-577; observations SDK-598 and SDK-599; acceptance test SDK-600 |
+| 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier application, scope context, script parameters. Each method ticket ends with one run over its full registry or command inventory. | The council agenda test, method fixture criteria and Atlas integration checks below pass; full-inventory counts and failure shapes are recorded | SDK-541 to SDK-550, SDK-607; preparation SDK-596; Atlas SDK-597, SDK-625, SDK-626 and SDK-577; observations SDK-598 and SDK-599; acceptance test SDK-600 |
 | 5 | Registry sweep | Custom, nested and late registries; mounted files and duplicates; the method set, unchanged at a recorded commit, over all registries | Automatic rate known for all 253 types; every exception recorded | SDK-551 to SDK-553 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
 | 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
@@ -157,8 +163,9 @@ The accepted [Milestone 3 review](design/milestone-3-review.md) defines the work
 SDK-596 owns preparation: align the contracts and tickets, repair duplicate modifier uncertainty,
 and measure the current M45-release field population before changing discovery. Milestone 3.5
 comes next: SDK-569's shortcut guard and SDK-563's jump-table repair block SDK-541, and SDK-574's
-single pause owner blocks the new observers of SDK-598 and SDK-599. SDK-597 delivers Atlas
-integration alongside SDK-541 and SDK-542.
+single pause owner blocks the new observers of SDK-598 and SDK-599. SDK-597 delivers the first
+Atlas integration slice after SDK-541 and SDK-542; SDK-625 delivers the rest and the final live
+coverage run (split 2026-09-25, see below).
 
 Milestone 4 completes only when all of these hold:
 
@@ -178,10 +185,14 @@ Milestone 4 completes only when all of these hold:
    recording complete, partial and failed counts and distinct failure shapes. SDK-569 passes.
    Production registry validation follows the bound build; M45-release parity explicitly asserts
    164 registries as a regression expectation, not a production cap.
-4. **Atlas integration (SDK-597):** two established field branches and one unresolved branch
-   survive assembly, verification, comparison and coverage; an established argument never credits
-   an unresolved sibling. Claims use typed subjects. Directories with several CWT types are joined
-   or recorded as counted gaps. Credited rates come from the live run; recordings support reproduction.
+4. **Atlas integration (SDK-597, then SDK-625):** two established field branches and one
+   unresolved branch survive assembly, verification, comparison and coverage; an established
+   argument never credits an unresolved sibling. Claims use typed subjects. Directories with
+   several CWT types are joined or recorded as counted gaps. Credited rates come from the live
+   run; recordings support reproduction. SDK-597 owns the first slice (conditional branches,
+   block families, shared directories, owner categories, stable gap reasons, the first live
+   re-record with SDK-577). SDK-625 owns partial command grammars, the remaining claim types,
+   fixture conclusions and the final live run. SDK-626 triages the 755 unowned gaps.
 
 The [specification](specs/native.md#milestone-4-shared-reader-acceptance) records the same contract.
 
@@ -191,10 +202,10 @@ that ticket is done. The blocking relations in Linear are the authority for what
 ## Not yet ticketed
 
 - Atlas-side rule work after the tradition snapshot (SDK-558): snapshot assembly for milestones
-  5 and 6 (milestone 3 is SDK-570; milestone 4 is SDK-597), the run driver and rule composition of
-  the registry sweep (SDK-553), the policy overlay
-  (severity, subtype naming, alias factoring) keyed to rule identities, and the authored remainder
-  of the documentation. These get the `Atlas` repository label.
+  5 and 6 (milestone 3 is SDK-570; milestone 4 is SDK-597 and SDK-625), the run driver and rule
+  composition of the registry sweep (SDK-553), the policy overlay (severity, subtype naming,
+  alias factoring) keyed to rule identities, and the authored remainder of the documentation.
+  These get the `Atlas` repository label.
 - Installation discovery without a location hint (specification user story 2). It does not block
   config coverage.
 - Private remote preservation of the prototype sources is tracked as SDK-486. Retained captures
