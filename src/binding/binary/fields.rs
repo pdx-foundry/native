@@ -1,7 +1,7 @@
 use crate::AnalysisError;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
-    fields::{DataSection, FieldInput, Function, ObjectReader},
+    fields::{DataSection, FieldInput, Function, ObjectReader, has_owner_receiver},
 };
 use object::{Object, ObjectSection, SectionKind};
 use std::collections::{BTreeMap, BTreeSet};
@@ -196,10 +196,9 @@ fn collect_owner_methods(
     functions: &mut Vec<Function>,
     gaps: &mut Vec<String>,
 ) -> Result<(), AnalysisError> {
-    let prefix = format!("{owner}::");
     for symbol in symbols
         .iter()
-        .filter(|symbol| symbol.name.starts_with(&prefix) && symbol.name.contains('('))
+        .filter(|symbol| has_owner_receiver(&symbol.name, owner))
     {
         if functions
             .iter()
@@ -324,9 +323,7 @@ fn array_pointer_offsets(
             } else {
                 operand.parse().ok()?
             };
-            if let Some(index) = indexes.get(&target) {
-                next.push(*index);
-            }
+            next.push(*indexes.get(&target)?);
         }
         for next in next {
             match &mut states[next] {
@@ -414,5 +411,25 @@ mod tests {
             array_pointer_offsets(&decode_arm64(&proven, 0x1000).unwrap()),
             Some(BTreeSet::from([8]))
         );
+    }
+    #[test]
+    fn collection_buffer_is_unresolved_when_a_branch_leaves_the_function() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let conditional_exit = arm64!(at 0x1000;
+            ldr x8, [x0, #8];
+            cbz w2, extern 0x2000; // cold block outside the bounded function
+            ret
+        );
+        let tail_exit = arm64!(at 0x1000;
+            ldr x8, [x0, #8];
+            b extern 0x2000
+        );
+        for code in [conditional_exit, tail_exit] {
+            assert_eq!(
+                array_pointer_offsets(&decode_arm64(&code, 0x1000).unwrap()),
+                None
+            );
+        }
     }
 }

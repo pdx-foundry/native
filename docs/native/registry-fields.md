@@ -11,7 +11,7 @@ This page holds the current sweep, the engine facts, the gaps and the prototype 
 The v5 sweep covers all **164 registries: 9 complete, 155 partial, 0 failed**, with
 **1,347 root fields and 26 nested fields**. No root field was added or removed from v4.
 The exact executable and ARM64 slice are identified in the SDK-541 findings below.
-The full run takes about 71 s and 686 MB peak memory on the development host.
+The full run takes about 68 s and 716 MB peak memory on the development host.
 
 | Field fact | Root fields | Nested fields |
 | --- | ---: | ---: |
@@ -30,7 +30,7 @@ String 206 and Unknown 489.
 The answers contain 1,335 unconditional root read alternatives and 24 alternatives with
 unresolved or composite conditions; a field can have several alternatives. All 26 nested
 read alternatives are unconditional. This says nothing about use-time inheritance. There are
-34 root and 14 nested local use selections, each retaining its unresolved enclosing context.
+10 root and 14 nested local use selections, each retaining its unresolved enclosing context.
 
 The constructed-object method transfers to `tradition_swap` in traditions and ascension perks
 (13 child fields each), and to `advanced_authority_swap` in authorities (collection established,
@@ -49,9 +49,9 @@ Public failure shapes below exclude `OutsideMethod`, include nested gaps, and ov
 | Field reader missing on at least one path | 86 | 86 |
 | Anonymous or dynamic keys lack a literal field name | 16 | 16 |
 | Known reader, unknown value form | 15 | 9 |
-| Required function or name table unreadable | 14 | 14 |
+| Required function or name table unreadable | 12 | 12 |
 | Loader condition unresolved, outcome retained | 12 | 5 |
-| Local use test known, enclosing context unresolved | 48 | 2 |
+| Local use test known, enclosing context unresolved | 24 | 2 |
 | Bounded use analysis leaves other contexts unresolved | 3 | 3 |
 
 The lower complete count reflects the added storage and condition obligations. It is not a
@@ -223,6 +223,11 @@ Inspected on M45-release: executable SHA-256
 `OnEnabled` at `0x100ce25b8` and `OnDisabled` use the same swap selection. In `OnEnabled`,
 `ldrb` at `0x100ce26ac` tests `+0x4f0`; `csel` at `0x100ce26b8` chooses swap effect `+0x378`
 on zero and base effect `+0x418` otherwise. The same flag selects modifier and tooltip members.
+Use analysis admits direct `const` owner methods: their signatures establish the receiver.
+Static, nested-class and other unproven receiver shapes remain outside this bounded method
+and are retained in SDK-628. This includes `CTraditionType::PostReadInit()`: its selections
+need independent receiver proof before inclusion. A branch outside an insertion function leaves
+its buffer offset unresolved instead of discarding the branch.
 The local flag proof follows copies of the receiver at the flag load; a shared loop load
 address alone does not establish object identity. A conditional select must receive its flags
 from the adjacent comparison on every incoming path.

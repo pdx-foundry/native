@@ -18,7 +18,8 @@
 //! - Root dispatch stops at the first external delegate. A second bounded pass can prove that
 //!   a field allocates, constructs, virtually reads and inserts the same persistent object on
 //!   every path. Its named child fields are then derived to depth one.
-//! - Owner methods supply local Boolean storage selections separately from loader conditions.
+//! - Direct const owner methods supply local Boolean storage selections separately from loader
+//!   conditions. Other signatures do not establish the original receiver and remain unresolved.
 //!   Collection provenance is joined across loops; the enclosing selection context is unresolved.
 //!   The use walk bounds each register to 16 origins and each function to 64 visits per instruction
 //!   in aggregate. A local arm stops after 256 instructions. Unknown transfers lose provenance.
@@ -56,6 +57,7 @@ mod records;
 mod tokens;
 mod uses;
 pub use records::*;
+pub(crate) use uses::has_owner_receiver;
 
 use super::InputError;
 use std::collections::BTreeMap;

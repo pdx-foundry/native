@@ -405,6 +405,37 @@ struct Storage<'a> {
     collections: &'a [CollectionField],
 }
 
+/// Whether the signature establishes a direct const member of this owner class.
+/// Unqualified members may be static; nested-class methods have a different receiver.
+pub(crate) fn has_owner_receiver(name: &str, owner: &str) -> bool {
+    let Some(member) = name
+        .strip_prefix(owner)
+        .and_then(|suffix| suffix.strip_prefix("::"))
+    else {
+        return false;
+    };
+    let Some((method, parameters)) = member.split_once('(') else {
+        return false;
+    };
+    if method.contains("::") {
+        return false;
+    }
+    let mut depth = 1;
+    for (index, character) in parameters.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &parameters[index + 1..] == " const";
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 pub(super) fn discover(
     input: &FieldInput,
     fields: &[RootField],
@@ -413,7 +444,6 @@ pub(super) fn discover(
     if collections.is_empty() {
         return Vec::new();
     }
-    let prefix = format!("{}::", input.selection.owner_candidate);
     let receivers: BTreeSet<_> = input
         .symbols
         .iter()
@@ -425,9 +455,11 @@ pub(super) fn discover(
         collections,
     };
     let mut found = Vec::new();
-    for function in input.functions.iter().filter(|function| {
-        function.name.starts_with(&prefix) && !function.name.contains("::ReadMember(")
-    }) {
+    for function in input
+        .functions
+        .iter()
+        .filter(|function| has_owner_receiver(&function.name, &input.selection.owner_candidate))
+    {
         let Ok(rows) = decode_arm64(&function.code, function.address) else {
             continue;
         };
@@ -861,5 +893,34 @@ mod tests {
             member("base", 10, 0x80, "CReader::Read(CString&, bool)"),
         ];
         assert!(discover(&input(code), &fields, &collections()).is_empty());
+    }
+    #[test]
+    fn owner_scope_alone_does_not_establish_a_receiver() {
+        let code = arm64!(at 0x1000;
+            mov x20, x0;
+            ldr x8, [x20, #0x48];
+            ldr x21, [x8, x4, lsl #3];
+            ldrb w8, [x21, #0x10];
+            cbnz w8, extern 0x101c;
+            add x0, x21, #0x18;
+            ret;
+            mov x0, x20;
+            ret
+        );
+        let fields = vec![member("children", 7, 0x40, "CReader::Read(CPersistent&)")];
+        let mut input = input(code);
+        assert!(!discover(&input, &fields, &collections()).is_empty());
+        for name in [
+            "CExample::Select(void*)",
+            "CExample::Nested::Select() const",
+            "CExample::Select()::Local::Select() const",
+            "CExample::Select() const::Local::Select() const",
+        ] {
+            input.functions[0].name = name.into();
+            assert!(
+                discover(&input, &fields, &collections()).is_empty(),
+                "{name}"
+            );
+        }
     }
 }
