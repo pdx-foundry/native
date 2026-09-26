@@ -36,4 +36,46 @@ Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibil
 - **Exited process groups.** macOS refuses a signal to a process group whose members have all exited. Check that the group is not empty before you signal it, and keep the direct child identity until it is reaped.
 - **Harmless test processes.** macOS kills a copied Apple system binary before a test can inspect it. A test that needs a harmless process named `stellaris` must compile its own.
 - **Ordinary game conflict.** Any process named `stellaris` makes a live start refuse, and makes a running game report lost isolation. Run the live tests apart from the process tests that start such a process.
+- **Debugger authorization.** On macOS 27.0, `system.privilege.taskport` asks the user to
+  authenticate once per login session (shared for 10 hours), even with Developer mode on. Until
+  someone approves, every attach waits: each live case times out at the startup deadline with
+  `worker-start` as its last completed phase and `hooks-requested` as the worker's last record.
+  A plain `lldb` attach to a freshly compiled program hangs the same way, which separates this
+  from a Native fault. Approve one attach in a terminal of the same login session before a live
+  run. After such a timeout, `debugserver` survives cleanup with launchd as its parent; one
+  remains for each blocked session and must be stopped by hand. Native's cleanup does not reach
+  it yet (SDK-633).
 - **Process inventory.** The one-second process inventory deadline expired one time after activation. Twenty later runs of the same command took 0.03 seconds each. The cause is not known; the deadline was not relaxed.
+
+## Live-run summary
+
+Every session that owns a work directory ends with `session/run-summary.json`, written by the
+supervisor after `owner.json` and `report.json`, so it states the final outcome. It is a developer aid; its failure is
+printed on the supervisor's standard error and never changes the outcome or `close`. The live
+harness (`tests/live.rs`) sets the hidden `GameOptions::keep_work_directory`, so `close` keeps
+the directory. A passing case removes it; a failing case keeps it and prints
+`kept <dir>; run summary <dir>/session/run-summary.json: outcome …, last completed phase …`,
+also when a check fails after a clean `close`. The same directory holds `raw-trace.jsonl`,
+`owner-events.jsonl`, worker and game output, and the private profile's engine logs.
+
+What the summary says, and what it does not:
+
+- **Timing.** One supervisor monotonic clock, from the host reservation to the end of cleanup.
+  It excludes plan admission, the caller's handshake and the worker's own time. The session
+  phases are `setup`, `worker-start`, `awaiting-pause` and `paused`; each is `completed`,
+  `interrupted` (running when the session ended) or `not-reached`. Cleanup is timed apart. Worker
+  progress has no clock: `worker.last_record` gives the last record the worker wrote.
+- **Hooks.** `requested` comes from the worker's `hooks-requested` record, the states from
+  `hooks-active-before-resume`. A missing hook is `absent`, `disabled` (the late-hook control),
+  `unresolved` or `hit-before-resume`. When no requested hook is active, the worker stops before
+  its hook state record, so the states are `unavailable` and only `requested` is listed.
+- **Stream.** Holes are read from the stream as written, before a damaged stream loses its
+  terminals. A hole gives the expected and found sequence numbers, never a count of lost
+  records.
+- **Observations.** The reducers' own results at the pause, projected: each registry's observed
+  state, item count and diagnostics; the fixture's gaps, diagnostic window, and for each question
+  its parsing, storage, validation (diagnostics by engine stage) and runtime; the modifier table's
+  entry count. Before the pause they are `unavailable`; an observation the session did not
+  request is `not-requested`. The summary decides nothing that an answer does not.
+
+Lists keep eight samples with a count of the rest, and each text keeps 240 characters.

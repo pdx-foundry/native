@@ -226,7 +226,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
             | WorkerEvent::ModifierTable { .. }
             | WorkerEvent::ModifierTableEnd { .. }
             | WorkerEvent::ModifierUnavailable { .. }
-            | WorkerEvent::HooksRequested
+            | WorkerEvent::HooksRequested { .. }
             | WorkerEvent::LaunchStopped { .. }
             | WorkerEvent::HooksActiveBeforeResume { .. }
             | WorkerEvent::Resume { .. }
@@ -453,7 +453,7 @@ mod tests {
     fn session(keys: &[&str]) -> (Vec<WorkerRecord>, Vec<OwnerEvent>, Vec<String>) {
         let names = vec![TRADITIONS.to_string(), CATEGORIES.to_string()];
         let mut rows = vec![
-            json!({"kind":"hooks-requested"}),
+            json!({"kind":"hooks-requested","hooks":["registry:common/traditions","registry:common/tradition_categories"]}),
             json!({"kind":"launch-stopped","error":"success","pid":10,"triple":"arm64-test","frames":[{"function":"_dyld_start"}]}),
             json!({"kind":"hooks-active-before-resume","hooks":{
                 "registry:common/traditions":{"enabled":true,"locations":1,"resolved":1,"hits":0},

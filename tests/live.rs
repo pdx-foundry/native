@@ -12,6 +12,13 @@
 //! A word after `cargo live` selects the cases whose name contains it. A case takes about 35
 //! seconds; the full set takes longer as cases are added.
 //!
+//! Every session keeps its work directory, `$TMPDIR/pdx-native-<pid>-<nanos>`, until its case
+//! ends. A passing case removes it. A failing case keeps it, also when a check fails after a clean
+//! `close`, and prints its path with `session/run-summary.json`: the outcome, the phase times,
+//! the hooks, the worker stream's last record and holes, and each observation's compact result.
+//! The same directory holds the raw trace, owner events, worker and game output and the private
+//! profile's engine logs. A later passing case never removes an earlier case's directory.
+//!
 //! This file has its own `main` (`harness = false` in `Cargo.toml`) for two reasons. The
 //! supervisor is this executable with the `--supervisor` argument, and the standard harness
 //! writes to the standard output that the supervisor protocol owns. Only one Native-owned game
@@ -93,6 +100,11 @@ fn main() {
             "{} live cases ignored: they require STELLARIS_PATH and `--ignored`",
             cases.len()
         );
+        if let Err(error) = failed_cases_keep_their_work_directories() {
+            println!("work directory retention ... FAILED: {error}");
+            std::process::exit(1);
+        }
+        println!("work directory retention ... ok");
         return;
     }
     let installation = std::env::var_os("STELLARIS_PATH")
@@ -128,6 +140,9 @@ fn main() {
             Ok(()) => println!("test {name} ... ok ({seconds} s)"),
             Err(error) => {
                 println!("test {name} ... FAILED ({seconds} s): {error}");
+                for line in kept_work_directories(&earlier_work) {
+                    println!("  {line}");
+                }
                 failed.push(name);
                 // A later case cannot start while a process of this one remains.
                 if processes_are_gone(&before).is_err() {
@@ -1264,10 +1279,11 @@ async fn assert_recorded_fixture(
     Ok(())
 }
 
+/// Every live session keeps its work directory; the harness removes it when the case passes.
 fn options() -> GameOptions {
     let mut supervisor = Command::new(std::env::current_exe().expect("test executable path"));
     supervisor.arg("--supervisor");
-    GameOptions::new(supervisor)
+    GameOptions::new(supervisor).keep_work_directory()
 }
 
 fn fixture_request() -> pdx_native::FixtureRequest {
@@ -1695,6 +1711,10 @@ async fn close_confirmed(game: &mut Game) -> Outcome {
     let disposal = game.close().await?;
     if disposal != Disposal::Confirmed {
         return Err(format!("disposal: {disposal:?}").into());
+    }
+    // A later check of this case may still fail, so its diagnostics must outlive the close.
+    if !game.work_directory().is_some_and(std::path::Path::exists) {
+        return Err("a confirmed close removed the kept work directory".into());
     }
     // A repeated close gives the same result, and a closed game answers nothing.
     if game.close().await? != Disposal::Confirmed {
@@ -2268,11 +2288,99 @@ fn processes_are_gone(before: &BTreeSet<u32>) -> Outcome {
     Ok(())
 }
 
-/// Native removes its work directory after a confirmed `close`, and keeps it after a failed
-/// start or a drop. A case that passed needs no inspection, so remove what it left.
+/// Every live session keeps its work directory, and Native also keeps it after a failed start or
+/// a drop. A case that passed needs no inspection, so remove what it left.
 fn remove_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Outcome {
     for path in work_directories()?.difference(earlier) {
         std::fs::remove_dir_all(path)?;
+    }
+    Ok(())
+}
+
+/// Name each work directory that a failed case kept, with its run summary's outcome and last
+/// completed phase, or say that it has none.
+fn kept_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Vec<String> {
+    let current = match work_directories() {
+        Ok(current) => current,
+        Err(error) => return vec![format!("work directories unknown: {error}")],
+    };
+
+    current
+        .difference(earlier)
+        .map(|work| {
+            let path = work.join("session/run-summary.json");
+            let summary = std::fs::read(&path)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+            let Some(summary) = summary else {
+                return format!("kept {}; no run summary", work.display());
+            };
+
+            format!(
+                "kept {}; run summary {}: outcome {}, last completed phase {}",
+                work.display(),
+                path.display(),
+                summary["outcome"],
+                summary["timing"]["last_completed_phase"],
+            )
+        })
+        .collect()
+}
+
+/// A case that fails after a confirmed close keeps its work directories and names each run
+/// summary, and a later passing case removes only its own directory. Uses stand-in directories
+/// with this process's prefix; starts no game.
+fn failed_cases_keep_their_work_directories() -> Outcome {
+    // A unique run keeps stale stand-ins of an earlier process with this number out of the check.
+    let run = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let make = |name: &str| -> std::io::Result<std::path::PathBuf> {
+        let work = std::env::temp_dir().join(format!(
+            "pdx-native-{}-retention-{run}-{name}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(work.join("session"))?;
+        Ok(work)
+    };
+    let before = work_directories()?;
+    let summarized = make("summarized")?;
+    let summary = summarized.join("session/run-summary.json");
+    std::fs::write(
+        &summary,
+        r#"{"outcome":"Completed","timing":{"last_completed_phase":"paused"}}"#,
+    )?;
+    let unsummarized = make("unsummarized")?;
+    let report = kept_work_directories(&before);
+
+    let after_failure = work_directories()?;
+    let passed = make("passed")?;
+    let removal = remove_work_directories(&after_failure);
+    let earlier_kept = summary.exists() && unsummarized.exists();
+    let own_removed = !passed.exists();
+    for work in [&summarized, &unsummarized, &passed] {
+        if work.exists() {
+            std::fs::remove_dir_all(work)?;
+        }
+    }
+    removal?;
+
+    let expected = [
+        format!(
+            "kept {}; run summary {}: outcome \"Completed\", last completed phase \"paused\"",
+            summarized.display(),
+            summary.display()
+        ),
+        format!("kept {}; no run summary", unsummarized.display()),
+    ];
+    if report != expected {
+        return Err(format!("failed case report: {report:?}").into());
+    }
+    if !earlier_kept {
+        return Err("a later passing case removed an earlier failed case's directory".into());
+    }
+    if !own_removed {
+        return Err("a passing case kept its own work directory".into());
     }
     Ok(())
 }

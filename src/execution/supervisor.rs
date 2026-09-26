@@ -4,7 +4,11 @@
 //! The order of a session: handshake, request, admission, reservation, private profile, worker
 //! package, suspended game, worker, pause, answers, controls, then cleanup. Cleanup always runs:
 //! stop the worker, reap the game, confirm disposal and report.
-use super::{instances::Reservation, owner_events::OwnerEvents};
+use super::{
+    instances::Reservation,
+    owner_events::OwnerEvents,
+    run_summary::{self, PausedSummary, Phase, RunRecord},
+};
 use crate::{
     answer::Disposal,
     binding::{self, ExecutionPlan},
@@ -177,6 +181,7 @@ fn run(
         reservation_resolved: false,
         diagnostics: Vec::new(),
     };
+    let mut run = RunRecord::new(&request);
     let started = Instant::now();
     let mut game = None;
     let mut observer = None;
@@ -217,18 +222,21 @@ fn run(
         if started.elapsed() >= SETUP_BUDGET {
             return Ok(SessionOutcome::TimedOut);
         }
+        run.complete(Phase::Setup);
         events.record(OwnerEvent::GameOwnedSuspended {
             pid: u64::from(child.pid()),
             identity: serde_json::to_string(&child.identity()?)?,
         })?;
         observer.start(child.pid())?;
         events.record(OwnerEvent::WorkerStarted)?;
+        run.complete(Phase::WorkerStart);
         observe_session(
             input,
             output,
             child,
             observer,
             &mut events,
+            &mut run,
             &Session {
                 work_directory: &work,
                 attempt: &report.attempt,
@@ -252,8 +260,8 @@ fn run(
         }
         SessionOutcome::Failed(error.to_string())
     });
+    run.end_session();
     finish_session(
-        owns_work_directory.then_some(work.as_path()),
         &mut report,
         &mut reservation,
         &mut game,
@@ -261,11 +269,15 @@ fn run(
         &mut events,
         || plan.integrity().map(|_| ()),
     );
+    run.end_cleanup();
+    if owns_work_directory {
+        write_report(&work, &reservation, &mut report, &run);
+    }
     Ok(report)
 }
 
+/// Stop the worker, reap the game and resolve the reservation.
 fn finish_session(
-    work: Option<&Path>,
     report: &mut SessionReport,
     reservation: &mut Reservation,
     game: &mut Option<binding::OwnedGame>,
@@ -315,9 +327,6 @@ fn finish_session(
         reservation.disposed();
         report.reservation_resolved = true;
     }
-    if let Some(work) = work {
-        write_report(work, reservation, report);
-    }
 }
 
 /// The fixed facts of one session that the observation loop needs.
@@ -354,6 +363,7 @@ fn observe_session(
     child: &binding::OwnedGame,
     observer: &mut binding::Observer,
     events: &mut OwnerEvents,
+    run: &mut RunRecord,
     session: &Session<'_>,
 ) -> Result<SessionOutcome, SupervisorError> {
     let mut deadline = Instant::now() + session.startup;
@@ -430,12 +440,18 @@ fn observe_session(
                     }
                     None => None,
                 };
+                run.paused(PausedSummary::new(
+                    &registries,
+                    fixture.as_ref(),
+                    modifiers.as_ref(),
+                ));
                 output.send(Reply::Paused {
                     readiness,
                     fixture: Box::new(fixture),
                     modifiers: Box::new(modifiers),
                     registries: registries.clone(),
                 })?;
+                run.complete(Phase::AwaitingPause);
                 answers = Some(registries);
                 deadline = Instant::now() + session.idle;
             }
@@ -486,9 +502,14 @@ fn observe_session(
     }
 }
 
-/// Leave the owner details and the report in the work directory. Native keeps the
-/// directory after a failure, and a caller that was lost never received the report.
-fn write_report(work_directory: &Path, reservation: &Reservation, report: &mut SessionReport) {
+/// Leave the owner details, the report and the run summary in the work directory. Native keeps
+/// the directory after a failure, and a caller that was lost never received the report.
+fn write_report(
+    work_directory: &Path,
+    reservation: &Reservation,
+    report: &mut SessionReport,
+    run: &RunRecord,
+) {
     let owner = reservation
         .snapshot()
         .and_then(|snapshot| files::write_json(&work_directory.join("owner.json"), &snapshot));
@@ -497,11 +518,16 @@ fn write_report(work_directory: &Path, reservation: &Reservation, report: &mut S
         report.reservation_resolved = false;
         report.outcome = SessionOutcome::Failed("Session bookkeeping failed".into());
     }
-    // Write the report last, so that it names every earlier failure.
+    // The report names every bookkeeping failure before it.
     if let Err(error) = files::write_json(&work_directory.join("report.json"), report) {
         report.diagnostics.push(format!("report.json: {error}"));
         report.reservation_resolved = false;
         report.outcome = SessionOutcome::Failed("Session bookkeeping failed".into());
+    }
+    // The summary follows the final report. It is a developer aid, so its own failure must not
+    // change what `close` returns.
+    if let Err(error) = run_summary::write(work_directory, report, run) {
+        eprintln!("{}: {error}", run_summary::FILE);
     }
 }
 
@@ -564,144 +590,232 @@ mod tests {
         assert_eq!(reservation.snapshot().unwrap()["state"], "disposed");
     }
 
-    #[test]
-    fn fake_worker_session_reports_a_paused_answer_and_reaps_both_processes() {
-        use std::os::unix::net::UnixStream;
+    /// One session with a suspended stand-in game and a shell worker, from the worker's start to
+    /// the report. The caller closes the session when it pauses.
+    struct FakeSession {
+        output: tempfile::TempDir,
+        report: SessionReport,
+        replies: Vec<Reply>,
+        game_pid: u32,
+        worker_exit: Option<i64>,
+    }
 
-        let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
-        let root = store();
-        let output = store();
-        let registry = "common/traditions";
-        let mut reservation = reserve(root.path(), "unit", output.path()).unwrap();
-        let child = binding::test_child(output.path()).unwrap();
-        let game_pid = child.pid();
-        reservation.record_game(child.identity().unwrap());
-        assert!(child.suspended().unwrap());
-        let mut game = Some(child);
+    impl FakeSession {
+        fn run(rows: &[serde_json::Value], worker: &str) -> Self {
+            use std::os::unix::net::UnixStream;
 
-        let rows = [
-            serde_json::json!({"kind":"hooks-requested"}),
-            serde_json::json!({"kind":"launch-stopped","error":"success","pid":game_pid,"triple":"arm64-test","frames":[{"function":"_dyld_start"}]}),
-            serde_json::json!({"kind":"hooks-active-before-resume","hooks":{
-                "registry:common/traditions":{"enabled":true,"locations":1,"resolved":1,"hits":0}}}),
-            serde_json::json!({"kind":"resume","error":"success"}),
-            serde_json::json!({"kind":"registry-load-start","name":registry,"directory":registry,"owner":"0x1000"}),
-            serde_json::json!({"kind":"registry-load-returned","name":registry,"owner":"0x1000"}),
-            serde_json::json!({"kind":"registry-snapshot","name":registry,"directory":registry,"owner":"0x1000","count":0}),
-            serde_json::json!({"kind":"registry-end","name":registry,"owner":"0x1000","count":0,"producerLastSequence":8}),
-            serde_json::json!({"kind":"session-paused","returned":[registry],"cause":"loaders-returned"}),
-        ];
+            let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
+            let root = store();
+            let output = store();
+            let registry = "common/traditions";
+            let mut reservation = reserve(root.path(), "unit", output.path()).unwrap();
+            let child = binding::test_child(output.path()).unwrap();
+            let game_pid = child.pid();
+            reservation.record_game(child.identity().unwrap());
+            assert!(child.suspended().unwrap());
+            let mut game = Some(child);
+
+            write_trace(output.path(), rows, game_pid);
+            let mut observer = Some(shell_worker(output.path(), game_pid, worker, registry));
+            let mut run = RunRecord::new(&SessionRequest::test());
+            run.complete(Phase::Setup);
+            let mut events = OwnerEvents::new(output.path());
+            events
+                .record(OwnerEvent::GameOwnedSuspended {
+                    pid: u64::from(game_pid),
+                    identity: serde_json::to_string(&game.as_ref().unwrap().identity().unwrap())
+                        .unwrap(),
+                })
+                .unwrap();
+            events.record(OwnerEvent::WorkerStarted).unwrap();
+            run.complete(Phase::WorkerStart);
+            let (writer, reader) = UnixStream::pair().unwrap();
+            let reporter = Reporter::new(writer);
+            let (send, receive) = mpsc::sync_channel(1);
+            let controller = thread::spawn(move || close_at_pause(reader, send));
+            let session = Session {
+                work_directory: output.path(),
+                attempt: "unit",
+                registries: vec![registry.into()],
+                fixture: None,
+                category_fields: &[],
+                loaded_modifiers: None,
+                build: crate::BuildId("unit".into()),
+                startup: Duration::from_secs(3),
+                idle: Duration::from_secs(3),
+            };
+            let outcome = observe_session(
+                &receive,
+                &reporter,
+                game.as_ref().unwrap(),
+                observer.as_mut().unwrap(),
+                &mut events,
+                &mut run,
+                &session,
+            )
+            .unwrap();
+            run.end_session();
+            let mut report = SessionReport {
+                attempt: "unit".into(),
+                outcome,
+                disposal: Disposal::NotApplicable,
+                reservation_resolved: false,
+                diagnostics: Vec::new(),
+            };
+            finish_session(
+                &mut report,
+                &mut reservation,
+                &mut game,
+                &mut observer,
+                &mut events,
+                || Ok(()),
+            );
+            run.end_cleanup();
+            write_report(output.path(), &reservation, &mut report, &run);
+            reporter
+                .send(Reply::Finished(Box::new(report.clone())))
+                .unwrap();
+            reporter.finish().unwrap();
+            let replies = controller.join().unwrap();
+
+            Self {
+                output,
+                report,
+                replies,
+                game_pid,
+                worker_exit: observer.as_ref().unwrap().exited,
+            }
+        }
+
+        fn summary(&self) -> serde_json::Value {
+            let summary = fs::read(self.output.path().join(run_summary::FILE)).unwrap();
+
+            serde_json::from_slice(&summary).unwrap()
+        }
+    }
+
+    /// The worker's stream: these rows, numbered from 1, on the launch thread of `game_pid`.
+    fn write_trace(directory: &Path, rows: &[serde_json::Value], game_pid: u32) {
         let mut trace = Vec::new();
-        for (index, mut row) in rows.into_iter().enumerate() {
+        for (index, row) in rows.iter().enumerate() {
+            let mut row = row.clone();
             row["seq"] = serde_json::json!(index + 1);
             row["run"] = serde_json::json!("unit");
             row["thread"] = serde_json::json!(7);
+            if row["kind"] == "launch-stopped" {
+                row["pid"] = serde_json::json!(game_pid);
+            }
             serde_json::to_writer(&mut trace, &row).unwrap();
             trace.push(b'\n');
         }
-        fs::write(output.path().join("raw-trace.jsonl"), trace).unwrap();
+        fs::write(directory.join("raw-trace.jsonl"), trace).unwrap();
+    }
+
+    /// A shell worker that says hello, waits for the resume grant, then runs `after_resume`.
+    fn shell_worker(
+        directory: &Path,
+        game_pid: u32,
+        after_resume: &str,
+        registry: &str,
+    ) -> binding::Observer {
         for name in [
             "worker.stdout",
             "worker.stderr",
             "game.stdout",
             "game.stderr",
         ] {
-            if !output.path().join(name).exists() {
-                fs::write(output.path().join(name), []).unwrap();
+            if !directory.join(name).exists() {
+                fs::write(directory.join(name), []).unwrap();
             }
         }
-        let script = r#"
-printf '{"version":"%s","attempt":"unit","game":%s,"worker":%s,"target":"target","source_hashes":{},"python":"python","lldb":"lldb","module":"module"}' "$NATIVE_VERSION" "$GAME_PID" "$$" > hello.json.pending
+        let script = format!(
+            r#"
+printf '{{"version":"%s","attempt":"unit","game":%s,"worker":%s,"target":"target","source_hashes":{{}},"python":"python","lldb":"lldb","module":"module"}}' "$NATIVE_VERSION" "$GAME_PID" "$$" > hello.json.pending
 mv hello.json.pending hello.json
 while [ ! -f resume-granted.json ]; do sleep 0.01; done
+{after_resume}
+"#
+        );
+        let mut command = Command::new("/bin/sh");
+        command
+            .arg("-c")
+            .arg(script)
+            .current_dir(directory)
+            .env("NATIVE_VERSION", crate::protocol::observation::VERSION)
+            .env("GAME_PID", game_pid.to_string())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        binding::test_observer(directory, &mut command, game_pid, registry)
+    }
+
+    /// The caller: close the session when it pauses, and keep every reply until the report.
+    fn close_at_pause(
+        mut reader: std::os::unix::net::UnixStream,
+        controls: SyncSender<Input>,
+    ) -> Vec<Reply> {
+        let mut replies = Vec::new();
+        loop {
+            let reply: Reply = protocol::read(&mut reader).unwrap();
+            let finished = matches!(reply, Reply::Finished(_));
+            if matches!(reply, Reply::Paused { .. }) {
+                controls.send(Input::Control(Control::Close)).unwrap();
+            }
+            replies.push(reply);
+            if finished {
+                return replies;
+            }
+        }
+    }
+
+    fn requested_hook_rows() -> Vec<serde_json::Value> {
+        vec![
+            serde_json::json!({"kind":"hooks-requested","hooks":["registry:common/traditions"]}),
+            serde_json::json!({"kind":"launch-stopped","error":"success","pid":0,"triple":"arm64-test","frames":[{"function":"_dyld_start"}]}),
+            serde_json::json!({"kind":"hooks-active-before-resume","hooks":{
+                "registry:common/traditions":{"enabled":true,"locations":1,"resolved":1,"hits":0}}}),
+            serde_json::json!({"kind":"resume","error":"success"}),
+            serde_json::json!({"kind":"registry-load-start","name":"common/traditions","directory":"common/traditions","owner":"0x1000"}),
+        ]
+    }
+
+    #[test]
+    fn fake_worker_session_reports_a_paused_answer_and_reaps_both_processes() {
+        let registry = "common/traditions";
+        let mut rows = requested_hook_rows();
+        rows.extend([
+            serde_json::json!({"kind":"registry-load-returned","name":registry,"owner":"0x1000"}),
+            serde_json::json!({"kind":"registry-snapshot","name":registry,"directory":registry,"owner":"0x1000","count":0}),
+            serde_json::json!({"kind":"registry-end","name":registry,"owner":"0x1000","count":0,"producerLastSequence":8}),
+            serde_json::json!({"kind":"session-paused","returned":[registry],"cause":"loaders-returned"}),
+        ]);
+        let session = FakeSession::run(
+            &rows,
+            r#"
 printf '{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":["common/traditions"],"generation":0}' "$GAME_PID" "$$" > session-paused.json.pending
 mv session-paused.json.pending session-paused.json
 while [ ! -f pause-check.json ]; do sleep 0.01; done
 printf '{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":["common/traditions"],"generation":1}' "$GAME_PID" "$$" > session-paused.json.pending
 mv session-paused.json.pending session-paused.json
 exec sleep 30
-"#;
-        let mut command = Command::new("/bin/sh");
-        command
-            .arg("-c")
-            .arg(script)
-            .current_dir(output.path())
-            .env("NATIVE_VERSION", crate::protocol::observation::VERSION)
-            .env("GAME_PID", game_pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let mut observer = Some(binding::test_observer(
-            output.path(),
-            &mut command,
-            game_pid,
-            registry,
-        ));
-        let mut events = OwnerEvents::new(output.path());
-        events
-            .record(OwnerEvent::GameOwnedSuspended {
-                pid: u64::from(game_pid),
-                identity: serde_json::to_string(&game.as_ref().unwrap().identity().unwrap())
-                    .unwrap(),
-            })
-            .unwrap();
-        events.record(OwnerEvent::WorkerStarted).unwrap();
-        let (writer, mut reader) = UnixStream::pair().unwrap();
-        let reporter = Reporter::new(writer);
-        let (send, receive) = mpsc::sync_channel(1);
-        let controller = thread::spawn(move || {
-            let paused: Reply = protocol::read(&mut reader).unwrap();
-            send.send(Input::Control(Control::Close)).unwrap();
-            let finished: Reply = protocol::read(&mut reader).unwrap();
-            (paused, finished)
-        });
-        let session = Session {
-            work_directory: output.path(),
-            attempt: "unit",
-            registries: vec![registry.into()],
-            fixture: None,
-            category_fields: &[],
-            loaded_modifiers: None,
-            build: crate::BuildId("unit".into()),
-            startup: Duration::from_secs(3),
-            idle: Duration::from_secs(3),
-        };
-        let outcome = observe_session(
-            &receive,
-            &reporter,
-            game.as_ref().unwrap(),
-            observer.as_mut().unwrap(),
-            &mut events,
-            &session,
-        )
-        .unwrap();
-        assert_eq!(outcome, SessionOutcome::Completed);
-        let mut report = SessionReport {
-            attempt: "unit".into(),
-            outcome,
-            disposal: Disposal::NotApplicable,
-            reservation_resolved: false,
-            diagnostics: Vec::new(),
-        };
-        finish_session(
-            Some(output.path()),
-            &mut report,
-            &mut reservation,
-            &mut game,
-            &mut observer,
-            &mut events,
-            || Ok(()),
+"#,
         );
+        let report = &session.report;
+        assert_eq!(report.outcome, SessionOutcome::Completed);
         assert_eq!(report.disposal, Disposal::Confirmed);
         assert!(report.reservation_resolved);
-        assert_eq!(observer.as_ref().unwrap().exited, Some(-9));
-        assert!(binding::process_identity(game_pid).is_err());
+        assert_eq!(session.worker_exit, Some(-9));
+        assert!(binding::process_identity(session.game_pid).is_err());
         let saved: SessionReport =
-            serde_json::from_slice(&fs::read(output.path().join("report.json")).unwrap()).unwrap();
+            serde_json::from_slice(&fs::read(session.output.path().join("report.json")).unwrap())
+                .unwrap();
         assert_eq!(saved.outcome, SessionOutcome::Completed);
         assert_eq!(saved.disposal, Disposal::Confirmed);
-        reporter.send(Reply::Finished(Box::new(report))).unwrap();
-        reporter.finish().unwrap();
-        let (paused, finished) = controller.join().unwrap();
+        let [paused, finished] = session.replies.as_slice() else {
+            panic!(
+                "expected a pause and a report: {} replies",
+                session.replies.len()
+            );
+        };
         let Reply::Paused {
             readiness,
             registries,
@@ -710,16 +824,99 @@ exec sleep 30
         else {
             panic!(
                 "expected pause answer: {}",
-                serde_json::to_value(&paused).unwrap()
+                serde_json::to_value(paused).unwrap()
             )
         };
         assert_eq!(
-            readiness,
+            *readiness,
             crate::GameReadiness::PausedAfterRegistryInitialization
         );
         assert_eq!(registries[registry].observed, Observed::Complete);
         assert!(registries[registry].items.is_empty());
         assert!(matches!(finished, Reply::Finished(_)));
+
+        let summary = session.summary();
+        let states: Vec<_> = summary["timing"]["phases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|phase| phase["state"].as_str().unwrap())
+            .collect();
+        assert_eq!(states, ["completed"; 4]);
+        assert_eq!(summary["timing"]["last_completed_phase"], "paused");
+        assert!(summary["timing"]["cleanup_milliseconds"].is_u64());
+        assert_eq!(summary["outcome"], "Completed");
+        assert_eq!(summary["worker"]["stream"], "intact");
+        assert_eq!(summary["worker"]["last_record"]["kind"], "session-paused");
+        assert_eq!(
+            summary["hooks"]["reported"]["installed"],
+            serde_json::json!(["registry:common/traditions"])
+        );
+        assert_eq!(
+            summary["observations"]["registries"]["observed"][registry]["observed"],
+            "Complete"
+        );
+        assert_eq!(summary["observations"]["fixture"], "not-requested");
+    }
+
+    #[test]
+    fn a_worker_lost_before_the_pause_leaves_its_last_phase_and_record() {
+        let session = FakeSession::run(&requested_hook_rows(), "exit 3");
+        assert_eq!(session.report.outcome, SessionOutcome::WorkerLost);
+        assert_eq!(session.report.disposal, Disposal::Confirmed);
+        assert!(matches!(session.replies.as_slice(), [Reply::Finished(_)]));
+
+        let summary = session.summary();
+        let phases = summary["timing"]["phases"].as_array().unwrap();
+        assert_eq!(phases[2]["phase"], "awaiting-pause");
+        assert_eq!(phases[2]["state"], "interrupted");
+        assert!(phases[2]["milliseconds"].is_u64());
+        assert_eq!(phases[3]["state"], "not-reached");
+        assert!(phases[3].get("milliseconds").is_none());
+        assert_eq!(summary["timing"]["last_completed_phase"], "worker-start");
+        assert!(summary["timing"]["cleanup_milliseconds"].is_u64());
+        assert_eq!(summary["outcome"], "WorkerLost");
+        assert_eq!(
+            summary["worker"]["last_record"]["kind"],
+            "registry-load-start"
+        );
+        assert_eq!(
+            summary["observations"]["registries"]["unavailable"],
+            "the session ended before its pause"
+        );
+        assert_eq!(summary["observations"]["modifiers"], "not-requested");
+    }
+
+    #[test]
+    fn the_summary_follows_a_report_that_could_not_be_written() {
+        let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
+        let root = store();
+        let output = store();
+        let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
+        reservation.disposed();
+        fs::write(output.path().join("report.json"), "existing file").unwrap();
+        let mut report = SessionReport {
+            attempt: "report".into(),
+            outcome: SessionOutcome::Completed,
+            disposal: Disposal::Confirmed,
+            reservation_resolved: true,
+            diagnostics: Vec::new(),
+        };
+        write_report(
+            output.path(),
+            &reservation,
+            &mut report,
+            &RunRecord::new(&SessionRequest::test()),
+        );
+        let summary: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.path().join(run_summary::FILE)).unwrap())
+                .unwrap();
+
+        assert!(!report.reservation_resolved);
+        assert_eq!(
+            summary["outcome"],
+            serde_json::json!({"Failed": "Session bookkeeping failed"})
+        );
     }
 
     #[test]
@@ -750,7 +947,12 @@ exec sleep 30
             reservation_resolved: true,
             diagnostics: Vec::new(),
         };
-        write_report(output.path(), &reservation, &mut report);
+        write_report(
+            output.path(),
+            &reservation,
+            &mut report,
+            &RunRecord::new(&SessionRequest::test()),
+        );
         let written: SessionReport =
             serde_json::from_slice(&fs::read(output.path().join("report.json")).unwrap()).unwrap();
         assert_eq!(written.diagnostics, report.diagnostics);
@@ -760,6 +962,17 @@ exec sleep 30
         assert_eq!(
             fs::read_to_string(output.path().join("owner.json")).unwrap(),
             "existing file"
+        );
+        let summary: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.path().join(run_summary::FILE)).unwrap())
+                .unwrap();
+        assert_eq!(
+            summary["outcome"],
+            serde_json::json!({"Failed": "Session bookkeeping failed"})
+        );
+        assert_eq!(
+            summary["worker"]["stream"]["unavailable"],
+            "the worker stream was never created"
         );
     }
 

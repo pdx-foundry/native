@@ -154,7 +154,7 @@ mod tests {
         let hooks =
             format!(r#"{{"{HOOK}":{{"enabled":true,"locations":1,"resolved":1,"hits":0}}}}"#);
         [
-            r#""kind":"hooks-requested""#.to_owned(),
+            format!(r#""kind":"hooks-requested","hooks":["{HOOK}"]"#),
             format!(
                 r#""kind":"launch-stopped","error":"success","pid":42,"triple":"arm64-apple-macosx","frames":[{{"function":"_dyld_start"}}],"thread":{THREAD}"#
             ),

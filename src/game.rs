@@ -35,6 +35,7 @@ pub struct GameOptions {
     pub(crate) fixture: Option<crate::FixtureRequest>,
     pub(crate) registries: Option<Vec<String>>,
     pub(crate) loaded_modifiers: bool,
+    pub(crate) keep_work_directory: bool,
 }
 impl GameOptions {
     /// `supervisor` starts a dedicated process that calls `supervisor::serve` on its standard
@@ -48,6 +49,7 @@ impl GameOptions {
             fixture: None,
             registries: None,
             loaded_modifiers: false,
+            keep_work_directory: false,
         }
     }
     /// Run the game on until all content has loaded, and read the loaded modifier table where
@@ -93,6 +95,13 @@ impl GameOptions {
         self.fault = Some(Fault { target, control });
         self
     }
+    /// Keep the work directory after every `close`, for Native's live tests. The caller then
+    /// removes it.
+    #[doc(hidden)]
+    pub fn keep_work_directory(mut self) -> Self {
+        self.keep_work_directory = true;
+        self
+    }
 }
 
 /// What `start` needs besides the request: the caller's names and where answers go.
@@ -104,6 +113,8 @@ pub(crate) struct Session {
     pub recorder: Option<Arc<PathBuf>>,
     /// Temporary directory that Native made for this session.
     pub work: PathBuf,
+    /// `close` never removes `work`; the caller does.
+    pub keep_work: bool,
     pub fixture: Option<crate::FixtureRequest>,
     /// The static side of the loaded modifier join, when the session reads the table.
     pub modifiers: Option<crate::session::ModifierJoin>,
@@ -174,6 +185,8 @@ pub struct Game {
     /// A read returned an error, other than `Error::Closed` after the caller began to close, so
     /// `close` keeps the work directory.
     read_failed: bool,
+    /// The caller removes the work directory (`GameOptions::keep_work_directory`).
+    keep_work: bool,
     fixture: Option<crate::FixtureRequest>,
     /// The joined loaded modifier answer, when the session reads the table.
     modifiers: Option<Result<crate::Answer<crate::LoadedModifiers>, Error>>,
@@ -283,6 +296,7 @@ impl Game {
             backend: GameBackend::Recorded(directory),
             work: None,
             read_failed: false,
+            keep_work: false,
             fixture,
             modifiers: None,
         }
@@ -468,6 +482,7 @@ impl Game {
         if finished.disposal == Disposal::Confirmed
             && caller_ended
             && !self.read_failed
+            && !self.keep_work
             && let Some(work) = self.work.take()
         {
             let _ = std::fs::remove_dir_all(work);
@@ -632,6 +647,7 @@ async fn start_until_paused(
                 },
                 work: Some(session.work),
                 read_failed: false,
+                keep_work: session.keep_work,
                 fixture: session.fixture,
                 modifiers,
             });
@@ -754,6 +770,7 @@ mod tests {
                 backend: GameBackend::Live { recorder: None },
                 work: None,
                 read_failed: false,
+                keep_work: false,
                 fixture: None,
                 modifiers: None,
             },
@@ -841,6 +858,20 @@ mod tests {
         state.send_modify(|state| state.finished = Some(Ok(finished())));
         assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
         assert!(!work.exists());
+    }
+
+    #[tokio::test]
+    async fn a_kept_work_directory_survives_a_clean_close_for_a_later_check() {
+        let (mut game, _commands, state) = game();
+        let root = tempfile::tempdir().unwrap();
+        let work = root.path().join("session");
+        std::fs::create_dir(&work).unwrap();
+        game.work = Some(work.clone());
+        game.keep_work = true;
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
+        assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
+        assert!(work.exists());
+        assert_eq!(game.work_directory(), Some(work.as_path()));
     }
 
     #[tokio::test]

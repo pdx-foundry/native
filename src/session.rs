@@ -227,6 +227,7 @@ impl Native {
             build: self.build(),
             recorder: recorder.clone(),
             work,
+            keep_work: options.keep_work_directory,
             fixture: options.fixture,
             modifiers,
         };

@@ -32,6 +32,12 @@ pub(crate) struct Hook {
     pub resolved: u64,
     pub hits: u64,
 }
+impl Hook {
+    /// Whether the hook is enabled at exactly one resolved location and has not been hit.
+    pub fn active_before_resume(&self) -> bool {
+        self.enabled && self.locations == 1 && self.resolved == 1 && self.hits == 0
+    }
+}
 
 /// The top stack frame of one game thread at the suspended launch.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -46,8 +52,9 @@ pub(crate) struct Frame {
 pub(crate) enum WorkerEvent {
     /// Events of the bounded consumer fixture window.
     Fixture { event: super::fixture::FixtureEvent },
-    /// The worker set its hooks; the debugger has not attached yet.
-    HooksRequested,
+    /// The worker set its hooks; the debugger has not attached yet. `hooks` names every hook the
+    /// session requires, including one that a fault control leaves out.
+    HooksRequested { hooks: Vec<String> },
     /// The debugger attached to the game while it was still suspended at its first instruction.
     LaunchStopped {
         error: String,
@@ -181,32 +188,11 @@ pub(crate) enum OwnerEvent {
 
 /// Read the worker's stream file of the session `attempt`.
 ///
-/// A record must be one complete line of bounded length, carry this session's attempt identity,
-/// and have a sequence number above zero. At the first record that breaks a rule, reading stops
-/// and the records before it are kept. Every registry terminal is then removed, so that a damaged
-/// stream cannot give a complete answer, even when the damage follows the terminal. The second
-/// value describes the damage.
+/// Reading follows `parse_worker_stream`. When the stream is damaged, every registry terminal is
+/// then removed, so that a damaged stream cannot give a complete answer, even when the damage
+/// follows the terminal. The second value describes the damage.
 pub(crate) fn read_worker_stream(raw: &[u8], attempt: &str) -> (Vec<WorkerRecord>, Option<String>) {
-    let mut records = Vec::new();
-    let mut damage = None;
-    for (index, line) in raw.split_inclusive(|byte| *byte == b'\n').enumerate() {
-        let complete =
-            line.len() <= crate::protocol::observation::MAX_RECORD && line.ends_with(b"\n");
-        let session_record = serde_json::from_slice::<WorkerRecord>(line)
-            .ok()
-            .filter(|record| record.run == attempt && record.seq != 0);
-
-        match session_record {
-            Some(record) if complete => records.push(record),
-            _ => {
-                damage = Some(format!(
-                    "Worker stream record {} is damaged, partial, or from another session",
-                    index + 1
-                ));
-                break;
-            }
-        }
-    }
+    let (mut records, damage) = parse_worker_stream(raw, attempt);
     if damage.is_some() {
         records.retain(|record| {
             !matches!(
@@ -220,6 +206,37 @@ pub(crate) fn read_worker_stream(raw: &[u8], attempt: &str) -> (Vec<WorkerRecord
         });
     }
     (records, damage)
+}
+
+/// Parse the worker's stream file of the session `attempt` as it was written, terminals included.
+///
+/// A record must be one complete line of bounded length, carry this session's attempt identity,
+/// and have a sequence number above zero. At the first record that breaks a rule, parsing stops
+/// and the records before it are kept. The second value describes the damage.
+pub(crate) fn parse_worker_stream(
+    raw: &[u8],
+    attempt: &str,
+) -> (Vec<WorkerRecord>, Option<String>) {
+    let mut records = Vec::new();
+    for (index, line) in raw.split_inclusive(|byte| *byte == b'\n').enumerate() {
+        let complete =
+            line.len() <= crate::protocol::observation::MAX_RECORD && line.ends_with(b"\n");
+        let session_record = serde_json::from_slice::<WorkerRecord>(line)
+            .ok()
+            .filter(|record| record.run == attempt && record.seq != 0);
+
+        match session_record {
+            Some(record) if complete => records.push(record),
+            _ => {
+                let damage = format!(
+                    "Worker stream record {} is damaged, partial, or from another session",
+                    index + 1
+                );
+                return (records, Some(damage));
+            }
+        }
+    }
+    (records, None)
 }
 
 /// The only record that matches, or `None` when there are none or several.
@@ -273,11 +290,10 @@ pub(crate) fn activation(
     let WorkerEvent::HooksActiveBeforeResume { hooks } = &active.event else {
         return None;
     };
-    if !required.iter().all(|name| {
-        hooks.get(*name).is_some_and(|hook| {
-            hook.enabled && hook.locations == 1 && hook.resolved == 1 && hook.hits == 0
-        })
-    }) {
+    if !required
+        .iter()
+        .all(|name| hooks.get(*name).is_some_and(Hook::active_before_resume))
+    {
         return None;
     }
     let resume = single(records, |event| matches!(event, WorkerEvent::Resume { .. }))?;
@@ -305,6 +321,9 @@ mod tests {
         let (records, damage) = read_worker_stream(damaged.as_bytes(), "a");
         assert!(records.is_empty());
         assert!(damage.is_some());
+        let (written, damage) = parse_worker_stream(damaged.as_bytes(), "a");
+        assert_eq!(written.len(), 1);
+        assert!(damage.is_some());
     }
 
     #[test]
@@ -317,7 +336,7 @@ mod tests {
 
     #[test]
     fn a_sequence_hole_is_kept_for_the_reducer_and_a_partial_line_keeps_the_prefix() {
-        let raw = b"{\"seq\":1,\"run\":\"a\",\"kind\":\"hooks-requested\"}\n{\"seq\":3,\"run\":\"a\",\"kind\":\"worker-finished\"}\n";
+        let raw = b"{\"seq\":1,\"run\":\"a\",\"kind\":\"hooks-requested\",\"hooks\":[]}\n{\"seq\":3,\"run\":\"a\",\"kind\":\"worker-finished\"}\n";
         let (records, damage) = read_worker_stream(raw, "a");
         assert!(damage.is_none());
         assert_eq!(
