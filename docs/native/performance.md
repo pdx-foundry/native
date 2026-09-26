@@ -253,6 +253,15 @@ The per-phase times show where live-suite time goes: 16–21 s of game loading t
 pause, 2–5 s of supervisor setup and about 0.5 s of cleanup. A case whose diagnostic window runs
 through validation waits about 74 s for the game to load all content, and takes about 84 s.
 
+## Batched validation samples (SDK-634)
+
+Measured on 2026-09-26 on the same build and machine. The 44 SDK-542 validation samples took about
+84 s each as single sessions, about 3,700 s together. As two batches of 19 and 23 samples plus the
+two samples that keep their own sessions, they take 340 s (85–86 s for each session). A batched
+session is no slower than a single one. The full live suite, now 53 cases, passed in 1,381 s of
+wall time, including the build. Before the change it had 93 cases and took about 75 minutes. The
+batching rule is in [command grammar](command-grammar.md).
+
 ## Reproduce and verify
 
 From the repository root, set `STELLARIS_PATH` to the exact preserved installation or executable.

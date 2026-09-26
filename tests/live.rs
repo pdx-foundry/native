@@ -176,8 +176,11 @@ enum Case {
     FixtureTransfer,
     FixtureRelicPortrait,
     FixtureBlockParsing,
-    FixtureBlockValidation(&'static str, &'static str, Option<&'static str>),
-    FixtureEffectValidation(&'static str, &'static str, Option<&'static str>),
+    /// Validation samples of one block field, each in its own definition of one fixture file.
+    FixtureValidation {
+        field: &'static str,
+        samples: Vec<ValidationSample>,
+    },
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -194,6 +197,53 @@ enum Case {
         registry: &'static str,
         control: Fault,
     },
+}
+
+/// One validation sample: a child command in a block field, and the engine stage whose
+/// source-located diagnostic rejects it, or `None` when the engine accepts it.
+struct ValidationSample {
+    name: String,
+    child: &'static str,
+    stage: Option<&'static str>,
+}
+
+impl ValidationSample {
+    fn new(name: impl Into<String>, child: &'static str, stage: Option<&'static str>) -> Self {
+        Self {
+            name: name.into(),
+            child,
+            stage,
+        }
+    }
+
+    fn definition(&self) -> String {
+        format!("native_validation_{}", self.name)
+    }
+
+    /// The sample's definition in a fixture file. The child is at `CHILD`.
+    fn definition_lines(&self, field: &str) -> [String; Self::LINES] {
+        [
+            format!("{} = {{", self.definition()),
+            format!(" {field} = {{"),
+            format!("  {}", self.child),
+            " }".into(),
+            "}".into(),
+        ]
+    }
+
+    const LINES: usize = 5;
+    const CHILD: usize = 2;
+
+    /// The one-based line of the child of the sample at `index` in a file of definitions.
+    fn child_line(index: usize) -> u64 {
+        (index * Self::LINES + Self::CHILD + 1) as u64
+    }
+
+    /// The index of the sample whose definition holds this one-based line.
+    fn index_at(line: u64) -> Option<usize> {
+        let offset = usize::try_from(line.checked_sub(1)?).ok()?;
+        Some(offset / Self::LINES)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -303,42 +353,13 @@ fn cases() -> Vec<(String, Case)> {
         Case::FixtureRelicPortrait,
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
-    for (name, child, stage) in [
-        ("valid", "always = yes", None),
-        (
-            "wrong_scope",
-            "is_planet_class = pc_barren",
-            Some("engine-parser-log"),
-        ),
-        (
-            "unknown",
-            "native_unknown_trigger = yes",
-            Some("engine-validation-log"),
-        ),
-    ] {
-        cases.push((
-            format!("fixture_block_validation_{name}"),
-            Case::FixtureBlockValidation(name, child, stage),
-        ));
-    }
-    for (name, child, stage) in [
-        ("valid", "set_country_flag = native_fixture_flag", None),
-        (
-            "wrong_scope",
-            "set_planet_class = pc_barren",
-            Some("engine-parser-log"),
-        ),
-        (
-            "unknown",
-            "native_unknown_effect = yes",
-            Some("engine-validation-log"),
-        ),
-    ] {
-        cases.push((
-            format!("fixture_effect_validation_{name}"),
-            Case::FixtureEffectValidation(name, child, stage),
-        ));
-    }
+    let parser_log = Some("engine-parser-log");
+    let validation_log = Some("engine-validation-log");
+    let mut triggers = vec![
+        ValidationSample::new("valid", "always = yes", None),
+        ValidationSample::new("wrong_scope", "is_planet_class = pc_barren", parser_log),
+        ValidationSample::new("unknown", "native_unknown_trigger = yes", validation_log),
+    ];
     for (name, accepted, rejected) in [
         (
             "and",
@@ -371,15 +392,36 @@ fn cases() -> Vec<(String, Case)> {
             "if = { limit = { always = no } always = yes } else = { is_planet_class = pc_barren }",
         ),
     ] {
-        cases.push((
-            format!("fixture_control_trigger_{name}_accepted"),
-            Case::FixtureBlockValidation(name, accepted, None),
+        triggers.push(ValidationSample::new(
+            format!("{name}_accepted"),
+            accepted,
+            None,
         ));
-        cases.push((
-            format!("fixture_control_trigger_{name}_rejected"),
-            Case::FixtureBlockValidation(name, rejected, Some("engine-parser-log")),
+        triggers.push(ValidationSample::new(
+            format!("{name}_rejected"),
+            rejected,
+            parser_log,
         ));
     }
+    for (name, child) in [
+        ("empty_limit", "if = { limit = { } always = yes }"),
+        ("missing_limit", "if = { always = yes }"),
+        (
+            "repeated_limit",
+            "if = { limit = { always = yes } limit = { always = no } always = yes }",
+        ),
+        (
+            "late_limit",
+            "if = { always = yes limit = { always = yes } }",
+        ),
+    ] {
+        triggers.push(ValidationSample::new(format!("edge_{name}"), child, None));
+    }
+    let mut effects = vec![
+        ValidationSample::new("valid", "set_country_flag = native_fixture_flag", None),
+        ValidationSample::new("wrong_scope", "set_planet_class = pc_barren", parser_log),
+        ValidationSample::new("unknown", "native_unknown_effect = yes", validation_log),
+    ];
     for (name, accepted, rejected) in [
         (
             "if",
@@ -412,30 +454,15 @@ fn cases() -> Vec<(String, Case)> {
             "every_owned_planet = { limit = { always = yes } native_unknown_effect = yes }",
         ),
     ] {
-        cases.push((
-            format!("fixture_control_effect_{name}_accepted"),
-            Case::FixtureEffectValidation(name, accepted, None),
+        effects.push(ValidationSample::new(
+            format!("{name}_accepted"),
+            accepted,
+            None,
         ));
-        cases.push((
-            format!("fixture_control_effect_{name}_rejected"),
-            Case::FixtureEffectValidation(name, rejected, Some("engine-validation-log")),
-        ));
-    }
-    for (name, child) in [
-        ("empty_limit", "if = { limit = { } always = yes }"),
-        ("missing_limit", "if = { always = yes }"),
-        (
-            "repeated_limit",
-            "if = { limit = { always = yes } limit = { always = no } always = yes }",
-        ),
-        (
-            "late_limit",
-            "if = { always = yes limit = { always = yes } }",
-        ),
-    ] {
-        cases.push((
-            format!("fixture_control_edge_trigger_{name}"),
-            Case::FixtureBlockValidation(name, child, None),
+        effects.push(ValidationSample::new(
+            format!("{name}_rejected"),
+            rejected,
+            validation_log,
         ));
     }
     for (name, child) in [
@@ -472,27 +499,44 @@ fn cases() -> Vec<(String, Case)> {
             "random_list = { 0 = { set_country_flag = native_first } 10 = { set_country_flag = native_second } }",
         ),
     ] {
-        cases.push((
-            format!("fixture_control_edge_effect_{name}"),
-            Case::FixtureEffectValidation(name, child, None),
-        ));
+        effects.push(ValidationSample::new(format!("edge_{name}"), child, None));
     }
     cases.push((
-        "fixture_control_edge_effect_weighted_nonnumeric".into(),
-        Case::FixtureEffectValidation(
+        "fixture_control_triggers".into(),
+        Case::FixtureValidation {
+            field: "potential",
+            samples: triggers,
+        },
+    ));
+    cases.push((
+        "fixture_control_effects".into(),
+        Case::FixtureValidation {
+            field: "on_enabled",
+            samples: effects,
+        },
+    ));
+    // A reader report or a malformed block can upset the parsing of the definitions after it, so
+    // each of these samples keeps its own session.
+    for (name, child, stage) in [
+        (
             "weighted_nonnumeric",
             "random_list = { not_a_weight = { set_country_flag = native_fixture_flag } }",
             Some("reader-unexpected-report"),
         ),
-    ));
-    cases.push((
-        "fixture_control_edge_effect_malformed".into(),
-        Case::FixtureEffectValidation(
+        (
             "malformed",
             "if = { limit = yes set_country_flag = native_fixture_flag }",
-            Some("engine-validation-log"),
+            validation_log,
         ),
-    ));
+    ] {
+        cases.push((
+            format!("fixture_control_edge_effect_{name}"),
+            Case::FixtureValidation {
+                field: "on_enabled",
+                samples: vec![ValidationSample::new(name, child, stage)],
+            },
+        ));
+    }
     cases.push((
         "fixture_field_reads_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
@@ -544,11 +588,8 @@ fn cases() -> Vec<(String, Case)> {
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
-        Case::FixtureBlockValidation(name, child, stage) => {
-            fixture_block_validation(native, name, "potential", child, stage).await
-        }
-        Case::FixtureEffectValidation(name, child, stage) => {
-            fixture_block_validation(native, name, "on_enabled", child, stage).await
+        Case::FixtureValidation { field, ref samples } => {
+            fixture_validation(native, field, samples).await
         }
         Case::Normal => normal(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
@@ -761,57 +802,124 @@ async fn fixture_block_parsing(native: &Native) -> Outcome {
     result
 }
 
-async fn fixture_block_validation(
-    native: &Native,
-    name: &str,
+/// Validate every sample in one session, so the session pays for loading all content once.
+async fn fixture_validation(native: &Native, field: &str, samples: &[ValidationSample]) -> Outcome {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+
+    let file = format!("common/traditions/native_validation_{field}.txt");
+    let text: String = samples
+        .iter()
+        .flat_map(|sample| sample.definition_lines(field))
+        .map(|line| line + "\n")
+        .collect();
+    let questions = samples.iter().map(|sample| {
+        FixtureFieldQuestion::new(TRADITIONS, sample.definition(), field).with_parsing()
+    });
+    let request = FixtureRequest::field_outcomes(&file, text, questions).through_validation();
+    let mut game = native
+        .start_game(options().registries([TRADITIONS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let failures = validation_failures(field, &file, samples, &answer);
+        if failures.is_empty() {
+            return Ok(());
+        }
+
+        let count = samples.len();
+        Err(format!(
+            "{} problems across {count} samples: {}",
+            failures.len(),
+            failures.join("; ")
+        )
+        .into())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// Each sample is checked alone. An accepted sample has no diagnostic on its lines, and a
+/// rejected one has a diagnostic of its stage on its child's line. A diagnostic that no sample
+/// owns is a failure too.
+fn validation_failures(
     field: &str,
-    child: &str,
-    diagnostic_stage: Option<&str>,
-) -> Outcome {
-    use pdx_native::{
-        DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureFieldQuestion, FixtureParsing,
-        FixtureRequest,
-    };
+    file: &str,
+    samples: &[ValidationSample],
+    answer: &Answer<pdx_native::FixtureObservation>,
+) -> Vec<String> {
+    use pdx_native::{DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureParsing};
+
+    let observation = &answer.value;
+    if !matches!(
+        observation.diagnostic_coverage,
+        DiagnosticCoverage::Complete {
+            window: DiagnosticWindow::FixtureFileLoadAndValidation
+        }
+    ) {
+        return vec![format!("validation coverage: {answer:?}")];
+    }
 
     let expected_family = if field == "potential" {
         pdx_native::BlockFamily::Trigger
     } else {
         pdx_native::BlockFamily::Effect
     };
-    let file = format!("common/traditions/native_validation_{name}.txt");
-    let request = FixtureRequest::field_outcomes(
-        &file,
-        format!("native_validation = {{\n {field} = {{\n  {child}\n }}\n}}\n"),
-        [FixtureFieldQuestion::new(TRADITIONS, "native_validation", field).with_parsing()],
-    )
-    .through_validation();
-    let mut game = native
-        .start_game(options().registries([TRADITIONS]).fixture(request))
-        .await?;
-    let mut result = async {
-        let answer = game.observe_fixture().await?;
-        if !matches!(answer.value.diagnostic_coverage,
-            DiagnosticCoverage::Complete { window: DiagnosticWindow::FixtureFileLoadAndValidation })
-            || !matches!(answer.value.field_outcomes.first().map(|field| &field.parsing),
-                Some(FixtureParsing::Observed { completeness: Completeness::Complete, occurrences }) if occurrences.len() == 1)
-            || answer.value.field_outcomes.first().is_none_or(|field|
-                field.reader.family != expected_family)
-        {
-            return Err(format!("validation coverage: {answer:?}").into());
+    let source_line = |join: &DiagnosticJoin| match join {
+        DiagnosticJoin::Source {
+            file: source, line, ..
+        } if source == file => Some(*line),
+        _ => None,
+    };
+    let mut failures = Vec::new();
+
+    for (index, sample) in samples.iter().enumerate() {
+        let outcome = observation
+            .field_outcomes
+            .iter()
+            .find(|outcome| outcome.question.definition == sample.definition());
+        let parsed = outcome.is_some_and(|outcome| {
+            matches!(&outcome.parsing,
+                FixtureParsing::Observed { completeness: Completeness::Complete, occurrences }
+                    if occurrences.len() == 1)
+                && outcome.reader.family == expected_family
+        });
+        if !parsed {
+            failures.push(format!("{}: parsing or reader: {outcome:?}", sample.name));
         }
-        match diagnostic_stage {
-            None if !answer.value.diagnostics.is_empty() =>
-                return Err(format!("valid fixture diagnostics: {answer:?}").into()),
-            Some(stage) if !answer.value.diagnostics.iter().any(|diagnostic|
-                diagnostic.stage == stage && matches!(&diagnostic.join,
-                    DiagnosticJoin::Source { file: source, line: 3, .. } if source == &file)) =>
-                return Err(format!("missing {stage} source diagnostic: {answer:?}").into()),
-            _ => {}
+
+        let Some(stage) = sample.stage else {
+            continue;
+        };
+        let rejected = observation.diagnostics.iter().any(|diagnostic| {
+            diagnostic.stage == stage
+                && source_line(&diagnostic.join) == Some(ValidationSample::child_line(index))
+        });
+        if !rejected {
+            failures.push(format!(
+                "{}: no {stage} diagnostic on its line",
+                sample.name
+            ));
         }
-        Ok(())
-    }.await;
-    and_close(&mut result, &mut game).await;
-    result
+    }
+
+    for diagnostic in &observation.diagnostics {
+        let owner = source_line(&diagnostic.join)
+            .and_then(ValidationSample::index_at)
+            .and_then(|index| samples.get(index));
+        match owner {
+            Some(sample) if sample.stage.is_some() => {}
+            Some(sample) => {
+                failures.push(format!(
+                    "{}: accepted sample has {diagnostic:?}",
+                    sample.name
+                ));
+            }
+            None => failures.push(format!("diagnostic owned by no sample: {diagnostic:?}")),
+        }
+    }
+
+    failures
 }
 
 fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureRequest {
