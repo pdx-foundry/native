@@ -331,11 +331,13 @@ partial and failed counts and distinct failure shapes on the method's page in `d
 (indexed by `docs/native/discovery.md`). SDK-569 must pass. Per-ticket freeze commits and
 held-out selection are not required.
 
-SDK-597 owns Atlas integration: two established conditional branches and one unresolved branch
-must survive assembly, verification, comparison and coverage; an established argument must not
-credit an unresolved sibling. Claims use typed subjects. Directories mapped to several CWT types
-are joined to each applicable type or kept as explicit, counted gaps. Credited rates come from
-the live run with build and source revisions recorded; recorded answers support reproduction.
+SDK-597 and SDK-625 own Atlas integration (split 2026-09-25): two established conditional
+branches and one unresolved branch must survive assembly, verification, comparison and coverage;
+an established argument must not credit an unresolved sibling. Claims use typed subjects.
+Directories mapped to several CWT types are joined to each applicable type or kept as explicit,
+counted gaps. SDK-597 delivers the first slice after SDK-541 and SDK-542; SDK-625 delivers the
+remaining claim types and the final live run. Credited rates come from that live run with build
+and source revisions recorded; recorded answers support reproduction.
 
 ## Out of Scope
 
