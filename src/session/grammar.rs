@@ -3,6 +3,7 @@ use super::{Native, questions::error};
 use crate::engine::analysis::{
     declarations::{self, Site},
     grammar,
+    stop::Unresolved,
 };
 use crate::{
     Answer, Basis, BlockFamily, CommandGrammar, DeclarationKind, Error, Gap, GapKind, GapSubject,
@@ -23,24 +24,31 @@ impl Native {
     ) -> Result<Answer<CommandGrammar>, Error> {
         let subject = recorded_subject(kind, name);
         self.answer("command_grammar", Some(&subject), || {
-            let operation = Operation::CommandGrammar;
-            let (input, declarations) = self
-                .declaration_analysis(operation)?
-                .grammar_input(kind)
-                .map_err(|failure| error(operation, failure))?;
-            let factory = registered_factory(&declarations, name);
-            let result = match factory {
-                Ok(Some(factory)) => grammar::analyze(&input, factory),
-                Ok(None) => {
-                    return Err(Error::UnknownCommand {
-                        kind,
-                        name: name.into(),
-                    });
-                }
-                Err(stop) => Err(stop),
-            };
-            Ok(normalize(result, name, self.build()))
+            let result = self.command_grammar_result(kind, name)?;
+            Ok(normalize(result.as_ref(), name, self.build()))
         })
+    }
+
+    /// The grammar method's own result for a registered command: its analysis, or the
+    /// obstruction that stopped the command's receiver join.
+    pub(crate) fn command_grammar_result(
+        &self,
+        kind: DeclarationKind,
+        name: &str,
+    ) -> Result<Result<grammar::GrammarResult, Unresolved>, Error> {
+        let operation = Operation::CommandGrammar;
+        let (input, declarations) = self
+            .declaration_analysis(operation)?
+            .grammar_input(kind)
+            .map_err(|failure| error(operation, failure))?;
+        match registered_factory(&declarations, name) {
+            Ok(Some(factory)) => Ok(grammar::analyze(&input, factory)),
+            Ok(None) => Err(Error::UnknownCommand {
+                kind,
+                name: name.into(),
+            }),
+            Err(stop) => Ok(Err(stop)),
+        }
     }
 }
 
@@ -61,8 +69,7 @@ fn recorded_subject(kind: DeclarationKind, name: &str) -> String {
 fn registered_factory(
     declarations: &declarations::DeclarationResult,
     name: &str,
-) -> Result<Option<u64>, crate::engine::analysis::stop::Unresolved> {
-    use crate::engine::analysis::stop::Unresolved;
+) -> Result<Option<u64>, Unresolved> {
     let mut factories = BTreeSet::new();
     for (_, site) in &declarations.sites {
         match site {
@@ -95,8 +102,8 @@ fn registered_factory(
     Ok(factories.first().copied())
 }
 
-fn normalize(
-    result: Result<grammar::GrammarResult, crate::engine::analysis::stop::Unresolved>,
+pub(super) fn normalize(
+    result: Result<&grammar::GrammarResult, &Unresolved>,
     name: &str,
     build: crate::BuildId,
 ) -> Answer<CommandGrammar> {
@@ -137,39 +144,40 @@ fn normalize(
                 value.fixed_keys = GrammarProperty::Partial(keys);
             }
             if !result.families.is_empty() {
-                value.child_families = GrammarProperty::Partial(result.families);
+                value.child_families = GrammarProperty::Partial(result.families.clone());
             }
             if !result.ordering.is_empty() {
                 value.ordering = GrammarProperty::Partial(
                     result
                         .ordering
-                        .into_iter()
+                        .iter()
                         .map(|rule| {
-                            let outcome = match rule.outcome {
+                            let outcome = match &rule.outcome {
                                 grammar::OrderOutcome::Reader(join) => {
-                                    crate::ChildOrderOutcome::Read(super::fields::reader(&[join]))
+                                    let joins = std::slice::from_ref(join);
+                                    crate::ChildOrderOutcome::Read(super::fields::reader(joins))
                                 }
                                 grammar::OrderOutcome::Family(family) => {
-                                    crate::ChildOrderOutcome::Dispatch(family)
+                                    crate::ChildOrderOutcome::Dispatch(*family)
                                 }
                             };
                             crate::ChildOrderRule {
-                                child: rule.child,
-                                conditions: rule.conditions,
+                                child: rule.child.clone(),
+                                conditions: rule.conditions.clone(),
                                 outcome,
                             }
                         })
                         .collect(),
                 );
             }
-            if let Some(child) = result.numeric {
-                let child = normalize(Ok(*child), name, build.clone());
+            if let Some(child) = &result.numeric {
+                let child = normalize(Ok(child), name, build.clone());
                 value.numeric_keys = GrammarProperty::Partial(Some(Box::new(child.value)));
                 for child_gap in child.gaps {
                     gap(child_gap.kind, child_gap.detail);
                 }
             }
-            for stop in result.stops {
+            for stop in &result.stops {
                 gap(GapKind::UnresolvedPath, stop.reason.into());
             }
             if !result.fields.gaps.is_empty() {
@@ -335,7 +343,7 @@ mod tests {
             },
         };
         let result = make(Some(Box::new(make(None))));
-        let answer = normalize(Ok(result), "example", crate::BuildId("authored".into()));
+        let answer = normalize(Ok(&result), "example", crate::BuildId("authored".into()));
         assert_eq!(answer.gaps.len(), 3);
         for kind in [
             GapKind::OutsideMethod,
@@ -372,7 +380,7 @@ mod tests {
                 gaps: vec![],
             },
         };
-        let answer = normalize(Ok(result), "example", crate::BuildId("authored".into()));
+        let answer = normalize(Ok(&result), "example", crate::BuildId("authored".into()));
         assert!(answer.value.reader.id.is_some());
         assert_eq!(answer.value.reader.kind, ReaderKind::Unknown);
         assert_eq!(answer.value.reader.family, BlockFamily::Unknown);
@@ -385,7 +393,7 @@ mod tests {
     #[test]
     fn a_failed_receiver_join_keeps_every_grammar_property_unresolved() {
         let answer = normalize(
-            Err(Unresolved::new("factory-return")),
+            Err(&Unresolved::new("factory-return")),
             "example",
             crate::BuildId("authored".into()),
         );

@@ -290,7 +290,7 @@ impl<'r> Run<'r> {
                 Ending::Ignored
             }
             Ok(Exit::Stopped(_) | Exit::Reached) => Ending::Failed(Unresolved::new("stopped")),
-            Err(unresolved) => Ending::Failed(*unresolved),
+            Err(unresolved) => Ending::Failed(unresolved.clone()),
         }
     }
 

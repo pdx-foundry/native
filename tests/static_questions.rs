@@ -1,6 +1,7 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
-use pdx_native::internals::registry_field_stops;
+use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Trace, Unresolved};
+use pdx_native::internals::{command_grammar_stops, registry_field_stops, trace_causes};
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
     DeclaredTags, Define, EntryContext, EntryScope, Error, Field, GameRule, GapKind, LinkData,
@@ -981,6 +982,122 @@ fn the_developer_run_gives_the_public_registry_field_answer() {
     for registry in ["common/traditions", "common/megastructures"] {
         let run = registry_field_stops::run(&native, registry).unwrap();
         assert_eq!(run.answer, native.registry_fields(registry).unwrap());
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn traced_questions_match_untraced_questions() {
+    let untraced = observe(&native());
+    // Each `Native` caches its analysis, so the traced questions need their own.
+    let traced_native = native();
+    let traced = trace_causes(|| observe(&traced_native));
+
+    assert_eq!(traced.answers, untraced.answers);
+    assert_eq!(traced.fields, untraced.fields);
+    assert_eq!(traced.grammars, untraced.grammars);
+    assert!(untraced.receiver_failures.iter().all(Option::is_none));
+    for trace in &traced.receiver_failures {
+        let trace = trace.as_ref().expect("a traced receiver failure");
+        assert!(trace.causes().next().is_some());
+    }
+}
+
+/// What tracing must not change on one `Native`: every static answer, the internal results of
+/// four registries and 22 commands, and the traces of three known receiver failures.
+struct Observed {
+    answers: Vec<Value>,
+    fields: Vec<(Value, Vec<TokenPath>, Vec<FieldGap>)>,
+    grammars: Vec<(Value, GrammarOutcome)>,
+    receiver_failures: Vec<Option<Box<Trace>>>,
+}
+
+type GrammarOutcome = Result<(Vec<Unresolved>, Vec<TokenPath>), Unresolved>;
+
+fn observe(native: &Native) -> Observed {
+    let mut answers = Vec::new();
+    for kind in [DeclarationKind::Trigger, DeclarationKind::Effect] {
+        answers.push(json!(native.declarations(kind)));
+    }
+    answers.push(json!(native.modifiers()));
+    answers.push(json!(native.modifier_categories()));
+    answers.push(json!(native.scopes()));
+    answers.push(json!(native.scope_links()));
+    answers.push(json!(native.localization_declarations()));
+    answers.push(json!(native.on_actions()));
+    answers.push(json!(native.game_rules()));
+    answers.push(json!(native.defines()));
+    let families: BTreeMap<String, Value> = expected("modifier-families.json");
+    for registry in families.keys() {
+        answers.push(json!(native.modifier_families(registry)));
+    }
+
+    let fields = [
+        "common/council_agendas",
+        "common/megastructures",
+        "common/tradition_categories",
+        "common/traditions",
+    ]
+    .map(|registry| {
+        let run = registry_field_stops::run(native, registry).unwrap();
+        (json!(run.answer), run.result.paths, run.result.gaps)
+    })
+    .into();
+
+    let triggers = [
+        "and",
+        "or",
+        "not",
+        "if",
+        "else_if",
+        "else",
+        "has_relation_flag",
+        "is_war_participant",
+        "pop_ethic_amount",
+        "reverse_has_relation_flag",
+        "has_country_flag",
+        "exists",
+    ]
+    .map(|name| (DeclarationKind::Trigger, name));
+    let effects = [
+        "if",
+        "else_if",
+        "else",
+        "hidden_effect",
+        "random_list",
+        "every_owned_planet",
+        "pop_change_ethic",
+        "pop_force_add_ethic",
+        "remove_random_starbase_building",
+        "remove_random_starbase_module",
+    ]
+    .map(|name| (DeclarationKind::Effect, name));
+    let grammars = triggers
+        .into_iter()
+        .chain(effects)
+        .map(|(kind, name)| {
+            let run = command_grammar_stops::run(native, kind, name).unwrap();
+            let outcome = run.result.map(|result| (result.stops, result.fields.paths));
+            (json!(run.answer), outcome)
+        })
+        .collect();
+
+    let receiver_failures = [
+        (DeclarationKind::Effect, "pop_change_ethic"),
+        (DeclarationKind::Trigger, "exists"),
+        (DeclarationKind::Trigger, "has_country_flag"),
+    ]
+    .map(|(kind, name)| {
+        let run = command_grammar_stops::run(native, kind, name).unwrap();
+        run.result.err().expect("the receiver join stops").trace
+    })
+    .into();
+
+    Observed {
+        answers,
+        fields,
+        grammars,
+        receiver_failures,
     }
 }
 

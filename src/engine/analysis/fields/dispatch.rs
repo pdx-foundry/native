@@ -781,7 +781,7 @@ impl Branching {
         self.table_gaps.push(TableGap {
             table,
             why,
-            unresolved,
+            unresolved: unresolved.clone(),
         });
         self.ended
             .push(state.finish(at, PathOutcome::Gap(unresolved)));
@@ -1134,7 +1134,7 @@ fn reject_default_cases(
         };
         let obstacle = Obstacle::Unsupported;
         let unresolved = Unresolved::at("jump-table-default", leaf.terminal, entry, obstacle);
-        push_table_gap(gaps, root, case.table, why, unresolved);
+        push_table_gap(gaps, root, case.table, why, unresolved.clone());
         changed.push((index, unresolved));
     }
     for (index, unresolved) in changed {

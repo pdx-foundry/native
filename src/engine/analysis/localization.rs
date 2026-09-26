@@ -470,7 +470,7 @@ enum PathContext {
 }
 
 fn path_context(path: &Path<'_>, field: u64, scope_object: u64) -> Result<PathContext, Unresolved> {
-    match path.end {
+    match path.end.clone() {
         Err(unresolved) => Err(unresolved),
         Ok(Exit::Stopped(target)) if target == scope_object => Ok(PathContext::ScopeObject),
         Ok(Exit::Stopped(_) | Exit::Reached | Exit::Looped) => Err(Unresolved::new("stopped")),

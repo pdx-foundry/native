@@ -21,7 +21,9 @@ pub use crate::engine::analysis::fields::{
     Condition, FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RegistryFieldResult, RootField,
     TokenPath, Value,
 };
-pub use crate::engine::analysis::stop::{Bound, Obstacle, Stop, Unknown, Unresolved};
+pub use crate::engine::analysis::stop::{
+    Bound, CAUSE_LIMIT, Cause, CauseKind, Obstacle, Stop, Trace, Unknown, Unresolved,
+};
 
 /// One run of the registry field method for one registry.
 #[derive(Debug, Clone)]

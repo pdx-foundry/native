@@ -97,11 +97,16 @@ pub fn analyze(input: &ModifierInput) -> Result<ModifierResult, InputError> {
 
     let categories = category_names(
         &input.categories,
-        arguments.iter().filter_map(|arguments| arguments.mask.ok()),
+        arguments
+            .iter()
+            .filter_map(|arguments| arguments.mask.as_ref().ok().copied()),
     );
     let type_masks = arguments
         .iter()
-        .filter_map(|arguments| arguments.modifier_type.zip(arguments.mask.ok()))
+        .filter_map(|arguments| {
+            let mask = arguments.mask.as_ref().ok().copied();
+            arguments.modifier_type.zip(mask)
+        })
         .collect();
 
     let sites = arguments
@@ -224,7 +229,9 @@ fn definition_site(
 pub fn tags(categories: &CategoryNames, mask: u64) -> Tags {
     match categories.get(&mask) {
         Some(Ok(Some(name))) => return Tags::Listed(vec![name.clone()]),
-        Some(Err(unresolved)) => return Tags::Unresolved(unresolved_category_name(*unresolved)),
+        Some(Err(unresolved)) => {
+            return Tags::Unresolved(unresolved_category_name(unresolved.clone()));
+        }
         None => return Tags::Unresolved(Unresolved::new("category-name")),
         Some(Ok(None)) => {}
     }
@@ -235,7 +242,7 @@ pub fn tags(categories: &CategoryNames, mask: u64) -> Tags {
             Some(Ok(Some(name))) => names.push(name.clone()),
             Some(Ok(None)) => return Tags::Unresolved(Unresolved::new("unnamed-category")),
             Some(Err(unresolved)) => {
-                return Tags::Unresolved(unresolved_category_name(*unresolved));
+                return Tags::Unresolved(unresolved_category_name(unresolved.clone()));
             }
             None => return Tags::Unresolved(Unresolved::new("category-name")),
         }

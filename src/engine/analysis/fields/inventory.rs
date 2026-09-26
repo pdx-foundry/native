@@ -26,12 +26,12 @@ pub(crate) fn fields_and_gaps(
         let join = match &path.outcome {
             PathOutcome::Rejected => continue,
             PathOutcome::Reader(join) => join.clone(),
-            PathOutcome::Gap(unresolved) => ReaderJoin::Missing(*unresolved),
+            PathOutcome::Gap(unresolved) => ReaderJoin::Missing(unresolved.clone()),
         };
-        if let ReaderJoin::Missing(unresolved) = join {
+        if let ReaderJoin::Missing(unresolved) = &join {
             gaps.push(FieldGap {
                 path: Some(index),
-                ..FieldGap::unresolved(FieldGapKind::ReaderJoin, unresolved)
+                ..FieldGap::unresolved(FieldGapKind::ReaderJoin, unresolved.clone())
             });
         }
         // An obstruction on another state alternative must stay attached to an established field.

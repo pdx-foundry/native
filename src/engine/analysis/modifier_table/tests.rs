@@ -1,5 +1,5 @@
 use super::*;
-use crate::engine::analysis::stop::{Obstacle, Stop};
+use crate::engine::analysis::stop::Obstacle;
 
 fn rows(base: u64, instructions: &[(&str, String)]) -> Vec<Instruction> {
     instructions
@@ -113,28 +113,24 @@ fn refuses_unknown_instructions_and_unlabelled_fields() {
     unknown.documentation[8].operation = "unsupported".into();
     assert_eq!(
         derive(&unknown),
-        Err(Unresolved {
-            reason: "instruction",
-            stop: Some(Stop {
-                instruction: 0x1020,
-                entry: 0x1000,
-                obstacle: Obstacle::Unsupported,
-            }),
-        })
+        Err(Unresolved::at(
+            "instruction",
+            0x1020,
+            0x1000,
+            Obstacle::Unsupported
+        ))
     );
     let mut unlabelled = input(layout());
     unlabelled.documentation[8].operation = "mov".into();
     unlabelled.documentation[8].operands = "w0,#1".into();
     assert_eq!(
         derive(&unlabelled),
-        Err(Unresolved {
-            reason: "modifier-mask-offset",
-            stop: Some(Stop {
-                instruction: 0x1024,
-                entry: 0x1000,
-                obstacle: Obstacle::Call,
-            }),
-        })
+        Err(Unresolved::at(
+            "modifier-mask-offset",
+            0x1024,
+            0x1000,
+            Obstacle::Call
+        ))
     );
 }
 

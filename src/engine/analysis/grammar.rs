@@ -46,23 +46,38 @@ pub enum OrderOutcome {
     Family(BlockFamily),
 }
 
+/// The child grammar of one command reader, as far as the method follows it.
 pub struct GrammarResult {
+    /// The command reader whose grammar this is.
     #[cfg(test)]
     pub reader: CommandReader,
+    /// The symbol of the reader's virtual `Read`.
     pub reader_name: String,
+    /// The value form that the reader accepts.
     pub reader_kind: crate::ReaderKind,
+    /// The command family that the reader accepts, when it reads a block.
     pub reader_family: BlockFamily,
+    /// The symbol of the reader's `ReadMember`, whose token dispatch the method follows.
     pub member_name: String,
+    /// The grammar of numeric child keys, read by a separate child reader.
     pub numeric: Option<Box<GrammarResult>>,
+    /// Tests of a child's position among its siblings.
     pub ordering: Vec<ordering::Rule>,
+    /// The child keys and the token paths to their readers.
     pub fields: ChildFields,
+    /// The command families that the reader's child keys dispatch to.
     pub families: Vec<BlockFamily>,
+    /// Every obstruction on a child path, once each.
     pub stops: Vec<Unresolved>,
 }
 
+/// The child keys of a command reader, in the registry field method's records.
 pub struct ChildFields {
+    /// Each established child key and its reader.
     pub fields: Vec<RootField>,
+    /// Every followed token path. A field lists the paths that establish it by index.
     pub paths: Vec<TokenPath>,
+    /// Gaps in the child keys, before normalization.
     pub gaps: Vec<FieldGap>,
 }
 
@@ -211,7 +226,7 @@ fn analyze_reader(
     for path in &leaves {
         match &path.outcome {
             PathOutcome::Gap(stop) | PathOutcome::Reader(ReaderJoin::Missing(stop)) => {
-                stops.push(*stop)
+                stops.push(stop.clone())
             }
             _ => {}
         }
@@ -230,8 +245,7 @@ fn analyze_reader(
         None
     };
     let (reader_kind, reader_family) = super::readers::entry(&reader_name);
-    stops.sort();
-    stops.dedup();
+    super::stop::sort_and_dedup(&mut stops);
     Ok(GrammarResult {
         #[cfg(test)]
         reader,

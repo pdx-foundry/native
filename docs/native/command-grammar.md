@@ -166,6 +166,17 @@ answers and 179 effect answers. Other recurring diagnostics are `reader-routing`
 child families, branch values/conditions, and flags. These counts are distinct command answers per
 reason; one answer may have several reasons. Numeric-child gaps belong to their outer command.
 
+`inspect --trigger-grammar NAME --trace` (or `--effect-grammar`) names where a receiver lost the
+value that its check needed. Tracing leaves every answer unchanged. On M45-release:
+
+- `pop_change_ethic` stops at `command-vtable`. `CEffectEntry<CAddEthicEffect<false>>::Create()+0x18`
+  calls `CAddEthicEffect<false>::CAddEthicEffect()`, which is not a known constructor, so the
+  method invalidates the allocation.
+- `exists` loses its vtable in the same way, at a call to `CEventTarget::CreateFromToken(int)`.
+- `has_country_flag` stops at `factory-return`. Its create method tail-calls
+  `NTrigger::Create<CHasCountryFlag>`, which the factory walk does not decode, so the returned
+  receiver is unknown.
+
 The same revision ran `registry-field-sweep` over all 164 discovered registries in 148 seconds:
 10 complete field inventories, 154 partial, zero failed. This measures field discovery, not
 complete grammar. It retained 1,564 root fields: 915 with reader identity, 649 without; 974 with a

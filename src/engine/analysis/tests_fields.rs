@@ -317,7 +317,7 @@ fn cyclic_dispatch_is_bounded_and_visible() {
         result
             .paths
             .iter()
-            .any(|p| p.outcome == PathOutcome::Gap(cycle))
+            .any(|p| p.outcome == PathOutcome::Gap(cycle.clone()))
     );
     assert!(result.fields.is_empty());
 }
@@ -496,7 +496,7 @@ fn a_path_that_stops_at_an_unknown_value_names_it_in_its_gap() {
 
     let flags = Unresolved::at("flags", 0x1004, 0x1000, Obstacle::Unknown(Unknown::Flags));
     assert_eq!(result.paths.len(), 1);
-    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(flags));
+    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(flags.clone()));
     assert!(result.gaps.contains(&FieldGap {
         path: Some(0),
         ..FieldGap::unresolved(FieldGapKind::ReaderJoin, flags)
@@ -520,7 +520,7 @@ fn a_path_that_spends_its_step_bound_names_the_bound_in_its_gap() {
         Obstacle::Bound(Bound::Steps(500)),
     );
     assert_eq!(result.paths.len(), 1);
-    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(spent));
+    assert_eq!(result.paths[0].outcome, PathOutcome::Gap(spent.clone()));
     assert!(result.gaps.contains(&FieldGap {
         path: Some(0),
         ..FieldGap::unresolved(FieldGapKind::ReaderJoin, spent)
@@ -639,13 +639,13 @@ fn a_table_of_addresses_is_a_gap_that_names_the_reader_and_the_table() {
         result
             .paths
             .iter()
-            .any(|p| p.domain == [100, 102] && p.outcome == PathOutcome::Gap(stop))
+            .any(|p| p.domain == [100, 102] && p.outcome == PathOutcome::Gap(stop.clone()))
     );
     assert_eq!(
         jump_table_gaps(&result),
         [&FieldGap {
             reason: "jump table at 0x8040 in CExample::ReadMember(CReader&, int): its entries are addresses".into(),
-            ..FieldGap::unresolved(FieldGapKind::JumpTable, stop)
+            ..FieldGap::unresolved(FieldGapKind::JumpTable, stop.clone())
         }]
     );
     assert!(result.partition_accounted);
@@ -764,7 +764,7 @@ fn a_default_case_can_only_reject_and_other_shared_cases_are_aliases() {
             .iter()
             .find(|p| p.domain == [token, token])
             .unwrap();
-        assert_eq!(path.outcome, PathOutcome::Gap(default));
+        assert_eq!(path.outcome, PathOutcome::Gap(default.clone()));
     }
     assert_eq!(jump_table_gaps(&result).len(), 1);
 
@@ -793,7 +793,7 @@ fn an_unscaled_wide_load_is_not_a_table_entry() {
         result
             .paths
             .iter()
-            .any(|p| p.domain == [100, 102] && p.outcome == PathOutcome::Gap(stop))
+            .any(|p| p.domain == [100, 102] && p.outcome == PathOutcome::Gap(stop.clone()))
     );
 }
 
@@ -815,7 +815,7 @@ fn a_case_without_a_known_reader_can_only_reject_when_the_default_may_be_unseen(
         .iter()
         .find(|p| p.domain == [102, 102])
         .unwrap();
-    assert_eq!(path.outcome, PathOutcome::Gap(default));
+    assert_eq!(path.outcome, PathOutcome::Gap(default.clone()));
     let gaps = jump_table_gaps(&result);
     assert_eq!(gaps.len(), 1);
     assert!(gaps[0].reason.ends_with("which an unresolved path hides"));

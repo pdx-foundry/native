@@ -38,7 +38,10 @@ cargo run --release --example inspect -- --function 'CMegaStructureType::ReadMem
 ```
 
 The image is `--image PATH` or `STELLARIS_PATH`. The other commands are `--symbols TEXT`,
-`--callers NAME`, `--strings TEXT` and `--slots NAME --count N`. Each run first prints the image
+`--callers NAME`, `--strings TEXT` and `--slots NAME --count N`. On a catalogued build,
+`--registry-fields`, `--trigger-grammar` and `--effect-grammar` show a method's stops. Add
+`--trace` for the causes of unknown values; [method authoring](native/method-authoring.md#inspect-the-exact-build)
+gives the limits. Each run first prints the image
 hashes and whether chained fixups were read. Without them, no data slot is resolved and the run
 prints why. Function extents come from symbols, so every end is an inferred boundary. Indirect
 branches stay unresolved, and jump tables are shown only as the addresses the code forms.

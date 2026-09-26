@@ -32,8 +32,43 @@ cargo run --release --example inspect -- --registry-fields common/megastructures
 ```
 
 This shows each stop's reason, obstacle, instruction, symbol and offset, code entry and last
-instructions, followed by the internal gaps before normalization. Record new engine facts and
-failed shapes on the method page as you find them.
+instructions, followed by the internal gaps before normalization. `--trigger-grammar NAME` and
+`--effect-grammar NAME` do the same for one command's child grammar. They also show the
+obstruction when the command's receiver join stops. Record new engine facts and failed shapes on
+the method page as you find them.
+
+Add `--trace` to learn where a needed value stopped being known:
+
+```sh
+cargo run --release --example inspect -- --effect-grammar pop_change_ethic --trace
+```
+
+A stop at an unknown register or flags, and the `factory-return` and `command-vtable` receiver
+checks, then list each cause with its instruction and code entry:
+
+- a call that returned no known value, or clobbered a caller-saved register or the flags;
+- known memory that the method invalidated, such as an object after an unrecognized call;
+- a store to an unknown address that may have overwritten known memory;
+- a loop head where the joined paths disagreed on the value.
+
+The run follows the value through moves, loads and stores on its own path. Memory that becomes
+unknown again keeps its first recorded cause. Memory that was never known gains the first cause
+recorded for it and stays marked as partly unrecorded. Limits:
+
+- A trace keeps at most `CAUSE_LIMIT` (4) causes and says when it dropped more.
+- More than one cause means any of them may apply. Where joined paths lost a value for different
+  reasons, the trace lists each.
+- A path that went on from a loop head does not learn the causes of a later arrival there that
+  its facts already cover. That arrival's causes reach only paths that widen the facts later.
+- An unrecorded part means that the value was unknown when the walk began, was in memory that
+  the path never wrote, or passed through a vector register. Vector registers are not traced.
+- Only walks of the shared evaluator (`evaluate.rs`) are traced. Registry field token paths
+  come from the dispatch walker, which says that it records no causes.
+- Tracing changes no answer, stop or comparison. It applies to analysis that runs inside the
+  traced call; a `Native` that already cached an analysis does not rerun it.
+
+In code, `pdx_native::internals::trace_causes(|| ...)` turns tracing on for the closure.
+`Unresolved::trace` holds the result.
 
 ## Implement the shared method and its stops
 
