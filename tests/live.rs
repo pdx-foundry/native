@@ -20,7 +20,7 @@
 //! The fault cases use the hidden `GameOptions::fault`. A fault applies to one registry; the
 //! other registry must stay complete. The tests stop only their own unrelated sentinel process. They check that every
 //! game and supervisor process that a case started is gone when the case ends.
-use pdx_native::internals::ObservationControl as Fault;
+use pdx_native::internals::{ObservationControl as Fault, ObservationTarget};
 use pdx_native::{
     Answer, Basis, Completeness, Disposal, Error, Game, GameOptions, GameReadiness, GapKind, Native,
 };
@@ -996,7 +996,7 @@ async fn fixture_case(
     }
     let mut prepared = options().fixture(request.clone());
     if control != Fault::Normal {
-        prepared = prepared.fixture_fault(control);
+        prepared = prepared.fault(ObservationTarget::Fixture, control);
     }
     let started = native.start_game(prepared).await;
     if control == Fault::WorkerLoss {
@@ -1210,11 +1210,10 @@ async fn fixture_timeout(native: &Native) -> Outcome {
 
 async fn fixture_later_registry_dropped(native: &Native) -> Outcome {
     let mut game = native
-        .start_game(
-            options()
-                .fixture(fixture_request())
-                .fault(CATEGORIES, Fault::DroppedRecord),
-        )
+        .start_game(options().fixture(fixture_request()).fault(
+            ObservationTarget::Registry(CATEGORIES.into()),
+            Fault::DroppedRecord,
+        ))
         .await?;
     let mut result = async {
         let fixture = game.observe_fixture().await?;
@@ -1628,7 +1627,10 @@ async fn loaded_modifiers_missing_registry_hook(native: &Native) -> Outcome {
         .start_game(
             options()
                 .registries([TRADITIONS])
-                .fault(TRADITIONS, Fault::MissingHook)
+                .fault(
+                    ObservationTarget::Registry(TRADITIONS.into()),
+                    Fault::MissingHook,
+                )
                 .loaded_modifiers(),
         )
         .await?;
@@ -1656,7 +1658,7 @@ async fn loaded_modifiers_worker_loss(native: &Native) -> Outcome {
         .start_game(
             options()
                 .loaded_modifiers()
-                .modifier_fault(Fault::WorkerLoss),
+                .fault(ObservationTarget::Modifiers, Fault::WorkerLoss),
         )
         .await
     {
@@ -1842,7 +1844,7 @@ async fn fault(
         .start_game(
             options()
                 .registries([registry, other])
-                .fault(registry, control),
+                .fault(ObservationTarget::Registry(registry.into()), control),
         )
         .await?;
     let readiness = game.readiness();
@@ -1897,7 +1899,7 @@ async fn worker_loss(native: &Native, registry: &'static str, control: Fault) ->
         .start_game(
             options()
                 .registries([registry, other])
-                .fault(registry, control),
+                .fault(ObservationTarget::Registry(registry.into()), control),
         )
         .await
     {

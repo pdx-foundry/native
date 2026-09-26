@@ -982,7 +982,19 @@ pub struct Reader {
 pub struct ReaderId(pub(crate) String);
 
 /// Broad value form accepted by a shared reader.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
 #[non_exhaustive]
 pub enum ReaderKind {
     /// A boolean value.

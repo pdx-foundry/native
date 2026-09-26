@@ -459,8 +459,8 @@ impl ExecutionPlan {
                     .find(|field| field.name == question.field)
             });
         let reader_kind = field
-            .map(|field| format!("{:?}", field.reader.kind))
-            .unwrap_or_else(|| "Unknown".into());
+            .map(|field| field.reader.kind)
+            .unwrap_or(crate::ReaderKind::Unknown);
         let unavailable = match (field, exact) {
             (None, _) => Some("The field is not established by registry_fields".into()),
             (Some(field), _) if field.reader.kind != crate::ReaderKind::String => Some(format!(
@@ -581,7 +581,8 @@ impl ExecutionPlan {
         self.integrity()?;
         let operation = self.operation();
         if let Some(fault) = &request.fault
-            && !registries.contains_key(&fault.registry)
+            && let crate::protocol::session::ObservationTarget::Registry(registry) = &fault.target
+            && !registries.contains_key(registry)
         {
             return Err(crate::supervisor::SupervisorError(
                 "The fault names a registry that the session does not observe".into(),
@@ -598,7 +599,6 @@ impl ExecutionPlan {
                 .as_ref()
                 .map(|fixture| self.fixture_setup(fixture))
                 .transpose()?,
-            fixture_fault: request.fixture_fault,
             modifiers: request
                 .loaded_modifiers
                 .as_ref()
@@ -608,7 +608,6 @@ impl ExecutionPlan {
                         .map_err(crate::supervisor::SupervisorError)
                 })
                 .transpose()?,
-            modifier_fault: request.modifier_fault,
             startup_seconds: request.startup_seconds,
             machine: &operation.machine,
             package: &operation.strategy.package,

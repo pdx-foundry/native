@@ -2,7 +2,7 @@
 //! controls that follow it, and the supervisor's final report.
 //!
 //! [`ObservationControl`] holds the deliberate faults that Native's live tests inject. A request
-//! carries a fault only together with the registry that receives it.
+//! carries one fault together with the observation that receives it.
 use crate::{answer::Disposal, supervisor::SupervisorError};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -29,21 +29,30 @@ pub(crate) struct SessionRequest {
     pub fault: Option<Fault>,
     /// Consumer fixture, mounted before launch.
     pub fixture: Option<crate::FixtureRequest>,
-    /// A fault restricted to fixture observations.
-    pub fixture_fault: Option<ObservationControl>,
     /// Read the loaded modifier table, and the item keys of these registries, where the engine
     /// documents its modifiers; the session pauses there.
     pub loaded_modifiers: Option<Vec<String>>,
-    /// A fault restricted to the modifier observation. Only `WorkerLoss`.
-    pub modifier_fault: Option<ObservationControl>,
 }
 
-/// A deliberate fault and the internal name of the registry that receives it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A deliberate fault and the observation that receives it.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Fault {
-    pub registry: String,
+    pub target: ObservationTarget,
     pub control: ObservationControl,
+}
+
+/// The observation that receives a deliberate fault in Native's live tests.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub enum ObservationTarget {
+    /// A selected registry, named by its content directory.
+    Registry(String),
+    /// The prepared fixture.
+    Fixture,
+    /// The requested loaded modifier table.
+    Modifiers,
 }
 
 impl SessionRequest {
@@ -52,26 +61,6 @@ impl SessionRequest {
             fixture
                 .validate()
                 .map_err(|error| SupervisorError(error.to_string()))?;
-        }
-        if self.fixture_fault.is_some()
-            && (self.fixture.is_none()
-                || self.fault.is_some()
-                || self.fixture_fault == Some(ObservationControl::Normal))
-        {
-            return Err(SupervisorError(
-                "A fixture fault requires a fixture and no registry fault".into(),
-            ));
-        }
-        if self.modifier_fault.is_some()
-            && (self.loaded_modifiers.is_none()
-                || self.fault.is_some()
-                || self.fixture_fault.is_some()
-                || self.modifier_fault != Some(ObservationControl::WorkerLoss))
-        {
-            return Err(SupervisorError(
-                "A modifier fault is worker loss, with the loaded modifier table and no other fault"
-                    .into(),
-            ));
         }
         if !self.work_directory.is_absolute()
             || !(1..=MAX_SESSION_SECONDS).contains(&self.startup_seconds)
@@ -123,23 +112,21 @@ impl SessionRequest {
                 "The fixture registry must be selected for observation".into(),
             ));
         }
-        if self
-            .fault
-            .as_ref()
-            .is_some_and(|fault| !self.registries.contains(&fault.registry))
-        {
-            return Err(SupervisorError(
-                "The fault names an unselected registry".into(),
-            ));
-        }
-        if self
-            .fault
-            .as_ref()
-            .is_some_and(|fault| fault.control == ObservationControl::Normal)
-        {
-            return Err(SupervisorError(
-                "Expected a fault together with the registry that receives it".into(),
-            ));
+        if let Some(fault) = &self.fault {
+            let valid = fault.control != ObservationControl::Normal
+                && match &fault.target {
+                    ObservationTarget::Registry(registry) => self.registries.contains(registry),
+                    ObservationTarget::Fixture => self.fixture.is_some(),
+                    ObservationTarget::Modifiers => {
+                        self.loaded_modifiers.is_some()
+                            && fault.control == ObservationControl::WorkerLoss
+                    }
+                };
+            if !valid {
+                return Err(SupervisorError(
+                    "The fault requires a selected observation and a supported fault kind".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -192,10 +179,7 @@ pub(crate) struct SessionReport {
     pub diagnostics: Vec<String>,
 }
 
-/// A deliberate fault in the observation of one registry, for Native's live tests.
-///
-/// Reach it through `GameOptions::fault`. The supervisor applies a fault only to the registry
-/// that the request names; the other registries are observed as usual.
+/// A deliberate fault for Native's live tests, applied to the target of `GameOptions::fault`.
 #[doc(hidden)]
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
@@ -205,17 +189,17 @@ pub enum ObservationControl {
     /// No fault.
     #[default]
     Normal,
-    /// Do not set the registry's hook.
+    /// Do not set the targeted observation's hook.
     MissingHook,
-    /// Set the registry's hook, but leave it disabled when the game resumes.
+    /// Set the targeted hook, but leave it disabled when the game resumes.
     LateHook,
-    /// Do not write the record of the registry's first item.
+    /// Omit one targeted observation record, leaving its sequence gap.
     DroppedRecord,
-    /// Do not write the registry's terminal record.
+    /// Do not write the targeted observation's terminal record.
     MissingTerminal,
-    /// Make a read of game memory fail when the registry's loader returns.
+    /// Make a read of game memory fail in the targeted observation.
     AccessFailure,
-    /// Stop the debugger worker while it reads the registry.
+    /// Stop the debugger worker during the targeted observation.
     WorkerLoss,
     /// Stop the debugger worker before it attaches or activates a hook.
     WorkerLossBeforeActivation,
@@ -235,9 +219,7 @@ mod tests {
             registries: vec!["common/traditions".into()],
             fault: None,
             fixture: None,
-            fixture_fault: None,
             loaded_modifiers: None,
-            modifier_fault: None,
         }
     }
 
@@ -273,56 +255,74 @@ mod tests {
     }
 
     #[test]
-    fn a_fault_and_its_registry_come_together_or_not_at_all() {
-        let with = |control| {
-            let mut request = request();
-            request.fault = Some(Fault {
-                registry: "common/traditions".into(),
-                control,
-            });
-            request
-        };
-        assert!(with(ObservationControl::Normal).validate().is_err());
-        for control in [
+    fn faults_require_a_selected_target_and_supported_kind() {
+        let controls = [
+            ObservationControl::Normal,
             ObservationControl::MissingHook,
             ObservationControl::LateHook,
             ObservationControl::DroppedRecord,
             ObservationControl::MissingTerminal,
             ObservationControl::AccessFailure,
             ObservationControl::WorkerLoss,
+            ObservationControl::WorkerLossBeforeActivation,
+        ];
+        for target in [
+            ObservationTarget::Registry("common/traditions".into()),
+            ObservationTarget::Registry("common/unselected".into()),
+            ObservationTarget::Fixture,
+            ObservationTarget::Modifiers,
         ] {
-            assert!(with(control).validate().is_ok());
+            for selected in [false, true] {
+                for control in controls {
+                    let mut request = request();
+                    if selected {
+                        request
+                            .registries
+                            .push("common/tradition_categories".into());
+                        request.fixture = Some(crate::FixtureRequest::new(
+                            "common/tradition_categories/atlas.txt",
+                            "atlas = {}",
+                        ));
+                        request.loaded_modifiers = Some(Vec::new());
+                    }
+                    request.fault = Some(Fault {
+                        target: target.clone(),
+                        control,
+                    });
+                    let expected = match &target {
+                        ObservationTarget::Registry(registry) => {
+                            request.registries.contains(registry)
+                                && control != ObservationControl::Normal
+                        }
+                        ObservationTarget::Fixture => {
+                            selected && control != ObservationControl::Normal
+                        }
+                        ObservationTarget::Modifiers => {
+                            selected && control == ObservationControl::WorkerLoss
+                        }
+                    };
+                    assert_eq!(
+                        request.validate().is_ok(),
+                        expected,
+                        "{target:?} {control:?} selected={selected}"
+                    );
+                }
+            }
         }
-        let mut both = with(ObservationControl::WorkerLoss);
-        both.loaded_modifiers = Some(Vec::new());
-        both.modifier_fault = Some(ObservationControl::WorkerLoss);
-        assert!(both.validate().is_err());
-        // A request with a session field that this build does not know is refused.
-        let mut unknown = serde_json::to_value(request()).unwrap();
-        unknown["registry"] = "traditions".into();
-        assert!(serde_json::from_value::<SessionRequest>(unknown).is_err());
     }
 
     #[test]
-    fn a_modifier_fault_is_worker_loss_on_a_modifier_session() {
-        let modifiers = || {
-            let mut request = request();
-            request.loaded_modifiers = Some(vec!["common/buildings".into()]);
-            request
-        };
-        assert!(modifiers().validate().is_ok());
-        let mut lost = modifiers();
-        lost.modifier_fault = Some(ObservationControl::WorkerLoss);
-        assert!(lost.validate().is_ok());
-        let mut other = modifiers();
-        other.modifier_fault = Some(ObservationControl::MissingTerminal);
-        assert!(other.validate().is_err());
-        let mut without = request();
-        without.modifier_fault = Some(ObservationControl::WorkerLoss);
-        assert!(without.validate().is_err());
-        let mut repeated = request();
-        repeated.loaded_modifiers = Some(vec!["common/zones".into(), "common/zones".into()]);
-        assert!(repeated.validate().is_err());
+    fn obsolete_or_ambiguous_fault_fields_are_rejected() {
+        for field in ["fixture_fault", "modifier_fault", "registry"] {
+            let mut unknown = serde_json::to_value(request()).unwrap();
+            unknown[field] = "worker-loss".into();
+            assert!(serde_json::from_value::<SessionRequest>(unknown).is_err());
+        }
+        let ambiguous = serde_json::json!({
+            "target": {"registry": "common/traditions", "fixture": null},
+            "control": "worker-loss"
+        });
+        assert!(serde_json::from_value::<Fault>(ambiguous).is_err());
     }
 
     #[test]
@@ -336,6 +336,11 @@ mod tests {
         let mut empty = request();
         empty.registries = Vec::new();
         assert!(empty.validate().is_err());
+
+        let mut repeated_modifiers = request();
+        repeated_modifiers.loaded_modifiers =
+            Some(vec!["common/zones".into(), "common/zones".into()]);
+        assert!(repeated_modifiers.validate().is_err());
 
         let mut repeated = large;
         repeated.registries.push(names[0].clone());

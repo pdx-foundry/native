@@ -327,7 +327,7 @@ fn registry_name(event: &WorkerEvent) -> Option<&str> {
 
 /// The registry loader must run on the activated thread after resume.
 fn activated(records: &[WorkerRecord], owner: &[OwnerEvent], registry: &str) -> bool {
-    let hook = format!("registry:{registry}");
+    let hook = format!("{}{registry}", crate::protocol::hooks::REGISTRY);
     let Some((thread, resumed)) = super::event_stream::activation(records, owner, &[&hook]) else {
         return false;
     };

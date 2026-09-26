@@ -1,7 +1,7 @@
 //! Reduce the bounded fixture window. Native joins addresses internally, then replaces them
 //! with session-local owner identities. Only witnessed read entries leave this module.
 use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
-use crate::protocol::observation::FixtureFieldBinding;
+use crate::protocol::{hooks, observation::FixtureFieldBinding};
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
     Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
@@ -41,7 +41,7 @@ pub(crate) enum FixtureEvent {
     FieldAuthority {
         question: u64,
         reader_id: Option<String>,
-        reader_kind: String,
+        reader_kind: ReaderKind,
         storage_supported: bool,
         unavailable: Option<String>,
     },
@@ -69,7 +69,7 @@ pub(crate) enum FixtureEvent {
         owner: Option<String>,
         definition_line: Option<u64>,
         reader_id: Option<String>,
-        reader_kind: String,
+        reader_kind: ReaderKind,
         final_value: Option<String>,
         unavailable: Option<String>,
     },
@@ -97,18 +97,6 @@ pub(crate) enum FixtureEvent {
     },
 }
 
-fn parse_reader_kind(kind: &str) -> ReaderKind {
-    match kind {
-        "Boolean" => ReaderKind::Boolean,
-        "Integer" => ReaderKind::Integer,
-        "FixedPoint" => ReaderKind::FixedPoint,
-        "String" => ReaderKind::String,
-        "Reference" => ReaderKind::Reference,
-        "Block" => ReaderKind::Block,
-        _ => ReaderKind::Unknown,
-    }
-}
-
 /// `category_fields` are the field tokens that the build's category window reads, from its
 /// fixture binding.
 pub(crate) fn reduce(
@@ -118,21 +106,25 @@ pub(crate) fn reduce(
     owner_events: &[OwnerEvent],
     build: BuildId,
 ) -> Result<Answer<FixtureObservation>, Error> {
-    let mut hooks = vec!["fixture:load"];
+    let mut hooks = vec![hooks::FIXTURE_LOAD];
     if request.requests(Kind::RegistrationEntries) {
-        hooks.push("fixture:registration");
+        hooks.push(hooks::FIXTURE_REGISTRATION);
     }
     if request.requests(Kind::CategoryFieldReads) {
-        hooks.push("fixture:field");
+        hooks.push(hooks::FIXTURE_FIELD);
     }
     let diagnostics_requested = request
         .field_questions
         .iter()
         .any(|question| question.diagnostics);
     if !request.field_questions.is_empty() {
-        hooks.extend(["fixture:constructor", "fixture:reader", "fixture:member"]);
+        hooks.extend([
+            hooks::FIXTURE_CONSTRUCTOR,
+            hooks::FIXTURE_READER,
+            hooks::FIXTURE_MEMBER,
+        ]);
         if diagnostics_requested {
-            hooks.extend(["fixture:malformed", "fixture:unexpected"]);
+            hooks.extend([hooks::FIXTURE_MALFORMED, hooks::FIXTURE_UNEXPECTED]);
         }
     }
     let Some((thread, resumed)) = event_stream::activation(records, owner_events, &hooks) else {
@@ -538,7 +530,7 @@ impl<'a> Window<'a> {
         &mut self,
         question: u64,
         reader_id: &Option<String>,
-        reader_kind: &str,
+        reader_kind: &ReaderKind,
         storage_supported: bool,
         unavailable: &Option<String>,
     ) {
@@ -552,7 +544,7 @@ impl<'a> Window<'a> {
         }
         let reader = Reader {
             id: reader_id.clone().map(ReaderId),
-            kind: parse_reader_kind(reader_kind),
+            kind: *reader_kind,
         };
         let coherent = if storage_supported {
             reader.kind == ReaderKind::String && reader.id.is_some() && unavailable.is_none()
@@ -688,7 +680,7 @@ impl<'a> Window<'a> {
             .field_authorities
             .get(question)
             .is_some_and(|authority| {
-                authority.reader.kind == parse_reader_kind(reader_kind)
+                authority.reader.kind == *reader_kind
                     && authority.reader.id.as_ref().map(|id| &id.0) == reader_id.as_ref()
             });
         if !authority_matches {

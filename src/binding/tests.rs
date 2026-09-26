@@ -337,7 +337,10 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         assert_eq!(setup.machine.architecture, "synthetic-machine");
         assert_eq!(setup.registries["common/traditions"].load_entry, 0x5678);
         assert_eq!(setup.package["selected.txt"], b"selected package");
-        assert_eq!(setup.fault.unwrap().registry, "common/traditions");
+        assert_eq!(
+            setup.fault.unwrap().target,
+            crate::protocol::session::ObservationTarget::Registry("common/traditions".into())
+        );
         assert_eq!(setup.startup_seconds, 7);
         Err(SupervisorError("selected strategy reached".into()))
     }
@@ -369,11 +372,11 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         idle_seconds: 1,
         registries: vec!["common/traditions".into()],
         fixture: None,
-        fixture_fault: None,
         loaded_modifiers: None,
-        modifier_fault: None,
         fault: Some(Fault {
-            registry: "common/traditions".into(),
+            target: crate::protocol::session::ObservationTarget::Registry(
+                "common/traditions".into(),
+            ),
             control: ObservationControl::MissingHook,
         }),
     };
@@ -384,7 +387,8 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     assert_eq!(error.to_string(), "selected strategy reached");
     assert!(!directory.path().join("unused").exists());
     // A fault for a registry that the session does not observe never reaches the strategy.
-    request.fault.as_mut().unwrap().registry = "unknown".into();
+    request.fault.as_mut().unwrap().target =
+        crate::protocol::session::ObservationTarget::Registry("unknown".into());
     let error = plan
         .observer(&request.work_directory, "test", &request, &registries)
         .err()

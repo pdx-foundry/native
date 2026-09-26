@@ -15,8 +15,7 @@ use crate::protocol::observation::{ModifierEntry, ModifierTable, RegistryKeys};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The hook at the entry of the engine's modifier documentation.
-pub(crate) const HOOK: &str = "modifiers:documentation";
+use crate::protocol::hooks::MODIFIERS_DOCUMENTATION as HOOK;
 
 /// The accepted table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

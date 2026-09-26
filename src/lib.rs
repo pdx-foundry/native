@@ -50,6 +50,6 @@ pub(crate) use engine::analysis::AnalysisError;
 #[doc(hidden)]
 pub mod internals {
     pub use crate::binding::inspect;
-    pub use crate::protocol::session::ObservationControl;
+    pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::registry_field_stops;
 }
