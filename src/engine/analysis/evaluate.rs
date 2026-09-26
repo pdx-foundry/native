@@ -23,11 +23,19 @@
 //! ends each path when it arrives there, before that instruction runs. A caller reads the
 //! arguments of a call site this way. The caller can protect memory ranges from a store to an
 //! unknown address, and keep its own facts about each path in labels that follow that path.
+//!
+//! While [`trace_causes`] is on, a machine also records where each unknown value stopped being
+//! known on its path, and a stop at an unknown value carries that trace. See the `trace` module.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::decode::{Instruction, decode_arm64};
 use super::stop::{Bound, Obstacle, Unknown, Unresolved};
+
+mod trace;
+
+use trace::Traces;
+pub use trace::trace_causes;
 
 /// The most instructions that one run may execute.
 const STEP_LIMIT: usize = 20_000;
@@ -274,6 +282,8 @@ pub struct Machine<'a> {
     pc: u64,
     /// The target of each entered call, beside `frames`.
     callees: Vec<u64>,
+    /// Where each unknown value stopped being known, while cause tracing is on.
+    traces: Option<Box<Traces>>,
 }
 
 /// Where the paths of a run end, besides a return or a stop.
@@ -300,6 +310,7 @@ struct HeadState {
     frames: Vec<u64>,
     labels: BTreeMap<u64, u64>,
     widened: u32,
+    traces: Option<Box<Traces>>,
 }
 
 /// The instruction that [`Machine::run_paths_to`] must arrive at, every instruction from which
@@ -331,6 +342,7 @@ impl<'a> Machine<'a> {
             entry: 0,
             pc: 0,
             callees: Vec::new(),
+            traces: Traces::when_tracing(),
         }
     }
 
@@ -383,6 +395,7 @@ impl<'a> Machine<'a> {
             self.memory
                 .insert(address + offset, Some((value >> (offset * 8)) as u8));
         }
+        self.trace_stored(address, width, true);
     }
 
     /// Keep `length` bytes at `address` known when this path stores to an unknown address. The
@@ -449,6 +462,7 @@ impl<'a> Machine<'a> {
         for offset in 0..width {
             self.memory.insert(address + offset, None);
         }
+        self.trace_forgotten(address, width);
     }
 
     /// Load `width` little-endian bytes, when every byte is known.
@@ -744,6 +758,9 @@ impl<'a> Machine<'a> {
     /// on: `false` when the kept facts cover its state.
     fn join(&mut self, pc: u64, joined: &mut BTreeMap<u64, HeadState>) -> Result<bool, Unresolved> {
         let Some(kept) = joined.get_mut(&pc) else {
+            if let Some(arrival) = self.arrival() {
+                self.trace_join(None, &arrival);
+            }
             joined.insert(pc, self.head_state(0));
             return Ok(true);
         };
@@ -760,6 +777,7 @@ impl<'a> Machine<'a> {
             };
         }
 
+        let arrival = self.arrival();
         let mut lost = false;
         for index in 0..self.registers.len() {
             let before = kept.registers[index];
@@ -802,7 +820,13 @@ impl<'a> Machine<'a> {
         }
 
         if !lost {
+            if let Some(arrival) = &arrival {
+                self.trace_covered(kept, arrival);
+            }
             return Ok(false);
+        }
+        if let Some(arrival) = &arrival {
+            self.trace_join(Some(kept), arrival);
         }
         let widened = kept.widened + 1;
         if widened > JOIN_LIMIT {
@@ -824,6 +848,7 @@ impl<'a> Machine<'a> {
             frames: self.frames.clone(),
             labels: self.labels.clone(),
             widened,
+            traces: self.traces.clone(),
         }
     }
 
@@ -875,10 +900,15 @@ impl<'a> Machine<'a> {
         self.frames.pop()
     }
 
+    /// Where the run last entered code: the innermost entered call, or its entry.
+    fn entered(&self) -> u64 {
+        self.callees.last().copied().unwrap_or(self.entry)
+    }
+
     /// The run stopped at `pc` for `reason`.
     fn stop(&self, pc: u64, reason: &'static str, obstacle: Obstacle) -> Unresolved {
-        let entry = self.callees.last().copied().unwrap_or(self.entry);
-        Unresolved::at(reason, pc, entry, obstacle)
+        let unresolved = Unresolved::at(reason, pc, self.entered(), obstacle);
+        self.with_stop_trace(unresolved, obstacle)
     }
 
     /// Give the call at `pc` to `call`, which may run other code on this machine. The run is
@@ -896,7 +926,10 @@ impl<'a> Machine<'a> {
 
         result.map_err(|unresolved| match unresolved.stop {
             Some(_) => unresolved,
-            None => self.stop(pc, unresolved.reason, Obstacle::Call),
+            None => Unresolved {
+                trace: unresolved.trace,
+                ..self.stop(pc, unresolved.reason, Obstacle::Call)
+            },
         })
     }
 
@@ -905,6 +938,7 @@ impl<'a> Machine<'a> {
         self.registers[0] = value;
         self.registers[1..=18].fill(None);
         self.set_flags(None);
+        self.trace_call(value.is_some());
     }
 
     /// Run the instruction at `pc`.
@@ -912,6 +946,7 @@ impl<'a> Machine<'a> {
         let Operation::Parsed { mnemonic, operands } = operation else {
             return Err(Halt::unsupported("instruction"));
         };
+        self.clear_inputs();
         let mnemonic = ordered_access(mnemonic);
         let operands = operands.as_slice();
         if self.step_move(mnemonic, operands)?
@@ -1208,7 +1243,8 @@ impl<'a> Machine<'a> {
             }
             ("fmov", [Operand::Register(destination), Operand::Register(source)]) => {
                 let value = match source.name {
-                    Name::Vector(index) => self.vectors[index]
+                    Name::Vector(index) => self
+                        .vector(index)
                         .map(|value| value & u128::from(low_bits(source.bytes * 8))),
                     _ => self.read_register(*source).map(u128::from),
                 };
@@ -1274,8 +1310,9 @@ impl<'a> Machine<'a> {
                 ],
             ) => {
                 let bytes = *bytes;
-                let value = self.vectors[*left]
-                    .zip(self.vectors[*right])
+                let value = self
+                    .vector(*left)
+                    .zip(self.vector(*right))
                     .map(|(left, right)| match bytes {
                         4 => Ok(u128::from(
                             (f32::from_bits(left as u32) * f32::from_bits(right as u32)).to_bits(),
@@ -1299,7 +1336,8 @@ impl<'a> Machine<'a> {
                 ],
             ) => {
                 let wide = destination.is_wide();
-                let value = self.vectors[*index]
+                let value = self
+                    .vector(*index)
                     .map(|bits| truncated_integer(bits, *bytes, wide))
                     .transpose()?;
                 self.assign(destination, value)?;
@@ -1345,8 +1383,8 @@ impl<'a> Machine<'a> {
                 let start = *start as u32 * 8;
                 let mask = u128::MAX >> (128 - bits);
                 self.vectors[*index] =
-                    self.vectors[*low]
-                        .zip(self.vectors[*high])
+                    self.vector(*low)
+                        .zip(self.vector(*high))
                         .map(|(low, high)| {
                             let low = (low & mask) >> start;
                             let high = if start == 0 {
@@ -1391,10 +1429,17 @@ impl<'a> Machine<'a> {
                     Operand::Memory(memory),
                     rest @ ..,
                 ],
-            ) => match self.address(memory, rest)? {
-                Some(address) => self.store_bytes(address, *bytes, self.vectors[*index]),
-                None => self.store_to_unknown(&halves(self.vectors[*index])),
-            },
+            ) => {
+                let value = self.vector(*index);
+                let value_inputs = self.take_inputs();
+                match self.address(memory, rest)? {
+                    Some(address) => {
+                        self.restore_inputs(value_inputs);
+                        self.store_bytes(address, *bytes, value);
+                    }
+                    None => self.store_to_unknown(&halves(value)),
+                }
+            }
             (
                 "ldp",
                 [
@@ -1431,36 +1476,50 @@ impl<'a> Machine<'a> {
                     Operand::Memory(memory),
                     rest @ ..,
                 ],
-            ) => match self.address(memory, rest)? {
-                Some(address) => {
-                    self.store_bytes(address, *bytes, self.vectors[*first]);
-                    self.store_bytes(address + bytes, *bytes, self.vectors[*second]);
+            ) => {
+                let first = self.vector(*first);
+                let first_inputs = self.take_inputs();
+                let second = self.vector(*second);
+                let second_inputs = self.take_inputs();
+                match self.address(memory, rest)? {
+                    Some(address) => {
+                        self.restore_inputs(first_inputs);
+                        self.store_bytes(address, *bytes, first);
+                        self.restore_inputs(second_inputs);
+                        self.store_bytes(address + bytes, *bytes, second);
+                    }
+                    None => {
+                        let mut values = halves(first).to_vec();
+                        values.extend(halves(second));
+                        self.store_to_unknown(&values);
+                    }
                 }
-                None => {
-                    let mut values = halves(self.vectors[*first]).to_vec();
-                    values.extend(halves(self.vectors[*second]));
-                    self.store_to_unknown(&values);
-                }
-            },
+            }
             (load, [destination, Operand::Memory(memory), rest @ ..])
                 if load.starts_with("ldr") || load.starts_with("ldur") =>
             {
                 let (width, signed) = load_width(load, destination)?;
                 let address = self.address(memory, rest)?;
+                let address_inputs = self.take_inputs();
                 let value = address.and_then(|address| self.read(address, width));
                 let value = value.map(|value| match signed {
                     Some(to_wide) => sign_extend(value, width, to_wide),
                     None => value,
                 });
+                self.restore_inputs(self.loaded_inputs(address_inputs, address, width));
                 self.assign(destination, value)?;
             }
             ("ldp", [first, second, Operand::Memory(memory), rest @ ..]) => {
                 let width = if first.is_wide() { 8 } else { 4 };
                 let address = self.address(memory, rest)?;
+                let address_inputs = self.take_inputs();
                 let values = address
                     .map(|address| (self.read(address, width), self.read(address + width, width)));
                 let (first_value, second_value) = values.unwrap_or((None, None));
+                self.restore_inputs(self.loaded_inputs(address_inputs, address, width));
                 self.assign(first, first_value)?;
+                let second_address = address.map(|address| address + width);
+                self.restore_inputs(self.loaded_inputs(address_inputs, second_address, width));
                 self.assign(second, second_value)?;
             }
             (store, [source, Operand::Memory(memory), rest @ ..])
@@ -1468,18 +1527,26 @@ impl<'a> Machine<'a> {
             {
                 let width = store_width(store, source)?;
                 let value = self.operand(source)?;
+                let value_inputs = self.take_inputs();
                 match self.address(memory, rest)? {
-                    Some(address) => self.store(address, width, value),
+                    Some(address) => {
+                        self.restore_inputs(value_inputs);
+                        self.store(address, width, value);
+                    }
                     None => self.store_to_unknown(&[value]),
                 }
             }
             ("stp", [first, second, Operand::Memory(memory), rest @ ..]) => {
                 let width = if first.is_wide() { 8 } else { 4 };
                 let first = self.operand(first)?;
+                let first_inputs = self.take_inputs();
                 let second = self.operand(second)?;
+                let second_inputs = self.take_inputs();
                 match self.address(memory, rest)? {
                     Some(address) => {
+                        self.restore_inputs(first_inputs);
                         self.store(address, width, first);
+                        self.restore_inputs(second_inputs);
                         self.store(address + width, width, second);
                     }
                     None => self.store_to_unknown(&[first, second]),
@@ -1570,6 +1637,9 @@ impl<'a> Machine<'a> {
     fn set_flags(&mut self, flags: Option<Flags>) {
         self.flags = flags;
         self.possible_flags = ALL_FLAG_STATES;
+        if flags.is_none() {
+            self.trace_flags();
+        }
     }
 
     fn holds(&self, condition: Condition) -> Result<bool, Halt> {
@@ -1607,7 +1677,12 @@ impl<'a> Machine<'a> {
         let value = match register.name {
             Name::Zero => Some(0),
             Name::StackPointer => Some(self.stack_pointer),
-            Name::General(index) => self.registers[index],
+            Name::General(index) => {
+                if self.registers[index].is_none() {
+                    self.read_unknown_register(index);
+                }
+                self.registers[index]
+            }
             Name::Vector(_) => None,
         };
         value.map(|value| truncate(value, register.wide))
@@ -1626,7 +1701,12 @@ impl<'a> Machine<'a> {
                     None => self.stack_pointer - DYNAMIC_STACK,
                 };
             }
-            Name::General(index) => self.registers[index] = value,
+            Name::General(index) => {
+                self.registers[index] = value;
+                if value.is_none() {
+                    self.trace_register(index);
+                }
+            }
             Name::Vector(_) => return Err(Halt::unsupported("destination")),
         }
         Ok(())
@@ -1664,14 +1744,20 @@ impl<'a> Machine<'a> {
     fn store_to_unknown(&mut self, values: &[Option<u64>]) {
         self.unknown_stores.extend(values.iter().flatten());
         let protected = &self.protected;
+        let tracing = self.traces.is_some();
+        let mut overwritten = Vec::new();
         for (address, byte) in self.memory.iter_mut() {
             if !protected
                 .iter()
                 .any(|(start, end)| (*start..*end).contains(address))
             {
                 *byte = None;
+                if tracing {
+                    overwritten.push(*address);
+                }
             }
         }
+        self.trace_unknown_store(&overwritten);
     }
 
     fn store(&mut self, address: u64, width: u64, value: Option<u64>) {
@@ -1683,6 +1769,15 @@ impl<'a> Machine<'a> {
             let byte = value.map(|value| (value >> (offset * 8)) as u8);
             self.memory.insert(address + offset, byte);
         }
+        self.trace_stored(address, width, value.is_some());
+    }
+
+    /// Vector register `index`, noting an unknown one as an input of the present instruction.
+    fn vector(&self, index: usize) -> Option<u128> {
+        if self.vectors[index].is_none() {
+            self.read_unknown_vector();
+        }
+        self.vectors[index]
     }
 }
 
@@ -2384,7 +2479,6 @@ impl Memory {
 mod tests {
     use super::*;
     use crate::engine::analysis::assembler::arm64;
-    use crate::engine::analysis::stop::Stop;
 
     fn rows(lines: &[(u64, &str, &str)]) -> Code {
         Code::from_rows(
@@ -2401,14 +2495,7 @@ mod tests {
 
     /// A stop of a run that entered at 0x100.
     fn stop_at(reason: &'static str, instruction: u64, obstacle: Obstacle) -> Unresolved {
-        Unresolved {
-            reason,
-            stop: Some(Stop {
-                instruction,
-                entry: 0x100,
-                obstacle,
-            }),
-        }
+        Unresolved::at(reason, instruction, 0x100, obstacle)
     }
 
     fn returned(code: &Code, data: &ReadOnlyData, input: u64) -> Result<Option<u64>, Unresolved> {
@@ -2721,7 +2808,7 @@ mod tests {
         let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
         let mut ends: Vec<_> = paths
             .iter()
-            .map(|path| (path.end, path.machine.register(0)))
+            .map(|path| (path.end.clone(), path.machine.register(0)))
             .collect();
         ends.sort_by_key(|(end, _)| format!("{end:?}"));
 
@@ -3329,14 +3416,12 @@ mod tests {
                 &[0x200]
             ),
             [(
-                Err(Unresolved {
-                    reason: "outside-code",
-                    stop: Some(Stop {
-                        instruction: 0x200,
-                        entry: 0x200,
-                        obstacle: Obstacle::OutsideCode,
-                    }),
-                }),
+                Err(Unresolved::at(
+                    "outside-code",
+                    0x200,
+                    0x200,
+                    Obstacle::OutsideCode
+                )),
                 None
             )]
         );
@@ -3379,14 +3464,12 @@ mod tests {
         let callee = arm64!(at 0x200; br x3);
         assert_eq!(
             authored_paths(&[(0x100, &caller), (0x200, &callee)]),
-            [Err(Unresolved {
-                reason: "branch-value",
-                stop: Some(Stop {
-                    instruction: 0x200,
-                    entry: 0x200,
-                    obstacle: Obstacle::Unknown(Unknown::Register(3)),
-                }),
-            })]
+            [Err(Unresolved::at(
+                "branch-value",
+                0x200,
+                0x200,
+                Obstacle::Unknown(Unknown::Register(3))
+            ))]
         );
     }
 

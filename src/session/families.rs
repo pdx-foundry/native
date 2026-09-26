@@ -127,7 +127,7 @@ fn normalized_families(
     let subject = Some(registry);
 
     if let Some(result) = result {
-        if let Err(reason) = result.key_offset {
+        if let Err(reason) = &result.key_offset {
             gaps.push(registry_gap(
                 GapKind::UnresolvedPath,
                 subject,

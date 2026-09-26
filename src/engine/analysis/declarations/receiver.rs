@@ -62,17 +62,15 @@ pub(super) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u
             Exit::Returned => {}
             _ => return Err(Unresolved::new("factory-terminal")),
         }
-        let object = path
-            .machine
-            .register(0)
-            .ok_or(Unresolved::new("factory-return"))?;
+        let object = path.machine.register(0).ok_or_else(|| {
+            Unresolved::new("factory-return").traced(path.machine.register_trace(0))
+        })?;
         if path.machine.labelled(object).is_none() {
             return Err(Unresolved::new("factory-receiver"));
         }
-        let vtable = path
-            .machine
-            .read(object, 8)
-            .ok_or(Unresolved::new("command-vtable"))?;
+        let vtable = path.machine.read(object, 8).ok_or_else(|| {
+            Unresolved::new("command-vtable").traced(path.machine.memory_trace(object, 8))
+        })?;
         vtables.insert(vtable);
     }
     if vtables.len() != 1 {

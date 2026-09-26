@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 pub(crate) use loaded_modifiers::ModifierJoin;
 
 mod callbacks;
+pub mod command_grammar_stops;
 mod defines;
 mod families;
 mod fields;

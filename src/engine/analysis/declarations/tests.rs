@@ -2,8 +2,9 @@
 use super::*;
 use crate::engine::analysis::{
     assembler::{Arm64, arm64},
-    evaluate::ReadOnlyData,
+    evaluate::{ReadOnlyData, trace_causes},
     families::{StringFunctions, StringLayout},
+    stop::CauseKind,
 };
 
 const REGISTER: u64 = 0x9000;
@@ -639,4 +640,102 @@ fn factory_joins_constructor_subobjects_without_conflating_their_readers() {
         command_reader(&input, FACTORY).unwrap_err().reason,
         "constructor-vtable-bound"
     );
+}
+
+/// The receiver failure of the factory whose create method is `body`, traced. The untraced
+/// failure must be the same obstruction, without a trace.
+fn traced_receiver_failure(body: Arm64) -> (Unresolved, Vec<(CauseKind, u64)>, bool) {
+    let mut input = input(
+        vec![],
+        vec![function(body)],
+        composition(vec![], BTreeMap::new()),
+    );
+    input.pointers.insert(FACTORY + 0x10, CREATE);
+    let untraced = command_reader(&input, FACTORY).unwrap_err();
+    let traced = trace_causes(|| command_reader(&input, FACTORY)).unwrap_err();
+    assert_eq!(traced, untraced);
+    assert!(untraced.trace.is_none());
+
+    let trace = traced.trace.as_deref().copied().unwrap();
+    for cause in trace.causes() {
+        assert_eq!(cause.entry, CREATE);
+    }
+    let causes = trace
+        .causes()
+        .map(|cause| (cause.kind, cause.instruction))
+        .collect();
+    (untraced, causes, trace.unrecorded)
+}
+
+/// A create method that allocates the command in `x19`, and returns where it called `NEW`.
+fn allocating_create() -> (Arm64, u64) {
+    let mut body = Arm64::at(CREATE);
+    body.prologue();
+    arm64!(body; mov w0, #16);
+    let allocation = body.here();
+    body.call(NEW);
+    arm64!(body; mov x19, x0); // the command
+    body.address(8, VTABLE);
+    arm64!(body; str x8, [x19]);
+    (body, allocation)
+}
+
+fn returning(mut body: Arm64) -> Arm64 {
+    arm64!(body; mov x0, x19);
+    body.epilogue();
+    arm64!(body; ret);
+    body
+}
+
+#[test]
+fn an_unresolved_receiver_names_where_the_command_lost_its_vtable() {
+    const CONSTRUCTOR: u64 = 0xc000;
+    let (mut body, _) = allocating_create();
+    arm64!(body; mov x0, x19);
+    let unrecognized = body.here();
+    body.call(CONSTRUCTOR); // an unrecognized call may change the command
+    let lost = traced_receiver_failure(returning(body));
+    let invalidated = vec![(CauseKind::Invalidated, unrecognized)];
+    assert_eq!(
+        lost,
+        (Unresolved::new("command-vtable"), invalidated, false)
+    );
+
+    let (mut body, allocation) = allocating_create();
+    arm64!(body; str x4, [x19]); // x4 is lost to the allocation call
+    let lost = traced_receiver_failure(returning(body));
+    let clobbered = vec![(CauseKind::Call, allocation)];
+    assert_eq!(lost, (Unresolved::new("command-vtable"), clobbered, false));
+
+    let (mut body, _) = allocating_create();
+    let store = body.here();
+    arm64!(body; str xzr, [x20]); // x20 is unknown, so this may overwrite the vtable
+    let lost = traced_receiver_failure(returning(body));
+    let overwritten = vec![(CauseKind::UnknownStore, store)];
+    assert_eq!(
+        lost,
+        (Unresolved::new("command-vtable"), overwritten, false)
+    );
+
+    let mut body = Arm64::at(CREATE);
+    body.prologue();
+    arm64!(body; mov w0, #16);
+    body.call(NEW);
+    arm64!(body; mov x19, x0; str xzr, [x20]); // the command's vtable is never written
+    let lost = traced_receiver_failure(returning(body));
+    assert_eq!(lost, (Unresolved::new("command-vtable"), vec![], true));
+}
+
+#[test]
+fn an_unknown_factory_return_names_the_call_that_gave_it() {
+    const OTHER: u64 = 0xd000;
+    let (mut body, _) = allocating_create();
+    let returned = body.here();
+    body.call(OTHER); // its return value is unknown
+    body.epilogue();
+    arm64!(body; ret);
+
+    let lost = traced_receiver_failure(body);
+    let call = vec![(CauseKind::Call, returned)];
+    assert_eq!(lost, (Unresolved::new("factory-return"), call, false));
 }
