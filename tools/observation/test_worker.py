@@ -192,6 +192,24 @@ class PauseTests(unittest.TestCase):
                     expected.extend(['fixture_malformed', 'fixture_unexpected'])
                 self.assertEqual([name for name, _ in observer.hooks()], [protocol.HOOK[name] for name in expected])
 
+    def test_requested_hooks_include_the_hook_that_a_fault_leaves_out(self):
+        request = dict(registries={'one': dict(load_entry=16), 'two': dict(load_entry=32)},
+                       fault=dict(target={'registry': 'one'}, control=protocol.CONTROL['missing_hook']))
+        self.assertEqual(worker.requested_hooks(request, None, None),
+                         [(protocol.HOOK['registry'] + 'one', 16), (protocol.HOOK['registry'] + 'two', 32)])
+        self.assertEqual(worker.controlled_hook(request), protocol.HOOK['registry'] + 'one')
+
+        fixture = Mock()
+        fixture.hooks.return_value = [(protocol.HOOK['fixture_field'], 48)]
+        request = dict(registries={}, fixture=dict(field_reads=True),
+                       fault=dict(target='fixture', control=protocol.CONTROL['late_hook']))
+        self.assertEqual(worker.requested_hooks(request, None, fixture), [(protocol.HOOK['fixture_field'], 48)])
+        self.assertEqual(worker.controlled_hook(request), protocol.HOOK['fixture_field'])
+        request['fixture']['field_reads'] = False
+        self.assertEqual(worker.controlled_hook(request), protocol.HOOK['fixture_registration'])
+        request['fault'] = None
+        self.assertIsNone(worker.controlled_hook(request))
+
     def test_dropped_record_fault_is_restricted_to_its_target(self):
         request = dict(fault=dict(target={'registry': 'one'}, control=protocol.CONTROL['dropped_record']))
         self.assertTrue(worker.dropped_by_fault('registry-entry', dict(name='one', index=0), request))

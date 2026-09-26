@@ -69,6 +69,29 @@ def fault_control(session_request, target):
     return fault['control'] if fault and fault['target'] == target else protocol.CONTROL['normal']
 
 
+def requested_hooks(session_request, modifier_observer, fixture_observer):
+    """Every hook the session requires, as (name, address)."""
+    hooks = [(protocol.HOOK['registry'] + name, value['load_entry']) for name, value in session_request['registries'].items()]
+    if modifier_observer:
+        hooks.extend(modifier_observer.hooks())
+    if fixture_observer:
+        hooks.extend(fixture_observer.hooks())
+    return hooks
+
+
+def controlled_hook(session_request):
+    """The requested hook that the session's fault control targets, if any."""
+    fault = session_request['fault']
+    target = fault['target'] if fault else None
+    if isinstance(target, dict):
+        return protocol.HOOK['registry'] + target['registry']
+    if target != 'fixture':
+        return None
+    if session_request['fixture']['field_reads']:
+        return protocol.HOOK['fixture_field']
+    return protocol.HOOK['fixture_registration']
+
+
 class UnsupportedKeyLayout(Exception):
     pass
 
@@ -865,24 +888,17 @@ def run(debugger):
             time.sleep(.1)
     debugger.SetAsync(True)
     target = debugger.CreateTargetWithFileAndArch(request['executable'], request['machine']['architecture'])
-    hooks = [(protocol.HOOK['registry'] + name, value['load_entry']) for name, value in request['registries'].items()]
-    fault_target = request['fault']['target'] if request['fault'] else None
-    controlled_hook = protocol.HOOK['registry'] + fault_target['registry'] if isinstance(fault_target, dict) else None
-    if modifiers:
-        hooks.extend(modifiers.hooks())
-    if fixture:
-        hooks.extend(fixture.hooks())
-        if fault_target == 'fixture':
-            controlled_hook = protocol.HOOK['fixture_field'] if request['fixture']['field_reads'] else protocol.HOOK['fixture_registration']
+    hooks = requested_hooks(request, modifiers, fixture)
+    controlled = controlled_hook(request)
     for name, address in hooks:
-        if name == controlled_hook and control == protocol.CONTROL['missing_hook']:
+        if name == controlled and control == protocol.CONTROL['missing_hook']:
             continue
         hook = target.BreakpointCreateBySBAddress(target.ResolveFileAddress(address))
         hook.SetScriptCallbackFunction('worker.callback')
-        if name == controlled_hook and control == protocol.CONTROL['late_hook']:
+        if name == controlled and control == protocol.CONTROL['late_hook']:
             hook.SetEnabled(False)
         breakpoints[name] = hook
-    emit('hooks-requested')
+    emit('hooks-requested', hooks=[name for name, _ in hooks])
     error = lldb.SBError()
     process = target.Attach(lldb.SBAttachInfo(request['game']), error)
     threads = list(process)

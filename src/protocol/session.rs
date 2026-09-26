@@ -206,11 +206,10 @@ pub enum ObservationControl {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn request() -> SessionRequest {
-        SessionRequest {
+impl SessionRequest {
+    /// A valid request for tests that start no game.
+    pub(crate) fn test() -> Self {
+        Self {
             installation: "/absent".into(),
             build: "test".into(),
             work_directory: std::env::temp_dir().join("unused-native-test"),
@@ -222,22 +221,27 @@ mod tests {
             loaded_modifiers: None,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     #[test]
     fn a_request_needs_an_absolute_work_directory_and_valid_budgets() {
-        assert!(request().validate().is_ok());
-        let mut relative = request();
+        assert!(SessionRequest::test().validate().is_ok());
+        let mut relative = SessionRequest::test();
         relative.work_directory = "relative".into();
         assert!(relative.validate().is_err());
         for seconds in [0, 181] {
-            let mut startup = request();
+            let mut startup = SessionRequest::test();
             startup.startup_seconds = seconds;
             assert!(startup.validate().is_err());
-            let mut idle = request();
+            let mut idle = SessionRequest::test();
             idle.idle_seconds = seconds;
             assert!(idle.validate().is_err());
         }
-        let mut fixture_outside_selection = request();
+        let mut fixture_outside_selection = SessionRequest::test();
         fixture_outside_selection.fixture = Some(crate::FixtureRequest::new(
             "common/tradition_categories/atlas.txt",
             "atlas = {}",
@@ -248,7 +252,7 @@ mod tests {
             vec!["common/../traditions"],
             vec![""],
         ] {
-            let mut invalid = request();
+            let mut invalid = SessionRequest::test();
             invalid.registries = names.into_iter().map(String::from).collect();
             assert!(invalid.validate().is_err());
         }
@@ -274,7 +278,7 @@ mod tests {
         ] {
             for selected in [false, true] {
                 for control in controls {
-                    let mut request = request();
+                    let mut request = SessionRequest::test();
                     if selected {
                         request
                             .registries
@@ -314,7 +318,7 @@ mod tests {
     #[test]
     fn obsolete_or_ambiguous_fault_fields_are_rejected() {
         for field in ["fixture_fault", "modifier_fault", "registry"] {
-            let mut unknown = serde_json::to_value(request()).unwrap();
+            let mut unknown = serde_json::to_value(SessionRequest::test()).unwrap();
             unknown[field] = "worker-loss".into();
             assert!(serde_json::from_value::<SessionRequest>(unknown).is_err());
         }
@@ -328,16 +332,16 @@ mod tests {
     #[test]
     fn the_selection_size_follows_the_build_and_names_stay_unique() {
         let names: Vec<String> = (0..200).map(|index| format!("common/r{index}")).collect();
-        let mut large = request();
+        let mut large = SessionRequest::test();
         large.registries = names.clone();
         large.loaded_modifiers = Some(names.clone());
         assert!(large.validate().is_ok());
 
-        let mut empty = request();
+        let mut empty = SessionRequest::test();
         empty.registries = Vec::new();
         assert!(empty.validate().is_err());
 
-        let mut repeated_modifiers = request();
+        let mut repeated_modifiers = SessionRequest::test();
         repeated_modifiers.loaded_modifiers =
             Some(vec!["common/zones".into(), "common/zones".into()]);
         assert!(repeated_modifiers.validate().is_err());

@@ -231,6 +231,28 @@ deadlines, and unchanged result coverage must be measured before changing the ba
 The `late_only` baseline case itself takes about 65 seconds because it exercises a 60-second
 observation budget. Sharing that session with ordinary cases would change what it tests.
 
+## Run-summary overhead (SDK-630)
+
+Measured on 2026-09-26 on M45-release (executable SHA-256
+`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`), Apple M5 Pro, macOS 27.0
+(26A428), Rust 1.98.1, release build. Temporary monotonic spans (not committed) timed the two
+places where the supervisor builds the [run summary](lifecycle.md#live-run-summary), over 14
+live control cases (registry and fixture faults, normal sessions, a parser-rejection control and
+a repeated-field outcome):
+
+| Span | Range |
+| --- | ---: |
+| Projection of the reduced answers at the pause | 2–7 µs |
+| Final read of the trace, build and write of `run-summary.json` | 0.14–0.41 ms (traces up to 68 KB) |
+
+Each summary was about 2 KB. Whole cases took 20–27 s for registry and fixture controls, 7 s for
+the startup timeout and 81 s for the parser-rejection control; the summary is not a visible part
+of that time.
+
+The per-phase times show where live-suite time goes: 16–21 s of game loading to the registry
+pause, 2–5 s of supervisor setup and about 0.5 s of cleanup. A case whose diagnostic window runs
+through validation waits about 74 s for the game to load all content, and takes about 84 s.
+
 ## Reproduce and verify
 
 From the repository root, set `STELLARIS_PATH` to the exact preserved installation or executable.

@@ -88,6 +88,7 @@ src/
   execution/
     supervisor.rs                  independent process/resource ownership; reduces at the pause
     owner_events.rs                the supervisor's record of what it did
+    run_summary.rs                 run-summary.json: phases, hooks, stream and answer projections
     instances.rs                   host lock and process-inventory admission
 tests/
   (static method unit tests live beside engine/analysis source)

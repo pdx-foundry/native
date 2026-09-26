@@ -96,12 +96,18 @@ const EXPORTS: &[&str] = &[
 /// The `pdx_native::supervisor` members that Atlas may use.
 const SUPERVISOR_EXPORTS: &[&str] = &["serve", "SupervisorError"];
 
-/// The hidden `GameOptions` methods that inject observation faults for Native's own tests.
-const FAULT_HOOKS: &[&str] = &["fault", "fixture_fault", "modifier_fault"];
+/// The hidden `GameOptions` methods for Native's own tests: observation faults and the kept
+/// work directory.
+const TEST_HOOKS: &[&str] = &[
+    "fault",
+    "fixture_fault",
+    "modifier_fault",
+    "keep_work_directory",
+];
 
 /// A fault hook or one of its hidden control types.
 fn is_hidden_test_hook(name: &str) -> bool {
-    FAULT_HOOKS.contains(&name) || matches!(name, "ObservationControl" | "ObservationTarget")
+    TEST_HOOKS.contains(&name) || matches!(name, "ObservationControl" | "ObservationTarget")
 }
 
 #[derive(Debug)]
@@ -287,7 +293,7 @@ impl<'ast> Visit<'ast> for Checker {
 
     fn visit_expr_method_call(&mut self, expression: &'ast ExprMethodCall) {
         let method = expression.method.to_string();
-        if FAULT_HOOKS.contains(&method.as_str()) {
+        if TEST_HOOKS.contains(&method.as_str()) {
             self.reject("hidden test hook", method);
         }
         syn::visit::visit_expr_method_call(self, expression);
@@ -595,6 +601,7 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
         ("fn f() { x.fixture_fault(); }", false),
         ("fn f() { x.modifier_fault(y); }", false),
         ("fn f() { let _ = GameOptions::modifier_fault; }", false),
+        ("fn f() { x.keep_work_directory(); }", false),
         ("unsafe trait T {}", false),
         ("unsafe impl Send for T {}", false),
         ("impl T { unsafe fn f() {} }", false),
