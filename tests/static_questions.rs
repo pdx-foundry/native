@@ -1035,3 +1035,80 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
         Err(Error::NotRecorded { .. })
     ));
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn field_shapes_agree_with_sdk533_omitted_and_repeated_storage() {
+    use pdx_native::{FieldDefault, FieldMembers, RepeatBehavior, ValueShape};
+    let native = native();
+    let observed: Value = expected("field-storage-sdk533.json");
+    assert_eq!(
+        serde_json::to_value(native.build()).unwrap(),
+        observed["source"]["build"]
+    );
+    let fields = native.registry_fields("common/traditions").unwrap().value;
+    let mut omitted = 0;
+    let mut repeated = 0;
+    for outcome in observed["outcomes"].as_array().unwrap() {
+        let name = outcome["question"]["field"].as_str().unwrap();
+        let field = fields.iter().find(|field| field.name == name).unwrap();
+        assert_eq!(
+            serde_json::to_value(&field.reader).unwrap(),
+            outcome["reader"]
+        );
+        let storage = &outcome["storage"]["String"];
+        assert_eq!(storage["completeness"], "Complete");
+        let occurrences = storage["occurrences"].as_array().unwrap();
+        assert_eq!(field.shape.value, ValueShape::Scalar);
+        if occurrences.is_empty() {
+            omitted += 1;
+            assert_eq!(field.default, FieldDefault::Unknown);
+            assert_eq!(storage["final_value"], "");
+        } else {
+            repeated += 1;
+            assert!(occurrences.len() > 1);
+            assert_eq!(field.shape.repeat, RepeatBehavior::Replace, "{name}");
+            assert_eq!(
+                storage["final_value"],
+                occurrences.last().unwrap()["value"],
+                "{name}"
+            );
+        }
+    }
+    assert_eq!((omitted, repeated), (1, 1));
+    let swaps = fields
+        .iter()
+        .find(|field| field.name == "tradition_swap")
+        .unwrap();
+    assert_eq!(swaps.shape.repeat, RepeatBehavior::Accumulate);
+    let FieldMembers::Fields(children) = &swaps.members else {
+        panic!("swap members unresolved")
+    };
+    for flag in ["inherit_effects", "inherit_name", "inherit_icon"] {
+        assert!(children.iter().any(|field| field.name == flag));
+        assert!(children.iter().flat_map(|field| &field.uses).any(|selection| {
+            match &selection.condition {
+                pdx_native::FieldCondition::All(terms) => terms.iter().any(|term| matches!(term,
+                    pdx_native::FieldCondition::FieldZero { path, zero: true } if path == &["tradition_swap", flag])),
+                _ => false,
+            }
+        }), "no affected field for {flag}");
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn council_presence_initialization_does_not_restrict_field_reads() {
+    use pdx_native::{FieldCondition, RepeatBehavior, ValueShape};
+    let fields = native()
+        .registry_fields("common/council_agendas")
+        .unwrap()
+        .value;
+    for name in ["agenda_cooldown", "agenda_finish_modifier_duration"] {
+        let field = fields.iter().find(|field| field.name == name).unwrap();
+        assert_eq!(field.read.len(), 1, "{name}");
+        assert_eq!(field.read[0].condition, FieldCondition::Always, "{name}");
+        assert_eq!(field.shape.value, ValueShape::Scalar);
+        assert_eq!(field.shape.repeat, RepeatBehavior::Replace);
+    }
+}

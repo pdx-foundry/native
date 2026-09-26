@@ -709,18 +709,22 @@ fn pointer_arguments(name: &str) -> Vec<usize> {
 
 /// A class's Itanium vtable group.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct VtableGroup {
+pub(super) struct VtableGroup {
     /// The address point of each vtable, by the offset of its subobject in the object.
-    address_points: BTreeMap<u64, u64>,
+    pub(super) address_points: BTreeMap<u64, u64>,
     /// Every known address in the group's slots, with the subobject offset of each vtable that
     /// holds it.
-    slots: BTreeMap<u64, BTreeSet<u64>>,
+    pub(super) slots: BTreeMap<u64, BTreeSet<u64>>,
 }
 
 /// Read the vtable group of `class` from `vtable for <class>` up to the next symbol. Each vtable
 /// starts with its offset to the top of the object, zero or negative, and `typeinfo for
 /// <class>`; its address point follows them. The other words are slots.
-fn vtable_group(symbols: &[Symbol], data: &ReadOnlyData, class: &str) -> Option<VtableGroup> {
+pub(super) fn vtable_group(
+    symbols: &[Symbol],
+    data: &ReadOnlyData,
+    class: &str,
+) -> Option<VtableGroup> {
     let start = unique(symbols, &format!("vtable for {class}")).ok()?;
     let typeinfo = unique(symbols, &format!("typeinfo for {class}")).ok()?;
     let end = symbols

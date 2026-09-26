@@ -1,82 +1,322 @@
 [
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "effect",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a430a4b92eb2c8f6",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a430a4b92eb2c8f6",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "agenda_cost",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "c61abc171edc30aa",
+       "kind": "Unknown"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Unknown"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "c61abc171edc30aa",
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "agenda_cooldown",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "d7a95ab8c8d44489",
+       "kind": "Integer"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer"
   },
-  "conditional": true
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "agenda_finish_modifier_duration",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "d7a95ab8c8d44489",
+       "kind": "Integer"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer"
   },
-  "conditional": true
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "potential",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "allow",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "init_effect",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a430a4b92eb2c8f6",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a430a4b92eb2c8f6",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "ai_weight",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "finish_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "ae2bd2a2d5591e04",
+       "kind": "Reference"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "ae2bd2a2d5591e04",
    "kind": "Reference"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  }
 ]

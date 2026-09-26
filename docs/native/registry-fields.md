@@ -1,12 +1,71 @@
 # Registry fields
 
-`Native::registry_fields(registry)` (`registry-fields/v4`) gives the root fields of a registry
-and the reader that each field calls. `Native::registries()` gives the registries. The module
+`Native::registry_fields(registry)` (`registry-fields/v5`) gives root fields, reader and storage shapes,
+loader alternatives, nested object fields and local stored-value selections. `Native::registries()` gives the registries. The module
 comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` describe the methods.
 This page holds the current sweep, the engine facts, the gaps and the prototype findings. The
 [discovery index](discovery.md) lists the other method pages.
 
-## Sweep on M45-release
+## SDK-541 sweep on M45-release
+
+The v5 sweep covers all **164 registries: 9 complete, 155 partial, 0 failed**, with
+**1,347 root fields and 26 nested fields**. No root field was added or removed from v4.
+The exact executable and ARM64 slice are identified in the SDK-541 findings below.
+The full run takes about 71 s and 686 MB peak memory on the development host.
+
+| Field fact | Root fields | Nested fields |
+| --- | ---: | ---: |
+| Scalar value | 476 | 14 |
+| Block value | 382 | 10 |
+| Unknown value form | 489 | 2 |
+| Replaces stored value | 462 | 14 |
+| Accumulates entries | 3 | 0 |
+| Unknown repeat behavior | 882 | 12 |
+
+There are 20 distinct known root reader identities: 873 fields have one identity and 474 do
+not. Of the 489 unknown value kinds, 15 have an identified reader with unknown semantics.
+The root reader-kind counts are Block 382, Boolean 129, FixedPoint 51, Integer 82, Reference 8,
+String 206 and Unknown 489.
+
+The answers contain 1,335 unconditional root read alternatives and 24 alternatives with
+unresolved or composite conditions; a field can have several alternatives. All 26 nested
+read alternatives are unconditional. This says nothing about use-time inheritance. There are
+34 root and 14 nested local use selections, each retaining its unresolved enclosing context.
+
+The constructed-object method transfers to `tradition_swap` in traditions and ascension perks
+(13 child fields each), and to `advanced_authority_swap` in authorities (collection established,
+child inventory unresolved). The council presence branches normalize to unconditional integer
+reads. The SDK-533 omitted/repeated fixture agrees with `unlocks_agenda` replacing storage:
+omission leaves an empty string; two successful occurrences retain the second string. This
+fixture does not establish an accepted occurrence limit or a general default rule.
+
+Public failure shapes below exclude `OutsideMethod`, include nested gaps, and overlap:
+
+| Shape | Gap records | Registries |
+| --- | ---: | ---: |
+| Repeat behavior or nested fields unresolved | 894 | 116 |
+| Reader alternatives lack one shared reader | 476 | 88 |
+| Root reader path not followed to its end | 86 | 86 |
+| Field reader missing on at least one path | 86 | 86 |
+| Anonymous or dynamic keys lack a literal field name | 16 | 16 |
+| Known reader, unknown value form | 15 | 9 |
+| Required function or name table unreadable | 14 | 14 |
+| Loader condition unresolved, outcome retained | 12 | 5 |
+| Local use test known, enclosing context unresolved | 48 | 2 |
+| Bounded use analysis leaves other contexts unresolved | 3 | 3 |
+
+The lower complete count reflects the added storage and condition obligations. It is not a
+loss of known field names. Defaults, exhaustive enum domains and accepted occurrence limits
+remain explicit `Unknown` and are tracked in [SDK-627](https://linear.app/unnamed-system/issue/SDK-627).
+Full selection predicates remain tracked in [SDK-628](https://linear.app/unnamed-system/issue/SDK-628).
+SDK-542 owns deeper member grammars; the reader and root-path failures remain in the field
+method's gaps and the Milestone 4 coverage gate.
+
+The four tracked parity inventories contain 11 tradition root fields plus 13 swap members,
+7 tradition-category fields, 10 council-agenda fields and 82 megastructure fields. They retain
+unknown shapes and conditions instead of converting them to successful reads.
+
+## Historical v4 sweep on M45-release
 
 Run on 2026-09-25 at `666f028`, over all 164 registries, in about 67 s:
 
@@ -132,6 +191,67 @@ destination is a temporary, not the member. Joining the temporary to its member 
 repair.
 
 ## Members and shared readers
+
+### Read conditions and use-time inheritance (SDK-541)
+
+Inspected on M45-release: executable SHA-256
+`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`, ARM64 slice
+`a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+
+- `CCouncilAgenda::ReadMember` at `0x10020bfa8` tests presence bytes at `+0x6d0`
+  and `+0x6d8`. Both sides reach `CReader::Read(int&)`, after clearing the value at
+  `+0x6d4` or `+0x6dc`. The branches initialize presence; they do not restrict which
+  occurrences are read. The public v4 `conditional` flag does not express this distinction.
+- `CTraditionType::ReadMember` at `0x100cdcf38` allocates and reads a swap, then inserts
+  its pointer into the collection at `+0x5c8`. The v4 walk stopped at allocation. The v5
+  continuation proves construction, virtual read and insertion of that same object on all paths.
+- `CTraditionSwap::ReadMember` at `0x100cdc0b4` routes tokens `0x397e`, `0x397f` and
+  `0x3980` to Boolean storage at `+0x4f0`, `+0x4f1` and `+0x4f2`. The token constructor
+  literals are `inherit_effects`, `inherit_name` and `inherit_icon`. These flags do not
+  gate the other fields in that reader.
+- `CTraditionType::GetName` at `0x100cdd944` chooses a swap using possibility and weight,
+  then checks its validity and byte `+0x4f1`. The zero branch at `0x100cdda28` uses the
+  swap's name at `+0xf8`; the other branch calls `GetBaseName`. `GetIconKey` at
+  `0x100ce0028` likewise checks `+0x4f2` at `0x100ce0104`, returning the swap name at
+  `+0xf8` on zero or the base key at `+0x10` otherwise. These are use-time selections,
+  not parser acceptance conditions. Swap validity and selection must remain part of
+  the condition, or explicit unresolved context.
+- `CTraditionType::CalcAIWeight` at `0x100ce2cdc` calls
+  `CMeanTimeToHappen::GetRawFactor` on its own `+0x568` member. This does not establish
+  that a swap inherits that weight; SDK-545 owns weight semantics.
+
+`OnEnabled` at `0x100ce25b8` and `OnDisabled` use the same swap selection. In `OnEnabled`,
+`ldrb` at `0x100ce26ac` tests `+0x4f0`; `csel` at `0x100ce26b8` chooses swap effect `+0x378`
+on zero and base effect `+0x418` otherwise. The same flag selects modifier and tooltip members.
+The local flag proof follows copies of the receiver at the flag load; a shared loop load
+address alone does not establish object identity. A conditional select must receive its flags
+from the adjacent comparison on every incoming path.
+The pointer insertion specialization at `0x100ce42ac` stores the incoming pointer in the
+collection buffer (`+8`) and increments its count (`+0x14`). The binding derives the buffer
+member from that shared specialization; no registry-specific offset enters the method.
+
+The v5 method returns separate loader alternatives and local stored-value selections. Equal
+complete reader outcomes on opposite presence branches can collapse to `Always`; unresolved
+outcomes and unequal destinations cannot. Primitive tail readers establish replacement;
+block calls alone do not. The constructed-object path establishes accumulation and depth-one
+members. Reconstruction before or after insertion, owner writes that could reset the collection,
+and unknown-pointer writes invalidate that proof. Enum domains and omitted defaults stay explicit `Unknown`, with no occurrence rule
+inferred from replacement. Unknown/anonymous key paths retain their named registry gaps.
+
+Use selections carry `All(Unresolved, FieldZero(...))`. The unresolved part covers choice of
+swap, validity, other branches and method bounds. Empty selections do not prove no runtime
+condition. Local selection analysis does not interpret naming templates, weight arithmetic or
+application effects. SDK-627 tracks defaults, enum domains and occurrence acceptance; SDK-628
+tracks complete enclosing selection predicates. SDK-542 owns deeper block grammar.
+SDK-546 depends on SDK-541 use-time relationships for conditional name and icon templates;
+SDK-597 must preserve processing stage and unresolved conditions in Atlas. The SDK-600 gate
+still includes SDK-541's inheritance criterion. The dependency audit therefore keeps this work
+in Milestone 4 rather than deferring it. Name lookup and miss behavior remain SDK-546's work;
+weight evaluation remains SDK-545's, and modifier application observations remain SDK-547's.
+
+Reproduce each inspection with `cargo run --release --example inspect -- --function NAME`,
+using the full demangled name when cold clones make a shorter name ambiguous. Use
+`--strings inherit_` to locate the inheritance token literals. No CWT rule supplies these facts.
 
 These findings are from the prototypes.
 

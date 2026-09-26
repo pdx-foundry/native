@@ -91,6 +91,7 @@ struct SweepReport {
     /// Fields with a reader identity, by that identity.
     readers: BTreeMap<String, ReaderFields>,
     fields_by_reader_kind: BTreeMap<ReaderKind, usize>,
+    field_shapes: BTreeMap<String, usize>,
     fields_without_reader_identity: Vec<String>,
     failure_shapes: BTreeMap<String, Vec<Value>>,
     stop_cases: Vec<StopCase>,
@@ -143,6 +144,7 @@ impl SweepReport {
             self.queries_with_unresolved_paths += 1;
         }
 
+        count_shapes(&answer.value, &mut self.field_shapes, false);
         for field in &answer.value {
             let name = format!("{registry}#{}", field.name);
             *self
@@ -242,6 +244,7 @@ impl SweepReport {
             },
             "readers": readers,
             "fields_by_reader_kind": self.fields_by_reader_kind,
+            "field_shapes": self.field_shapes,
             "fields_without_reader_identity": self.fields_without_reader_identity,
             "failure_shapes": self.failure_shapes,
             "stop_shapes": stop_shapes(&self.stop_cases),
@@ -252,6 +255,32 @@ impl SweepReport {
             },
             "cases": self.cases,
         }))
+    }
+}
+
+fn count_shapes(fields: &[Field], counts: &mut BTreeMap<String, usize>, nested: bool) {
+    for field in fields {
+        let level = if nested { "nested" } else { "root" };
+        *counts
+            .entry(format!("{level}.value.{:?}", field.shape.value))
+            .or_default() += 1;
+        *counts
+            .entry(format!("{level}.repeat.{:?}", field.shape.repeat))
+            .or_default() += 1;
+        *counts.entry(format!("{level}.uses")).or_default() += field.uses.len();
+        for alternative in &field.read {
+            let condition = match &alternative.condition {
+                pdx_native::FieldCondition::Always => "always",
+                pdx_native::FieldCondition::FieldZero { .. } => "field",
+                _ => "unresolved-or-composite",
+            };
+            *counts
+                .entry(format!("{level}.read.{condition}"))
+                .or_default() += 1;
+        }
+        if let pdx_native::FieldMembers::Fields(children) = &field.members {
+            count_shapes(children, counts, true);
+        }
     }
 }
 
@@ -449,8 +478,8 @@ mod tests {
     fn the_summary_counts_each_query_and_field_once() {
         let mut report = SweepReport::default();
         let fields = json!([
-            { "name": "cost", "reader": { "id": "r1", "kind": "Integer" }, "conditional": false },
-            { "name": "icon", "reader": { "id": null, "kind": "Unknown" }, "conditional": false },
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "default": "Unknown", "uses": [] },
+            { "name": "icon", "reader": { "id": null, "kind": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "default": "Unknown", "uses": [] },
         ]);
         let gaps = json!([{ "kind": "UnresolvedPath", "subject": null, "detail": "path 1" }]);
         report
@@ -462,7 +491,7 @@ mod tests {
             )
             .unwrap();
         let fields = json!([
-            { "name": "cost", "reader": { "id": "r1", "kind": "Integer" }, "conditional": false },
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "default": "Unknown", "uses": [] },
         ]);
         report
             .add_answer(

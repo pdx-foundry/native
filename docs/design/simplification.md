@@ -95,7 +95,9 @@ Normalized value types (a sketch; each ticket fixes its own):
 
 ```rust
 pub struct Registry { pub name: String }
-pub struct Field    { pub name: String, pub reader: Reader, pub conditional: bool }
+pub struct Field    { pub name: String, pub reader: Reader, pub shape: FieldShape,
+                      pub read: Vec<FieldReadAlternative>, pub members: FieldMembers,
+                      pub domain: FieldDomain, pub default: FieldDefault, pub uses: Vec<FieldUse> }
 pub struct Reader   { pub id: Option<ReaderId>, pub kind: ReaderKind }
 pub enum ReaderKind { Unknown /* extended as reader support lands */ }
 pub struct Declaration { pub name: String, pub description: String, pub usage: String,

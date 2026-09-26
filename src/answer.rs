@@ -165,6 +165,10 @@ pub enum GapKind {
     UnresolvedReader,
     /// The reader is identified, but its accepted values and behavior are not established.
     ReaderSemantics,
+    /// A storage shape or nested reader is not established.
+    UnresolvedStorage,
+    /// A loader or use-time condition is not fully expressed.
+    UnresolvedCondition,
     /// A live observation window did not complete; the established part is kept.
     IncompleteObservation,
 }
@@ -520,9 +524,18 @@ pub struct Field {
     pub name: String,
     /// The shared reader that handles the field's value.
     pub reader: Reader,
-    /// The engine reads this field differently depending on state that the field key does not
-    /// determine.
-    pub conditional: bool,
+    /// Value form and repeat behavior agreed by all established read alternatives.
+    pub shape: crate::FieldShape,
+    /// Loader conditions paired with read, rejected, or unresolved outcomes. Never empty.
+    pub read: Vec<crate::FieldReadAlternative>,
+    /// Child fields, or an explicit unresolved block boundary.
+    pub members: crate::FieldMembers,
+    /// Exhaustive accepted spellings, or an explicit unknown.
+    pub domain: crate::FieldDomain,
+    /// Behavior on omission, established separately from parser reads.
+    pub default: crate::FieldDefault,
+    /// Use-time selections that the method reached. An empty list does not prove no conditions.
+    pub uses: Vec<crate::FieldUse>,
 }
 
 /// A command kind whose declarations can be read from the executable.

@@ -435,6 +435,15 @@ impl<'a> Machine<'a> {
             .collect()
     }
 
+    /// Whether this path wrote or explicitly invalidated any byte of reserved memory.
+    /// A reservation starts without entries; even an unknown stored byte counts as a write.
+    pub fn has_written(&self, address: u64, length: u64) -> bool {
+        self.memory
+            .range(address..address.saturating_add(length))
+            .next()
+            .is_some()
+    }
+
     /// Make `width` bytes at `address` unknown, such as a field that a call may have written.
     pub fn forget(&mut self, address: u64, width: u64) {
         for offset in 0..width {

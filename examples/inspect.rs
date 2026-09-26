@@ -72,6 +72,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Every stopped token path with its stop and the instructions before it, then every gap.
 fn print_registry_fields(image: &Image, registry: &str, result: &RegistryFieldResult) {
+    for collection in &result.collections {
+        println!(
+            "nested token {} at +{:#x}: {} ({} fields)",
+            collection.token,
+            collection.offset,
+            collection.class,
+            collection.fields.fields.len()
+        );
+        println!("array data offset: {:?}", collection.data_offset);
+    }
+    for selection in &result.uses {
+        println!("use {:?}", selection);
+    }
     let stopped: Vec<_> = result
         .paths
         .iter()

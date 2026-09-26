@@ -1,90 +1,1169 @@
 [
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "custom_tooltip",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": [
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "a3c0af8eba4d4328"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": true
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_name"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_name"
+        ],
+        "zero": true
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   }
+  ]
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "custom_tooltip_with_modifiers",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": [
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "32f3f384ff5545da"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": true
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_name"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_name"
+        ],
+        "zero": true
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   }
+  ]
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "potential",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "possible",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_enabled",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": [
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "367e6ea39f681b75"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "31c285b4f5479ae6"
+   }
+  ]
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_disabled",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": [
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "f7235b7c4a5d8766"
+   }
+  ]
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "triggered_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "ai_weight",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "unlocks_agenda",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
- },
- {
-  "name": "tradition_swap",
-  "reader": {
-   "id": null,
-   "kind": "Unknown"
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
   },
-  "conditional": false
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": {
+   "Fields": [
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "None",
+     "name": "name",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "325efaa17499c32d",
+          "kind": "String"
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "325efaa17499c32d",
+      "kind": "String"
+     },
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": [
+      {
+       "condition": {
+        "All": [
+         "Unresolved",
+         {
+          "FieldZero": {
+           "path": [
+            "tradition_swap",
+            "inherit_icon"
+           ],
+           "zero": true
+          }
+         }
+        ]
+       },
+       "id": "8393a27e7c3b9c5a"
+      },
+      {
+       "condition": {
+        "All": [
+         "Unresolved",
+         {
+          "FieldZero": {
+           "path": [
+            "tradition_swap",
+            "inherit_name"
+           ],
+           "zero": true
+          }
+         }
+        ]
+       },
+       "id": "1bc916769fe8f415"
+      }
+     ]
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "Unresolved",
+     "name": "weight",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "97942c9a3d3c9c1b",
+          "kind": "Block"
+         },
+         "shape": {
+          "repeat": "Unknown",
+          "value": "Block"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "97942c9a3d3c9c1b",
+      "kind": "Block"
+     },
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Block"
+     },
+     "uses": []
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "None",
+     "name": "custom_tooltip",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "325efaa17499c32d",
+          "kind": "String"
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "325efaa17499c32d",
+      "kind": "String"
+     },
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": [
+      {
+       "condition": {
+        "All": [
+         "Unresolved",
+         {
+          "FieldZero": {
+           "path": [
+            "tradition_swap",
+            "inherit_effects"
+           ],
+           "zero": true
+          }
+         }
+        ]
+       },
+       "id": "a3c0af8eba4d4328"
+      }
+     ]
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "None",
+     "name": "custom_tooltip_with_modifiers",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "325efaa17499c32d",
+          "kind": "String"
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "325efaa17499c32d",
+      "kind": "String"
+     },
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": [
+      {
+       "condition": {
+        "All": [
+         "Unresolved",
+         {
+          "FieldZero": {
+           "path": [
+            "tradition_swap",
+            "inherit_effects"
+           ],
+           "zero": true
+          }
+         }
+        ]
+       },
+       "id": "32f3f384ff5545da"
+      }
+     ]
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "Unresolved",
+     "name": "trigger",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "e044b50825a1841d",
+          "kind": "Block"
+         },
+         "shape": {
+          "repeat": "Unknown",
+          "value": "Block"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "e044b50825a1841d",
+      "kind": "Block"
+     },
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Block"
+     },
+     "uses": []
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "Unresolved",
+     "name": "on_enabled",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "6e28a363faf61c52",
+          "kind": "Block"
+         },
+         "shape": {
+          "repeat": "Unknown",
+          "value": "Block"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "6e28a363faf61c52",
+      "kind": "Block"
+     },
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Block"
+     },
+     "uses": [
+      {
+       "condition": {
+        "All": [
+         "Unresolved",
+         {
+          "FieldZero": {
+           "path": [
+            "tradition_swap",
+            "inherit_effects"
+           ],
+           "zero": true
+          }
+         }
+        ]
+       },
+       "id": "367e6ea39f681b75"
+      },
+      {
+       "condition": {
+        "All": [
+         "Unresolved",
+         {
+          "FieldZero": {
+           "path": [
+            "tradition_swap",
+            "inherit_effects"
+           ],
+           "zero": true
+          }
+         }
+        ]
+       },
+       "id": "31c285b4f5479ae6"
+      }
+     ]
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "Unresolved",
+     "name": "on_disabled",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "6e28a363faf61c52",
+          "kind": "Block"
+         },
+         "shape": {
+          "repeat": "Unknown",
+          "value": "Block"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "6e28a363faf61c52",
+      "kind": "Block"
+     },
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Block"
+     },
+     "uses": [
+      {
+       "condition": {
+        "All": [
+         "Unresolved",
+         {
+          "FieldZero": {
+           "path": [
+            "tradition_swap",
+            "inherit_effects"
+           ],
+           "zero": true
+          }
+         }
+        ]
+       },
+       "id": "f7235b7c4a5d8766"
+      }
+     ]
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "Unresolved",
+     "name": "triggered_modifier",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": "Unresolved"
+      }
+     ],
+     "reader": {
+      "id": null,
+      "kind": "Unknown"
+     },
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Unknown"
+     },
+     "uses": []
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "None",
+     "name": "unlocks_agenda",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "325efaa17499c32d",
+          "kind": "String"
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "325efaa17499c32d",
+      "kind": "String"
+     },
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "None",
+     "name": "inherit_effects",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "b894933b2b2853a5",
+          "kind": "Boolean"
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "b894933b2b2853a5",
+      "kind": "Boolean"
+     },
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "None",
+     "name": "inherit_name",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "b894933b2b2853a5",
+          "kind": "Boolean"
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "b894933b2b2853a5",
+      "kind": "Boolean"
+     },
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "None",
+     "name": "inherit_icon",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "b894933b2b2853a5",
+          "kind": "Boolean"
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "b894933b2b2853a5",
+      "kind": "Boolean"
+     },
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    },
+    {
+     "default": "Unknown",
+     "domain": "Unknown",
+     "members": "Unresolved",
+     "name": "modifier",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "97942c9a3d3c9c1b",
+          "kind": "Block"
+         },
+         "shape": {
+          "repeat": "Unknown",
+          "value": "Block"
+         }
+        }
+       }
+      }
+     ],
+     "reader": {
+      "id": "97942c9a3d3c9c1b",
+      "kind": "Block"
+     },
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Block"
+     },
+     "uses": []
+    }
+   ]
+  },
+  "name": "tradition_swap",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "2ff735a2dc27a565",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Accumulate",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
+  "reader": {
+   "id": "2ff735a2dc27a565",
+   "kind": "Block"
+  },
+  "shape": {
+   "repeat": "Accumulate",
+   "value": "Block"
+  },
+  "uses": []
+ },
+ {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": [
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_effects"
+        ],
+        "zero": true
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_name"
+        ],
+        "zero": false
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   },
+   {
+    "condition": {
+     "All": [
+      "Unresolved",
+      {
+       "FieldZero": {
+        "path": [
+         "tradition_swap",
+         "inherit_name"
+        ],
+        "zero": true
+       }
+      }
+     ]
+    },
+    "id": "4b57cd0cc6390a58"
+   }
+  ]
  }
 ]

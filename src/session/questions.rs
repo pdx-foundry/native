@@ -2,8 +2,8 @@
 use super::{Backend, Native};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
-    Field, Gap, GapKind, GapSubject, Operation, Reader, ReaderId, ReaderKind, Registry, ScopeId,
-    ScopeReference, Source, Support,
+    Field, Gap, GapKind, GapSubject, Operation, ReaderKind, Registry, ScopeId, ScopeReference,
+    Source, Support,
 };
 use crate::binding::{Binding, VerifiedAnalysis, unique_named_candidate};
 use crate::engine::analysis::{
@@ -275,7 +275,7 @@ pub(crate) fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
     result
         .fields
         .iter()
-        .map(|field| normalized_field(field, result))
+        .map(|field| super::fields::field(field, result))
         .collect()
 }
 
@@ -370,34 +370,11 @@ pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
         .collect()
 }
 
-pub(crate) fn normalized_field(
-    field: &crate::engine::analysis::fields::RootField,
-    result: &RegistryFieldResult,
-) -> Field {
-    let classification = readers::classify(&field.readers);
-    let id = classification.callee.map(|callee| {
-        let digest = Sha256::digest(callee.as_bytes());
-        ReaderId(format!("{digest:x}")[..16].to_owned())
-    });
-    Field {
-        name: field.name.clone(),
-        reader: Reader {
-            id,
-            kind: classification.kind,
-        },
-        conditional: field.readers.len() > 1
-            || field
-                .paths
-                .iter()
-                .any(|&path| !result.paths[path].conditions.is_empty()),
-    }
-}
-
 fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
     let mut gaps = vec![Gap {
         kind: GapKind::OutsideMethod,
         subject: Some(GapSubject::registry(registry)),
-        detail: "Nested grammar, accepted occurrences, and runtime behavior are outside this bounded reader classification.".into(),
+        detail: "Defaults, exhaustive enum domains, occurrence limits, deeper nested grammars, and non-owner runtime callers are not established by this method.".into(),
     }];
     let field_of = |path: usize| {
         result
@@ -408,6 +385,13 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
     };
     let mut seen = BTreeSet::new();
     for field in &result.fields {
+        if result
+            .collections
+            .iter()
+            .any(|collection| collection.token == field.token)
+        {
+            continue;
+        }
         let classification = readers::classify(&field.readers);
         let (kind, detail) = if classification.callee.is_none() {
             (
@@ -430,6 +414,16 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         });
     }
     for gap in &result.gaps {
+        if gap.path.is_some_and(|index| {
+            let path = &result.paths[index];
+            path.domain[0] == path.domain[1]
+                && result
+                    .collections
+                    .iter()
+                    .any(|collection| collection.token == path.domain[0])
+        }) {
+            continue;
+        }
         let (kind, detail) = match gap.kind {
             FieldGapKind::InputBoundary | FieldGapKind::TokenTable => (
                 GapKind::UnreadableInput,
@@ -442,6 +436,10 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
             FieldGapKind::UnresolvedTokenPath | FieldGapKind::TokenPartition => (
                 GapKind::UnresolvedPath,
                 "A path through the registry's reader could not be followed to its end.",
+            ),
+            FieldGapKind::RuntimeSelection => (
+                GapKind::UnresolvedCondition,
+                "Use-time analysis covers local Boolean selections only; enclosing context, other callers and bounded or unsupported paths remain unresolved.",
             ),
             FieldGapKind::JumpTable => (
                 GapKind::UnresolvedPath,
@@ -473,10 +471,66 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         gaps.push(Gap {
             kind: GapKind::UnnamedField,
             subject: Some(GapSubject::registry(registry)),
-            detail: format!("{unnamed} reader paths have no recovered field name."),
+            detail: format!("{unnamed} reader paths have no recovered literal field name; anonymous or dynamic keys remain unresolved."),
         });
     }
+    for field in normalized_fields(result) {
+        if field.shape.repeat == crate::RepeatBehavior::Unknown
+            || matches!(field.members, crate::FieldMembers::Unresolved)
+        {
+            gaps.push(Gap {
+                kind: GapKind::UnresolvedStorage,
+                subject: Some(GapSubject::field(&field.name)),
+                detail: "Repeat behavior or nested fields remain unresolved.".into(),
+            });
+        }
+        if field
+            .read
+            .iter()
+            .any(|alternative| unresolved_condition(&alternative.condition))
+        {
+            gaps.push(Gap {
+                kind: GapKind::UnresolvedCondition,
+                subject: Some(GapSubject::field(&field.name)),
+                detail:
+                    "A loader condition remains unresolved; its outcome is retained separately."
+                        .into(),
+            });
+        }
+    }
+    for collection in &result.collections {
+        let Some(parent) = result
+            .fields
+            .iter()
+            .find(|field| field.token == collection.token)
+        else {
+            continue;
+        };
+        for mut gap in normalized_gaps(&collection.fields, registry) {
+            if gap.kind == GapKind::OutsideMethod {
+                continue;
+            }
+            let name = gap
+                .subject
+                .as_ref()
+                .map(|subject| subject.name())
+                .unwrap_or("");
+            gap.subject = Some(GapSubject::field(format!("{}.{}", parent.name, name)));
+            gaps.push(gap);
+        }
+    }
+    for selection in &result.uses {
+        gaps.push(Gap { kind: GapKind::UnresolvedCondition, subject: Some(GapSubject::field(selection.field.join("."))), detail: "The local use-time flag test is established; the enclosing selection context is unresolved.".into() });
+    }
     gaps
+}
+
+fn unresolved_condition(condition: &crate::FieldCondition) -> bool {
+    match condition {
+        crate::FieldCondition::Unresolved => true,
+        crate::FieldCondition::All(terms) => terms.iter().any(unresolved_condition),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -576,8 +630,11 @@ mod field_gap_tests {
         let reader = ReaderJoin::Joined {
             callee: "CReader::Read(bool&)".into(),
             arguments: BTreeMap::new(),
+            tail: true,
         };
         RegistryFieldResult {
+            uses: vec![],
+            collections: vec![],
             fields: vec![RootField {
                 name: "known".into(),
                 token: 7,
@@ -613,6 +670,7 @@ mod field_gap_tests {
             (FieldGapKind::UnresolvedTokenPath, GapKind::UnresolvedPath),
             (FieldGapKind::TokenPartition, GapKind::UnresolvedPath),
             (FieldGapKind::JumpTable, GapKind::UnresolvedPath),
+            (FieldGapKind::RuntimeSelection, GapKind::UnresolvedCondition),
         ] {
             let registry_wide = public_gaps(vec![FieldGap::new(kind, "reason")]);
             assert_eq!(registry_wide.len(), 1, "{kind:?}");

@@ -1,58 +1,182 @@
 [
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "desc",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "potential",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "ai_weight",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "traditions",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "adoption_bonus",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "finish_bonus",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "tree_template",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  }
 ]

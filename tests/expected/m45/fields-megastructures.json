@@ -1,658 +1,2318 @@
 [
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "entity",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "custom_tooltip",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "victory_score",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a9818fec780f8313",
+       "kind": "FixedPoint"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "custom_tooltip_with_modifiers",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "custom_tooltip_requirements",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "is_ruined_orbital_ring",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "prerequisites",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "potential",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "sensor_range",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "d7a95ab8c8d44489",
+       "kind": "Integer"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "country_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "possible",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "rotate_to_center",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "scale_offset",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "orbit_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "generate_borders",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "ship_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "station_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "build_time",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a9818fec780f8313",
+       "kind": "FixedPoint"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "dismantle_time",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a9818fec780f8313",
+       "kind": "FixedPoint"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "dismantle_cost",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "ai_weight",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "entity_offset",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "784ec4ab3c469836",
+       "kind": "Unknown"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Unknown"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "784ec4ab3c469836",
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "plane_offset",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a9818fec780f8313",
+       "kind": "FixedPoint"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "construction_scale",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a9818fec780f8313",
+       "kind": "FixedPoint"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_build_queued",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_build_unqueued",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_build_start",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_build_cancel",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_build_complete",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_dismantle_start",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_dismantle_cancel",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_dismantle_complete",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "build_megastructure_no_cost_localization_key",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "build_system_tooltip",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "tooltip_system_score",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "tooltip_system_score_low_threshold",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "d7a95ab8c8d44489",
+       "kind": "Integer"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "tooltip_system_score_high_threshold",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "d7a95ab8c8d44489",
+       "kind": "Integer"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "tooltip_best_systems_header",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "tooltip_system_filter",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "tooltip_show_star_resources",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "upgrade_from",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "construction_entity",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "placement_rules",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "place_entity_on_planet_plane",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "use_planet_resource",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "scripted_action",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "starbase",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "system_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "show_galactic_map_icon",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "hide_name",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "bypass_type",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "triggered_country_modifier",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "show_in_outliner",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "outliner_trigger",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "hyperlane_range",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "d7a95ab8c8d44489",
+       "kind": "Integer"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "starbase_capacity_used",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "a9818fec780f8313",
+       "kind": "FixedPoint"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "show_prereqs",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "prereq_name",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "scales_with_planet",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "resources",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "portrait",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "overlord_can_upgrade",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "is_grand_archive",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "must_select_ship_design",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "is_shroud_seal",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "can_be_dismantled_by_non_owner",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "overclock_types",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "on_cycle_complete",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "6e28a363faf61c52",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "cycle_length_in_days",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "c61abc171edc30aa",
+       "kind": "Unknown"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Unknown"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "c61abc171edc30aa",
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "cycle_title",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "cycle_desc",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "97942c9a3d3c9c1b",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "97942c9a3d3c9c1b",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "cycle_icon",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "order_icon",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "can_prevent_crisis_terraformation",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "context_menu_potential",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "build_menu_potential",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "nomad_reactivatable",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": "Unresolved"
+   }
+  ],
   "reader": {
    "id": null,
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "None",
   "name": "overclock_loc_key",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "325efaa17499c32d",
+       "kind": "String"
+      },
+      "shape": {
+       "repeat": "Replace",
+       "value": "Scalar"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Replace",
+   "value": "Scalar"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "overclock_cooldown",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "c61abc171edc30aa",
+       "kind": "Unknown"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Unknown"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "c61abc171edc30aa",
    "kind": "Unknown"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Unknown"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "dismantle_possible",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "dismantle_potential",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  },
  {
+  "default": "Unknown",
+  "domain": "Unknown",
+  "members": "Unresolved",
   "name": "should_ai_dismantle",
+  "read": [
+   {
+    "condition": "Always",
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "e044b50825a1841d",
+       "kind": "Block"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
+   }
+  ],
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block"
   },
-  "conditional": false
+  "shape": {
+   "repeat": "Unknown",
+   "value": "Block"
+  },
+  "uses": []
  }
 ]

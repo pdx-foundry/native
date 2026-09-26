@@ -323,6 +323,8 @@ impl VerifiedAnalysis<'_> {
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.strings,
+            &self.catalog.pointers,
+            &self.catalog.bound_slots,
             selection,
         )
     }
@@ -470,7 +472,12 @@ fn string_field_binding(
 ) -> Option<crate::protocol::observation::FixtureOutcomeFieldBinding> {
     use crate::engine::analysis::fields::{ReaderJoin, Value};
 
-    let [ReaderJoin::Joined { callee, arguments }] = field.readers.as_slice() else {
+    let [
+        ReaderJoin::Joined {
+            callee, arguments, ..
+        },
+    ] = field.readers.as_slice()
+    else {
         return None;
     };
     let unconditional = field

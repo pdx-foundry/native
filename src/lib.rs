@@ -11,6 +11,7 @@ mod api;
 mod binding;
 mod engine;
 mod execution;
+mod field;
 mod fixture;
 mod game;
 mod protocol;
@@ -33,6 +34,10 @@ pub use answer::{
 };
 pub use api::OpenError;
 pub use engine::operations::registry_items::GameReadiness;
+pub use field::{
+    FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
+    FieldReadOutcome, FieldShape, FieldUse, FieldUseId, RepeatBehavior, ValueShape,
+};
 pub use fixture::{
     DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,
     FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureObservationKind,
