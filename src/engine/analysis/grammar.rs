@@ -49,7 +49,6 @@ pub enum OrderOutcome {
 /// The child grammar of one command reader, as far as the method follows it.
 pub struct GrammarResult {
     /// The command reader whose grammar this is.
-    #[cfg(test)]
     pub reader: CommandReader,
     /// The symbol of the reader's virtual `Read`.
     pub reader_name: String,
@@ -59,6 +58,8 @@ pub struct GrammarResult {
     pub reader_family: BlockFamily,
     /// The symbol of the reader's `ReadMember`, whose token dispatch the method follows.
     pub member_name: String,
+    /// Observed calls from each member reader to a delegate, including unresolved routes.
+    pub delegates: BTreeSet<(String, String)>,
     /// The grammar of numeric child keys, read by a separate child reader.
     pub numeric: Option<Box<GrammarResult>>,
     /// Tests of a child's position among its siblings.
@@ -87,7 +88,9 @@ pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unre
     analyze_reader(input, reader, 0)
 }
 
-fn analyze_reader(
+/// Analyze an already joined concrete reader. Start outer analysis at depth zero;
+/// nested numeric readers increment depth and stop at the grammar delegation bound.
+pub(crate) fn analyze_reader(
     input: &GrammarInput,
     reader: CommandReader,
     depth: usize,
@@ -132,6 +135,7 @@ fn analyze_reader(
         .map(|path| (path, vec![root.to_owned()]))
         .collect();
     let mut leaves = Vec::new();
+    let mut delegates = BTreeSet::new();
     let mut families: Vec<_> = root_family.into_iter().collect();
     let mut stops = Vec::new();
     let mut ordering = Vec::new();
@@ -171,6 +175,7 @@ fn analyze_reader(
             leaves.push(path);
             continue;
         };
+        delegates.insert((chain.last().unwrap().clone(), callee.clone()));
         if let Some(&family) = input.families.get(callee) {
             if path.conditions.is_empty() && !families.contains(&family) {
                 families.push(family);
@@ -247,8 +252,8 @@ fn analyze_reader(
     let (reader_kind, reader_family) = super::readers::entry(&reader_name);
     super::stop::sort_and_dedup(&mut stops);
     Ok(GrammarResult {
-        #[cfg(test)]
         reader,
+        delegates,
         reader_kind,
         reader_family,
         reader_name,
@@ -432,6 +437,20 @@ mod tests {
         let result = analyze(&input, FACTORY).unwrap();
         assert!(result.stops.is_empty(), "{:?}", result.stops);
         assert_eq!(result.families, [BlockFamily::Trigger]);
+        assert_eq!(result.reader.vtable, VTABLE);
+        assert!(
+            result
+                .delegates
+                .iter()
+                .any(|(source, target)| source == &result.member_name
+                    && target.contains("ReadMember"))
+        );
+        assert!(
+            result
+                .delegates
+                .iter()
+                .any(|(_, target)| target == "CChildren::ReadMember(CReader&, int)")
+        );
         assert_eq!(result.fields.fields.len(), 1);
         let child = &result.fields.fields[0];
         assert_eq!(child.name, "limit");

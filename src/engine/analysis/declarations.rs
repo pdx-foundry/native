@@ -14,6 +14,7 @@ use super::{
 };
 mod composition;
 mod receiver;
+pub(crate) use receiver::factory_vtable;
 
 pub use composition::{CALLER_DEPTH, Composition};
 

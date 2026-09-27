@@ -282,3 +282,46 @@ Source-correlated engine-log diagnostics may arrive on another nonzero game thre
 validation window. They retain sequence, file, stage and terminal checks. Owner reads, parser
 entries/returns and completion markers still require the activation thread. Authored controls cover
 both allowed log stages and wrong source, stage, occurrence, thread and terminal evidence.
+
+## Reusable population reporter (SDK-631)
+
+`examples/command-population.rs` replaces the test-only reporting procedure for subsequent
+measurements. See [method authoring](method-authoring.md#command-inspection-and-population-reports)
+for commands, denominator rules and diff behavior. The original SDK-542 test remains a historical
+measurement check; this tool adds no extraction claims or parser validation.
+
+Two unfiltered runs on M45-release (`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`)
+produced identical normalized reports. The second run took 287 seconds. Counts reconcile with
+SDK-542's delivered population above:
+
+| Family | Named operation answers | Complete | Partial | Failed operations | Failed receiver joins |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Effects | 1,074 | 0 | 1,074 | 0 | 137 |
+| Triggers | 1,096 | 0 | 1,096 | 0 | 234 |
+
+Both inventories had zero unknown registration observations and zero input-wide gaps. Failed
+receiver joins remain partial operation answers and stay in the named totals. All 12 target
+controls retain their available joins; these measurements do not extend their parser checks.
+
+Distinct command counts per internal failure reason (nested numeric failures count against the
+outer command; groups overlap):
+
+| Failure shape | Effects | Triggers |
+| --- | ---: | ---: |
+| `factory-return` | 0 | 206 |
+| `command-vtable` | 134 | 28 |
+| `factory-terminal` | 2 | 0 |
+| `reader-routing` | 170 | 64 |
+| `instruction` | 48 | 12 |
+| `branch-value` | 2 | 1 |
+| `branch-condition` | 2 | 0 |
+| `flags` | 1 | 0 |
+| `conditional-child-family` | 3 | 0 |
+| Non-singleton, missing/ambiguous token name, or unestablished member path | 81 | 5 |
+| Hidden default in the `CMeanTimeToHappen::ReadMember` jump table | 2 | 0 |
+
+The last two rows retain child-field gaps that the old population report only summarized in its
+public unresolved-path gap. The reporter also groups each shape by instruction kind, obstacle
+and function, preserving stops where present and saying when no instruction was located.
+Named inspection was checked for a successful `if` receiver chain and the failed
+`has_country_flag` factory return, including its retained cause trace.

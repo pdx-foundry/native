@@ -66,7 +66,7 @@ fn recorded_subject(kind: DeclarationKind, name: &str) -> String {
     }
 }
 
-fn registered_factory(
+pub(super) fn registered_factory(
     declarations: &declarations::DeclarationResult,
     name: &str,
 ) -> Result<Option<u64>, Unresolved> {
@@ -328,6 +328,7 @@ mod tests {
                 read: 2,
                 member: 3,
             },
+            delegates: Default::default(),
             reader_name: "CEffect::Read(CReader&, EScopeType)".into(),
             reader_kind: ReaderKind::Block,
             reader_family: BlockFamily::Effect,
@@ -366,6 +367,7 @@ mod tests {
                 read: 2,
                 member: 3,
             },
+            delegates: Default::default(),
             reader_name: "CCustom::Read(CReader&)".into(),
             member_name: "CCustom::ReadMember(CReader&, int)".into(),
             reader_kind: ReaderKind::Unknown,

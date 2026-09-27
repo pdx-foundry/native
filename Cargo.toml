@@ -41,3 +41,8 @@ test = true
 [[test]]
 name = "live"
 harness = false
+
+# Command report totals, grouping and normalized diffs are checked without a game.
+[[example]]
+name = "command-population"
+test = true

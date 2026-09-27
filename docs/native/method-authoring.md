@@ -205,3 +205,51 @@ The default suite includes locality checks but skips the installed-build parity 
 Run parity explicitly for static method changes; live observation changes also need the relevant
 `cargo live` cases. The [README checks](../../README.md#checks) list formatting, lint and
 documentation checks.
+
+## Command inspection and population reports
+
+Use the grammar inspector on an exact supported build:
+
+```sh
+cargo run --release --example inspect -- --effect-grammar if
+cargo run --release --example inspect -- --trigger-grammar has_country_flag --trace
+```
+
+The inspector retains registration instructions, the selected factory and its create method,
+then the concrete receiver and its read/member slots. A failed join names its stage and retains
+all preceding joins. The grammar lists observed member-to-delegate calls, nested numeric
+readers, normalized properties, internal gaps and stops. A missing stop location says
+`no instruction`; it is not an inferred instruction. Delegate calls describe observed routes,
+not proof that every route or property was resolved. Addresses remain developer diagnostics;
+the printed normalized answer is the same address-free answer as `Native::command_grammar`.
+
+Run both unfiltered inventories with one analysis input per family:
+
+```sh
+cargo run --release --example command-population -- "$STELLARIS_PATH" > before.json
+cargo run --release --example command-population -- "$STELLARIS_PATH" > after.json
+cargo run --release --example command-population -- --diff before.json after.json
+```
+
+Totals count one operation answer per unique `(family, name)`, including runtime-composed names
+and named unreadable registrations. They do not count registration observations or token paths.
+`complete`, `partial` and `failed` describe operation outcomes. A failed receiver join still
+produces a partial public answer; `receiver_join_failed` counts these separately without dropping
+them from `named_commands`. This count uses the retained receiver and reader-slot/body join,
+not the normalized reader identity: a later grammar symbol failure is not a failed receiver join. An input-construction failure aborts the report rather than inventing
+an inventory denominator. Unknown registration observations and input-wide inventory gaps are
+listed separately. An unknown observation can stand for several commands or overlap another
+observation; its count is never added to the named denominator. `full_denominator_known` is false
+when either uncertainty remains.
+
+Each case keeps the full normalized answer and its source stamp, plus developer chain and stop
+diagnostics. Public gap groups and internal stop groups list each affected command once per
+shape; one command can occur in several groups. Internal shapes use reason, instruction kind,
+obstacle and function. The diff compares statuses, normalized answers (including gaps and source),
+and inventory uncertainty. It ignores timings and internal addresses. An unchanged report has
+`changed: 0`; changed subjects show both old and new values.
+
+The hidden `internals::command_grammar_stops::population` wrapper visits each named command in
+order and lets the caller release its raw analysis before visiting the next command. It shares
+lookup, receiver analysis and normalization with the existing methods. These tools do not extend
+argument grammar extraction, establish parser acceptance or measure Atlas rule coverage.
