@@ -370,13 +370,15 @@ impl<'a> Image<'a> {
 
     /// Canonical bodies of all text functions whose symbol contains `pattern`, in address
     /// order. Data symbols and outlined cold clones are excluded; a body that cannot decode
-    /// fails the census.
+    /// fails the census. Aliases share one member, displayed with the first matching symbol name.
     pub fn lookup_bodies(&self, pattern: &str) -> Result<Vec<(String, Vec<String>)>, InspectError> {
+        let mut addresses = BTreeSet::new();
         self.symbols(pattern)
             .into_iter()
             .filter(|(address, name)| {
                 self.text.starts.contains(address) && !name.contains(" [clone ")
             })
+            .filter(|(address, _)| addresses.insert(*address))
             .map(|(address, name)| Ok((name.to_owned(), self.lookup_lines(address)?)))
             .collect()
     }

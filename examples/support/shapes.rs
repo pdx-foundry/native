@@ -34,51 +34,72 @@ fn census_line(line: &str, normalize_offsets: bool) -> String {
 }
 
 fn templates(name: &str) -> String {
+    let mut arguments = template_arguments(name);
+    arguments.sort_by_key(|argument| std::cmp::Reverse(argument.len()));
+    let mut replaced = name.to_owned();
+    for argument in arguments {
+        replaced = replace_argument(&replaced, argument);
+    }
+
     let mut depth = 0;
     let mut normalized = String::new();
-    let mut arguments = Vec::new();
-    let mut argument_start = 0;
-    for (index, character) in name.char_indices() {
+    for character in replaced.chars() {
         match character {
             '<' => {
                 if depth == 0 {
                     normalized.push_str("<T>");
                 }
                 depth += 1;
-                argument_start = index + 1;
             }
-            ',' | '>' if depth > 0 => {
-                let argument = name[argument_start..index].trim();
-                if !argument.is_empty()
-                    && argument
-                        .chars()
-                        .all(|character| character.is_alphanumeric() || character == '_')
-                {
-                    arguments.push(argument);
-                }
-                argument_start = index + 1;
-                if character == '>' {
-                    depth -= 1;
-                }
-            }
+            '>' if depth > 0 => depth -= 1,
             _ if depth == 0 => normalized.push(character),
             _ => {}
         }
     }
-    // A template parameter also occurs in instantiated return and parameter types.
     normalized
-        .split_inclusive(|character: char| !character.is_alphanumeric() && character != '_')
-        .map(|part| {
-            let token = part.trim_end_matches(|character: char| {
-                !character.is_alphanumeric() && character != '_'
-            });
-            if arguments.contains(&token) {
-                format!("T{}", &part[token.len()..])
-            } else {
-                part.to_owned()
+}
+
+/// Keep complete arguments at every nesting level, including their template suffixes.
+fn template_arguments(name: &str) -> Vec<&str> {
+    let mut starts = Vec::new();
+    let mut arguments = std::collections::BTreeSet::new();
+    for (index, character) in name.char_indices() {
+        match character {
+            '<' => starts.push(index + 1),
+            ',' | '>' if !starts.is_empty() => {
+                let start = starts.pop().expect("nonempty template stack");
+                let argument = name[start..index].trim();
+                if !argument.is_empty() {
+                    arguments.insert(argument);
+                }
+                if character == ',' {
+                    starts.push(index + 1);
+                }
             }
-        })
-        .collect()
+            _ => {}
+        }
+    }
+    arguments.into_iter().collect()
+}
+
+/// Replace complete argument occurrences in instantiated return and parameter types.
+fn replace_argument(name: &str, argument: &str) -> String {
+    let identifier = |character: char| character.is_alphanumeric() || character == '_';
+    let mut replaced = String::new();
+    let mut copied = 0;
+    for (start, _) in name.match_indices(argument) {
+        let end = start + argument.len();
+        if name[..start].chars().next_back().is_some_and(identifier)
+            || name[end..].chars().next().is_some_and(identifier)
+        {
+            continue;
+        }
+        replaced.push_str(&name[copied..start]);
+        replaced.push('T');
+        copied = end;
+    }
+    replaced.push_str(&name[copied..]);
+    replaced
 }
 
 /// Ignore immediate displacements in memory operands based on an object register.
@@ -216,6 +237,28 @@ mod tests {
         assert_eq!(
             templates("D::ValueType Read<D>(D const&)"),
             "T::ValueType Read<T>(T const&)"
+        );
+    }
+
+    #[test]
+    fn nested_arguments_normalize_their_complete_repeated_types() {
+        let first = "DB<Nested<A>>::Get(Nested<A> const&)";
+        let second = "DB<Other<B>>::Get(Other<B> const&)";
+        assert_eq!(templates(first), "DB<T>::Get(T const&)");
+        assert_eq!(templates(first), templates(second));
+        assert_eq!(
+            templates("DB<ns::Pair<A, B>>::Get(ns::Pair<A, B> const&, AAA*)"),
+            "DB<T>::Get(T const&, AAA*)"
+        );
+        assert_eq!(
+            groups(
+                vec![
+                    ("first".into(), body(&[&format!("bl CALL = {first}")])),
+                    ("second".into(), body(&[&format!("bl CALL = {second}")])),
+                ],
+                false
+            ),
+            vec![vec!["first", "second"]]
         );
     }
 
