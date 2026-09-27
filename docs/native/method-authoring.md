@@ -147,6 +147,35 @@ cargo test --release --test static_questions -- --ignored
 stamp, values, completeness and gaps, including an unresolved or invalid case. Inspect a changed
 answer before changing its expected file. A parity sample does not replace the population run.
 
+Generate a candidate tree with the same questions and selections as the parity tests:
+
+```sh
+cargo run --release --example expected -- --out /tmp/native-expected-candidate
+git diff --no-index -- tests/expected/m45 /tmp/native-expected-candidate
+```
+
+`STELLARIS_PATH` must be set. The output directory must be new, its parent must exist, and it
+must be outside `tests/expected/`, including through symlinks. The command never overwrites a
+file. If generation fails, the output can be incomplete; use a new directory for the next run.
+`git diff --no-index` exits with status 1 when there are differences.
+
+The generator is not verification. Review each changed answer against the method's tests and
+engine evidence. Copy only reviewed files back, then run `cargo parity`, for example:
+
+```sh
+cp /tmp/native-expected-candidate/fields-traditions.json tests/expected/m45/fields-traditions.json
+cargo parity
+```
+
+The tracked files supply sample keys, not replacement answers. A missing selected item appears
+as `null` in the candidate. Full inventories include new items. The historical live observation
+`field-storage-sdk533.json` is copied unchanged and requires the same build; its independent
+storage checks stay in the parity suite. Generating static answers does not repeat that live
+experiment. Descriptive mechanism labels in declaration samples are also retained for review.
+Tests and the generator share [`tests/parity/`](../../tests/parity/mod.rs); layout tests check
+all tracked files without a game, and the installed-build test also changes one recorded answer
+to check that only the corresponding file and entry change.
+
 ## Run over the whole population
 
 Follow [Measuring method transfer](../development-policy.md#measuring-method-transfer). Run the

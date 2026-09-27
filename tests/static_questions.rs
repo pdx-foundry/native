@@ -1,14 +1,15 @@
 //! Parity of the static questions with tracked expected output for the M45 build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
+mod parity;
+use parity::*;
+
 use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Trace, Unresolved};
 use pdx_native::internals::{command_grammar_stops, registry_field_stops, trace_causes};
 use pdx_native::{
-    Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
-    DeclaredTags, Define, EntryContext, EntryScope, Error, Field, FieldReference, GameRule,
-    GapKind, GrammarProperty, KeyMatch, LinkData, LocalizationContextReference,
-    LocalizationDeclarations, LocalizationOutput, LookupStage, ModifierDeclaration, ModifierFamily,
-    NamePart, Native, OnAction, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind,
-    ScopeId, ScopeInventory, ScopeLink, ScopeReference,
+    Answer, Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags,
+    EntryScope, Error, FieldReference, GapKind, KeyMatch, LinkData, LocalizationContextReference,
+    LocalizationDeclarations, LocalizationOutput, LookupStage, Native, Operation, OutputScope,
+    ReaderKind, ReferenceTarget, RuleKind, ScopeId,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -16,14 +17,6 @@ use std::collections::BTreeMap;
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn defines_match_the_recorded_m45_boundary() {
-    #[derive(serde::Deserialize)]
-    struct Expected {
-        count: usize,
-        gaps: BTreeMap<String, usize>,
-        types: BTreeMap<String, usize>,
-        samples: Vec<Define>,
-    }
-    let expected: Expected = expected("defines.json");
     let native = native();
     assert_eq!(
         native.supports(Operation::Defines),
@@ -33,22 +26,6 @@ fn defines_match_the_recorded_m45_boundary() {
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
     assert_eq!(answer.source.method, "defines/v1");
     assert_eq!(answer.completeness, Completeness::Partial);
-    assert_eq!(answer.value.len(), expected.count);
-    assert_eq!(gap_counts(&answer), expected.gaps);
-    let mut types = BTreeMap::new();
-    for define in &answer.value {
-        let kind = format!("{:?}", define.value_type);
-        *types.entry(kind.clone()).or_insert(0usize) += 1;
-    }
-    assert_eq!(types, expected.types);
-    for sample in expected.samples {
-        assert!(
-            answer.value.contains(&sample),
-            "missing {}.{}",
-            sample.namespace,
-            sample.name
-        );
-    }
     assert!(answer.gaps.iter().any(|gap| {
         gap.subject.as_ref().map(|subject| subject.name()) == Some("NGraphics.ORBIT_HSV")
             && gap.detail == "reader path exceeds the table-search limit"
@@ -59,76 +36,9 @@ fn defines_match_the_recorded_m45_boundary() {
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn declarations_match_the_recorded_m45_inventory() {
     let native = native();
-    let gap_counts: serde_json::Value = expected("declaration-gaps.json");
     for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
-        let subject = match kind {
-            DeclarationKind::Effect => "effect",
-            DeclarationKind::Trigger => "trigger",
-            _ => unreachable!("the test covers the M45 effect and trigger kinds"),
-        };
         let answer = native.declarations(kind).unwrap();
         assert_eq!(answer.source.basis, Basis::Declared);
-        let names: std::collections::BTreeSet<_> =
-            answer.value.iter().map(|item| item.name.clone()).collect();
-        let omitted: std::collections::BTreeSet<_> = answer
-            .gaps
-            .iter()
-            .filter(|gap| {
-                gap.kind == GapKind::UnresolvedPath
-                    && !names.contains(
-                        gap.subject
-                            .as_ref()
-                            .map(|subject| subject.name())
-                            .unwrap_or(""),
-                    )
-            })
-            .filter_map(|gap| {
-                gap.subject
-                    .as_ref()
-                    .map(|subject| subject.name().to_owned())
-            })
-            .collect();
-        let accounted: Vec<_> = names.union(&omitted).cloned().collect();
-        assert_eq!(
-            omitted.into_iter().collect::<Vec<_>>(),
-            gap_counts[subject]["unreadable"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|name| name.as_str().unwrap().to_owned())
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(
-            accounted,
-            expected::<Vec<String>>(&format!("declarations-{subject}.json"))
-        );
-        assert_eq!(
-            answer
-                .gaps
-                .iter()
-                .filter(|gap| gap.kind == GapKind::UnnamedDeclaration)
-                .count(),
-            gap_counts[subject]["unnamed_registrations"]
-                .as_u64()
-                .unwrap() as usize
-        );
-        let recovered: Value = expected("declaration-recovered.json");
-        assert_eq!(
-            answer.value.len() as u64,
-            recovered[subject]["sdk_488_live_inventory"]
-                .as_u64()
-                .unwrap()
-        );
-        for entry in recovered[subject]["recovered"].as_array().unwrap() {
-            let sample: Declaration = serde_json::from_value(entry["declaration"].clone()).unwrap();
-            assert_eq!(
-                answer.value.iter().find(|item| item.name == sample.name),
-                Some(&sample),
-                "{} ({})",
-                sample.name,
-                entry["mechanism"]
-            );
-        }
         assert_eq!(
             answer.completeness,
             if answer
@@ -162,27 +72,9 @@ fn declarations_match_the_recorded_m45_inventory() {
                 );
             }
         }
-        let unresolved: Vec<_> = answer
-            .value
-            .iter()
-            .filter(|item| item.scopes == DeclaredScopes::Unresolved)
-            .map(|item| item.name.as_str())
-            .collect();
-        assert_eq!(
-            serde_json::to_value(unresolved).unwrap(),
-            gap_counts[subject]["unresolved_scopes"]
-        );
         assert!(answer.gaps.iter().all(|gap| gap.subject.is_some()
             || gap.kind == GapKind::OutsideMethod
             || gap.kind == GapKind::UnreadableInput));
-        let samples: Vec<Declaration> = expected(&format!("declaration-samples-{subject}.json"));
-        assert_eq!(samples.len(), 10);
-        for sample in samples {
-            assert_eq!(
-                answer.value.iter().find(|item| item.name == sample.name),
-                Some(&sample)
-            );
-        }
     }
 }
 
@@ -220,22 +112,9 @@ fn declarations_give_the_scopes_of_known_m45_commands() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn modifier_declarations_match_the_recorded_m45_boundary() {
-    #[derive(serde::Deserialize)]
-    struct Expected {
-        count: usize,
-        gaps: BTreeMap<String, usize>,
-        samples: Vec<ModifierDeclaration>,
-    }
-    let expected: Expected = expected("modifier-declarations.json");
     let answer = native().modifiers().unwrap();
     assert_declared(&answer);
 
-    assert_eq!(answer.value.len(), expected.count);
-    assert_eq!(gap_counts(&answer), expected.gaps);
-    assert_eq!(expected.samples.len(), 10);
-    for sample in &expected.samples {
-        assert_eq!(find(&answer.value, &sample.name, |item| &item.name), sample);
-    }
     for modifier in &answer.value {
         assert_ne!(modifier.category_tags, DeclaredTags::Unresolved);
     }
@@ -252,11 +131,10 @@ fn modifier_families_match_the_recorded_m45_generators() {
     let native = native();
     let expected: BTreeMap<String, Value> = expected("modifier-families.json");
     assert_eq!(expected.len(), 22);
-    for (registry, expected) in &expected {
+    for registry in expected.keys() {
         let answer = native.modifier_families(registry).unwrap();
         assert_eq!(answer.source.basis, Basis::StaticAnalysis);
         assert_eq!(answer.completeness, Completeness::Partial);
-        assert_eq!(&compact_families(&answer), expected, "{registry}");
     }
 
     let bypass = native.modifier_families("common/bypass").unwrap();
@@ -294,8 +172,6 @@ fn modifier_categories_are_the_names_of_the_category_switch() {
     let answer = native().modifier_categories().unwrap();
     assert_declared(&answer);
     assert_eq!(answer.completeness, Completeness::Complete);
-    let names: Vec<_> = answer.value.iter().map(|item| item.name.clone()).collect();
-    assert_eq!(names, expected::<Vec<String>>("modifier-categories.json"));
 }
 
 #[test]
@@ -309,10 +185,6 @@ fn scopes_group_keywords_by_the_engine_map_only() {
             .gaps
             .iter()
             .all(|gap| gap.kind == GapKind::OutsideMethod)
-    );
-    assert_eq!(
-        answer.value,
-        expected::<ScopeInventory>("scope-inventory.json")
     );
     let federation = find(&answer.value.types, "federation", |item| &item.name);
     assert_eq!(federation.keywords, ["alliance", "federation"]);
@@ -343,20 +215,8 @@ fn scopes_group_keywords_by_the_engine_map_only() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn scope_links_match_the_recorded_m45_boundary() {
-    #[derive(serde::Deserialize)]
-    struct Expected {
-        names: Vec<String>,
-        samples: Vec<ScopeLink>,
-    }
-    let expected: Expected = expected("scope-links.json");
     let answer = native().scope_links().unwrap();
     assert_declared(&answer);
-
-    let names: Vec<_> = answer.value.iter().map(|item| item.name.clone()).collect();
-    assert_eq!(names, expected.names);
-    for sample in &expected.samples {
-        assert_eq!(find(&answer.value, &sample.name, |item| &item.name), sample);
-    }
 
     let documented = answer
         .value
@@ -470,11 +330,6 @@ fn localization_declarations_match_the_recorded_m45_inventory() {
             }
         }
     }
-
-    assert_eq!(
-        compact_localization(&answer),
-        expected::<Value>("localization-declarations.json")
-    );
 }
 
 /// Call sites checked by hand in the M45-release disassembly, before the expected files were
@@ -607,65 +462,6 @@ fn callbacks_match_the_recorded_m45_inventory() {
             }
         }
     }
-
-    assert_eq!(
-        compact_on_actions(&on_actions),
-        expected::<Value>("on-actions.json")
-    );
-    assert_eq!(
-        compact_game_rules(&game_rules),
-        expected::<Value>("game-rules.json")
-    );
-}
-
-/// An entry context as one line: scope names, or the kind of an entry that is not a scope.
-fn entry(context: &EntryContext) -> String {
-    let scope = |scope: &EntryScope| match scope {
-        EntryScope::Scope(reference) => reference.name.clone(),
-        other => format!("{other:?}"),
-    };
-    let from: Vec<_> = context.from.iter().map(scope).collect();
-    format!(
-        "this={} root={} from=[{}]",
-        scope(&context.this),
-        scope(&context.root),
-        from.join(",")
-    )
-}
-
-/// The on_actions answer with the entry list of each name.
-fn compact_on_actions(answer: &Answer<Vec<OnAction>>) -> Value {
-    compact_callbacks(answer, |on_action| {
-        let entries: Vec<_> = on_action.entries.iter().map(entry).collect();
-        (on_action.name.clone(), json!(entries))
-    })
-}
-
-/// The game rules answer with the kind and entry list of each name.
-fn compact_game_rules(answer: &Answer<Vec<GameRule>>) -> Value {
-    compact_callbacks(answer, |rule| {
-        let entries: Vec<_> = rule.entries.iter().map(entry).collect();
-        (rule.name.clone(), json!([rule.kind, entries]))
-    })
-}
-
-/// A callback answer as its completeness, its gaps and one value for each callback name.
-fn compact_callbacks<T>(
-    answer: &Answer<Vec<T>>,
-    name_and_value: impl Fn(&T) -> (String, Value),
-) -> Value {
-    let names: serde_json::Map<_, _> = answer.value.iter().map(name_and_value).collect();
-    let gaps: Vec<_> = answer
-        .gaps
-        .iter()
-        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
-        .collect();
-
-    json!({
-        "completeness": answer.completeness,
-        "names": names,
-        "gaps": gaps,
-    })
 }
 
 /// Every context reference names a context of the same answer by id and name.
@@ -690,76 +486,11 @@ fn assert_references_join(localization: &LocalizationDeclarations) {
     }
 }
 
-/// The whole answer with context references written as names, one entry for each row.
-fn compact_localization(answer: &Answer<LocalizationDeclarations>) -> Value {
-    let localization = &answer.value;
-    let contexts: serde_json::Map<_, _> = localization
-        .contexts
-        .iter()
-        .map(|context| {
-            let scopes = match &context.scopes {
-                ContextScopes::Joined(scopes) => json!({ "Joined": reference_names(scopes) }),
-                ContextScopes::Partial(scopes) => json!({ "Partial": reference_names(scopes) }),
-                ContextScopes::Missing => json!("Missing"),
-            };
-            (
-                context.name.clone(),
-                json!({ "id": context.id, "scopes": scopes }),
-            )
-        })
-        .collect();
-    let commands: serde_json::Map<_, _> = localization
-        .commands
-        .iter()
-        .map(|command| {
-            (
-                command.name.clone(),
-                json!(context_names(&command.contexts)),
-            )
-        })
-        .collect();
-    let links: Vec<_> = localization
-        .links
-        .iter()
-        .map(|link| {
-            let output = match &link.output {
-                LocalizationOutput::Listed(outputs) => json!({ "Listed": context_names(outputs) }),
-                other => json!(other),
-            };
-            json!([link.name, context_names(&link.input_contexts), output])
-        })
-        .collect();
-    let gaps: Vec<_> = answer
-        .gaps
-        .iter()
-        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
-        .collect();
-
-    json!({
-        "completeness": answer.completeness,
-        "contexts": contexts,
-        "commands": commands,
-        "links": links,
-        "gaps": gaps,
-    })
-}
-
-fn context_names(references: &[LocalizationContextReference]) -> Vec<&str> {
-    references
-        .iter()
-        .map(|reference| reference.name.as_str())
-        .collect()
-}
-
 fn listed_names(scopes: &DeclaredScopes) -> Vec<&str> {
     match scopes {
         DeclaredScopes::Listed(scopes) => reference_names(scopes),
         other => panic!("expected listed scopes, not {other:?}"),
     }
-}
-
-fn reference_names(scopes: &[ScopeReference]) -> Vec<&str> {
-    scopes.iter().map(|scope| scope.name.as_str()).collect()
 }
 
 fn assert_declared<T>(answer: &Answer<Vec<T>>) {
@@ -773,46 +504,6 @@ fn assert_declared<T>(answer: &Answer<Vec<T>>) {
         complete,
         "completeness follows the gaps"
     );
-}
-
-/// Each family as its template, and every gap but the method boundary.
-fn compact_families(answer: &Answer<Vec<ModifierFamily>>) -> Value {
-    let families: Vec<_> = answer
-        .value
-        .iter()
-        .map(|family| {
-            let template: String = family
-                .name
-                .iter()
-                .map(|part| match part {
-                    NamePart::Literal(text) => text.as_str(),
-                    NamePart::ItemKey => "{key}",
-                    other => panic!("unexpected part {other:?}"),
-                })
-                .collect();
-            json!({
-                "template": template,
-                "category_tags": family.category_tags,
-                "condition": family.condition,
-                "name_limit": family.name_limit,
-            })
-        })
-        .collect();
-    let gaps: Vec<_> = answer
-        .gaps
-        .iter()
-        .filter(|gap| gap.kind != GapKind::OutsideMethod)
-        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
-        .collect();
-    json!({ "families": families, "gaps": gaps })
-}
-
-fn gap_counts<T>(answer: &Answer<Vec<T>>) -> BTreeMap<String, usize> {
-    let mut counts = BTreeMap::new();
-    for gap in &answer.gaps {
-        *counts.entry(format!("{:?}", gap.kind)).or_default() += 1;
-    }
-    counts
 }
 
 fn find<'a, T>(items: &'a [T], name: &str, key: impl Fn(&T) -> &String) -> &'a T {
@@ -845,7 +536,6 @@ fn registries_are_named_by_their_content_directory() {
         "M45-release registry discovery changed"
     );
     let names: Vec<_> = answer.value.iter().map(|r| r.name.clone()).collect();
-    assert_eq!(names, expected::<Vec<String>>("registries.json"));
     assert_eq!(answer.completeness, Completeness::Complete);
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
     // `common/ship_categories` passes a global CString; its static initializer names it.
@@ -865,21 +555,7 @@ fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
     let expected = expected::<BTreeMap<String, Value>>("references.json");
     for (subject, value) in &expected {
         let (owner, name) = subject.split_once('#').unwrap_or((subject, ""));
-        let (text, gaps, fields) = match command(owner) {
-            Some((kind, command)) => {
-                let answer = native.command_grammar(kind, command).unwrap();
-                let fields = match &answer.value.fixed_keys {
-                    GrammarProperty::Partial(fields) => fields.clone(),
-                    _ => Vec::new(),
-                };
-                (serde_json::to_string(&answer).unwrap(), answer.gaps, fields)
-            }
-            None => {
-                let answer = native.registry_fields(owner).unwrap();
-                let text = serde_json::to_string(&answer).unwrap();
-                (text, answer.gaps, answer.value)
-            }
-        };
+        let (text, gaps, fields) = reference_answer(&native, owner).unwrap();
         assert!(!text.contains("Database"), "{owner} names a database class");
 
         if name.is_empty() {
@@ -924,33 +600,13 @@ fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
     }
 }
 
-/// The command that a reference sample such as `effect/create_ship` names.
-fn command(owner: &str) -> Option<(DeclarationKind, &str)> {
-    if let Some(name) = owner.strip_prefix("effect/") {
-        return Some((DeclarationKind::Effect, name));
-    }
-
-    owner
-        .strip_prefix("trigger/")
-        .map(|name| (DeclarationKind::Trigger, name))
-}
-
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn registry_fields_match_and_share_reader_identities_across_registries() {
     let native = native();
     let mut potential = Vec::new();
-    for (registry, file) in [
-        ("common/traditions", "fields-traditions.json"),
-        (
-            "common/tradition_categories",
-            "fields-tradition_categories.json",
-        ),
-        ("common/council_agendas", "fields-council_agendas.json"),
-        ("common/megastructures", "fields-megastructures.json"),
-    ] {
+    for (registry, _) in FIELD_FILES {
         let answer = native.registry_fields(registry).unwrap();
-        assert_eq!(answer.value, expected::<Vec<Field>>(file), "{registry}");
         assert_eq!(
             answer.completeness,
             if answer
@@ -1090,7 +746,7 @@ struct Observed {
     receiver_failures: Vec<Option<Box<Trace>>>,
 }
 
-type GrammarOutcome = Result<(Vec<Unresolved>, Vec<TokenPath>), Unresolved>;
+type GrammarOutcome = std::result::Result<(Vec<Unresolved>, Vec<TokenPath>), Unresolved>;
 
 fn observe(native: &Native) -> Observed {
     let mut answers = Vec::new();
@@ -1400,13 +1056,6 @@ fn council_presence_initialization_does_not_restrict_field_reads() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
-    #[derive(serde::Deserialize)]
-    struct Expected {
-        count: usize,
-        gaps: BTreeMap<String, usize>,
-        namespaces: Vec<Value>,
-    }
-    let expected: Expected = expected("dynamic-names.json");
     let native = native();
     assert_eq!(
         native.supports(Operation::DynamicNames),
@@ -1416,58 +1065,43 @@ fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
     assert_eq!(answer.source.method, "dynamic-names/v1");
     assert_eq!(answer.completeness, Completeness::Partial);
-    assert_eq!(answer.value.len(), expected.count);
-    assert_eq!(gap_counts(&answer), expected.gaps);
-
-    let samples: std::collections::BTreeSet<String> = expected
-        .namespaces
-        .iter()
-        .flat_map(|namespace| {
-            ["defined_by", "removed_by", "read_by"]
-                .into_iter()
-                .flat_map(|role| namespace[role].as_array().unwrap().clone())
-        })
-        .map(|command| command.as_str().unwrap().to_owned())
-        .collect();
-    let compact: Vec<Value> = answer.value.iter().map(compact_namespace).collect();
-    let sampled: Vec<&Value> = compact
-        .iter()
-        .filter(|namespace| {
-            ["defined_by", "removed_by", "read_by"]
-                .into_iter()
-                .any(|role| {
-                    namespace[role]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|command| samples.contains(command.as_str().unwrap()))
-                })
-        })
-        .collect();
-    assert_eq!(sampled, expected.namespaces.iter().collect::<Vec<_>>());
-
     let text = serde_json::to_string(&answer).unwrap();
     assert!(!text.contains("Flag("), "no native type name in the answer");
 }
 
-/// A namespace without its build-local identity: its owner's name, its commands as
-/// `kind name`, and its form.
-fn compact_namespace(namespace: &pdx_native::DynamicNamespace) -> Value {
-    let owner = match &namespace.owner {
-        pdx_native::NamespaceOwner::Global => "global".to_owned(),
-        pdx_native::NamespaceOwner::Scope(scope) => scope.name.clone(),
-    };
-    let commands = |commands: &[pdx_native::CommandReference]| -> Vec<String> {
-        commands
-            .iter()
-            .map(|command| format!("{:?} {}", command.kind, command.name))
-            .collect()
-    };
-    json!({
-        "owner": owner,
-        "defined_by": commands(&namespace.defined_by),
-        "removed_by": commands(&namespace.removed_by),
-        "read_by": commands(&namespace.read_by),
-        "dynamic_form": format!("{:?}", namespace.dynamic_form),
-    })
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn every_tracked_candidate_matches_the_reviewed_tree() {
+    let recordings = tempfile::tempdir().unwrap();
+    let native = native().record_answers_to(recordings.path());
+    for name in parity::FILES {
+        let tracked = std::fs::read(parity::expected_directory().join(name)).unwrap();
+        let candidate = parity::candidate(&native, name).unwrap();
+        assert!(
+            candidate == tracked,
+            "{name}: candidate differs from the reviewed file"
+        );
+    }
+
+    let path = recordings.path().join("registries.json");
+    let mut answer: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let original = answer["Ok"]["value"][0]["name"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    answer["Ok"]["value"][0]["name"] = json!("deliberately_changed_registry");
+    std::fs::write(path, serde_json::to_vec(&answer).unwrap()).unwrap();
+    let changed = Native::from_recorded_answers(recordings.path()).unwrap();
+    for name in parity::FILES {
+        let mut expected =
+            std::fs::read_to_string(parity::expected_directory().join(name)).unwrap();
+        if *name == "registries.json" {
+            expected = expected.replacen(&original, "deliberately_changed_registry", 1);
+        }
+        let candidate = String::from_utf8(parity::candidate(&changed, name).unwrap()).unwrap();
+        assert!(
+            candidate == expected,
+            "{name}: changing one registry name changes only its entry"
+        );
+    }
 }
