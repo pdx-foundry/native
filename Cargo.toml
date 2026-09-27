@@ -46,3 +46,8 @@ harness = false
 [[example]]
 name = "command-population"
 test = true
+
+# Candidate output safeguards and byte-for-byte layout checks need no game.
+[[example]]
+name = "expected"
+test = true
