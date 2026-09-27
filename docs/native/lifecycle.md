@@ -36,9 +36,10 @@ Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibil
 - **Exited process groups.** macOS refuses a signal to a process group whose members have all exited. Check that the group is not empty before you signal it, and keep the direct child identity until it is reaped.
 - **Harmless test processes.** macOS kills a copied Apple system binary before a test can inspect it. A test that needs a harmless process named `stellaris` must compile its own.
 - **Ordinary game conflict.** Any process named `stellaris` makes a live start refuse, and makes a running game report lost isolation. Run the live tests apart from the process tests that start such a process.
-- **Debugger authorization.** On macOS 27.0, `system.privilege.taskport` asks the user to
-  authenticate once per login session (shared for 10 hours), even with Developer mode on. Until
-  someone approves, an unbounded attach waits: the SDK-630 live cases timed out at the startup
+- **Debugger authorization.** SDK-630 observed debugger attaches waiting for authentication on
+  macOS 27.0, even with Developer mode on. The earlier explanation was a per-login approval for
+  `system.privilege.taskport`, shared for 10 hours; the fresh-login result below does not confirm
+  that login boundary. While approval was pending, the live cases timed out at the startup
   deadline with `worker-start` as the last completed phase and `hooks-requested` as the worker's
   last record.
   A plain `lldb` attach to a freshly compiled program hangs the same way, which separates this
@@ -64,8 +65,14 @@ system.privilege.taskport` returned `YES (0)` in the current approved login sess
 attach against a deliberately blocked stub reached its test deadline, recorded the
 attach failure, and left the stub for supervisor cleanup; cleanup removed it. This also checks
 that the installed LLDB releases Python's interpreter lock during attach. Tests cover the
-approval refusal message and Security error statuses. The uncached login state has not yet
-been observed with the new admission check; it requires approval expiry or a fresh login.
+approval refusal message and Security error statuses. The unapproved state has not yet been
+observed with the new admission check.
+
+After the user logged out of macOS and back in, the non-interactive authorization check still
+returned `YES (0)`. Both `normal` and `fixture_normal` passed in 24 seconds each. A process
+inventory after the run contained no game, LLDB worker or `debugserver`. This verifies the
+approved path after a fresh login, not the refusal path. Logging out is not a demonstrated way
+to clear this approval on this host; its actual lifetime remains unestablished.
 
 The standard suite and 40 Python tests pass. All 53 live cases passed across the full run and
 affected-case reruns. The first `normal` case attached and activated its hooks, then stopped on
