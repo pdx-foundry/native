@@ -213,7 +213,8 @@ pub enum EmptyKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum MissingResult {
-    /// The engine's typed placeholder object for the target registry, not a null pointer.
+    /// A typed placeholder object (`TPdxNullObject<C>`), not a null pointer or the previous
+    /// value. Its class `C` is not established to be the target registry's item type.
     NullObject,
     /// Not established.
     Unresolved,

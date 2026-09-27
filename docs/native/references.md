@@ -147,5 +147,8 @@ identity that had none; no other answer changed. `council_agendas#finish_modifie
   scans linearly while `ReadKeyReference<CShipSizeDatabase>` calls the map `Find`.
 - Registration with the deferred resolver does not by itself say when the lookup runs, and a
   loaded null object does not by itself say that a miss selects it.
+- A miss selects `TPdxNullObject<C>::_pInstance`, but the scan shapes bind `C` without joining it
+  to the target database's item type. `MissingResult::NullObject` claims a typed placeholder, not
+  its class.
 - `DeclaredScopes` states where a command may run, not which store it writes; flag stores are
   compared per scope.
