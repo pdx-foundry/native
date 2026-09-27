@@ -1,5 +1,6 @@
 //! Bounded static methods. Each reads the executable and needs no game process.
 pub mod callbacks;
+pub(crate) mod commands;
 pub mod declarations;
 pub mod decode;
 pub mod defines;

@@ -49,6 +49,15 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub command_children: crate::engine::analysis::grammar::ChildLayout,
     pub numeric_key_reader: &'static str,
     pub reader_token_offset: u64,
+    /// The assigned value token within a reader.
+    pub reader_value_token_offset: u64,
+    /// Post-validation and developer-only target getter slots, from the address point.
+    pub effect_validation_slot: u64,
+    pub trigger_validation_slot: u64,
+    pub effect_target_getter_slot: u64,
+    pub trigger_target_getter_slot: u64,
+    /// Token names used for the Boolean assignment probes, true then false.
+    pub boolean_tokens: [&'static str; 2],
     pub child_families: &'static [(&'static str, crate::BlockFamily)],
     /// Stack offset of the category argument of the modifier definition call.
     pub modifier_category_offset: u64,
@@ -115,6 +124,12 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     },
     numeric_key_reader: "CToken::ReadValue(int&) const",
     reader_token_offset: 0x38,
+    reader_value_token_offset: 0x278,
+    effect_validation_slot: 0x98,
+    trigger_validation_slot: 0x68,
+    effect_target_getter_slot: 0x88,
+    trigger_target_getter_slot: 0x80,
+    boolean_tokens: ["yes", "no"],
     child_families: &[
         (
             "CTriggerCollectionBase::ReadMember(CReader&, int, EScopeType)",

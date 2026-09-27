@@ -47,7 +47,7 @@ pub fn run(native: &Native, kind: DeclarationKind, name: &str) -> Result<Run, Er
             .grammar_input(kind)
             .map_err(|failure| super::questions::error(Operation::CommandGrammar, failure))?;
         if matches!(
-            super::grammar::registered_factory(&inventory, name),
+            super::grammar::registered_factory(inventory, name),
             Ok(None)
         ) {
             return Err(Error::UnknownCommand {
@@ -57,8 +57,8 @@ pub fn run(native: &Native, kind: DeclarationKind, name: &str) -> Result<Run, Er
         }
         let references = native.reference_facts(Operation::CommandGrammar)?;
         Ok(inspect_command(
-            &input,
-            &inventory,
+            input,
+            inventory,
             name,
             native.build(),
             references,
@@ -125,17 +125,17 @@ pub fn population(
             .declaration_analysis(Operation::CommandGrammar)?
             .grammar_input(kind)
             .map_err(|failure| super::questions::error(Operation::CommandGrammar, failure))?;
-        let (names, unknown_registrations) = inventory_names(&inventory);
+        let (names, unknown_registrations) = inventory_names(inventory);
         let references = native.reference_facts(Operation::CommandGrammar)?;
         for name in names {
             visit(
                 &name,
-                inspect_command(&input, &inventory, &name, native.build(), references),
+                inspect_command(input, inventory, &name, native.build(), references),
             );
         }
         Ok(Population {
             unknown_registrations,
-            inventory_gaps: inventory.table_gaps,
+            inventory_gaps: inventory.table_gaps.clone(),
         })
     })
 }

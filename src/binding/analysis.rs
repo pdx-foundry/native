@@ -11,6 +11,7 @@ use crate::engine::analysis::decode::decode_arm64;
 use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::families::DatabaseLayout;
 use crate::engine::analysis::references::{self, ReferenceFacts};
+use crate::engine::analysis::{declarations::DeclarationResult, grammar::GrammarInput};
 use crate::{AnalysisError, UnavailableReason};
 
 pub(crate) struct BoundAnalysis {
@@ -25,6 +26,8 @@ pub(crate) struct BoundAnalysis {
     families: OnceLock<Result<FamilyIndex, AnalysisError>>,
     /// Derived from the catalog's executable; every read checks the executable first.
     references: OnceLock<Result<ReferenceFacts, AnalysisError>>,
+    /// One immutable input per family; callers verify the executable before each access.
+    grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
 }
 
 struct Catalog {
@@ -229,6 +232,7 @@ impl VerifiedAnalysis<'_> {
             declarations,
             &inventory,
             recipe,
+            kind,
         )?;
         Ok((input, inventory))
     }
@@ -475,6 +479,7 @@ impl BoundAnalysis {
             catalog: OnceLock::new(),
             families: OnceLock::new(),
             references: OnceLock::new(),
+            grammar: std::array::from_fn(|_| OnceLock::new()),
         }
     }
 
@@ -680,21 +685,31 @@ impl BoundAnalysis {
     pub(crate) fn grammar_input(
         &self,
         kind: crate::DeclarationKind,
-    ) -> Result<
-        (
-            crate::engine::analysis::grammar::GrammarInput,
-            crate::engine::analysis::declarations::DeclarationResult,
-        ),
-        AnalysisError,
-    > {
+    ) -> Result<&(GrammarInput, DeclarationResult), AnalysisError> {
+        let verified = self.verified()?;
+        self.cached_grammar_input(kind, &verified)
+    }
+
+    fn cached_grammar_input(
+        &self,
+        kind: crate::DeclarationKind,
+        verified: &VerifiedAnalysis<'_>,
+    ) -> Result<&(GrammarInput, DeclarationResult), AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.grammar_input(kind, recipe)
+        let index = match kind {
+            crate::DeclarationKind::Effect => 0,
+            crate::DeclarationKind::Trigger => 1,
+        };
+        self.grammar[index]
+            .get_or_init(|| verified.grammar_input(kind, recipe))
+            .as_ref()
+            .map_err(Clone::clone)
     }
 
     /// Both command families with their receivers' code, and the flag functions.
     pub(crate) fn dynamic_name_input(
         &self,
-    ) -> Result<crate::engine::analysis::dynamic_names::DynamicNameInput, AnalysisError> {
+    ) -> Result<crate::engine::analysis::dynamic_names::DynamicNameInput<'_>, AnalysisError> {
         use crate::DeclarationKind;
         use crate::engine::analysis::dynamic_names::{CommandFamily, DynamicNameInput};
 
@@ -707,10 +722,10 @@ impl BoundAnalysis {
         ]
         .into_iter()
         .map(|(kind, slots)| {
-            let (grammar, inventory) = verified.grammar_input(kind, recipe)?;
+            let (grammar, inventory) = self.cached_grammar_input(kind, &verified)?;
             Ok(CommandFamily {
                 kind,
-                declarations: grammar.declarations,
+                declarations: &grammar.declarations,
                 inventory,
                 slots,
             })

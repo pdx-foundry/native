@@ -7,6 +7,253 @@ These findings apply only to M45-release and its ARM64 slice, identified in
 child key, and version 4 follows out-of-line trigger factories; the counts on this page were
 measured with versions 1 and 6.
 
+## Engine facts on M45-release
+
+Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
+ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+These are current engine facts for `command-grammar/v4`, with `dynamic-names/v1` and
+`registry-fields/v7`. They do not establish complete value grammars or target-scope answers.
+
+### F1. The family dispatch always calls `Read`
+
+`CEffect::ReadMember(CReader&, int, EScopeType)` finds the factory, calls its create method,
+stores the token at command `+0x20` and the file location at `+0x28`, checks the command's own
+scope (slot `+0xa0`, message "Wrong scope for effect"), and then calls the command's virtual
+`Read` (slot `+0x10`) with the command, the reader and the scope. It never calls `Assign`.
+**It does not read the result of `Read`**: the call is followed by the function's return. A
+`Read` that tail-calls `Assign` returns the result of `Assign`, so the dispatch ignores that
+result too.
+
+Reproduce:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEffect::ReadMember(CReader&, int, EScopeType)'
+```
+
+### F2. Outer `Read` shapes (`--lookup-census '::Read(CReader&, EScopeType)'`: 244 bodies, 64 groups)
+
+Count of joined commands for each outer `Read`, from `examples/command-population`:
+
+| Outer `Read` | Effects (937 joined) | Triggers (1,018 joined) | What the body does |
+| --- | ---: | ---: | --- |
+| `CEffect::Read` / `CTrigger::Read` | 463 | 244 | Block. If the reader's value kind (`[reader+0x278]`) is not 3 and the command's byte at `+0x78` (effects) or `+0x60` (triggers) is 0, it logs `Expected "<name> = {", but got …` through `CLogger::Log` and `CLogStream`, then continues. On every path, the loop calls `CReader::ReadSimpleStatement()`, loads the key token from `[reader+0x38]`, and calls the virtual `ReadMember` (effects `+0x18`, triggers `+0x38`). Token `0x438` (inline script) makes a new reader, sets the byte to 1, calls `Read` again and restores the byte. |
+| `CSimpleAssignEffect::Read` / `CSimpleAssignTrigger::Read` | 298 | 329 | Value. Tail call to the virtual `Assign` (effects `+0x20`, triggers `+0x28`) with `x1 = reader + 0x278`. The trigger form first calls `CAssignOperator::Read(CReader&)` into command `+0x64`. It does not test the value kind. |
+| `CCompareTrigger::Read` | — | 242 | Value with a comparison operator: `CCompareOperator::Read(CReader&)`, then the virtual `Assign`. |
+| `CDatabaseObjectEffect<D>::Read` / `…Trigger<D>::Read` | 61 | 120 | Reference. Tail call to `NParserUtil::ReadKeyReferenceDeferred<D>`. |
+| `CEventTargetEffect::Read` | 39 | — | Target value (F4), stored at command `+0xa8`. |
+| `CComplexIntEffect::Read`, `CComplexIntTrigger::Read`, `CComplexValue…::Read` | 40 | 46 | Tail call to the base block reader. |
+| Both forms: `CAddDistrictEffect::Read` and 15 more bodies of one shape | 16 bodies | — | `[reader+0x278] == 3`: tail call to `CEffect::Read`. Otherwise: tail call to the virtual `Assign`. |
+| Other bodies | 20 | 37 | One to eight commands each. |
+
+Not joined: effects 134 `command-vtable`, 2 `factory-terminal`, 1 `instruction`; triggers 78
+`command-vtable`.
+
+Reproduce:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --lookup-census '::Read(CReader&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEffect::Read(CReader&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CTrigger::Read(CReader&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CSimpleAssignTrigger::Read(CReader&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CSimpleAssignEffect::Read(CReader&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CCompareTrigger::Read(CReader&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CAddDistrictEffect::Read(CReader&, EScopeType)'
+```
+
+### F3. `Assign`
+
+- Signature `Assign(CToken const&, EScopeType)`. `x1` is the reader's value token at
+  `reader + 0x278`. The token's id is at token `+0`; its text is at `reader + 0x288`.
+  It returns a Boolean in `w0`. `CEffect::Assign` and `CTrigger::Assign` return 0.
+- `--lookup-census '::Assign(CToken const&, EScopeType)'`: 999 bodies (lambdas included) in 103
+  groups.
+- `CSimpleAssignTrigger::Assign` makes an event target from each token (F4) at command `+0x68`,
+  walks the target chain and returns true when the token is a scope keyword.
+- `CBoolTrigger::Assign` calls that base first. If it returns false, it compares the token id
+  with two literal tokens (`0x3fef`, `0x2cac`), stores the value at `+0x1f8` and sets `+0x1f9`.
+  For another token it returns false with no log. It loads the operator token that `Read`
+  stored at `+0x64`; `0x427` inverts the value.
+- `CBoolTrigger::PostValidate() const` logs "A boolean trigger at %s has been assigned an invalid
+  value. Expected: yes/no." when `+0x1f9` is not 1, and returns `+0x1f9 == 1`. So the parser
+  takes a target for a Boolean trigger, and validation rejects it with a diagnostic.
+- `CIntEffect::Assign` calls `CVariableValue::Assign(CToken const&, EScopeType, CString const&)`
+  on command `+0xa8`.
+
+Reproduce:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --lookup-census '::Assign(CToken const&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CBoolTrigger::Assign(CToken const&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CBoolTrigger::PostValidate() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CSimpleAssignTrigger::Assign(CToken const&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CIntEffect::Assign(CToken const&, EScopeType)'
+```
+
+### F4. Event targets
+
+- A reader stores a target with one idiom: `CToken::CToken(CToken const&)` from
+  `reader + 0x278` to a stack temporary, then
+  `CEventTarget::CEventTarget(CToken, EScopeType, CString const&)` to a second temporary, then
+  `CEventTarget::operator=(CEventTarget&&)` with `x0 = owner + D`. The constructor calls
+  `CEventTarget::ValidateScope`, which checks the chain of links, not the command's expectation.
+- The same idiom reads a key: `create_starbase` `owner` stores at `+0x130`.
+- **Explicit checks of the target's scope type are rare.** `CEventTarget::GetScopeType()` has 32
+  direct callers. Those in command code: `CActivateGateway::PostValidate`,
+  `CAutoFollowFleetEffect::PostValidate`, `CHasHyperlaneToTrigger::Assign`, and about ten
+  `ExecuteActual` or `ActualEvaluate` bodies.
+- **Most commands use a typed getter at execution.** `CSetOwnerEffect::ExecuteActual` starts
+  with `add x0, x0, #0xa8` and `CEventTarget::AccessTargetCountryWithErrorLogging`. The typed
+  getters are `CEventTarget::GetScope<Type>`, `GetTarget<Type>WithErrorLogging` and
+  `AccessTarget<Type>WithErrorLogging`. Each calls
+  `CEventTarget::GetScope(CEventScope&, char const*)`, which returns a scope object through
+  `x8`, and then a typed accessor such as `CScopeObjectReference::GetCountry()`.
+- Most typed accessors compare the scope's type field (`+0x8`) with one constant
+  (`GetCountry`: 4, `GetShip`: 8) and return `TPdxNullObject<T>::_pInstance` for another type.
+  `GetGrowthStage()` instead compares with `0x8000000000` and returns literal zero on mismatch.
+  `GetGalacticCommunity()` and `GetObject<CGalacticCommunity>()` return the global state's
+  community pointer without a type check or a null-object rejection.
+- `CEffect::CheckScopeSupport*` and `CTrigger::CheckScopeSupport*` test the command's own scope
+  (the getter at effects `+0x80`). They do not test a target argument.
+
+The census of all 45 `CScopeObjectReference::Get*` bodies contains 41 typed accessors:
+38 null-object accessors, one literal-zero accessor (`GetGrowthStage`), and two global-state
+accessors (the Galactic Community pair). The four other bodies are `GetLocalPointer`,
+`GetColonyCarrierRef`, `GetOpenerID`, and `GetObjectName`; they are not typed target accessors.
+`GetDesign` uses `TPdxNullObject<CShipDesign>` and `GetDlcRecommendation` uses
+`TPdxNullObject<SDlcRecommendationScriptData>`, so deriving these types from the method suffix
+alone would give the wrong null object.
+
+Pitfall: the literal-zero accessor has no bound rejection null object. The two global-state
+accessors also have none and do not check the type. All three are explicitly bound as
+`NoNullObject`; the target getter analysis must keep them unresolved. Treating any other return
+value as acceptance would falsely accept every scope bit. **Literal-zero accessor rejection**
+is a candidate follow-up, not a supported rejection rule.
+
+The full census and its summary are retained in `.local/sdk-548/foundations/`. To reproduce every
+body, run `--symbols 'CScopeObjectReference::Get'`, then run `--function` on each returned name.
+The retained `accessor-census.py` performs that loop; it reads only inspector output.
+
+Reproduce:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventTargetEffect::Read(CReader&, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CCreateStarbaseEffect::ReadMember(CReader&, int, EScopeType)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --callers 'CEventTarget::GetScopeType() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CSetOwnerEffect::ExecuteActual(CEventScope&) const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventTarget::GetScopeCountry(CEventScope&) const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CScopeObjectReference::GetCountry() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CScopeObjectReference::GetShip() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --symbols 'CScopeObjectReference::Get'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CScopeObjectReference::GetGrowthStage() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CScopeObjectReference::GetGalacticCommunity() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CGalacticCommunity const* CScopeObjectReference::GetObject<CGalacticCommunity>() const'
+```
+
+### F5. Receiver stops
+
+- `add_resource`: `CEffectEntry<CAddResourceEffect>::Create()` stores the vtable, then calls
+  `CFixedResourceTable::CFixedResourceTable()` with `x0 = object + 0xa8`. That class has no
+  vtable group, so the walk forgets the allocation.
+- `exists`: the create method calls `CEventTarget::CreateFromToken(int)` with `x8 = object +
+  0x68`. That function is `mov x1, x0; mov x0, x8; b CEventTarget::CEventTarget(int)`: a wrapper
+  that tail-calls a constructor with the result address as receiver.
+
+Reproduce:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar add_resource --trace
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEffectEntry<CAddResourceEffect>::Create() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar exists --trace
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventTarget::CreateFromToken(int)'
+```
+
+### F6. Present state of the acceptance samples
+
+| Command | Outer `Read` | Member reader | Established keys | Stops |
+| --- | --- | --- | --- | --- |
+| `create_starbase` | `CEffect::Read` | its own | `size` String, `effect` Block; `owner`, `design`, `module`, `building` Unknown | `reader-routing` |
+| `add_district` | both forms | its own | `district_type` String, `ignore_cap` and `type_conversion` Boolean | none |
+| `set_timed_country_flag` | `CComplexIntEffect::Read` | its own | `flag`, `days`, `months`, `years` Unknown | `reader-routing` |
+| `set_country_flag`, `remove_country_flag`, `add_tradition` | simple assign | family dispatch (inherited) | none | none |
+| `always`, `has_country_flag` | simple assign | `CTrigger::ReadMember` | none | none |
+| `has_tradition` | database object | `CTrigger::ReadMember` | none | none |
+| `add_resource`, `join_war_on_side`, `exists` | not joined | — | — | `command-vtable` |
+
+`create_starbase` key shapes behind `reader-routing`: the target idiom (`owner`); an array
+element made by `CPdxArray<CString, int>::SetSizeAndEmplace` and read by
+`CReader::Read(CString&, bool)` (`module`, `building`); `CPdxOptional<CString>::SetEmplace`
+from the token text (`design`).
+
+Reproduce:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar create_starbase
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar add_district
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar set_timed_country_flag
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar set_country_flag
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar remove_country_flag
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar add_tradition
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar always
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar has_country_flag
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar has_tradition
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar add_resource
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar join_war_on_side
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar exists
+```
+
+### F7. Stages, their results, and construction
+
+- Slots from the address point. Effects: `PostInit` `+0x90`, `PostValidate` `+0x98`,
+  `ExecuteActual` `+0x50`. Triggers: `PostValidate` `+0x68`, `PostInit` `+0x70`,
+  `ActualEvaluate` `+0x20`. `CEffect::PostInit` and `CTrigger::PostInit` are `ret`.
+  `CEffect::PostValidate` and `CTrigger::PostValidate` are `mov w0, #1; ret`.
+- Each command constructor adds the command to its database. The `CEffect::CEffect()` body
+  at `0x1004571b0` inserts directly through `CPdxArray<CEffect*, int>::InsertAtEmplace`;
+  its other entry at `0x10045741c` tail-calls that body. It does not call
+  `CEffectDatabase::AddEffect`. `CTrigger::CTrigger()` calls `CTriggerDatabase::AddTrigger`.
+  `CEffectDatabase::PostInit()` calls slot `+0x90` of every command in the database;
+  `CEffectDatabase::PostValidate()` calls slot `+0x98` of every command;
+  `CTriggerDatabase::PostValidate()` calls slot `+0x68` of every command. So the engine runs
+  both stages for every command that it constructs.
+- **Both validation drivers ignore the result.** After the `blr` to the slot, neither driver
+  reads `w0`; each goes to the next command and leaves the command in the database. The
+  inspector finds direct calls only, so a caller of the slot through a register, other than the
+  two drivers, is not excluded.
+- **Consequence.** No inspected engine path rejects a value because a stage returned false.
+  The engine's observable rejection is the diagnostic. A false result with no diagnostic does
+  not establish acceptance and does not establish rejection.
+- `PostValidate` returns a Boolean. In the three bodies that were inspected
+  (`CBoolTrigger`, `CIfEffect`, `CMultipleTargetEffect`), each path that returns false also
+  logs through `CPdxLogFileAndLine`. This is not established for the 1,796 `PostValidate`
+  symbols of the build.
+- Order in `CGameApplication::InitGame()`: `NNullObjAndDatabaseInitUtil::SetupDatabases` (content
+  is read; `CGlobalDeferredDatabaseObjectResolver::Run()` is called inside it), then
+  `CTriggerDatabase::PostInit()`, `CTriggerDatabase::PostValidate()`,
+  `CEffectDatabase::PostInit()`, `CEffectDatabase::PostValidate()`, then
+  `CPostInitVariableValueDatabase::ProcessVariableValues()`.
+  **Stage order for one command: read, deferred references resolved, `PostInit`, `PostValidate`.**
+- The base constructors write the log-suppression byte of F2 as zero: `CEffect::CEffect()` has
+  `strb wzr, [x0, #0x78]`; `CTrigger::CTrigger()` has `strb wzr, [x0, #0x60]`. Each then registers
+  the object in its database, as described above. The factory walk uses constructor summaries and
+  forgets these bytes, so the walk of today does not establish them.
+
+Reproduce:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 0x1004571b0
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 0x10045741c
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 0x100d06974
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEffectDatabase::PostInit()'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEffectDatabase::PostValidate() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CTriggerDatabase::PostInit()'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CTriggerDatabase::PostValidate() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEffect::PostInit()'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CTrigger::PostInit()'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEffect::PostValidate() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CTrigger::PostValidate() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CGameApplication::InitGame()'
+```
+
 ## Parser observation
 
 Field parser entry and return are separate from storage decoding. The live

@@ -176,6 +176,45 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     }
 }
 
+/// Whether the call arguments have the provenance required by a shared reader.
+pub(crate) fn arguments_join(
+    name: &str,
+    arguments: &std::collections::BTreeMap<String, crate::engine::analysis::fields::Value>,
+    member_delegates: bool,
+) -> bool {
+    use crate::engine::analysis::fields::Value;
+    let get = |key: &str| arguments.get(key);
+    let owner = |value: Option<&Value>| matches!(value, Some(Value::Owner(_)));
+    if is_member(name) {
+        member_delegates
+            && owner(get("x0"))
+            && get("x1") == Some(&Value::Reader(0))
+            && matches!(get("x2"), Some(Value::Token | Value::TokenWord(0)))
+    } else if name.ends_with("::Read(CReader&, EScopeType)") {
+        owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
+    } else if name.starts_with("CReader::Read(") {
+        get("x0") == Some(&Value::Reader(0)) && owner(get("x1"))
+    } else if name == "CVariableValue::Read(CReader&, EScopeType)" {
+        owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
+    } else if name.starts_with("void NParserUtil::ReadEffect<")
+        || name.starts_with("void NParserUtil::ReadTrigger<")
+    {
+        get("x0") == Some(&Value::Reader(0)) && owner(get("x1"))
+    } else if let Some(reference) = crate::engine::analysis::references::reader(name) {
+        use crate::engine::analysis::references::ReaderForm;
+
+        match reference.form {
+            ReaderForm::Deferred | ReaderForm::DeferredList | ReaderForm::DeferredIndex => {
+                owner(get("x0")) && get("x1") == Some(&Value::Reader(0)) && owner(get("x2"))
+            }
+            ReaderForm::Immediate => get("x0") == Some(&Value::Reader(0)),
+            ReaderForm::ImmediateList => get("x0") == Some(&Value::Reader(0)) && owner(get("x2")),
+        }
+    } else {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

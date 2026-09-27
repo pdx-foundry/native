@@ -23,6 +23,7 @@ pub mod routes;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
 
+use super::commands::{OBJECT_SPAN, calls_any, forget_if_passed, stand_in_command};
 use super::declarations::{
     self, DeclarationInput, DeclarationResult, ScopeOutcome, ScopeType, Site, number,
 };
@@ -35,9 +36,6 @@ use routes::{Route, RouteInput, Routes, STAND_IN_STRIDE, position_or_push, stand
 
 /// Name and revision of this static method.
 pub const METHOD: &str = "dynamic-names/v1";
-
-/// Bytes of a stand-in command object that the method tracks.
-const OBJECT_SPAN: u64 = 0x1000;
 
 /// The flag index that the interner returns in a run; it marks where the reader stores it.
 const INDEX_MARKER: u64 = 0xa5c3;
@@ -82,16 +80,16 @@ pub struct CommandSlots {
 }
 
 /// One command family: its registrations and the code that their receivers reach.
-pub struct CommandFamily {
+pub struct CommandFamily<'a> {
     pub kind: DeclarationKind,
-    pub declarations: DeclarationInput,
-    pub inventory: DeclarationResult,
+    pub declarations: &'a DeclarationInput,
+    pub inventory: &'a DeclarationResult,
     pub slots: CommandSlots,
 }
 
 /// Executable-derived input for the dynamic-name method.
-pub struct DynamicNameInput {
-    pub families: Vec<CommandFamily>,
+pub struct DynamicNameInput<'a> {
+    pub families: Vec<CommandFamily<'a>>,
     pub functions: FlagFunctions,
     /// Offset of a scope object's type field, which holds the type's mask bit.
     pub scope_type_offset: u64,
@@ -166,11 +164,11 @@ enum Caller {
 }
 
 /// Examine every named command of every family.
-pub fn analyze(input: &DynamicNameInput) -> Vec<CommandNames> {
+pub fn analyze(input: &DynamicNameInput<'_>) -> Vec<CommandNames> {
     let mut commands = Vec::new();
     for family in &input.families {
         let mut examiner = Examiner::new(input, family);
-        for (name, registration) in registrations(&family.inventory) {
+        for (name, registration) in registrations(family.inventory) {
             let outcome = match registration {
                 Ok((factory, scopes)) => examiner.command(factory, &scopes),
                 Err(stop) => NameOutcome::NotExamined(stop),
@@ -448,15 +446,15 @@ impl RoleCalls {
 
 /// One family's commands, with the runs that commands share.
 struct Examiner<'a> {
-    input: &'a DynamicNameInput,
-    family: &'a CommandFamily,
+    input: &'a DynamicNameInput<'a>,
+    family: &'a CommandFamily<'a>,
     reads: HashMap<u64, NameRead>,
     routes: Routes<'a>,
 }
 
 impl<'a> Examiner<'a> {
-    fn new(input: &'a DynamicNameInput, family: &'a CommandFamily) -> Self {
-        let declarations = &family.declarations;
+    fn new(input: &'a DynamicNameInput<'a>, family: &'a CommandFamily<'a>) -> Self {
+        let declarations = family.declarations;
         let routes = Routes::new(RouteInput {
             functions: &declarations.functions,
             pointers: &declarations.pointers,
@@ -472,7 +470,7 @@ impl<'a> Examiner<'a> {
     }
 
     fn command(&mut self, factory: u64, scopes: &ScopeOutcome) -> NameOutcome {
-        let declarations = &self.family.declarations;
+        let declarations = self.family.declarations;
         let reader = match declarations::command_reader(declarations, factory) {
             Ok(reader) => reader,
             Err(stop) => return NameOutcome::NotExamined(stop),
@@ -763,34 +761,6 @@ fn dynamic_form(read: &NameRead, kept: Option<(u64, u64)>, joined: bool) -> Dyna
 fn push_new(stops: &mut Vec<Unresolved>, stop: &Unresolved) {
     if !stops.contains(stop) {
         stops.push(stop.clone());
-    }
-}
-
-/// Whether `rows` call or tail-call one of `targets`.
-fn calls_any(rows: &[Instruction], targets: &[u64]) -> bool {
-    rows.iter()
-        .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
-        .filter_map(|row| number(&row.operands))
-        .any(|target| targets.contains(&target))
-}
-
-/// A command object whose vtable is `vtable` and whose other fields are unknown.
-fn stand_in_command(machine: &mut Machine<'_>, vtable: u64) -> u64 {
-    let command = machine.reserve(OBJECT_SPAN);
-    machine.write(command, 8, vtable);
-
-    command
-}
-
-/// An unknown call that receives a pointer into the command object may write any of it.
-fn forget_if_passed(machine: &mut Machine<'_>, command: u64) {
-    let passed = (0..8).any(|register| {
-        machine
-            .register(register)
-            .is_some_and(|value| (command..command + OBJECT_SPAN).contains(&value))
-    });
-    if passed {
-        machine.forget(command, OBJECT_SPAN);
     }
 }
 

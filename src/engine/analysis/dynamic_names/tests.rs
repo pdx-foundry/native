@@ -88,9 +88,16 @@ fn flag_slots(role: u64, accessor: u64) -> [(u64, u64); 3] {
     ]
 }
 
+struct AuthoredFamily {
+    kind: DeclarationKind,
+    declarations: DeclarationInput,
+    inventory: DeclarationResult,
+    slots: CommandSlots,
+}
+
 /// A family of `commands` whose slot functions are `bodies`. Each command gets a factory, a
 /// create method and a vtable of its own; unset reader slots hold a stub.
-fn family(kind: DeclarationKind, commands: Vec<Authored>, bodies: Vec<Arm64>) -> CommandFamily {
+fn family(kind: DeclarationKind, commands: Vec<Authored>, bodies: Vec<Arm64>) -> AuthoredFamily {
     let mut functions: BTreeMap<u64, Function> = bodies
         .into_iter()
         .map(function)
@@ -137,7 +144,7 @@ fn family(kind: DeclarationKind, commands: Vec<Authored>, bodies: Vec<Arm64>) ->
         ));
     }
 
-    CommandFamily {
+    AuthoredFamily {
         kind,
         declarations: DeclarationInput {
             tokens: BTreeMap::new(),
@@ -184,9 +191,17 @@ fn family(kind: DeclarationKind, commands: Vec<Authored>, bodies: Vec<Arm64>) ->
     }
 }
 
-fn analyzed(families: Vec<CommandFamily>) -> BTreeMap<String, NameOutcome> {
+fn analyzed(families: Vec<AuthoredFamily>) -> BTreeMap<String, NameOutcome> {
     let input = DynamicNameInput {
-        families,
+        families: families
+            .iter()
+            .map(|family| CommandFamily {
+                kind: family.kind,
+                declarations: &family.declarations,
+                inventory: &family.inventory,
+                slots: family.slots,
+            })
+            .collect(),
         functions: FlagFunctions {
             name_reader: NAME_READER,
             interner: INTERNER,
