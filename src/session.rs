@@ -7,6 +7,8 @@ pub(crate) use loaded_modifiers::ModifierJoin;
 mod callbacks;
 pub mod command_grammar_stops;
 mod defines;
+pub mod dynamic_name_commands;
+mod dynamic_names;
 mod families;
 mod fields;
 mod grammar;

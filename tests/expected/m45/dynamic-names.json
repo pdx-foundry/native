@@ -1,0 +1,41 @@
+{
+  "count": 31,
+  "gaps": { "OutsideMethod": 3, "ReaderSemantics": 29, "UnresolvedReader": 215 },
+  "namespaces": [
+    {
+      "owner": "global",
+      "defined_by": ["Effect set_design_flag", "Effect set_global_flag", "Effect set_timed_global_flag"],
+      "removed_by": ["Effect remove_design_flag", "Effect remove_global_flag"],
+      "read_by": ["Trigger has_design_flag", "Trigger has_global_flag"],
+      "dynamic_form": "TargetSuffix"
+    },
+    {
+      "owner": "country",
+      "defined_by": ["Effect set_country_flag", "Effect set_timed_country_flag"],
+      "removed_by": ["Effect remove_country_flag"],
+      "read_by": ["Trigger has_country_flag"],
+      "dynamic_form": "TargetSuffix"
+    },
+    {
+      "owner": "dlc_recommendation",
+      "defined_by": [],
+      "removed_by": [],
+      "read_by": ["Trigger has_star_flag"],
+      "dynamic_form": "TargetSuffix"
+    },
+    {
+      "owner": "galactic_object",
+      "defined_by": ["Effect set_star_flag", "Effect set_timed_star_flag"],
+      "removed_by": ["Effect remove_star_flag"],
+      "read_by": [],
+      "dynamic_form": "TargetSuffix"
+    },
+    {
+      "owner": "galactic_object",
+      "defined_by": [],
+      "removed_by": [],
+      "read_by": ["Trigger has_star_flag"],
+      "dynamic_form": "TargetSuffix"
+    }
+  ]
+}

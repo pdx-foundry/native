@@ -81,6 +81,50 @@ impl ReadOnlyData {
         }
     }
 
+    /// These bytes with each 8-byte little-endian word of `words` at its address, such as the
+    /// targets of an executable's pointer slots. A word replaces the bytes that it covers in a
+    /// section; consecutive words outside every section become sections of their own. A word
+    /// that crosses a section boundary is left out.
+    pub fn with_words(&self, words: &BTreeMap<u64, u64>) -> Self {
+        let mut sections = self.sections.clone();
+        let mut outside = BTreeMap::<u64, Vec<u8>>::new();
+        let mut run: Option<(u64, Vec<u8>)> = None;
+        for (&address, &word) in words {
+            let Some(end) = address.checked_add(8) else {
+                continue;
+            };
+            let within = sections
+                .range_mut(..=address)
+                .next_back()
+                .filter(|(start, bytes)| address < **start + bytes.len() as u64);
+            if let Some((start, bytes)) = within {
+                let offset = (address - start) as usize;
+                if let Some(slot) = bytes.get_mut(offset..offset + 8) {
+                    slot.copy_from_slice(&word.to_le_bytes());
+                }
+                continue;
+            }
+            if self.sections.range(address..end).next().is_some() {
+                continue;
+            }
+            match &mut run {
+                Some((start, bytes)) if *start + bytes.len() as u64 == address => {
+                    bytes.extend_from_slice(&word.to_le_bytes());
+                }
+                _ => {
+                    if let Some((start, bytes)) = run.take() {
+                        outside.insert(start, bytes);
+                    }
+                    run = Some((address, word.to_le_bytes().to_vec()));
+                }
+            }
+        }
+        outside.extend(run);
+        sections.extend(outside);
+
+        Self { sections }
+    }
+
     fn byte(&self, address: u64) -> Option<u8> {
         let (start, bytes) = self.sections.range(..=address).next_back()?;
         let offset = usize::try_from(address - start).ok()?;
@@ -2489,6 +2533,26 @@ mod tests {
                     operands: (*operands).into(),
                 }),
         )
+    }
+
+    #[test]
+    fn words_overlay_sections_and_extend_outside_them() {
+        let data = ReadOnlyData::new(vec![(0x1000, vec![0xaa; 0x10])]);
+        let words = BTreeMap::from([
+            (0x1008, 0x1122_3344_5566_7788),
+            (0x100c, 0x99), // crosses the section's end
+            (0x2000, 0x2222),
+            (0x2008, 0x3333),
+            (0x3000, 0x4444),
+        ]);
+        let overlaid = data.with_words(&words);
+        assert_eq!(overlaid.read(0x1000, 8), Some(0xaaaa_aaaa_aaaa_aaaa));
+        assert_eq!(overlaid.read(0x1008, 8), Some(0x1122_3344_5566_7788));
+        assert_eq!(overlaid.read(0x2000, 8), Some(0x2222));
+        assert_eq!(overlaid.read(0x2008, 8), Some(0x3333));
+        assert_eq!(overlaid.read(0x2010, 1), None);
+        assert_eq!(overlaid.read(0x3000, 8), Some(0x4444));
+        assert_eq!(data.read(0x1008, 8), Some(0xaaaa_aaaa_aaaa_aaaa));
     }
 
     /// A stop of a run that entered at 0x100.

@@ -1163,7 +1163,7 @@ fn observe(native: &Native) -> Observed {
     let receiver_failures = [
         (DeclarationKind::Effect, "pop_change_ethic"),
         (DeclarationKind::Trigger, "exists"),
-        (DeclarationKind::Trigger, "has_country_flag"),
+        (DeclarationKind::Trigger, "branch_office_value"),
     ]
     .map(|(kind, name)| {
         let run = command_grammar_stops::run(native, kind, name).unwrap();
@@ -1192,6 +1192,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let on_actions = real.on_actions().unwrap();
     let game_rules = real.game_rules().unwrap();
     let defines = real.defines().unwrap();
+    let dynamic_names = real.dynamic_names().unwrap();
     let grammar = real
         .command_grammar(DeclarationKind::Effect, "random_list")
         .unwrap();
@@ -1225,6 +1226,9 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let mut again = recorded.defines().unwrap();
     again.source.basis = defines.source.basis;
     assert_eq!(again, defines);
+    let mut again = recorded.dynamic_names().unwrap();
+    again.source.basis = dynamic_names.source.basis;
+    assert_eq!(again, dynamic_names);
     let mut again = recorded
         .command_grammar(DeclarationKind::Effect, "random_list")
         .unwrap();
@@ -1276,7 +1280,7 @@ fn control_grammar_preserves_shared_readers_and_partial_properties() {
         let mut identities = BTreeMap::new();
         for name in names {
             let answer = native.command_grammar(kind, name).unwrap();
-            assert_eq!(answer.source.method, "command-grammar/v3");
+            assert_eq!(answer.source.method, "command-grammar/v4");
             assert_eq!(answer.completeness, Completeness::Partial);
             assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
             assert_eq!(
@@ -1391,4 +1395,79 @@ fn council_presence_initialization_does_not_restrict_field_reads() {
         assert_eq!(field.shape.value, ValueShape::Scalar);
         assert_eq!(field.shape.repeat, RepeatBehavior::Replace);
     }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
+    #[derive(serde::Deserialize)]
+    struct Expected {
+        count: usize,
+        gaps: BTreeMap<String, usize>,
+        namespaces: Vec<Value>,
+    }
+    let expected: Expected = expected("dynamic-names.json");
+    let native = native();
+    assert_eq!(
+        native.supports(Operation::DynamicNames),
+        pdx_native::Support::Supported
+    );
+    let answer = native.dynamic_names().unwrap();
+    assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+    assert_eq!(answer.source.method, "dynamic-names/v1");
+    assert_eq!(answer.completeness, Completeness::Partial);
+    assert_eq!(answer.value.len(), expected.count);
+    assert_eq!(gap_counts(&answer), expected.gaps);
+
+    let samples: std::collections::BTreeSet<String> = expected
+        .namespaces
+        .iter()
+        .flat_map(|namespace| {
+            ["defined_by", "removed_by", "read_by"]
+                .into_iter()
+                .flat_map(|role| namespace[role].as_array().unwrap().clone())
+        })
+        .map(|command| command.as_str().unwrap().to_owned())
+        .collect();
+    let compact: Vec<Value> = answer.value.iter().map(compact_namespace).collect();
+    let sampled: Vec<&Value> = compact
+        .iter()
+        .filter(|namespace| {
+            ["defined_by", "removed_by", "read_by"]
+                .into_iter()
+                .any(|role| {
+                    namespace[role]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|command| samples.contains(command.as_str().unwrap()))
+                })
+        })
+        .collect();
+    assert_eq!(sampled, expected.namespaces.iter().collect::<Vec<_>>());
+
+    let text = serde_json::to_string(&answer).unwrap();
+    assert!(!text.contains("Flag("), "no native type name in the answer");
+}
+
+/// A namespace without its build-local identity: its owner's name, its commands as
+/// `kind name`, and its form.
+fn compact_namespace(namespace: &pdx_native::DynamicNamespace) -> Value {
+    let owner = match &namespace.owner {
+        pdx_native::NamespaceOwner::Global => "global".to_owned(),
+        pdx_native::NamespaceOwner::Scope(scope) => scope.name.clone(),
+    };
+    let commands = |commands: &[pdx_native::CommandReference]| -> Vec<String> {
+        commands
+            .iter()
+            .map(|command| format!("{:?} {}", command.kind, command.name))
+            .collect()
+    };
+    json!({
+        "owner": owner,
+        "defined_by": commands(&namespace.defined_by),
+        "removed_by": commands(&namespace.removed_by),
+        "read_by": commands(&namespace.read_by),
+        "dynamic_form": format!("{:?}", namespace.dynamic_form),
+    })
 }

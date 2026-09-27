@@ -179,11 +179,11 @@ alternative is unconditional.
 
 | Commands | Effects (1,074) | Triggers (1,096) |
 | --- | ---: | ---: |
-| Lookup joined to a child key, complete | 26 | 8 |
+| Lookup joined to a child key, complete | 26 | 9 |
 | Initialization lookup without an authored field | 7 | 4 |
-| Initializer with no lookup | 855 | 810 |
-| Initializer lookup not established | 49 | 40 |
-| Receiver join failed | 137 | 234 |
+| Initializer with no lookup | 855 | 963 |
+| Initializer lookup not established | 49 | 42 |
+| Receiver join failed | 137 | 78 |
 
 Joined effects include `create_ship` (`random_existing_design`, `common/ship_sizes`, `Equal`,
 empty key not looked up), `add_district` (`district_type`, `common/districts`, `FirstEqual`) and
@@ -224,3 +224,151 @@ value, which has no child key (`add_tradition`, `remove_relic`, `set_pre_ftl_age
   joins only when its string reader stores at the lookup's key offset.
 - A shared initializer can serve many commands: `CFireEventEffect::PostInit()` calls
   `CEventManager::GetEvent`, and its failure appears on 20 event-firing effects.
+
+## Identifier grammar
+
+What the executable states about a key, and where the method stops. Each row applies to the
+lookups and flags on this page.
+
+| Property | Result on M45-release | Evidence or boundary |
+| --- | --- | --- |
+| Case | Byte for byte, no case folding | The scan shapes compare length, then bytes or `memcmp`; the qualified `Find<CString>` hashes with `_PMurHash32`, then compares length and bytes |
+| Encoding | Bytes; the lookup decodes nothing | The lexer's encoding is outside the method |
+| Quoting | Readers take the lexed token text at `CReader+0x288` | Quote handling is a lexer fact. The SDK-482 Intel spike saw quoted and unquoted `corvette` select one ship size; it is not established here |
+| Length | The whole key is compared; nothing truncates it | No maximum length is established |
+| Namespaces | One registry per lookup; flags intern in one table for every flag kind and are stored per scope object or in the global store | `ReferenceTarget`; `DynamicNamespace` |
+| Normalization | None in a lookup or in `CreateFlagIndex` | Lexer normalization is outside the method |
+| Collisions | A scan returns the first equal item; equal flag names are one flag in every store | `FirstEqual`; the shared interner |
+| Missing key | The typed null object | `MissingResult::NullObject`, from the shape's miss edge |
+| Duplicate definitions | A scan returns the first in collection order; a map keeps what loading inserted | Load-time replacement belongs to SDK-552 |
+
+## SDK-482 prototype
+
+The first reference method, SDK-482, matched four whole-function templates on the 4.5 beta and
+was retired at milestone 2. Its sources, `qualification_controls.py`, `patterns.json` and
+evidence are in the `typed-extraction` bundle under `reference-observation-prototype/`, and its
+branch `prototype/sdk-482-reference-observations` is in the `source-git` bundle
+([retrieval](retrieval.md)). The Rust port is `git show 1da4abf^:src/engine/analysis/references.rs`,
+and its expected beta cases are `git show f184f08:docs/native/reference-method-cases.json`.
+The 27 controls are now authored tests (`control_01_…` to `control_27_…`).
+
+The "two unfamiliar resolver shapes" were those of the earlier Intel 4.4.6 spike, whose
+contiguous map-find matcher returned unknown for District (a linear scan) and Army (an
+event-target chain). What each retained case gives now:
+
+| Case | SDK-482 on the beta | M45-release now |
+| --- | --- | --- |
+| Ship | Candidate `CShipSize` through a typed map call | `create_ship#random_existing_design`: `common/ship_sizes`, owner initialization, `Equal`, empty key not looked up |
+| District | Candidate `CDistrictType` through a scan | `add_district#district_type`: `common/districts`, `FirstEqual` |
+| Planet class | Candidate `CPlanetClass` through a getter | Gap: `change_pc`'s receiver join stops at `command-vtable`, and planet classes have no joined directory |
+| Army | Unknown | `create_army#type`: `common/armies`, while reading, `FirstEqual`; `PostInit` classifies event-target keywords and makes no lookup |
+| Relic | Candidate `CRelic` through the same scan | The lookup is established; `add_relic` copies its key inline, so no child key joins it |
+
+## Dynamic names
+
+`Native::dynamic_names` (`dynamic-names/v1`) groups the effects and triggers that define, remove
+and read integer flags by the store that each reaches. The method is
+`engine/analysis/dynamic_names.rs`, with store routes in `dynamic_names/routes.rs` and the read
+shape in `dynamic_names/membership_scan.shape`. `binding/binary/dynamic_names.rs` locates the
+flag functions by signature; the recipe holds each family's assign and role slots. Run it over
+every command with:
+
+```sh
+cargo run --release --example dynamic-name-population -- "$STELLARIS_PATH"
+```
+
+### Flag stores on M45-release
+
+- Slots from a command's vtable address point: effects `Assign` `+0x20`, `ExecuteActual`
+  `+0x50`, `AccessFlags` `+0xe8`; triggers `ActualEvaluate` `+0x20`, `Assign` `+0x28`,
+  `GetFlags` `+0xf8`.
+- `ReadAsDynamicFlag` writes the name to its `x1` destination and the target to its `x2`
+  destination, and returns true for `name@target`; the caller then returns without interning.
+  At run time a kept name selects `CreateDynamicFlag(scope, target, name, …)` in setters and
+  removers, and `GetDynamicFlag(scope, target, name, …, true)` in readers, instead of the stored
+  index.
+- Setters tail-call `CPdxIntegerFlags::SetFlag(CIntFlag<unsigned short>, CDate const&, int,
+  ESetFlagMode)` on the store that the accessor returns; removers tail-call `ClearFlag`.
+- `CEventScope::GetFlags() const` switches on the scope object's type field (`+0x8`, the type's
+  mask bit). Each case resolves the scope's object, a cached pointer or a `TPdxRef` database
+  lookup with the null object as fallback, and adds that object's flags offset (galactic object
+  `+0x5f0`, leader `+0x420`). A type without a case returns `_g_CurrentGameState + 0x478`, the
+  global store.
+- `CHasStarFlagTrigger::GetFlags` has its own getter: for type `0x8000000` (`dlc_recommendation`)
+  `CScopeObjectReference::GetDlcRecommendation() + 0x20`; otherwise
+  `CScopeObjectReference::GetGalacticObject() + 0x5f0`, logging when the object is invalid.
+- 206 trigger create methods `CTriggerEntry<T>::Create()` are one `b` to an out-of-line
+  `NTrigger::Create<T>`, which allocates the command, runs its constructors and installs its
+  vtables.
+
+### Dynamic-name result on M45-release
+
+The run examines all 2,170 registered commands (1,074 effects, 1,096 triggers) in about four
+seconds. Counts are distinct commands.
+
+| Outcome | Effects | Triggers | Total |
+| --- | ---: | ---: | ---: |
+| Not examined: command object not joined | 137 | 78 | 215 |
+| No flag name stored | 844 | 982 | 1,826 |
+| Complete: a role and every declared scope's store | 86 | 30 | 116 |
+| Partial: a role, but no declared scope set | 2 | 1 | 3 |
+| Failed: a stored flag name without a role | 5 | 5 | 10 |
+
+The complete commands form 31 namespaces: one global store and 30 scope stores (57 effects
+define, 29 remove, 30 triggers read). Every namespace accepts `name@target`.
+
+| Failure shape | Commands |
+| --- | --- |
+| `command-vtable`, `factory-terminal`, `instruction` (command object) | 212, 2 and 1 |
+| `role-store`: the flag store does not come from the accessor | `set_relation_flag`, `remove_relation_flag`, `set_saved_date` |
+| `no-role`: an interned name that no setter, remover or scan uses | points of interest (4), `has_relation_flag`, `reverse_has_relation_flag`, `timed_flag_days_left`, and the three above |
+| `scope-set`: no declared scope set | the astral rift flags (3), `set_saved_date`, `has_relation_flag`, `reverse_has_relation_flag` |
+| `branch-value`: a reader path that does not return, so the stored index and form are unproven | `timed_flag_days_left` |
+
+Findings:
+
+- Design flags share the global store: `set_design_flag`, `remove_design_flag` and
+  `has_design_flag` declare the design scope, whose type has no case in `GetFlags`.
+- A namespace is a store, not a flag kind: carrier flags reach the planet, ship and colony
+  stores, and `set_timed_ambient_object_flag` declares only the fleet scope, so it joins the
+  fleet namespace.
+- `has_star_flag` is in two namespaces of its own. Its galactic-object route calls
+  `GetGalacticObject()`; `set_star_flag` reaches the same object through the lookup that
+  `GetFlags` inlines. The method does not prove the two equal, so the stores stay separate.
+
+The receiver repair that dynamic names needed also changed `command_grammar`. The factory walk
+runs a tail-called function's code in place of the tail call, and constructor summaries include
+the constructors that it calls. Of the 206 triggers that stopped at `factory-return`, 156 now
+join their receiver (120 with fixed keys); 50, such as `branch_office_value`, now stop at
+`command-vtable` because the out-of-line factory calls an unknown member constructor after the
+last vtable store. No effect answer changed. The walk reads pointer slots from one read-only
+overlay instead of copying every slot into each walk, and the command population takes about one
+minute instead of four and a half.
+
+### Dynamic-name gaps
+
+- Saved event targets and variables are `OutsideMethod`. `save_event_target_as` interns its name
+  in the flag table, but the target is kept with the saved event targets of a scope or of the game
+  state, not in a flag store. Variables use `CVariables`, which does not intern names.
+- The 215 commands whose command object is not joined, and the relation flags, whose flag store
+  does not come from the command's accessor.
+- How `CreateDynamicFlag` forms the flag from the name and the target is not established; the
+  answer says only that the command keeps and uses both.
+- A namespace whose commands disagree on `name@target` has form `Unresolved` and a
+  `ReaderSemantics` gap that names each command's form. None does on M45-release.
+
+### Dynamic-name pitfalls
+
+- The interner alone is not a flag: points of interest, saved dates and saved event targets use
+  `CreateFlagIndex` too. A role needs the setter, the remover or the scan on the store that the
+  accessor returns, with the flag loaded from the stored index.
+- Follow the member reader as well as `Assign`: the timed setters split and intern their name in
+  `ReadMember` (`+0x2b4`).
+- The reader facts come from the paths that return. A reader path that stops, such as at an
+  unknown branch target or a path limit, is a stop of the command, and its form stays
+  `Unresolved`. A name that only an unreadable registration site names is not examined.
+- The evaluator cannot prove the readers' scan loop: a loop over an unknown count reaches the path
+  limit. Reads need the complete-function membership-scan shape.
+- A route that the method cannot follow falls back to its terminal, the function that receives
+  the scope object. Different terminals for the same store, such as the star flags, stay
+  separate; they are never guessed equal.

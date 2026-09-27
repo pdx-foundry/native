@@ -9,6 +9,7 @@
 mod answer;
 mod api;
 mod binding;
+mod dynamic_name;
 mod engine;
 mod execution;
 mod field;
@@ -34,6 +35,10 @@ pub use answer::{
     Support,
 };
 pub use api::OpenError;
+pub use dynamic_name::{
+    CommandReference, DynamicNameForm, DynamicNameKind, DynamicNamespace, DynamicNamespaceId,
+    NamespaceOwner,
+};
 pub use engine::operations::registry_items::GameReadiness;
 pub use field::{
     EmptyKey, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
@@ -63,5 +68,7 @@ pub mod internals {
     pub use crate::binding::inspect;
     pub use crate::engine::analysis::evaluate::trace_causes;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
-    pub use crate::session::{command_grammar_stops, reference_readers, registry_field_stops};
+    pub use crate::session::{
+        command_grammar_stops, dynamic_name_commands, reference_readers, registry_field_stops,
+    };
 }

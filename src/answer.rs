@@ -252,6 +252,8 @@ pub enum Operation {
     ObserveFixture,
     /// `Game::loaded_modifiers`
     LoadedModifiers,
+    /// `Native::dynamic_names`
+    DynamicNames,
 }
 
 /// One define whose name and value type the executable reads.
@@ -308,6 +310,7 @@ impl Operation {
         Self::RegistryItems,
         Self::ObserveFixture,
         Self::LoadedModifiers,
+        Self::DynamicNames,
     ];
 
     /// The operation's stable snake_case name, such as `registry_fields`.
@@ -329,6 +332,7 @@ impl Operation {
             Self::RegistryItems => "registry_items",
             Self::ObserveFixture => "observe_fixture",
             Self::LoadedModifiers => "loaded_modifiers",
+            Self::DynamicNames => "dynamic_names",
         }
     }
 
@@ -347,6 +351,7 @@ impl Operation {
                 | Self::LocalizationDeclarations
                 | Self::OnActions
                 | Self::GameRules
+                | Self::DynamicNames
         )
     }
 }
@@ -380,7 +385,8 @@ mod operation_tests {
             | Operation::GameRules
             | Operation::RegistryItems
             | Operation::ObserveFixture
-            | Operation::LoadedModifiers => 16,
+            | Operation::LoadedModifiers
+            | Operation::DynamicNames => 17,
         }
     }
 

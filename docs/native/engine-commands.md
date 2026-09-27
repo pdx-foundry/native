@@ -189,8 +189,9 @@ Forms that are not links:
 | `@` in an `event_target:` value | The dynamic-flag form (`ReadAsDynamicFlag`, as in `has_country_flag = name@target`). It names the saved target. |
 | `value:`, `trigger:` and other value prefixes | `CVariableValue::ReadTriggerModifierOrScriptValue` splits them on `:` and reads a number, not a scope (SDK-550). |
 
-Which saved target or parameter a value names, and whether it exists in a running game, belong
-to SDK-543 and SDK-550.
+Which saved target or parameter a value names, and whether it exists in a running game, are not
+established: saved event targets are an `OutsideMethod` gap of
+[dynamic names](references.md#dynamic-name-gaps), and parameters belong to SDK-550.
 
 ## Localization contexts, commands and links
 

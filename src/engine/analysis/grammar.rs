@@ -23,7 +23,7 @@ pub struct ChildLayout {
     pub token: i64,
 }
 
-pub const METHOD: &str = "command-grammar/v3";
+pub const METHOD: &str = "command-grammar/v4";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -399,6 +399,7 @@ mod tests {
                 (VTABLE + 0x10, READ),
                 (VTABLE + 0x18, ROOT),
             ]),
+            pointer_data: std::sync::OnceLock::new(),
             strings: BTreeMap::new(),
             slots: ScopeSlots {
                 create: 0x10,

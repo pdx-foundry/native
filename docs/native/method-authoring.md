@@ -213,7 +213,7 @@ Use the grammar inspector on an exact supported build:
 
 ```sh
 cargo run --release --example inspect -- --effect-grammar if
-cargo run --release --example inspect -- --trigger-grammar has_country_flag --trace
+cargo run --release --example inspect -- --trigger-grammar branch_office_value --trace
 ```
 
 The inspector retains registration instructions, the selected factory and its create method,

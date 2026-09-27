@@ -3,6 +3,7 @@
 use crate::binding::groups::M45_TEMPLATE_LAYOUT;
 use crate::engine::analysis::callbacks::{CallbackLayout, RuleArray};
 use crate::engine::analysis::declarations::ParserSlots;
+use crate::engine::analysis::dynamic_names::CommandSlots;
 use crate::engine::analysis::localization::TextLayout;
 
 // Each group is one build's bindings, so its name starts with the build.
@@ -40,6 +41,10 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub effect_scope_slot: u64,
     pub trigger_parser: ParserSlots,
     pub effect_parser: ParserSlots,
+    /// The assign-reader slot, and the evaluate or execute slot, that the dynamic-name method
+    /// reads.
+    pub trigger_names: CommandSlots,
+    pub effect_names: CommandSlots,
     pub persistent: PersistentRecipe,
     pub command_children: crate::engine::analysis::grammar::ChildLayout,
     pub numeric_key_reader: &'static str,
@@ -86,6 +91,14 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         read: 0x10,
         member: 0x18,
         initializer: 0x90,
+    },
+    trigger_names: CommandSlots {
+        assign: 0x28,
+        role: 0x20,
+    },
+    effect_names: CommandSlots {
+        assign: 0x20,
+        role: 0x50,
     },
     persistent: PersistentRecipe {
         read_slot: 0x20,
