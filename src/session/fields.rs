@@ -161,7 +161,7 @@ fn initialization_lookups(
     read_alternatives(field, paths)
         .iter()
         .filter(|(_, outcome)| {
-            matches!(outcome, PathOutcome::Reader(join) if stores_key(join, initialization))
+            matches!(outcome, PathOutcome::Reader(join) if stores_key(join, initialization.key_offset))
         })
         .map(|(conditions, _)| {
             reference_lookup(
@@ -182,15 +182,15 @@ pub(super) fn stores_initialization_key(
     field
         .readers
         .iter()
-        .any(|join| stores_key(join, initialization))
+        .any(|join| stores_key(join, initialization.key_offset))
 }
 
 /// Whether `join` is a string read that stores the initialization key. The read must be the
 /// path's tail call: an unexamined continuation may overwrite the key before `PostInit()`.
-fn stores_key(join: &ReaderJoin, initialization: &InitializationLookup) -> bool {
+pub(super) fn stores_key(join: &ReaderJoin, destination: i64) -> bool {
     matches!(join, ReaderJoin::Joined { tail: true, .. })
         && readers::classify(std::slice::from_ref(join)).kind == ReaderKind::String
-        && readers::destination(join) == Some(initialization.key_offset)
+        && readers::destination(join) == Some(destination)
 }
 
 fn with_lookup(reference: FieldReference, lookup: ReferenceLookup) -> FieldReference {
@@ -317,7 +317,7 @@ fn read_alternatives(field: &RootField, paths: &[TokenPath]) -> Vec<(Vec<Conditi
 
 /// The public lookup of one reference read. Each fact that the method did not establish stays
 /// unresolved; the field's gap names it.
-fn reference_lookup(
+pub(super) fn reference_lookup(
     condition: FieldCondition,
     directory: Option<String>,
     lookup: Option<&Lookup>,

@@ -63,11 +63,16 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
     for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
         let mut report = Report::default();
         let mut initialization = InitializationTally::default();
+        let mut forms = FormsTally::default();
         let population = command_grammar_stops::population(&native, kind, |name, run| {
             let diagnostics = diagnostics(&image, &run);
             initialization.add(name, &run, &references);
+            forms.add(name, &run);
             report.add(name, run.answer, &run.chain, diagnostics);
         })?;
+        if !forms.failures.is_empty() {
+            return Err(forms.failures.join("\n").into());
+        }
         inventories.push(json!({
             "kind": kind,
             "denominator": "unique named command operation answers; unknown observations are separate",
@@ -78,6 +83,7 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
             "failure_shapes": report.failure_shapes,
             "stop_groups": report.stop_groups,
             "initialization_lookups": initialization.report(),
+            "forms": forms,
             "cases": report.cases,
         }));
     }
@@ -121,14 +127,24 @@ impl Report {
                     .insert(name.into());
             }
         }
-        let status = match answer.completeness {
-            Completeness::Complete => {
-                self.totals.complete += 1;
-                "complete"
-            }
-            Completeness::Partial => {
-                self.totals.partial += 1;
-                "partial"
+        let failed = matches!(answer.value.forms, GrammarProperty::Unresolved)
+            && matches!(answer.value.fixed_keys, GrammarProperty::Unresolved)
+            && matches!(answer.value.child_families, GrammarProperty::Unresolved)
+            && matches!(answer.value.numeric_keys, GrammarProperty::Unresolved)
+            && matches!(answer.value.ordering, GrammarProperty::Unresolved);
+        let status = if failed {
+            self.totals.failed += 1;
+            "failed"
+        } else {
+            match answer.completeness {
+                Completeness::Complete => {
+                    self.totals.complete += 1;
+                    "complete"
+                }
+                Completeness::Partial => {
+                    self.totals.partial += 1;
+                    "partial"
+                }
             }
         };
         if chain.receiver.is_none() || chain.stopped_at == Some("reader slots and bodies") {
@@ -143,6 +159,108 @@ impl Report {
         self.cases.push(
             json!({"name": name, "status": status, "answer": answer, "diagnostics": diagnostics}),
         );
+    }
+}
+
+#[derive(Default, serde::Serialize)]
+struct FormsTally {
+    receiver_state: BTreeSet<String>,
+    value_acceptance: BTreeMap<String, BTreeSet<String>>,
+    false_without_diagnostic: BTreeMap<String, usize>,
+    form_reader_calls: BTreeMap<String, BTreeSet<String>>,
+    failures: Vec<String>,
+    #[serde(skip)]
+    cached_keys: BTreeMap<usize, String>,
+}
+
+impl FormsTally {
+    fn add(&mut self, name: &str, run: &Run) {
+        use command_grammar_stops::PathClass;
+        let Some(forms) = run
+            .result
+            .as_ref()
+            .ok()
+            .and_then(|result| result.forms.as_ref())
+        else {
+            return;
+        };
+        let key = format!("{:?}", forms.key);
+        let address = std::sync::Arc::as_ptr(forms) as usize;
+        if self
+            .cached_keys
+            .get(&address)
+            .is_some_and(|previous| previous != &key)
+        {
+            self.failures
+                .push(format!("{name}: shared forms have different cache keys"));
+        }
+        self.cached_keys.insert(address, key);
+        if forms
+            .stops
+            .iter()
+            .any(|stop| stop.reason == "form-cache-conflict")
+        {
+            self.failures
+                .push(format!("{name}: cache key does not determine forms"));
+        }
+        if forms.receiver_state {
+            self.receiver_state.insert(name.into());
+        }
+        for alternative in &forms.alternatives {
+            if alternative.accepted
+                && alternative
+                    .paths
+                    .iter()
+                    .any(|path| path.class != PathClass::Accepting)
+            {
+                self.failures.push(format!(
+                    "{name}: listed alternative has a non-accepting path"
+                ));
+            }
+            if forms.complete
+                && !alternative.accepted
+                && alternative
+                    .paths
+                    .iter()
+                    .any(|path| !path.stages.iter().any(|stage| stage.diagnostic))
+            {
+                self.failures
+                    .push(format!("{name}: omitted alternative has no diagnostic"));
+            }
+            for path in &alternative.paths {
+                let diagnosed = path.stages.iter().any(|stage| stage.diagnostic);
+                for stage in &path.stages {
+                    if stage.returned == Some(false) && !diagnosed {
+                        *self
+                            .false_without_diagnostic
+                            .entry(format!("{:?}", stage.stage))
+                            .or_default() += 1;
+                    }
+                }
+            }
+        }
+        for gap in &run.answer.gaps {
+            if let Some(cause) = gap.detail.strip_prefix("value-acceptance: ") {
+                self.value_acceptance
+                    .entry(cause.into())
+                    .or_default()
+                    .insert(name.into());
+            }
+        }
+        for stop in &forms.stops {
+            if stop.reason == "form-reader-call" {
+                let entry = stop.stop.map(|stop| stop.entry);
+                let stage = if entry == forms.key.functions[0] || entry.is_none() {
+                    "Read"
+                } else {
+                    "Assign"
+                };
+                self.form_reader_calls
+                    .entry(format!("{stage}: {entry:?}"))
+                    .or_default()
+                    .insert(name.into());
+            }
+        }
     }
 }
 
@@ -267,6 +385,28 @@ fn grammar_diagnostics(
     for unresolved in &result.stops {
         stops.push(stop_case(image, path, unresolved.reason, unresolved.stop));
     }
+    if let Some(forms) = &result.forms {
+        for unresolved in &forms.stops {
+            stops.push(stop_case(
+                image,
+                "forms",
+                unresolved.reason,
+                unresolved.stop,
+            ));
+        }
+        for alternative in &forms.alternatives {
+            for chain in &alternative.paths {
+                for unresolved in &chain.stops {
+                    stops.push(stop_case(
+                        image,
+                        "value-acceptance",
+                        unresolved.reason,
+                        unresolved.stop,
+                    ));
+                }
+            }
+        }
+    }
     for gap in &result.fields.gaps {
         let stop = stop_case(image, path, &gap.reason, gap.stop);
         if !stops.contains(&stop) {
@@ -349,6 +489,11 @@ mod tests {
         };
         Answer {
             value: CommandGrammar {
+                forms: if joined {
+                    GrammarProperty::Partial(vec![])
+                } else {
+                    GrammarProperty::Unresolved
+                },
                 reader: Reader {
                     id: joined.then(|| {
                         serde_json::from_value::<ReaderId>(json!("authored-reader")).unwrap()
@@ -409,7 +554,7 @@ mod tests {
             report.add(reason, answer, &chain, Value::Null);
         }
         assert_eq!(report.totals.receiver_join_failed, 0);
-        assert_eq!(report.totals.partial, 2);
+        assert_eq!(report.totals.failed, 2);
         assert!(
             report
                 .cases
@@ -479,7 +624,7 @@ mod tests {
                 report.totals.failed,
                 report.totals.receiver_join_failed
             ),
-            (3, 1, 2, 0, 1)
+            (3, 1, 1, 1, 1)
         );
         assert_eq!(
             report.failure_shapes["factory-return"],

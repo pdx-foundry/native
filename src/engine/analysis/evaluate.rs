@@ -311,6 +311,10 @@ pub struct Machine<'a> {
     next_object: u64,
     /// Ranges `(start, end)` that a store to an unknown address leaves known.
     protected: Vec<(u64, u64)>,
+    read_watch: Option<ReadWatch>,
+    returned_values: BTreeMap<u64, Option<u64>>,
+    tail_entries: BTreeSet<u64>,
+    tail_aliases: Vec<(usize, u64)>,
     /// Facts that the caller keeps about this path.
     labels: BTreeMap<u64, u64>,
     /// Known values that this path stored to an unknown address.
@@ -328,6 +332,15 @@ pub struct Machine<'a> {
     callees: Vec<u64>,
     /// Where each unknown value stopped being known, while cause tracing is on.
     traces: Option<Box<Traces>>,
+}
+
+/// Reads of initial object state, excluding bytes stored during this chain.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReadWatch {
+    start: u64,
+    end: u64,
+    written: BTreeSet<u64>,
+    reads: BTreeMap<(u64, u64), Option<u64>>,
 }
 
 /// Where the paths of a run end, besides a return or a stop.
@@ -353,6 +366,9 @@ struct HeadState {
     stack_pointer: u64,
     frames: Vec<u64>,
     labels: BTreeMap<u64, u64>,
+    read_watch: Option<ReadWatch>,
+    returned_values: BTreeMap<u64, Option<u64>>,
+    tail_aliases: Vec<(usize, u64)>,
     widened: u32,
     traces: Option<Box<Traces>>,
 }
@@ -379,6 +395,10 @@ impl<'a> Machine<'a> {
             memory: BTreeMap::new(),
             next_object: OBJECT_BASE,
             protected: Vec::new(),
+            read_watch: None,
+            returned_values: BTreeMap::new(),
+            tail_entries: BTreeSet::new(),
+            tail_aliases: Vec::new(),
             labels: BTreeMap::new(),
             unknown_stores: Vec::new(),
             loop_visits: BTreeMap::new(),
@@ -418,6 +438,22 @@ impl<'a> Machine<'a> {
         self.registers[index]
     }
 
+    /// Last return value of an entered function, even if its caller later overwrites `x0`.
+    pub fn returned_value(&self, function: u64) -> Option<Option<u64>> {
+        self.returned_values.get(&function).copied()
+    }
+
+    /// Treat a branch into one of these complete function entries as a tail call, even when
+    /// its instructions are decoded. Entered and tail-called functions retain their results.
+    pub fn intercept_tail_calls(&mut self, entries: BTreeSet<u64>) {
+        self.tail_entries = entries;
+    }
+
+    /// Whether the current call transfers control without a continuation in its caller.
+    pub fn is_tail_call(&self) -> bool {
+        matches!(self.code.rows.get(&self.pc), Some(Operation::Parsed { mnemonic, .. }) if matches!(mnemonic.as_str(), "b" | "br"))
+    }
+
     /// The value of general register `index`; when it is unknown, a stop for `reason` at the
     /// instruction that the run is at, such as a call that a `calls` closure reads, or the last
     /// one it ran.
@@ -435,6 +471,7 @@ impl<'a> Machine<'a> {
 
     /// Store `value` little-endian in `width` bytes.
     pub fn write(&mut self, address: u64, width: u64, value: u64) {
+        self.watch_store(address, width);
         for offset in 0..width {
             self.memory
                 .insert(address + offset, Some((value >> (offset * 8)) as u8));
@@ -446,6 +483,78 @@ impl<'a> Machine<'a> {
     /// caller protects only memory that it has shown no unknown address can reach.
     pub fn protect(&mut self, address: u64, length: u64) {
         self.protected.push((address, address + length));
+    }
+
+    /// Track instruction loads of bytes not yet stored by this chain. Install initial state
+    /// before starting the watch; keep the watch when moving to the next stage.
+    pub fn watch_reads(&mut self, address: u64, length: u64) {
+        self.read_watch = Some(ReadWatch {
+            start: address,
+            end: address + length,
+            written: BTreeSet::new(),
+            reads: BTreeMap::new(),
+        });
+    }
+
+    /// Initial-state reads, by object-relative offset and width, with their initial values.
+    pub fn receiver_reads(&self) -> BTreeMap<(u64, u64), Option<u64>> {
+        self.read_watch
+            .as_ref()
+            .map(|watch| watch.reads.clone())
+            .unwrap_or_default()
+    }
+
+    /// Store bytes from classified script input whose values are unknown.
+    pub fn write_unknown(&mut self, address: u64, width: u64) {
+        self.watch_store(address, width);
+        self.forget(address, width);
+    }
+
+    /// Each known byte in a reserved object, relative to its start.
+    pub fn known_bytes(&self, address: u64, length: u64) -> BTreeMap<u64, u8> {
+        self.memory
+            .range(address..address + length)
+            .filter_map(|(&at, &value)| Some((at - address, value?)))
+            .collect()
+    }
+
+    fn watch_store(&mut self, address: u64, width: u64) {
+        if let Some(watch) = &mut self.read_watch {
+            watch.written.extend(
+                (address..address.saturating_add(width))
+                    .filter(|at| (watch.start..watch.end).contains(at)),
+            );
+        }
+    }
+
+    fn load_bytes(&mut self, address: u64, width: u64) -> Option<u128> {
+        let value = self.read_bytes(address, width);
+        let Some(watch) = &self.read_watch else {
+            return value;
+        };
+        let mut initial = Vec::new();
+        let end = address.saturating_add(width).min(watch.end);
+        let mut at = address.max(watch.start);
+        while at < end {
+            if watch.written.contains(&at) {
+                at += 1;
+                continue;
+            }
+            let start = at;
+            while at < end && at - start < 8 && !watch.written.contains(&at) {
+                at += 1;
+            }
+            initial.push((
+                (start - watch.start, at - start),
+                self.read(start, at - start),
+            ));
+        }
+        self.read_watch.as_mut().unwrap().reads.extend(initial);
+        value
+    }
+
+    fn load(&mut self, address: u64, width: u64) -> Option<u64> {
+        self.load_bytes(address, width).map(|value| value as u64)
     }
 
     /// Stop protecting the range that starts at `address`.
@@ -743,7 +852,10 @@ impl<'a> Machine<'a> {
 
             match flow {
                 Flow::Next => pc += 4,
-                Flow::Jump(target) if !code.rows.contains_key(&target) => {
+                Flow::Jump(target)
+                    if !code.rows.contains_key(&target)
+                        || (self.tail_entries.contains(&target) && target != self.entered()) =>
+                {
                     match self.tail_call(pc, target, calls) {
                         Ok(Some(caller)) => pc = caller,
                         Ok(None) => return Walk::End(Ok(Exit::Returned)),
@@ -808,6 +920,9 @@ impl<'a> Machine<'a> {
         if kept.stack_pointer != self.stack_pointer
             || kept.frames != self.frames
             || kept.labels != self.labels
+            || kept.read_watch != self.read_watch
+            || kept.returned_values != self.returned_values
+            || kept.tail_aliases != self.tail_aliases
         {
             return match self.record_loop_arrival(pc) {
                 visits if visits > LOOP_LIMIT => {
@@ -888,6 +1003,9 @@ impl<'a> Machine<'a> {
             stack_pointer: self.stack_pointer,
             frames: self.frames.clone(),
             labels: self.labels.clone(),
+            read_watch: self.read_watch.clone(),
+            returned_values: self.returned_values.clone(),
+            tail_aliases: self.tail_aliases.clone(),
             widened,
             traces: self.traces.clone(),
         }
@@ -923,6 +1041,15 @@ impl<'a> Machine<'a> {
                 Ok(self.leave())
             }
             Call::Stop => Err(Ok(Exit::Stopped(target))),
+            Call::Enter if self.code.rows.contains_key(&target) => {
+                self.tail_aliases.push((self.frames.len(), self.entered()));
+                if let Some(callee) = self.callees.last_mut() {
+                    *callee = target;
+                } else {
+                    self.entry = target;
+                }
+                Ok(Some(target))
+            }
             Call::Enter => Err(Err(self.stop(pc, "outside-code", Obstacle::OutsideCode))),
         }
     }
@@ -937,6 +1064,15 @@ impl<'a> Machine<'a> {
     /// Return from the innermost entered call, and return where the path continues: `None` when
     /// the outermost function returned.
     fn leave(&mut self) -> Option<u64> {
+        if !self.tail_entries.is_empty() {
+            let value = self.register(0);
+            self.returned_values.insert(self.entered(), value);
+            let depth = self.frames.len();
+            for &(_, function) in self.tail_aliases.iter().filter(|(at, _)| *at == depth) {
+                self.returned_values.insert(function, value);
+            }
+            self.tail_aliases.retain(|(at, _)| *at != depth);
+        }
         self.callees.pop();
         self.frames.pop()
     }
@@ -1458,7 +1594,7 @@ impl<'a> Machine<'a> {
                 ],
             ) => {
                 let address = self.address(memory, rest)?;
-                self.vectors[*index] = address.and_then(|address| self.read_bytes(address, *bytes));
+                self.vectors[*index] = address.and_then(|address| self.load_bytes(address, *bytes));
             }
             (
                 "str" | "stur",
@@ -1499,9 +1635,9 @@ impl<'a> Machine<'a> {
                 ],
             ) => {
                 let address = self.address(memory, rest)?;
-                self.vectors[*first] = address.and_then(|address| self.read_bytes(address, *bytes));
+                self.vectors[*first] = address.and_then(|address| self.load_bytes(address, *bytes));
                 self.vectors[*second] =
-                    address.and_then(|address| self.read_bytes(address + bytes, *bytes));
+                    address.and_then(|address| self.load_bytes(address + bytes, *bytes));
             }
             (
                 "stp",
@@ -1543,7 +1679,7 @@ impl<'a> Machine<'a> {
                 let (width, signed) = load_width(load, destination)?;
                 let address = self.address(memory, rest)?;
                 let address_inputs = self.take_inputs();
-                let value = address.and_then(|address| self.read(address, width));
+                let value = address.and_then(|address| self.load(address, width));
                 let value = value.map(|value| match signed {
                     Some(to_wide) => sign_extend(value, width, to_wide),
                     None => value,
@@ -1556,7 +1692,7 @@ impl<'a> Machine<'a> {
                 let address = self.address(memory, rest)?;
                 let address_inputs = self.take_inputs();
                 let values = address
-                    .map(|address| (self.read(address, width), self.read(address + width, width)));
+                    .map(|address| (self.load(address, width), self.load(address + width, width)));
                 let (first_value, second_value) = values.unwrap_or((None, None));
                 self.restore_inputs(self.loaded_inputs(address_inputs, address, width));
                 self.assign(first, first_value)?;
@@ -1807,6 +1943,7 @@ impl<'a> Machine<'a> {
     }
 
     fn store_bytes(&mut self, address: u64, width: u64, value: Option<u128>) {
+        self.watch_store(address, width);
         for offset in 0..width {
             let byte = value.map(|value| (value >> (offset * 8)) as u8);
             self.memory.insert(address + offset, byte);
@@ -2519,6 +2656,24 @@ impl Memory {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn read_watch_excludes_written_bytes_in_a_mixed_load() {
+        let code = super::Code::default();
+        let data = super::ReadOnlyData::default();
+        let mut machine = super::Machine::new(&code, &data);
+        let command = machine.reserve(16);
+        machine.write(command + 4, 4, 7);
+        machine.watch_reads(command, 16);
+        machine.write_unknown(command, 4);
+        assert_eq!(machine.load(command, 8), None);
+        assert_eq!(
+            machine.receiver_reads(),
+            std::collections::BTreeMap::from([((4, 4), Some(7))])
+        );
+        machine.load(command - 4, 8);
+        assert_eq!(machine.receiver_reads().len(), 1);
+    }
+
     use super::*;
     use crate::engine::analysis::assembler::arm64;
 

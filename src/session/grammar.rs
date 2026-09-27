@@ -114,6 +114,7 @@ pub(super) fn normalize(
     references: &ReferenceFacts,
 ) -> Answer<CommandGrammar> {
     let mut value = CommandGrammar {
+        forms: GrammarProperty::Unresolved,
         reader: Reader {
             id: None,
             kind: ReaderKind::Unknown,
@@ -146,79 +147,145 @@ pub(super) fn normalize(
                 kind: result.reader_kind,
                 family: result.reader_family,
             };
-            let initialization = result
-                .initializer
-                .as_ref()
-                .ok()
-                .and_then(|name| references.initializers.get(name));
-            let lookup = match initialization {
-                Some(Initialization::Lookup(lookup)) => Some(lookup),
-                _ => None,
-            };
-            let keys = super::fields::grammar_fields(
-                &result.fields.fields,
-                &result.fields.paths,
-                references,
-                lookup,
-            );
-            key_gaps = reference_gaps(result, references, lookup);
-            if let Some((kind, detail)) = initialization_gap(result, initialization) {
-                gap(kind, detail);
-            }
-            if !keys.is_empty() {
-                value.fixed_keys = GrammarProperty::Partial(keys);
-            }
-            if !result.families.is_empty() {
-                value.child_families = GrammarProperty::Partial(result.families.clone());
-            }
-            if !result.ordering.is_empty() {
-                value.ordering = GrammarProperty::Partial(
-                    result
-                        .ordering
-                        .iter()
-                        .map(|rule| {
-                            let outcome = match &rule.outcome {
-                                grammar::OrderOutcome::Reader(join) => {
-                                    let joins = std::slice::from_ref(join);
-                                    crate::ChildOrderOutcome::Read(super::fields::reader(joins))
-                                }
-                                grammar::OrderOutcome::Family(family) => {
-                                    crate::ChildOrderOutcome::Dispatch(*family)
-                                }
-                            };
-                            crate::ChildOrderRule {
-                                child: rule.child.clone(),
-                                conditions: rule.conditions.clone(),
-                                outcome,
-                            }
-                        })
-                        .collect(),
-                );
-            }
-            if let Some(child) = &result.numeric {
-                let child = normalize(Ok(child), name, build.clone(), references);
-                value.numeric_keys = GrammarProperty::Partial(Some(Box::new(child.value)));
-                for child_gap in child.gaps {
-                    gap(child_gap.kind, child_gap.detail);
+            if let Some(forms) = &result.forms {
+                let mut accepted = Vec::new();
+                if forms.block {
+                    accepted.push(crate::CommandForm::Block);
+                }
+                for alternative in &forms.alternatives {
+                    if alternative.accepted {
+                        accepted.push(crate::CommandForm::Value(form_value(
+                            &alternative.value,
+                            references,
+                        )));
+                    }
+                    if !alternative.accepted
+                        && alternative
+                            .paths
+                            .iter()
+                            .any(|path| path.class != grammar::forms::PathClass::Rejecting)
+                    {
+                        let causes: BTreeSet<_> = alternative
+                            .paths
+                            .iter()
+                            .flat_map(|path| &path.stages)
+                            .filter_map(|stage| stage.cause.map(|cause| (stage.stage, cause)))
+                            .collect();
+                        if causes.is_empty() {
+                            gap(
+                                GapKind::UnresolvedPath,
+                                "value-acceptance: Read: mixed paths or unknown reader kind".into(),
+                            );
+                        }
+                        for (stage, cause) in causes {
+                            gap(
+                                GapKind::UnresolvedPath,
+                                format!("value-acceptance: {stage:?}: {cause}"),
+                            );
+                        }
+                    }
+                }
+                if forms.receiver_state {
+                    gap(GapKind::UnresolvedPath, "receiver-state".into());
+                }
+                for stop in &forms.stops {
+                    gap(GapKind::UnresolvedPath, stop.reason.into());
+                }
+                if forms.complete {
+                    if let [only] = accepted.as_slice() {
+                        value.reader.kind = match only {
+                            crate::CommandForm::Block => ReaderKind::Block,
+                            crate::CommandForm::Value(value) => value.reader.kind,
+                        };
+                    }
+                    value.forms = GrammarProperty::Known(accepted);
+                } else {
+                    value.forms = GrammarProperty::Partial(accepted);
                 }
             }
-            for stop in &result.stops {
-                gap(GapKind::UnresolvedPath, stop.reason.into());
-            }
-            if !result.fields.gaps.is_empty() {
-                gap(
-                    GapKind::UnresolvedPath,
-                    "Some child dispatch paths or names remain unresolved.".into(),
+            let no_children = matches!(&value.forms, GrammarProperty::Known(forms) if !forms.contains(&crate::CommandForm::Block));
+            if no_children {
+                value.child_families = GrammarProperty::Known(vec![]);
+                value.fixed_keys = GrammarProperty::Known(vec![]);
+                value.numeric_keys = GrammarProperty::Known(None);
+                value.ordering = GrammarProperty::Known(vec![]);
+            } else {
+                let initialization = result
+                    .initializer
+                    .as_ref()
+                    .ok()
+                    .and_then(|name| references.initializers.get(name));
+                let lookup = match initialization {
+                    Some(Initialization::Lookup(lookup)) => Some(lookup),
+                    _ => None,
+                };
+                let keys = super::fields::grammar_fields(
+                    &result.fields.fields,
+                    &result.fields.paths,
+                    references,
+                    lookup,
                 );
+                key_gaps = reference_gaps(result, references, lookup);
+                if let Some((kind, detail)) = initialization_gap(result, initialization) {
+                    gap(kind, detail);
+                }
+                if !keys.is_empty() {
+                    value.fixed_keys = GrammarProperty::Partial(keys);
+                }
+                if !result.families.is_empty() {
+                    value.child_families = GrammarProperty::Partial(result.families.clone());
+                }
+                if !result.ordering.is_empty() {
+                    value.ordering = GrammarProperty::Partial(
+                        result
+                            .ordering
+                            .iter()
+                            .map(|rule| {
+                                let outcome = match &rule.outcome {
+                                    grammar::OrderOutcome::Reader(join) => {
+                                        let joins = std::slice::from_ref(join);
+                                        crate::ChildOrderOutcome::Read(super::fields::reader(joins))
+                                    }
+                                    grammar::OrderOutcome::Family(family) => {
+                                        crate::ChildOrderOutcome::Dispatch(*family)
+                                    }
+                                };
+                                crate::ChildOrderRule {
+                                    child: rule.child.clone(),
+                                    conditions: rule.conditions.clone(),
+                                    outcome,
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+                if let Some(child) = &result.numeric {
+                    let child = normalize(Ok(child), name, build.clone(), references);
+                    value.numeric_keys = GrammarProperty::Partial(Some(Box::new(child.value)));
+                    for child_gap in child.gaps {
+                        gap(child_gap.kind, child_gap.detail);
+                    }
+                }
+                for stop in &result.stops {
+                    gap(GapKind::UnresolvedPath, stop.reason.into());
+                }
+                if !result.fields.gaps.is_empty() {
+                    gap(
+                        GapKind::UnresolvedPath,
+                        "Some child dispatch paths or names remain unresolved.".into(),
+                    );
+                }
             }
         }
     }
-    gap(
+    if !properties_known(&value) {
+        gap(
         GapKind::ReaderSemantics,
         "Child grammar extraction is incomplete; unresolved properties and conditional paths remain."
             .into(),
     );
-    gap(GapKind::OutsideMethod, "Argument values, scope propagation, storage behavior and runtime meaning are outside this method.".into());
+    }
+    gap(GapKind::OutsideMethod, "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.".into());
     for key_gap in key_gaps {
         if !gaps.contains(&key_gap) {
             gaps.push(key_gap);
@@ -230,6 +297,51 @@ pub(super) fn normalize(
         gaps,
         source: Source::new(build, grammar::METHOD, Basis::StaticAnalysis),
     }
+}
+
+fn properties_known(value: &CommandGrammar) -> bool {
+    matches!(value.forms, GrammarProperty::Known(_))
+        && matches!(value.child_families, GrammarProperty::Known(_))
+        && matches!(value.fixed_keys, GrammarProperty::Known(_))
+        && matches!(value.numeric_keys, GrammarProperty::Known(_))
+        && matches!(value.ordering, GrammarProperty::Known(_))
+}
+
+fn form_value(
+    value: &grammar::forms::ValueForm,
+    references: &ReferenceFacts,
+) -> crate::CommandValue {
+    let mut reader = value
+        .reader
+        .as_ref()
+        .map(|join| super::fields::reader(std::slice::from_ref(join)))
+        .unwrap_or(Reader {
+            id: None,
+            kind: value.kind,
+            family: BlockFamily::NotApplicable,
+        });
+    reader.kind = value.kind;
+    let reference = if let Some(lookup) = &value.initialization {
+        crate::FieldReference::Lookups(vec![super::fields::reference_lookup(
+            crate::FieldCondition::Always,
+            lookup.directory.clone(),
+            Some(&lookup.lookup),
+        )])
+    } else if let Some(crate::engine::analysis::fields::ReaderJoin::Joined { callee, .. }) =
+        &value.reader
+    {
+        match references.readers.get(callee) {
+            Some(lookup) => crate::FieldReference::Lookups(vec![super::fields::reference_lookup(
+                crate::FieldCondition::Always,
+                lookup.directory.clone(),
+                lookup.lookup.as_ref().ok(),
+            )]),
+            None => crate::FieldReference::NotEstablished,
+        }
+    } else {
+        crate::FieldReference::NotEstablished
+    };
+    crate::CommandValue { reader, reference }
 }
 
 /// One gap for each child key whose reference lookups are not fully established: the lookups of
@@ -344,6 +456,7 @@ mod tests {
             tail: true,
         };
         grammar::GrammarResult {
+            forms: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,
@@ -410,6 +523,100 @@ mod tests {
             gap.detail
                 .contains("no child key's string reader is joined to")
         })
+    }
+
+    fn with_forms(complete: bool) -> grammar::GrammarResult {
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result.families = vec![BlockFamily::Effect];
+        result.forms = Some(std::sync::Arc::new(grammar::forms::Result {
+            key: grammar::forms::CacheKey {
+                functions: [None; 6],
+                receiver: Default::default(),
+            },
+            block: false,
+            alternatives: vec![],
+            complete,
+            receiver_state: false,
+            stops: vec![],
+        }));
+        result
+    }
+
+    #[test]
+    fn known_value_only_forms_remove_inherited_children_and_incomplete_gap() {
+        let answer = normalize(
+            Ok(&with_forms(true)),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
+        assert_eq!(answer.value.child_families, GrammarProperty::Known(vec![]));
+        assert_eq!(answer.value.fixed_keys, GrammarProperty::Known(vec![]));
+        assert_eq!(answer.value.numeric_keys, GrammarProperty::Known(None));
+        assert_eq!(answer.value.ordering, GrammarProperty::Known(vec![]));
+        assert_eq!(answer.completeness, crate::Completeness::Complete);
+        assert!(
+            !answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::ReaderSemantics)
+        );
+    }
+
+    #[test]
+    fn incomplete_forms_cannot_promote_inherited_children() {
+        let answer = normalize(
+            Ok(&with_forms(false)),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
+        assert!(matches!(
+            answer.value.child_families,
+            GrammarProperty::Partial(_)
+        ));
+        assert!(matches!(
+            answer.value.fixed_keys,
+            GrammarProperty::Partial(_)
+        ));
+        assert_eq!(answer.completeness, crate::Completeness::Partial);
+    }
+
+    #[test]
+    fn false_validation_is_partial_with_its_acceptance_gap() {
+        use grammar::forms::{Alternative, ChainPath, PathClass, Stage, StageResult, ValueForm};
+        let mut result = with_forms(false);
+        std::sync::Arc::make_mut(result.forms.as_mut().unwrap())
+            .alternatives
+            .push(Alternative {
+                value: ValueForm {
+                    kind: ReaderKind::String,
+                    destination: Some(64),
+                    reader: None,
+                    initialization: None,
+                    deferred_null: None,
+                },
+                paths: vec![ChainPath {
+                    class: PathClass::Unresolved,
+                    stops: vec![],
+                    stages: vec![StageResult {
+                        stage: Stage::PostValidate,
+                        returned: Some(false),
+                        diagnostic: false,
+                        cause: Some("false without diagnostic"),
+                    }],
+                }],
+                missing: vec![],
+                accepted: false,
+            });
+        let answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
+        assert_eq!(answer.value.forms, GrammarProperty::Partial(vec![]));
+        assert!(answer.gaps.iter().any(|gap| gap.detail == "value-acceptance: PostValidate: false without diagnostic"));
     }
 
     #[test]
@@ -619,6 +826,7 @@ mod tests {
     #[test]
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
+            forms: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,
@@ -683,6 +891,7 @@ mod tests {
             }],
         };
         let result = grammar::GrammarResult {
+            forms: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,
@@ -723,6 +932,7 @@ mod tests {
     #[test]
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
+            forms: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,

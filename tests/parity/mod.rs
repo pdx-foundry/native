@@ -29,6 +29,7 @@ pub const FILES: &[&str] = &[
     "fields-megastructures.json",
     "field-storage-sdk533.json",
     "references.json",
+    "command-grammars.json",
     "dynamic-names.json",
     "declarations-effect.json",
     "declarations-trigger.json",
@@ -85,6 +86,21 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             Ok(expected.clone())
         }
         "references.json" => references(native, expected),
+        "command-grammars.json" => {
+            let mut answers = BTreeMap::new();
+            for subject in expected
+                .as_object()
+                .ok_or("expected command selection")?
+                .keys()
+            {
+                let (kind, name) = command(subject).ok_or("invalid command selection")?;
+                let mut answer = native.command_grammar(kind, name)?;
+                // Recorded answers describe the same static facts with a different Basis.
+                answer.source.basis = Basis::StaticAnalysis;
+                answers.insert(subject, answer);
+            }
+            Ok(json!(answers))
+        }
         "dynamic-names.json" => {
             let answer = native.dynamic_names()?;
             Ok(dynamic_names(&answer, expected))

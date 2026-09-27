@@ -53,7 +53,8 @@ pub use fixture::{
 };
 pub use game::{Game, GameOptions};
 pub use grammar::{
-    ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, CommandGrammar, GrammarProperty,
+    ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, CommandForm, CommandGrammar,
+    CommandValue, GrammarProperty,
 };
 pub use session::Native;
 

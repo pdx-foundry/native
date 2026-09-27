@@ -594,3 +594,23 @@ fn a_miss_that_selects_no_typed_null_object_is_no_lookup() {
         "initializer-null-object"
     );
 }
+
+#[test]
+fn initializer_execution_requires_the_whole_inline_body_and_an_unconditional_lookup() {
+    let original = district(shape("initializer_scan"), DISTRICT_VALUES);
+    let input = original.input(&[], &[]);
+    assert!(matches!(
+        execution(&input, DISTRICT),
+        Some(Execution::Inline { always: true, .. })
+    ));
+
+    let extra_store = mutated(shape("initializer_scan"), "ret", "str xzr,[x0,#0x78]\nret");
+    let changed = district(&extra_store, DISTRICT_VALUES);
+    assert!(execution(&changed.input(&[], &[]), DISTRICT).is_none());
+
+    let conditional = district(shape("initializer_scan_nonempty"), DISTRICT_VALUES);
+    assert!(matches!(
+        execution(&conditional.input(&[], &[]), DISTRICT),
+        Some(Execution::Inline { always: false, .. })
+    ));
+}
