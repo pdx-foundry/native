@@ -266,7 +266,7 @@ event-target chain). What each retained case gives now:
 
 ## Dynamic names
 
-`Native::dynamic_names` (`dynamic-names/v1`) groups the effects and triggers that define, remove
+`Native::dynamic_names` (`dynamic-names/v2`) groups the effects and triggers that define, remove
 and read integer flags by the store that each reaches. The method is
 `engine/analysis/dynamic_names.rs`, with store routes in `dynamic_names/routes.rs` and the read
 shape in `dynamic_names/membership_scan.shape`. `binding/binary/dynamic_names.rs` locates the
@@ -308,20 +308,21 @@ seconds. Counts are distinct commands.
 
 | Outcome | Effects | Triggers | Total |
 | --- | ---: | ---: | ---: |
-| Not examined: command object not joined | 137 | 78 | 215 |
-| No flag name stored | 844 | 982 | 1,826 |
+| Not examined: command object not joined | 10 | 2 | 12 |
+| No flag name stored | 964 | 1,058 | 2,022 |
 | Complete: a role and every declared scope's store | 86 | 30 | 116 |
 | Partial: a role, but no declared scope set | 2 | 1 | 3 |
-| Failed: a stored flag name without a role | 5 | 5 | 10 |
+| Failed: a stored flag name without a role | 9 | 5 | 14 |
+| Unresolved stored index | 3 | 0 | 3 |
 
 The complete commands form 31 namespaces: one global store and 30 scope stores (57 effects
 define, 29 remove, 30 triggers read). Every namespace accepts `name@target`.
 
 | Failure shape | Commands |
 | --- | --- |
-| `command-vtable`, `factory-terminal`, `instruction` (command object) | 212, 2 and 1 |
+| `command-vtable`, `factory-terminal`, `instruction` (command object) | 9, 2 and 1 |
 | `role-store`: the flag store does not come from the accessor | `set_relation_flag`, `remove_relation_flag`, `set_saved_date` |
-| `no-role`: an interned name that no setter, remover or scan uses | points of interest (4), `has_relation_flag`, `reverse_has_relation_flag`, `timed_flag_days_left`, and the three above |
+| `no-role`: an interned name that no setter, remover or scan uses | points of interest (4), `has_relation_flag`, `reverse_has_relation_flag`, `timed_flag_days_left`, the three above, `clear_global_event_target`, `exile_leader_as`, `save_event_target_as`, and `save_global_event_target_as` |
 | `scope-set`: no declared scope set | the astral rift flags (3), `set_saved_date`, `has_relation_flag`, `reverse_has_relation_flag` |
 | `branch-value`: a reader path that does not return, so the stored index and form are unproven | `timed_flag_days_left` |
 
@@ -336,21 +337,24 @@ Findings:
   `GetGalacticObject()`; `set_star_flag` reaches the same object through the lookup that
   `GetFlags` inlines. The method does not prove the two equal, so the stores stay separate.
 
-The receiver repair that dynamic names needed also changed `command_grammar`. The factory walk
-runs a tail-called function's code in place of the tail call, and constructor summaries include
-the constructors that it calls. Of the 206 triggers that stopped at `factory-return`, 156 now
-join their receiver (120 with fixed keys); 50, such as `branch_office_value`, now stop at
-`command-vtable` because the out-of-line factory calls an unknown member constructor after the
-last vtable store. No effect answer changed. The walk reads pointer slots from one read-only
-overlay instead of copying every slot into each walk, and the command population takes about one
-minute instead of four and a half.
+The factory walk follows out-of-line tail-called factories and register-move constructor
+wrappers. Empty summaries for non-polymorphic member constructors preserve the primary vtable
+at nonzero offsets inside the allocation. These shapes join 127 effects and 76 triggers.
+The 31 namespace values are unchanged. The new joins remove 203 receiver gaps, add three
+`index-store` gaps (`kill_exiled_leader`, `return_leader_from_exile`, `set_leader`), and add
+`dynamic-form` and `no-role` gaps for each of `clear_global_event_target`, `exile_leader_as`,
+`save_event_target_as`, and `save_global_event_target_as`. These commands store names without
+establishing a supported flag-store route. Thus `UnresolvedReader` has 15 gaps and
+`ReaderSemantics` has 37; the three `OutsideMethod` gaps remain.
+The walk reads pointer slots from one read-only overlay instead of copying them into each walk;
+the command population takes about one minute.
 
 ### Dynamic-name gaps
 
 - Saved event targets and variables are `OutsideMethod`. `save_event_target_as` interns its name
   in the flag table, but the target is kept with the saved event targets of a scope or of the game
   state, not in a flag store. Variables use `CVariables`, which does not intern names.
-- The 215 commands whose command object is not joined, and the relation flags, whose flag store
+- The 12 commands whose command object is not joined, and the relation flags, whose flag store
   does not come from the command's accessor.
 - How `CreateDynamicFlag` forms the flag from the name and the target is not established; the
   answer says only that the command keeps and uses both.

@@ -791,3 +791,86 @@ fn allocating_create_at(start: u64) -> Arm64 {
     arm64!(body; str x8, [x19]);
     body
 }
+
+#[test]
+fn factory_member_constructor_preserves_only_the_primary_receiver() {
+    for (offset, expected) in [
+        (32, Ok(VTABLE)),
+        (0, Err("command-vtable")),
+        (128, Err("command-vtable")),
+    ] {
+        let input = member_constructor_factory(offset, false, false);
+        assert_eq!(
+            factory_vtable(&input, FACTORY).map_err(|stop| stop.reason),
+            expected
+        );
+    }
+}
+
+#[test]
+fn factory_enters_only_register_move_constructor_wrappers() {
+    let input = member_constructor_factory(32, true, false);
+    assert_eq!(factory_vtable(&input, FACTORY), Ok(VTABLE));
+    let input = member_constructor_factory(32, true, true);
+    assert_eq!(
+        factory_vtable(&input, FACTORY).unwrap_err().reason,
+        "command-vtable"
+    );
+}
+
+fn member_constructor_factory(offset: u32, wrapper: bool, earlier_call: bool) -> DeclarationInput {
+    const CONSTRUCTOR: u64 = 0xc000;
+    const WRAPPER: u64 = 0xd000;
+    let mut body = Arm64::at(CREATE);
+    body.prologue();
+    arm64!(body; mov w0, #128);
+    body.call(NEW);
+    arm64!(body; mov x19, x0);
+    body.address(8, VTABLE);
+    arm64!(body; str x8, [x19]; add x0, x19, #offset);
+    if wrapper {
+        arm64!(body; mov x8, x0; mov w0, #7);
+        body.call(WRAPPER);
+    } else {
+        body.call(CONSTRUCTOR);
+    }
+    arm64!(body; mov x0, x19);
+    body.epilogue();
+    arm64!(body; ret);
+    let mut functions = vec![function(body)];
+    if wrapper {
+        let mut body = Arm64::at(WRAPPER);
+        if earlier_call {
+            body.call(0xe000);
+        }
+        arm64!(body; mov x1, x0; mov x0, x8; b extern CONSTRUCTOR as usize);
+        functions.push(function(body));
+    }
+    let mut input = input(vec![], functions, composition(vec![], BTreeMap::new()));
+    input.pointers.insert(FACTORY + 0x10, CREATE);
+    input.constructors.insert(CONSTRUCTOR, BTreeMap::new());
+    input
+}
+
+#[test]
+fn an_outside_member_constructor_keeps_the_unknown_call_fallback() {
+    const CONSTRUCTOR: u64 = 0xc000;
+    let mut body = Arm64::at(CREATE);
+    body.prologue();
+    arm64!(body; mov w0, #128);
+    body.call(NEW);
+    arm64!(body; mov x19, x0; mov x0, sp);
+    body.call(CONSTRUCTOR);
+    body.address(8, VTABLE);
+    arm64!(body; str x8, [x19]; mov x0, x19);
+    body.epilogue();
+    arm64!(body; ret);
+    let mut input = input(
+        vec![],
+        vec![function(body)],
+        composition(vec![], BTreeMap::new()),
+    );
+    input.pointers.insert(FACTORY + 0x10, CREATE);
+    input.constructors.insert(CONSTRUCTOR, BTreeMap::new());
+    assert_eq!(factory_vtable(&input, FACTORY), Ok(VTABLE));
+}

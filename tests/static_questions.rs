@@ -821,8 +821,8 @@ fn observe(native: &Native) -> Observed {
 
     let receiver_failures = [
         (DeclarationKind::Effect, "pop_change_ethic"),
-        (DeclarationKind::Trigger, "exists"),
-        (DeclarationKind::Trigger, "branch_office_value"),
+        (DeclarationKind::Trigger, "switch"),
+        (DeclarationKind::Trigger, "inverted_switch"),
     ]
     .map(|(kind, name)| {
         let run = command_grammar_stops::run(native, kind, name).unwrap();
