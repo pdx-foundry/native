@@ -1,5 +1,8 @@
 //! Unfiltered command grammar answers and developer diagnostics for one supported build.
 //! Counts are operation answers per unique (family, name), never paths or registration sites.
+#[path = "support/population.rs"]
+mod population;
+
 use pdx_native::internals::command_grammar_stops::{self, Chain, GrammarResult, Run};
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::reference_readers::{self, Initialization, ReferenceFacts};
@@ -13,15 +16,35 @@ use std::collections::{BTreeMap, BTreeSet};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let output = match args.as_slice() {
+    let mut output = match args.as_slice() {
         [flag, before, after] if flag == "--diff" => {
             let before = serde_json::from_slice(&std::fs::read(before)?)?;
             let after = serde_json::from_slice(&std::fs::read(after)?)?;
             diff(&before, &after)
         }
         [installation] => population(installation)?,
-        _ => return Err("usage: command-population INSTALLATION | --diff BEFORE AFTER".into()),
+        [flag, installation] if flag == "--baseline" => population(installation)?,
+        _ => {
+            return Err(
+                "usage: command-population [--baseline] INSTALLATION | --diff BEFORE AFTER".into(),
+            );
+        }
     };
+    if args.first().is_some_and(|flag| flag == "--baseline") {
+        population::remove_timings(&mut output);
+    }
+    if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
+        && !members.is_empty()
+    {
+        eprintln!(
+            "ignored serde-default members: {}",
+            members
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
@@ -287,15 +310,16 @@ fn normalized(report: &Value) -> BTreeMap<String, Value> {
 }
 
 fn diff(before: &Value, after: &Value) -> Value {
-    let before = normalized(before);
-    let after = normalized(after);
+    let mut before = normalized(before);
+    let mut after = normalized(after);
+    let dropped = population::normalize_answers::<Answer<CommandGrammar>>(&mut before, &mut after);
     let keys: BTreeSet<_> = before.keys().chain(after.keys()).collect();
     let changes: Vec<_> = keys
         .into_iter()
         .filter(|key| before.get(*key) != after.get(*key))
         .map(|key| json!({"subject": key, "before": before.get(key), "after": after.get(key)}))
         .collect();
-    json!({"changed": changes.len(), "changes": changes})
+    json!({"changed": changes.len(), "changes": changes, "defaulted_members": dropped })
 }
 
 #[cfg(test)]

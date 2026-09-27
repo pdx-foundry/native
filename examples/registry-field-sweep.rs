@@ -8,6 +8,9 @@
 //!
 //! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports and
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
+#[path = "support/population.rs"]
+mod population;
+
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::reference_readers;
 use pdx_native::internals::registry_field_stops::{self, FieldGap};
@@ -20,8 +23,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
-const USAGE: &str =
-    "usage: registry-field-sweep INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
+const USAGE: &str = "usage: registry-field-sweep [--baseline] INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
 
 struct ReaderFields {
     kind: ReaderKind,
@@ -41,13 +43,29 @@ struct StopCase {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    let output = match arguments.as_slice() {
+    let mut output = match arguments.as_slice() {
         [flag, before, after] if flag == "--diff" => {
             diff(&read_report(before)?, &read_report(after)?)
         }
         [installation] => sweep(installation)?,
+        [flag, installation] if flag == "--baseline" => sweep(installation)?,
         _ => return Err(USAGE.into()),
     };
+    if arguments.first().is_some_and(|flag| flag == "--baseline") {
+        population::remove_timings(&mut output);
+    }
+    if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
+        && !members.is_empty()
+    {
+        eprintln!(
+            "ignored serde-default members: {}",
+            members
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
@@ -554,8 +572,9 @@ fn stop_shapes(cases: &[StopCase]) -> Value {
 /// The registries whose normalized answer or error differs between two reports. Elapsed time
 /// and the other report fields are ignored.
 fn diff(before: &Value, after: &Value) -> Value {
-    let before = normalized_cases(before);
-    let after = normalized_cases(after);
+    let mut before = normalized_cases(before);
+    let mut after = normalized_cases(after);
+    let dropped = population::normalize_answers::<Answer<Vec<Field>>>(&mut before, &mut after);
     let registries: BTreeSet<_> = before.keys().chain(after.keys()).collect();
 
     let changed: Vec<Value> = registries
@@ -575,7 +594,7 @@ fn diff(before: &Value, after: &Value) -> Value {
         })
         .collect();
 
-    json!({ "changed_registries": changed.len(), "registries": changed })
+    json!({ "changed_registries": changed.len(), "registries": changed , "defaulted_members": dropped })
 }
 
 /// Each registry's status with its normalized answer or error.
@@ -739,7 +758,7 @@ mod tests {
 
         assert_eq!(
             diff(&before, &after),
-            json!({ "changed_registries": 0, "registries": [] })
+            json!({ "changed_registries": 0, "registries": [], "defaulted_members": [] })
         );
     }
 

@@ -289,3 +289,15 @@ fn a_stop_is_placed_at_its_instruction_function_and_entry() {
     assert_eq!(outside.function, None);
     assert_eq!(outside.row, None);
 }
+
+#[test]
+fn lookup_census_reads_text_bodies_and_excludes_data_symbols() {
+    let bytes = support::macho_with_fixups(6);
+    let image = Image::read(&bytes).unwrap();
+    let bodies = image.lookup_bodies("Probe::Read").unwrap();
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0].0, "Probe::Read()");
+    assert_eq!(bodies[0].1, image.lookup_lines(READ).unwrap());
+    assert!(image.lookup_bodies("nonexistent").unwrap().is_empty());
+    assert!(image.lookup_bodies("vtable").unwrap().is_empty());
+}
