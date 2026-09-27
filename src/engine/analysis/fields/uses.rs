@@ -737,6 +737,7 @@ mod tests {
     fn input(code: Vec<u8>) -> FieldInput {
         let symbols = vec![Symbol { name: "TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::LoadFile(char const*, bool)".into(), address: 0x7000 }];
         FieldInput {
+            key_readers: Default::default(),
             persistent: None,
             selection: candidates(&symbols).remove(0),
             symbols,

@@ -28,6 +28,9 @@ pub(in crate::binding) struct Recipe {
 
 /// Virtual reader slots and shared family methods on the selected build.
 pub(in crate::binding) struct PersistentRecipe {
+    pub string_array: [i64; 3],
+    pub value_token: u64,
+    pub token_text: u64,
     pub read_slot: u64,
     pub member_slot: u64,
     pub families: &'static [(&'static str, crate::BlockFamily)],
@@ -114,6 +117,9 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         role: 0x50,
     },
     persistent: PersistentRecipe {
+        string_array: [8, 0x14, 0x28],
+        value_token: M45_VALUE_TOKEN,
+        token_text: M45_TOKEN_TEXT,
         read_slot: 0x20,
         member_slot: 0x28,
         families: &[(
@@ -128,8 +134,8 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     },
     numeric_key_reader: "CToken::ReadValue(int&) const",
     reader_token_offset: 0x38,
-    reader_value_token_offset: 0x278,
-    token_text_offset: 0x10,
+    reader_value_token_offset: M45_VALUE_TOKEN,
+    token_text_offset: M45_TOKEN_TEXT,
     event_target_size: 0x190,
     effect_validation_slot: 0x98,
     trigger_validation_slot: 0x68,
@@ -175,3 +181,6 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         declaration_token_offset: 0,
     },
 };
+
+const M45_VALUE_TOKEN: u64 = 0x278;
+const M45_TOKEN_TEXT: u64 = 0x10;

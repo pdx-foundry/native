@@ -16,6 +16,7 @@ fn fixture() -> FieldInput {
         Symbol{name:"CPersistent::ReadMember(CReader&, int)".into(),address:0x5000},Symbol{name:"CReader::ReportUnexpected()".into(),address:0x6000},
     ];
     FieldInput {
+        key_readers: Default::default(),
         persistent: None,
         objects: vec![],
         selection: candidates(&symbols).remove(0),
@@ -1411,5 +1412,152 @@ fn known_comparisons_do_not_invent_unreachable_readers() {
                 );
             }
         }
+    }
+}
+
+fn compound_fixture(code: Vec<u8>) -> FieldInput {
+    let mut input = fixture();
+    input.functions[0].code = code;
+    input.key_readers = fields::KeyReaders {
+        value_token: 0x278,
+        token_text: 0x10,
+        token_copy: vec![0xa000],
+        target_construct: vec![0xb000],
+        target_move: Some(0xc000),
+        string_emplace: Some(0xd000),
+        optional_string: Some(0xe000),
+        string_read: Some(0xf000),
+        persistent_read: None,
+        array_data: 8,
+        array_count: 0x14,
+        string_stride: 0x28,
+    };
+    for (address, name) in [
+        (0xa000, "copy"),
+        (0xb000, "construct"),
+        (0xc000, "move"),
+        (0xd000, "emplace"),
+        (0xe000, "optional"),
+        (0xf000, "CReader::Read(CString&, bool)"),
+    ] {
+        input.symbols.push(Symbol {
+            address,
+            name: name.into(),
+        });
+    }
+    input
+}
+
+#[test]
+fn compound_target_requires_original_value_and_owner_destination() {
+    for (token_offset, stack_destination) in [(0x278, false), (0x270, false), (0x278, true)] {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1;
+            sub sp, sp, #0x200;
+            add x1, x20, #token_offset;
+            mov x0, sp; bl extern 0xa000;
+            add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+            add x0, x19, #0x80
+        );
+        if stack_destination {
+            arm64!(code; mov x0, sp);
+        }
+        arm64!(code; add x1, sp, #0x120; bl extern 0xc000; ret);
+        let result = derive(compound_fixture(code.bytes()));
+        let kind = crate::engine::analysis::readers::classify(&result.fields[0].readers).kind;
+        assert_eq!(
+            kind == crate::ReaderKind::Target,
+            token_offset == 0x278 && !stack_destination
+        );
+        if kind == crate::ReaderKind::Target {
+            assert_eq!(
+                crate::engine::analysis::readers::destination(&result.fields[0].readers[0]),
+                Some(0x80)
+            );
+        }
+    }
+}
+
+#[test]
+fn compound_array_requires_emplace_before_reading_last_string() {
+    for callee in [0xd000, 0xd004] {
+        let code = arm64!(at 0x1000;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1;
+            add x0, x19, #0x80;
+            ldr w8, [x19, #0x94]; add w1, w8, #1;
+            bl extern callee;
+            ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+            mov w10, #0x28; madd x8, x9, x10, x8;
+            sub x1, x8, #0x28; mov x0, x20; b extern 0xf000
+        );
+        let result = derive(compound_fixture(code));
+        let join = &result.fields[0].readers[0];
+        assert_eq!(
+            matches!(
+                join,
+                ReaderJoin::Stored {
+                    kind: crate::ReaderKind::String,
+                    repeat: crate::RepeatBehavior::Accumulate,
+                    destination: 0x80,
+                    ..
+                }
+            ),
+            callee == 0xd000
+        );
+    }
+}
+
+#[test]
+fn compound_optional_string_requires_value_token_text() {
+    for offset in [0x288, 0x280] {
+        let code = arm64!(at 0x1000;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            sub sp, sp, #16;
+            ldr x8, [x1, #offset]; str x8, [sp];
+            add x0, x0, #0x80; mov x1, sp; bl extern 0xe000; ret
+        );
+        let result = derive(compound_fixture(code));
+        assert_eq!(
+            matches!(
+                result.fields[0].readers[0],
+                ReaderJoin::Stored {
+                    kind: crate::ReaderKind::String,
+                    ..
+                }
+            ),
+            offset == 0x288
+        );
+    }
+}
+
+#[test]
+fn compound_readers_forget_overwritten_stack_evidence() {
+    let target = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1; sub sp, sp, #0x200;
+        add x1, x20, #0x278; mov x0, sp; bl extern 0xa000;
+        str xzr, [sp];
+        add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+        add x0, x19, #0x80; add x1, sp, #0x120; bl extern 0xc000; ret
+    );
+    let optional = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        sub sp, sp, #16; ldr x8, [x1, #0x288]; strb w8, [sp];
+        add x0, x0, #0x80; mov x1, sp; bl extern 0xe000; ret
+    );
+    for code in [target, optional] {
+        let result = derive(compound_fixture(code));
+        assert!(!matches!(
+            result.fields[0].readers[0],
+            ReaderJoin::Stored { .. }
+        ));
     }
 }

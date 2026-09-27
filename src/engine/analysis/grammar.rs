@@ -12,8 +12,10 @@ use super::{
 };
 use crate::BlockFamily;
 
+mod coverage;
 pub mod forms;
 mod numeric;
+pub use coverage::{Disposition, LedgerEntry, ReaderNode};
 mod ordering;
 
 /// Collection storage used by command readers in one exact build.
@@ -25,7 +27,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v6";
+pub const METHOD: &str = "command-grammar/v7";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -80,6 +82,8 @@ pub enum AccessorNullObject {
 
 /// Inputs collected from one verified executable buffer.
 pub struct GrammarInput {
+    pub key_readers: fields::KeyReaders,
+    pub persistent_slots: [u64; 2],
     pub forms: forms::Input,
     pub declarations: DeclarationInput,
     /// Functions and layout for the subsequent forms and target analyses.
@@ -103,6 +107,12 @@ pub enum OrderOutcome {
 
 /// The child grammar of one command reader, as far as the method follows it.
 pub struct GrammarResult {
+    /// Member nodes with their local disposition ledgers and delegated edges.
+    pub nodes: Vec<ReaderNode>,
+    /// The failed joins of nested member receivers.
+    pub nested_stops: BTreeMap<String, Unresolved>,
+    /// Nested fixed-key member grammars, indexed by their parent key.
+    pub nested: BTreeMap<String, Box<GrammarResult>>,
     /// Read forms and the whole-path acceptance of each value alternative.
     pub forms: Option<std::sync::Arc<forms::Result>>,
     /// Cache key computed by this command before any result is shared.
@@ -148,19 +158,18 @@ pub struct ChildFields {
 pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unresolved> {
     let state = declarations::factory_state(&input.declarations, factory)?;
     let reader = declarations::reader_at_vtable(&input.declarations, state.vtable)?;
-    let mut result = analyze_reader(input, reader, 0)?;
+    let mut result = analyze_reader_with_state(input, reader, 0, &state.bytes)?;
     let (forms, key) = forms::analyze(input, reader, &state.bytes);
     result.forms = Some(forms);
     result.forms_key = Some(key);
     Ok(result)
 }
 
-/// Analyze an already joined concrete reader. Start outer analysis at depth zero;
-/// nested numeric readers increment depth and stop at the grammar delegation bound.
-pub(crate) fn analyze_reader(
+fn analyze_reader_with_state(
     input: &GrammarInput,
     reader: CommandReader,
     depth: usize,
+    bytes: &BTreeMap<u64, u8>,
 ) -> Result<GrammarResult, Unresolved> {
     if depth >= DELEGATION_LIMIT {
         return Err(Unresolved::new("grammar-nesting-limit"));
@@ -190,6 +199,7 @@ pub(crate) fn analyze_reader(
         &input.symbols,
         &input.data,
         input.reader_token_offset,
+        &input.key_readers,
     );
     let root_family = input.families.get(root).copied();
     let (paths, mut gaps) = if root_family.is_some() {
@@ -197,53 +207,125 @@ pub(crate) fn analyze_reader(
     } else {
         fields::explore_member(&dispatch, root)
     };
+    let mut nodes = vec![ReaderNode::new([i32::MIN as i64, i32::MAX as i64])];
+    nodes[0].table_gaps = gaps.len();
+    if input.forms.cut_bodies.contains(&reader.member) {
+        nodes[0].stops.push(Unresolved::new("member-body-cut"));
+    }
+    if root_family.is_some() {
+        nodes[0].ledger.push(LedgerEntry {
+            domain: [i32::MIN as i64, i32::MAX as i64],
+            disposition: Disposition::Family,
+        });
+    }
     let mut pending: Vec<_> = paths
         .into_iter()
-        .map(|path| (path, vec![root.to_owned()]))
+        .map(|path| (path, vec![root.to_owned()], 0))
         .collect();
     let mut leaves = Vec::new();
     let mut delegates = BTreeSet::new();
     let mut families: Vec<_> = root_family.into_iter().collect();
     let mut stops = Vec::new();
     let mut ordering = Vec::new();
-    let mut numeric_reader = None;
+    let mut constructed = BTreeMap::new();
+    let mut numeric_reader: Option<numeric::Child> = None;
     let mut numeric_failed = false;
     let mut visited = 0;
-    while let Some((path, chain)) = pending.pop() {
+    while let Some((path, chain, node)) = pending.pop() {
         visited += 1;
         if visited > PATH_LIMIT {
+            nodes[node]
+                .stops
+                .push(Unresolved::new("grammar-path-limit"));
             stops.push(Unresolved::new("grammar-path-limit"));
             break;
         }
         if let Some(rule) = ordering::rule(input, &path) {
             ordering.push(rule);
         }
-        match numeric::reader(input, reader.member, &path) {
-            Ok(Some(child)) if numeric_reader.is_none_or(|known| known == child) => {
+        let entry = input
+            .symbols
+            .iter()
+            .find(|symbol| Some(&symbol.name) == chain.last())
+            .map_or(reader.member, |symbol| symbol.address);
+        match numeric::reader(input, entry, &path) {
+            Ok(Some(child)) if numeric_reader.as_ref().is_none_or(|known| known == &child) => {
+                nodes[node].ledger.push(LedgerEntry {
+                    domain: path.domain,
+                    disposition: Disposition::Numeric,
+                });
                 numeric_reader = Some(child);
                 continue;
             }
             Ok(Some(_)) => {
+                nodes[node].ledger.push(LedgerEntry {
+                    domain: path.domain,
+                    disposition: Disposition::Gap(None),
+                });
                 numeric_failed = true;
                 stops.push(Unresolved::new("ambiguous-numeric-reader"));
                 continue;
             }
             Err(stop) => {
+                nodes[node].ledger.push(LedgerEntry {
+                    domain: path.domain,
+                    disposition: Disposition::Gap(None),
+                });
                 numeric_failed = true;
                 stops.push(stop);
                 continue;
             }
             Ok(None) => {}
         }
+        if let Ok(Some(child)) = numeric::constructed(input, entry, &path)
+            && let Some(token) = input
+                .tokens
+                .get(&path.domain[0])
+                .filter(|token| !token.ambiguous)
+        {
+            match analyze_reader_with_state(input, child.reader, depth + 1, &child.bytes) {
+                Ok(grammar) => {
+                    let mut path = path;
+                    path.outcome = PathOutcome::Reader(ReaderJoin::Joined {
+                        callee: grammar.reader_name.clone(),
+                        arguments: BTreeMap::new(),
+                        tail: false,
+                    });
+                    nodes[node].ledger.push(LedgerEntry {
+                        domain: path.domain,
+                        disposition: Disposition::Field {
+                            name: token.name.clone(),
+                            kind: grammar.reader_kind,
+                            family: BlockFamily::Unknown,
+                        },
+                    });
+                    constructed.insert(token.name.clone(), Box::new(grammar));
+                    leaves.push(path);
+                    continue;
+                }
+                Err(stop) => {
+                    nodes[node].stops.push(stop);
+                }
+            }
+        }
         let PathOutcome::Reader(ReaderJoin::Joined {
             callee, arguments, ..
         }) = &path.outcome
         else {
+            nodes[node].record(&path, &input.tokens);
             leaves.push(path);
             continue;
         };
         delegates.insert((chain.last().unwrap().clone(), callee.clone()));
         if let Some(&family) = input.families.get(callee) {
+            nodes[node].ledger.push(LedgerEntry {
+                domain: path.domain,
+                disposition: if path.conditions.is_empty() {
+                    Disposition::Family
+                } else {
+                    Disposition::Gap(None)
+                },
+            });
             if path.conditions.is_empty() && !families.contains(&family) {
                 families.push(family);
             } else if !path.conditions.is_empty() {
@@ -258,20 +340,46 @@ pub(crate) fn analyze_reader(
         }
         let member = crate::engine::analysis::readers::is_member(callee);
         if !member {
+            nodes[node].record(&path, &input.tokens);
             leaves.push(path);
             continue;
         }
         let Some(Value::Owner(offset)) = arguments.get("x0") else {
+            nodes[node].ledger.push(LedgerEntry {
+                domain: path.domain,
+                disposition: Disposition::Gap(None),
+            });
             stops.push(Unresolved::new("delegate-receiver"));
             leaves.push(path);
             continue;
         };
         if chain.len() >= DELEGATION_LIMIT || chain.contains(callee) {
+            nodes[node]
+                .stops
+                .push(Unresolved::new("grammar-delegation-limit"));
+            nodes[node].ledger.push(LedgerEntry {
+                domain: path.domain,
+                disposition: Disposition::Gap(None),
+            });
             stops.push(Unresolved::new("grammar-delegation-limit"));
             leaves.push(path);
             continue;
         }
         let (children, child_gaps) = fields::explore_member(&dispatch, callee);
+        let child_node = nodes.len();
+        nodes.push(ReaderNode::new(path.domain));
+        nodes[child_node].table_gaps = child_gaps.len();
+        if input.symbols.iter().any(|symbol| {
+            symbol.name == *callee && input.forms.cut_bodies.contains(&symbol.address)
+        }) {
+            nodes[child_node]
+                .stops
+                .push(Unresolved::new("member-body-cut"));
+        }
+        nodes[node].ledger.push(LedgerEntry {
+            domain: path.domain,
+            disposition: Disposition::Delegated(child_node),
+        });
         gaps.extend(child_gaps);
         let mut chain = chain;
         chain.push(callee.clone());
@@ -290,7 +398,7 @@ pub(crate) fn analyze_reader(
             child
                 .instructions
                 .splice(0..0, path.instructions.iter().copied());
-            pending.push((child, chain.clone()));
+            pending.push((child, chain.clone(), child_node));
         }
     }
     let (fields, field_gaps) = fields::fields_and_gaps(&leaves, &input.tokens);
@@ -306,8 +414,13 @@ pub(crate) fn analyze_reader(
     let numeric = if numeric_failed {
         None
     } else if let Some(child) = numeric_reader {
-        match analyze_reader(input, child, depth + 1) {
-            Ok(grammar) => Some(Box::new(grammar)),
+        match analyze_reader_with_state(input, child.reader, depth + 1, &child.bytes) {
+            Ok(mut grammar) => {
+                let (forms, key) = forms::analyze(input, child.reader, &child.bytes);
+                grammar.forms = Some(forms);
+                grammar.forms_key = Some(key);
+                Some(Box::new(grammar))
+            }
             Err(stop) => {
                 stops.push(stop);
                 None
@@ -316,9 +429,67 @@ pub(crate) fn analyze_reader(
     } else {
         None
     };
+    let mut nested = constructed;
+    let mut nested_stops = BTreeMap::new();
+    for field in &fields {
+        if nested.contains_key(&field.name) {
+            continue;
+        }
+        let classification = super::readers::classify(&field.readers);
+        if classification.kind != crate::ReaderKind::Block
+            || classification.family != BlockFamily::Unknown
+        {
+            continue;
+        }
+        let persistent = field.readers.iter().all(|join| {
+            let ReaderJoin::Joined { callee, .. } = join else {
+                return false;
+            };
+            input.symbols.iter().any(|symbol| {
+                symbol.name == *callee && Some(symbol.address) == input.key_readers.persistent_read
+            })
+        });
+        if !persistent {
+            nested_stops.insert(field.name.clone(), Unresolved::new("nested-member-reader"));
+            continue;
+        }
+        let destinations: BTreeSet<_> = field
+            .readers
+            .iter()
+            .filter_map(super::readers::destination)
+            .collect();
+        let joined = if destinations.len() == 1
+            && field
+                .readers
+                .iter()
+                .all(|join| super::readers::destination(join).is_some())
+        {
+            let offset = *destinations.first().unwrap();
+            nested_reader(input, bytes, offset).and_then(|child| {
+                let child_bytes = bytes
+                    .iter()
+                    .filter_map(|(&at, &byte)| at.checked_sub(offset as u64).map(|at| (at, byte)))
+                    .collect();
+                analyze_reader_with_state(input, child, depth + 1, &child_bytes)
+            })
+        } else {
+            Err(Unresolved::new("nested-member-destination"))
+        };
+        match joined {
+            Ok(child) => {
+                nested.insert(field.name.clone(), Box::new(child));
+            }
+            Err(stop) => {
+                nested_stops.insert(field.name.clone(), stop);
+            }
+        }
+    }
     let (reader_kind, reader_family) = super::readers::entry(&reader_name);
     super::stop::sort_and_dedup(&mut stops);
     Ok(GrammarResult {
+        nodes,
+        nested,
+        nested_stops,
         forms: None,
         forms_key: None,
         reader,
@@ -337,6 +508,34 @@ pub(crate) fn analyze_reader(
             paths: leaves,
             gaps,
         },
+    })
+}
+
+fn nested_reader(
+    input: &GrammarInput,
+    bytes: &BTreeMap<u64, u8>,
+    offset: i64,
+) -> Result<CommandReader, Unresolved> {
+    let offset = u64::try_from(offset).map_err(|_| Unresolved::new("nested-member-destination"))?;
+    let mut word = [0; 8];
+    for (index, byte) in word.iter_mut().enumerate() {
+        *byte = *bytes
+            .get(&(offset + index as u64))
+            .ok_or(Unresolved::new("nested-member-vtable"))?;
+    }
+    let vtable = u64::from_le_bytes(word);
+    let slot = |offset| {
+        input
+            .declarations
+            .pointers
+            .get(&(vtable + offset))
+            .copied()
+            .ok_or(Unresolved::new("nested-member-slot"))
+    };
+    Ok(CommandReader {
+        vtable,
+        read: slot(input.persistent_slots[0])?,
+        member: slot(input.persistent_slots[1])?,
     })
 }
 
@@ -367,6 +566,9 @@ fn translate(path: &mut TokenPath, offset: i64) {
             translate_value(tested, offset);
         }
     }
+    if let PathOutcome::Reader(ReaderJoin::Stored { destination, .. }) = &mut path.outcome {
+        *destination += offset;
+    }
     if let PathOutcome::Reader(ReaderJoin::Joined { arguments, .. }) = &mut path.outcome {
         for argument in arguments.values_mut() {
             translate_value(argument, offset);
@@ -380,7 +582,7 @@ fn translate_value(value: &mut Value, offset: i64) {
         Value::Load(base, _) | Value::Offset(base, _) | Value::EqualsAny(base, _) => {
             translate_value(base, offset)
         }
-        Value::Indexed(base, index, _) => {
+        Value::Indexed(base, index, _) | Value::SumProduct(base, index, _) => {
             translate_value(base, offset);
             translate_value(index, offset);
         }
@@ -489,6 +691,8 @@ mod tests {
             },
         };
         GrammarInput {
+            key_readers: Default::default(),
+            persistent_slots: [0x20, 0x28],
             forms: Default::default(),
             command_bindings: CommandBindings::default(),
             child_layout: ChildLayout {
@@ -786,6 +990,328 @@ mod tests {
             assert!(result.numeric.is_none(), "{missing}");
             assert!(!result.stops.is_empty(), "{missing}");
         }
+    }
+
+    fn nested_input() -> GrammarInput {
+        let mut root = Arm64::at(ROOT);
+        arm64!(root; cmp w2, #7; b.ne extern (ROOT + 24) as usize;
+            add x2, x0, #32; mov x0, x1; mov x1, x2; b extern CHILD as usize;
+            mov x0, x1; b extern 0xa000);
+        let mut child = Arm64::at(DELEGATE);
+        arm64!(child; cmp w2, #8; b.ne extern (DELEGATE + 24) as usize;
+            add x2, x0, #32; mov x0, x1; mov x1, x2; b extern CHILD as usize;
+            mov x0, x1; b extern 0xa000);
+        let mut input = input(root, child);
+        input.key_readers.persistent_read = Some(CHILD);
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == CHILD)
+            .unwrap()
+            .name = "CReader::Read(CPersistent&)".into();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == READ)
+            .unwrap()
+            .name = "CPersistent::Read(CReader&)".into();
+        for (address, name, code) in [
+            (
+                0xa000,
+                "CReader::ReportUnexpected()",
+                arm64!(at 0xa000; ret),
+            ),
+            (
+                0xb000,
+                "CReader::Read(CString&, bool)",
+                arm64!(at 0xb000; ret),
+            ),
+            (
+                0xc000,
+                "CGrandchild::ReadMember(CReader&, int)",
+                arm64!(at 0xc000;
+                cmp w2, #9; b.ne extern 0xc018;
+                add x2, x0, #16; mov x0, x1; mov x1, x2; b extern 0xb000;
+                mov x0, x1; b extern 0xa000),
+            ),
+        ] {
+            input.symbols.push(Symbol {
+                address,
+                name: name.into(),
+            });
+            input
+                .declarations
+                .functions
+                .insert(address, Body { address, code });
+        }
+        for (token, name) in [(7, "parent"), (8, "child"), (9, "value")] {
+            input.tokens.insert(
+                token,
+                Token {
+                    name: name.into(),
+                    constructor: 1,
+                    ambiguous: false,
+                },
+            );
+        }
+        input.declarations.pointers.extend([
+            (0x12020, READ),
+            (0x12028, DELEGATE),
+            (0x13020, READ),
+            (0x13028, 0xc000),
+        ]);
+        let mut create = Arm64::at(CREATE);
+        arm64!(create; mov w0, #128; bl extern NEW as usize; mov x19, x0);
+        for (offset, table) in [(0, VTABLE), (32, 0x12000), (64, 0x13000)] {
+            create.address(8, table);
+            arm64!(create; str x8, [x19, #offset]);
+        }
+        arm64!(create; mov x0, x19; ret);
+        input.declarations.functions.insert(
+            CREATE,
+            Body {
+                address: CREATE,
+                code: create.bytes(),
+            },
+        );
+        input
+    }
+
+    #[test]
+    fn disagreeing_member_vtables_leave_the_named_child_unresolved() {
+        let mut input = nested_input();
+        let mut create = Arm64::at(CREATE);
+        arm64!(create; mov w0, #128; bl extern NEW as usize; mov x19, x0);
+        create.address(8, VTABLE);
+        arm64!(create; str x8, [x19]; cbz x21, extern (CREATE + 40) as usize);
+        create.address(8, 0x12000);
+        arm64!(create; b extern (CREATE + 44) as usize);
+        create.address(8, 0x13000);
+        arm64!(create; str x8, [x19, #32]; mov x0, x19; ret);
+        input.declarations.functions.get_mut(&CREATE).unwrap().code = create.bytes();
+        let result = analyze(&input, FACTORY).unwrap();
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(path, stop)| path == &["parent"] && stop.reason == "nested-member-vtable")
+        );
+    }
+
+    #[test]
+    fn recursive_coverage_rejects_unknown_grandchildren_and_cut_bodies() {
+        let mut input = nested_input();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == 0xb000)
+            .unwrap()
+            .name = "CVariableValue::Read(CReader&)".into();
+        let result = analyze(&input, FACTORY).unwrap();
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(path, _)| path == &["parent", "child", "value"])
+        );
+        let mut input = nested_input();
+        input.forms.cut_bodies.insert(0xc000);
+        let result = analyze(&input, FACTORY).unwrap();
+        assert!(
+            result.coverage().gaps.iter().any(
+                |(path, stop)| path == &["parent", "child"] && stop.reason == "member-body-cut"
+            )
+        );
+    }
+
+    #[test]
+    fn fixed_allocated_child_uses_the_persistent_slots() {
+        let mut input = numeric_input();
+        input.tokens.insert(
+            12,
+            Token {
+                name: "child".into(),
+                constructor: 1,
+                ambiguous: false,
+            },
+        );
+        let mut root = Arm64::at(ROOT);
+        arm64!(root; cmp w2, #12; b.eq extern (ROOT + 16) as usize;
+            mov x0, x1; b extern 0xa000;
+            mov x20, x1; mov w0, #128; bl extern NEW as usize;
+            mov x19, x0; bl extern 0x8100;
+            mov x0, x19; mov x1, x20; ldr x8, [x0]; ldr x8, [x8, #16]; blr x8; ret);
+        input.declarations.functions.get_mut(&ROOT).unwrap().code = root.bytes();
+        input.persistent_slots = [16, 24];
+        let result = analyze(&input, FACTORY).unwrap();
+        assert!(result.nested.contains_key("child"));
+        input.declarations.constructors.clear();
+        let result = analyze(&input, FACTORY).unwrap();
+        assert!(!result.coverage().covered());
+        assert!(!result.nested.contains_key("child"));
+    }
+
+    #[test]
+    fn three_nested_member_levels_are_covered_from_agreed_factory_words() {
+        let mut result = analyze(&nested_input(), FACTORY).unwrap();
+        assert!(result.coverage().covered(), "{:?}", result.coverage());
+        let forms = std::sync::Arc::make_mut(result.forms.as_mut().unwrap());
+        forms.complete = true;
+        forms.block = true;
+        forms.stops.clear();
+        let mut references = crate::engine::analysis::references::ReferenceFacts::default();
+        result.initializer = Ok("initializer".into());
+        references.initializers.insert(
+            "initializer".into(),
+            crate::engine::analysis::references::initialization::Initialization::NoLookup,
+        );
+        let answer = crate::session::grammar::normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &references,
+        );
+        assert_eq!(
+            answer.completeness,
+            crate::Completeness::Complete,
+            "{:?}",
+            answer.gaps
+        );
+        assert!(matches!(
+            answer.value.fixed_keys,
+            crate::GrammarProperty::Known(_)
+        ));
+        assert_eq!(
+            result.nested["parent"].nested["child"].fields.fields[0].name,
+            "value"
+        );
+    }
+
+    #[test]
+    fn nested_missing_vtable_and_depth_bound_keep_the_key_path() {
+        let input = nested_input();
+        let reader = declarations::reader_at_vtable(&input.declarations, VTABLE).unwrap();
+        let state = declarations::factory_state(&input.declarations, FACTORY).unwrap();
+        let result =
+            analyze_reader_with_state(&input, reader, DELEGATION_LIMIT - 2, &state.bytes).unwrap();
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(path, stop)| path == &["parent", "child"]
+                    && stop.reason == "grammar-nesting-limit")
+        );
+        let mut bytes = state.bytes;
+        bytes.remove(&32);
+        let result = analyze_reader_with_state(&input, reader, 0, &bytes).unwrap();
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(path, stop)| path == &["parent"] && stop.reason == "nested-member-vtable")
+        );
+    }
+
+    #[test]
+    fn unresolved_grandchild_keeps_parent_partial_with_nested_gap() {
+        let mut input = nested_input();
+        input.declarations.functions.get_mut(&0xc000).unwrap().code = arm64!(at 0xc000; ret);
+        let mut result = analyze(&input, FACTORY).unwrap();
+        let forms = std::sync::Arc::make_mut(result.forms.as_mut().unwrap());
+        forms.complete = true;
+        forms.block = true;
+        forms.stops.clear();
+        let answer = crate::session::grammar::normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &Default::default(),
+        );
+        assert!(matches!(
+            answer.value.fixed_keys,
+            crate::GrammarProperty::Partial(_)
+        ));
+        assert!(answer.gaps.iter().any(|gap| gap.subject
+            == Some(crate::GapSubject::key_path(vec![
+                "parent".into(),
+                "child".into()
+            ]))));
+    }
+
+    #[test]
+    fn coverage_keeps_numeric_stops_and_delegate_table_gaps() {
+        let mut result = analyze(&numeric_input(), FACTORY).unwrap();
+        result.numeric.as_mut().unwrap().nodes[0]
+            .stops
+            .push(Unresolved::new("reader-routing"));
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(_, stop)| stop.reason == "reader-routing")
+        );
+        let mut result = analyze(&nested_input(), FACTORY).unwrap();
+        let root = &mut result.nodes[0];
+        root.ledger[0].disposition = Disposition::Delegated(1);
+        let mut delegated = ReaderNode::new(root.ledger[0].domain);
+        delegated.table_gaps = 1;
+        delegated.ledger.push(LedgerEntry {
+            domain: delegated.domain,
+            disposition: Disposition::Rejected,
+        });
+        result.nodes.push(delegated);
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(_, stop)| stop.reason == "member-table-gap")
+        );
+        result.nodes[1].table_gaps = 0;
+        result.nodes[1].ledger[0].disposition = Disposition::Delegated(0);
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(_, stop)| stop.reason == "grammar-delegation-limit")
+        );
+        result.nodes[1].ledger[0].disposition = Disposition::Dynamic;
+        assert!(!result.coverage().covered());
+    }
+
+    #[test]
+    fn ledger_preserves_family_numeric_and_unresolved_paths() {
+        let mut root = Arm64::at(ROOT);
+        arm64!(root; b extern DELEGATE as usize);
+        let covered = analyze(&input(root, leaf()), FACTORY).unwrap();
+        assert!(covered.coverage().covered(), "{:?}", covered.coverage());
+        let numeric = analyze(&numeric_input(), FACTORY).unwrap();
+        assert!(
+            numeric.nodes[0]
+                .ledger
+                .iter()
+                .any(|entry| matches!(entry.disposition, Disposition::Numeric))
+        );
+        let mut root = Arm64::at(ROOT);
+        arm64!(root; mov x1, x3; b extern DELEGATE as usize);
+        assert!(
+            !analyze(&input(root, leaf()), FACTORY)
+                .unwrap()
+                .coverage()
+                .covered()
+        );
+        assert!(
+            !analyze(&ordered_input(), FACTORY)
+                .unwrap()
+                .coverage()
+                .covered()
+        );
     }
 
     #[test]

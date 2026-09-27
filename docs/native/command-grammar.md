@@ -1,8 +1,8 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v6`; field families use
-`registry-fields/v7`, and parser observations use `observe-fixture/v2`. The method includes
+[targets](targets.md). The method is `command-grammar/v7`; field families use
+`registry-fields/v8`, and parser observations use `observe-fixture/v2`. The method includes
 [reference lookups](references.md), receiver initializer lookups and out-of-line factories.
 The current forms counts are below; the retained child-reader measurements appear in their
 original sections.
@@ -58,20 +58,53 @@ cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-gram
 Known forms without `Block` give empty known child families, keys and ordering, and a known
 absent numeric child. An inherited member reader contributes no children in that case.
 Unknown or partial forms cannot promote child properties. `ReaderSemantics` marks incomplete
-extraction only while a property is not known. Target scope checks and recursive block coverage
-remain separate work.
+extraction only while a property is not known. Target scope checks remain separate work.
+
+## Member ledgers and recursive coverage
+
+Each member node keeps its token intervals, local stops and child links. Every interval is
+rejected, a field, a family dispatch, a numeric child, a delegate, a dynamic key or a gap.
+Family and numeric paths remain in the ledger. Conditional paths can overlap; the union must
+tile the full token range, and every overlapping disposition must be established.
+
+A covered node has no gap, dynamic key, table gap or stop. Every field has a known reader
+kind. A block field has an established family or a covered member node. Delegated, constructed
+and numeric children must also be covered. Missing member vtables, cycles, cut bodies and the
+eight-level nesting bound leave coverage unresolved. The factory contributes only allocation
+bytes that agree on every returning path; eight agreed bytes at a member destination supply
+its vtable. The persistent read and member slots then join its own ledger. Constructed fixed
+children use the same allocation/constructor/virtual-read proof as numeric children.
+
+One internal coverage function governs fixed keys, child families and ordering. The normalizer
+does not infer completeness from public fields. A known numeric child additionally needs every
+property of its grammar known. The population audit checks this same internal tree. Known
+value-only forms exclude the unreachable inherited member tree from both normalization and the
+audit; partial forms never exclude it.
+
+A gap below two or more named keys uses `GapSubject::KeyPath`, with the names in outer-to-inner
+order. Top-level keys keep `Field` subjects. Numeric-child gaps still propagate to the parent
+answer with its existing subject; no artificial numeric key name is introduced. On M45,
+`random_list` and `locked_random_list` retain unresolved `modifier` and
+`complex_trigger_modifier` keys in their numeric child, with gaps on the parent answer item.
+
+The shared field walker recognizes a copied value token constructed into a temporary event
+target and moved into the owner, an emplaced CString array element read as a string, and an
+optional CString set from the token text. The array shape establishes `Accumulate`.
+`CVariableValue::Read` remains unknown. Joined slot bodies retain up to 65,536 bytes; a cut
+body cannot establish coverage.
 
 ### Current value-form results
 
 The M45 population contains 1,074 effects and 1,096 triggers. A failed answer has every
 property unresolved; a partial answer retains some established facts. The population audit
 checks cache-key agreement, accepting paths for listed alternatives, and diagnostics for
-omitted alternatives in a known list. No audit condition fails.
+omitted alternatives in a known list, and recursive member coverage for complete answers.
+No audit condition fails.
 
 | Kind | Complete | Partial | Failed | `receiver-state` commands | `value-acceptance` commands |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Effect | 192 | 872 | 10 | 3 | 272 |
-| Trigger | 1 | 1093 | 2 | 1 | 713 |
+| Effect | 346 | 718 | 10 | 3 | 272 |
+| Trigger | 131 | 963 | 2 | 1 | 713 |
 
 Counts below are commands per stage and cause; a command can have several causes.
 
@@ -106,6 +139,13 @@ receiver shares a cached analysis. The full run takes about 75 seconds on the de
 | `has_tradition` | Its deferred `Reference` read joins the lookup, but `PostValidate: branch-value` prevents listing it. The missing-key chain remains unresolved too. |
 | `set_country_flag` | The dynamic-name read is recognized as `String`; the combined paths exceed the bound at `PostValidate`. There is no receiver-state gap. Forms and inherited children remain partial. |
 
+The SDK-492 fixed-key vocabulary is established: `create_starbase` has `size` and `design`
+as String, `effect` as Block, `owner` as Target, and `module` and `building` as
+String/Accumulate. Its fixed-key property is known; its answer retains the initializer's
+several-lookups gap. `add_district` has `district_type` as String and `ignore_cap` and
+`type_conversion` as Boolean. Its fixed-key property remains partial because its forms
+chain is partial. These kinds match the inspected engine; no F6 correction is needed.
+
 `tests/expected/m45/command-grammars.json` retains the first-release sample answers and their
 named gaps. The complete unclassified `Read` and `Assign` function census, with per-shape
 command counts, is retained in `.local/sdk-548/forms-stage-chain/revision-1/form-reader-shapes.md`;
@@ -119,8 +159,8 @@ command name. The property gate never removes children from these partial value 
 
 Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
 ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-These are current engine facts for `command-grammar/v6`, with `dynamic-names/v2` and
-`registry-fields/v7`. They do not establish complete value grammars or target-scope answers.
+These are current engine facts for `command-grammar/v7`, with `dynamic-names/v2` and
+`registry-fields/v8`. They do not establish complete value grammars or target-scope answers.
 
 ### F1. The family dispatch always calls `Read`
 

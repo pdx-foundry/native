@@ -559,6 +559,27 @@ fn m45_command_grammar_foundations_resolve_and_reuse_inputs() {
         let cached = analysis.grammar_input(kind).unwrap();
         assert!(std::ptr::eq(cached, analysis.grammar_input(kind).unwrap()));
         assert_eq!(cached.0.forms.token_text_offset, 0x10);
+        let keys = &cached.0.key_readers;
+        assert_eq!(
+            [keys.array_data, keys.array_count, keys.string_stride],
+            [8, 0x14, 0x28]
+        );
+        assert_eq!(keys.value_token, 0x278);
+        assert_eq!(keys.token_text, 0x10);
+        assert_eq!(
+            name_at(keys.string_emplace.unwrap()),
+            "void CPdxArray<CString, int>::SetSizeAndEmplace<>(int, const&)"
+        );
+        assert_eq!(
+            name_at(keys.optional_string.unwrap()),
+            "void CPdxOptional<CString>::SetEmplace<char const*>(char const*&&)"
+        );
+        assert_eq!(
+            name_at(keys.string_read.unwrap()),
+            "CReader::Read(CString&, bool)"
+        );
+        assert!(!keys.token_copy.is_empty());
+        assert!(!keys.target_construct.is_empty());
         assert_eq!(cached.0.forms.target_size, 0x190);
         assert!(!cached.0.forms.strings_from_text.is_empty());
         assert!(!cached.0.forms.string_copies.is_empty());

@@ -22,6 +22,12 @@ pub(in crate::binding) fn read(
     kind: crate::DeclarationKind,
 ) -> Result<GrammarInput, AnalysisError> {
     let text = super::declarations::Text::read(bytes, symbols)?;
+    for (&address, body) in &mut declarations.functions {
+        let length = text.function_length(address).min(65_536);
+        if length > body.code.len() as u64 {
+            body.code = text.bytes(address, length)?.to_vec();
+        }
+    }
     let mut roots: Vec<_> = inventory
         .sites
         .iter()
@@ -109,11 +115,13 @@ pub(in crate::binding) fn read(
         ) {
             form_input.harmless.insert(symbol.address);
         }
-        if text.starts.contains(&symbol.address) && text.function_length(symbol.address) > 4096 {
+        if text.starts.contains(&symbol.address) && text.function_length(symbol.address) > 65_536 {
             form_input.cut_bodies.insert(symbol.address);
         }
     }
     Ok(GrammarInput {
+        key_readers: super::fields::key_readers(symbols, &recipe.persistent)?,
+        persistent_slots: [recipe.persistent.read_slot, recipe.persistent.member_slot],
         forms: form_input,
         command_bindings,
         child_layout: recipe.command_children,

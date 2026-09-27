@@ -20,16 +20,33 @@ pub fn classify(readers: &[ReaderJoin]) -> Classification<'_> {
     let callees: BTreeSet<_> = readers
         .iter()
         .filter_map(|reader| match reader {
-            ReaderJoin::Joined { callee, .. } => Some(callee.as_str()),
+            ReaderJoin::Joined { callee, .. } | ReaderJoin::Stored { callee, .. } => {
+                Some(callee.as_str())
+            }
             ReaderJoin::Missing(_) => None,
         })
         .collect();
     let all_joined = !readers.is_empty()
-        && readers
-            .iter()
-            .all(|reader| matches!(reader, ReaderJoin::Joined { .. }));
+        && readers.iter().all(|reader| {
+            matches!(
+                reader,
+                ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }
+            )
+        });
     let callee = (all_joined && callees.len() == 1).then(|| *callees.first().unwrap());
-    let kind = callee.map_or(ReaderKind::Unknown, classify_callee);
+    let kinds: Vec<_> = readers
+        .iter()
+        .map(|reader| match reader {
+            ReaderJoin::Stored { kind, .. } => *kind,
+            ReaderJoin::Joined { callee, .. } => classify_callee(callee),
+            ReaderJoin::Missing(_) => ReaderKind::Unknown,
+        })
+        .collect();
+    let kind = if callee.is_some() && kinds.iter().all(|kind| *kind == kinds[0]) {
+        kinds[0]
+    } else {
+        ReaderKind::Unknown
+    };
     let families: Vec<_> = callees
         .iter()
         .map(|callee| family_of_callee(callee))
@@ -38,7 +55,9 @@ pub fn classify(readers: &[ReaderJoin]) -> Classification<'_> {
     Classification {
         callee,
         kind,
-        family: if all_joined && families.iter().all(|candidate| *candidate == family) {
+        family: if !matches!(kind, ReaderKind::Block | ReaderKind::Unknown) {
+            BlockFamily::NotApplicable
+        } else if all_joined && families.iter().all(|candidate| *candidate == family) {
             family
         } else {
             BlockFamily::Unknown
@@ -144,6 +163,9 @@ pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
 
 /// The owner-derived output object of a supported shared reader.
 pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
+    if let ReaderJoin::Stored { destination, .. } = join {
+        return Some(*destination);
+    }
     let ReaderJoin::Joined {
         callee, arguments, ..
     } = join

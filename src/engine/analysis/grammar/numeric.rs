@@ -11,6 +11,13 @@ use crate::engine::analysis::{
 const SPAN: u64 = 0x10000;
 const DECODED: u64 = 0;
 const VTABLE: u64 = 1;
+const CHILD: u64 = 2;
+
+#[derive(PartialEq, Eq)]
+pub(super) struct Child {
+    pub reader: CommandReader,
+    pub bytes: std::collections::BTreeMap<u64, u8>,
+}
 
 /// A numeric path must decode the original reader's token, then read an allocated receiver.
 /// Other paths are not numeric candidates. Every alternative of a candidate must agree.
@@ -18,7 +25,25 @@ pub(super) fn reader(
     input: &GrammarInput,
     entry: u64,
     path: &TokenPath,
-) -> Result<Option<CommandReader>, Unresolved> {
+) -> Result<Option<Child>, Unresolved> {
+    child_reader(input, entry, path, true)
+}
+
+/// A fixed key may allocate and read a child without decoding an integer key.
+pub(super) fn constructed(
+    input: &GrammarInput,
+    entry: u64,
+    path: &TokenPath,
+) -> Result<Option<Child>, Unresolved> {
+    child_reader(input, entry, path, false)
+}
+
+fn child_reader(
+    input: &GrammarInput,
+    entry: u64,
+    path: &TokenPath,
+    numeric: bool,
+) -> Result<Option<Child>, Unresolved> {
     if path.domain[0] != path.domain[1] {
         return Ok(None);
     }
@@ -32,7 +57,13 @@ pub(super) fn reader(
     let candidate = rows.iter().any(|row| {
         row.address == path.terminal
             && row.operation == "bl"
-            && declarations::number(&row.operands) == Some(input.numeric_decoder)
+            && declarations::number(&row.operands).is_some_and(|target| {
+                if numeric {
+                    target == input.numeric_decoder
+                } else {
+                    input.declarations.operator_new.contains(&target)
+                }
+            })
     });
     if !candidate {
         return Ok(None);
@@ -89,18 +120,19 @@ pub(super) fn reader(
         let vtable = machine
             .read(object, 8)
             .ok_or(Unresolved::new("numeric-child-vtable"))?;
-        let child = declarations::reader_at_vtable(&input.declarations, vtable)?;
+        let child = joined_reader(input, vtable, numeric)?;
         if target != child.read
             || machine.register(1) != Some(reader)
             || machine.labelled(object).is_none()
-            || machine.labelled(DECODED) != Some(1)
+            || (numeric && machine.labelled(DECODED) != Some(1))
         {
             return Err(Unresolved::new("numeric-child-routing"));
         }
         machine.label(VTABLE, vtable);
+        machine.label(CHILD, object);
         Ok(Call::Stop)
     });
-    let mut result = None;
+    let mut result: Option<Child> = None;
     for path in paths {
         let Exit::Stopped(target) = path.end? else {
             return Err(Unresolved::new("numeric-child-terminal"));
@@ -109,13 +141,55 @@ pub(super) fn reader(
             .machine
             .labelled(VTABLE)
             .ok_or(Unresolved::new("numeric-child-vtable"))?;
-        let child = declarations::reader_at_vtable(&input.declarations, vtable)?;
-        if target != child.read || result.is_some_and(|known| known != child) {
+        let child = joined_reader(input, vtable, numeric)?;
+        if target != child.read || result.as_ref().is_some_and(|known| known.reader != child) {
             return Err(Unresolved::new("ambiguous-numeric-child"));
         }
-        result = Some(child);
+        let object = path
+            .machine
+            .labelled(CHILD)
+            .ok_or(Unresolved::new("numeric-child-receiver"))?;
+        let size = path
+            .machine
+            .labelled(object)
+            .ok_or(Unresolved::new("numeric-child-allocation"))?;
+        let bytes = path.machine.known_bytes(object, size);
+        if let Some(known) = &mut result {
+            known
+                .bytes
+                .retain(|offset, byte| bytes.get(offset) == Some(byte));
+        } else {
+            result = Some(Child {
+                reader: child,
+                bytes,
+            });
+        }
     }
     result
         .map(Some)
         .ok_or(Unresolved::new("numeric-child-paths"))
+}
+
+fn joined_reader(
+    input: &GrammarInput,
+    vtable: u64,
+    numeric: bool,
+) -> Result<CommandReader, Unresolved> {
+    if numeric {
+        return declarations::reader_at_vtable(&input.declarations, vtable);
+    }
+    let [read, member] = input.persistent_slots;
+    let slot = |offset| {
+        input
+            .declarations
+            .pointers
+            .get(&(vtable + offset))
+            .copied()
+            .ok_or(Unresolved::new("constructed-child-slot"))
+    };
+    Ok(CommandReader {
+        vtable,
+        read: slot(read)?,
+        member: slot(member)?,
+    })
 }

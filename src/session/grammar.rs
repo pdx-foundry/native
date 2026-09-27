@@ -107,7 +107,7 @@ pub(super) fn registered_factory(
     Ok(factories.first().copied())
 }
 
-pub(super) fn normalize(
+pub(crate) fn normalize(
     result: Result<&grammar::GrammarResult, &Unresolved>,
     name: &str,
     build: crate::BuildId,
@@ -208,7 +208,7 @@ pub(super) fn normalize(
                     value.forms = GrammarProperty::Partial(accepted);
                 }
             }
-            let no_children = matches!(&value.forms, GrammarProperty::Known(forms) if !forms.contains(&crate::CommandForm::Block));
+            let no_children = result.value_only();
             if no_children {
                 value.child_families = GrammarProperty::Known(vec![]);
                 value.fixed_keys = GrammarProperty::Known(vec![]);
@@ -224,49 +224,83 @@ pub(super) fn normalize(
                     Some(Initialization::Lookup(lookup)) => Some(lookup),
                     _ => None,
                 };
-                let keys = super::fields::grammar_fields(
+                let mut keys = super::fields::grammar_fields(
                     &result.fields.fields,
                     &result.fields.paths,
                     references,
                     lookup,
                 );
+                for key in &mut keys {
+                    if let Some(child) = result.nested.get(&key.name) {
+                        key.members = crate::FieldMembers::Fields(nested_fields(child, references));
+                    }
+                }
                 key_gaps = reference_gaps(result, references, lookup);
+                nested_reference_gaps(result, references, &[], &mut key_gaps);
+                let coverage = result.coverage();
+                for (path, stop) in &coverage.gaps {
+                    let subject = match path.as_slice() {
+                        [] => GapSubject::answer_item(name),
+                        [key] => GapSubject::field(key.clone()),
+                        _ => GapSubject::key_path(path.clone()),
+                    };
+                    key_gaps.push(Gap {
+                        kind: GapKind::UnresolvedPath,
+                        subject: Some(subject),
+                        detail: stop.reason.into(),
+                    });
+                }
+                let covered =
+                    coverage.covered() && matches!(value.forms, GrammarProperty::Known(_));
                 if let Some((kind, detail)) = initialization_gap(result, initialization) {
                     gap(kind, detail);
                 }
-                if !keys.is_empty() {
+                if covered {
+                    value.fixed_keys = GrammarProperty::Known(keys);
+                    value.child_families = GrammarProperty::Known(result.families.clone());
+                    value.ordering = GrammarProperty::Known(vec![]);
+                    value.numeric_keys = GrammarProperty::Known(None);
+                } else if !keys.is_empty() {
                     value.fixed_keys = GrammarProperty::Partial(keys);
                 }
-                if !result.families.is_empty() {
+                if !covered && !result.families.is_empty() {
                     value.child_families = GrammarProperty::Partial(result.families.clone());
                 }
                 if !result.ordering.is_empty() {
-                    value.ordering = GrammarProperty::Partial(
-                        result
-                            .ordering
-                            .iter()
-                            .map(|rule| {
-                                let outcome = match &rule.outcome {
-                                    grammar::OrderOutcome::Reader(join) => {
-                                        let joins = std::slice::from_ref(join);
-                                        crate::ChildOrderOutcome::Read(super::fields::reader(joins))
-                                    }
-                                    grammar::OrderOutcome::Family(family) => {
-                                        crate::ChildOrderOutcome::Dispatch(*family)
-                                    }
-                                };
-                                crate::ChildOrderRule {
-                                    child: rule.child.clone(),
-                                    conditions: rule.conditions.clone(),
-                                    outcome,
+                    let rules = result
+                        .ordering
+                        .iter()
+                        .map(|rule| {
+                            let outcome = match &rule.outcome {
+                                grammar::OrderOutcome::Reader(join) => {
+                                    let joins = std::slice::from_ref(join);
+                                    crate::ChildOrderOutcome::Read(super::fields::reader(joins))
                                 }
-                            })
-                            .collect(),
-                    );
+                                grammar::OrderOutcome::Family(family) => {
+                                    crate::ChildOrderOutcome::Dispatch(*family)
+                                }
+                            };
+                            crate::ChildOrderRule {
+                                child: rule.child.clone(),
+                                conditions: rule.conditions.clone(),
+                                outcome,
+                            }
+                        })
+                        .collect();
+                    value.ordering = if covered {
+                        GrammarProperty::Known(rules)
+                    } else {
+                        GrammarProperty::Partial(rules)
+                    };
                 }
                 if let Some(child) = &result.numeric {
                     let child = normalize(Ok(child), name, build.clone(), references);
-                    value.numeric_keys = GrammarProperty::Partial(Some(Box::new(child.value)));
+                    let child_known = properties_known(&child.value);
+                    value.numeric_keys = if covered && child_known {
+                        GrammarProperty::Known(Some(Box::new(child.value)))
+                    } else {
+                        GrammarProperty::Partial(Some(Box::new(child.value)))
+                    };
                     for child_gap in child.gaps {
                         gap(child_gap.kind, child_gap.detail);
                     }
@@ -301,6 +335,64 @@ pub(super) fn normalize(
         completeness: crate::Completeness::from_gaps(&gaps),
         gaps,
         source: Source::new(build, grammar::METHOD, Basis::StaticAnalysis),
+    }
+}
+
+/// Normalize nested field values without inferring coverage from those public values.
+fn nested_fields(
+    result: &grammar::GrammarResult,
+    references: &ReferenceFacts,
+) -> Vec<crate::Field> {
+    let lookup = result
+        .initializer
+        .as_ref()
+        .ok()
+        .and_then(|name| references.initializers.get(name))
+        .and_then(|initialization| match initialization {
+            Initialization::Lookup(lookup) => Some(lookup),
+            _ => None,
+        });
+    let mut fields = super::fields::grammar_fields(
+        &result.fields.fields,
+        &result.fields.paths,
+        references,
+        lookup,
+    );
+    for field in &mut fields {
+        if let Some(child) = result.nested.get(&field.name) {
+            field.members = crate::FieldMembers::Fields(nested_fields(child, references));
+        }
+    }
+    fields
+}
+
+fn nested_reference_gaps(
+    result: &grammar::GrammarResult,
+    references: &ReferenceFacts,
+    path: &[String],
+    gaps: &mut Vec<Gap>,
+) {
+    for (name, child) in &result.nested {
+        let mut path = path.to_vec();
+        path.push(name.clone());
+        let initialization = child
+            .initializer
+            .as_ref()
+            .ok()
+            .and_then(|name| references.initializers.get(name));
+        let lookup = match initialization {
+            Some(Initialization::Lookup(lookup)) => Some(lookup),
+            _ => None,
+        };
+        for mut gap in reference_gaps(child, references, lookup) {
+            if let Some(GapSubject::Field { name }) = gap.subject {
+                let mut key = path.clone();
+                key.push(name);
+                gap.subject = Some(GapSubject::key_path(key));
+            }
+            gaps.push(gap);
+        }
+        nested_reference_gaps(child, references, &path, gaps);
     }
 }
 
@@ -461,6 +553,9 @@ mod tests {
             tail: true,
         };
         grammar::GrammarResult {
+            nodes: vec![],
+            nested: Default::default(),
+            nested_stops: Default::default(),
             forms: None,
             forms_key: None,
             reader: declarations::CommandReader {
@@ -833,6 +928,17 @@ mod tests {
     #[test]
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
+            nodes: vec![grammar::ReaderNode {
+                domain: [i32::MIN as i64, i32::MAX as i64],
+                ledger: vec![grammar::LedgerEntry {
+                    domain: [i32::MIN as i64, i32::MAX as i64],
+                    disposition: grammar::Disposition::Rejected,
+                }],
+                stops: vec![Unresolved::new("reader-routing")],
+                table_gaps: 0,
+            }],
+            nested: Default::default(),
+            nested_stops: Default::default(),
             forms: None,
             forms_key: None,
             reader: declarations::CommandReader {
@@ -899,6 +1005,9 @@ mod tests {
             }],
         };
         let result = grammar::GrammarResult {
+            nodes: vec![],
+            nested: Default::default(),
+            nested_stops: Default::default(),
             forms: None,
             forms_key: None,
             reader: declarations::CommandReader {
@@ -941,6 +1050,9 @@ mod tests {
     #[test]
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
+            nodes: vec![],
+            nested: Default::default(),
+            nested_stops: Default::default(),
             forms: None,
             forms_key: None,
             reader: declarations::CommandReader {

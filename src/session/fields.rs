@@ -84,7 +84,9 @@ fn shape(join: &ReaderJoin) -> FieldShape {
         );
     FieldShape {
         value,
-        repeat: if replaces {
+        repeat: if let ReaderJoin::Stored { repeat, .. } = join {
+            *repeat
+        } else if replaces {
             RepeatBehavior::Replace
         } else {
             RepeatBehavior::Unknown
@@ -230,7 +232,9 @@ fn ordinary_field(
         .iter()
         .map(|(conditions, outcome)| {
             let outcome = match outcome {
-                PathOutcome::Reader(join @ ReaderJoin::Joined { .. }) => FieldReadOutcome::Read {
+                PathOutcome::Reader(
+                    join @ (ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }),
+                ) => FieldReadOutcome::Read {
                     reader: field_reader(std::slice::from_ref(join), persistent),
                     shape: shape(join),
                 },
@@ -752,7 +756,7 @@ mod tests {
                     callee: "CReader::Read(bool&)".into(),
                     arguments: match join {
                         ReaderJoin::Joined { arguments, .. } => arguments,
-                        ReaderJoin::Missing(_) => unreachable!(),
+                        ReaderJoin::Missing(_) | ReaderJoin::Stored { .. } => unreachable!(),
                     },
                     tail: true,
                 },

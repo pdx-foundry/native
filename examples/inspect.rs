@@ -279,7 +279,8 @@ fn stopped_paths(paths: &[TokenPath]) -> Vec<(usize, &TokenPath, &Unresolved)> {
             PathOutcome::Gap(unresolved) | PathOutcome::Reader(ReaderJoin::Missing(unresolved)) => {
                 Some((index, path, unresolved))
             }
-            PathOutcome::Rejected | PathOutcome::Reader(ReaderJoin::Joined { .. }) => None,
+            PathOutcome::Rejected
+            | PathOutcome::Reader(ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }) => None,
         })
         .collect()
 }
