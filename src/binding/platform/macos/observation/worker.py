@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import time
 import traceback
+from threading import Event, Thread
 import protocol
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -863,6 +864,28 @@ def callback(frame, loc, _):
     return decide_pause(progress).stop
 
 
+def attach(target, info, error, timeout=15):
+    completed = Event()
+
+    def expire():
+        if completed.wait(timeout):
+            return
+        try:
+            emit('capability-unavailable', reason=f'debugger attach timed out after {timeout:g} seconds')
+        finally:
+            # LLDB shutdown can wait on the blocked attach. The supervisor owns cleanup.
+            os._exit(1)
+
+    watchdog = Thread(target=expire, daemon=True)
+    watchdog.start()
+    try:
+        # LLDB's script command owns API locks: Attach must stay on this thread.
+        return target.Attach(info, error)
+    finally:
+        completed.set()
+        watchdog.join()
+
+
 def run(debugger):
     global request, entry_thread, progress, fixture, modifiers
     import lldb
@@ -900,7 +923,7 @@ def run(debugger):
         breakpoints[name] = hook
     emit('hooks-requested', hooks=[name for name, _ in hooks])
     error = lldb.SBError()
-    process = target.Attach(lldb.SBAttachInfo(request['game']), error)
+    process = attach(target, lldb.SBAttachInfo(request['game']), error)
     threads = list(process)
     frames = [dict(function=t.GetFrameAtIndex(0).GetFunctionName() or '') for t in threads]
     entry_thread = next((t.GetThreadID() for t in threads if t.GetFrameAtIndex(0).GetFunctionName() == '_dyld_start'), None)

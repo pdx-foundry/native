@@ -38,5 +38,16 @@ fn main() {
             .status()
             .expect("Xcode clang is required for the observation guard");
         assert!(status.success(), "presentation guard compilation failed");
+        let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
+            .join("debugserver-launcher");
+        let status = std::process::Command::new("xcrun")
+            .args([
+                "clang", "-arch", "arm64", "-Wall", "-Wextra", "-Werror", "-o",
+            ])
+            .arg(output)
+            .arg("src/binding/platform/macos/observation/debugserver.c")
+            .status()
+            .expect("Xcode clang is required for the debugserver launcher");
+        assert!(status.success(), "debugserver launcher compilation failed");
     }
 }

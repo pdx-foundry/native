@@ -24,6 +24,7 @@ struct Tool {
     python: String,
     lldb: String,
     module: String,
+    debugserver: PathBuf,
 }
 
 fn worker_deadline_seconds(startup_seconds: u64) -> u64 {
@@ -78,7 +79,8 @@ const LLDB_IDENTITY_SCRIPT: &str = concat!(
     "print('NATIVE='+json.dumps(dict(",
     "python=sys.version,",
     "lldb=lldb.SBDebugger.GetVersionString(),",
-    "module=lldb.__file__)))",
+    "module=lldb.__file__,",
+    "support=str(lldb.SBHostOS.GetLLDBPath(lldb.ePathTypeSupportExecutableDir)))))",
 );
 
 fn discover() -> Result<Tool, SupervisorError> {
@@ -112,6 +114,9 @@ fn discover() -> Result<Tool, SupervisorError> {
         python: text("python")?,
         lldb: text("lldb")?,
         module: text("module")?,
+        debugserver: PathBuf::from(text("support")?)
+            .join("debugserver")
+            .canonicalize()?,
     })
 }
 
@@ -154,6 +159,11 @@ impl Observer {
             files::write_new(&source.join(name), bytes)?;
             source_hashes.insert(name.clone(), files::sha256(bytes));
         }
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            source.join("debugserver-launcher"),
+            fs::Permissions::from_mode(0o700),
+        )?;
         files::write_new(&work_directory.join("raw-trace.jsonl"), b"")?;
         files::write_json(&work_directory.join("tool.json"), &tool)?;
         let request = WorkerRequest {
@@ -215,6 +225,11 @@ impl Observer {
             .env_remove("PYTHONPATH")
             .env_remove("DYLD_INSERT_LIBRARIES")
             .env("PYTHONDONTWRITEBYTECODE", "1")
+            .env(
+                "LLDB_DEBUGSERVER_PATH",
+                self.output.join("source/debugserver-launcher"),
+            )
+            .env("PDX_NATIVE_DEBUGSERVER", &self.tool.debugserver)
             .stdin(Stdio::null())
             .stdout(File::create(self.output.join("worker.stdout"))?)
             .stderr(File::create(self.output.join("worker.stderr"))?)
@@ -499,6 +514,7 @@ pub(crate) fn test_observer(
             python: "python".into(),
             lldb: "lldb".into(),
             module: "module".into(),
+            debugserver: "/not-used".into(),
         },
         worker: Some(command.process_group(0).spawn().unwrap()),
         granted: false,
@@ -559,6 +575,10 @@ pub(in crate::binding) fn package() -> BTreeMap<String, Vec<u8>> {
             "guard.dylib",
             include_bytes!(concat!(env!("OUT_DIR"), "/guard.dylib")).as_slice(),
         ),
+        (
+            "debugserver-launcher",
+            include_bytes!(concat!(env!("OUT_DIR"), "/debugserver-launcher")).as_slice(),
+        ),
     ]
     .into_iter()
     .map(|(name, bytes)| (name.into(), bytes.to_vec()))
@@ -604,6 +624,96 @@ mod tests {
         let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
         observer.stop().unwrap();
         assert_eq!(observer.exited, Some(-9));
+    }
+
+    #[test]
+    fn blocked_lldb_attach_is_bounded_and_its_stub_is_cleaned_up() {
+        let _guard = crate::binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        for (name, bytes) in package() {
+            fs::write(root.path().join(name), bytes).unwrap();
+        }
+        fs::write(root.path().join("raw-trace.jsonl"), "").unwrap();
+        let stub = root.path().join("blocked-debugserver");
+        fs::write(
+            &stub,
+            "#!/bin/sh\nprintf '%s' \"$$\" > \"$PDX_NATIVE_STUB_STARTED\"\nexec /bin/sleep 60\n",
+        )
+        .unwrap();
+        fs::set_permissions(&stub, fs::Permissions::from_mode(0o700)).unwrap();
+        let import = format!(
+            "command script import {}",
+            serde_json::to_string(&root.path().join("worker.py")).unwrap()
+        );
+        let logging = format!(
+            "log enable -f {} lldb process host",
+            root.path().join("lldb.log").display()
+        );
+        let mut game = Command::new("/bin/sleep").arg("60").spawn().unwrap();
+        let attach = format!(
+            "script lldb.debugger.SetAsync(True); worker.ROOT = worker.Path(worker.__file__).parent; worker.request = dict(attempt='unit', fault=None); worker.attach(lldb.debugger.CreateTarget('/bin/sleep'), lldb.SBAttachInfo({}), lldb.SBError(), timeout=3)",
+            game.id()
+        );
+        let tool = discover().unwrap();
+        let mut command = Command::new(tool.path);
+        command
+            .args([
+                "-b", "-x", "-o", &logging, "-o", &import, "-o", &attach, "-o", "quit",
+            ])
+            .env(
+                "LLDB_DEBUGSERVER_PATH",
+                concat!(env!("OUT_DIR"), "/debugserver-launcher"),
+            )
+            .env("PDX_NATIVE_DEBUGSERVER", &stub)
+            .env("PDX_NATIVE_STUB_STARTED", root.path().join("stub-started"))
+            .stdout(File::create(root.path().join("worker.stdout")).unwrap())
+            .stderr(File::create(root.path().join("worker.stderr")).unwrap());
+        let mut observer = observer(root.path(), &mut command);
+        let group = observer.worker.as_ref().unwrap().id();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut stub_joined = false;
+        while !worker_exited(group).unwrap() && Instant::now() < deadline {
+            if let Ok(pid) = fs::read_to_string(root.path().join("stub-started"))
+                && let Ok(pid) = pid.parse::<i32>()
+            {
+                // SAFETY: getpgid only inspects the stub identity supplied by this fixture.
+                stub_joined |= unsafe { libc::getpgid(pid) } == group as i32;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let bounded = worker_exited(group).unwrap();
+        let stub_started = root.path().join("stub-started").exists();
+        let cleanup = observer.stop();
+        let _ = game.kill();
+        game.wait().unwrap();
+        cleanup.unwrap();
+        assert!(
+            bounded,
+            "LLDB attach did not release Python to enforce its deadline"
+        );
+        assert!(
+            stub_started,
+            "LLDB did not start the blocking stub: {}\n{}\n{}",
+            fs::read_to_string(root.path().join("worker.stderr")).unwrap(),
+            fs::read_to_string(root.path().join("worker.stdout")).unwrap(),
+            fs::read_to_string(root.path().join("lldb.log")).unwrap_or_default()
+        );
+        assert!(
+            stub_joined,
+            "the launched stub did not join the worker group"
+        );
+        let raw = fs::read(root.path().join("raw-trace.jsonl")).unwrap();
+        let record: crate::engine::operations::event_stream::WorkerRecord =
+            serde_json::from_slice(&raw).unwrap();
+        assert!(
+            matches!(record.event, crate::engine::operations::event_stream::WorkerEvent::CapabilityUnavailable { reason } if reason.contains("debugger attach timed out"))
+        );
+        assert!(
+            group_members(group, Duration::from_secs(1))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

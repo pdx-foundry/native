@@ -1908,6 +1908,7 @@ const LOADED_MODIFIERS: usize = 45_578;
 async fn loaded_modifiers(native: &Native) -> Outcome {
     use pdx_native::{DeclaredTags, LoadedContent};
     let declared = native.modifiers()?.value;
+    let earlier_work = work_directories()?;
     let mut game = native.start_game(options().loaded_modifiers()).await?;
     let readiness = game.readiness();
     let mut result = async {
@@ -1984,7 +1985,7 @@ async fn loaded_modifiers(native: &Native) -> Outcome {
                 return Err(format!("{name}: {modifier:?}").into());
             }
         }
-        engine_log_agrees(loaded)?;
+        engine_log_agrees(loaded, &earlier_work)?;
         let generated = loaded
             .iter()
             .filter(|modifier| !modifier.generated_by.is_empty())
@@ -2012,9 +2013,12 @@ async fn loaded_modifiers(native: &Native) -> Outcome {
 
 /// Compare every name and tag list with the modifier documentation that the engine itself wrote
 /// in the session's private profile. Only this test reads the log.
-fn engine_log_agrees(loaded: &[pdx_native::LoadedModifier]) -> Outcome {
+fn engine_log_agrees(
+    loaded: &[pdx_native::LoadedModifier],
+    earlier_work: &BTreeSet<std::path::PathBuf>,
+) -> Outcome {
     let logs: Vec<_> = work_directories()?
-        .into_iter()
+        .difference(earlier_work)
         .map(|work| work.join("session/profile/logs/script_documentation/modifiers.log"))
         .filter(|path| path.exists())
         .collect();

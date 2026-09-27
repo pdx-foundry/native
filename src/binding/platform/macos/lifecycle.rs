@@ -20,6 +20,56 @@ pub(crate) fn available() -> Result<(), SupervisorError> {
     Ok(())
 }
 
+pub(crate) fn debugger_authorized() -> Result<(), SupervisorError> {
+    #[repr(C)]
+    struct AuthorizationItem {
+        name: *const libc::c_char,
+        value_length: usize,
+        value: *mut libc::c_void,
+        flags: u32,
+    }
+    #[repr(C)]
+    struct AuthorizationRights {
+        count: u32,
+        items: *mut AuthorizationItem,
+    }
+    #[link(name = "Security", kind = "framework")]
+    unsafe extern "C" {
+        fn AuthorizationCreate(
+            rights: *const AuthorizationRights,
+            environment: *const AuthorizationRights,
+            flags: u32,
+            authorization: *mut *const libc::c_void,
+        ) -> i32;
+    }
+    let mut item = AuthorizationItem {
+        name: c"system.privilege.taskport".as_ptr(),
+        value_length: 0,
+        value: ptr::null_mut(),
+        flags: 0,
+    };
+    let rights = AuthorizationRights {
+        count: 1,
+        items: &mut item,
+    };
+    const EXTEND_RIGHTS: u32 = 1 << 1;
+    // SAFETY: the rights and its C string outlive the call. A null output requests only the
+    // status, without allocating an authorization reference. No interaction flag is set.
+    let status =
+        unsafe { AuthorizationCreate(&rights, ptr::null(), EXTEND_RIGHTS, ptr::null_mut()) };
+    debugger_authorization_result(status)
+}
+
+fn debugger_authorization_result(status: i32) -> Result<(), SupervisorError> {
+    match status {
+        0 => Ok(()),
+        -60005 | -60007 => Err(SupervisorError(
+            "Debugger approval is required: approve one debugger attach in a terminal in the same login session, then retry start_game".into(),
+        )),
+        _ => Err(SupervisorError(format!("Debugger authorization check failed (Security status {status})"))),
+    }
+}
+
 use crate::binding::ProcessIdentity;
 
 fn process_info(pid: u32) -> io::Result<libc::proc_bsdinfo> {
@@ -416,6 +466,22 @@ pub(crate) fn spawn_guarded(
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn debugger_approval_refusal_explains_how_to_retry() {
+        for status in [-60005, -60007] {
+            let reason = debugger_authorization_result(status).unwrap_err().0;
+            assert!(reason.contains("approve one debugger attach"));
+            assert!(reason.contains("same login session"));
+            assert!(reason.contains("retry start_game"));
+        }
+        assert!(debugger_authorization_result(0).is_ok());
+        assert!(
+            debugger_authorization_result(-60008)
+                .unwrap_err()
+                .0
+                .contains("-60008")
+        );
+    }
     #[test]
     fn ordinary_game_inventory_keeps_long_paths_and_never_signals_conflicts() {
         let _guard = crate::binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
