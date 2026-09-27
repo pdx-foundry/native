@@ -1,10 +1,11 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v3`; field families use
+[targets](targets.md). The method is `command-grammar/v4`; field families use
 `registry-fields/v7`, and parser observations use `observe-fixture/v2`. Versions 2 and 7 add
-[reference lookups](references.md), and version 3 adds the receiver initializer's lookup of a
-child key; the counts on this page were measured with versions 1 and 6.
+[reference lookups](references.md), version 3 adds the receiver initializer's lookup of a
+child key, and version 4 follows out-of-line trigger factories; the counts on this page were
+measured with versions 1 and 6.
 
 ## Parser observation
 
@@ -175,9 +176,11 @@ value that its check needed. Tracing leaves every answer unchanged. On M45-relea
   calls `CAddEthicEffect<false>::CAddEthicEffect()`, which is not a known constructor, so the
   method invalidates the allocation.
 - `exists` loses its vtable in the same way, at a call to `CEventTarget::CreateFromToken(int)`.
-- `has_country_flag` stops at `factory-return`. Its create method tail-calls
-  `NTrigger::Create<CHasCountryFlag>`, which the factory walk does not decode, so the returned
-  receiver is unknown.
+- `branch_office_value` stops at `command-vtable` inside its out-of-line factory
+  `NTrigger::Create<CBranchOfficeValueTrigger>`, at a call to `CEventTarget::CEventTarget()`
+  after the last vtable store. The factory walk runs a create method's tail-called factory in
+  place of the tail call (SDK-543); before that, 206 triggers such as `has_country_flag` stopped
+  at `factory-return`.
 
 The same revision ran `registry-field-sweep` over all 164 discovered registries in 148 seconds:
 10 complete field inventories, 154 partial, zero failed. This measures field discovery, not
@@ -321,6 +324,12 @@ outer command; groups overlap):
 | `conditional-child-family` | 3 | 0 |
 | Non-singleton, missing/ambiguous token name, or unestablished member path | 81 | 5 |
 | Hidden default in the `CMeanTimeToHappen::ReadMember` jump table | 2 | 0 |
+
+The SDK-543 receiver repair changed only the trigger column. Of the 206 `factory-return`
+triggers, 156 now join their receiver (120 with fixed keys) and 50 stop at `command-vtable`:
+78 failed trigger receiver joins remain, all at `command-vtable`. `reader-routing` rises to 177
+trigger answers because more receivers are walked. The population run takes about one minute;
+see [dynamic names](references.md#dynamic-names).
 
 The last two rows retain child-field gaps that the old population report only summarized in its
 public unresolved-path gap. The reporter also groups each shape by instruction kind, obstacle

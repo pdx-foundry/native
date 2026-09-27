@@ -1,10 +1,14 @@
 //! Bound factory evaluation. A reader is joined only when every returned receiver agrees.
-use super::{DeclarationInput, decode};
+//!
+//! A create method may tail-call an out-of-line factory that allocates and returns the command.
+//! The walk runs that callee's code in place of the tail call, since the callee's return is the
+//! create method's return.
+use super::{DeclarationInput, Function, decode, number};
 use crate::engine::analysis::{
     evaluate::{Call, Code, Exit, Machine},
     stop::Unresolved,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const ALLOCATION: u64 = 0x10000;
 
@@ -17,12 +21,12 @@ pub(crate) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u
         .functions
         .get(&entry)
         .ok_or(Unresolved::new("create-body"))?;
-    let rows = decode(body).map_err(|_| Unresolved::new("factory-code"))?;
-    let code = Code::from_rows(rows);
-    let mut machine = Machine::new(&code, &input.composition.data);
-    for (&slot, &value) in &input.pointers {
-        machine.write(slot, 8, value);
+    let mut rows = decode(body).map_err(|_| Unresolved::new("factory-code"))?;
+    for callee in tail_callees(&input.functions, body) {
+        rows.extend(decode(callee).map_err(|_| Unresolved::new("factory-code"))?);
     }
+    let code = Code::from_rows(rows);
+    let machine = Machine::new(&code, input.pointer_data());
     let paths = machine.run_paths(entry, &mut |target, machine| {
         if target.is_some_and(|target| input.operator_new.contains(&target)) {
             let size = machine.known_register(0, "allocation-size")?;
@@ -77,4 +81,25 @@ pub(crate) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u
         return Err(Unresolved::new("ambiguous-command-vtable"));
     }
     Ok(*vtables.first().unwrap())
+}
+
+/// The known functions that `body` tail-calls: an unconditional branch to a function start
+/// outside `body`. A body that cannot be decoded tail-calls none.
+pub(crate) fn tail_callees<'a>(
+    functions: &'a BTreeMap<u64, Function>,
+    body: &Function,
+) -> Vec<&'a Function> {
+    let end = body.address + body.code.len() as u64;
+    let rows = decode(body).unwrap_or_default();
+    let targets: BTreeSet<u64> = rows
+        .iter()
+        .filter(|row| row.operation == "b")
+        .filter_map(|row| number(&row.operands))
+        .filter(|target| !(body.address..end).contains(target))
+        .collect();
+
+    targets
+        .iter()
+        .filter_map(|target| functions.get(target))
+        .collect()
 }

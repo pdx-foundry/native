@@ -73,6 +73,7 @@ fn input(
             .map(|function| (function.address, function))
             .collect(),
         pointers: BTreeMap::new(),
+        pointer_data: std::sync::OnceLock::new(),
         strings: BTreeMap::from([
             (WIN_DOCUMENTATION, "Wins the game\nwin = yes".into()),
             (
@@ -739,4 +740,54 @@ fn an_unknown_factory_return_names_the_call_that_gave_it() {
     let lost = traced_receiver_failure(body);
     let call = vec![(CauseKind::Call, returned)];
     assert_eq!(lost, (Unresolved::new("factory-return"), call, false));
+}
+
+#[test]
+fn a_create_method_that_tail_calls_an_out_of_line_factory_returns_its_command() {
+    const FACTORY_BODY: u64 = 0xc000;
+    const READ: u64 = 0xb000;
+    const MEMBER: u64 = 0xb100;
+    let mut forward = Arm64::at(CREATE);
+    forward.tail_call(FACTORY_BODY);
+    let out_of_line = returning(allocating_create_at(FACTORY_BODY));
+    let mut input = input(
+        vec![],
+        vec![
+            function(forward),
+            constant_getter(READ, 0),
+            constant_getter(MEMBER, 0),
+        ],
+        composition(vec![], BTreeMap::new()),
+    );
+    input.pointers = BTreeMap::from([
+        (FACTORY + 0x10, CREATE),
+        (VTABLE + 0x10, READ),
+        (VTABLE + 0x18, MEMBER),
+    ]);
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Err(Unresolved::new("factory-return"))
+    );
+
+    input.functions.insert(FACTORY_BODY, function(out_of_line));
+    assert_eq!(
+        command_reader(&input, FACTORY),
+        Ok(CommandReader {
+            vtable: VTABLE,
+            read: READ,
+            member: MEMBER
+        })
+    );
+}
+
+/// A function at `start` that allocates the command in `x19` and installs its vtable.
+fn allocating_create_at(start: u64) -> Arm64 {
+    let mut body = Arm64::at(start);
+    body.prologue();
+    arm64!(body; mov w0, #16);
+    body.call(NEW);
+    arm64!(body; mov x19, x0); // the command
+    body.address(8, VTABLE);
+    arm64!(body; str x8, [x19]);
+    body
 }

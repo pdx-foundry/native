@@ -18,8 +18,9 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v7` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#sdk-541-sweep-on-m45-release) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v7`, `command-grammar/v3` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Native::command_grammar` | `command-grammar/v3` | `grammar.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v7`, `command-grammar/v4` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Native::dynamic_names` | `dynamic-names/v1` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
+| `Native::command_grammar` | `command-grammar/v4` | `grammar.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -47,6 +48,18 @@ initializer (14), and a getter of another shape (3). Over the command inventory,
 8 triggers join a complete lookup to a child key, 11 commands have a lookup without an authored
 field, and 89 have an initializer lookup that is not established. The breakdown is on
 [references](references.md#owner-initializers).
+
+## Dynamic names
+
+On M45-release `Native::dynamic_names` examines all 2,170 registered commands (1,074 effects,
+1,096 triggers) in about four seconds. 215 are not examined because their command object is not
+joined (212 `command-vtable`, two `factory-terminal`, one `instruction`). 129 store an interned
+flag name: **116 complete** (57 effects define, 29 remove, 30 triggers read, each with every
+declared scope's store), **3 partial** (the astral rift flags: a role, but no declared scope set)
+and **10 failed** (relation flags, points of interest, saved dates and `timed_flag_days_left`:
+a stored name without a define, remove or read role). The complete commands form 31 namespaces:
+one global store and 30 scope stores, all accepting `name@target`. The failure shapes and
+findings are on [references](references.md#dynamic-names).
 
 ## Define read helpers
 

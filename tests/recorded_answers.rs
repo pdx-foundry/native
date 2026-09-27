@@ -2,8 +2,9 @@
 use pdx_native::internals::registry_field_stops;
 use pdx_native::{
     Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal,
-    EntryScope, Error, GameOptions, GapKind, GapSubject, GenerationCondition, LinkData,
-    LocalizationOutput, Native, Operation, OutputScope, ReaderKind, RuleKind, Support,
+    DynamicNameForm, DynamicNameKind, EntryScope, Error, GameOptions, GapKind, GapSubject,
+    GenerationCondition, LinkData, LocalizationOutput, NamespaceOwner, Native, Operation,
+    OutputScope, ReaderKind, RuleKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -249,6 +250,45 @@ fn defines_read_recorded_names_types_gaps_and_basis() {
 
     fs::remove_file(root.path().join("defines.json")).unwrap();
     assert!(matches!(native.defines(), Err(Error::NotRecorded { .. })));
+}
+
+#[test]
+fn dynamic_names_read_recorded_namespaces_and_basis() {
+    let root = recorded();
+    write(
+        root.path(),
+        "dynamic_names.json",
+        json!({ "Ok": {
+            "value": [{
+                "id": "0123456789abcdef", "kind": "IntegerFlag", "owner": "Global",
+                "defined_by": [{ "kind": "Effect", "name": "set_global_flag" }],
+                "removed_by": [],
+                "read_by": [{ "kind": "Trigger", "name": "has_global_flag" }],
+                "dynamic_form": "TargetSuffix"
+            }],
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnresolvedReader", "subject": {"kind": "answer_item", "name": "exists"},
+                "detail": "trigger was not followed to its flag store (command-vtable)" }],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let answer = native.dynamic_names().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    let [namespace] = answer.value.as_slice() else {
+        panic!("one recorded namespace");
+    };
+    assert_eq!(namespace.owner, NamespaceOwner::Global);
+    assert_eq!(namespace.kind, DynamicNameKind::IntegerFlag);
+    assert_eq!(namespace.read_by[0].kind, DeclarationKind::Trigger);
+    assert_eq!(namespace.read_by[0].name, "has_global_flag");
+    assert_eq!(namespace.dynamic_form, DynamicNameForm::TargetSuffix);
+
+    fs::remove_file(root.path().join("dynamic_names.json")).unwrap();
+    assert!(matches!(
+        native.dynamic_names(),
+        Err(Error::NotRecorded { .. })
+    ));
 }
 
 #[test]

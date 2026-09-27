@@ -6,15 +6,17 @@
 //! time, `composition` runs the registering function from each chain of its callers and reads the
 //! composed name and documentation at the call. A site that cannot be followed remains a gap.
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use super::{
     InputError,
     decode::{Instruction, decode_arm64},
+    evaluate::ReadOnlyData,
     stop::Unresolved,
 };
 mod composition;
 mod receiver;
-pub(crate) use receiver::factory_vtable;
+pub(crate) use receiver::{factory_vtable, tail_callees};
 
 pub use composition::{CALLER_DEPTH, Composition};
 
@@ -99,11 +101,24 @@ pub struct DeclarationInput {
     pub constructors: BTreeMap<u64, BTreeMap<u64, u64>>,
     pub functions: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
+    /// The read-only data with the target of every pointer slot. It is built from `pointers` on
+    /// first use, so set `pointers` before the first walk; see [`DeclarationInput::pointer_data`].
+    pub pointer_data: OnceLock<ReadOnlyData>,
     pub strings: BTreeMap<u64, String>,
     pub slots: ScopeSlots,
     pub parser_slots: ParserSlots,
     pub scope_names: Option<Vec<String>>,
     pub composition: Composition,
+}
+
+impl DeclarationInput {
+    /// The read-only data with the target of every pointer slot, for walks that load through
+    /// vtables and the global offset table. A slot's target stays known after a store to an
+    /// unknown address.
+    pub fn pointer_data(&self) -> &ReadOnlyData {
+        self.pointer_data
+            .get_or_init(|| self.composition.data.with_words(&self.pointers))
+    }
 }
 
 /// One registration.
@@ -137,7 +152,9 @@ pub enum ScopeOutcome {
 /// display name, which two types can share.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeType {
+    /// The type's bit in the scope-type mask.
     pub bit: usize,
+    /// The engine's display name.
     pub name: String,
 }
 

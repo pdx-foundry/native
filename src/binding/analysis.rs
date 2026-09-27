@@ -207,6 +207,32 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
+    fn grammar_input(
+        &self,
+        kind: crate::DeclarationKind,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<
+        (
+            crate::engine::analysis::grammar::GrammarInput,
+            crate::engine::analysis::declarations::DeclarationResult,
+        ),
+        AnalysisError,
+    > {
+        let declarations = self.declaration_input(kind, recipe)?;
+        let inventory = crate::engine::analysis::declarations::analyze(&declarations)
+            .map_err(AnalysisError::Input)?;
+        let input = binary::grammar::read(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            &self.catalog.bound_slots,
+            declarations,
+            &inventory,
+            recipe,
+        )?;
+        Ok((input, inventory))
+    }
+
     fn modifier_input(
         &self,
         recipe: &super::targets::DeclarationRecipe,
@@ -662,20 +688,46 @@ impl BoundAnalysis {
         AnalysisError,
     > {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.grammar_input(kind, recipe)
+    }
+
+    /// Both command families with their receivers' code, and the flag functions.
+    pub(crate) fn dynamic_name_input(
+        &self,
+    ) -> Result<crate::engine::analysis::dynamic_names::DynamicNameInput, AnalysisError> {
+        use crate::DeclarationKind;
+        use crate::engine::analysis::dynamic_names::{CommandFamily, DynamicNameInput};
+
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
-        let declarations = verified.declaration_input(kind, recipe)?;
-        let inventory = crate::engine::analysis::declarations::analyze(&declarations)
-            .map_err(AnalysisError::Input)?;
-        let input = binary::grammar::read(
-            &verified.executable,
-            &verified.catalog.symbols,
-            &verified.catalog.strings,
-            &verified.catalog.bound_slots,
-            declarations,
-            &inventory,
-            recipe,
-        )?;
-        Ok((input, inventory))
+        let catalog = verified.catalog;
+        let families = [
+            (DeclarationKind::Effect, recipe.effect_names),
+            (DeclarationKind::Trigger, recipe.trigger_names),
+        ]
+        .into_iter()
+        .map(|(kind, slots)| {
+            let (grammar, inventory) = verified.grammar_input(kind, recipe)?;
+            Ok(CommandFamily {
+                kind,
+                declarations: grammar.declarations,
+                inventory,
+                slots,
+            })
+        })
+        .collect::<Result<_, AnalysisError>>()?;
+
+        Ok(DynamicNameInput {
+            families,
+            functions: binary::dynamic_names::flag_functions(&catalog.symbols)?,
+            scope_type_offset: recipe.callbacks.scope_type_offset,
+            names: binary::references::names(
+                &catalog.symbols,
+                &catalog.pointers,
+                &catalog.imports,
+                &catalog.strings,
+            ),
+        })
     }
 
     pub(crate) fn modifier_input(

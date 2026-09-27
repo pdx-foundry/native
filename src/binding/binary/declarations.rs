@@ -83,6 +83,7 @@ pub(in crate::binding) fn read(
         constructors: BTreeMap::new(),
         functions,
         pointers: pointers.clone(),
+        pointer_data: std::sync::OnceLock::new(),
         strings: strings.clone(),
         slots: ScopeSlots {
             create: recipe.create_slot,

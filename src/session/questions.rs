@@ -109,7 +109,8 @@ impl Native {
             | Operation::ScopeLinks
             | Operation::LocalizationDeclarations
             | Operation::OnActions
-            | Operation::GameRules => match &binding.analysis {
+            | Operation::GameRules
+            | Operation::DynamicNames => match &binding.analysis {
                 Some(analysis) => match analysis.executable() {
                     Ok(_) => Support::Supported,
                     Err(reason) => Support::Unsupported(error(operation, reason).to_string()),

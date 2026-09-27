@@ -1,7 +1,7 @@
 use super::super::targets::DeclarationRecipe;
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    declarations::{DeclarationInput, DeclarationResult},
+    declarations::{DeclarationInput, DeclarationResult, tail_callees},
     decode::decode_arm64,
     discovery::Symbol,
     fields,
@@ -32,6 +32,11 @@ pub(in crate::binding) fn read(
             declarations.functions.get(entry)
         })
         .collect();
+    let out_of_line: Vec<_> = roots
+        .iter()
+        .flat_map(|create| tail_callees(&declarations.functions, create))
+        .collect();
+    roots.extend(out_of_line);
     roots.extend(
         symbols
             .iter()

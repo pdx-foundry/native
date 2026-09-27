@@ -1,0 +1,52 @@
+# The evaluate slot of a flag reader. The flag index is the 16-bit index stored at {index}, or,
+# when the command holds a dynamic name at {name} with its target at {target}, the result of
+# {resolver}. The flags come from the virtual accessor at vtable slot {accessor}. The body scans
+# the flags' 16-bit indexes ({items}, count {count}) and is true when one equals the index.
+stp xr0,xr1,[sp,#-0x30]!
+stp xr2,xr3,[sp,#0x10]
+stp x29,x30,[sp,#0x20]
+add x29,sp,#0x20
+mov xr3,x1
+mov xr2,x0
+ldrsb wr4,[x0,#{name_tag}]
+tbnz wr4,#0x1f,@+11
+and xr4,xr4,#0xff
+cbz xr4,@+11
+add x2,xr2,#{name}
+add x1,xr2,#{target}
+add x3,xr2,#{context}
+mov x0,xr3
+mov w4,#0x1
+bl CALL = {resolver}
+mov xr1,x0
+b @+4
+ldr xr4,[xr2,#{name_length}]
+cbnz xr4,@-9
+ldrh wr1,[xr2,#{index}]
+ldr xr4,[xr2]
+ldr xr4,[xr4,#{accessor}]
+mov x0,xr2
+mov x1,xr3
+blr xr4
+ldr wr4,[x0,#{count}]
+cmp wr4,#0x1
+b.lt @+9
+mov xr5,#0x0
+ldr xr6,[x0,#{items}]
+ldrh wr7,[xr6,xr5,lsl#1]
+cmp wr7,wr1,uxth
+b.eq @+9
+add xr5,xr5,#0x1
+cmp xr4,xr5
+b.ne @-5
+mov w0,#0x0
+ldp x29,x30,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x30
+ret
+cmn wr5,#0x1
+cset w0,ne
+ldp x29,x30,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x30
+ret

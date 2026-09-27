@@ -98,6 +98,12 @@ const EXPORTS: &[&str] = &[
     "GameOptions",
     "Native",
     "supervisor",
+    "CommandReference",
+    "DynamicNameForm",
+    "DynamicNameKind",
+    "DynamicNamespace",
+    "DynamicNamespaceId",
+    "NamespaceOwner",
 ];
 
 /// The `pdx_native::supervisor` members that Atlas may use.
