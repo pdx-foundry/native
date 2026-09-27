@@ -79,10 +79,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 command_grammar_stops::run(&native, kind, &name)
             })?;
             println!("{kind:?} {name}: {:?}", run.answer.completeness);
+            for registration in &run.chain.registrations {
+                println!(
+                    "registration {}: factory {:?}",
+                    image.place(registration.instruction),
+                    registration.factory.map(|address| image.place(address))
+                );
+            }
+            for (stage, address) in [
+                ("factory", run.chain.factory),
+                ("create", run.chain.create),
+                ("concrete receiver", run.chain.receiver),
+                ("read", run.chain.read),
+                ("member", run.chain.member),
+            ] {
+                println!(
+                    "{stage}: {}",
+                    address.map_or_else(|| "unresolved".into(), |address| image.place(address))
+                );
+            }
+            println!(
+                "normalized grammar properties and gaps:\n{}",
+                serde_json::to_string_pretty(&run.answer)?
+            );
             match &run.result {
                 Ok(result) => print_grammar(&image, result, arguments.trace),
                 Err(unresolved) => {
-                    println!("the receiver join stopped");
+                    println!("stopped at {}", run.chain.stopped_at.unwrap_or("grammar"));
                     print_stop(&image, unresolved, arguments.trace);
                 }
             }
@@ -146,6 +169,17 @@ fn print_registry_fields(
 
 /// The child paths that stopped, with the grammar's own stops and its numeric child grammar.
 fn print_grammar(image: &Image, result: &GrammarResult, traced: bool) {
+    println!("concrete receiver: {}", image.place(result.reader.vtable));
+    for (member, delegate) in &result.delegates {
+        println!("delegate: {member} -> {delegate}");
+    }
+    for gap in &result.fields.gaps {
+        println!("child field gap: {:?}: {}", gap.kind, gap.reason);
+        match gap.stop {
+            Some(stop) => println!("{}", image.place_stop(stop)),
+            None => println!("no instruction located"),
+        }
+    }
     let paths = &result.fields.paths;
     let stopped = stopped_paths(paths);
     println!(

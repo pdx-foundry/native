@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 const ALLOCATION: u64 = 0x10000;
 
-pub(super) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, Unresolved> {
+pub(crate) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, Unresolved> {
     let entry = *input
         .pointers
         .get(&(factory + input.slots.create))
