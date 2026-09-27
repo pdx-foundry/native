@@ -4,3 +4,5 @@
 Cargo.lock text eol=lf
 # Packaged Python and generated wire bindings have byte identities across hosts.
 src/**/*.py text eol=lf
+# Full population reports are generated; keep code changes visible in GitHub reviews.
+tests/population/**/*.json linguist-generated=true text eol=lf
