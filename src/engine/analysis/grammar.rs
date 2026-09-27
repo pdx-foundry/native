@@ -23,6 +23,7 @@ pub struct ChildLayout {
     pub token: i64,
 }
 
+/// Source stamp for the bounded command grammar method.
 pub const METHOD: &str = "command-grammar/v4";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;

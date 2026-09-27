@@ -79,7 +79,7 @@ src/
     machine/
       arm64.rs                     ARM64 registers and spawn preference
   engine/
-    analysis/                      callbacks, decode, declarations, defines, directories, discovery, evaluate, families, fields, localization, modifier_table, modifiers, readers, scopes: bounded static methods
+    analysis/                      bounded static methods; see the discovery method index below
     operations/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
       fixture.rs                   fixture observation reducer
@@ -109,6 +109,9 @@ docs/
   native/                          engine knowledge pages
   native/performance/              measurement records of SDK-559 to SDK-561
 ```
+
+The [discovery method index](../native/discovery.md) maps operations to their method owners.
+The [analysis module root](../../src/engine/analysis.rs) lists the current modules.
 
 Use `feature.rs` as each module's entry file and `feature/` for its internal modules. Folders
 describe responsibilities; add them when an implemented operation needs them. If an injected

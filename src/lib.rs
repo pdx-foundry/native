@@ -61,12 +61,15 @@ pub(crate) use api::UnavailableReason;
 pub(crate) use engine::analysis::AnalysisError;
 
 /// Live fault controls for Native's own integration tests, and the executable inspector, the
-/// registry field and command grammar stops, and cause tracing for Native's developers. Not a
-/// consumer API.
+/// registry field and command grammar stops, method stamps for parity tests, and cause tracing
+/// for Native's developers. Not a consumer API.
 #[doc(hidden)]
 pub mod internals {
     pub use crate::binding::inspect;
+    pub use crate::engine::analysis::defines::METHOD as DEFINES_METHOD;
+    pub use crate::engine::analysis::dynamic_names::METHOD as DYNAMIC_NAMES_METHOD;
     pub use crate::engine::analysis::evaluate::trace_causes;
+    pub use crate::engine::analysis::grammar::METHOD as COMMAND_GRAMMAR_METHOD;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::{
         command_grammar_stops, dynamic_name_commands, reference_readers, registry_field_stops,

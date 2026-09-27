@@ -4,7 +4,10 @@ mod parity;
 use parity::*;
 
 use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Trace, Unresolved};
-use pdx_native::internals::{command_grammar_stops, registry_field_stops, trace_causes};
+use pdx_native::internals::{
+    COMMAND_GRAMMAR_METHOD, DEFINES_METHOD, DYNAMIC_NAMES_METHOD, command_grammar_stops,
+    registry_field_stops, trace_causes,
+};
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags,
     EntryScope, Error, FieldReference, GapKind, KeyMatch, LinkData, LocalizationContextReference,
@@ -24,7 +27,7 @@ fn defines_match_the_recorded_m45_boundary() {
     );
     let answer = native.defines().unwrap();
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
-    assert_eq!(answer.source.method, "defines/v1");
+    assert_eq!(answer.source.method, DEFINES_METHOD);
     assert_eq!(answer.completeness, Completeness::Partial);
     assert!(answer.gaps.iter().any(|gap| {
         gap.subject.as_ref().map(|subject| subject.name()) == Some("NGraphics.ORBIT_HSV")
@@ -936,7 +939,7 @@ fn control_grammar_preserves_shared_readers_and_partial_properties() {
         let mut identities = BTreeMap::new();
         for name in names {
             let answer = native.command_grammar(kind, name).unwrap();
-            assert_eq!(answer.source.method, "command-grammar/v4");
+            assert_eq!(answer.source.method, COMMAND_GRAMMAR_METHOD);
             assert_eq!(answer.completeness, Completeness::Partial);
             assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
             assert_eq!(
@@ -1063,7 +1066,7 @@ fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
     );
     let answer = native.dynamic_names().unwrap();
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
-    assert_eq!(answer.source.method, "dynamic-names/v1");
+    assert_eq!(answer.source.method, DYNAMIC_NAMES_METHOD);
     assert_eq!(answer.completeness, Completeness::Partial);
     let text = serde_json::to_string(&answer).unwrap();
     assert!(!text.contains("Flag("), "no native type name in the answer");
