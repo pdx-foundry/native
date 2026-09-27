@@ -3,6 +3,9 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+import subprocess
+import tempfile
+import time
 from unittest.mock import Mock, patch
 
 SOURCE = Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'
@@ -12,6 +15,43 @@ import protocol
 spec = importlib.util.spec_from_file_location('worker', SOURCE / 'worker.py')
 worker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(worker)
+
+
+class AttachTests(unittest.TestCase):
+    def test_completed_attach_returns_process_and_preserves_error(self):
+        target, info, error = Mock(), Mock(), Mock()
+        self.assertIs(worker.attach(target, info, error), target.Attach.return_value)
+        target.Attach.assert_called_once_with(info, error)
+
+    def test_attach_exception_reaches_worker(self):
+        target = Mock()
+        target.Attach.side_effect = RuntimeError('connection failed')
+        with self.assertRaisesRegex(RuntimeError, 'connection failed'):
+            worker.attach(target, None, None)
+
+    def test_blocked_attach_records_reason_and_exits_without_shutdown(self):
+        with tempfile.TemporaryDirectory() as root:
+            script = '''
+import sys, time
+from pathlib import Path
+from unittest.mock import Mock
+sys.path.insert(0, sys.argv[1])
+import worker
+worker.ROOT = Path(sys.argv[2])
+worker.request = dict(attempt='test', fault=None)
+(worker.ROOT / 'raw-trace.jsonl').touch()
+target = Mock()
+target.Attach.side_effect = lambda *args: time.sleep(30)
+worker.attach(target, None, None, timeout=.05)
+raise AssertionError('timed out attach returned')
+'''
+            started = time.monotonic()
+            result = subprocess.run([sys.executable, '-c', script, str(SOURCE), root], timeout=5)
+            self.assertEqual(result.returncode, 1)
+            self.assertLess(time.monotonic() - started, 5)
+            record = protocol.decode('record', (Path(root) / 'raw-trace.jsonl').read_bytes())
+            self.assertEqual(record['kind'], 'capability-unavailable')
+            self.assertIn('debugger attach timed out', record['reason'])
 
 
 class PauseTests(unittest.TestCase):

@@ -392,8 +392,8 @@ impl std::fmt::Debug for Binding {
 }
 
 pub(crate) use platform::lifecycle::{
-    HostReservation, OwnedGame, acquire_reservation, conflicting_game, prepare_owner,
-    private_directory, process_identity,
+    HostReservation, OwnedGame, acquire_reservation, conflicting_game, debugger_authorized,
+    prepare_owner, private_directory, process_identity,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

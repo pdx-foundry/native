@@ -194,6 +194,7 @@ fn run(
         if binding::conflicting_game(None)? {
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
+        binding::debugger_authorized()?;
         prepare_profile(&work)?;
         plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
         if !plan.session_content_unchanged(&request.registries, &content) {
@@ -355,6 +356,17 @@ fn read_modifier_table(work_directory: &Path) -> Result<Option<Vec<u8>>, Supervi
     Ok(Some(table))
 }
 
+fn worker_exit_result(
+    records: &[event_stream::WorkerRecord],
+) -> Result<SessionOutcome, SupervisorError> {
+    for record in records {
+        if let event_stream::WorkerEvent::CapabilityUnavailable { reason } = &record.event {
+            return Err(SupervisorError(reason.clone()));
+        }
+    }
+    Ok(SessionOutcome::WorkerLost)
+}
+
 /// Wait for the pause, reduce the worker's stream once, send the answers, then serve controls
 /// until the session ends.
 fn observe_session(
@@ -379,7 +391,12 @@ fn observe_session(
         }
         let worker_exited = observer.advance_worker()?;
         if worker_exited {
-            return Ok(SessionOutcome::WorkerLost);
+            let raw = files::read_bounded(
+                &session.work_directory.join("raw-trace.jsonl"),
+                protocol::observation::MAX_TRACE,
+            )?;
+            let (records, _) = event_stream::read_worker_stream(&raw, session.attempt);
+            return worker_exit_result(&records);
         }
         if answers.is_none() {
             if let Some(witness) = observer.pause_witness()? {
@@ -653,7 +670,7 @@ mod tests {
                 &mut run,
                 &session,
             )
-            .unwrap();
+            .unwrap_or_else(|error| SessionOutcome::Failed(error.to_string()));
             run.end_session();
             let mut report = SessionReport {
                 attempt: "unit".into(),
@@ -885,6 +902,24 @@ exec sleep 30
             "the session ended before its pause"
         );
         assert_eq!(summary["observations"]["modifiers"], "not-requested");
+    }
+
+    #[test]
+    fn an_attach_timeout_reaches_the_session_report_and_disposes_the_game() {
+        let session = FakeSession::run(
+            &[serde_json::json!({
+                "seq": 1, "run": "unit", "kind": "capability-unavailable",
+                "reason": "debugger attach timed out after 15 seconds",
+            })],
+            "exit 1",
+        );
+        assert_eq!(
+            session.report.outcome,
+            SessionOutcome::Failed("debugger attach timed out after 15 seconds".into())
+        );
+        assert_eq!(session.report.disposal, Disposal::Confirmed);
+        assert!(session.report.reservation_resolved);
+        assert!(binding::process_identity(session.game_pid).is_err());
     }
 
     #[test]
