@@ -627,36 +627,6 @@ mod tests {
     }
 
     #[test]
-    fn debugserver_launcher_joins_worker_group_before_exec_and_cleanup() {
-        let root = tempfile::tempdir().unwrap();
-        let launcher = concat!(env!("OUT_DIR"), "/debugserver-launcher");
-        let script = "import os, sys, time; os.posix_spawn(sys.argv[1], [sys.argv[1], '--setsid', '30'], os.environ, setpgroup=0); time.sleep(30)";
-        let mut command = Command::new("/usr/bin/python3");
-        command
-            .args(["-c", script, launcher])
-            .env("PDX_NATIVE_DEBUGSERVER", "/bin/sleep");
-        let mut observer = observer(root.path(), &mut command);
-        let group = observer.worker.as_ref().unwrap().id();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            if group_members(group, Duration::from_secs(1)).unwrap().len() == 2 {
-                break;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "debugserver did not join the worker group"
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        observer.stop().unwrap();
-        assert!(
-            group_members(group, Duration::from_secs(1))
-                .unwrap()
-                .is_empty()
-        );
-    }
-
-    #[test]
     fn blocked_lldb_attach_is_bounded_and_its_stub_is_cleaned_up() {
         let _guard = crate::binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         use std::os::unix::fs::PermissionsExt;
@@ -668,7 +638,7 @@ mod tests {
         let stub = root.path().join("blocked-debugserver");
         fs::write(
             &stub,
-            "#!/bin/sh\nprintf started > \"$PDX_NATIVE_STUB_STARTED\"\nexec /bin/sleep 60\n",
+            "#!/bin/sh\nprintf '%s' \"$$\" > \"$PDX_NATIVE_STUB_STARTED\"\nexec /bin/sleep 60\n",
         )
         .unwrap();
         fs::set_permissions(&stub, fs::Permissions::from_mode(0o700)).unwrap();
@@ -702,7 +672,14 @@ mod tests {
         let mut observer = observer(root.path(), &mut command);
         let group = observer.worker.as_ref().unwrap().id();
         let deadline = Instant::now() + Duration::from_secs(10);
+        let mut stub_joined = false;
         while !worker_exited(group).unwrap() && Instant::now() < deadline {
+            if let Ok(pid) = fs::read_to_string(root.path().join("stub-started"))
+                && let Ok(pid) = pid.parse::<i32>()
+            {
+                // SAFETY: getpgid only inspects the stub identity supplied by this fixture.
+                stub_joined |= unsafe { libc::getpgid(pid) } == group as i32;
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
         let bounded = worker_exited(group).unwrap();
@@ -721,6 +698,10 @@ mod tests {
             fs::read_to_string(root.path().join("worker.stderr")).unwrap(),
             fs::read_to_string(root.path().join("worker.stdout")).unwrap(),
             fs::read_to_string(root.path().join("lldb.log")).unwrap_or_default()
+        );
+        assert!(
+            stub_joined,
+            "the launched stub did not join the worker group"
         );
         let raw = fs::read(root.path().join("raw-trace.jsonl")).unwrap();
         let record: crate::engine::operations::event_stream::WorkerRecord =
