@@ -120,14 +120,12 @@ impl State {
         matches!(location, Value::Owner(at) if *at < start + size && at + width > *start)
     }
 
-    fn stored_argument(&self, value: &Value) -> bool {
-        if self.overlaps_stored(value, 1) {
-            return true;
-        }
+    fn owner_derived(value: &Value) -> bool {
         match value {
-            Value::Load(base, _) | Value::Offset(base, _) => self.stored_argument(base),
+            Value::Owner(_) => true,
+            Value::Load(base, _) | Value::Offset(base, _) => Self::owner_derived(base),
             Value::SumProduct(base, index, _) | Value::Indexed(base, index, _) => {
-                self.stored_argument(base) || self.stored_argument(index)
+                Self::owner_derived(base) || Self::owner_derived(index)
             }
             _ => false,
         }
@@ -832,7 +830,7 @@ pub(crate) fn explore_member(
                 if state.stored.is_some() {
                     let touches = (0..=8)
                         .filter_map(|index| state.value(&format!("x{index}")))
-                        .any(|value| state.stored_argument(&value));
+                        .any(|value| State::owner_derived(&value));
                     if touches || row.operation == "b" {
                         let reason = if touches {
                             "compound-reader-overwrite"

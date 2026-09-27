@@ -1672,3 +1672,44 @@ fn compound_destination_saved_on_stack_is_still_protected() {
     let result = derive(compound_fixture(code));
     assert!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")));
 }
+
+#[test]
+fn compound_reader_rejects_helpers_with_any_owner_address() {
+    for owner_offset in [None, Some(0), Some(0x20), Some(0x300)] {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1; sub sp, sp, #0x200;
+            add x1, x20, #0x278; mov x0, sp; bl extern 0xa000;
+            add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+            add x0, x19, #0x80; add x1, sp, #0x120; bl extern 0xc000);
+        if let Some(offset) = owner_offset {
+            arm64!(code; add x0, x19, #offset);
+        } else {
+            arm64!(code; mov x0, sp);
+        }
+        arm64!(code; bl extern 0x11000; ret);
+        let mut input = compound_fixture(code.bytes());
+        input.symbols.push(Symbol {
+            address: 0x11000,
+            name: "helper".into(),
+        });
+        input.functions.push(Function {
+            address: 0x11000,
+            name: "helper".into(),
+            code: arm64!(at 0x11000; str xzr, [x0, #0x80]; ret),
+        });
+        let result = derive(input);
+        assert_eq!(
+            result
+                .fields
+                .first()
+                .is_some_and(
+                    |field| crate::engine::analysis::readers::classify(&field.readers).kind
+                        == crate::ReaderKind::Target
+                ),
+            owner_offset.is_none()
+        );
+        assert_eq!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")), owner_offset.is_some());
+    }
+}

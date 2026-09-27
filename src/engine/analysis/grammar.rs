@@ -298,6 +298,7 @@ fn analyze_reader_with_state(
                     nodes[node].ledger.push(LedgerEntry {
                         domain: path.domain,
                         disposition: Disposition::Field {
+                            token: path.domain[0],
                             name: token.name.clone(),
                         },
                     });
@@ -1105,6 +1106,73 @@ mod tests {
             crate::BuildId("authored".into()),
             &references,
         )
+    }
+
+    #[test]
+    fn coverage_distinguishes_tokens_with_the_same_name() {
+        for duplicate in [false, true] {
+            let mut input = nested_input();
+            input.tokens.get_mut(&8).unwrap().name =
+                if duplicate { "parent" } else { "other" }.into();
+            input.symbols.push(Symbol {
+                address: 0xd000,
+                name: "CReader::Read(bool&)".into(),
+            });
+            let other = if duplicate { 0xd000 } else { 0xb000 };
+            input.declarations.functions.get_mut(&ROOT).unwrap().code = arm64!(at ROOT;
+                cmp w2, #7; b.eq extern (ROOT + 24) as usize;
+                cmp w2, #8; b.eq extern (ROOT + 40) as usize;
+                mov x0, x1; b extern 0xa000;
+                add x2, x0, #16; mov x0, x1; mov x1, x2; b extern 0xb000;
+                ldr w8, [x0, #8]; cbz w8, extern (ROOT + 64) as usize;
+                add x2, x0, #24; mov x0, x1; mov x1, x2; b extern 0xb000;
+                add x2, x0, #24; mov x0, x1; mov x1, x2; b extern other);
+            let result = analyze(&input, FACTORY).unwrap();
+            assert_eq!(result.coverage().covered(), !duplicate);
+            let answer = normalize_block(result);
+            if duplicate {
+                let crate::GrammarProperty::Partial(keys) = &answer.value.fixed_keys else {
+                    panic!("{:?}", answer.value.fixed_keys);
+                };
+                assert_eq!(keys.len(), 2);
+                assert_eq!(keys[1].reader.kind, crate::ReaderKind::Unknown);
+                assert!(
+                    answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.detail == "unknown-key-reader"
+                            && gap.subject == Some(crate::GapSubject::field("parent")))
+                );
+            } else {
+                assert!(matches!(
+                    answer.value.fixed_keys,
+                    crate::GrammarProperty::Known(_)
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn ambiguous_token_or_nested_name_cannot_cover_a_node() {
+        let mut result = analyze(&nested_input(), FACTORY).unwrap();
+        let mut duplicate = result.fields.fields[0].clone();
+        result.fields.fields.push(duplicate.clone());
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(_, stop)| stop.reason == "ambiguous-key-token")
+        );
+        duplicate.token = 10;
+        *result.fields.fields.last_mut().unwrap() = duplicate;
+        assert!(
+            result
+                .coverage()
+                .gaps
+                .iter()
+                .any(|(_, stop)| stop.reason == "ambiguous-key-token")
+        );
     }
 
     #[test]

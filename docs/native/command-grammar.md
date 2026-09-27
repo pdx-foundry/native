@@ -69,7 +69,9 @@ tile the full token range, and every overlapping disposition must be established
 
 A covered node has no gap, dynamic key, table gap or stop. Every named key has a known reader
 kind after grouping all of its reader paths. Disagreeing reader identities or kinds give
-`unknown-key-reader`. A block field has an established family or a covered member node. Delegated, constructed
+`unknown-key-reader`. Coverage groups by token identity, not spelling; an ambiguous token
+or a shared name that cannot identify one nested member gives `ambiguous-key-token`.
+A block field has an established family or a covered member node. Delegated, constructed
 and numeric children must also be covered. Missing member vtables, cycles, cut bodies and the
 eight-level nesting bound leave coverage unresolved. The factory contributes only allocation
 bytes that agree on every returning path; eight agreed bytes at a member destination supply
@@ -94,7 +96,8 @@ target and moved into the owner, an emplaced CString array element read as a str
 optional CString set from the token text. The array shape establishes `Accumulate`.
 For these three compound shapes, a non-tail
 call must reach a clean caller return without a later store into the destination or a call
-that receives it; the array must also remain untouched. An overwrite gives
+that receives any address derived from the owner; the array must also remain untouched.
+An overwrite gives
 `compound-reader-overwrite`. M45 protects 0x190 target bytes, 0x30 optional-string bytes
 (the presence byte followed by CString at +8), and the 0x18-byte array header.
 Ordinary shared reader joins still end at the first reader call. They do not prove that

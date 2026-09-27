@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub enum Disposition {
     Rejected,
     Field {
+        token: i64,
         name: String,
     },
     Family,
@@ -76,6 +77,7 @@ impl ReaderNode {
                     .filter(|token| !token.ambiguous && path.domain[0] == path.domain[1])
                 {
                     Some(token) => Disposition::Field {
+                        token: path.domain[0],
                         name: token.name.clone(),
                     },
                     None => Disposition::Dynamic,
@@ -163,7 +165,7 @@ fn visit(
             }
             Disposition::Dynamic => coverage
                 .gaps
-                .push((path.to_vec(), Unresolved::new("member-ledger-gap"))),
+                .push((path.to_vec(), Unresolved::new("ambiguous-key-token"))),
             Disposition::Delegated(child) => visit(grammar, *child, path, active, coverage),
             Disposition::Numeric => match &grammar.numeric {
                 Some(child) => {
@@ -177,25 +179,53 @@ fn visit(
                     .gaps
                     .push((path.to_vec(), Unresolved::new("numeric-child-missing"))),
             },
-            Disposition::Field { name } => {
-                let classification = classifications.entry(name).or_insert_with(|| {
-                    let joins = grammar
+            Disposition::Field { token, name } => {
+                let mut key = path.to_vec();
+                key.push(name.clone());
+                if entry.domain != [*token, *token] {
+                    coverage
+                        .gaps
+                        .push((key, Unresolved::new("ambiguous-key-token")));
+                    continue;
+                }
+                let classification = classifications.entry(*token).or_insert_with(|| {
+                    let mut fields = grammar
                         .fields
                         .fields
                         .iter()
-                        .find(|field| field.name == *name)
-                        .map_or(&[][..], |field| field.readers.as_slice());
-                    readers::classify(joins)
+                        .filter(|field| field.token == *token);
+                    let field = fields.next()?;
+                    if fields.next().is_some() {
+                        return None;
+                    }
+                    Some(readers::classify(&field.readers))
                 });
+                let Some(classification) = classification else {
+                    coverage
+                        .gaps
+                        .push((key, Unresolved::new("ambiguous-key-token")));
+                    continue;
+                };
                 let kind = classification.kind;
                 let family = classification.family;
-                let mut key = path.to_vec();
-                key.push(name.clone());
                 if kind == ReaderKind::Unknown {
                     coverage
                         .gaps
                         .push((key, Unresolved::new("unknown-key-reader")));
                 } else if kind == ReaderKind::Block && family == BlockFamily::Unknown {
+                    if grammar
+                        .fields
+                        .fields
+                        .iter()
+                        .filter(|field| field.name == *name)
+                        .count()
+                        != 1
+                    {
+                        coverage
+                            .gaps
+                            .push((key, Unresolved::new("ambiguous-key-token")));
+                        continue;
+                    }
                     match grammar.nested.get(name) {
                         Some(child) => visit(child, 0, &key, &mut BTreeSet::new(), coverage),
                         None => coverage.gaps.push((
