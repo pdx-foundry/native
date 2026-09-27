@@ -1,5 +1,8 @@
 //! Unfiltered command grammar answers and developer diagnostics for one supported build.
 //! Counts are operation answers per unique (family, name), never paths or registration sites.
+#[path = "support/population.rs"]
+mod population;
+
 use pdx_native::internals::command_grammar_stops::{self, Chain, GrammarResult, Run};
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::reference_readers::{self, Initialization, ReferenceFacts};
@@ -20,8 +23,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             diff(&before, &after)
         }
         [installation] => population(installation)?,
-        _ => return Err("usage: command-population INSTALLATION | --diff BEFORE AFTER".into()),
+        [flag, installation] if flag == "--baseline" => population(installation)?,
+        _ => {
+            return Err(
+                "usage: command-population [--baseline] INSTALLATION | --diff BEFORE AFTER".into(),
+            );
+        }
     };
+    if args.first().is_some_and(|flag| flag == "--baseline") {
+        println!(
+            "{}",
+            population::format_baseline(&output["build"], &normalized(&output))?
+        );
+        return Ok(());
+    }
+    if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
+        && !members.is_empty()
+    {
+        eprintln!(
+            "ignored serde-default members: {}",
+            members
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
@@ -264,6 +291,9 @@ fn stop_case(image: &Image, stage: &str, reason: &str, stop: Option<Stop>) -> Va
 
 /// Ignore timing and addresses. Include inventory uncertainty as well as answer and status changes.
 fn normalized(report: &Value) -> BTreeMap<String, Value> {
+    if let Some(answers) = population::baseline_answers(report) {
+        return answers;
+    }
     let mut result = BTreeMap::new();
     for inventory in report["inventories"].as_array().into_iter().flatten() {
         let kind = inventory["kind"].as_str().unwrap_or_default();
@@ -287,15 +317,16 @@ fn normalized(report: &Value) -> BTreeMap<String, Value> {
 }
 
 fn diff(before: &Value, after: &Value) -> Value {
-    let before = normalized(before);
-    let after = normalized(after);
+    let mut before = normalized(before);
+    let mut after = normalized(after);
+    let dropped = population::normalize_answers::<Answer<CommandGrammar>>(&mut before, &mut after);
     let keys: BTreeSet<_> = before.keys().chain(after.keys()).collect();
     let changes: Vec<_> = keys
         .into_iter()
         .filter(|key| before.get(*key) != after.get(*key))
         .map(|key| json!({"subject": key, "before": before.get(key), "after": after.get(key)}))
         .collect();
-    json!({"changed": changes.len(), "changes": changes})
+    json!({"changed": changes.len(), "changes": changes, "defaulted_members": dropped })
 }
 
 #[cfg(test)]
@@ -348,6 +379,21 @@ mod tests {
             member: Some(3),
             ..Chain::default()
         }
+    }
+
+    #[test]
+    fn compact_baseline_and_full_report_have_the_same_comparison_inputs() {
+        let full = report(vec![
+            json!({"name": "sample", "status": "partial", "answer": answer(Completeness::Partial, false)}),
+        ]);
+        let text = population::format_baseline(&json!("build"), &normalized(&full)).unwrap();
+        let baseline: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(normalized(&full), normalized(&baseline));
+        assert_eq!(diff(&baseline, &full)["changed"], 0);
+        let mut changed = baseline.clone();
+        let answers = changed["answers"].as_object_mut().unwrap();
+        answers.values_mut().next().unwrap()["status"] = json!("changed");
+        assert_eq!(diff(&baseline, &changed)["changed"], 1);
     }
 
     #[test]

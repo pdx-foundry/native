@@ -8,6 +8,9 @@
 //!
 //! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports and
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
+#[path = "support/population.rs"]
+mod population;
+
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::reference_readers;
 use pdx_native::internals::registry_field_stops::{self, FieldGap};
@@ -20,8 +23,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
-const USAGE: &str =
-    "usage: registry-field-sweep INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
+const USAGE: &str = "usage: registry-field-sweep [--baseline] INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
 
 struct ReaderFields {
     kind: ReaderKind,
@@ -46,8 +48,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             diff(&read_report(before)?, &read_report(after)?)
         }
         [installation] => sweep(installation)?,
+        [flag, installation] if flag == "--baseline" => sweep(installation)?,
         _ => return Err(USAGE.into()),
     };
+    if arguments.first().is_some_and(|flag| flag == "--baseline") {
+        println!(
+            "{}",
+            population::format_baseline(&output["build"], &normalized_cases(&output))?
+        );
+        return Ok(());
+    }
+    if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
+        && !members.is_empty()
+    {
+        eprintln!(
+            "ignored serde-default members: {}",
+            members
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
@@ -554,8 +576,9 @@ fn stop_shapes(cases: &[StopCase]) -> Value {
 /// The registries whose normalized answer or error differs between two reports. Elapsed time
 /// and the other report fields are ignored.
 fn diff(before: &Value, after: &Value) -> Value {
-    let before = normalized_cases(before);
-    let after = normalized_cases(after);
+    let mut before = normalized_cases(before);
+    let mut after = normalized_cases(after);
+    let dropped = population::normalize_answers::<Answer<Vec<Field>>>(&mut before, &mut after);
     let registries: BTreeSet<_> = before.keys().chain(after.keys()).collect();
 
     let changed: Vec<Value> = registries
@@ -575,11 +598,14 @@ fn diff(before: &Value, after: &Value) -> Value {
         })
         .collect();
 
-    json!({ "changed_registries": changed.len(), "registries": changed })
+    json!({ "changed_registries": changed.len(), "registries": changed , "defaulted_members": dropped })
 }
 
 /// Each registry's status with its normalized answer or error.
 fn normalized_cases(report: &Value) -> BTreeMap<String, Value> {
+    if let Some(answers) = population::baseline_answers(report) {
+        return answers;
+    }
     report["cases"]
         .as_array()
         .into_iter()
@@ -646,6 +672,19 @@ mod tests {
             },
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn compact_baseline_and_full_report_have_the_same_comparison_inputs() {
+        let full = report(json!([case("common/a", &["x"], "r1", "complete")]));
+        let text = population::format_baseline(&json!("build"), &normalized_cases(&full)).unwrap();
+        let baseline: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(normalized_cases(&full), normalized_cases(&baseline));
+        assert_eq!(diff(&baseline, &full)["changed_registries"], 0);
+        let mut changed = baseline.clone();
+        let answers = changed["answers"].as_object_mut().unwrap();
+        answers.values_mut().next().unwrap()["status"] = json!("changed");
+        assert_eq!(diff(&baseline, &changed)["changed_registries"], 1);
     }
 
     #[test]
@@ -739,7 +778,7 @@ mod tests {
 
         assert_eq!(
             diff(&before, &after),
-            json!({ "changed_registries": 0, "registries": [] })
+            json!({ "changed_registries": 0, "registries": [], "defaulted_members": [] })
         );
     }
 

@@ -60,6 +60,7 @@ pub struct Image<'a> {
     inventory: Inventory<'a>,
     text: Text<'a>,
     fixups: Result<Fixups, FixupDiagnostic>,
+    lookup_names: std::sync::OnceLock<BTreeMap<u64, String>>,
 }
 
 /// The hashes, architecture and format of an image.
@@ -208,6 +209,7 @@ impl<'a> Image<'a> {
             inventory,
             text,
             fixups,
+            lookup_names: std::sync::OnceLock::new(),
         })
     }
 
@@ -343,24 +345,42 @@ impl<'a> Image<'a> {
             .function(start)
             .map_err(|_| error(format!("{start:#x} is not a function start")))?;
         let rows = decode_arm64(code, address).map_err(|cause| error(cause.to_string()))?;
-        let empty = BTreeMap::new();
-        let (pointers, imports) = match &self.fixups {
-            Ok(fixups) => (&fixups.pointers, &fixups.bindings),
-            Err(_) => (&empty, &BTreeMap::new()),
-        };
-        let names = super::binary::references::names(
-            &self.inventory.symbols,
-            pointers,
-            imports,
-            &self.inventory.strings,
-        );
+        let names = self.lookup_names.get_or_init(|| {
+            let empty = BTreeMap::new();
+            let empty_imports = BTreeMap::new();
+            let (pointers, imports) = match &self.fixups {
+                Ok(fixups) => (&fixups.pointers, &fixups.bindings),
+                Err(_) => (&empty, &empty_imports),
+            };
+            super::binary::references::names(
+                &self.inventory.symbols,
+                pointers,
+                imports,
+                &self.inventory.strings,
+            )
+        });
 
         Ok(
-            crate::engine::analysis::references::shapes::canonical(&rows, &names)
+            crate::engine::analysis::references::shapes::canonical(&rows, names)
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
         )
+    }
+
+    /// Canonical bodies of all text functions whose symbol contains `pattern`, in address
+    /// order. Data symbols and outlined cold clones are excluded; a body that cannot decode
+    /// fails the census. Aliases share one member, displayed with the first matching symbol name.
+    pub fn lookup_bodies(&self, pattern: &str) -> Result<Vec<(String, Vec<String>)>, InspectError> {
+        let mut addresses = BTreeSet::new();
+        self.symbols(pattern)
+            .into_iter()
+            .filter(|(address, name)| {
+                self.text.starts.contains(address) && !name.contains(" [clone ")
+            })
+            .filter(|(address, _)| addresses.insert(*address))
+            .map(|(address, name)| Ok((name.to_owned(), self.lookup_lines(address)?)))
+            .collect()
     }
 
     /// Every direct `bl` or `b` to `target`, in address order. Calls through a register or a

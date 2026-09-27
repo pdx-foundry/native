@@ -289,3 +289,36 @@ fn a_stop_is_placed_at_its_instruction_function_and_entry() {
     assert_eq!(outside.function, None);
     assert_eq!(outside.row, None);
 }
+
+#[test]
+fn lookup_census_reads_text_bodies_and_excludes_data_symbols() {
+    let bytes = support::macho_with_fixups(6);
+    let image = Image::read(&bytes).unwrap();
+    let bodies = image.lookup_bodies("Probe::Read").unwrap();
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0].0, "Probe::Read()");
+    assert_eq!(bodies[0].1, image.lookup_lines(READ).unwrap());
+    assert!(image.lookup_bodies("nonexistent").unwrap().is_empty());
+    assert!(image.lookup_bodies("vtable").unwrap().is_empty());
+}
+
+#[test]
+fn lookup_census_counts_matching_aliases_once_per_address() {
+    let bytes = support::macho_with_fixups(6);
+    let mut image = Image::read(&bytes).unwrap();
+    image
+        .inventory
+        .symbols
+        .push(crate::engine::analysis::discovery::Symbol {
+            name: "Probe::ReadAlias()".into(),
+            address: READ,
+        });
+    assert_eq!(image.symbols("Probe::Read").len(), 2);
+    let bodies = image.lookup_bodies("Probe::Read").unwrap();
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0].0, "Probe::Read()");
+    assert_eq!(
+        image.lookup_bodies("ReadAlias").unwrap()[0].0,
+        "Probe::ReadAlias()"
+    );
+}

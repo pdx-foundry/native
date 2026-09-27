@@ -7,24 +7,45 @@ sets this workflow; the [method index](discovery.md) locates the operations and 
 
 ## Inspect the exact build
 
-Match the executable to [targets](targets.md) before reusing an engine finding. Read the subject's
-method page for known facts and failed shapes. Set `STELLARIS_PATH` to the installation or
-executable being examined.
-
-[The developer inspector](../../examples/inspect.rs) reads ARM64 images without starting a game.
-Its image inspection modes also work on uncatalogued builds. Use `--image PATH` to override
-`STELLARIS_PATH`:
+Start with a shape census before choosing a method. Match the executable to [targets](targets.md),
+read the subject's method page, and set `STELLARIS_PATH` to the installation or executable.
+[The developer inspector](../../examples/inspect.rs) reads ARM64 images without starting a game;
+its image modes also work on uncatalogued builds. `--image PATH` overrides the environment.
 
 ```sh
-cargo run --release --example inspect -- --symbols 'CMegaStructureType'
-cargo run --release --example inspect -- --function 'CMegaStructureType::ReadMember'
+cargo run --release --example inspect -- --lookup-census 'NParserUtil::ReadKeyReference<'
 ```
 
-Use `--callers NAME` for direct calls, `--strings TEXT` for literal address references,
-`--slots NAME --count N` for fixed-up pointer slots, and `--lookup-lines NAME` for the canonical
-lines that [reference lookup shapes](references.md) match. The inspector prints image identity and
-pointer-resolution status; function ends inferred from symbols and unresolved indirect branches
-are limits on what the output establishes. See [inspection limits](../engine-knowledge.md#inspecting-an-executable).
+The census reads every matching text body in one process, excludes outlined cold clones, and
+prints counts, an example and every member of each group. Symbol aliases at the same address
+count once, using the first matching name. It uses the reference matcher's canonical
+lines, normalizing template arguments and their occurrences in instantiated return/parameter types.
+`--normalize-field-offsets` additionally ignores immediate displacements inside memory operands
+based on object registers; stack/frame offsets, constants and branches remain exact. This is a
+research grouping, not a proof that the functions have the same semantics.
+
+On M45-release the command gives 87 functions in 7 groups, the largest with 77. SDK-543's wider
+census covered 188 reference readers (about 20 shapes) and 151 lookup initializers (59 groups);
+see [reference shapes](references.md#lookup-shapes) for the population breakdown.
+
+Derive a draft from exact symbol names or addresses selected from the census:
+
+```sh
+cargo run --release --example inspect -- --derive-shape 'NAME1' 'NAME2' 'NAME3' > draft.shape
+```
+
+The draft keeps strict canonical lines, replacing differing tokens or target names with numbered
+placeholders. Equal columns of differences share a placeholder. Bodies of different lengths fail
+with their lengths instead of emitting a truncated shape. Equal lengths mean positional alignment
+only: review control flow, name the placeholders, and add the semantics before committing a shape.
+Three ordinary deferred readers produce `deferred.shape` with one placeholder, up to its name and
+header. Identity and alignment diagnostics are shape comments, so stdout can be saved directly.
+
+Use `--symbols TEXT` to find names, `--function NAME` to inspect instructions, `--callers NAME` for
+direct calls, `--strings TEXT` for literal address references, `--slots NAME --count N` for fixed-up
+pointer slots, and `--lookup-lines NAME` for strict canonical lines. The inspector prints image
+identity and pointer-resolution status; symbol-inferred ends and unresolved indirect branches
+limit what the output establishes. See [inspection limits](../engine-knowledge.md#inspecting-an-executable).
 
 On a catalogued build, inspect a field method's stopped token paths with:
 
@@ -183,12 +204,37 @@ method over every discovered registry, or the whole command or other inventory i
 For fields, use [`registry-field-sweep.rs`](../../examples/registry-field-sweep.rs):
 
 ```sh
-cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > after.json
-cargo run --release --example registry-field-sweep -- --diff before.json after.json
+mkdir -p .local/population
+cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > .local/population/fields.json
+cargo run --release --example registry-field-sweep -- --diff tests/population/m45-release/registry-field-sweep.json .local/population/fields.json
 ```
 
-Save `before.json` with the same command before the change. The diff compares normalized answers;
-the report also groups internal stops by instruction kind, obstacle and function.
+The tracked [M45-release population reports](../../tests/population/m45-release/) are the baseline;
+no second checkout or build of `main` is needed. The diff compares normalized answers and reports
+once which absent members matched their serde defaults. Non-default additions, required removals
+and unknown JSON members remain changes. Answers that the current types cannot deserialize receive
+no default-member pruning. Method and Native version stamps are excluded from comparison; build and basis
+remain compared. The report also groups stops by instruction kind, obstacle and function.
+
+For command grammars, run and compare the whole population:
+
+```sh
+cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
+cargo run --release --example command-population -- --diff tests/population/m45-release/command-population.json .local/population/commands.json
+```
+
+Review changed answers, then update the affected baseline in the same PR as the method change:
+
+```sh
+cargo run --release --example registry-field-sweep -- --baseline "$STELLARIS_PATH" > tests/population/m45-release/registry-field-sweep.json
+cargo run --release --example command-population -- --baseline "$STELLARIS_PATH" > tests/population/m45-release/command-population.json
+```
+
+`--baseline` stores only comparison inputs, with one subject per line: answers, errors and status,
+plus command inventory uncertainty. It omits diagnostic groups, counters and timings. Full reports
+are generated into the ignored `.local/population/` directory. The baseline includes the exact build;
+use a separate directory for each supported build. An unchanged method gives zero changed answers,
+and repeated baseline generation is byte-identical.
 
 For commands, [`declaration-list.rs`](../../examples/declaration-list.rs) prints both full
 inventories and their gaps when no name filter is supplied:

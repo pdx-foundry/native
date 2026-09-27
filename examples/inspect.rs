@@ -7,6 +7,9 @@
 //!
 //! The image is `--image PATH`, or `STELLARIS_PATH` when that is absent. A directory resolves to
 //! its executable the way `Native::open` resolves an installation.
+#[path = "support/shapes.rs"]
+mod shapes;
+
 use pdx_native::internals::command_grammar_stops::{self, GrammarResult};
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::registry_field_stops::{
@@ -18,7 +21,8 @@ use pdx_native::{DeclarationKind, Native};
 
 const USAGE: &str = "usage: inspect [--image PATH] \
     (--symbols TEXT | --function NAME|0xADDRESS [--limit BYTES] | --callers NAME|0xADDRESS \
-    | --lookup-lines NAME|0xADDRESS \
+    | --lookup-lines NAME|0xADDRESS | --lookup-census PATTERN [--normalize-field-offsets] \
+    | --derive-shape NAME... \
     | --strings TEXT | --slots NAME|0xADDRESS [--count N] | --registry-fields DIRECTORY \
     | --trigger-grammar NAME | --effect-grammar NAME) [--trace]";
 
@@ -33,10 +37,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = read_image(arguments.image.as_ref())?;
     let image = Image::read(&bytes)?;
 
-    println!("{}", image.identity()?);
+    let prefix = if matches!(arguments.command, Command::DeriveShape(_)) {
+        "# "
+    } else {
+        ""
+    };
+    for line in image.identity()?.to_string().lines() {
+        println!("{prefix}{line}");
+    }
     match image.pointer_resolution() {
-        Ok(()) => println!("pointer resolution: available"),
-        Err(diagnostic) => println!("pointer resolution unavailable: {diagnostic}"),
+        Ok(()) => println!("{prefix}pointer resolution: available"),
+        Err(diagnostic) => println!("{prefix}pointer resolution unavailable: {diagnostic}"),
     }
     println!();
 
@@ -54,6 +65,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for line in image.lookup_lines(image.address(&query)?)? {
                 println!("{line}");
             }
+        }
+        Command::LookupCensus(pattern) => {
+            let bodies = image.lookup_bodies(&pattern)?;
+            let count = bodies.len();
+            let groups = shapes::groups(bodies, arguments.normalize_field_offsets);
+            println!("{count} functions in {} groups", groups.len());
+            for (index, members) in groups.iter().enumerate() {
+                println!(
+                    "\ngroup {}: {} functions; example: {}",
+                    index + 1,
+                    members.len(),
+                    members[0]
+                );
+                for member in members {
+                    println!("  {member}");
+                }
+            }
+        }
+        Command::DeriveShape(queries) => {
+            let bodies: Result<Vec<_>, _> = queries
+                .iter()
+                .map(|query| image.lookup_lines(image.address(query)?))
+                .collect();
+            print!("{}", shapes::derive(&bodies?)?);
         }
         Command::Callers(query) => {
             println!("direct bl and b only; calls through a register or a vtable are not found");
@@ -303,6 +338,8 @@ enum Command {
     Symbols(String),
     Function(String),
     LookupLines(String),
+    LookupCensus(String),
+    DeriveShape(Vec<String>),
     Callers(String),
     Strings(String),
     Slots(String),
@@ -316,23 +353,30 @@ struct Arguments {
     limit: u64,
     count: usize,
     trace: bool,
+    normalize_field_offsets: bool,
 }
 
 impl Arguments {
     /// `default_image` is used when `--image` is absent.
     fn parse(
-        mut arguments: impl Iterator<Item = String>,
+        arguments: impl Iterator<Item = String>,
         default_image: Option<String>,
     ) -> Result<Self, String> {
+        let mut arguments = arguments.peekable();
         let mut image = default_image;
         let mut command = None;
         let mut limit = 64 * 1024;
         let mut count = 16;
         let mut trace = false;
+        let mut normalize_field_offsets = false;
 
         while let Some(flag) = arguments.next() {
             if flag == "--trace" {
                 trace = true;
+                continue;
+            }
+            if flag == "--normalize-field-offsets" {
+                normalize_field_offsets = true;
                 continue;
             }
             let value = arguments.next().ok_or(USAGE)?;
@@ -342,6 +386,17 @@ impl Arguments {
                 "--function" => command = Some(Command::Function(value)),
                 "--callers" => command = Some(Command::Callers(value)),
                 "--lookup-lines" => command = Some(Command::LookupLines(value)),
+                "--lookup-census" => command = Some(Command::LookupCensus(value)),
+                "--derive-shape" => {
+                    let mut names = vec![value];
+                    while arguments
+                        .peek()
+                        .is_some_and(|argument| !argument.starts_with("--"))
+                    {
+                        names.push(arguments.next().expect("peeked argument"));
+                    }
+                    command = Some(Command::DeriveShape(names));
+                }
                 "--strings" => command = Some(Command::Strings(value)),
                 "--slots" => command = Some(Command::Slots(value)),
                 "--registry-fields" => command = Some(Command::RegistryFields(value)),
@@ -363,6 +418,7 @@ impl Arguments {
             limit,
             count,
             trace,
+            normalize_field_offsets,
         })
     }
 }
@@ -373,5 +429,38 @@ fn traced_if<T>(trace: bool, method: impl FnOnce() -> T) -> T {
         trace_causes(method)
     } else {
         method()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(arguments: &[&str]) -> Result<Arguments, String> {
+        Arguments::parse(
+            arguments.iter().map(|argument| (*argument).into()),
+            Some("image".into()),
+        )
+    }
+
+    #[test]
+    fn census_options_and_multiple_shape_names_are_parsed() {
+        let census = parse(&["--lookup-census", "Read<", "--normalize-field-offsets"]).unwrap();
+        assert!(matches!(census.command, Command::LookupCensus(pattern) if pattern == "Read<"));
+        assert!(census.normalize_field_offsets);
+        let draft = parse(&[
+            "--derive-shape",
+            "First()",
+            "Second()",
+            "Third()",
+            "--image",
+            "other",
+        ])
+        .unwrap();
+        assert_eq!(draft.image, "other");
+        assert!(
+            matches!(draft.command, Command::DeriveShape(names) if names == ["First()", "Second()", "Third()"])
+        );
+        assert!(parse(&["--derive-shape"]).is_err());
     }
 }
