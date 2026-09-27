@@ -32,7 +32,10 @@ use super::InputError;
 use super::decode::{Instruction, decode_arm64};
 use super::stop::{Bound, Obstacle, Unknown, Unresolved};
 
+mod provenance;
 mod trace;
+pub use provenance::Decision;
+use provenance::Provenance;
 
 use trace::Traces;
 pub use trace::trace_causes;
@@ -312,6 +315,7 @@ pub struct Machine<'a> {
     /// Ranges `(start, end)` that a store to an unknown address leaves known.
     protected: Vec<(u64, u64)>,
     read_watch: Option<ReadWatch>,
+    provenance: Option<Provenance>,
     returned_values: BTreeMap<u64, Option<u64>>,
     tail_entries: BTreeSet<u64>,
     tail_aliases: Vec<(usize, u64)>,
@@ -367,6 +371,7 @@ struct HeadState {
     frames: Vec<u64>,
     labels: BTreeMap<u64, u64>,
     read_watch: Option<ReadWatch>,
+    provenance: Option<Provenance>,
     returned_values: BTreeMap<u64, Option<u64>>,
     tail_aliases: Vec<(usize, u64)>,
     widened: u32,
@@ -396,6 +401,7 @@ impl<'a> Machine<'a> {
             next_object: OBJECT_BASE,
             protected: Vec::new(),
             read_watch: None,
+            provenance: None,
             returned_values: BTreeMap::new(),
             tail_entries: BTreeSet::new(),
             tail_aliases: Vec::new(),
@@ -431,6 +437,9 @@ impl<'a> Machine<'a> {
     /// Set general register `index` (`x0` is 0).
     pub fn set_register(&mut self, index: usize, value: u64) {
         self.registers[index] = Some(value);
+        if let Some(provenance) = &mut self.provenance {
+            provenance.registers[index].clear();
+        }
     }
 
     /// The value of general register `index`, when it is known.
@@ -476,7 +485,7 @@ impl<'a> Machine<'a> {
             self.memory
                 .insert(address + offset, Some((value >> (offset * 8)) as u8));
         }
-        self.trace_stored(address, width, true);
+        self.record_stored_inputs(address, width, true);
     }
 
     /// Keep `length` bytes at `address` known when this path stores to an unknown address. The
@@ -488,6 +497,7 @@ impl<'a> Machine<'a> {
     /// Track instruction loads of bytes not yet stored by this chain. Install initial state
     /// before starting the watch; keep the watch when moving to the next stage.
     pub fn watch_reads(&mut self, address: u64, length: u64) {
+        self.provenance = Some(Provenance::default());
         self.read_watch = Some(ReadWatch {
             start: address,
             end: address + length,
@@ -508,6 +518,11 @@ impl<'a> Machine<'a> {
     pub fn write_unknown(&mut self, address: u64, width: u64) {
         self.watch_store(address, width);
         self.forget(address, width);
+        if let Some(provenance) = &mut self.provenance {
+            for at in address..address + width {
+                provenance.memory.remove(&at);
+            }
+        }
     }
 
     /// Each known byte in a reserved object, relative to its start.
@@ -529,6 +544,14 @@ impl<'a> Machine<'a> {
 
     fn load_bytes(&mut self, address: u64, width: u64) -> Option<u128> {
         let value = self.read_bytes(address, width);
+        if value.is_none()
+            && let Some(provenance) = &self.provenance
+        {
+            provenance
+                .inputs
+                .borrow_mut()
+                .extend(self.receiver_sources(address, width));
+        }
         let Some(watch) = &self.read_watch else {
             return value;
         };
@@ -772,8 +795,9 @@ impl<'a> Machine<'a> {
                         continue;
                     }
 
-                    for (states, pc) in branches.into_iter().rev() {
+                    for (side, (states, pc)) in branches.into_iter().enumerate().rev() {
                         let mut branch = machine.clone();
+                        branch.record_decision(at, side, states.is_some());
                         if let Some(states) = states {
                             branch.possible_flags = states;
                         }
@@ -921,6 +945,7 @@ impl<'a> Machine<'a> {
             || kept.frames != self.frames
             || kept.labels != self.labels
             || kept.read_watch != self.read_watch
+            || kept.provenance != self.provenance
             || kept.returned_values != self.returned_values
             || kept.tail_aliases != self.tail_aliases
         {
@@ -1004,6 +1029,7 @@ impl<'a> Machine<'a> {
             frames: self.frames.clone(),
             labels: self.labels.clone(),
             read_watch: self.read_watch.clone(),
+            provenance: self.provenance.clone(),
             returned_values: self.returned_values.clone(),
             tail_aliases: self.tail_aliases.clone(),
             widened,
@@ -1116,6 +1142,12 @@ impl<'a> Machine<'a> {
         self.registers[0] = value;
         self.registers[lost.clone()].fill(None);
         self.set_flags(None);
+        if let Some(provenance) = &mut self.provenance {
+            for index in 0..=18 {
+                provenance.registers[index].clear();
+            }
+            provenance.flags.clear();
+        }
         self.trace_call(lost);
     }
 
@@ -1133,6 +1165,23 @@ impl<'a> Machine<'a> {
             || self.step_vector(mnemonic, operands)?
             || self.step_memory(mnemonic, operands)?
         {
+            if !matches!(mnemonic, "str" | "stur" | "stp" | "ldr" | "ldur" | "ldp") {
+                let destinations = if mnemonic == "ldp" { 2 } else { 1 };
+                for operand in operands.iter().take(destinations) {
+                    if let Operand::Register(Register {
+                        name: Name::Vector(index),
+                        ..
+                    }) = operand
+                        && let Some(provenance) = &mut self.provenance
+                    {
+                        provenance.vectors[*index] = if self.vectors[*index].is_none() {
+                            provenance.inputs.borrow().clone()
+                        } else {
+                            BTreeSet::new()
+                        };
+                    }
+                }
+            }
             return Ok(Flow::Next);
         }
         self.step_control(pc, mnemonic, operands)
@@ -1594,7 +1643,12 @@ impl<'a> Machine<'a> {
                 ],
             ) => {
                 let address = self.address(memory, rest)?;
+                let address_inputs = self.take_inputs();
                 self.vectors[*index] = address.and_then(|address| self.load_bytes(address, *bytes));
+                let sources = self.loaded_inputs(address_inputs, address, *bytes);
+                if let Some(provenance) = &mut self.provenance {
+                    provenance.vectors[*index] = sources.receiver;
+                }
             }
             (
                 "str" | "stur",
@@ -1635,9 +1689,17 @@ impl<'a> Machine<'a> {
                 ],
             ) => {
                 let address = self.address(memory, rest)?;
+                let address_inputs = self.take_inputs();
                 self.vectors[*first] = address.and_then(|address| self.load_bytes(address, *bytes));
                 self.vectors[*second] =
                     address.and_then(|address| self.load_bytes(address + bytes, *bytes));
+                let first_sources = self.loaded_inputs(address_inputs.clone(), address, *bytes);
+                let second_sources =
+                    self.loaded_inputs(address_inputs, address.map(|at| at + bytes), *bytes);
+                if let Some(provenance) = &mut self.provenance {
+                    provenance.vectors[*first] = first_sources.receiver;
+                    provenance.vectors[*second] = second_sources.receiver;
+                }
             }
             (
                 "stp",
@@ -1694,7 +1756,7 @@ impl<'a> Machine<'a> {
                 let values = address
                     .map(|address| (self.load(address, width), self.load(address + width, width)));
                 let (first_value, second_value) = values.unwrap_or((None, None));
-                self.restore_inputs(self.loaded_inputs(address_inputs, address, width));
+                self.restore_inputs(self.loaded_inputs(address_inputs.clone(), address, width));
                 self.assign(first, first_value)?;
                 let second_address = address.map(|address| address + width);
                 self.restore_inputs(self.loaded_inputs(address_inputs, second_address, width));
@@ -1813,6 +1875,13 @@ impl<'a> Machine<'a> {
 
     /// Set the flags. Unknown flags may again be in any state.
     fn set_flags(&mut self, flags: Option<Flags>) {
+        if let Some(provenance) = &mut self.provenance {
+            provenance.flags = if flags.is_none() {
+                provenance.inputs.borrow().clone()
+            } else {
+                BTreeSet::new()
+            };
+        }
         self.flags = flags;
         self.possible_flags = ALL_FLAG_STATES;
         if flags.is_none() {
@@ -1880,6 +1949,13 @@ impl<'a> Machine<'a> {
                 };
             }
             Name::General(index) => {
+                if let Some(provenance) = &mut self.provenance {
+                    provenance.registers[index] = if value.is_none() {
+                        provenance.inputs.borrow().clone()
+                    } else {
+                        BTreeSet::new()
+                    };
+                }
                 self.registers[index] = value;
                 if value.is_none() {
                     self.trace_register(index);
@@ -1948,13 +2024,19 @@ impl<'a> Machine<'a> {
             let byte = value.map(|value| (value >> (offset * 8)) as u8);
             self.memory.insert(address + offset, byte);
         }
-        self.trace_stored(address, width, value.is_some());
+        self.record_stored_inputs(address, width, value.is_some());
     }
 
     /// Vector register `index`, noting an unknown one as an input of the present instruction.
     fn vector(&self, index: usize) -> Option<u128> {
         if self.vectors[index].is_none() {
             self.read_unknown_vector();
+            if let Some(provenance) = &self.provenance {
+                provenance
+                    .inputs
+                    .borrow_mut()
+                    .extend(&provenance.vectors[index]);
+            }
         }
         self.vectors[index]
     }

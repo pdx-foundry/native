@@ -65,7 +65,7 @@ fn receiver() -> CommandReader {
     }
 }
 fn analyze(input: &GrammarInput) -> Arc<Result> {
-    super::analyze(input, receiver(), &BTreeMap::from([(0, 0)]))
+    super::analyze(input, receiver(), &BTreeMap::from([(0, 0)])).0
 }
 fn string_read() -> Arm64 {
     let mut body = Arm64::at(READ);
@@ -263,9 +263,9 @@ fn known_receiver_byte_selects_the_proved_form() {
     let mut read = Arm64::at(READ);
     arm64!(read; ldrb w8, [x0, #0x30]; cbz w8, >skip; ldr x8, [x0]; ldr x8, [x8, #0x20]; add x1, x1, #0x278; br x8; skip:; ret);
     let input = input(read, boolean_assign(), boolean_validation());
-    let known = super::analyze(&input, receiver(), &BTreeMap::from([(0x30, 1)]));
+    let known = super::analyze(&input, receiver(), &BTreeMap::from([(0x30, 1)])).0;
     assert!(known.complete, "{known:?}");
-    let unknown = super::analyze(&input, receiver(), &BTreeMap::new());
+    let unknown = super::analyze(&input, receiver(), &BTreeMap::new()).0;
     assert!(!unknown.complete);
     assert!(unknown.receiver_state);
     assert!(unknown.alternatives.iter().all(|value| !value.accepted));
@@ -297,7 +297,7 @@ fn cache_uses_slot_functions_and_established_receiver_bytes() {
     let mut other_assign = Arm64::at(ASSIGN_BODY + 0x1000);
     arm64!(other_assign; mov w0, #0; ret);
     put(&mut input, other_assign);
-    let different = super::analyze(&input, other, &BTreeMap::new());
+    let different = super::analyze(&input, other, &BTreeMap::new()).0;
     assert_ne!(first.key, different.key);
     assert!(first.alternatives.iter().any(|value| value.accepted));
     assert!(different.alternatives.iter().all(|value| !value.accepted));
@@ -447,8 +447,8 @@ fn changed_receiver_state_changes_cache_key_and_result() {
         .forms
         .shared
         .insert(0x9000, "CEffect::Read(CReader&, EScopeType)".into());
-    let first = super::analyze(&input, receiver(), &BTreeMap::from([(0x30, 1)]));
-    let second = super::analyze(&input, receiver(), &BTreeMap::from([(0x30, 0)]));
+    let first = super::analyze(&input, receiver(), &BTreeMap::from([(0x30, 1)])).0;
+    let second = super::analyze(&input, receiver(), &BTreeMap::from([(0x30, 0)])).0;
     assert_ne!(first.key, second.key);
     assert!(!first.block && second.block);
 }
@@ -649,5 +649,195 @@ fn deferred_reference_runs_found_and_bound_null_results() {
             .missing
             .iter()
             .all(|path| path.class == PathClass::Rejecting)
+    );
+}
+
+#[test]
+fn cache_includes_virtual_helpers_outside_the_fixed_slots() {
+    let mut read = Arm64::at(READ);
+    arm64!(read; mov x19, x30; ldr x8, [x0]; ldr x8, [x8, #0xa0]; mov x9, x0; mov x0, x1; add x1, x9, #0x40; blr x8; mov x30, x19; ret);
+    let mut input = input(read, false_assign(), true_validation());
+    let helpers = [STRING, 0x7100, STRING];
+    input
+        .forms
+        .shared
+        .insert(0x7100, "CReader::Read(bool&)".into());
+    for (index, helper) in helpers.into_iter().enumerate() {
+        let vtable = VTABLE + index as u64 * 0x100;
+        for (slot, function) in [
+            (0x20, ASSIGN_BODY),
+            (0x90, INIT),
+            (0x98, VALIDATE),
+            (0xa0, helper),
+        ] {
+            input.declarations.pointers.insert(vtable + slot, function);
+        }
+    }
+    let results: Vec<_> = (0..3)
+        .map(|index| {
+            let reader = CommandReader {
+                vtable: VTABLE + index * 0x100,
+                ..receiver()
+            };
+            super::analyze(&input, reader, &BTreeMap::new())
+        })
+        .collect();
+    assert_eq!(results[0].1.slots, results[1].1.slots);
+    assert_ne!(results[0].1.functions, results[1].1.functions);
+    assert!(!Arc::ptr_eq(&results[0].0, &results[1].0));
+    assert_eq!(results[0].0.alternatives[0].value.kind, ReaderKind::String);
+    assert_eq!(results[1].0.alternatives[0].value.kind, ReaderKind::Boolean);
+    assert_eq!(results[0].1, results[2].1);
+    assert!(Arc::ptr_eq(&results[0].0, &results[2].0));
+}
+
+#[test]
+fn script_kind_forks_do_not_make_equal_receiver_sides_dependent() {
+    let mut read = Arm64::at(READ);
+    arm64!(read;
+        ldrb w8, [x0, #0x30]; cbz w8, >kind; nop;
+        kind:; ldr w8, [x1]; cbz w8, >block;
+        mov x8, x0; mov x0, x1; add x1, x8, #0x40; b extern STRING as usize;
+        block:; b extern MEMBER as usize
+    );
+    let result = analyze(&input(read, false_assign(), true_validation()));
+    assert!(result.complete, "{result:?}");
+    assert!(!result.receiver_state);
+    assert!(result.block);
+    assert!(
+        result
+            .alternatives
+            .iter()
+            .any(|a| a.accepted && a.value.kind == ReaderKind::String)
+    );
+}
+
+fn operator_read() -> Arm64 {
+    let mut read = Arm64::at(READ);
+    arm64!(read;
+        mov x19, x0; mov x20, x1; mov x21, x30;
+        add x0, x0, #0x64; bl extern 0x9000;
+        mov x0, x19; add x1, x20, #0x278; mov x30, x21;
+        b extern ASSIGN_BODY as usize
+    );
+    read
+}
+
+fn invertible_assign(same: bool) -> Arm64 {
+    let mut assign = Arm64::at(ASSIGN_BODY);
+    arm64!(assign;
+        ldr w8, [x1]; cmp w8, #7; b.eq >yes;
+        cmp w8, #8; b.eq >no;
+        strb wzr, [x0, #0x41]; mov w0, #0; ret;
+        yes:; mov w8, #1; b >operator;
+        no:
+    );
+    if same {
+        arm64!(assign; mov w8, #1);
+    } else {
+        arm64!(assign; mov w8, #0);
+    }
+    arm64!(assign;
+        operator:; ldr w9, [x0, #0x64]; cmp w9, #0x427; b.ne >store;
+        cbz w8, >one; mov w8, #0; b >store;
+        one:; mov w8, #1;
+        store:; strb w8, [x0, #0x40];
+        mov w8, #1; strb w8, [x0, #0x41]; mov w0, #1; ret
+    );
+    assign
+}
+
+#[test]
+fn boolean_probe_pairs_the_same_unknown_operator_decisions() {
+    for same in [false, true] {
+        let mut input = input(
+            operator_read(),
+            invertible_assign(same),
+            boolean_validation(),
+        );
+        input.command_bindings.operator_readers[0] = 0x9000;
+        let result = analyze(&input);
+        let boolean = result
+            .alternatives
+            .iter()
+            .any(|a| a.accepted && a.value.kind == ReaderKind::Boolean);
+        assert_eq!(boolean, !same, "{result:?}");
+        if !same {
+            assert!(result.complete, "{result:?}");
+        }
+    }
+}
+
+#[test]
+fn receiver_dependence_suppresses_only_the_affected_value() {
+    let mut read = Arm64::at(READ);
+    arm64!(read;
+        ldr w8, [x1]; cbz w8, >block;
+        ldrb w8, [x0, #0x30]; cbz w8, >skip;
+        mov x8, x0; mov x0, x1; add x1, x8, #0x40; b extern STRING as usize;
+        block:; b extern MEMBER as usize;
+        skip:; ret
+    );
+    let result = analyze(&input(read, false_assign(), true_validation()));
+    assert!(!result.complete);
+    assert!(result.receiver_state);
+    assert!(result.block);
+    assert!(result.alternatives.iter().all(|a| !a.accepted));
+}
+
+#[test]
+fn boolean_probe_requires_a_partner_for_each_operator_decision() {
+    let mut assign = Arm64::at(ASSIGN_BODY);
+    arm64!(assign;
+        ldr w8, [x1]; cmp w8, #7; b.ne >no;
+        ldr w9, [x0, #0x64]; cbz w9, >yes; nop;
+        yes:; mov w8, #1; b >store;
+        no:; mov w8, #0;
+        store:; strb w8, [x0, #0x40]; mov w0, #1; ret
+    );
+    let mut input = input(operator_read(), assign, true_validation());
+    input.command_bindings.operator_readers[0] = 0x9000;
+    let result = analyze(&input);
+    assert!(
+        !result
+            .alternatives
+            .iter()
+            .any(|a| a.value.kind == ReaderKind::Boolean)
+    );
+}
+
+#[test]
+fn receiver_origins_follow_stored_bytes_and_compared_flags() {
+    let mut read = Arm64::at(READ);
+    arm64!(read;
+        ldrb w8, [x0, #0x30]; strb w8, [x0, #0x38];
+        ldrb w8, [x0, #0x38]; cmp w8, #0; b.eq >skip;
+        mov x8, x0; mov x0, x1; add x1, x8, #0x40; b extern STRING as usize;
+        skip:; ret
+    );
+    let result = analyze(&input(read, false_assign(), true_validation()));
+    assert!(result.receiver_state, "{result:?}");
+    assert!(result.alternatives.iter().all(|a| !a.accepted));
+}
+
+#[test]
+fn receiver_dependence_does_not_suppress_an_independent_value() {
+    let mut read = Arm64::at(READ);
+    arm64!(read;
+        mov x19, x0; mov x20, x1; mov x21, x30;
+        ldrb w8, [x0, #0x30]; cbz w8, >value;
+        bl extern MEMBER as usize;
+        value:; mov x0, x20; add x1, x19, #0x40; mov x30, x21;
+        b extern STRING as usize
+    );
+    let result = analyze(&input(read, false_assign(), true_validation()));
+    assert!(!result.complete);
+    assert!(result.receiver_state);
+    assert!(!result.block);
+    assert!(
+        result
+            .alternatives
+            .iter()
+            .any(|a| a.accepted && a.value.kind == ReaderKind::String)
     );
 }

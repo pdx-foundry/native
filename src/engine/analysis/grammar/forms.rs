@@ -9,7 +9,7 @@ use crate::ReaderKind;
 use crate::engine::analysis::{
     commands::{OBJECT_SPAN, forget_if_passed, stand_in_command},
     declarations::CommandReader,
-    evaluate::{Call, Code, Exit, Machine, Path},
+    evaluate::{Call, Code, Decision, Exit, Machine, Path},
     fields::{ReaderJoin, Value},
     readers,
     references::initialization::InitializationLookup,
@@ -71,10 +71,14 @@ pub enum LookupExecution {
     },
 }
 
-/// Slot functions and every established receiver byte read by this result.
+/// Selected slots, reached callees and initial receiver bytes watched by every probe.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CacheKey {
-    pub functions: [Option<u64>; 6],
+    /// Read, member, assign, initializer, validation and role slots, in that order.
+    pub slots: [Option<u64>; 6],
+    /// Every entered or classified target, including virtual helpers and tail calls.
+    pub functions: BTreeSet<u64>,
+    /// Factory-established byte values, or an explicit unknown input.
     pub receiver: BTreeMap<u64, Option<u8>>,
 }
 
@@ -144,13 +148,13 @@ pub struct Result {
     pub stops: Vec<Unresolved>,
 }
 
-/// Share results only when the slot functions and watched initial bytes agree. The result
-/// retains that key for the population audit.
+/// Analyze each receiver before sharing by its complete key. Return the independently computed
+/// key beside the shared result so the population audit can check each cache reuse.
 pub(super) fn analyze(
     input: &GrammarInput,
     reader: CommandReader,
     state: &BTreeMap<u64, u8>,
-) -> Arc<Result> {
+) -> (Arc<Result>, CacheKey) {
     let slots = input.declarations.parser_slots;
     let binding = &input.command_bindings;
     let at = |slot| {
@@ -168,32 +172,20 @@ pub(super) fn analyze(
         at(binding.validation_slot),
         at(input.forms.role_slot),
     ];
-    {
-        let cache = input.forms.cache.lock().unwrap();
-        if let Some(known) = cache.values().find(|known| {
-            known.key.functions == functions
-                && known
-                    .key
-                    .receiver
-                    .iter()
-                    .all(|(offset, value)| state.get(offset).copied() == *value)
-        }) {
-            return known.clone();
-        }
-    }
     let mut result = examine(input, reader, state, functions);
+    let independent_key = result.key.clone();
     let mut cache = input.forms.cache.lock().unwrap();
     if let Some(known) = cache.get(&result.key) {
         if **known == result {
-            return known.clone();
+            return (known.clone(), independent_key);
         }
         result.complete = false;
         result.stops.push(Unresolved::new("form-cache-conflict"));
-        return Arc::new(result);
+        return (Arc::new(result), independent_key);
     }
     let result = Arc::new(result);
     cache.insert(result.key.clone(), result.clone());
-    result
+    (result, independent_key)
 }
 
 fn examine(
@@ -204,7 +196,8 @@ fn examine(
 ) -> Result {
     let mut result = Result {
         key: CacheKey {
-            functions,
+            slots: functions,
+            functions: functions.into_iter().flatten().collect(),
             receiver: BTreeMap::new(),
         },
         block: false,
@@ -234,6 +227,9 @@ fn examine(
     for token in probes {
         runs.push(run(input, &code, reader, state, functions, token, false));
     }
+    for run in &runs {
+        extend_key(&mut result.key, run, state);
+    }
     let boolean = boolean_difference(&runs[1], &runs[2]);
     for (probe, run) in runs.iter_mut().enumerate() {
         if matches!(probe, 1 | 2) && boolean {
@@ -255,29 +251,11 @@ fn examine(
     let chosen: Vec<_> = if boolean { vec![1, 2, 3] } else { vec![0] };
     for &index in &chosen {
         let run = &runs[index];
-        let dependent = run
-            .reads
-            .iter()
-            .any(|((offset, _), value)| *offset >= 8 && value.is_none())
-            && different_facts(&run.paths);
-        result.block |= run.block && (!dependent || run.paths.iter().all(|path| path.block));
+        let block_dependent = receiver_dependent(&run.paths, |path| path.block.then_some(()));
+        result.block |= run.block && !block_dependent;
+        result.receiver_state |= block_dependent;
         result.stops.extend(run.stops.clone());
         result.complete &= run.stops.is_empty();
-        for &(offset, width) in run.reads.keys() {
-            if offset < 8 {
-                continue;
-            }
-            for byte in 0..width {
-                result
-                    .key
-                    .receiver
-                    .insert(offset + byte, state.get(&(offset + byte)).copied());
-            }
-        }
-        if dependent {
-            result.receiver_state = true;
-            result.complete = false;
-        }
         for path in &run.paths {
             let value = path.value.clone().unwrap_or(ValueForm {
                 kind: ReaderKind::Unknown,
@@ -313,11 +291,30 @@ fn examine(
     {
         result.complete = false;
     }
+    let mut dependent_values = Vec::new();
+    for alternative in &result.alternatives {
+        if chosen.iter().any(|&index| {
+            receiver_dependent(&runs[index].paths, |path| {
+                (path.value.as_ref() == Some(&alternative.value)
+                    || (path.value.is_none()
+                        && path.assigned
+                        && alternative.value.kind == ReaderKind::Unknown))
+                    .then_some(path.chain.class)
+            })
+        }) {
+            dependent_values.push(alternative.value.clone());
+        }
+    }
+    result.receiver_state |= !dependent_values.is_empty();
+    result.complete &= !result.receiver_state;
     let missing = result
         .alternatives
         .iter()
         .any(|alternative| alternative.value.kind == ReaderKind::Reference)
         .then(|| run(input, &code, reader, state, functions, None, true));
+    if let Some(missing) = &missing {
+        extend_key(&mut result.key, missing, state);
+    }
     for alternative in &mut result.alternatives {
         alternative.missing = missing
             .as_ref()
@@ -326,7 +323,7 @@ fn examine(
             .filter(|path| path.value.as_ref() == Some(&alternative.value))
             .map(|path| path.chain.clone())
             .collect();
-        alternative.accepted = !result.receiver_state
+        alternative.accepted = !dependent_values.contains(&alternative.value)
             && alternative.paths.len() <= 64
             && alternative.value.kind != ReaderKind::Unknown
             && !alternative.paths.is_empty()
@@ -348,6 +345,18 @@ fn examine(
     }
     crate::engine::analysis::stop::sort_and_dedup(&mut result.stops);
     result
+}
+
+fn extend_key(key: &mut CacheKey, run: &Run, state: &BTreeMap<u64, u8>) {
+    key.functions.extend(&run.functions);
+    for &(offset, width) in run.reads.keys() {
+        if offset < 8 {
+            continue;
+        }
+        for byte in offset..offset + width {
+            key.receiver.insert(byte, state.get(&byte).copied());
+        }
+    }
 }
 
 fn code(
@@ -385,12 +394,14 @@ fn marker(input: &GrammarInput) -> u64 {
 }
 
 struct Run {
+    functions: BTreeSet<u64>,
     paths: Vec<ReadPath>,
     block: bool,
     reads: BTreeMap<(u64, u64), Option<u64>>,
     stops: Vec<Unresolved>,
 }
 struct ReadPath {
+    decisions: Vec<Decision>,
     value: Option<ValueForm>,
     assigned: bool,
     block: bool,
@@ -398,26 +409,51 @@ struct ReadPath {
     bytes: BTreeMap<u64, u8>,
 }
 
-fn different_facts(paths: &[ReadPath]) -> bool {
-    paths.first().is_some_and(|first| {
-        paths.iter().any(|path| {
-            path.value != first.value
-                || path.assigned != first.assigned
-                || path.block != first.block
-                || path.chain.stages != first.chain.stages
-                || path.chain.class != first.chain.class
-                || !path
-                    .chain
-                    .stops
+/// Compare one fact only across opposite sides of the same receiver fork. Other decisions,
+/// including script input and other receiver forks, must be identical. Missing peers cannot
+/// establish a fact: one receiver side may never have reached that script decision.
+fn receiver_dependent<T: PartialEq>(
+    paths: &[ReadPath],
+    fact: impl Fn(&ReadPath) -> Option<T>,
+) -> bool {
+    for path in paths {
+        for decision in path.decisions.iter().filter(|d| !d.receiver.is_empty()) {
+            let without = |other: &ReadPath| {
+                other
+                    .decisions
                     .iter()
-                    .map(|stop| (stop.reason, &stop.stop))
-                    .eq(first
-                        .chain
-                        .stops
+                    .filter(|d| !same_fork(d, decision))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
+            let rest = without(path);
+            let peers: Vec<_> = paths
+                .iter()
+                .filter(|other| {
+                    other
+                        .decisions
                         .iter()
-                        .map(|stop| (stop.reason, &stop.stop)))
-        })
-    })
+                        .any(|d| same_fork(d, decision) && d.side != decision.side)
+                        && without(other) == rest
+                })
+                .collect();
+            if peers.is_empty() {
+                if fact(path).is_some() {
+                    return true;
+                }
+            } else if peers.iter().any(|other| fact(path) != fact(other)) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn same_fork(left: &Decision, right: &Decision) -> bool {
+    left.entry == right.entry
+        && left.instruction == right.instruction
+        && left.occurrence == right.occurrence
+        && left.receiver == right.receiver
 }
 
 fn boolean_difference(yes: &Run, no: &Run) -> bool {
@@ -428,15 +464,22 @@ fn boolean_difference(yes: &Run, no: &Run) -> bool {
                 .iter()
                 .all(|path| path.assigned && path.chain.class == PathClass::Accepting)
     };
-    accepted(yes)
-        && accepted(no)
-        && yes.paths.iter().all(|left| {
-            no.paths.iter().all(|right| {
-                left.bytes.iter().any(|(offset, value)| {
-                    *offset >= 8 && right.bytes.get(offset).is_some_and(|other| other != value)
+    let paired = |left: &Run, right: &Run| {
+        left.paths.iter().all(|left| {
+            let partners: Vec<_> = right
+                .paths
+                .iter()
+                .filter(|right| left.decisions == right.decisions)
+                .collect();
+            !partners.is_empty()
+                && partners.iter().all(|right| {
+                    left.bytes.iter().any(|(offset, value)| {
+                        *offset >= 8 && right.bytes.get(offset).is_some_and(|other| other != value)
+                    })
                 })
-            })
         })
+    };
+    accepted(yes) && accepted(no) && paired(yes, no) && paired(no, yes)
 }
 
 fn run(
@@ -455,6 +498,7 @@ fn run(
         .is_some_and(|name| readers::entry(name).0 == ReaderKind::Block)
     {
         return Run {
+            functions: BTreeSet::from([reader.read]),
             paths: vec![],
             block: true,
             reads: BTreeMap::new(),
@@ -497,9 +541,11 @@ fn run(
         reader,
         functions,
         values: vec![],
+        reached: functions.into_iter().flatten().collect(),
     };
     let paths = machine.run_paths_joining(reader.read, &mut |at, machine| calls.read(at, machine));
     let mut result = Run {
+        functions: BTreeSet::new(),
         paths: vec![],
         block: false,
         reads: BTreeMap::new(),
@@ -539,6 +585,7 @@ fn run(
                 result.stops.push(Unresolved::new("form-reader-call"));
             }
             result.paths.push(ReadPath {
+                decisions: path.machine.decisions(),
                 value,
                 assigned,
                 block,
@@ -551,6 +598,7 @@ fn run(
         if path.end != Ok(Exit::Returned) {
             result.reads.extend(path.machine.receiver_reads());
             result.paths.push(ReadPath {
+                decisions: path.machine.decisions(),
                 value,
                 assigned,
                 block,
@@ -571,6 +619,7 @@ fn run(
         for (path, chain) in chained {
             result.reads.extend(path.receiver_reads());
             result.paths.push(ReadPath {
+                decisions: path.decisions(),
                 value: value.clone(),
                 assigned,
                 block,
@@ -579,6 +628,7 @@ fn run(
             });
         }
     }
+    result.functions = calls.reached;
     if result.paths.len() > 64 {
         result.stops.push(Unresolved::new("form-path-limit"));
     }
@@ -787,6 +837,7 @@ struct Calls<'a> {
     reader: CommandReader,
     functions: [Option<u64>; 6],
     values: Vec<ValueForm>,
+    reached: BTreeSet<u64>,
 }
 impl Calls<'_> {
     fn owner_offset(&self, address: Option<u64>) -> Option<u64> {
@@ -810,6 +861,7 @@ impl Calls<'_> {
         target: Option<u64>,
         machine: &mut Machine<'_>,
     ) -> std::result::Result<Call, Unresolved> {
+        self.reached.extend(target);
         let binding = &self.input.command_bindings;
         let token = self.source + binding.reader_value_token_offset;
         let receiver = machine.register(0);
@@ -1041,12 +1093,13 @@ impl Calls<'_> {
         Ok(Call::Return(None))
     }
     fn stage(
-        &self,
+        &mut self,
         target: Option<u64>,
         machine: &mut Machine<'_>,
         function: u64,
         selected: u64,
     ) -> std::result::Result<Call, Unresolved> {
+        self.reached.extend(target);
         if target.is_some_and(|at| self.input.command_bindings.error_logs.contains(&at)) {
             machine.label(DIAGNOSED, 1);
             return Ok(Call::Return(None));

@@ -184,7 +184,17 @@ impl FormsTally {
         else {
             return;
         };
-        let key = format!("{:?}", forms.key);
+        let Some(independent_key) = run
+            .result
+            .as_ref()
+            .ok()
+            .and_then(|result| result.forms_key.as_ref())
+        else {
+            self.failures
+                .push(format!("{name}: missing independent forms key"));
+            return;
+        };
+        let key = format!("{independent_key:?}");
         let address = std::sync::Arc::as_ptr(forms) as usize;
         if self
             .cached_keys
@@ -250,7 +260,7 @@ impl FormsTally {
         for stop in &forms.stops {
             if stop.reason == "form-reader-call" {
                 let entry = stop.stop.map(|stop| stop.entry);
-                let stage = if entry == forms.key.functions[0] || entry.is_none() {
+                let stage = if entry == forms.key.slots[0] || entry.is_none() {
                     "Read"
                 } else {
                     "Assign"

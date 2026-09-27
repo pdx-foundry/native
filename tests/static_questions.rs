@@ -1143,7 +1143,7 @@ fn command_forms_keep_m45_acceptance_and_named_stage_gaps() {
         (
             DeclarationKind::Effect,
             "set_country_flag",
-            "value-acceptance: PostValidate: unfinished path",
+            "value-acceptance: PostValidate: path limit",
         ),
     ] {
         let answer = native.command_grammar(kind, name).unwrap();

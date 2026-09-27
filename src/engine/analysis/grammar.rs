@@ -105,6 +105,8 @@ pub enum OrderOutcome {
 pub struct GrammarResult {
     /// Read forms and the whole-path acceptance of each value alternative.
     pub forms: Option<std::sync::Arc<forms::Result>>,
+    /// Cache key computed by this command before any result is shared.
+    pub forms_key: Option<forms::CacheKey>,
     /// The command reader whose grammar this is.
     pub reader: CommandReader,
     /// The symbol of the reader's virtual `Read`.
@@ -147,7 +149,9 @@ pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unre
     let state = declarations::factory_state(&input.declarations, factory)?;
     let reader = declarations::reader_at_vtable(&input.declarations, state.vtable)?;
     let mut result = analyze_reader(input, reader, 0)?;
-    result.forms = Some(forms::analyze(input, reader, &state.bytes));
+    let (forms, key) = forms::analyze(input, reader, &state.bytes);
+    result.forms = Some(forms);
+    result.forms_key = Some(key);
     Ok(result)
 }
 
@@ -316,6 +320,7 @@ pub(crate) fn analyze_reader(
     super::stop::sort_and_dedup(&mut stops);
     Ok(GrammarResult {
         forms: None,
+        forms_key: None,
         reader,
         delegates,
         reader_kind,

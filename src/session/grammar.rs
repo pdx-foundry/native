@@ -165,12 +165,17 @@ pub(super) fn normalize(
                             .iter()
                             .any(|path| path.class != grammar::forms::PathClass::Rejecting)
                     {
-                        let causes: BTreeSet<_> = alternative
+                        let mut causes: BTreeSet<_> = alternative
                             .paths
                             .iter()
                             .flat_map(|path| &path.stages)
                             .filter_map(|stage| stage.cause.map(|cause| (stage.stage, cause)))
                             .collect();
+                        if alternative.paths.len() > 64 {
+                            causes.extend(alternative.paths.iter().filter_map(|path| {
+                                path.stages.last().map(|stage| (stage.stage, "path limit"))
+                            }));
+                        }
                         if causes.is_empty() {
                             gap(
                                 GapKind::UnresolvedPath,
@@ -457,6 +462,7 @@ mod tests {
         };
         grammar::GrammarResult {
             forms: None,
+            forms_key: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,
@@ -530,7 +536,8 @@ mod tests {
         result.families = vec![BlockFamily::Effect];
         result.forms = Some(std::sync::Arc::new(grammar::forms::Result {
             key: grammar::forms::CacheKey {
-                functions: [None; 6],
+                slots: [None; 6],
+                functions: Default::default(),
                 receiver: Default::default(),
             },
             block: false,
@@ -827,6 +834,7 @@ mod tests {
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
             forms: None,
+            forms_key: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,
@@ -892,6 +900,7 @@ mod tests {
         };
         let result = grammar::GrammarResult {
             forms: None,
+            forms_key: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,
@@ -933,6 +942,7 @@ mod tests {
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
             forms: None,
+            forms_key: None,
             reader: declarations::CommandReader {
                 vtable: 1,
                 read: 2,

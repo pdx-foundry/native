@@ -11,6 +11,22 @@
         }
       },
       {
+        "detail": "value-acceptance: Assign: loop-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "value-acceptance: Assign: path limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
         "detail": "value-acceptance: Assign: path-limit",
         "kind": "UnresolvedPath",
         "subject": {
@@ -19,15 +35,7 @@
         }
       },
       {
-        "detail": "value-acceptance: Assign: unfinished path",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "always"
-        }
-      },
-      {
-        "detail": "receiver-state",
+        "detail": "value-acceptance: PostValidate: path limit",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -36,6 +44,14 @@
       },
       {
         "detail": "form-path-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "loop-limit",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -92,15 +108,7 @@
     "completeness": "Partial",
     "gaps": [
       {
-        "detail": "value-acceptance: PostValidate: unfinished path",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "has_country_flag"
-        }
-      },
-      {
-        "detail": "receiver-state",
+        "detail": "value-acceptance: PostValidate: path limit",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -258,15 +266,7 @@
     "completeness": "Partial",
     "gaps": [
       {
-        "detail": "value-acceptance: PostValidate: unfinished path",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "set_country_flag"
-        }
-      },
-      {
-        "detail": "receiver-state",
+        "detail": "value-acceptance: PostValidate: path limit",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -327,15 +327,7 @@
     "completeness": "Partial",
     "gaps": [
       {
-        "detail": "value-acceptance: PostValidate: unfinished path",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "remove_country_flag"
-        }
-      },
-      {
-        "detail": "receiver-state",
+        "detail": "value-acceptance: PostValidate: path limit",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
