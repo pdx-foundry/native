@@ -186,7 +186,8 @@ pub fn analyze(input: &DynamicNameInput) -> Vec<CommandNames> {
     commands
 }
 
-/// Each registered name with its one factory and declared scopes.
+/// Each registered name with its one factory and declared scopes. A name that an unreadable
+/// site registers is not examined, even when no readable site declares it.
 fn registrations(
     inventory: &DeclarationResult,
 ) -> BTreeMap<String, Result<(u64, ScopeOutcome), Unresolved>> {
@@ -213,18 +214,20 @@ fn registrations(
         }
     }
 
-    factories
+    let names: BTreeSet<&String> = factories.keys().chain(&unreadable).collect();
+
+    names
         .into_iter()
-        .map(|(name, factories)| {
-            let registration = if unreadable.contains(&name) {
+        .map(|name| {
+            let registration = if unreadable.contains(name) {
                 Err(Unresolved::new("command-registration"))
-            } else if factories.len() > 1 {
-                Err(Unresolved::new("ambiguous-command-factory"))
             } else {
-                let factory = *factories.first().expect("a declared name has a factory");
-                Ok((factory, scopes[&name].clone()))
+                match factories[name].iter().collect::<Vec<_>>()[..] {
+                    [&factory] => Ok((factory, scopes[name].clone())),
+                    _ => Err(Unresolved::new("ambiguous-command-factory")),
+                }
             };
-            (name, registration)
+            (name.clone(), registration)
         })
         .collect()
 }
@@ -244,6 +247,9 @@ struct NameRead {
     interned_without_reader: bool,
     /// Whether the interner ran on a dynamic-name path.
     dynamic_interns: bool,
+    /// Why a path of a run did not return. The facts above come from the returned paths only, so
+    /// such a path leaves them unproven.
+    stops: Vec<Unresolved>,
 }
 
 impl NameRead {
@@ -254,6 +260,9 @@ impl NameRead {
         self.interned_after_reader |= other.interned_after_reader;
         self.interned_without_reader |= other.interned_without_reader;
         self.dynamic_interns |= other.dynamic_interns;
+        for stop in &other.stops {
+            push_new(&mut self.stops, stop);
+        }
     }
 
     /// The name and target offsets of a dynamic branch that keeps them and does not intern.
@@ -480,7 +489,8 @@ impl<'a> Examiner<'a> {
         let dynamic = read.kept_dynamic_name();
 
         let slot = self.command_role_slot(reader.vtable, index, dynamic);
-        let mut stops = slot.stops;
+        let mut stops = read.stops.clone();
+        stops.extend(slot.stops);
         if slot.roles.is_empty() {
             stops.push(Unresolved::new("no-role"));
         }
@@ -617,6 +627,11 @@ impl<'a> Examiner<'a> {
                 Ok(calls.answer(target, machine))
             });
 
+            for path in &paths {
+                if let Err(stop) = &path.end {
+                    push_new(&mut read.stops, stop);
+                }
+            }
             let returned = paths
                 .iter()
                 .filter(|path| matches!(path.end, Ok(Exit::Returned)))
@@ -730,14 +745,24 @@ impl<'a> Examiner<'a> {
 }
 
 /// A name that no path splits does not accept `name@target`; a split name accepts it when its
-/// dynamic branch keeps the name and the role slot uses what it kept.
+/// dynamic branch keeps the name and the role slot uses what it kept. A reader path that did not
+/// return leaves the form unresolved.
 fn dynamic_form(read: &NameRead, kept: Option<(u64, u64)>, joined: bool) -> DynamicNameForm {
-    if read.interned_without_reader && !read.interned_after_reader {
+    if !read.stops.is_empty() {
+        DynamicNameForm::Unresolved
+    } else if read.interned_without_reader && !read.interned_after_reader {
         DynamicNameForm::NotAccepted
     } else if kept.is_some() && joined {
         DynamicNameForm::TargetSuffix
     } else {
         DynamicNameForm::Unresolved
+    }
+}
+
+/// Add `stop` to `stops` unless an equal stop is there.
+fn push_new(stops: &mut Vec<Unresolved>, stop: &Unresolved) {
+    if !stops.contains(stop) {
+        stops.push(stop.clone());
     }
 }
 

@@ -66,6 +66,7 @@ pub enum DynamicNameForm {
     TargetSuffix,
     /// No command of the namespace accepts `name@target`; the whole value is the name.
     NotAccepted,
-    /// The form was not established for every command of the namespace.
+    /// The form was not established for every command of the namespace, or its commands
+    /// disagree.
     Unresolved,
 }

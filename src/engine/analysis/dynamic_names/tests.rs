@@ -684,3 +684,80 @@ fn an_interned_name_stored_outside_the_command_is_unresolved() {
         NameOutcome::Unresolved(Unresolved::new("index-store"))
     );
 }
+
+#[test]
+fn a_reader_path_that_does_not_return_leaves_the_command_unresolved() {
+    let mut stalled = Arm64::at(ASSIGN);
+    stalled.prologue();
+    arm64!(stalled;
+        mov x19, x0;
+        add x1, x19, #NAME;
+        add x2, x19, #TARGET
+    );
+    stalled.call(NAME_READER);
+    arm64!(stalled; tbnz w0, #0, ->dynamic);
+    stalled.call(INTERNER);
+    arm64!(stalled; strh w0, [x19, #INDEX]);
+    stalled.epilogue();
+    arm64!(stalled;
+        ret;
+        ->dynamic:;
+        br x9 // a branch to an unknown address
+    );
+    let effects = family(
+        DeclarationKind::Effect,
+        vec![command(
+            "set_stalled",
+            &[COUNTRY],
+            &flag_slots(EXECUTE, ACCESSOR),
+        )],
+        vec![
+            stalled,
+            execute(EXECUTE, INDEX, SETTER, Store::Accessor),
+            forwarding(ACCESSOR, SCOPE_FLAGS),
+            scope_flags(),
+        ],
+    );
+    let outcomes = analyzed(vec![effects]);
+
+    let stalled = flag(&outcomes["set_stalled"]);
+    assert!(
+        stalled
+            .stops
+            .iter()
+            .any(|stop| stop.reason == "branch-value")
+    );
+    assert_eq!(stalled.form, DynamicNameForm::Unresolved);
+}
+
+#[test]
+fn a_name_that_only_an_unreadable_site_registers_is_not_examined() {
+    let mut effects = family(
+        DeclarationKind::Effect,
+        vec![command(
+            "set_flag",
+            &[COUNTRY],
+            &flag_slots(EXECUTE, ACCESSOR),
+        )],
+        vec![
+            assign(INDEX),
+            execute(EXECUTE, INDEX, SETTER, Store::Accessor),
+            forwarding(ACCESSOR, SCOPE_FLAGS),
+            scope_flags(),
+        ],
+    );
+    effects.inventory.sites.push((
+        0x7_0000,
+        Site::Unreadable {
+            name: Some("set_unreadable".into()),
+            what: "entry-shape",
+        },
+    ));
+    let outcomes = analyzed(vec![effects]);
+
+    assert_eq!(
+        outcomes["set_unreadable"],
+        NameOutcome::NotExamined(Unresolved::new("command-registration"))
+    );
+    assert!(matches!(outcomes["set_flag"], NameOutcome::Flag(_)));
+}

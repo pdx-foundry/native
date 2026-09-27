@@ -103,11 +103,12 @@ impl StoreKey {
     }
 }
 
-/// The commands of one store by role, and their forms.
+/// The commands of one store by role, and the commands of each form.
 #[derive(Default)]
 struct Members {
     roles: BTreeMap<Role, Vec<CommandReference>>,
-    forms: BTreeSet<DynamicNameForm>,
+    /// Each form with its commands as `kind name`.
+    forms: BTreeMap<DynamicNameForm, BTreeSet<String>>,
 }
 
 fn normalize(commands: &[CommandNames], build: BuildId) -> Answer<Vec<DynamicNamespace>> {
@@ -158,15 +159,21 @@ fn normalize(commands: &[CommandNames], build: BuildId) -> Answer<Vec<DynamicNam
                     kind: command.kind,
                     name: command.name.clone(),
                 });
-            members.forms.insert(flag.form);
+            members.forms.entry(flag.form).or_default().insert(format!(
+                "{} {}",
+                command.kind.subject(),
+                command.name
+            ));
         }
     }
     gaps.dedup();
 
-    let mut value: Vec<_> = stores
-        .iter()
-        .map(|(key, members)| namespace(key, members))
-        .collect();
+    let mut value = Vec::new();
+    for (key, members) in &stores {
+        let namespace = namespace(key, members);
+        gaps.extend(form_gap(&namespace, members));
+        value.push(namespace);
+    }
     value.sort_by(|left, right| {
         owner_order(&left.owner)
             .cmp(&owner_order(&right.owner))
@@ -191,7 +198,7 @@ fn namespace(key: &StoreKey, members: &Members) -> DynamicNamespace {
         commands.dedup();
         commands
     };
-    let dynamic_form = match members.forms.iter().collect::<Vec<_>>()[..] {
+    let dynamic_form = match members.forms.keys().collect::<Vec<_>>()[..] {
         [&form] => form,
         _ => DynamicNameForm::Unresolved,
     };
@@ -205,6 +212,35 @@ fn namespace(key: &StoreKey, members: &Members) -> DynamicNamespace {
         read_by: commands(Role::Reads),
         dynamic_form,
     }
+}
+
+/// A gap when the commands of `namespace` disagree on whether a name accepts `name@target`.
+fn form_gap(namespace: &DynamicNamespace, members: &Members) -> Option<Gap> {
+    if members.forms.len() < 2 {
+        return None;
+    }
+    let groups: Vec<String> = members
+        .forms
+        .iter()
+        .map(|(form, commands)| {
+            let form = match form {
+                DynamicNameForm::TargetSuffix => "accepted by",
+                DynamicNameForm::NotAccepted => "refused by",
+                DynamicNameForm::Unresolved => "not established for",
+            };
+            let commands: Vec<&str> = commands.iter().map(String::as_str).collect();
+            format!("{form} {}", commands.join(", "))
+        })
+        .collect();
+
+    Some(Gap {
+        kind: GapKind::ReaderSemantics,
+        subject: Some(GapSubject::answer_item(namespace.id.0.clone())),
+        detail: format!(
+            "The namespace's commands disagree on name@target: {}.",
+            groups.join("; ")
+        ),
+    })
 }
 
 /// Global stores first, then scope stores by scope name.
@@ -386,6 +422,43 @@ mod tests {
             gap.kind == GapKind::UnresolvedStorage
                 && gap.subject == Some(GapSubject::answer_item("has_star"))
         }));
+        assert_eq!(answer.completeness, Completeness::Partial);
+    }
+
+    #[test]
+    fn commands_that_disagree_on_the_form_leave_a_gap_for_their_namespace() {
+        let mut refusing = flag_command(
+            DeclarationKind::Trigger,
+            "has_global",
+            Role::Reads,
+            vec![(scope(2, "country"), Ok(GLOBAL))],
+        );
+        if let NameOutcome::Flag(flag) = &mut refusing.outcome {
+            flag.form = DynamicNameForm::NotAccepted;
+        }
+        let commands = [
+            flag_command(
+                DeclarationKind::Effect,
+                "set_global",
+                Role::Defines,
+                vec![(scope(2, "country"), Ok(GLOBAL))],
+            ),
+            refusing,
+        ];
+        let answer = normalize(&commands, BuildId("build".into()));
+
+        let [global] = answer.value.as_slice() else {
+            panic!("one namespace: {:?}", answer.value);
+        };
+        assert_eq!(global.dynamic_form, DynamicNameForm::Unresolved);
+        let gap = answer
+            .gaps
+            .iter()
+            .find(|gap| gap.subject == Some(GapSubject::answer_item(global.id.0.clone())))
+            .expect("a gap for the namespace");
+        assert_eq!(gap.kind, GapKind::ReaderSemantics);
+        assert!(gap.detail.contains("effect set_global"));
+        assert!(gap.detail.contains("trigger has_global"));
         assert_eq!(answer.completeness, Completeness::Partial);
     }
 }

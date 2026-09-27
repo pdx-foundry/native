@@ -323,6 +323,7 @@ define, 29 remove, 30 triggers read). Every namespace accepts `name@target`.
 | `role-store`: the flag store does not come from the accessor | `set_relation_flag`, `remove_relation_flag`, `set_saved_date` |
 | `no-role`: an interned name that no setter, remover or scan uses | points of interest (4), `has_relation_flag`, `reverse_has_relation_flag`, `timed_flag_days_left`, and the three above |
 | `scope-set`: no declared scope set | the astral rift flags (3), `set_saved_date`, `has_relation_flag`, `reverse_has_relation_flag` |
+| `branch-value`: a reader path that does not return, so the stored index and form are unproven | `timed_flag_days_left` |
 
 Findings:
 
@@ -353,6 +354,8 @@ minute instead of four and a half.
   does not come from the command's accessor.
 - How `CreateDynamicFlag` forms the flag from the name and the target is not established; the
   answer says only that the command keeps and uses both.
+- A namespace whose commands disagree on `name@target` has form `Unresolved` and a
+  `ReaderSemantics` gap that names each command's form. None does on M45-release.
 
 ### Dynamic-name pitfalls
 
@@ -361,6 +364,9 @@ minute instead of four and a half.
   accessor returns, with the flag loaded from the stored index.
 - Follow the member reader as well as `Assign`: the timed setters split and intern their name in
   `ReadMember` (`+0x2b4`).
+- The reader facts come from the paths that return. A reader path that stops, such as at an
+  unknown branch target or a path limit, is a stop of the command, and its form stays
+  `Unresolved`. A name that only an unreadable registration site names is not examined.
 - The evaluator cannot prove the readers' scan loop: a loop over an unknown count reaches the path
   limit. Reads need the complete-function membership-scan shape.
 - A route that the method cannot follow falls back to its terminal, the function that receives
