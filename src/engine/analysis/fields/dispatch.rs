@@ -394,8 +394,16 @@ fn reader_join(
         || name.starts_with("void NParserUtil::ReadTrigger<")
     {
         get("x0") == Some(&Value::Reader(0)) && owner(get("x1"))
-    } else if name.starts_with("void NParserUtil::ReadKeyReferenceDeferred<") {
-        owner(get("x0")) && get("x1") == Some(&Value::Reader(0)) && owner(get("x2"))
+    } else if let Some(reference) = crate::engine::analysis::references::reader(name) {
+        use crate::engine::analysis::references::ReaderForm;
+
+        match reference.form {
+            ReaderForm::Deferred | ReaderForm::DeferredList | ReaderForm::DeferredIndex => {
+                owner(get("x0")) && get("x1") == Some(&Value::Reader(0)) && owner(get("x2"))
+            }
+            ReaderForm::Immediate => get("x0") == Some(&Value::Reader(0)),
+            ReaderForm::ImmediateList => get("x0") == Some(&Value::Reader(0)) && owner(get("x2")),
+        }
     } else {
         false
     };

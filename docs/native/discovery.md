@@ -17,8 +17,9 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v6` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#sdk-541-sweep-on-m45-release) |
-| `Native::command_grammar` | `command-grammar/v1` | `grammar.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::registry_fields` | `registry-fields/v7` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#sdk-541-sweep-on-m45-release) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v7`, `command-grammar/v2` | `references.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Native::command_grammar` | `command-grammar/v2` | `grammar.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -30,8 +31,15 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | `Native::modifier_families` | `modifier-families/v3` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `families/strings.rs` | [Generation calls and roots](modifier-families.md#engine-code-m45-release) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
-This page also holds the define read helpers. The retired SDK-482 reference seam is on
+This page also holds the define read helpers and the reference counts. The retired SDK-482 reference seam is on
 [reference method retirement](reference-method-retirement.md).
+
+## References
+
+On M45-release the reference method runs over every registry field bound to a reference reader:
+29 fields in the 164 registries, **21 complete, 7 partial, 1 failed**. Failure shapes: key lists
+(6), a reader of another shape (1), and a reader with neither shape nor directory (1). The reader
+population, the per-shape counts and the obstacles are on [references](references.md#result-on-m45-release).
 
 ## Define read helpers
 

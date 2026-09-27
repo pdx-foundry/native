@@ -206,6 +206,17 @@ fn invalid_starts_and_limits_are_errors() {
 }
 
 #[test]
+fn lookup_lines_accept_only_a_function_start() {
+    let bytes = support::macho_with_fixups(6);
+    let image = Image::read(&bytes).unwrap();
+
+    assert!(image.lookup_lines(READ).is_ok());
+    for start in [READ + 0x10, 0, u64::MAX] {
+        assert!(image.lookup_lines(start).is_err(), "{start:#x}");
+    }
+}
+
+#[test]
 fn a_start_inside_a_function_names_its_symbol() {
     let bytes = support::macho_with_fixups(6);
     let image = Image::read(&bytes).unwrap();

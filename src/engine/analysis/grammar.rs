@@ -23,7 +23,7 @@ pub struct ChildLayout {
     pub token: i64,
 }
 
-pub const METHOD: &str = "command-grammar/v1";
+pub const METHOD: &str = "command-grammar/v2";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 

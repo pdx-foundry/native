@@ -1,6 +1,7 @@
 //! Conservative classification of already-joined shared readers.
 use crate::answer::{BlockFamily, ReaderKind};
 use crate::engine::analysis::fields::ReaderJoin;
+use crate::engine::analysis::references::{self, ReaderForm};
 use std::collections::BTreeSet;
 
 /// One callee shared by every path, with its broad value kind.
@@ -99,7 +100,7 @@ fn classify_callee(callee: &str) -> ReaderKind {
         {
             ReaderKind::Block
         }
-        _ if matching_deferred_reference(callee) => ReaderKind::Reference,
+        _ if references::reader(callee).is_some() => ReaderKind::Reference,
         _ => ReaderKind::Unknown,
     }
 }
@@ -114,20 +115,6 @@ fn matching_template(callee: &str, method: &str) -> bool {
     };
     is_simple_template_argument(parameter)
         && arguments == format!("(CReader&, {parameter}&, EScopeType)")
-}
-
-fn matching_deferred_reference(callee: &str) -> bool {
-    let Some(rest) = callee.strip_prefix("void NParserUtil::ReadKeyReferenceDeferred<") else {
-        return false;
-    };
-    let Some((database, arguments)) = rest.split_once('>') else {
-        return false;
-    };
-    is_simple_template_argument(database)
-        && arguments
-            == format!(
-                "(CGlobalDeferredDatabaseObject const&, CReader&, {database}::ValueType const**)"
-            )
 }
 
 /// A nonempty template argument of ASCII letters, digits and `_`.
@@ -145,7 +132,7 @@ pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
             family_of_callee(callee),
             BlockFamily::Trigger | BlockFamily::Effect
         )
-        || matching_deferred_reference(callee)
+        || references::reader(callee).is_some()
     {
         Some(&["x0", "x1", "x2"])
     } else if classify_callee(callee) != ReaderKind::Unknown {
@@ -163,8 +150,14 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     else {
         return None;
     };
-    let destination = if matching_deferred_reference(callee) {
-        "x2"
+    let destination = if let Some(reference) = references::reader(callee) {
+        match reference.form {
+            ReaderForm::Deferred
+            | ReaderForm::DeferredList
+            | ReaderForm::DeferredIndex
+            | ReaderForm::ImmediateList => "x2",
+            ReaderForm::Immediate => return None,
+        }
     } else if matches!(
         callee.as_str(),
         "CVariableValue::Read(CReader&, EScopeType)"

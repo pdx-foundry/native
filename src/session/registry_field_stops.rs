@@ -40,8 +40,9 @@ pub struct Run {
 pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
     native.method_result(Operation::RegistryFields, || {
         let result = native.registry_field_result(registry)?;
+        let references = native.reference_facts(Operation::RegistryFields)?;
         Ok(Run {
-            answer: native.registry_field_answer(registry, &result),
+            answer: native.registry_field_answer(registry, &result, references),
             result,
         })
     })

@@ -18,6 +18,7 @@ use pdx_native::{DeclarationKind, Native};
 
 const USAGE: &str = "usage: inspect [--image PATH] \
     (--symbols TEXT | --function NAME|0xADDRESS [--limit BYTES] | --callers NAME|0xADDRESS \
+    | --lookup-lines NAME|0xADDRESS \
     | --strings TEXT | --slots NAME|0xADDRESS [--count N] | --registry-fields DIRECTORY \
     | --trigger-grammar NAME | --effect-grammar NAME) [--trace]";
 
@@ -48,6 +49,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Function(query) => {
             let start = image.address(&query)?;
             print!("{}", image.disassemble(start, arguments.limit)?);
+        }
+        Command::LookupLines(query) => {
+            for line in image.lookup_lines(image.address(&query)?)? {
+                println!("{line}");
+            }
         }
         Command::Callers(query) => {
             println!("direct bl and b only; calls through a register or a vtable are not found");
@@ -296,6 +302,7 @@ fn print_cause(image: &Image, cause: Cause) {
 enum Command {
     Symbols(String),
     Function(String),
+    LookupLines(String),
     Callers(String),
     Strings(String),
     Slots(String),
@@ -334,6 +341,7 @@ impl Arguments {
                 "--symbols" => command = Some(Command::Symbols(value)),
                 "--function" => command = Some(Command::Function(value)),
                 "--callers" => command = Some(Command::Callers(value)),
+                "--lookup-lines" => command = Some(Command::LookupLines(value)),
                 "--strings" => command = Some(Command::Strings(value)),
                 "--slots" => command = Some(Command::Slots(value)),
                 "--registry-fields" => command = Some(Command::RegistryFields(value)),

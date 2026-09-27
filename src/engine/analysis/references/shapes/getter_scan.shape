@@ -1,0 +1,63 @@
+# Database getter as a linear scan of its own items (this+{items}, count this+{count}), comparing
+# each item's key string (item+{key}, length item+{length}, flag byte item+{flag}) by length and
+# bytes; the first equal item, or the typed null object {null}, is returned.
+stp xr0,xr1,[sp,#-0x40]!
+stp xr2,xr3,[sp,#0x10]
+stp xr4,xr5,[sp,#0x20]
+stp x29,x30,[sp,#0x30]
+add x29,sp,#0x30
+ldr wr2,[x0,#{count}]
+cmp wr2,#0x1
+b.lt @+44
+mov xr1,#0x0
+ldr xr0,[x0,#{items}]
+ldrb wr6,[x1,#0x17]
+sxtb wr7,wr6
+cmp wr7,#0x0
+ldp xr8,xr7,[x1]
+csel xr5,xr7,xr6,lt
+csel xr4,xr8,x1,lt
+b @+4
+add xr1,xr1,#0x1
+cmp xr1,xr2
+b.eq @+32
+ldr xr3,[xr0,xr1,lsl#3]
+ldrb wr6,[xr3,#{flag}]
+sxtb wr7,wr6
+ldr xr8,[xr3,#{length}]
+cmp wr7,#0x0
+csel xr7,xr8,xr6,lt
+cmp xr7,xr5
+b.ne @-10
+add xr7,xr3,#{key}
+sxtb wr8,wr6
+ldr xr9,[xr7]
+cmp wr8,#0x0
+csel x0,xr9,xr7,lt
+tbnz wr6,#7,@+12
+mov xr8,xr4
+cbz xr5,@+19
+ldrb wr9,[xr7]
+ldrb wr10,[xr8]
+cmp wr9,wr10
+b.ne @-22
+add xr7,xr7,#0x1
+add xr8,xr8,#0x1
+subs xr6,xr6,#0x1
+b.ne @-7
+b @+10
+cbz xr5,@+9
+mov x1,xr4
+mov x2,xr5
+bl CALL = _memcmp
+cbnz w0,@-32
+b @+4
+adrp xr6,PAGE
+ldr xr6,[xr6,G] = {null}
+ldr xr3,[xr6]
+mov x0,xr3
+ldp x29,x30,[sp,#0x30]
+ldp xr4,xr5,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x40
+ret

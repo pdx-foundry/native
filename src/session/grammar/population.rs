@@ -16,6 +16,10 @@ fn state<T>(property: &GrammarProperty<T>) -> &'static str {
 fn m45_command_grammar_population() {
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let started = std::time::Instant::now();
+    let references = native
+        .reference_facts(Operation::CommandGrammar)
+        .unwrap()
+        .clone();
     let mut inventories = Vec::new();
     for (kind, controls) in [
         (
@@ -61,7 +65,7 @@ fn m45_command_grammar_population() {
                 Ok(None) => unreachable!("the name came from this inventory"),
                 Err(stop) => Err(stop),
             };
-            let answer = normalize(result.as_ref(), name, native.build());
+            let answer = normalize(result.as_ref(), name, native.build(), &references);
             let group = if controls.contains(&name.as_str()) {
                 "target_controls"
             } else {

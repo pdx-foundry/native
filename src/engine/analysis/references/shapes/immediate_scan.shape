@@ -1,0 +1,152 @@
+# ReadKeyReference<D> as a linear scan of the database argument (x1): its item array and count,
+# a length compare, then an inline byte loop or memcmp; the first equal item is returned, and the
+# typed null object {null} when none is. The miss is logged unless the bool argument (x2) is set.
+# {cold} is the function's own outlined clone.
+sub sp,sp,#0xe0
+stp xr0,xr1,[sp,#0x80]
+stp xr2,xr3,[sp,#0x90]
+stp xr4,xr5,[sp,#0xa0]
+stp xr6,xr7,[sp,#0xb0]
+stp xr8,xr9,[sp,#0xc0]
+stp x29,x30,[sp,#0xd0]
+add x29,sp,#0xd0
+mov xr6,x2
+mov xr8,x1
+mov xr7,x0
+ldr x1,[x0,#0x288]
+add xr9,sp,#0x58
+add x0,sp,#0x58
+bl CALL = CString::CString(char const*)
+ldr wr3,[xr8,#0x54]
+cmp wr3,#0x1
+b.lt @+46
+mov xr2,#0x0
+ldr xr1,[xr8,#0x48]
+ldrb wr10,[sp,#0x6f]
+sxtb wr11,wr10
+cmp wr11,#0x0
+ldp xr12,xr11,[sp,#0x58]
+csel xr5,xr11,xr10,lt
+csel xr4,xr12,xr9,lt
+b @+4
+add xr2,xr2,#0x1
+cmp xr2,xr3
+b.eq @+34
+ldr xr9,[xr1,xr2,lsl#3]
+ldrb wr11,[xr9,#0x27]
+sxtb wr10,wr11
+ldr xr12,[xr9,#0x18]
+cmp wr10,#0x0
+csel xr10,xr12,xr11,lt
+cmp xr10,xr5
+b.ne @-10
+add xr10,xr9,#0x10
+sxtb wr12,wr11
+ldr xr13,[xr10]
+cmp wr12,#0x0
+csel x0,xr13,xr10,lt
+tbnz wr11,#7,@+13
+cbz xr5,@+17
+sub xr11,xr11,#0x1
+mov xr12,xr4
+ldrb wr13,[xr10],#0x1
+ldrb wr14,[xr12],#0x1
+cmp wr13,wr14
+ccmp xr11,#0x0,#0x4,eq
+sub xr11,xr11,#0x1
+b.ne @-5
+cmp wr13,wr14
+b.ne @-27
+b @+6
+cbz xr5,@+5
+mov x1,xr4
+mov x2,xr5
+bl CALL = _memcmp
+cbnz w0,@-33
+tbz wr6,#0,@+6
+b @+41
+adrp xr10,PAGE
+ldr xr10,[xr10,G] = {null}
+ldr xr9,[xr10]
+tbnz wr6,#0,@+37
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0x10]
+mov x0,xr9
+blr xr10
+tbnz w0,#0,@+32
+adrp x1,PAGE
+add x1,x1,G = {source}
+add x0,sp,#0x48
+mov w2,#0x30
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldrsb wr5,[sp,#0x6f]
+ldr xr6,[sp,#0x58]
+ldr xr3,[xr8,#0x10]!
+ldrsb wr2,[xr8,#0x17]
+add xr4,sp,#0x20
+add xr10,sp,#0x20
+mov x0,xr7
+bl CALL = CReader::GetFileLocationDescription() const
+cmp wr2,#0x0
+csel xr10,xr3,xr8,lt
+cmp wr5,#0x0
+add xr11,sp,#0x58
+csel xr11,xr6,xr11,lt
+ldrsb wr12,[sp,#0x37]
+ldr xr13,[sp,#0x20]
+cmp wr12,#0x0
+csel xr12,xr13,xr4,lt
+stp xr10,xr12,[sp,#0x8]
+str xr11,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Failed to read key reference '%s' from database '%s' at '%s'"
+add x0,sp,#0x48
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr10,[sp,#0x37]
+tbnz wr10,#0x1f,@+18
+ldrsb wr10,[sp,#0x6f]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0x58
+add x0,xr10,#0x18
+ldr x1,[sp,#0x58]
+ldr xr10,[sp,#0x68]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr9
+ldp x29,x30,[sp,#0xd0]
+ldp xr8,xr9,[sp,#0xc0]
+ldp xr6,xr7,[sp,#0xb0]
+ldp xr4,xr5,[sp,#0xa0]
+ldp xr2,xr3,[sp,#0x90]
+ldp xr0,xr1,[sp,#0x80]
+add sp,sp,#0xe0
+ret
+add xr10,sp,#0x20
+add x0,xr10,#0x18
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0x6f]
+tbz wr10,#0x1f,@-16
+b @-23
+mov xr9,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+7
+add x0,sp,#0x20
+bl CALL = {cold}
+b @+4
+b @+2
+b @+1
+mov xr9,x0
+ldrsb wr10,[sp,#0x6f]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0x58
+add x0,xr10,#0x18
+ldr x1,[sp,#0x58]
+ldr xr10,[sp,#0x68]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr9
+bl CALL = __Unwind_Resume

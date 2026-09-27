@@ -99,6 +99,94 @@ fn discovers_unknown_name_and_excludes_pivot_and_rejection_tokens() {
 }
 
 #[test]
+fn an_immediate_reference_reader_joins_when_it_receives_the_reader() {
+    use crate::ReaderKind;
+    use crate::engine::analysis::readers::{classify, destination};
+    let mut input = fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CExampleDatabase::ValueType const* NParserUtil::ReadKeyReference<CExampleDatabase>(CReader&, CExampleDatabase const&, bool)".into();
+    let immediate = |passes_reader: bool| {
+        let mut code = Arm64::at(0x1010);
+        if passes_reader {
+            arm64!(code; mov x0, x1); // the reader
+        } else {
+            arm64!(code; mov x0, x2); // the token, not the reader
+        }
+        arm64!(code;
+            mov w2, #0; // log a missing key
+            b extern 0x4000; // ReadKeyReference
+            nop
+        );
+        code.bytes()
+    };
+    let mut joined = input.clone();
+    let function = &mut joined.functions[0];
+    function.code.splice(16..32, immediate(true));
+
+    let readers = &derive(joined).fields[0].readers;
+    assert!(
+        matches!(readers[0], ReaderJoin::Joined { .. }),
+        "{readers:?}"
+    );
+    assert_eq!(classify(readers).kind, ReaderKind::Reference);
+    assert_eq!(
+        destination(&readers[0]),
+        None,
+        "an immediate reader returns its item"
+    );
+
+    let mut wrong_reader = input.clone();
+    wrong_reader.functions[0]
+        .code
+        .splice(16..32, immediate(false));
+    let readers = &derive(wrong_reader).fields[0].readers;
+    assert!(
+        matches!(&readers[0], ReaderJoin::Missing(stop) if stop.reason == "reader-routing"),
+        "{readers:?}"
+    );
+
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "void NParserUtil::ReadKeyReferenceUniform<CExampleDatabase, CPdxArray<CExample const*, int> >(CReader&, CExampleDatabase const&, CPdxArray<CExample const*, int>&)".into();
+    let list = |output: bool| {
+        let mut code = Arm64::at(0x1010);
+        if output {
+            arm64!(code; add x2, x0, #0x40); // the owner's list
+        } else {
+            arm64!(code; mov x2, x3); // not owner storage
+        }
+        arm64!(code;
+            mov x0, x1; // the reader
+            b extern 0x4000; // ReadKeyReferenceUniform
+            nop
+        );
+        code.bytes()
+    };
+    let mut owned = input.clone();
+    owned.functions[0].code.splice(16..32, list(true));
+    let readers = &derive(owned).fields[0].readers;
+    assert!(
+        matches!(readers[0], ReaderJoin::Joined { .. }),
+        "{readers:?}"
+    );
+    assert_eq!(destination(&readers[0]), Some(0x40));
+
+    input.functions[0].code.splice(16..32, list(false));
+    let readers = &derive(input).fields[0].readers;
+    assert!(
+        matches!(&readers[0], ReaderJoin::Missing(stop) if stop.reason == "reader-routing"),
+        "{readers:?}"
+    );
+}
+
+#[test]
 fn block_family_follows_proven_arguments_and_preserves_conditional_conflicts() {
     use crate::BlockFamily;
     use crate::engine::analysis::readers::classify;
@@ -1047,7 +1135,10 @@ fn persistent_fixture() -> FieldInput {
 
 #[test]
 fn persistent_family_and_identity_follow_the_constructed_destination() {
-    let first = crate::session::questions::normalized_fields(&derive(persistent_fixture()));
+    let first = crate::session::questions::normalized_fields(
+        &derive(persistent_fixture()),
+        &Default::default(),
+    );
     assert_eq!(first[0].reader.family, crate::BlockFamily::Modifier);
     let mut input = persistent_fixture();
     let concrete = input
@@ -1059,7 +1150,7 @@ fn persistent_family_and_identity_follow_the_constructed_destination() {
         .unwrap();
     concrete.member = "another member".into();
     concrete.family = crate::BlockFamily::Trigger;
-    let second = crate::session::questions::normalized_fields(&derive(input));
+    let second = crate::session::questions::normalized_fields(&derive(input), &Default::default());
     assert_eq!(second[0].reader.family, crate::BlockFamily::Trigger);
     assert_ne!(first[0].reader.id, second[0].reader.id);
     for alternative in &first[0].read {
@@ -1107,7 +1198,8 @@ fn persistent_family_requires_constructor_agreement_and_no_later_invalidation() 
             }
             _ => unreachable!(),
         }
-        let fields = crate::session::questions::normalized_fields(&derive(input));
+        let fields =
+            crate::session::questions::normalized_fields(&derive(input), &Default::default());
         assert!(fields[0].reader.id.is_none(), "{missing}");
         assert_eq!(fields[0].reader.kind, crate::ReaderKind::Block);
         assert_eq!(
@@ -1136,7 +1228,8 @@ fn persistent_family_follows_owner_aliases_and_inline_vtable_installation() {
             address: 0xc000,
             code: arm64!(at 0xc000; b extern 0x9000),
         });
-        let fields = crate::session::questions::normalized_fields(&derive(input));
+        let fields =
+            crate::session::questions::normalized_fields(&derive(input), &Default::default());
         assert_eq!(
             fields[0].reader.family,
             crate::BlockFamily::Modifier,
@@ -1168,7 +1261,7 @@ fn member_delegates_are_not_terminal_registry_field_readers() {
             matches!(result.fields[0].readers[0], ReaderJoin::Missing(_)),
             "{name}"
         );
-        let fields = crate::session::questions::normalized_fields(&result);
+        let fields = crate::session::questions::normalized_fields(&result, &Default::default());
         assert!(fields[0].reader.id.is_none());
         assert_eq!(fields[0].reader.kind, crate::ReaderKind::Unknown);
     }
@@ -1206,7 +1299,8 @@ fn known_comparisons_do_not_invent_unreachable_readers() {
                 arm64!(code; b extern 0x4000; b extern 0x4100);
                 input.functions[0].code = code.bytes();
                 let result = derive(input);
-                let fields = crate::session::questions::normalized_fields(&result);
+                let fields =
+                    crate::session::questions::normalized_fields(&result, &Default::default());
                 assert_eq!(fields[0].read.len(), 1);
                 assert_eq!(fields[0].read[0].condition, crate::FieldCondition::Always);
                 let equal = value == 0 || (conditional_compare && value == 1);

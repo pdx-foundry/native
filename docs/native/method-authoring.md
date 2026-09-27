@@ -20,8 +20,9 @@ cargo run --release --example inspect -- --symbols 'CMegaStructureType'
 cargo run --release --example inspect -- --function 'CMegaStructureType::ReadMember'
 ```
 
-Use `--callers NAME` for direct calls, `--strings TEXT` for literal address references, and
-`--slots NAME --count N` for fixed-up pointer slots. The inspector prints image identity and
+Use `--callers NAME` for direct calls, `--strings TEXT` for literal address references,
+`--slots NAME --count N` for fixed-up pointer slots, and `--lookup-lines NAME` for the canonical
+lines that [reference lookup shapes](references.md) match. The inspector prints image identity and
 pointer-resolution status; function ends inferred from symbols and unresolved indirect branches
 are limits on what the output establishes. See [inspection limits](../engine-knowledge.md#inspecting-an-executable).
 

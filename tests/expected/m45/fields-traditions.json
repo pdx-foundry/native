@@ -27,6 +27,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -79,6 +80,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -131,6 +133,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -165,6 +168,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -199,6 +203,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -268,6 +273,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -308,6 +314,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -342,6 +349,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -376,6 +384,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -415,6 +424,7 @@
       "kind": "String",
       "family": "NotApplicable"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -484,6 +494,7 @@
       "kind": "Block",
       "family": "Unknown"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Unknown",
       "value": "Block"
@@ -518,6 +529,7 @@
       "kind": "String",
       "family": "NotApplicable"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -570,6 +582,7 @@
       "kind": "String",
       "family": "NotApplicable"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -622,6 +635,7 @@
       "kind": "Block",
       "family": "Trigger"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Unknown",
       "value": "Block"
@@ -656,6 +670,7 @@
       "kind": "Block",
       "family": "Effect"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Unknown",
       "value": "Block"
@@ -725,6 +740,7 @@
       "kind": "Block",
       "family": "Effect"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Unknown",
       "value": "Block"
@@ -765,6 +781,7 @@
       "kind": "Unknown",
       "family": "Unknown"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Unknown",
       "value": "Unknown"
@@ -799,6 +816,7 @@
       "kind": "String",
       "family": "NotApplicable"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -833,6 +851,7 @@
       "kind": "Boolean",
       "family": "NotApplicable"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -867,6 +886,7 @@
       "kind": "Boolean",
       "family": "NotApplicable"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -901,6 +921,7 @@
       "kind": "Boolean",
       "family": "NotApplicable"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -935,6 +956,7 @@
       "kind": "Block",
       "family": "Unknown"
      },
+     "reference": "NotEstablished",
      "shape": {
       "repeat": "Unknown",
       "value": "Block"
@@ -967,6 +989,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Accumulate",
    "value": "Block"
@@ -1001,6 +1024,7 @@
    "kind": "Block",
    "family": "Modifier"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"

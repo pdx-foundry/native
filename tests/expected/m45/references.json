@@ -1,0 +1,110 @@
+{
+ "common/council_agendas#finish_modifier": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "Deferred",
+    "target": {
+     "Registry": {
+      "name": "common/static_modifiers"
+     }
+    }
+   }
+  ]
+ },
+ "common/starbase_levels#ship_size": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "Equal",
+    "on_missing": "NullObject",
+    "stage": "Deferred",
+    "target": {
+     "Registry": {
+      "name": "common/ship_sizes"
+     }
+    }
+   }
+  ]
+ },
+ "common/starbase_levels#next_level": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "Deferred",
+    "target": {
+     "Registry": {
+      "name": "common/starbase_levels"
+     }
+    }
+   }
+  ]
+ },
+ "common/missions/missions#event_chain": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "Equal",
+    "on_missing": "NullObject",
+    "stage": "WhileReading",
+    "target": {
+     "Registry": {
+      "name": "common/event_chains"
+     }
+    }
+   }
+  ]
+ },
+ "common/megastructures#starbase": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "WhileReading",
+    "target": {
+     "Registry": {
+      "name": "common/starbase_levels"
+     }
+    }
+   }
+  ]
+ },
+ "common/ship_sizes#carries_colony": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "Unresolved",
+    "key_match": "Unresolved",
+    "on_missing": "Unresolved",
+    "stage": "Unresolved",
+    "target": "Unresolved"
+   }
+  ]
+ },
+ "common/pop_jobs#tags": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "Unresolved",
+    "key_match": "Unresolved",
+    "on_missing": "Unresolved",
+    "stage": "Unresolved",
+    "target": {
+     "Registry": {
+      "name": "common/job_tags"
+     }
+    }
+   }
+  ]
+ }
+}

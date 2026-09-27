@@ -11,6 +11,7 @@ use crate::engine::analysis::{
     directories::{self, Directory},
     fields::{self, FieldGapKind, PathOutcome, RegistryFieldResult},
     readers,
+    references::ReferenceFacts,
     stop::Unresolved,
 };
 use crate::{AnalysisError, UnavailableReason};
@@ -234,7 +235,23 @@ impl Native {
 
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let result = self.registry_field_result(registry)?;
-        Ok(self.registry_field_answer(registry, &result))
+        let references = self.reference_facts(Operation::RegistryFields)?;
+        Ok(self.registry_field_answer(registry, &result, references))
+    }
+
+    /// The lookup of every reference reader in the opened executable.
+    pub(crate) fn reference_facts(&self, operation: Operation) -> Result<&ReferenceFacts, Error> {
+        let analysis = self
+            .bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation,
+                reason: "this build has no static analysis recipe".into(),
+            })?;
+        analysis
+            .reference_facts()
+            .map_err(|failure| error(operation, failure))
     }
 
     /// The public answer that the registry field method's `result` gives for `registry`.
@@ -242,10 +259,11 @@ impl Native {
         &self,
         registry: &str,
         result: &RegistryFieldResult,
+        references: &ReferenceFacts,
     ) -> Answer<Vec<Field>> {
-        let gaps = normalized_gaps(result, registry.trim_end_matches('/'));
+        let gaps = normalized_gaps(result, registry.trim_end_matches('/'), references);
         Answer {
-            value: normalized_fields(result),
+            value: normalized_fields(result, references),
             completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
@@ -272,11 +290,14 @@ impl Native {
     }
 }
 
-pub(crate) fn normalized_fields(result: &RegistryFieldResult) -> Vec<Field> {
+pub(crate) fn normalized_fields(
+    result: &RegistryFieldResult,
+    references: &ReferenceFacts,
+) -> Vec<Field> {
     result
         .fields
         .iter()
-        .map(|field| super::fields::field(field, result))
+        .map(|field| super::fields::field(field, result, references))
         .collect()
 }
 
@@ -372,7 +393,11 @@ pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
         .collect()
 }
 
-fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
+fn normalized_gaps(
+    result: &RegistryFieldResult,
+    registry: &str,
+    references: &ReferenceFacts,
+) -> Vec<Gap> {
     let mut gaps = vec![Gap {
         kind: GapKind::OutsideMethod,
         subject: Some(GapSubject::registry(registry)),
@@ -393,6 +418,13 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
             .any(|collection| collection.token == field.token)
         {
             continue;
+        }
+        if let Some(detail) = super::fields::reference_gap(field, references) {
+            gaps.push(Gap {
+                kind: GapKind::ReaderSemantics,
+                subject: Some(GapSubject::field(field.name.clone())),
+                detail,
+            });
         }
         let classification = readers::classify(&field.readers);
         let (kind, detail) = if classification.callee.is_none() {
@@ -476,7 +508,7 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
             detail: format!("{unnamed} reader paths have no recovered literal field name; anonymous or dynamic keys remain unresolved."),
         });
     }
-    for field in normalized_fields(result) {
+    for field in normalized_fields(result, references) {
         if field.shape.repeat == crate::RepeatBehavior::Unknown
             || matches!(field.members, crate::FieldMembers::Unresolved)
         {
@@ -508,7 +540,7 @@ fn normalized_gaps(result: &RegistryFieldResult, registry: &str) -> Vec<Gap> {
         else {
             continue;
         };
-        for mut gap in normalized_gaps(&collection.fields, registry) {
+        for mut gap in normalized_gaps(&collection.fields, registry, references) {
             if gap.kind == GapKind::OutsideMethod {
                 continue;
             }
@@ -661,7 +693,7 @@ mod field_gap_tests {
 
     /// The public gaps besides the method's boundary, which every answer carries.
     fn public_gaps(gaps: Vec<FieldGap>) -> Vec<Gap> {
-        let mut public = normalized_gaps(&result(gaps), REGISTRY);
+        let mut public = normalized_gaps(&result(gaps), REGISTRY, &ReferenceFacts::default());
         assert_eq!(public.remove(0).kind, GapKind::OutsideMethod);
         public
     }

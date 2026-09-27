@@ -1,0 +1,3 @@
+# Resolver lambda that forwards to {forwarded}, which holds the search.
+add x0,x0,#0x8
+b CALL = {forwarded}

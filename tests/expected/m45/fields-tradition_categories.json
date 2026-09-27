@@ -15,6 +15,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -49,6 +50,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -83,6 +85,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -105,6 +108,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -127,6 +131,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -149,6 +154,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -183,6 +189,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"

@@ -36,8 +36,9 @@ pub use answer::{
 pub use api::OpenError;
 pub use engine::operations::registry_items::GameReadiness;
 pub use field::{
-    FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
-    FieldReadOutcome, FieldShape, FieldUse, FieldUseId, RepeatBehavior, ValueShape,
+    EmptyKey, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
+    FieldReadOutcome, FieldReference, FieldShape, FieldUse, FieldUseId, KeyMatch, LookupStage,
+    MissingResult, ReferenceLookup, ReferenceTarget, RepeatBehavior, ValueShape,
 };
 pub use fixture::{
     DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,
@@ -62,5 +63,5 @@ pub mod internals {
     pub use crate::binding::inspect;
     pub use crate::engine::analysis::evaluate::trace_causes;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
-    pub use crate::session::{command_grammar_stops, registry_field_stops};
+    pub use crate::session::{command_grammar_stops, reference_readers, registry_field_stops};
 }

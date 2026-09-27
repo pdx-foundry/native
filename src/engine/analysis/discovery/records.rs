@@ -21,6 +21,9 @@ pub struct StaticInput {
     /// Every pointer location that the loader binds to another image, named or not.
     #[serde(default)]
     pub bound_slots: BTreeSet<u64>,
+    /// Demangled names of the imports bound at pointer locations.
+    #[serde(default)]
+    pub imports: BTreeMap<u64, String>,
     /// Literal strings keyed by their file addresses.
     pub strings: BTreeMap<u64, String>,
 }

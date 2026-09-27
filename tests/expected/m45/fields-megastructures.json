@@ -27,6 +27,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -61,6 +62,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -95,6 +97,7 @@
    "kind": "FixedPoint",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -129,6 +132,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -163,6 +167,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -185,6 +190,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -207,6 +213,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -241,6 +248,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -275,6 +283,7 @@
    "kind": "Integer",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -309,6 +318,7 @@
    "kind": "Block",
    "family": "Modifier"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -343,6 +353,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -365,6 +376,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -387,6 +399,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -421,6 +434,7 @@
    "kind": "Block",
    "family": "Modifier"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -443,6 +457,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -477,6 +492,7 @@
    "kind": "Block",
    "family": "Modifier"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -511,6 +527,7 @@
    "kind": "Block",
    "family": "Modifier"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -545,6 +562,7 @@
    "kind": "FixedPoint",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -579,6 +597,7 @@
    "kind": "FixedPoint",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -601,6 +620,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -635,6 +655,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -669,6 +690,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -703,6 +725,7 @@
    "kind": "FixedPoint",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -737,6 +760,7 @@
    "kind": "FixedPoint",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -771,6 +795,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -805,6 +830,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -839,6 +865,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -873,6 +900,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -907,6 +935,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -941,6 +970,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -975,6 +1005,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -1009,6 +1040,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -1043,6 +1075,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1077,6 +1110,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1111,6 +1145,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -1145,6 +1180,7 @@
    "kind": "Integer",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1179,6 +1215,7 @@
    "kind": "Integer",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1213,6 +1250,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1247,6 +1285,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -1269,6 +1308,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1291,6 +1331,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1325,6 +1366,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1359,6 +1401,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -1381,6 +1424,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1403,6 +1447,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1412,22 +1457,50 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": "None",
   "name": "scripted_action",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "782b36da9ac3ef37",
+       "kind": "Reference",
+       "family": "NotApplicable"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown"
+   "id": "782b36da9ac3ef37",
+   "kind": "Reference",
+   "family": "NotApplicable"
+  },
+  "reference": {
+   "Lookups": [
+    {
+     "condition": "Always",
+     "empty_key": "Unresolved",
+     "key_match": "Unresolved",
+     "on_missing": "Unresolved",
+     "stage": "Unresolved",
+     "target": {
+      "Registry": {
+       "name": "common/scripted_actions"
+      }
+     }
+    }
+   ]
   },
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -1465,6 +1538,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1474,22 +1548,50 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": "None",
   "name": "starbase",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "98c58513111b8c6e",
+       "kind": "Reference",
+       "family": "NotApplicable"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown"
+   "id": "98c58513111b8c6e",
+   "kind": "Reference",
+   "family": "NotApplicable"
+  },
+  "reference": {
+   "Lookups": [
+    {
+     "condition": "Always",
+     "empty_key": "LookedUp",
+     "key_match": "FirstEqual",
+     "on_missing": "NullObject",
+     "stage": "WhileReading",
+     "target": {
+      "Registry": {
+       "name": "common/starbase_levels"
+      }
+     }
+    }
+   ]
   },
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -1521,6 +1623,7 @@
    "kind": "Block",
    "family": "Modifier"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -1543,6 +1646,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1565,6 +1669,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1574,22 +1679,50 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": "None",
   "name": "bypass_type",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "14a90b8d8c823a11",
+       "kind": "Reference",
+       "family": "NotApplicable"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown"
+   "id": "14a90b8d8c823a11",
+   "kind": "Reference",
+   "family": "NotApplicable"
+  },
+  "reference": {
+   "Lookups": [
+    {
+     "condition": "Always",
+     "empty_key": "Unresolved",
+     "key_match": "Unresolved",
+     "on_missing": "Unresolved",
+     "stage": "Unresolved",
+     "target": {
+      "Registry": {
+       "name": "common/bypass"
+      }
+     }
+    }
+   ]
   },
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -1609,6 +1742,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1631,6 +1765,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1665,6 +1800,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -1699,6 +1835,7 @@
    "kind": "Integer",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1733,6 +1870,7 @@
    "kind": "FixedPoint",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1755,6 +1893,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1789,6 +1928,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1811,6 +1951,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1833,6 +1974,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1867,6 +2009,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1889,6 +2032,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1911,6 +2055,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1933,6 +2078,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1955,6 +2101,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1977,6 +2124,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1986,22 +2134,50 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": "None",
   "name": "overclock_types",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "5c598b137a53d15a",
+       "kind": "Reference",
+       "family": "NotApplicable"
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown"
+   "id": "5c598b137a53d15a",
+   "kind": "Reference",
+   "family": "NotApplicable"
+  },
+  "reference": {
+   "Lookups": [
+    {
+     "condition": "Always",
+     "empty_key": "Unresolved",
+     "key_match": "Unresolved",
+     "on_missing": "Unresolved",
+     "stage": "Unresolved",
+     "target": {
+      "Registry": {
+       "name": "common/megastructure_overclock_types"
+      }
+     }
+    }
+   ]
   },
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -2033,6 +2209,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -2067,6 +2244,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -2101,6 +2279,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -2135,6 +2314,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -2169,6 +2349,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -2203,6 +2384,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -2225,6 +2407,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -2259,6 +2442,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -2293,6 +2477,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -2315,6 +2500,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -2349,6 +2535,7 @@
    "kind": "String",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -2383,6 +2570,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -2417,6 +2605,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -2451,6 +2640,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -2485,6 +2675,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"

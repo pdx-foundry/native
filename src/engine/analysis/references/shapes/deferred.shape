@@ -1,0 +1,124 @@
+# ReadKeyReferenceDeferred<D>: copy the reader's token text (x1+0x288) into a key, then register
+# the key, its file location and a resolver lambda that captures the destination (x2).
+# {lambda} is the lambda's vtable.
+sub sp,sp,#0xb0
+stp xr0,xr1,[sp,#0x80]
+stp xr2,xr3,[sp,#0x90]
+stp x29,x30,[sp,#0xa0]
+add x29,sp,#0xa0
+mov xr2,x2
+mov xr1,x1
+mov xr3,x0
+adrp xr4,PAGE
+ldr xr4,[xr4,G] = ___stack_chk_guard
+ldr xr4,[xr4]
+stur xr4,[x29,#-0x28]
+ldr x1,[x1,#0x288]
+add x0,sp,#0x30
+bl CALL = CString::CString(char const*)
+add xr4,sp,#0x8
+mov x0,xr1
+bl CALL = CReader::GetFileLocationDescription() const
+bl CALL = CGlobalDeferredDatabaseObjectResolver::Get()
+adrp xr4,PAGE
+add xr4,xr4,G = {lambda}
+add xr4,xr4,#0x10
+stp xr4,xr2,[x29,#-0x48]
+sub xr2,x29,#0x48
+stur xr2,[x29,#-0x30]
+add x2,sp,#0x30
+add x3,sp,#0x8
+sub x4,x29,#0x48
+mov x1,xr3
+bl CALL = CGlobalDeferredDatabaseObjectResolver::Register(CGlobalDeferredDatabaseObject const&, CString const&, CString const&, std::__1::function<bool (CString const&)>&&)
+ldur x0,[x29,#-0x30]
+cmp x0,xr2
+b.eq @+4
+cbz x0,@+8
+mov wr4,#0x5
+b @+3
+mov wr4,#0x4
+sub x0,x29,#0x48
+ldr xr5,[x0]
+ldr xr4,[xr5,xr4,lsl#3]
+blr xr4
+ldrsb wr4,[sp,#0x1f]
+tbnz wr4,#0x1f,@+14
+ldrsb wr4,[sp,#0x47]
+tbnz wr4,#0x1f,@+20
+ldur xr4,[x29,#-0x28]
+adrp xr5,PAGE
+ldr xr5,[xr5,G] = ___stack_chk_guard
+ldr xr5,[xr5]
+cmp xr5,xr4
+b.ne @+26
+ldp x29,x30,[sp,#0xa0]
+ldp xr2,xr3,[sp,#0x90]
+ldp xr0,xr1,[sp,#0x80]
+add sp,sp,#0xb0
+ret
+add xr4,sp,#0x8
+add x0,xr4,#0x18
+ldr x1,[sp,#0x8]
+ldr xr4,[sp,#0x18]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr4,[sp,#0x47]
+tbz wr4,#0x1f,@-18
+add xr4,sp,#0x30
+add x0,xr4,#0x18
+ldr x1,[sp,#0x30]
+ldr xr4,[sp,#0x40]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldur xr4,[x29,#-0x28]
+adrp xr5,PAGE
+ldr xr5,[xr5,G] = ___stack_chk_guard
+ldr xr5,[xr5]
+cmp xr5,xr4
+b.eq @-24
+bl CALL = ___stack_chk_fail
+mov xr3,x0
+ldur x0,[x29,#-0x30]
+cmp x0,xr2
+b.ne @+4
+mov wr4,#0x4
+sub x0,x29,#0x48
+b @+9
+cbnz x0,@+7
+ldrsb wr4,[sp,#0x1f]
+tbnz wr4,#0x1f,@+15
+ldrsb wr4,[sp,#0x47]
+tbnz wr4,#0x1f,@+25
+mov x0,xr3
+bl CALL = __Unwind_Resume
+mov wr4,#0x5
+ldr xr5,[x0]
+ldr xr4,[xr5,xr4,lsl#3]
+blr xr4
+ldrsb wr4,[sp,#0x1f]
+tbz wr4,#0x1f,@-9
+b @+4
+mov xr3,x0
+ldrsb wr4,[sp,#0x1f]
+tbz wr4,#0x1f,@-13
+add xr4,sp,#0x8
+add x0,xr4,#0x18
+ldr x1,[sp,#0x8]
+ldr xr4,[sp,#0x18]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr4,[sp,#0x47]
+tbz wr4,#0x1f,@-19
+b @+4
+mov xr3,x0
+ldrsb wr4,[sp,#0x47]
+tbz wr4,#0x1f,@-23
+add xr4,sp,#0x30
+add x0,xr4,#0x18
+ldr x1,[sp,#0x30]
+ldr xr4,[sp,#0x40]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr3
+bl CALL = __Unwind_Resume

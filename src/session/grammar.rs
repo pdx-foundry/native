@@ -1,5 +1,6 @@
 //! Normalize command grammar without promoting a partial property to a complete grammar.
 use super::{Native, questions::error};
+use crate::engine::analysis::references::ReferenceFacts;
 use crate::engine::analysis::{
     declarations::{self, Site},
     grammar,
@@ -25,7 +26,8 @@ impl Native {
         let subject = recorded_subject(kind, name);
         self.answer("command_grammar", Some(&subject), || {
             let result = self.command_grammar_result(kind, name)?;
-            Ok(normalize(result.as_ref(), name, self.build()))
+            let references = self.reference_facts(Operation::CommandGrammar)?;
+            Ok(normalize(result.as_ref(), name, self.build(), references))
         })
     }
 
@@ -106,6 +108,7 @@ pub(super) fn normalize(
     result: Result<&grammar::GrammarResult, &Unresolved>,
     name: &str,
     build: crate::BuildId,
+    references: &ReferenceFacts,
 ) -> Answer<CommandGrammar> {
     let mut value = CommandGrammar {
         reader: Reader {
@@ -118,6 +121,7 @@ pub(super) fn normalize(
         numeric_keys: GrammarProperty::Unresolved,
         ordering: GrammarProperty::Unresolved,
     };
+    let mut key_gaps = Vec::new();
     let mut gaps = Vec::new();
     let mut gap = |kind, detail: String| {
         let gap = Gap {
@@ -139,9 +143,22 @@ pub(super) fn normalize(
                 kind: result.reader_kind,
                 family: result.reader_family,
             };
-            let keys = super::fields::grammar_fields(&result.fields.fields, &result.fields.paths);
+            let keys = super::fields::grammar_fields(
+                &result.fields.fields,
+                &result.fields.paths,
+                references,
+            );
             if !keys.is_empty() {
                 value.fixed_keys = GrammarProperty::Partial(keys);
+            }
+            for key in &result.fields.fields {
+                if let Some(detail) = super::fields::reference_gap(key, references) {
+                    key_gaps.push(Gap {
+                        kind: GapKind::ReaderSemantics,
+                        subject: Some(GapSubject::field(key.name.clone())),
+                        detail,
+                    });
+                }
             }
             if !result.families.is_empty() {
                 value.child_families = GrammarProperty::Partial(result.families.clone());
@@ -171,7 +188,7 @@ pub(super) fn normalize(
                 );
             }
             if let Some(child) = &result.numeric {
-                let child = normalize(Ok(child), name, build.clone());
+                let child = normalize(Ok(child), name, build.clone(), references);
                 value.numeric_keys = GrammarProperty::Partial(Some(Box::new(child.value)));
                 for child_gap in child.gaps {
                     gap(child_gap.kind, child_gap.detail);
@@ -194,6 +211,7 @@ pub(super) fn normalize(
             .into(),
     );
     gap(GapKind::OutsideMethod, "Argument values, scope propagation, storage behavior and runtime meaning are outside this method.".into());
+    gaps.extend(key_gaps);
     Answer {
         value,
         completeness: crate::Completeness::from_gaps(&gaps),
@@ -344,7 +362,12 @@ mod tests {
             },
         };
         let result = make(Some(Box::new(make(None))));
-        let answer = normalize(Ok(&result), "example", crate::BuildId("authored".into()));
+        let answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
         assert_eq!(answer.gaps.len(), 3);
         for kind in [
             GapKind::OutsideMethod,
@@ -357,6 +380,64 @@ mod tests {
             answer.value.numeric_keys,
             GrammarProperty::Partial(Some(_))
         ));
+    }
+
+    #[test]
+    fn a_fixed_key_with_an_unresolved_lookup_has_its_own_gap() {
+        use crate::engine::analysis::fields::{ReaderJoin, RootField, Value};
+
+        let deferred = "void NParserUtil::ReadKeyReferenceDeferred<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CShipDatabase::ValueType const**)";
+        let key = RootField {
+            name: "ship".into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: deferred.into(),
+                arguments: [
+                    ("x0".into(), Value::Owner(0)),
+                    ("x1".into(), Value::Reader(0)),
+                    ("x2".into(), Value::Owner(0x40)),
+                ]
+                .into(),
+                tail: true,
+            }],
+        };
+        let result = grammar::GrammarResult {
+            reader: declarations::CommandReader {
+                vtable: 1,
+                read: 2,
+                member: 3,
+            },
+            delegates: Default::default(),
+            reader_name: "CEffect::Read(CReader&, EScopeType)".into(),
+            reader_kind: ReaderKind::Block,
+            reader_family: BlockFamily::Effect,
+            member_name: "CEntry::ReadMember(CReader&, int, EScopeType)".into(),
+            numeric: None,
+            ordering: vec![],
+            families: vec![],
+            stops: vec![],
+            fields: grammar::ChildFields {
+                fields: vec![key],
+                paths: vec![],
+                gaps: vec![],
+            },
+        };
+        let answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
+
+        let key_gap = answer
+            .gaps
+            .iter()
+            .find(|gap| gap.subject == Some(GapSubject::field("ship")))
+            .expect("the key's lookup gap");
+        assert_eq!(key_gap.kind, GapKind::ReaderSemantics);
+        assert!(key_gap.detail.contains("the reader was not analyzed"));
     }
 
     #[test]
@@ -382,7 +463,12 @@ mod tests {
                 gaps: vec![],
             },
         };
-        let answer = normalize(Ok(&result), "example", crate::BuildId("authored".into()));
+        let answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
         assert!(answer.value.reader.id.is_some());
         assert_eq!(answer.value.reader.kind, ReaderKind::Unknown);
         assert_eq!(answer.value.reader.family, BlockFamily::Unknown);
@@ -398,6 +484,7 @@ mod tests {
             Err(&Unresolved::new("factory-return")),
             "example",
             crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
         );
         assert_eq!(answer.completeness, crate::Completeness::Partial);
         assert_eq!(answer.value.reader.family, BlockFamily::Unknown);

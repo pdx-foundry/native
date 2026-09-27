@@ -4,10 +4,11 @@ use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Trace, Un
 use pdx_native::internals::{command_grammar_stops, registry_field_stops, trace_causes};
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
-    DeclaredTags, Define, EntryContext, EntryScope, Error, Field, GameRule, GapKind, LinkData,
-    LocalizationContextReference, LocalizationDeclarations, LocalizationOutput,
-    ModifierDeclaration, ModifierFamily, NamePart, Native, OnAction, Operation, OutputScope,
-    ReaderKind, RuleKind, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
+    DeclaredTags, Define, EntryContext, EntryScope, Error, Field, FieldReference, GameRule,
+    GapKind, KeyMatch, LinkData, LocalizationContextReference, LocalizationDeclarations,
+    LocalizationOutput, LookupStage, ModifierDeclaration, ModifierFamily, NamePart, Native,
+    OnAction, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind, ScopeId,
+    ScopeInventory, ScopeLink, ScopeReference,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -859,6 +860,45 @@ fn registries_are_named_by_their_content_directory() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
+    let native = native();
+    let expected = expected::<BTreeMap<String, FieldReference>>("references.json");
+    for (subject, reference) in &expected {
+        let (registry, name) = subject.split_once('#').unwrap();
+        let answer = native.registry_fields(registry).unwrap();
+        let field = find(&answer.value, name, |field| &field.name);
+        assert_eq!(&field.reference, reference, "{subject}");
+
+        let text = serde_json::to_string(&answer).unwrap();
+        assert!(
+            !text.contains("Database"),
+            "{registry} names a database class"
+        );
+
+        let unresolved = match reference {
+            FieldReference::Lookups(lookups) => lookups.iter().any(|lookup| {
+                lookup.target == ReferenceTarget::Unresolved
+                    || lookup.stage == LookupStage::Unresolved
+                    || lookup.key_match == KeyMatch::Unresolved
+            }),
+            _ => true,
+        };
+        let explained = answer.gaps.iter().any(|gap| {
+            gap.kind == GapKind::ReaderSemantics
+                && gap
+                    .subject
+                    .as_ref()
+                    .is_some_and(|subject| subject.name() == name)
+        });
+        assert_eq!(
+            unresolved, explained,
+            "{subject}: an unresolved fact has a gap"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn registry_fields_match_and_share_reader_identities_across_registries() {
     let native = native();
     let mut potential = Vec::new();
@@ -1198,7 +1238,7 @@ fn control_grammar_preserves_shared_readers_and_partial_properties() {
         let mut identities = BTreeMap::new();
         for name in names {
             let answer = native.command_grammar(kind, name).unwrap();
-            assert_eq!(answer.source.method, "command-grammar/v1");
+            assert_eq!(answer.source.method, "command-grammar/v2");
             assert_eq!(answer.completeness, Completeness::Partial);
             assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
             assert_eq!(
