@@ -1,6 +1,6 @@
 //! Unfiltered command grammar answers and developer diagnostics for one supported build.
 //! Counts are operation answers per unique (family, name), never paths or registration sites.
-use pdx_native::internals::command_grammar_stops::{self, GrammarResult, Run};
+use pdx_native::internals::command_grammar_stops::{self, Chain, GrammarResult, Run};
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::registry_field_stops::Stop;
 use pdx_native::{Answer, CommandGrammar, Completeness, DeclarationKind, Native};
@@ -32,7 +32,7 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
         let mut report = Report::default();
         let population = command_grammar_stops::population(&native, kind, |name, run| {
             let diagnostics = diagnostics(&image, &run);
-            report.add(name, run.answer, diagnostics);
+            report.add(name, run.answer, &run.chain, diagnostics);
         })?;
         inventories.push(json!({
             "kind": kind,
@@ -70,7 +70,13 @@ struct Report {
 }
 
 impl Report {
-    fn add(&mut self, name: &str, answer: Answer<CommandGrammar>, diagnostics: Value) {
+    fn add(
+        &mut self,
+        name: &str,
+        answer: Answer<CommandGrammar>,
+        chain: &Chain,
+        diagnostics: Value,
+    ) {
         self.totals.named_commands += 1;
         if let Some(groups) = diagnostics["stop_groups"].as_object() {
             for shape in groups.keys() {
@@ -90,7 +96,7 @@ impl Report {
                 "partial"
             }
         };
-        if answer.value.reader.id.is_none() {
+        if chain.receiver.is_none() || chain.stopped_at == Some("reader slots and bodies") {
             self.totals.receiver_join_failed += 1;
         }
         for gap in &answer.gaps {
@@ -238,6 +244,60 @@ mod tests {
         }
     }
 
+    fn joined_chain() -> Chain {
+        Chain {
+            receiver: Some(1),
+            read: Some(2),
+            member: Some(3),
+            ..Chain::default()
+        }
+    }
+
+    #[test]
+    fn grammar_name_failures_do_not_count_as_receiver_failures() {
+        let mut report = Report::default();
+        for reason in ["command-member-name", "command-reader-name"] {
+            let mut answer = answer(Completeness::Partial, false);
+            answer.gaps[0].detail = reason.into();
+            let chain = Chain {
+                stopped_at: Some("grammar"),
+                ..joined_chain()
+            };
+            report.add(reason, answer, &chain, Value::Null);
+        }
+        assert_eq!(report.totals.receiver_join_failed, 0);
+        assert_eq!(report.totals.partial, 2);
+        assert!(
+            report
+                .cases
+                .iter()
+                .all(|case| case["answer"]["value"]["reader"]["id"].is_null())
+        );
+
+        let missing_body = Chain {
+            stopped_at: Some("reader slots and bodies"),
+            ..joined_chain()
+        };
+        report.add(
+            "missing-body",
+            answer(Completeness::Partial, false),
+            &missing_body,
+            Value::Null,
+        );
+        assert_eq!(report.totals.receiver_join_failed, 1);
+        let missing_receiver = Chain {
+            stopped_at: Some("factory receiver"),
+            ..Chain::default()
+        };
+        report.add(
+            "missing-receiver",
+            answer(Completeness::Partial, false),
+            &missing_receiver,
+            Value::Null,
+        );
+        assert_eq!(report.totals.receiver_join_failed, 2);
+    }
+
     fn report(cases: Vec<Value>) -> Value {
         json!({"inventories": [{"kind": "Effect", "unknown_registrations": [], "inventory_gaps": [], "full_denominator_known": true, "cases": cases}]})
     }
@@ -248,6 +308,7 @@ mod tests {
         report.add(
             "complete",
             answer(Completeness::Complete, true),
+            &joined_chain(),
             Value::Null,
         );
         let mut partial = answer(Completeness::Partial, false);
@@ -255,9 +316,18 @@ mod tests {
         report.add(
             "unresolved",
             partial,
+            &Chain {
+                stopped_at: Some("factory receiver"),
+                ..Chain::default()
+            },
             json!({"stop_groups": {"factory-return/no-instruction": 2}}),
         );
-        report.add("partial", answer(Completeness::Partial, true), Value::Null);
+        report.add(
+            "partial",
+            answer(Completeness::Partial, true),
+            &joined_chain(),
+            Value::Null,
+        );
         assert_eq!(
             (
                 report.totals.named_commands,

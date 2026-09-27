@@ -235,7 +235,8 @@ Totals count one operation answer per unique `(family, name)`, including runtime
 and named unreadable registrations. They do not count registration observations or token paths.
 `complete`, `partial` and `failed` describe operation outcomes. A failed receiver join still
 produces a partial public answer; `receiver_join_failed` counts these separately without dropping
-them from `named_commands`. An input-construction failure aborts the report rather than inventing
+them from `named_commands`. This count uses the retained receiver and reader-slot/body join,
+not the normalized reader identity: a later grammar symbol failure is not a failed receiver join. An input-construction failure aborts the report rather than inventing
 an inventory denominator. Unknown registration observations and input-wide inventory gaps are
 listed separately. An unknown observation can stand for several commands or overlap another
 observation; its count is never added to the named denominator. `full_denominator_known` is false
