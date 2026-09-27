@@ -23,7 +23,7 @@ pub struct ChildLayout {
     pub token: i64,
 }
 
-pub const METHOD: &str = "command-grammar/v2";
+pub const METHOD: &str = "command-grammar/v3";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -58,6 +58,9 @@ pub struct GrammarResult {
     pub reader_family: BlockFamily,
     /// The symbol of the reader's `ReadMember`, whose token dispatch the method follows.
     pub member_name: String,
+    /// The symbol of the receiver's initializer, which may look up a key that a child key stored,
+    /// or why its vtable slot names none.
+    pub initializer: Result<String, Unresolved>,
     /// Observed calls from each member reader to a delegate, including unresolved routes.
     pub delegates: BTreeSet<(String, String)>,
     /// The grammar of numeric child keys, read by a separate child reader.
@@ -258,6 +261,7 @@ pub(crate) fn analyze_reader(
         reader_family,
         reader_name,
         member_name: root.into(),
+        initializer: initializer(input, reader.vtable),
         numeric,
         ordering,
         families,
@@ -268,6 +272,27 @@ pub(crate) fn analyze_reader(
             gaps,
         },
     })
+}
+
+/// The one symbol at the receiver vtable's initializer slot.
+fn initializer(input: &GrammarInput, vtable: u64) -> Result<String, Unresolved> {
+    let slot = vtable + input.declarations.parser_slots.initializer;
+    let address = input
+        .declarations
+        .pointers
+        .get(&slot)
+        .ok_or_else(|| Unresolved::new("owner-initializer-slot"))?;
+    let names: BTreeSet<_> = input
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.address == *address)
+        .map(|symbol| symbol.name.as_str())
+        .collect();
+    if names.len() != 1 {
+        return Err(Unresolved::new("owner-initializer-name"));
+    }
+
+    Ok(names.first().unwrap().to_string())
 }
 
 fn translate(path: &mut TokenPath, offset: i64) {
@@ -382,6 +407,7 @@ mod tests {
             parser_slots: ParserSlots {
                 read: 0x10,
                 member: 0x18,
+                initializer: 0x90,
             },
             scope_names: None,
             composition: Composition {

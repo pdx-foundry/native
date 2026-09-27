@@ -87,6 +87,7 @@ fn input(
         parser_slots: ParserSlots {
             read: 0x10,
             member: 0x18,
+            initializer: 0x90,
         },
         scope_names: Some(vec!["none".into()]),
         composition,

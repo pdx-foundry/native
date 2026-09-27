@@ -1,9 +1,10 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v2`; field families use
+[targets](targets.md). The method is `command-grammar/v3`; field families use
 `registry-fields/v7`, and parser observations use `observe-fixture/v2`. Versions 2 and 7 add
-[reference lookups](references.md); the counts on this page were measured with versions 1 and 6.
+[reference lookups](references.md), and version 3 adds the receiver initializer's lookup of a
+child key; the counts on this page were measured with versions 1 and 6.
 
 ## Parser observation
 

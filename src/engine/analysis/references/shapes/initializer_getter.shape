@@ -1,0 +1,16 @@
+# {Owner}::PostInit() that calls the database getter {getter} on {database} with the key string at
+# this+{input}, and stores the returned item at this+{output}. The getter's own body gives the
+# lookup.
+stp xr0,xr1,[sp,#-0x20]!
+stp x29,x30,[sp,#0x10]
+add x29,sp,#0x10
+mov xr1,x0
+adrp xr2,PAGE
+add xr2,xr2,G = {database}
+ldr x0,[xr2]
+add x1,xr1,#{input}
+bl CALL = {getter}
+str x0,[xr1,#{output}]
+ldp x29,x30,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x20
+ret

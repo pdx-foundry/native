@@ -40,6 +40,8 @@ pub struct ScopeSlots {
 pub struct ParserSlots {
     pub read: u64,
     pub member: u64,
+    /// The receiver's initializer, which runs after the receiver is read.
+    pub initializer: u64,
 }
 
 /// Concrete virtual reader binding. Equal read callees alone do not establish equal grammars.

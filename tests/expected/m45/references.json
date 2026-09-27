@@ -106,5 +106,93 @@
     }
    }
   ]
+ },
+ "effect/create_ship#random_existing_design": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "NotLookedUp",
+    "key_match": "Equal",
+    "on_missing": "NullObject",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/ship_sizes"
+     }
+    }
+   }
+  ]
+ },
+ "effect/add_district#district_type": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/districts"
+     }
+    }
+   }
+  ]
+ },
+ "effect/add_relic#key": "NotEstablished",
+ "effect/add_relic": [
+  "The receiver's initializer looks up a stored key that no child key's string reader is joined to."
+ ],
+ "effect/change_pc": [
+  "command-vtable"
+ ],
+ "effect/create_army#type": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "WhileReading",
+    "target": {
+     "Registry": {
+      "name": "common/armies"
+     }
+    }
+   }
+  ]
+ },
+ "effect/create_army": [],
+ "trigger/has_country_resource#type": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/strategic_resources"
+     }
+    }
+   }
+  ]
+ },
+ "trigger/is_ai_ship_role#ship_size": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "Equal",
+    "on_missing": "NullObject",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/ship_sizes"
+     }
+    }
+   }
+  ]
  }
 }

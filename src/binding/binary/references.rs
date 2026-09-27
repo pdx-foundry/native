@@ -1,5 +1,5 @@
-//! Read every reference reader, the functions that its lookup reaches, and each named database's
-//! content directory.
+//! Read every reference reader and owner initializer, the functions that their lookups reach, and
+//! each named database's content directory.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
@@ -8,13 +8,22 @@ use crate::engine::analysis::decode::{Instruction, decode_arm64};
 use crate::engine::analysis::directories::{self, Constructor, Directory};
 use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::references::{
-    ReferenceInput, lambda_operator, reader, shapes::canonical,
+    ReferenceInput, initialization, lambda_operator, reader,
+    shapes::{Line, canonical},
 };
 
 use super::declarations::Text;
 
-/// How many calls deep the reader reads: the resolver lambda, then the search it calls.
+/// How many calls deep the reader reads: the resolver lambda or the initializer's getter, then the
+/// search it calls.
 const DEPTH: usize = 2;
+
+/// The name suffix of an owner's initializer.
+const INITIALIZER: &str = "::PostInit()";
+
+/// The signature suffix of a callee that an initializer's lookup can reach: a getter or a search
+/// that takes the key string.
+const KEY_SEARCH: &str = "(CString const&) const";
 
 /// Demangled names at symbol addresses, at pointer slots that hold a named address, and at
 /// import slots, and quoted text at string literals. An address with several different names
@@ -68,33 +77,69 @@ pub(in crate::binding) fn read(
 ) -> Result<ReferenceInput, AnalysisError> {
     let text = Text::read(image.bytes, image.symbols)?;
     let names = names(image.symbols, image.pointers, image.imports, image.strings);
-    let readers: BTreeSet<String> = image
-        .symbols
-        .iter()
-        .filter(|symbol| reader(&symbol.name).is_some())
-        .map(|symbol| symbol.name.clone())
-        .collect();
-    let functions = reachable_functions(&text, image.symbols, &names, &readers);
-    let directories = database_directories(&text, image, candidates, &readers);
+    let named = |accept: fn(&str) -> bool| -> BTreeSet<String> {
+        image
+            .symbols
+            .iter()
+            .filter(|symbol| accept(&symbol.name))
+            .map(|symbol| symbol.name.clone())
+            .collect()
+    };
+    let readers = named(|name| reader(name).is_some());
+    let initializers = named(|name| name.ends_with(INITIALIZER));
+    let mut functions = reachable_functions(&text, image.symbols, &names, &readers, |_| true);
+    let initializer_functions =
+        reachable_functions(&text, image.symbols, &names, &initializers, |callee| {
+            callee.ends_with(KEY_SEARCH)
+        });
+    let databases = named_databases(&readers, &initializers, &initializer_functions, &names);
+    let directories = database_directories(&text, image, candidates, databases);
+    functions.extend(initializer_functions);
 
     Ok(ReferenceInput {
         readers,
+        initializers,
         functions,
         names,
         directories,
     })
 }
 
-/// The decoded bodies of the readers and of the functions that they reach within `DEPTH` calls.
+/// The databases that the readers' signatures and the initializers' bodies name.
+fn named_databases(
+    readers: &BTreeSet<String>,
+    initializers: &BTreeSet<String>,
+    functions: &BTreeMap<String, Vec<Instruction>>,
+    names: &BTreeMap<u64, String>,
+) -> BTreeSet<String> {
+    let mut databases: BTreeSet<String> = readers
+        .iter()
+        .filter_map(|callee| Some(reader(callee)?.database.to_owned()))
+        .collect();
+    for rows in initializers.iter().filter_map(|name| functions.get(name)) {
+        let lines = canonical(rows, names);
+        databases.extend(
+            initialization::databases(&lines)
+                .into_iter()
+                .map(str::to_owned),
+        );
+    }
+
+    databases
+}
+
+/// The decoded bodies of `roots` and of the functions that they reach within `DEPTH` calls,
+/// following only callees that `follow` accepts.
 fn reachable_functions(
     text: &Text<'_>,
     symbols: &[Symbol],
     names: &BTreeMap<u64, String>,
-    readers: &BTreeSet<String>,
+    roots: &BTreeSet<String>,
+    follow: fn(&str) -> bool,
 ) -> BTreeMap<String, Vec<Instruction>> {
     let addresses = unique_addresses(symbols);
     let mut functions = BTreeMap::new();
-    let mut pending: Vec<String> = readers.iter().cloned().collect();
+    let mut pending: Vec<String> = roots.iter().cloned().collect();
     for _ in 0..=DEPTH {
         let mut reached = Vec::new();
         for name in pending {
@@ -108,7 +153,8 @@ fn reachable_functions(
             else {
                 continue;
             };
-            reached.extend(reached_functions(&canonical(&rows, names)));
+            let callees = reached_functions(&canonical(&rows, names));
+            reached.extend(callees.into_iter().filter(|callee| follow(callee)));
             functions.insert(name, rows);
         }
         pending = reached;
@@ -117,35 +163,31 @@ fn reachable_functions(
     functions
 }
 
-/// The content directory of each database that a reader names: the template join first, then
-/// the directory that the database's own loader enumerates.
+/// The content directory of each database: the template join first, then the directory that the
+/// database's own loader enumerates.
 fn database_directories(
     text: &Text<'_>,
     image: &Image<'_>,
     candidates: &[NamedCandidate],
-    readers: &BTreeSet<String>,
+    databases: BTreeSet<String>,
 ) -> BTreeMap<String, Directory> {
-    let databases: BTreeSet<&str> = readers
-        .iter()
-        .filter_map(|callee| Some(reader(callee)?.database))
-        .collect();
     let anchors = super::constructors::anchors(image.symbols);
 
     databases
         .into_iter()
         .map(|database| {
-            let directory = template_directory(candidates, database).unwrap_or_else(|| {
-                let own = own_functions(text, image.symbols, database);
+            let directory = template_directory(candidates, &database).unwrap_or_else(|| {
+                let own = own_functions(text, image.symbols, &database);
                 directories::loader_directory(&own, &anchors, image.strings)
             });
-            (database.to_owned(), directory)
+            (database, directory)
         })
         .collect()
 }
 
 /// The functions that a canonical body calls, and the call operators of the resolver lambdas
 /// whose vtables it names.
-fn reached_functions(lines: &[crate::engine::analysis::references::shapes::Line]) -> Vec<String> {
+fn reached_functions(lines: &[Line]) -> Vec<String> {
     lines
         .iter()
         .filter_map(|line| {

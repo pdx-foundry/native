@@ -181,6 +181,9 @@ pub enum LookupStage {
     /// Later, when the engine resolves the keys that its readers deferred. Keys may name items
     /// that load after the field.
     Deferred,
+    /// When the engine initializes the object that holds the field, after reading it. The field
+    /// stores the key text; the initialization looks it up.
+    OwnerInitialization,
     /// The stage is not established.
     Unresolved,
 }

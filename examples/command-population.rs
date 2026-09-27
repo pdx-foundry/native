@@ -2,8 +2,12 @@
 //! Counts are operation answers per unique (family, name), never paths or registration sites.
 use pdx_native::internals::command_grammar_stops::{self, Chain, GrammarResult, Run};
 use pdx_native::internals::inspect::{Image, read_image};
+use pdx_native::internals::reference_readers::{self, Initialization, ReferenceFacts};
 use pdx_native::internals::registry_field_stops::Stop;
-use pdx_native::{Answer, CommandGrammar, Completeness, DeclarationKind, Native};
+use pdx_native::{
+    Answer, CommandGrammar, Completeness, DeclarationKind, EmptyKey, FieldReference,
+    GrammarProperty, KeyMatch, LookupStage, MissingResult, Native, ReferenceTarget,
+};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -27,11 +31,14 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
     let bytes = read_image(installation.as_ref())?;
     let image = Image::read(&bytes)?;
     let started = std::time::Instant::now();
+    let references = reference_readers::run(&native)?;
     let mut inventories = Vec::new();
     for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
         let mut report = Report::default();
+        let mut initialization = InitializationTally::default();
         let population = command_grammar_stops::population(&native, kind, |name, run| {
             let diagnostics = diagnostics(&image, &run);
+            initialization.add(name, &run, &references);
             report.add(name, run.answer, &run.chain, diagnostics);
         })?;
         inventories.push(json!({
@@ -43,6 +50,7 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
             "totals": report.totals,
             "failure_shapes": report.failure_shapes,
             "stop_groups": report.stop_groups,
+            "initialization_lookups": initialization.report(),
             "cases": report.cases,
         }));
     }
@@ -109,6 +117,95 @@ impl Report {
             json!({"name": name, "status": status, "answer": answer, "diagnostics": diagnostics}),
         );
     }
+}
+
+/// Each named command by what its receiver's initializer establishes. A lookup joins a child key
+/// when that key's answer holds an owner-initialization lookup; complete when every property of
+/// that lookup is established.
+#[derive(Default)]
+struct InitializationTally {
+    without_lookup: usize,
+    complete: Vec<String>,
+    partial: Vec<String>,
+    without_authored_field: Vec<String>,
+    failed: BTreeMap<&'static str, Vec<String>>,
+    unknown_initializer: Vec<String>,
+}
+
+impl InitializationTally {
+    fn add(&mut self, name: &str, run: &Run, references: &ReferenceFacts) {
+        let Ok(result) = &run.result else {
+            self.failed
+                .entry("receiver-join")
+                .or_default()
+                .push(name.into());
+            return;
+        };
+        let initialization = result
+            .initializer
+            .as_ref()
+            .ok()
+            .and_then(|initializer| references.initializers.get(initializer));
+        match initialization {
+            None => self.unknown_initializer.push(name.into()),
+            Some(Initialization::NoLookup) => self.without_lookup += 1,
+            Some(Initialization::Unresolved(stop)) => self
+                .failed
+                .entry(stop.reason)
+                .or_default()
+                .push(name.into()),
+            Some(Initialization::Lookup(_)) => match joined_lookup(&run.answer) {
+                Some(true) => self.complete.push(name.into()),
+                Some(false) => self.partial.push(name.into()),
+                None => self.without_authored_field.push(name.into()),
+            },
+        }
+    }
+
+    fn report(self) -> Value {
+        let failed: usize = self.failed.values().map(Vec::len).sum();
+
+        json!({
+            "without_lookup": self.without_lookup,
+            "joined_complete": self.complete.len(),
+            "joined_partial": self.partial.len(),
+            "without_authored_field": self.without_authored_field.len(),
+            "failed": failed,
+            "unknown_initializer": self.unknown_initializer.len(),
+            "complete_commands": self.complete,
+            "partial_commands": self.partial,
+            "commands_without_authored_field": self.without_authored_field,
+            "failure_shapes": self.failed,
+            "unknown_initializer_commands": self.unknown_initializer,
+        })
+    }
+}
+
+/// Whether the owner-initialization lookup that a child key joins is fully established, or
+/// `None` when no child key joins one.
+fn joined_lookup(answer: &Answer<CommandGrammar>) -> Option<bool> {
+    let GrammarProperty::Partial(keys) = &answer.value.fixed_keys else {
+        return None;
+    };
+    let lookups: Vec<_> = keys
+        .iter()
+        .filter_map(|key| match &key.reference {
+            FieldReference::Lookups(lookups) => Some(lookups),
+            _ => None,
+        })
+        .flatten()
+        .filter(|lookup| lookup.stage == LookupStage::OwnerInitialization)
+        .collect();
+    if lookups.is_empty() {
+        return None;
+    }
+
+    Some(lookups.iter().all(|lookup| {
+        matches!(lookup.target, ReferenceTarget::Registry { .. })
+            && lookup.key_match != KeyMatch::Unresolved
+            && lookup.empty_key != EmptyKey::Unresolved
+            && lookup.on_missing != MissingResult::Unresolved
+    }))
 }
 
 /// Internal failures retain locations and group by reason, instruction, obstacle and function.

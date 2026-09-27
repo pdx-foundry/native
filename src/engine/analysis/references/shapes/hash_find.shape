@@ -1,0 +1,72 @@
+# CHashTable<CString, …>::Find: hash the key with _PMurHash32, select its bucket, then walk the
+# bucket chain and compare each item's key string (item+{key}, length item+{length}, flag byte
+# item+{flag}) by length and bytes; the first equal item is returned, and null when none is.
+stp xr0,xr1,[sp,#-0x30]!
+stp xr2,xr3,[sp,#0x10]
+stp x29,x30,[sp,#0x20]
+add x29,sp,#0x20
+mov xr3,x1
+mov xr2,x0
+ldrsb wr4,[x1,#0x17]
+ldr xr5,[x1]
+ldr wr6,[x1,#0x8]
+and wr7,wr4,#0xff
+cmp wr4,#0x0
+csel w2,wr6,wr7,lt
+csel x1,xr5,x1,lt
+mov w0,#0x0
+bl CALL = _PMurHash32
+ldr wr4,[xr2,#0x4]
+udiv wr5,w0,wr4
+msub wr4,wr5,wr4,w0
+ldr xr5,[xr2,#0x8]
+ldr xr0,[xr5,wr4,uxtw#3]
+cbz xr0,@+43
+ldrb wr4,[xr3,#0x17]
+sxtb wr5,wr4
+cmp wr5,#0x0
+ldp xr6,xr5,[xr3]
+csel xr2,xr5,xr4,lt
+csel xr1,xr6,xr3,lt
+b @+3
+ldr xr0,[xr0,#0x8]
+cbz xr0,@+34
+ldr xr3,[xr0]
+ldrb wr4,[xr3,#{flag}]
+sxtb wr5,wr4
+ldr xr6,[xr3,#{length}]
+cmp wr5,#0x0
+csel xr5,xr6,xr4,lt
+cmp xr5,xr2
+b.ne @-9
+add xr5,xr3,#{key}
+sxtb wr6,wr4
+ldr xr7,[xr5]
+cmp wr6,#0x0
+csel x0,xr7,xr5,lt
+tbnz wr4,#7,@+14
+cbz xr2,@+20
+mov xr5,#0x0
+sub xr4,xr4,#0x1
+add xr6,xr3,xr5
+ldrb wr6,[xr6,#{key}]
+ldrb wr7,[xr1,xr5]
+cmp wr6,wr7
+ccmp xr4,xr5,#0x4,eq
+add xr5,xr5,#0x1
+b.ne @-6
+cmp wr6,wr7
+b.ne @-27
+b @+8
+cbz xr2,@+7
+mov x1,xr1
+mov x2,xr2
+bl CALL = _memcmp
+cbnz w0,@-33
+b @+2
+mov xr3,#0x0
+mov x0,xr3
+ldp x29,x30,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x30
+ret

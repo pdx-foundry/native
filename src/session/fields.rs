@@ -4,7 +4,9 @@ use crate::engine::analysis::fields::{
     Value,
 };
 use crate::engine::analysis::readers;
-use crate::engine::analysis::references::{self, ReaderLookup, ReferenceFacts};
+use crate::engine::analysis::references::{
+    self, Lookup, ReferenceFacts, initialization::InitializationLookup,
+};
 use crate::{
     EmptyKey, Field, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
     FieldReadOutcome, FieldReference, FieldShape, KeyMatch, LookupStage, MissingResult, Reader,
@@ -124,16 +126,81 @@ pub(super) fn field(
     normalized
 }
 /// Normalize command children from their dispatch ledger, without registry storage or uses.
+/// `initialization` is the receiver's initialization lookup, which joins the child keys that
+/// store its key string; each joined read alternative keeps its own condition.
 pub(super) fn grammar_fields(
     fields: &[RootField],
     paths: &[TokenPath],
     references: &ReferenceFacts,
+    initialization: Option<&InitializationLookup>,
 ) -> Vec<Field> {
     let persistent = BTreeMap::new();
     fields
         .iter()
-        .map(|field| ordinary_field(field, fields, paths, &persistent, references))
+        .map(|field| {
+            let mut normalized = ordinary_field(field, fields, paths, &persistent, references);
+            if let Some(initialization) = initialization {
+                for lookup in initialization_lookups(field, fields, paths, initialization) {
+                    normalized.reference =
+                        with_lookup(std::mem::take(&mut normalized.reference), lookup);
+                }
+            }
+
+            normalized
+        })
         .collect()
+}
+
+/// One lookup for each read alternative of `field` that stores the initialization key.
+fn initialization_lookups(
+    field: &RootField,
+    fields: &[RootField],
+    paths: &[TokenPath],
+    initialization: &InitializationLookup,
+) -> Vec<ReferenceLookup> {
+    read_alternatives(field, paths)
+        .iter()
+        .filter(|(_, outcome)| {
+            matches!(outcome, PathOutcome::Reader(join) if stores_key(join, initialization))
+        })
+        .map(|(conditions, _)| {
+            reference_lookup(
+                condition(conditions, fields),
+                initialization.directory.clone(),
+                Some(&initialization.lookup),
+            )
+        })
+        .collect()
+}
+
+/// Whether a read alternative of `field` stores a string at the owner offset whose text the
+/// initialization lookup reads.
+pub(super) fn stores_initialization_key(
+    field: &RootField,
+    initialization: &InitializationLookup,
+) -> bool {
+    field
+        .readers
+        .iter()
+        .any(|join| stores_key(join, initialization))
+}
+
+/// Whether `join` is a string read that stores the initialization key. The read must be the
+/// path's tail call: an unexamined continuation may overwrite the key before `PostInit()`.
+fn stores_key(join: &ReaderJoin, initialization: &InitializationLookup) -> bool {
+    matches!(join, ReaderJoin::Joined { tail: true, .. })
+        && readers::classify(std::slice::from_ref(join)).kind == ReaderKind::String
+        && readers::destination(join) == Some(initialization.key_offset)
+}
+
+fn with_lookup(reference: FieldReference, lookup: ReferenceLookup) -> FieldReference {
+    match reference {
+        FieldReference::Lookups(mut lookups) => {
+            lookups.push(lookup);
+            FieldReference::Lookups(lookups)
+        }
+        _ => FieldReference::Lookups(vec![lookup]),
+    }
 }
 
 fn ordinary_field(
@@ -143,13 +210,7 @@ fn ordinary_field(
     persistent: &BTreeMap<i64, ConcreteReader>,
     references: &ReferenceFacts,
 ) -> Field {
-    let paths = paths
-        .iter()
-        .filter(|path| path.domain[0] <= field.token && field.token <= path.domain[1]);
-    let mut alternatives: Vec<_> = paths
-        .map(|path| (path.conditions.clone(), path.outcome.clone()))
-        .collect();
-    collapse_equivalent_branches(&mut alternatives);
+    let alternatives = read_alternatives(field, paths);
     let lookups: Vec<ReferenceLookup> = alternatives
         .iter()
         .filter_map(|(conditions, outcome)| {
@@ -157,9 +218,11 @@ fn ordinary_field(
                 return None;
             };
             references::reader(callee)?;
+            let fact = references.readers.get(callee);
             Some(reference_lookup(
                 condition(conditions, fields),
-                references.readers.get(callee),
+                fact.and_then(|fact| fact.directory.clone()),
+                fact.and_then(|fact| fact.lookup.as_ref().ok()),
             ))
         })
         .collect();
@@ -239,14 +302,31 @@ fn ordinary_field(
     }
 }
 
+/// The token paths that read `field`, as condition and outcome pairs with equivalent branches
+/// collapsed.
+fn read_alternatives(field: &RootField, paths: &[TokenPath]) -> Vec<(Vec<Condition>, PathOutcome)> {
+    let mut alternatives: Vec<_> = paths
+        .iter()
+        .filter(|path| path.domain[0] <= field.token && field.token <= path.domain[1])
+        .map(|path| (path.conditions.clone(), path.outcome.clone()))
+        .collect();
+    collapse_equivalent_branches(&mut alternatives);
+
+    alternatives
+}
+
 /// The public lookup of one reference read. Each fact that the method did not establish stays
 /// unresolved; the field's gap names it.
-fn reference_lookup(condition: FieldCondition, fact: Option<&ReaderLookup>) -> ReferenceLookup {
-    let target = match fact.and_then(|fact| fact.directory.clone()) {
+fn reference_lookup(
+    condition: FieldCondition,
+    directory: Option<String>,
+    lookup: Option<&Lookup>,
+) -> ReferenceLookup {
+    let target = match directory {
         Some(name) => ReferenceTarget::Registry { name },
         None => ReferenceTarget::Unresolved,
     };
-    let Some(Ok(lookup)) = fact.map(|fact| &fact.lookup) else {
+    let Some(lookup) = lookup else {
         return ReferenceLookup {
             condition,
             target,
@@ -263,6 +343,7 @@ fn reference_lookup(condition: FieldCondition, fact: Option<&ReaderLookup>) -> R
         stage: match lookup.stage {
             references::Stage::WhileReading => LookupStage::WhileReading,
             references::Stage::Deferred => LookupStage::Deferred,
+            references::Stage::OwnerInitialization => LookupStage::OwnerInitialization,
         },
         key_match: match lookup.key_match {
             Some(references::KeyMatch::Equal) => KeyMatch::Equal,
@@ -297,7 +378,7 @@ pub(super) fn reference_gap(field: &RootField, references: &ReferenceFacts) -> O
             }
             Some(fact) => {
                 if fact.directory.is_none() {
-                    missing.insert("the searched database has no established content directory");
+                    missing.insert(NO_DIRECTORY);
                 }
                 match &fact.lookup {
                     Err(stop) if stop.reason == "reference-list-form" => {
@@ -309,13 +390,34 @@ pub(super) fn reference_gap(field: &RootField, references: &ReferenceFacts) -> O
                         missing.insert("no qualified lookup shape matched the reader");
                     }
                     Ok(lookup) if lookup.key_match.is_none() => {
-                        missing.insert("the map search that compares keys is not qualified");
+                        missing.insert(UNQUALIFIED_SEARCH);
                     }
                     Ok(_) => {}
                 }
             }
         }
     }
+
+    unestablished(missing)
+}
+
+/// Why a joined owner-initialization lookup is not fully established.
+pub(super) fn initialization_gap(initialization: &InitializationLookup) -> Option<String> {
+    let mut missing = std::collections::BTreeSet::new();
+    if initialization.directory.is_none() {
+        missing.insert(NO_DIRECTORY);
+    }
+    if initialization.lookup.key_match.is_none() {
+        missing.insert(UNQUALIFIED_SEARCH);
+    }
+
+    unestablished(missing)
+}
+
+const NO_DIRECTORY: &str = "the searched database has no established content directory";
+const UNQUALIFIED_SEARCH: &str = "the map search that compares keys is not qualified";
+
+fn unestablished(missing: std::collections::BTreeSet<&str>) -> Option<String> {
     if missing.is_empty() {
         return None;
     }
@@ -685,6 +787,7 @@ mod tests {
                     lookup("CArmyDatabase", "common/armies"),
                 ),
             ]),
+            initializers: BTreeMap::new(),
         };
         let fields = [flag, target];
         let field = ordinary_field(&fields[1], &fields, &paths, &BTreeMap::new(), &references);
@@ -724,5 +827,111 @@ mod tests {
                 .iter()
                 .all(|lookup| lookup.key_match == KeyMatch::Unresolved)
         );
+    }
+
+    fn string_read(at: i64, tail: bool) -> ReaderJoin {
+        ReaderJoin::Joined {
+            callee: "CReader::Read(CString&, bool)".into(),
+            arguments: [
+                ("x0".into(), Value::Reader(0)),
+                ("x1".into(), Value::Owner(at)),
+                ("x2".into(), Value::Constant(0)),
+            ]
+            .into(),
+            tail,
+        }
+    }
+
+    fn initialization(key_offset: i64) -> InitializationLookup {
+        use crate::engine::analysis::references::Stage;
+
+        InitializationLookup {
+            database: "CShipSizeDatabase".into(),
+            directory: Some("common/ship_sizes".into()),
+            key_offset,
+            item_offset: key_offset + 0x28,
+            lookup: Lookup {
+                stage: Stage::OwnerInitialization,
+                key_match: Some(references::KeyMatch::Equal),
+                empty_key_looked_up: Some(false),
+                missing_yields_null: Some(true),
+            },
+        }
+    }
+
+    fn string_field(readers: Vec<ReaderJoin>) -> RootField {
+        RootField {
+            name: "size".into(),
+            token: 7,
+            constructor: 0,
+            paths: (0..readers.len()).collect(),
+            readers,
+        }
+    }
+
+    #[test]
+    fn only_a_tail_string_read_stores_the_initialization_key() {
+        let lookup = initialization(0xa8);
+
+        let continued = string_field(vec![string_read(0xa8, false)]);
+        assert!(!stores_initialization_key(&continued, &lookup));
+
+        let tail = string_field(vec![string_read(0xa8, true)]);
+        assert!(stores_initialization_key(&tail, &lookup));
+    }
+
+    #[test]
+    fn an_initialization_lookup_keeps_the_condition_of_the_alternative_that_stores_the_key() {
+        let flag = RootField {
+            name: "flag".into(),
+            token: 3,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: "CReader::Read(bool&)".into(),
+                arguments: [
+                    ("x0".into(), Value::Reader(0)),
+                    ("x1".into(), Value::Owner(8)),
+                ]
+                .into(),
+                tail: true,
+            }],
+        };
+        let size = string_field(vec![string_read(0xa8, true), string_read(0xb0, true)]);
+        let path = |zero: bool, join: ReaderJoin| TokenPath {
+            domain: [7, 7],
+            conditions: vec![test(zero)],
+            instructions: vec![],
+            terminal: 0,
+            outcome: PathOutcome::Reader(join),
+        };
+        let paths = [
+            path(true, string_read(0xa8, true)),
+            path(false, string_read(0xb0, true)),
+        ];
+        let references = ReferenceFacts {
+            readers: BTreeMap::new(),
+            initializers: BTreeMap::new(),
+        };
+
+        let fields = grammar_fields(
+            &[flag, size],
+            &paths,
+            &references,
+            Some(&initialization(0xa8)),
+        );
+
+        let FieldReference::Lookups(lookups) = &fields[1].reference else {
+            panic!("{:?}", fields[1].reference);
+        };
+        let conditions: Vec<_> = lookups.iter().map(|lookup| &lookup.condition).collect();
+        assert_eq!(
+            conditions,
+            [&FieldCondition::FieldZero {
+                path: vec!["flag".into()],
+                zero: true
+            }]
+        );
+        assert_eq!(lookups[0].stage, LookupStage::OwnerInitialization);
     }
 }

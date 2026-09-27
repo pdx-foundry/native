@@ -1,6 +1,9 @@
 //! Normalize command grammar without promoting a partial property to a complete grammar.
 use super::{Native, questions::error};
-use crate::engine::analysis::references::ReferenceFacts;
+use crate::engine::analysis::references::{
+    ReferenceFacts,
+    initialization::{Initialization, InitializationLookup},
+};
 use crate::engine::analysis::{
     declarations::{self, Site},
     grammar,
@@ -121,8 +124,8 @@ pub(super) fn normalize(
         numeric_keys: GrammarProperty::Unresolved,
         ordering: GrammarProperty::Unresolved,
     };
-    let mut key_gaps = Vec::new();
     let mut gaps = Vec::new();
+    let mut key_gaps = Vec::new();
     let mut gap = |kind, detail: String| {
         let gap = Gap {
             kind,
@@ -143,22 +146,27 @@ pub(super) fn normalize(
                 kind: result.reader_kind,
                 family: result.reader_family,
             };
+            let initialization = result
+                .initializer
+                .as_ref()
+                .ok()
+                .and_then(|name| references.initializers.get(name));
+            let lookup = match initialization {
+                Some(Initialization::Lookup(lookup)) => Some(lookup),
+                _ => None,
+            };
             let keys = super::fields::grammar_fields(
                 &result.fields.fields,
                 &result.fields.paths,
                 references,
+                lookup,
             );
+            key_gaps = reference_gaps(result, references, lookup);
+            if let Some((kind, detail)) = initialization_gap(result, initialization) {
+                gap(kind, detail);
+            }
             if !keys.is_empty() {
                 value.fixed_keys = GrammarProperty::Partial(keys);
-            }
-            for key in &result.fields.fields {
-                if let Some(detail) = super::fields::reference_gap(key, references) {
-                    key_gaps.push(Gap {
-                        kind: GapKind::ReaderSemantics,
-                        subject: Some(GapSubject::field(key.name.clone())),
-                        detail,
-                    });
-                }
             }
             if !result.families.is_empty() {
                 value.child_families = GrammarProperty::Partial(result.families.clone());
@@ -211,12 +219,95 @@ pub(super) fn normalize(
             .into(),
     );
     gap(GapKind::OutsideMethod, "Argument values, scope propagation, storage behavior and runtime meaning are outside this method.".into());
-    gaps.extend(key_gaps);
+    for key_gap in key_gaps {
+        if !gaps.contains(&key_gap) {
+            gaps.push(key_gap);
+        }
+    }
     Answer {
         value,
         completeness: crate::Completeness::from_gaps(&gaps),
         gaps,
         source: Source::new(build, grammar::METHOD, Basis::StaticAnalysis),
+    }
+}
+
+/// One gap for each child key whose reference lookups are not fully established: the lookups of
+/// its reader, and the receiver initializer's lookup of the string it stores.
+fn reference_gaps(
+    result: &grammar::GrammarResult,
+    references: &ReferenceFacts,
+    initialization: Option<&InitializationLookup>,
+) -> Vec<Gap> {
+    result
+        .fields
+        .fields
+        .iter()
+        .flat_map(|field| {
+            let joined = initialization
+                .filter(|lookup| super::fields::stores_initialization_key(field, lookup));
+            let details = [
+                super::fields::reference_gap(field, references),
+                joined.and_then(super::fields::initialization_gap),
+            ];
+            details.into_iter().flatten().map(|detail| Gap {
+                kind: GapKind::ReaderSemantics,
+                subject: Some(GapSubject::field(field.name.clone())),
+                detail,
+            })
+        })
+        .collect()
+}
+
+/// Why the receiver initializer's lookup is not established or joins no child key.
+fn initialization_gap(
+    result: &grammar::GrammarResult,
+    initialization: Option<&Initialization>,
+) -> Option<(GapKind, String)> {
+    match initialization {
+        None => Some((
+            GapKind::UnreadableInput,
+            "The receiver's initializer could not be read, so a lookup that it makes is not \
+             established."
+                .into(),
+        )),
+        Some(Initialization::NoLookup) => None,
+        Some(Initialization::Unresolved(stop)) => Some((
+            GapKind::ReaderSemantics,
+            format!(
+                "The receiver's initializer reads a global instance, but no lookup of it is \
+                 established: {}.",
+                initialization_obstacle(stop.reason)
+            ),
+        )),
+        Some(Initialization::Lookup(lookup)) => {
+            let joined = result
+                .fields
+                .fields
+                .iter()
+                .any(|field| super::fields::stores_initialization_key(field, lookup));
+            (!joined).then(|| {
+                (
+                    GapKind::ReaderSemantics,
+                    "The receiver's initializer looks up a stored key that no child key's string \
+                     reader is joined to."
+                        .into(),
+                )
+            })
+        }
+    }
+}
+
+fn initialization_obstacle(reason: &str) -> &'static str {
+    match reason {
+        "initializer-several-lookups" => "the initializer holds several lookups",
+        "initializer-null-type" => "the null object's type differs from the collection's items",
+        "initializer-null-object" => "a key that selects no item selects no typed null object",
+        "initializer-string-layout" => "the compared offsets do not form one string layout",
+        "initializer-getter-shape" | "initializer-getter-body" => {
+            "no qualified lookup shape matched the getter that it calls"
+        }
+        _ => "no qualified lookup shape matched the initializer",
     }
 }
 
@@ -227,6 +318,193 @@ mod tests {
         declarations::{DeclarationResult, ScopeOutcome},
         stop::Unresolved,
     };
+
+    const INITIALIZER: &str = "CEntry::PostInit()";
+
+    fn facts(initialization: Initialization) -> ReferenceFacts {
+        ReferenceFacts {
+            readers: Default::default(),
+            initializers: [(INITIALIZER.to_owned(), initialization)].into(),
+        }
+    }
+
+    /// A receiver whose child key `district_type` stores a string at `this+0xa8`.
+    fn keyed(initializer: Result<String, Unresolved>) -> grammar::GrammarResult {
+        use crate::engine::analysis::fields::{
+            PathOutcome, ReaderJoin, RootField, TokenPath, Value,
+        };
+
+        let join = ReaderJoin::Joined {
+            callee: "CReader::Read(CString&, bool)".into(),
+            arguments: [
+                ("x0".into(), Value::Reader(0)),
+                ("x1".into(), Value::Owner(0xa8)),
+            ]
+            .into(),
+            tail: true,
+        };
+        grammar::GrammarResult {
+            reader: declarations::CommandReader {
+                vtable: 1,
+                read: 2,
+                member: 3,
+            },
+            delegates: Default::default(),
+            reader_name: "CEffect::Read(CReader&, EScopeType)".into(),
+            reader_kind: ReaderKind::Block,
+            reader_family: BlockFamily::Effect,
+            member_name: "CEntry::ReadMember(CReader&, int, EScopeType)".into(),
+            initializer,
+            numeric: None,
+            ordering: vec![],
+            families: vec![],
+            stops: vec![],
+            fields: grammar::ChildFields {
+                fields: vec![RootField {
+                    name: "district_type".into(),
+                    token: 7,
+                    constructor: 0,
+                    paths: vec![0],
+                    readers: vec![join.clone()],
+                }],
+                paths: vec![TokenPath {
+                    domain: [7, 7],
+                    conditions: vec![],
+                    instructions: vec![],
+                    terminal: 0,
+                    outcome: PathOutcome::Reader(join),
+                }],
+                gaps: vec![],
+            },
+        }
+    }
+
+    /// An initialization lookup of the key string at `this+key_offset`.
+    fn scan_at(key_offset: i64) -> Initialization {
+        use crate::engine::analysis::references::{KeyMatch, Lookup, Stage};
+
+        Initialization::Lookup(InitializationLookup {
+            database: "CDistrictTypeDatabase".into(),
+            directory: Some("common/districts".into()),
+            key_offset,
+            item_offset: key_offset + 0x28,
+            lookup: Lookup {
+                stage: Stage::OwnerInitialization,
+                key_match: Some(KeyMatch::FirstEqual),
+                empty_key_looked_up: Some(true),
+                missing_yields_null: Some(true),
+            },
+        })
+    }
+
+    fn key_reference(answer: &Answer<CommandGrammar>) -> crate::FieldReference {
+        let GrammarProperty::Partial(keys) = &answer.value.fixed_keys else {
+            panic!("no fixed keys");
+        };
+
+        keys[0].reference.clone()
+    }
+
+    fn joins_no_key(answer: &Answer<CommandGrammar>) -> bool {
+        answer.gaps.iter().any(|gap| {
+            gap.detail
+                .contains("no child key's string reader is joined to")
+        })
+    }
+
+    #[test]
+    fn a_key_whose_string_the_initializer_looks_up_joins_the_lookup() {
+        use crate::{EmptyKey, FieldCondition, KeyMatch, LookupStage, MissingResult};
+
+        let build = crate::BuildId("authored".into());
+        let answer = normalize(
+            Ok(&keyed(Ok(INITIALIZER.into()))),
+            "add_district",
+            build,
+            &facts(scan_at(0xa8)),
+        );
+
+        assert_eq!(
+            key_reference(&answer),
+            crate::FieldReference::Lookups(vec![crate::ReferenceLookup {
+                condition: FieldCondition::Always,
+                target: crate::ReferenceTarget::Registry {
+                    name: "common/districts".into()
+                },
+                stage: LookupStage::OwnerInitialization,
+                key_match: KeyMatch::FirstEqual,
+                empty_key: EmptyKey::LookedUp,
+                on_missing: MissingResult::NullObject,
+            }])
+        );
+        assert!(!joins_no_key(&answer));
+    }
+
+    #[test]
+    fn control_17_changed_slots_no_longer_join_the_old_field() {
+        let build = crate::BuildId("authored".into());
+        let answer = normalize(
+            Ok(&keyed(Ok(INITIALIZER.into()))),
+            "add_district",
+            build,
+            &facts(scan_at(0x1a8)),
+        );
+
+        assert_eq!(
+            key_reference(&answer),
+            crate::FieldReference::NotEstablished
+        );
+        assert!(joins_no_key(&answer));
+    }
+
+    #[test]
+    fn control_26_an_owner_without_an_initializer_is_an_input_gap() {
+        let build = crate::BuildId("authored".into());
+        for initializer in [
+            Err(Unresolved::new("owner-initializer-slot")),
+            Ok("CUnknown::PostInit()".into()),
+        ] {
+            let answer = normalize(
+                Ok(&keyed(initializer)),
+                "add_district",
+                build.clone(),
+                &facts(scan_at(0xa8)),
+            );
+
+            assert_eq!(
+                key_reference(&answer),
+                crate::FieldReference::NotEstablished
+            );
+            assert!(
+                answer
+                    .gaps
+                    .iter()
+                    .any(|gap| gap.kind == GapKind::UnreadableInput),
+                "{:?}",
+                answer.gaps
+            );
+        }
+    }
+
+    #[test]
+    fn an_unestablished_initializer_lookup_names_its_obstacle() {
+        let build = crate::BuildId("authored".into());
+        let answer = normalize(
+            Ok(&keyed(Ok(INITIALIZER.into()))),
+            "add_district",
+            build,
+            &facts(Initialization::Unresolved(Unresolved::new(
+                "initializer-several-lookups",
+            ))),
+        );
+
+        assert!(answer.gaps.iter().any(|gap| {
+            gap.kind == GapKind::ReaderSemantics
+                && gap
+                    .detail
+                    .ends_with("the initializer holds several lookups.")
+        }));
+    }
 
     fn declared(factory: u64) -> Site {
         Site::Declared {
@@ -351,6 +629,7 @@ mod tests {
             reader_kind: ReaderKind::Block,
             reader_family: BlockFamily::Effect,
             member_name: "CEntry::ReadMember(CReader&, int, EScopeType)".into(),
+            initializer: Ok(INITIALIZER.into()),
             numeric,
             ordering: vec![],
             families: vec![BlockFamily::Effect],
@@ -366,7 +645,7 @@ mod tests {
             Ok(&result),
             "example",
             crate::BuildId("authored".into()),
-            &ReferenceFacts::default(),
+            &facts(Initialization::NoLookup),
         );
         assert_eq!(answer.gaps.len(), 3);
         for kind in [
@@ -414,6 +693,7 @@ mod tests {
             reader_kind: ReaderKind::Block,
             reader_family: BlockFamily::Effect,
             member_name: "CEntry::ReadMember(CReader&, int, EScopeType)".into(),
+            initializer: Ok(INITIALIZER.into()),
             numeric: None,
             ordering: vec![],
             families: vec![],
@@ -451,6 +731,7 @@ mod tests {
             delegates: Default::default(),
             reader_name: "CCustom::Read(CReader&)".into(),
             member_name: "CCustom::ReadMember(CReader&, int)".into(),
+            initializer: Ok(INITIALIZER.into()),
             reader_kind: ReaderKind::Unknown,
             reader_family: BlockFamily::Unknown,
             numeric: None,

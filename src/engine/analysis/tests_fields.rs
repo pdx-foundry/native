@@ -242,6 +242,102 @@ fn block_family_follows_proven_arguments_and_preserves_conditional_conflicts() {
         BlockFamily::Unknown
     );
 }
+/// The readers of field 7 when its path runs `member` (at `0x1010`) and ends at a string reader.
+fn string_reader_joins(member: Arm64) -> Vec<ReaderJoin> {
+    let mut input = fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CReader::Read(CString&, bool)".into();
+    input.functions[0].code.splice(16..32, member.bytes());
+
+    derive(input).fields[0].readers.clone()
+}
+
+/// `member` followed by the tail call to the string reader.
+fn string_read(member: impl FnOnce(&mut Arm64)) -> Arm64 {
+    let mut code = Arm64::at(0x1010);
+    member(&mut code);
+    arm64!(code; b extern 0x4000); // CReader::Read(CString&, bool)
+
+    code
+}
+
+#[test]
+fn control_21_a_string_reader_stores_at_its_owner_offset() {
+    use crate::engine::analysis::readers::destination;
+    let readers = string_reader_joins(string_read(|code| {
+        arm64!(code;
+            add x8, x0, #0x40; // the member
+            mov x0, x1; // the reader
+            mov x1, x8
+        );
+    }));
+
+    assert_eq!(destination(&readers[0]), Some(0x40), "{readers:?}");
+}
+
+#[test]
+fn control_22_a_destination_from_another_owner_is_no_destination() {
+    use crate::engine::analysis::readers::destination;
+    let readers = string_reader_joins(string_read(|code| {
+        arm64!(code;
+            add x8, x2, #0x40; // an offset from the token, not the owner
+            mov x0, x1;
+            mov x1, x8
+        );
+    }));
+
+    assert_eq!(destination(&readers[0]), None, "{readers:?}");
+}
+
+#[test]
+fn control_23_a_truncated_destination_is_no_destination() {
+    use crate::engine::analysis::readers::destination;
+    let readers = string_reader_joins(string_read(|code| {
+        arm64!(code;
+            add x8, x0, #0x40;
+            mov x0, x1;
+            mov w1, w8 // the pointer truncated to 32 bits
+        );
+    }));
+
+    assert_eq!(destination(&readers[0]), None, "{readers:?}");
+}
+
+#[test]
+fn control_24_a_clobbered_destination_is_no_destination() {
+    use crate::engine::analysis::readers::destination;
+    let readers = string_reader_joins(string_read(|code| {
+        arm64!(code;
+            add x8, x0, #0x40;
+            mov x0, x1;
+            mov x8, x3; // the member address overwritten
+            mov x1, x8
+        );
+    }));
+
+    assert_eq!(destination(&readers[0]), None, "{readers:?}");
+}
+
+#[test]
+fn control_25_an_unknown_call_before_the_reader_stops_the_path() {
+    use crate::engine::analysis::readers::destination;
+    let readers = string_reader_joins(string_read(|code| {
+        arm64!(code;
+            add x8, x0, #0x40;
+            bl extern 0x6800; // a function the method does not know
+            mov x0, x1;
+            mov x1, x8
+        );
+    }));
+
+    assert!(matches!(readers[0], ReaderJoin::Missing(_)), "{readers:?}");
+    assert_eq!(destination(&readers[0]), None);
+}
+
 #[test]
 fn unsupported_instruction_preserves_obligation_and_does_not_invent_fields() {
     let mut input = fixture();

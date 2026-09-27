@@ -18,8 +18,8 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v7` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#sdk-541-sweep-on-m45-release) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v7`, `command-grammar/v2` | `references.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Native::command_grammar` | `command-grammar/v2` | `grammar.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v7`, `command-grammar/v3` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Native::command_grammar` | `command-grammar/v3` | `grammar.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -40,6 +40,13 @@ On M45-release the reference method runs over every registry field bound to a re
 29 fields in the 164 registries, **21 complete, 7 partial, 1 failed**. Failure shapes: key lists
 (6), a reader of another shape (1), and a reader with neither shape nor directory (1). The reader
 population, the per-shape counts and the obstacles are on [references](references.md#result-on-m45-release).
+
+The owner-initialization run covers all 309 `PostInit()` functions; 154 name a global instance:
+**61 complete, 2 partial, 91 failed**. Failure shapes: another shape (74), several lookups in one
+initializer (14), and a getter of another shape (3). Over the command inventory, 26 effects and
+8 triggers join a complete lookup to a child key, 11 commands have a lookup without an authored
+field, and 89 have an initializer lookup that is not established. The breakdown is on
+[references](references.md#owner-initializers).
 
 ## Define read helpers
 

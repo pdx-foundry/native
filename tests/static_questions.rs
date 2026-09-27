@@ -5,10 +5,10 @@ use pdx_native::internals::{command_grammar_stops, registry_field_stops, trace_c
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, Declaration, DeclarationKind, DeclaredScopes,
     DeclaredTags, Define, EntryContext, EntryScope, Error, Field, FieldReference, GameRule,
-    GapKind, KeyMatch, LinkData, LocalizationContextReference, LocalizationDeclarations,
-    LocalizationOutput, LookupStage, ModifierDeclaration, ModifierFamily, NamePart, Native,
-    OnAction, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind, ScopeId,
-    ScopeInventory, ScopeLink, ScopeReference,
+    GapKind, GrammarProperty, KeyMatch, LinkData, LocalizationContextReference,
+    LocalizationDeclarations, LocalizationOutput, LookupStage, ModifierDeclaration, ModifierFamily,
+    NamePart, Native, OnAction, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind,
+    ScopeId, ScopeInventory, ScopeLink, ScopeReference,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -862,28 +862,55 @@ fn registries_are_named_by_their_content_directory() {
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
     let native = native();
-    let expected = expected::<BTreeMap<String, FieldReference>>("references.json");
-    for (subject, reference) in &expected {
-        let (registry, name) = subject.split_once('#').unwrap();
-        let answer = native.registry_fields(registry).unwrap();
-        let field = find(&answer.value, name, |field| &field.name);
-        assert_eq!(&field.reference, reference, "{subject}");
+    let expected = expected::<BTreeMap<String, Value>>("references.json");
+    for (subject, value) in &expected {
+        let (owner, name) = subject.split_once('#').unwrap_or((subject, ""));
+        let (text, gaps, fields) = match command(owner) {
+            Some((kind, command)) => {
+                let answer = native.command_grammar(kind, command).unwrap();
+                let fields = match &answer.value.fixed_keys {
+                    GrammarProperty::Partial(fields) => fields.clone(),
+                    _ => Vec::new(),
+                };
+                (serde_json::to_string(&answer).unwrap(), answer.gaps, fields)
+            }
+            None => {
+                let answer = native.registry_fields(owner).unwrap();
+                let text = serde_json::to_string(&answer).unwrap();
+                (text, answer.gaps, answer.value)
+            }
+        };
+        assert!(!text.contains("Database"), "{owner} names a database class");
 
-        let text = serde_json::to_string(&answer).unwrap();
-        assert!(
-            !text.contains("Database"),
-            "{registry} names a database class"
-        );
+        if name.is_empty() {
+            let details: Vec<String> = serde_json::from_value(value.clone()).unwrap();
+            for detail in &details {
+                assert!(
+                    gaps.iter().any(|gap| &gap.detail == detail),
+                    "{subject}: {detail} in {gaps:?}"
+                );
+            }
+            let initializer_gaps = gaps
+                .iter()
+                .filter(|gap| gap.detail.contains("initializer"))
+                .filter(|gap| !details.contains(&gap.detail));
+            assert_eq!(initializer_gaps.count(), 0, "{subject}: {gaps:?}");
+            continue;
+        }
 
-        let unresolved = match reference {
+        let reference: FieldReference = serde_json::from_value(value.clone()).unwrap();
+        let field = find(&fields, name, |field| &field.name);
+        assert_eq!(field.reference, reference, "{subject}");
+        let unresolved = match &reference {
             FieldReference::Lookups(lookups) => lookups.iter().any(|lookup| {
                 lookup.target == ReferenceTarget::Unresolved
                     || lookup.stage == LookupStage::Unresolved
                     || lookup.key_match == KeyMatch::Unresolved
             }),
+            _ if command(owner).is_some() => continue,
             _ => true,
         };
-        let explained = answer.gaps.iter().any(|gap| {
+        let explained = gaps.iter().any(|gap| {
             gap.kind == GapKind::ReaderSemantics
                 && gap
                     .subject
@@ -895,6 +922,17 @@ fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
             "{subject}: an unresolved fact has a gap"
         );
     }
+}
+
+/// The command that a reference sample such as `effect/create_ship` names.
+fn command(owner: &str) -> Option<(DeclarationKind, &str)> {
+    if let Some(name) = owner.strip_prefix("effect/") {
+        return Some((DeclarationKind::Effect, name));
+    }
+
+    owner
+        .strip_prefix("trigger/")
+        .map(|name| (DeclarationKind::Trigger, name))
 }
 
 #[test]
@@ -1238,7 +1276,7 @@ fn control_grammar_preserves_shared_readers_and_partial_properties() {
         let mut identities = BTreeMap::new();
         for name in names {
             let answer = native.command_grammar(kind, name).unwrap();
-            assert_eq!(answer.source.method, "command-grammar/v2");
+            assert_eq!(answer.source.method, "command-grammar/v3");
             assert_eq!(answer.completeness, Completeness::Partial);
             assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
             assert_eq!(
