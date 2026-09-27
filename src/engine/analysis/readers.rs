@@ -152,8 +152,11 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     };
     let destination = if let Some(reference) = references::reader(callee) {
         match reference.form {
-            ReaderForm::Deferred | ReaderForm::DeferredList | ReaderForm::DeferredIndex => "x2",
-            ReaderForm::Immediate | ReaderForm::ImmediateList => return None,
+            ReaderForm::Deferred
+            | ReaderForm::DeferredList
+            | ReaderForm::DeferredIndex
+            | ReaderForm::ImmediateList => "x2",
+            ReaderForm::Immediate => return None,
         }
     } else if matches!(
         callee.as_str(),

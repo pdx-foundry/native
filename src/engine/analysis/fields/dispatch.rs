@@ -401,9 +401,8 @@ fn reader_join(
             ReaderForm::Deferred | ReaderForm::DeferredList | ReaderForm::DeferredIndex => {
                 owner(get("x0")) && get("x1") == Some(&Value::Reader(0)) && owner(get("x2"))
             }
-            ReaderForm::Immediate | ReaderForm::ImmediateList => {
-                get("x0") == Some(&Value::Reader(0))
-            }
+            ReaderForm::Immediate => get("x0") == Some(&Value::Reader(0)),
+            ReaderForm::ImmediateList => get("x0") == Some(&Value::Reader(0)) && owner(get("x2")),
         }
     } else {
         false

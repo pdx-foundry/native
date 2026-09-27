@@ -139,8 +139,46 @@ fn an_immediate_reference_reader_joins_when_it_receives_the_reader() {
         "an immediate reader returns its item"
     );
 
-    let function = &mut input.functions[0];
-    function.code.splice(16..32, immediate(false));
+    let mut wrong_reader = input.clone();
+    wrong_reader.functions[0]
+        .code
+        .splice(16..32, immediate(false));
+    let readers = &derive(wrong_reader).fields[0].readers;
+    assert!(
+        matches!(&readers[0], ReaderJoin::Missing(stop) if stop.reason == "reader-routing"),
+        "{readers:?}"
+    );
+
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "void NParserUtil::ReadKeyReferenceUniform<CExampleDatabase, CPdxArray<CExample const*, int> >(CReader&, CExampleDatabase const&, CPdxArray<CExample const*, int>&)".into();
+    let list = |output: bool| {
+        let mut code = Arm64::at(0x1010);
+        if output {
+            arm64!(code; add x2, x0, #0x40); // the owner's list
+        } else {
+            arm64!(code; mov x2, x3); // not owner storage
+        }
+        arm64!(code;
+            mov x0, x1; // the reader
+            b extern 0x4000; // ReadKeyReferenceUniform
+            nop
+        );
+        code.bytes()
+    };
+    let mut owned = input.clone();
+    owned.functions[0].code.splice(16..32, list(true));
+    let readers = &derive(owned).fields[0].readers;
+    assert!(
+        matches!(readers[0], ReaderJoin::Joined { .. }),
+        "{readers:?}"
+    );
+    assert_eq!(destination(&readers[0]), Some(0x40));
+
+    input.functions[0].code.splice(16..32, list(false));
     let readers = &derive(input).fields[0].readers;
     assert!(
         matches!(&readers[0], ReaderJoin::Missing(stop) if stop.reason == "reader-routing"),

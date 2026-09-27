@@ -121,6 +121,7 @@ pub(super) fn normalize(
         numeric_keys: GrammarProperty::Unresolved,
         ordering: GrammarProperty::Unresolved,
     };
+    let mut key_gaps = Vec::new();
     let mut gaps = Vec::new();
     let mut gap = |kind, detail: String| {
         let gap = Gap {
@@ -149,6 +150,15 @@ pub(super) fn normalize(
             );
             if !keys.is_empty() {
                 value.fixed_keys = GrammarProperty::Partial(keys);
+            }
+            for key in &result.fields.fields {
+                if let Some(detail) = super::fields::reference_gap(key, references) {
+                    key_gaps.push(Gap {
+                        kind: GapKind::ReaderSemantics,
+                        subject: Some(GapSubject::field(key.name.clone())),
+                        detail,
+                    });
+                }
             }
             if !result.families.is_empty() {
                 value.child_families = GrammarProperty::Partial(result.families.clone());
@@ -201,6 +211,7 @@ pub(super) fn normalize(
             .into(),
     );
     gap(GapKind::OutsideMethod, "Argument values, scope propagation, storage behavior and runtime meaning are outside this method.".into());
+    gaps.extend(key_gaps);
     Answer {
         value,
         completeness: crate::Completeness::from_gaps(&gaps),
@@ -369,6 +380,64 @@ mod tests {
             answer.value.numeric_keys,
             GrammarProperty::Partial(Some(_))
         ));
+    }
+
+    #[test]
+    fn a_fixed_key_with_an_unresolved_lookup_has_its_own_gap() {
+        use crate::engine::analysis::fields::{ReaderJoin, RootField, Value};
+
+        let deferred = "void NParserUtil::ReadKeyReferenceDeferred<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CShipDatabase::ValueType const**)";
+        let key = RootField {
+            name: "ship".into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: deferred.into(),
+                arguments: [
+                    ("x0".into(), Value::Owner(0)),
+                    ("x1".into(), Value::Reader(0)),
+                    ("x2".into(), Value::Owner(0x40)),
+                ]
+                .into(),
+                tail: true,
+            }],
+        };
+        let result = grammar::GrammarResult {
+            reader: declarations::CommandReader {
+                vtable: 1,
+                read: 2,
+                member: 3,
+            },
+            delegates: Default::default(),
+            reader_name: "CEffect::Read(CReader&, EScopeType)".into(),
+            reader_kind: ReaderKind::Block,
+            reader_family: BlockFamily::Effect,
+            member_name: "CEntry::ReadMember(CReader&, int, EScopeType)".into(),
+            numeric: None,
+            ordering: vec![],
+            families: vec![],
+            stops: vec![],
+            fields: grammar::ChildFields {
+                fields: vec![key],
+                paths: vec![],
+                gaps: vec![],
+            },
+        };
+        let answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
+
+        let key_gap = answer
+            .gaps
+            .iter()
+            .find(|gap| gap.subject == Some(GapSubject::field("ship")))
+            .expect("the key's lookup gap");
+        assert_eq!(key_gap.kind, GapKind::ReaderSemantics);
+        assert!(key_gap.detail.contains("the reader was not analyzed"));
     }
 
     #[test]

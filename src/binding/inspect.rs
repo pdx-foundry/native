@@ -335,6 +335,9 @@ impl<'a> Image<'a> {
     /// match: scratch registers renamed, local branches relative, globals and calls named.
     /// Without fixups, pointer slots stay unnamed.
     pub fn lookup_lines(&self, start: u64) -> Result<Vec<String>, InspectError> {
+        if !self.text.starts.contains(&start) {
+            return Err(error(format!("{start:#x} is not a function start")));
+        }
         let (address, code) = self
             .text
             .function(start)
