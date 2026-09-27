@@ -107,25 +107,7 @@ impl StoreKey {
 #[derive(Default)]
 struct Members {
     roles: BTreeMap<Role, Vec<CommandReference>>,
-    forms: BTreeSet<FormKey>,
-}
-
-/// `DynamicNameForm` in a sortable form.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum FormKey {
-    TargetSuffix,
-    NotAccepted,
-    Unresolved,
-}
-
-impl From<DynamicNameForm> for FormKey {
-    fn from(form: DynamicNameForm) -> Self {
-        match form {
-            DynamicNameForm::TargetSuffix => Self::TargetSuffix,
-            DynamicNameForm::NotAccepted => Self::NotAccepted,
-            DynamicNameForm::Unresolved => Self::Unresolved,
-        }
-    }
+    forms: BTreeSet<DynamicNameForm>,
 }
 
 fn normalize(commands: &[CommandNames], build: BuildId) -> Answer<Vec<DynamicNamespace>> {
@@ -176,7 +158,7 @@ fn normalize(commands: &[CommandNames], build: BuildId) -> Answer<Vec<DynamicNam
                     kind: command.kind,
                     name: command.name.clone(),
                 });
-            members.forms.insert(flag.form.into());
+            members.forms.insert(flag.form);
         }
     }
     gaps.dedup();
@@ -210,8 +192,7 @@ fn namespace(key: &StoreKey, members: &Members) -> DynamicNamespace {
         commands
     };
     let dynamic_form = match members.forms.iter().collect::<Vec<_>>()[..] {
-        [FormKey::TargetSuffix] => DynamicNameForm::TargetSuffix,
-        [FormKey::NotAccepted] => DynamicNameForm::NotAccepted,
+        [&form] => form,
         _ => DynamicNameForm::Unresolved,
     };
 

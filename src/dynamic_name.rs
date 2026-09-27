@@ -60,7 +60,7 @@ pub struct CommandReference {
 
 /// Whether a namespace's commands accept `name@target`. The engine keeps that value's name and
 /// target, and forms the flag at run time from the name and the scope that `target` names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DynamicNameForm {
     /// Every command of the namespace accepts `name@target`.
     TargetSuffix,

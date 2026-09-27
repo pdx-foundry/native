@@ -27,7 +27,7 @@ use super::declarations::{
     self, DeclarationInput, DeclarationResult, ScopeOutcome, ScopeType, Site, number,
 };
 use super::decode::{Instruction, decode_arm64};
-use super::evaluate::{Call, Code, Exit, Machine};
+use super::evaluate::{Call, Code, Exit, Machine, Path};
 use super::references::shapes::{Shape, canonical};
 use super::stop::Unresolved;
 use crate::{DeclarationKind, DynamicNameForm};
@@ -264,6 +264,92 @@ impl NameRead {
 
         (self.interned_after_reader && !self.dynamic_interns).then_some(*destination)
     }
+
+    /// Record the returned paths of a run whose name reader reported a static name.
+    fn record_static_run<'m, 'a: 'm>(
+        &mut self,
+        returned: impl Iterator<Item = &'m Machine<'a>>,
+        command: u64,
+    ) {
+        for machine in returned {
+            if let (Some(name), Some(target)) = (
+                machine.labelled(NAME_DESTINATION),
+                machine.labelled(TARGET_DESTINATION),
+            ) {
+                self.destinations.insert((name, target));
+            }
+
+            let after_reader = machine.labelled(INTERNED_AFTER_READER).is_some();
+            let without_reader = machine.labelled(INTERNED_WITHOUT_READER).is_some();
+            self.interned_after_reader |= after_reader;
+            self.interned_without_reader |= without_reader;
+            if after_reader || without_reader {
+                self.indexes.extend(
+                    (0..OBJECT_SPAN - 1)
+                        .filter(|&offset| machine.read(command + offset, 2) == Some(INDEX_MARKER)),
+                );
+            }
+        }
+    }
+
+    /// Record the returned paths of a run whose name reader reported a dynamic name.
+    fn record_dynamic_run<'m, 'a: 'm>(&mut self, returned: impl Iterator<Item = &'m Machine<'a>>) {
+        for machine in returned {
+            self.dynamic_interns |= machine.labelled(INTERNED_AFTER_READER).is_some();
+        }
+    }
+}
+
+/// The stand-in answers of a reader run: the name reader reports a static or a dynamic name,
+/// and the interner returns [`INDEX_MARKER`]. Each path labels what it called.
+struct ReaderCalls {
+    functions: FlagFunctions,
+    command: u64,
+    dynamic: bool,
+}
+
+impl ReaderCalls {
+    fn answer(&self, target: Option<u64>, machine: &mut Machine<'_>) -> Call {
+        match target {
+            Some(target) if target == self.functions.name_reader => self.read_name(machine),
+            Some(target) if target == self.functions.interner => Self::intern(machine),
+            _ => {
+                forget_if_passed(machine, self.command);
+                Call::Return(None)
+            }
+        }
+    }
+
+    /// Label the name and target destinations when both are in the command object. The reader
+    /// may write any of the object.
+    fn read_name(&self, machine: &mut Machine<'_>) -> Call {
+        let command = self.command;
+        let destination = |register| {
+            let value = machine.register(register)?;
+            (command..command + OBJECT_SPAN)
+                .contains(&value)
+                .then(|| value - command)
+        };
+        if let (Some(name), Some(target)) = (destination(1), destination(2)) {
+            machine.label(NAME_DESTINATION, name);
+            machine.label(TARGET_DESTINATION, target);
+        }
+
+        machine.label(READER_CALLED, 1);
+        machine.forget(command, OBJECT_SPAN);
+
+        Call::Return(Some(u64::from(self.dynamic)))
+    }
+
+    fn intern(machine: &mut Machine<'_>) -> Call {
+        let key = match machine.labelled(READER_CALLED) {
+            Some(_) => INTERNED_AFTER_READER,
+            None => INTERNED_WITHOUT_READER,
+        };
+        machine.label(key, 1);
+
+        Call::Return(Some(INDEX_MARKER))
+    }
 }
 
 /// The roles that one role slot establishes.
@@ -274,6 +360,81 @@ struct RoleSlot {
     /// Whether the slot passes the stored dynamic name to the call whose result is its flag.
     dynamic_joined: bool,
     stops: Vec<Unresolved>,
+}
+
+/// The stand-in answers of a role run, and the setter and remover calls that its paths made.
+struct RoleCalls {
+    functions: FlagFunctions,
+    command: u64,
+    scope: u64,
+    /// The name and target offsets that the command keeps for a dynamic name.
+    dynamic: Option<(u64, u64)>,
+    /// Each accessor that the run called; its position selects the stand-in store it returns.
+    accessors: Vec<u64>,
+    /// Each setter or remover call with its store and its 16-bit flag argument.
+    flag_calls: Vec<(Role, Option<u64>, Option<u64>)>,
+}
+
+impl RoleCalls {
+    /// Record a setter or remover call. An accessor call with the command and the scope returns
+    /// a stand-in store, and a call with the kept name and target returns [`DYNAMIC_MARKER`].
+    fn answer(&mut self, target: Option<u64>, machine: &mut Machine<'_>) -> Call {
+        let register = |index| machine.register(index);
+        let role = match target {
+            Some(target) if target == self.functions.setter => Some(Role::Defines),
+            Some(target) if target == self.functions.remover => Some(Role::Removes),
+            _ => None,
+        };
+        if let Some(role) = role {
+            let flag = register(1).map(|flag| flag & 0xffff);
+            self.flag_calls.push((role, register(0), flag));
+            return Call::Return(None);
+        }
+
+        if let Some(target) = target
+            && register(0) == Some(self.command)
+            && register(1) == Some(self.scope)
+        {
+            let accessor = position_or_push(&mut self.accessors, target);
+            return Call::Return(Some(ACCESSOR_BASE + accessor * STAND_IN_STRIDE));
+        }
+
+        if let Some((name, target)) = self.dynamic
+            && register(1) == Some(self.command + target)
+            && register(2) == Some(self.command + name)
+        {
+            return Call::Return(Some(DYNAMIC_MARKER));
+        }
+
+        forget_if_passed(machine, self.command);
+        Call::Return(None)
+    }
+
+    /// The roles that the recorded flag calls establish, with the stops of the paths and calls.
+    fn into_role_slot(self, paths: Vec<Path<'_>>) -> RoleSlot {
+        let mut slot = RoleSlot::default();
+        for path in paths {
+            if let Err(stop) = path.end
+                && !slot.stops.contains(&stop)
+            {
+                slot.stops.push(stop);
+            }
+        }
+
+        for (role, store, flag) in self.flag_calls {
+            let accessor = store.and_then(|store| stand_in(store, ACCESSOR_BASE, &self.accessors));
+            match (accessor, flag) {
+                (Some((accessor, offset)), Some(INDEX_MARKER)) => {
+                    slot.roles.insert((role, accessor, offset));
+                }
+                (Some(_), Some(DYNAMIC_MARKER)) => slot.dynamic_joined = true,
+                (None, _) => slot.stops.push(Unresolved::new("role-store")),
+                (Some(_), _) => slot.stops.push(Unresolved::new("role-flag")),
+            }
+        }
+
+        slot
+    }
 }
 
 /// One family's commands, with the runs that commands share.
@@ -437,68 +598,33 @@ impl<'a> Examiner<'a> {
         if !calls_any(&rows, &[flags.name_reader, flags.interner]) {
             return NameRead::default();
         }
+        let code = Code::from_rows(rows);
         let mut read = NameRead {
             names_flags: true,
             ..NameRead::default()
         };
-        let code = Code::from_rows(rows);
         for dynamic in [false, true] {
             let mut machine = Machine::new(&code, self.family.declarations.pointer_data());
             let command = machine.reserve(OBJECT_SPAN);
             machine.set_register(0, command);
+
+            let calls = ReaderCalls {
+                functions: flags,
+                command,
+                dynamic,
+            };
             let paths = machine.run_paths(function, &mut |target, machine| {
-                if target == Some(flags.name_reader) {
-                    let destination = |register| {
-                        let value = machine.register(register)?;
-                        (command..command + OBJECT_SPAN)
-                            .contains(&value)
-                            .then(|| value - command)
-                    };
-                    if let (Some(name), Some(target)) = (destination(1), destination(2)) {
-                        machine.label(NAME_DESTINATION, name);
-                        machine.label(TARGET_DESTINATION, target);
-                    }
-                    machine.label(READER_CALLED, 1);
-                    machine.forget(command, OBJECT_SPAN);
-                    return Ok(Call::Return(Some(u64::from(dynamic))));
-                }
-                if target == Some(flags.interner) {
-                    let key = match machine.labelled(READER_CALLED) {
-                        Some(_) => INTERNED_AFTER_READER,
-                        None => INTERNED_WITHOUT_READER,
-                    };
-                    machine.label(key, 1);
-                    return Ok(Call::Return(Some(INDEX_MARKER)));
-                }
-                forget_if_passed(machine, command);
-                Ok(Call::Return(None))
+                Ok(calls.answer(target, machine))
             });
-            for path in paths {
-                if !matches!(path.end, Ok(Exit::Returned)) {
-                    continue;
-                }
-                let machine = &path.machine;
-                let after_reader = machine.labelled(INTERNED_AFTER_READER).is_some();
-                if dynamic {
-                    read.dynamic_interns |= after_reader;
-                    continue;
-                }
-                if let (Some(name), Some(target)) = (
-                    machine.labelled(NAME_DESTINATION),
-                    machine.labelled(TARGET_DESTINATION),
-                ) {
-                    read.destinations.insert((name, target));
-                }
-                let without_reader = machine.labelled(INTERNED_WITHOUT_READER).is_some();
-                read.interned_after_reader |= after_reader;
-                read.interned_without_reader |= without_reader;
-                if after_reader || without_reader {
-                    read.indexes.extend(
-                        (0..OBJECT_SPAN - 1).filter(|&offset| {
-                            machine.read(command + offset, 2) == Some(INDEX_MARKER)
-                        }),
-                    );
-                }
+
+            let returned = paths
+                .iter()
+                .filter(|path| matches!(path.end, Ok(Exit::Returned)))
+                .map(|path| &path.machine);
+            if dynamic {
+                read.record_dynamic_run(returned);
+            } else {
+                read.record_static_run(returned, command);
             }
         }
 
@@ -539,69 +665,27 @@ impl<'a> Examiner<'a> {
         index: u64,
         dynamic: Option<(u64, u64)>,
     ) -> RoleSlot {
-        let flags = self.input.functions;
-        let declarations = &self.family.declarations;
         let code = Code::from_rows(rows.to_vec());
-        let mut machine = Machine::new(&code, declarations.pointer_data());
+        let mut machine = Machine::new(&code, self.family.declarations.pointer_data());
         let command = stand_in_command(&mut machine, vtable);
         machine.write(command + index, 2, INDEX_MARKER);
         let scope = machine.reserve(OBJECT_SPAN);
         machine.set_register(0, command);
         machine.set_register(1, scope);
 
-        let mut accessors = Vec::new();
-        let mut calls = Vec::new();
+        let mut calls = RoleCalls {
+            functions: self.input.functions,
+            command,
+            scope,
+            dynamic,
+            accessors: Vec::new(),
+            flag_calls: Vec::new(),
+        };
         let paths = machine.run_paths(function, &mut |target, machine| {
-            let register = |index| machine.register(index);
-            let role = match target {
-                Some(target) if target == flags.setter => Some(Role::Defines),
-                Some(target) if target == flags.remover => Some(Role::Removes),
-                _ => None,
-            };
-            if let Some(role) = role {
-                calls.push((role, register(0), register(1).map(|flag| flag & 0xffff)));
-                return Ok(Call::Return(None));
-            }
-            if let Some(target) = target
-                && register(0) == Some(command)
-                && register(1) == Some(scope)
-            {
-                let accessor = position_or_push(&mut accessors, target);
-                return Ok(Call::Return(Some(
-                    ACCESSOR_BASE + accessor * STAND_IN_STRIDE,
-                )));
-            }
-            if let Some((name, target)) = dynamic
-                && register(1) == Some(command + target)
-                && register(2) == Some(command + name)
-            {
-                return Ok(Call::Return(Some(DYNAMIC_MARKER)));
-            }
-            forget_if_passed(machine, command);
-            Ok(Call::Return(None))
+            Ok(calls.answer(target, machine))
         });
 
-        let mut slot = RoleSlot::default();
-        for path in paths {
-            if let Err(stop) = path.end
-                && !slot.stops.contains(&stop)
-            {
-                slot.stops.push(stop);
-            }
-        }
-        for (role, store, flag) in calls {
-            let accessor = store.and_then(|store| stand_in(store, ACCESSOR_BASE, &accessors));
-            match (accessor, flag) {
-                (Some((accessor, offset)), Some(INDEX_MARKER)) => {
-                    slot.roles.insert((role, accessor, offset));
-                }
-                (Some(_), Some(DYNAMIC_MARKER)) => slot.dynamic_joined = true,
-                (None, _) => slot.stops.push(Unresolved::new("role-store")),
-                (Some(_), _) => slot.stops.push(Unresolved::new("role-flag")),
-            }
-        }
-
-        slot
+        calls.into_role_slot(paths)
     }
 
     /// A read when the whole slot is the membership scan and it compares the stored index.
