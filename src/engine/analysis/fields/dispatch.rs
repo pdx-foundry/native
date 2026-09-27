@@ -86,6 +86,7 @@ struct State {
     emplaced: BTreeSet<i64>,
     stored: Option<(ReaderJoin, i64, i64)>,
     saved_addresses: BTreeMap<i64, Value>,
+    unknown_stack_store: bool,
     pc: usize,
     registers: BTreeMap<String, Value>,
     flags: Option<Flags>,
@@ -97,10 +98,12 @@ struct State {
 }
 impl State {
     fn save_address(&mut self, at: i64, width: i64, value: Option<Value>) {
+        self.unknown_stack_store |= self.stored.is_some() && value.is_none();
         self.saved_addresses
             .retain(|slot, _| *slot + 8 <= at || *slot >= at + width);
         if width == 8
-            && let Some(value @ (Value::Owner(_) | Value::Stack(_))) = value
+            && let Some(value) = value
+            && (Self::owner_derived(&value) || Self::stack_derived(&value))
         {
             self.saved_addresses.insert(at, value);
         }
@@ -128,6 +131,36 @@ impl State {
                 Self::owner_derived(base) || Self::owner_derived(index)
             }
             _ => false,
+        }
+    }
+
+    fn stack_derived(value: &Value) -> bool {
+        match value {
+            Value::Stack(_) => true,
+            Value::Load(base, _) | Value::Offset(base, _) => Self::stack_derived(base),
+            Value::SumProduct(base, index, _) | Value::Indexed(base, index, _) => {
+                Self::stack_derived(base) || Self::stack_derived(index)
+            }
+            _ => false,
+        }
+    }
+
+    fn call_can_overwrite(&self, value: &Value) -> bool {
+        Self::owner_derived(value)
+            || (Self::stack_derived(value)
+                && (self.unknown_stack_store
+                    || self
+                        .saved_addresses
+                        .values()
+                        .chain(self.stack.values())
+                        .any(Self::owner_derived)))
+    }
+
+    fn stack_store_value(&self, operand: &str) -> Option<Value> {
+        if matches!(operand.trim(), "xzr" | "wzr") {
+            Some(Value::Constant(0))
+        } else {
+            self.value(operand)
         }
     }
 
@@ -618,7 +651,7 @@ fn apply(
                     state.registers.insert(key, value);
                 }
             } else if let Some(Value::Stack(at)) = location {
-                state.save_address(at, width, state.value(operand));
+                state.save_address(at, width, state.stack_store_value(operand));
                 state.copied_tokens.clear();
                 state.targets.clear();
                 state.stack.clear();
@@ -659,8 +692,8 @@ fn apply(
             if row.operation == "stp" {
                 if let Some(Value::Stack(at)) = location {
                     let width = if first.starts_with('x') { 8 } else { 4 };
-                    state.save_address(at, width, state.value(first));
-                    state.save_address(at + width, width, state.value(second));
+                    state.save_address(at, width, state.stack_store_value(first));
+                    state.save_address(at + width, width, state.stack_store_value(second));
                 }
                 state.stack.clear();
                 state.copied_tokens.clear();
@@ -741,6 +774,7 @@ pub(crate) fn explore_member(
         emplaced: BTreeSet::new(),
         stored: None,
         saved_addresses: BTreeMap::new(),
+        unknown_stack_store: false,
         pc: 0,
         registers: BTreeMap::from([
             ("x0".into(), Value::Owner(0)),
@@ -830,7 +864,7 @@ pub(crate) fn explore_member(
                 if state.stored.is_some() {
                     let touches = (0..=8)
                         .filter_map(|index| state.value(&format!("x{index}")))
-                        .any(|value| State::owner_derived(&value));
+                        .any(|value| state.call_can_overwrite(&value));
                     if touches || row.operation == "b" {
                         let reason = if touches {
                             "compound-reader-overwrite"
@@ -1491,6 +1525,7 @@ mod tests {
             emplaced: BTreeSet::new(),
             stored: None,
             saved_addresses: BTreeMap::new(),
+            unknown_stack_store: false,
             pc: 0,
             registers: BTreeMap::new(),
             flags: None,

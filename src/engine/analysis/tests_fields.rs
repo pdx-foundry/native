@@ -1713,3 +1713,49 @@ fn compound_reader_rejects_helpers_with_any_owner_address() {
         assert_eq!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")), owner_offset.is_some());
     }
 }
+
+#[test]
+fn compound_reader_rejects_owner_pointers_reachable_through_the_stack() {
+    for case in 0..4 {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1; sub sp, sp, #0x200;
+            add x1, x20, #0x278; mov x0, sp; bl extern 0xa000;
+            add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+            add x0, x19, #0x80; add x1, sp, #0x120; bl extern 0xc000);
+        match case {
+            0 => {
+                arm64!(code; str x19, [sp, #16]; add x0, sp, #16);
+            }
+            1 => {
+                arm64!(code; str x19, [sp, #64]; mov x0, sp);
+            }
+            2 => {
+                arm64!(code; str x19, [sp, #64]; add x8, sp, #64;
+                str x8, [sp, #16]; add x0, sp, #16);
+            }
+            _ => {
+                arm64!(code; str x9, [sp, #64]; mov x0, sp);
+            }
+        }
+        arm64!(code; bl extern 0x11000; ret);
+        let mut input = compound_fixture(code.bytes());
+        input.symbols.push(Symbol {
+            address: 0x11000,
+            name: "helper".into(),
+        });
+        input.functions.push(Function {
+            address: 0x11000,
+            name: "helper".into(),
+            code: arm64!(at 0x11000; ldr x8, [x0]; str xzr, [x8, #0x80]; ret),
+        });
+        let result = derive(input);
+        assert!(result.fields.is_empty(), "case {case}: {:?}", result.fields);
+        assert!(
+            result.paths.iter().any(|path| matches!(&path.outcome,
+            PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")),
+            "case {case}"
+        );
+    }
+}

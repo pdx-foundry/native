@@ -97,9 +97,12 @@ optional CString set from the token text. The array shape establishes `Accumulat
 For these three compound shapes, a non-tail
 call must reach a clean caller return without a later store into the destination or a call
 that receives any address derived from the owner; the array must also remain untouched.
-An overwrite gives
-`compound-reader-overwrite`. M45 protects 0x190 target bytes, 0x30 optional-string bytes
-(the presence byte followed by CString at +8), and the 0x18-byte array header.
+A stack-derived call argument is also unresolved when any tracked frame slot holds an
+owner-derived value, or an unknown stack write occurred after the compound store. The
+whole tracked frame is checked because the callee can index away from its argument.
+An overwrite gives `compound-reader-overwrite`. M45 protects 0x190 target bytes,
+0x30 optional-string bytes (the presence byte followed by CString at +8), and the
+0x18-byte array header.
 Ordinary shared reader joins still end at the first reader call. They do not prove that
 later caller instructions preserve the destination; extending that proof is a candidate
 follow-up. No such proof is inferred from the ordinary-reader convention.
