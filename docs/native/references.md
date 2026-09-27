@@ -171,9 +171,11 @@ instance, **61 complete, 2 partial, 91 failed**:
 | Failed | 3 | a getter of another shape: `GetLeaderTrait`, `GetOnActionList` (no null substitute) and `CEventManager::GetEvent` |
 
 `command-population` joins the initializers to the commands. A lookup joins a child key when
-the key's `CReader::Read(CString&, bool)` stores at the lookup's key offset; the key's
-`Field.reference` then holds the lookup with `condition: Always` and stage
-`OwnerInitialization`.
+a read alternative of the key ends in a tail call to `CReader::Read(CString&, bool)` that stores
+at the lookup's key offset; a call with a continuation could overwrite the key before
+`PostInit()`. The key's `Field.reference` then holds one lookup with stage `OwnerInitialization`
+for each such alternative, with that alternative's condition. On M45-release every joined
+alternative is unconditional.
 
 | Commands | Effects (1,074) | Triggers (1,096) |
 | --- | ---: | ---: |
