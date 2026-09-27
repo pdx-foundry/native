@@ -5,6 +5,10 @@ method with authored tests, parity output and a run over its whole population. D
 separate throwaway prototype. The [development policy](../development-policy.md#write-a-method-in-one-task)
 sets this workflow; the [method index](discovery.md) locates the operations and their code.
 
+Always run examples with `cargo run --release --example NAME -- …`, never by invoking
+`target/release/examples/NAME` directly. Cargo rebuilds the example when its source changes;
+a previously built binary can silently report stale results after an edit.
+
 ## Inspect the exact build
 
 Start with a shape census before choosing a method. Match the executable to [targets](targets.md),
