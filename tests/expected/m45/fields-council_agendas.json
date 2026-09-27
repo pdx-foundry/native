@@ -27,6 +27,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -61,6 +62,7 @@
    "kind": "Unknown",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -95,6 +97,7 @@
    "kind": "Integer",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -129,6 +132,7 @@
    "kind": "Integer",
    "family": "NotApplicable"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -163,6 +167,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -197,6 +202,7 @@
    "kind": "Block",
    "family": "Trigger"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -231,6 +237,7 @@
    "kind": "Block",
    "family": "Effect"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -265,6 +272,7 @@
    "kind": "Block",
    "family": "Unknown"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"
@@ -298,6 +306,22 @@
    "id": "ae2bd2a2d5591e04",
    "kind": "Reference",
    "family": "NotApplicable"
+  },
+  "reference": {
+   "Lookups": [
+    {
+     "condition": "Always",
+     "empty_key": "LookedUp",
+     "key_match": "FirstEqual",
+     "on_missing": "NullObject",
+     "stage": "Deferred",
+     "target": {
+      "Registry": {
+       "name": "common/static_modifiers"
+      }
+     }
+    }
+   ]
   },
   "shape": {
    "repeat": "Unknown",
@@ -333,6 +357,7 @@
    "kind": "Block",
    "family": "Modifier"
   },
+  "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
    "value": "Block"

@@ -10,6 +10,7 @@ use super::{binary, installation::Installation};
 use crate::engine::analysis::decode::decode_arm64;
 use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::families::DatabaseLayout;
+use crate::engine::analysis::references::{self, ReferenceFacts};
 use crate::{AnalysisError, UnavailableReason};
 
 pub(crate) struct BoundAnalysis {
@@ -22,6 +23,8 @@ pub(crate) struct BoundAnalysis {
     catalog: OnceLock<Result<Catalog, AnalysisError>>,
     /// Derived from the catalog's executable; every read checks the executable first.
     families: OnceLock<Result<FamilyIndex, AnalysisError>>,
+    /// Derived from the catalog's executable; every read checks the executable first.
+    references: OnceLock<Result<ReferenceFacts, AnalysisError>>,
 }
 
 struct Catalog {
@@ -30,6 +33,7 @@ struct Catalog {
     strings: BTreeMap<u64, String>,
     pointers: BTreeMap<u64, u64>,
     bound_slots: std::collections::BTreeSet<u64>,
+    imports: BTreeMap<u64, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -303,6 +307,19 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
+    fn reference_facts(&self) -> Result<ReferenceFacts, AnalysisError> {
+        let image = binary::references::Image {
+            bytes: &self.executable,
+            symbols: &self.catalog.symbols,
+            strings: &self.catalog.strings,
+            pointers: &self.catalog.pointers,
+            imports: &self.catalog.imports,
+        };
+        let input = binary::references::read(&image, &self.catalog.candidates)?;
+
+        Ok(references::analyze(&input))
+    }
+
     pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
         &self.catalog.candidates
     }
@@ -431,6 +448,7 @@ impl BoundAnalysis {
             invalidated: Mutex::new(None),
             catalog: OnceLock::new(),
             families: OnceLock::new(),
+            references: OnceLock::new(),
         }
     }
 
@@ -534,7 +552,10 @@ impl BoundAnalysis {
         };
         let input = verified.field_input(candidate.record.clone())?;
         let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
-        Ok(Some(crate::session::questions::normalized_fields(&result)))
+        let references = self.reference_facts()?;
+        Ok(Some(crate::session::questions::normalized_fields(
+            &result, references,
+        )))
     }
 }
 
@@ -569,7 +590,7 @@ impl BoundAnalysis {
         let input = binary::discovery::read(bytes)?;
         let records = discovery::candidates(&input.symbols);
         let constructors = binary::constructors::read(bytes, &input, &records)?;
-        let anchors = binary::constructors::anchors(&input);
+        let anchors = binary::constructors::anchors(&input.symbols);
         let arguments: Vec<Vec<directories::Argument>> = records
             .iter()
             .map(|record| {
@@ -605,7 +626,17 @@ impl BoundAnalysis {
             strings: input.strings,
             pointers: input.pointers,
             bound_slots: input.bound_slots,
+            imports: input.imports,
         })
+    }
+
+    /// The lookup of every reference reader in the executable.
+    pub(crate) fn reference_facts(&self) -> Result<&ReferenceFacts, AnalysisError> {
+        let verified = self.verified()?;
+        self.references
+            .get_or_init(|| verified.reference_facts())
+            .as_ref()
+            .map_err(Clone::clone)
     }
 
     pub(crate) fn has_declarations_method(&self) -> bool {

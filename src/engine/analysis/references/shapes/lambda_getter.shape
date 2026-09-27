@@ -1,0 +1,17 @@
+# Resolver lambda that calls {getter} on {database} with the key, stores the result through the
+# captured destination, and returns the item's validity check.
+stp xr0,xr1,[sp,#-0x20]!
+stp x29,x30,[sp,#0x10]
+add x29,sp,#0x10
+mov xr1,x0
+adrp xr2,PAGE
+add xr2,xr2,G = {database}
+ldr x0,[xr2]
+bl CALL = {getter}
+ldr xr2,[xr1,#0x8]
+str x0,[xr2]
+ldr xr2,[x0]
+ldr x1,[xr2,#0x98]
+ldp x29,x30,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x20
+br x1

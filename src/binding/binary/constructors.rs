@@ -1,7 +1,7 @@
 use crate::AnalysisError;
 use crate::engine::analysis::{
     directories::{self, Anchors, Constructor},
-    discovery::{CandidateRecord, StaticInput},
+    discovery::{CandidateRecord, StaticInput, Symbol},
 };
 use std::collections::BTreeMap;
 
@@ -30,10 +30,9 @@ fn body(bytes: &[u8], starts: &[u64], address: u64) -> Result<Option<Constructor
 }
 
 /// Entry addresses of the base constructor and the literal `CString` constructor.
-pub(in crate::binding) fn anchors(discovery: &StaticInput) -> Anchors {
+pub(in crate::binding) fn anchors(symbols: &[Symbol]) -> Anchors {
     let addresses = |name: &str| {
-        discovery
-            .symbols
+        symbols
             .iter()
             .filter(|s| s.name == name)
             .map(|s| s.address)
@@ -42,6 +41,7 @@ pub(in crate::binding) fn anchors(discovery: &StaticInput) -> Anchors {
     Anchors {
         base_constructors: addresses(directories::BASE_CONSTRUCTOR),
         string_constructors: addresses(directories::STRING_CONSTRUCTOR),
+        file_enumerations: addresses(directories::FILE_ENUMERATION),
     }
 }
 

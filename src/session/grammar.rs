@@ -1,5 +1,6 @@
 //! Normalize command grammar without promoting a partial property to a complete grammar.
 use super::{Native, questions::error};
+use crate::engine::analysis::references::ReferenceFacts;
 use crate::engine::analysis::{
     declarations::{self, Site},
     grammar,
@@ -25,7 +26,8 @@ impl Native {
         let subject = recorded_subject(kind, name);
         self.answer("command_grammar", Some(&subject), || {
             let result = self.command_grammar_result(kind, name)?;
-            Ok(normalize(result.as_ref(), name, self.build()))
+            let references = self.reference_facts(Operation::CommandGrammar)?;
+            Ok(normalize(result.as_ref(), name, self.build(), references))
         })
     }
 
@@ -106,6 +108,7 @@ pub(super) fn normalize(
     result: Result<&grammar::GrammarResult, &Unresolved>,
     name: &str,
     build: crate::BuildId,
+    references: &ReferenceFacts,
 ) -> Answer<CommandGrammar> {
     let mut value = CommandGrammar {
         reader: Reader {
@@ -139,7 +142,11 @@ pub(super) fn normalize(
                 kind: result.reader_kind,
                 family: result.reader_family,
             };
-            let keys = super::fields::grammar_fields(&result.fields.fields, &result.fields.paths);
+            let keys = super::fields::grammar_fields(
+                &result.fields.fields,
+                &result.fields.paths,
+                references,
+            );
             if !keys.is_empty() {
                 value.fixed_keys = GrammarProperty::Partial(keys);
             }
@@ -171,7 +178,7 @@ pub(super) fn normalize(
                 );
             }
             if let Some(child) = &result.numeric {
-                let child = normalize(Ok(child), name, build.clone());
+                let child = normalize(Ok(child), name, build.clone(), references);
                 value.numeric_keys = GrammarProperty::Partial(Some(Box::new(child.value)));
                 for child_gap in child.gaps {
                     gap(child_gap.kind, child_gap.detail);
@@ -344,7 +351,12 @@ mod tests {
             },
         };
         let result = make(Some(Box::new(make(None))));
-        let answer = normalize(Ok(&result), "example", crate::BuildId("authored".into()));
+        let answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
         assert_eq!(answer.gaps.len(), 3);
         for kind in [
             GapKind::OutsideMethod,
@@ -382,7 +394,12 @@ mod tests {
                 gaps: vec![],
             },
         };
-        let answer = normalize(Ok(&result), "example", crate::BuildId("authored".into()));
+        let answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
+        );
         assert!(answer.value.reader.id.is_some());
         assert_eq!(answer.value.reader.kind, ReaderKind::Unknown);
         assert_eq!(answer.value.reader.family, BlockFamily::Unknown);
@@ -398,6 +415,7 @@ mod tests {
             Err(&Unresolved::new("factory-return")),
             "example",
             crate::BuildId("authored".into()),
+            &ReferenceFacts::default(),
         );
         assert_eq!(answer.completeness, crate::Completeness::Partial);
         assert_eq!(answer.value.reader.family, BlockFamily::Unknown);

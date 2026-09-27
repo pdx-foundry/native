@@ -9,9 +9,12 @@
 //! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports and
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
 use pdx_native::internals::inspect::{Image, read_image};
+use pdx_native::internals::reference_readers;
 use pdx_native::internals::registry_field_stops::{self, FieldGap};
 use pdx_native::{
-    Answer, BuildId, Completeness, Error, Field, GapKind, Native, ReaderKind, Registry,
+    Answer, BuildId, Completeness, EmptyKey, Error, Field, FieldReadOutcome, FieldReference,
+    GapKind, GapSubject, KeyMatch, LookupStage, MissingResult, Native, ReaderKind, ReferenceTarget,
+    Registry,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -75,7 +78,47 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
         }
     }
 
-    report.into_json(native.build(), started.elapsed().as_millis(), registries)
+    let readers = reader_census(&native)?;
+    report.into_json(
+        native.build(),
+        started.elapsed().as_millis(),
+        registries,
+        readers,
+    )
+}
+
+/// Every reference reader in the executable, counted by form and by what the method established.
+fn reader_census(native: &Native) -> Result<Value, Box<dyn std::error::Error>> {
+    let facts = reference_readers::run(native)?;
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut unresolved: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (callee, fact) in &facts.readers {
+        let form = reference_readers::reader(callee).map(|reader| reader.form);
+        let status = match (&fact.lookup, &fact.directory) {
+            (Ok(lookup), Some(_)) if lookup.key_match.is_some() => "complete".to_owned(),
+            (Ok(_), _) => "partial".to_owned(),
+            (Err(stop), _) => {
+                unresolved
+                    .entry(stop.reason.to_owned())
+                    .or_default()
+                    .push(fact.database.clone());
+                "failed".to_owned()
+            }
+        };
+        *counts.entry(format!("{form:?}.{status}")).or_default() += 1;
+        if fact.directory.is_none() {
+            unresolved
+                .entry("no-content-directory".into())
+                .or_default()
+                .push(fact.database.clone());
+        }
+    }
+
+    Ok(json!({
+        "readers": facts.readers.len(),
+        "by_form_and_status": counts,
+        "unresolved": unresolved,
+    }))
 }
 
 /// The report state gathered from each registry's query, in registry order.
@@ -95,6 +138,7 @@ struct SweepReport {
     field_families: BTreeMap<String, usize>,
     fields_without_reader_identity: Vec<String>,
     failure_shapes: BTreeMap<String, Vec<Value>>,
+    references: ReferenceTally,
     stop_cases: Vec<StopCase>,
     cases: Vec<Value>,
 }
@@ -145,6 +189,7 @@ impl SweepReport {
             self.queries_with_unresolved_paths += 1;
         }
 
+        self.references.add(registry, &answer, &answer.value, "");
         count_shapes(&answer.value, &mut self.field_shapes, false);
         count_families(&answer.value, &mut self.field_families, "root");
         for field in &answer.value {
@@ -203,6 +248,7 @@ impl SweepReport {
         build: BuildId,
         elapsed_ms: u128,
         registries: Answer<Vec<Registry>>,
+        reference_readers: Value,
     ) -> Result<Value, Box<dyn std::error::Error>> {
         let field_method = self
             .field_method
@@ -250,14 +296,86 @@ impl SweepReport {
             "field_families": self.field_families,
             "fields_without_reader_identity": self.fields_without_reader_identity,
             "failure_shapes": self.failure_shapes,
+            "references": {
+                "fields": self.references.complete + self.references.partial + self.references.failed,
+                "complete": self.references.complete,
+                "partial": self.references.partial,
+                "failed": self.references.failed,
+                "failure_shapes": self.references.shapes,
+                "readers": reference_readers,
+            },
             "stop_shapes": stop_shapes(&self.stop_cases),
             "report_limits": {
                 "failure_shapes": "Grouped by public gap detail.",
                 "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
                 "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
+                "references": "Root and nested fields with a read alternative whose reader is a reference reader. Complete: every lookup names a registry and every lookup property is established. Failed: no lookup names a registry. Readers counts every reference reader in the executable, joined or not.",
             },
             "cases": self.cases,
         }))
+    }
+}
+
+/// Fields read by a reference reader, by how much of their lookup is established.
+#[derive(Default)]
+struct ReferenceTally {
+    complete: usize,
+    partial: usize,
+    failed: usize,
+    /// Field names by the gap that says what is missing.
+    shapes: BTreeMap<String, Vec<String>>,
+}
+
+impl ReferenceTally {
+    fn add(&mut self, registry: &str, answer: &Answer<Vec<Field>>, fields: &[Field], parent: &str) {
+        for field in fields {
+            let path = format!("{parent}{}", field.name);
+            if let pdx_native::FieldMembers::Fields(children) = &field.members {
+                self.add(registry, answer, children, &format!("{path}."));
+            }
+            let reads_reference = field.read.iter().any(|alternative| {
+                matches!(&alternative.outcome, FieldReadOutcome::Read { reader, .. } if reader.kind == ReaderKind::Reference)
+            });
+            if !reads_reference {
+                continue;
+            }
+
+            let lookups = match &field.reference {
+                FieldReference::Lookups(lookups) => lookups.as_slice(),
+                _ => &[],
+            };
+            let named = lookups
+                .iter()
+                .filter(|lookup| matches!(lookup.target, ReferenceTarget::Registry { .. }))
+                .count();
+            let established = lookups.iter().all(|lookup| {
+                lookup.stage != LookupStage::Unresolved
+                    && lookup.key_match != KeyMatch::Unresolved
+                    && lookup.empty_key != EmptyKey::Unresolved
+                    && lookup.on_missing != MissingResult::Unresolved
+            });
+            let name = format!("{registry}#{path}");
+            if !lookups.is_empty() && named == lookups.len() && established {
+                self.complete += 1;
+                continue;
+            }
+            if named == 0 {
+                self.failed += 1;
+            } else {
+                self.partial += 1;
+            }
+            let reason = answer
+                .gaps
+                .iter()
+                .find(|gap| {
+                    gap.kind == GapKind::ReaderSemantics
+                        && matches!(&gap.subject, Some(GapSubject::Field { name }) if name == &path)
+                })
+                .map_or("no lookup is established".to_owned(), |gap| {
+                    gap.detail.clone()
+                });
+            self.shapes.entry(reason).or_default().push(name);
+        }
     }
 }
 
@@ -519,7 +637,7 @@ mod tests {
 
         let registries = answer("registries", "Complete", json!([]), json!([]));
         let json = report
-            .into_json(registries.source.build.clone(), 1, registries)
+            .into_json(registries.source.build.clone(), 1, registries, json!({}))
             .unwrap();
 
         assert_eq!(

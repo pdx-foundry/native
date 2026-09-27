@@ -4,9 +4,11 @@ use crate::engine::analysis::fields::{
     Value,
 };
 use crate::engine::analysis::readers;
+use crate::engine::analysis::references::{self, ReaderLookup, ReferenceFacts};
 use crate::{
-    Field, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
-    FieldReadOutcome, FieldShape, Reader, ReaderId, ReaderKind, RepeatBehavior, ValueShape,
+    EmptyKey, Field, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
+    FieldReadOutcome, FieldReference, FieldShape, KeyMatch, LookupStage, MissingResult, Reader,
+    ReaderId, ReaderKind, ReferenceLookup, ReferenceTarget, RepeatBehavior, ValueShape,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -88,14 +90,24 @@ fn shape(join: &ReaderJoin) -> FieldShape {
     }
 }
 
-pub(super) fn field(field: &RootField, result: &RegistryFieldResult) -> Field {
+pub(super) fn field(
+    field: &RootField,
+    result: &RegistryFieldResult,
+    references: &ReferenceFacts,
+) -> Field {
     let collection = result
         .collections
         .iter()
         .find(|collection| collection.token == field.token);
     let mut normalized = match collection {
-        Some(collection) => collection_field(field, collection),
-        None => ordinary_field(field, &result.fields, &result.paths, &result.persistent),
+        Some(collection) => collection_field(field, collection, references),
+        None => ordinary_field(
+            field,
+            &result.fields,
+            &result.paths,
+            &result.persistent,
+            references,
+        ),
     };
     if let FieldMembers::Fields(children) = &mut normalized.members {
         for child in children {
@@ -112,11 +124,15 @@ pub(super) fn field(field: &RootField, result: &RegistryFieldResult) -> Field {
     normalized
 }
 /// Normalize command children from their dispatch ledger, without registry storage or uses.
-pub(super) fn grammar_fields(fields: &[RootField], paths: &[TokenPath]) -> Vec<Field> {
+pub(super) fn grammar_fields(
+    fields: &[RootField],
+    paths: &[TokenPath],
+    references: &ReferenceFacts,
+) -> Vec<Field> {
     let persistent = BTreeMap::new();
     fields
         .iter()
-        .map(|field| ordinary_field(field, fields, paths, &persistent))
+        .map(|field| ordinary_field(field, fields, paths, &persistent, references))
         .collect()
 }
 
@@ -125,6 +141,7 @@ fn ordinary_field(
     fields: &[RootField],
     paths: &[TokenPath],
     persistent: &BTreeMap<i64, ConcreteReader>,
+    references: &ReferenceFacts,
 ) -> Field {
     let paths = paths
         .iter()
@@ -133,6 +150,19 @@ fn ordinary_field(
         .map(|path| (path.conditions.clone(), path.outcome.clone()))
         .collect();
     collapse_equivalent_branches(&mut alternatives);
+    let lookups: Vec<ReferenceLookup> = alternatives
+        .iter()
+        .filter_map(|(conditions, outcome)| {
+            let PathOutcome::Reader(ReaderJoin::Joined { callee, .. }) = outcome else {
+                return None;
+            };
+            references::reader(callee)?;
+            Some(reference_lookup(
+                condition(conditions, fields),
+                references.readers.get(callee),
+            ))
+        })
+        .collect();
     let read: Vec<_> = alternatives
         .iter()
         .map(|(conditions, outcome)| {
@@ -201,12 +231,106 @@ fn ordinary_field(
         domain: FieldDomain::Unknown,
         default: FieldDefault::Unknown,
         uses: Vec::new(),
+        reference: if lookups.is_empty() {
+            FieldReference::NotEstablished
+        } else {
+            FieldReference::Lookups(lookups)
+        },
     }
+}
+
+/// The public lookup of one reference read. Each fact that the method did not establish stays
+/// unresolved; the field's gap names it.
+fn reference_lookup(condition: FieldCondition, fact: Option<&ReaderLookup>) -> ReferenceLookup {
+    let target = match fact.and_then(|fact| fact.directory.clone()) {
+        Some(name) => ReferenceTarget::Registry { name },
+        None => ReferenceTarget::Unresolved,
+    };
+    let Some(Ok(lookup)) = fact.map(|fact| &fact.lookup) else {
+        return ReferenceLookup {
+            condition,
+            target,
+            stage: LookupStage::Unresolved,
+            key_match: KeyMatch::Unresolved,
+            empty_key: EmptyKey::Unresolved,
+            on_missing: MissingResult::Unresolved,
+        };
+    };
+
+    ReferenceLookup {
+        condition,
+        target,
+        stage: match lookup.stage {
+            references::Stage::WhileReading => LookupStage::WhileReading,
+            references::Stage::Deferred => LookupStage::Deferred,
+        },
+        key_match: match lookup.key_match {
+            Some(references::KeyMatch::Equal) => KeyMatch::Equal,
+            Some(references::KeyMatch::FirstEqual) => KeyMatch::FirstEqual,
+            None => KeyMatch::Unresolved,
+        },
+        empty_key: match lookup.empty_key_looked_up {
+            Some(true) => EmptyKey::LookedUp,
+            Some(false) => EmptyKey::NotLookedUp,
+            None => EmptyKey::Unresolved,
+        },
+        on_missing: match lookup.missing_yields_null {
+            Some(true) => MissingResult::NullObject,
+            _ => MissingResult::Unresolved,
+        },
+    }
+}
+
+/// Why a field's reference lookups are not fully established, when a reference reader reads it.
+pub(super) fn reference_gap(field: &RootField, references: &ReferenceFacts) -> Option<String> {
+    let mut missing = std::collections::BTreeSet::new();
+    for join in &field.readers {
+        let ReaderJoin::Joined { callee, .. } = join else {
+            continue;
+        };
+        if references::reader(callee).is_none() {
+            continue;
+        }
+        match references.readers.get(callee) {
+            None => {
+                missing.insert("the reader was not analyzed");
+            }
+            Some(fact) => {
+                if fact.directory.is_none() {
+                    missing.insert("the searched database has no established content directory");
+                }
+                match &fact.lookup {
+                    Err(stop) if stop.reason == "reference-list-form" => {
+                        missing.insert(
+                            "the reader reads a list of keys, whose lookups are not established",
+                        );
+                    }
+                    Err(_) => {
+                        missing.insert("no qualified lookup shape matched the reader");
+                    }
+                    Ok(lookup) if lookup.key_match.is_none() => {
+                        missing.insert("the map search that compares keys is not qualified");
+                    }
+                    Ok(_) => {}
+                }
+            }
+        }
+    }
+    if missing.is_empty() {
+        return None;
+    }
+    let reasons: Vec<&str> = missing.into_iter().collect();
+
+    Some(format!(
+        "The field's reference lookup is not fully established: {}.",
+        reasons.join("; ")
+    ))
 }
 
 fn collection_field(
     field: &RootField,
     collection: &crate::engine::analysis::fields::CollectionField,
+    references: &ReferenceFacts,
 ) -> Field {
     let reader = Reader {
         id: Some(concrete_reader_id(
@@ -236,12 +360,13 @@ fn collection_field(
                 .fields
                 .fields
                 .iter()
-                .map(|child| self::field(child, &collection.fields))
+                .map(|child| self::field(child, &collection.fields, references))
                 .collect(),
         ),
         domain: FieldDomain::Unknown,
         default: FieldDefault::Unknown,
         uses: Vec::new(),
+        reference: FieldReference::NotEstablished,
     }
 }
 
@@ -480,5 +605,124 @@ mod tests {
             tail: false,
         };
         assert_eq!(shape(&join).repeat, RepeatBehavior::Unknown);
+    }
+
+    #[test]
+    fn opposite_read_conditions_keep_their_own_reference_targets() {
+        use crate::engine::analysis::fields::TokenPath;
+        use crate::engine::analysis::references::{Lookup, ReaderLookup, Stage};
+
+        let deferred = |database: &str| {
+            format!(
+                "void NParserUtil::ReadKeyReferenceDeferred<{database}>(CGlobalDeferredDatabaseObject const&, CReader&, {database}::ValueType const**)"
+            )
+        };
+        let join = |callee: String| {
+            PathOutcome::Reader(ReaderJoin::Joined {
+                callee,
+                arguments: [
+                    ("x0".into(), Value::Owner(0)),
+                    ("x1".into(), Value::Reader(0)),
+                    ("x2".into(), Value::Owner(0x40)),
+                ]
+                .into(),
+                tail: true,
+            })
+        };
+        let path = |zero: bool, outcome: PathOutcome| TokenPath {
+            domain: [7, 7],
+            conditions: vec![test(zero)],
+            instructions: vec![],
+            terminal: 0,
+            outcome,
+        };
+        let paths = vec![
+            path(true, join(deferred("CShipDatabase"))),
+            path(false, join(deferred("CArmyDatabase"))),
+        ];
+        let flag = RootField {
+            name: "flag".into(),
+            token: 3,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![match read(8) {
+                PathOutcome::Reader(join) => ReaderJoin::Joined {
+                    callee: "CReader::Read(bool&)".into(),
+                    arguments: match join {
+                        ReaderJoin::Joined { arguments, .. } => arguments,
+                        ReaderJoin::Missing(_) => unreachable!(),
+                    },
+                    tail: true,
+                },
+                _ => unreachable!(),
+            }],
+        };
+        let target = RootField {
+            name: "target".into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![0, 1],
+            readers: vec![],
+        };
+        let lookup = |database: &str, directory: &str| ReaderLookup {
+            database: database.into(),
+            directory: Some(directory.into()),
+            lookup: Ok(Lookup {
+                stage: Stage::Deferred,
+                key_match: None,
+                empty_key_looked_up: Some(true),
+                missing_yields_null: Some(true),
+            }),
+        };
+        let references = ReferenceFacts {
+            readers: BTreeMap::from([
+                (
+                    deferred("CShipDatabase"),
+                    lookup("CShipDatabase", "common/ships"),
+                ),
+                (
+                    deferred("CArmyDatabase"),
+                    lookup("CArmyDatabase", "common/armies"),
+                ),
+            ]),
+        };
+        let fields = [flag, target];
+        let field = ordinary_field(&fields[1], &fields, &paths, &BTreeMap::new(), &references);
+
+        let FieldReference::Lookups(lookups) = field.reference else {
+            panic!("{:?}", field.reference);
+        };
+        let targets: Vec<_> = lookups
+            .iter()
+            .map(|lookup| (lookup.condition.clone(), lookup.target.clone()))
+            .collect();
+        assert_eq!(
+            targets,
+            [
+                (
+                    FieldCondition::FieldZero {
+                        path: vec!["flag".into()],
+                        zero: true
+                    },
+                    ReferenceTarget::Registry {
+                        name: "common/ships".into()
+                    }
+                ),
+                (
+                    FieldCondition::FieldZero {
+                        path: vec!["flag".into()],
+                        zero: false
+                    },
+                    ReferenceTarget::Registry {
+                        name: "common/armies".into()
+                    }
+                ),
+            ]
+        );
+        assert!(
+            lookups
+                .iter()
+                .all(|lookup| lookup.key_match == KeyMatch::Unresolved)
+        );
     }
 }

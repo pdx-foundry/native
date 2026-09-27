@@ -13,6 +13,7 @@
 //! }
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
+use crate::engine::analysis::references::ReferenceFacts;
 use crate::engine::analysis::{
     declarations::{self, Site},
     grammar,
@@ -54,7 +55,14 @@ pub fn run(native: &Native, kind: DeclarationKind, name: &str) -> Result<Run, Er
                 name: name.into(),
             });
         }
-        Ok(inspect_command(&input, &inventory, name, native.build()))
+        let references = native.reference_facts(Operation::CommandGrammar)?;
+        Ok(inspect_command(
+            &input,
+            &inventory,
+            name,
+            native.build(),
+            references,
+        ))
     })
 }
 
@@ -118,10 +126,11 @@ pub fn population(
             .grammar_input(kind)
             .map_err(|failure| super::questions::error(Operation::CommandGrammar, failure))?;
         let (names, unknown_registrations) = inventory_names(&inventory);
+        let references = native.reference_facts(Operation::CommandGrammar)?;
         for name in names {
             visit(
                 &name,
-                inspect_command(&input, &inventory, &name, native.build()),
+                inspect_command(&input, &inventory, &name, native.build(), references),
             );
         }
         Ok(Population {
@@ -162,6 +171,7 @@ fn inspect_command(
     inventory: &declarations::DeclarationResult,
     name: &str,
     build: crate::BuildId,
+    references: &ReferenceFacts,
 ) -> Run {
     let mut chain = Chain {
         stopped_at: Some("registration"),
@@ -216,7 +226,7 @@ fn inspect_command(
         Ok(result)
     })();
     Run {
-        answer: normalize(result.as_ref(), name, build),
+        answer: normalize(result.as_ref(), name, build, references),
         result,
         chain,
     }

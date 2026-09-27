@@ -14,6 +14,7 @@ mod language;
 mod loaded_modifiers;
 mod localization;
 pub(crate) mod questions;
+pub mod reference_readers;
 pub mod registry_field_stops;
 
 #[derive(Debug)]

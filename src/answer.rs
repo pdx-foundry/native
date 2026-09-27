@@ -550,6 +550,9 @@ pub struct Field {
     pub default: crate::FieldDefault,
     /// Use-time selections that the method reached. An empty list does not prove no conditions.
     pub uses: Vec<crate::FieldUse>,
+    /// The lookups that the engine makes with the field's value as a key.
+    #[serde(default)]
+    pub reference: crate::FieldReference,
 }
 
 /// A command kind whose declarations can be read from the executable.

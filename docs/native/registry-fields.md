@@ -1,6 +1,6 @@
 # Registry fields
 
-`Native::registry_fields(registry)` (`registry-fields/v6`) gives root fields, reader and storage shapes,
+`Native::registry_fields(registry)` (`registry-fields/v7`) gives root fields, reader and storage shapes,
 loader alternatives, nested object fields and local stored-value selections. `Native::registries()` gives the registries. The module
 comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` describe the methods.
 This page holds the current sweep, the engine facts, the gaps and the prototype findings. The

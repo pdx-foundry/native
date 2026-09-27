@@ -96,7 +96,7 @@ the state after the simplification effort:
 | --- | --- | --- | --- |
 | `Native::open` | Implemented | Installation location | A pinned installation, or a precise `OpenError` |
 | `supports` | Implemented | An `Operation` | `Support::Supported`, or `Support::Unsupported` with a reason |
-| `registries`, `registry_fields` | Implemented | A registry name for fields | Registries; fields with reader identity, broad kind, block family and conditional read alternatives, with explicit unknowns |
+| `registries`, `registry_fields` | Implemented | A registry name for fields | Registries; fields with reader identity, broad kind, block family, conditional read alternatives and reference lookups (target registry by content directory, stage, key match, missing-key result), with explicit unknowns |
 | `start_game` | Implemented | Supervisor command and deadlines | A `Game` paused at a stated readiness boundary |
 | `Game::registry_items` | Implemented | A registry name | Item names from the engine collection |
 | `Game::loaded_modifiers` | Implemented for M45-release | `GameOptions::loaded_modifiers` before launch | The modifier table after all content loads, read where the engine documents its modifiers: each name with its loaded category tags, whether the executable declares it, and each `modifier_families` family and loaded item that gives it; the loaded keys of each family registry; the loaded content. Unexplained names and unjoined generation sites are gaps. No config or log file is read. |

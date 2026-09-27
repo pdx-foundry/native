@@ -12,6 +12,7 @@ pub(in crate::binding) fn read(bytes: &[u8]) -> Result<StaticInput, AnalysisErro
         symbols: inventory.symbols,
         pointers: fixups.pointers,
         bound_slots: fixups.bound,
+        imports: fixups.bindings,
         strings: inventory.strings,
     })
 }

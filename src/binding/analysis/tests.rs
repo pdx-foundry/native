@@ -93,6 +93,7 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
         strings: BTreeMap::new(),
         pointers: BTreeMap::new(),
         bound_slots: Default::default(),
+        imports: BTreeMap::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
 
@@ -521,7 +522,7 @@ fn m45_persistent_field_families() {
             "destinations={:?}; gaps={:?}",
             result.persistent, result.gaps
         );
-        let fields = crate::session::questions::normalized_fields(&result);
+        let fields = crate::session::questions::normalized_fields(&result, &Default::default());
         assert_eq!(
             fields
                 .iter()

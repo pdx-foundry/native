@@ -125,3 +125,96 @@ pub enum FieldDomain {
     /// The accepted domain is not established.
     Unknown,
 }
+
+/// The lookups that the engine makes with a field's value.
+///
+/// A lookup names the registry that holds the item a key selects. It says nothing about which
+/// keys a mod or the base game defines.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum FieldReference {
+    /// No lookup of the value is established. This is not proof that the engine makes none; a
+    /// gap says why when the field's reader holds a key.
+    #[default]
+    NotEstablished,
+    /// Each established lookup, under the read condition it belongs to.
+    Lookups(Vec<ReferenceLookup>),
+}
+
+/// One lookup of a field's value as a key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReferenceLookup {
+    /// The read alternative that performs this lookup.
+    pub condition: FieldCondition,
+    /// The registry whose items the key selects.
+    pub target: ReferenceTarget,
+    /// When the lookup runs.
+    pub stage: LookupStage,
+    /// Which item a key selects.
+    pub key_match: KeyMatch,
+    /// Whether an empty key is looked up.
+    pub empty_key: EmptyKey,
+    /// What a key that selects no item yields.
+    pub on_missing: MissingResult,
+}
+
+/// The collection a lookup searches.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ReferenceTarget {
+    /// A registry, named by its full content directory, such as `common/ship_sizes`. It can be a
+    /// registry that `Native::registries` does not list, when its loader is outside that method.
+    Registry {
+        /// The content directory.
+        name: String,
+    },
+    /// The searched collection is not joined to a content directory; a gap says why.
+    Unresolved,
+}
+
+/// When the engine looks a key up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LookupStage {
+    /// While the field is read, so the target registry must already be loaded.
+    WhileReading,
+    /// Later, when the engine resolves the keys that its readers deferred. Keys may name items
+    /// that load after the field.
+    Deferred,
+    /// The stage is not established.
+    Unresolved,
+}
+
+/// Which item a key selects. Keys are compared byte for byte, without case folding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum KeyMatch {
+    /// The item whose key equals the value.
+    Equal,
+    /// The first item, in the collection's order, whose key equals the value.
+    FirstEqual,
+    /// The comparison is not established.
+    Unresolved,
+}
+
+/// Whether an empty value is looked up like any other key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum EmptyKey {
+    /// An empty value is looked up; `on_missing` applies when no item has an empty key.
+    LookedUp,
+    /// An empty value is not looked up.
+    NotLookedUp,
+    /// Not established.
+    Unresolved,
+}
+
+/// What a key that selects no item yields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum MissingResult {
+    /// The engine's typed placeholder object for the target registry, not a null pointer.
+    NullObject,
+    /// Not established.
+    Unresolved,
+}

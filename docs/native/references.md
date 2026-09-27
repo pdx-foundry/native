@@ -5,6 +5,14 @@ collection. A dynamic name is a name that script both defines and reads, such as
 SDK-543 owns both methods. This page holds their engine facts on M45-release, the results, the gaps
 and the pitfalls. The [discovery index](discovery.md) lists the operations.
 
+`Field.reference` in `Native::registry_fields` (`registry-fields/v7`) and in the fixed keys of
+`Native::command_grammar` (`command-grammar/v2`) gives each lookup of a field's value: the target
+registry by content directory, the stage, the key match, whether an empty key is looked up, and
+what a missing key yields. The method is `engine/analysis/references.rs` with its shapes in
+`references/shapes/`; `binding/binary/references.rs` reads the functions and joins each database
+to its directory. `cargo run --release --example inspect -- --lookup-lines NAME` prints a function
+as the canonical lines that the shapes match; use it to author a shape from a new body.
+
 ## Engine facts on M45-release
 
 All facts below are for the exact executable in [targets](targets.md).
@@ -99,6 +107,39 @@ constructor argument; `registries()` already joins them. Custom loaders do not:
 - Scope sets differ between roles: `CSetStarFlagEffect::GetSupportedScopes` returns `0x80`,
   `CHasStarFlagTrigger::GetSupportedScopes` returns `0x08000080`.
 - Variables use `CVariables`, a string-keyed map that does not intern names.
+
+## Result on M45-release
+
+The executable has 188 reference readers. With the method's nine shapes, 159 establish every
+lookup fact and a content directory: 77 of 86 deferred readers and 82 of 87 immediate readers.
+The other 29 keep typed gaps:
+
+| Obstacle | Readers | Databases |
+| --- | ---: | --- |
+| List and index forms (`…Uniform`, `ReadIndexReferenceDeferred`) | 15 | 13 immediate lists, one deferred list, one deferred index |
+| Deferred lambda of another shape | 9 | ambient objects, bypass types, galaxy templates, leader traits, planet classes, special projects, species classes, strategic resources, traits |
+| Immediate reader of another shape | 5 | bypass types, gfx cultures, name lists, planet classes, species classes |
+
+Six readers also lack a content directory: gfx cultures, name lists, planet classes (two readers),
+galaxy templates and leader traits. A custom loader outside a database's own functions, such as
+`RunGame` enumerating `common/planet_classes`, is not joined.
+
+The field sweep over all 164 registries finds 29 root and nested fields with a reference read:
+**21 complete, 7 partial, 1 failed**. Six partial fields read key lists (`pop_jobs#tags`,
+`megastructures#overclock_types`, `species_classes#ethics_to_prefer`,
+`star_classes/randomizers#stars`, and `scripted_action` in megastructures and ship sizes);
+`megastructures#bypass_type` uses an immediate reader of another shape. `ship_sizes#carries_colony` fails: its planet class reader has
+neither a directory nor a shape. Recognizing the immediate and list forms gave 18 fields a reader
+identity that had none; no other answer changed. `council_agendas#finish_modifier` is complete:
+`common/static_modifiers`, deferred, first equal key, empty key looked up, null object on a miss.
+
+## Gaps
+
+- Owner initialization lookups (`PostInit`) and the SDK-482 cases: SDK-543, second part.
+- List readers and the 14 unmatched singleton shapes: follow-up with counts.
+- Whether a missing key logs: the log depends on the stored object's validity check, which the
+  method does not join. The page records the messages; the answer does not claim them.
+- Duplicate definitions in a map-backed database: SDK-552 owns load-time replacement.
 
 ## Pitfalls
 

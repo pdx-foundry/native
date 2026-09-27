@@ -331,6 +331,35 @@ impl<'a> Image<'a> {
         })
     }
 
+    /// The complete function at `start` as the canonical lines that reference lookup shapes
+    /// match: scratch registers renamed, local branches relative, globals and calls named.
+    /// Without fixups, pointer slots stay unnamed.
+    pub fn lookup_lines(&self, start: u64) -> Result<Vec<String>, InspectError> {
+        let (address, code) = self
+            .text
+            .function(start)
+            .map_err(|_| error(format!("{start:#x} is not a function start")))?;
+        let rows = decode_arm64(code, address).map_err(|cause| error(cause.to_string()))?;
+        let empty = BTreeMap::new();
+        let (pointers, imports) = match &self.fixups {
+            Ok(fixups) => (&fixups.pointers, &fixups.bindings),
+            Err(_) => (&empty, &BTreeMap::new()),
+        };
+        let names = super::binary::references::names(
+            &self.inventory.symbols,
+            pointers,
+            imports,
+            &self.inventory.strings,
+        );
+
+        Ok(
+            crate::engine::analysis::references::shapes::canonical(&rows, &names)
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        )
+    }
+
     /// Every direct `bl` or `b` to `target`, in address order. Calls through a register or a
     /// vtable are not found.
     pub fn callers(&self, target: u64) -> Vec<Caller> {

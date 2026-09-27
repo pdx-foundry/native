@@ -15,6 +15,10 @@
 //! it may write. It does not follow branches, so a value that arrives on another path is unknown.
 //! Exactly one distinct directory over all constructor bodies names the registry. None or several
 //! is a gap; the method never selects one of several.
+//!
+//! A database with a custom loader has no base-constructor directory. [`loader_directory`] takes
+//! the text literal that the database's own functions pass to the file enumeration instead, under
+//! the same rule: exactly one distinct literal, or a gap.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{add_immediate, adrp};
@@ -27,6 +31,9 @@ pub const BASE_CONSTRUCTOR: &str =
     "CSingleObjectGameDatabaseBase::CSingleObjectGameDatabaseBase(CString const&)";
 /// Constructor that builds a `CString` from a text literal.
 pub const STRING_CONSTRUCTOR: &str = "CString::CString(char const*)";
+/// File enumeration whose first argument is a loader's content directory.
+pub const FILE_ENUMERATION: &str =
+    "VFSGetEnumeratedFiles(char const*, CPdxArray<CString, int>&, char const*, char const*, int)";
 /// Name prefix of the static initializers that can build a global `CString`.
 pub const INITIALIZER_PREFIX: &str = "__GLOBAL__sub_I_";
 
@@ -46,6 +53,8 @@ pub struct Anchors {
     pub base_constructors: BTreeSet<u64>,
     /// Every body of the literal `CString` constructor.
     pub string_constructors: BTreeSet<u64>,
+    /// Every body of the file enumeration.
+    pub file_enumerations: BTreeSet<u64>,
 }
 
 /// What the constructors of one class establish.
@@ -91,15 +100,24 @@ enum Passed {
     Other(Value),
 }
 
-/// Linear scan of one function. Reports each literal `CString` construction, and each call to the
-/// base constructor with what its argument register holds at that call.
-fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) {
+/// What one linear scan found.
+#[derive(Default)]
+struct Scan {
+    /// Each literal `CString` construction.
+    built: Vec<Built>,
+    /// Each base-constructor call, with what its argument register holds.
+    passed: Vec<Passed>,
+    /// What the first argument holds at each file-enumeration call.
+    enumerated: Vec<Value>,
+}
+
+/// Linear scan of one function.
+fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
     let mut registers = [Value::Unknown; 32];
     // Objects built so far, by location. A later construction at one location replaces the
     // earlier one, and any other call that receives the object forgets it.
     let mut objects: Vec<(Value, u64)> = Vec::new();
-    let mut built = Vec::new();
-    let mut passed = Vec::new();
+    let mut found = Scan::default();
     for (index, word) in function.code.as_chunks::<4>().0.iter().enumerate() {
         let word = u32::from_le_bytes(*word);
         let address = function.address + index as u64 * 4;
@@ -119,11 +137,18 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
         } else if let Some((destination, source)) = move_register(word) {
             registers[destination] = registers[source];
         } else if let Some(target) = branch_with_link(word, address) {
+            if anchors.file_enumerations.contains(&target) {
+                found.enumerated.push(registers[0]);
+            }
             if anchors.base_constructors.contains(&target) {
-                passed.push(match objects.iter().find(|(at, _)| *at == registers[1]) {
-                    Some(&(_, literal)) if registers[1] != Value::Unknown => Passed::Built(literal),
-                    _ => Passed::Other(registers[1]),
-                });
+                found
+                    .passed
+                    .push(match objects.iter().find(|(at, _)| *at == registers[1]) {
+                        Some(&(_, literal)) if registers[1] != Value::Unknown => {
+                            Passed::Built(literal)
+                        }
+                        _ => Passed::Other(registers[1]),
+                    });
             } else {
                 objects.retain(|(at, _)| *at != registers[0]);
                 if anchors.string_constructors.contains(&target)
@@ -131,7 +156,7 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
                     && let Value::Constant(literal) = registers[1]
                 {
                     objects.push((registers[0], literal));
-                    built.push(Built {
+                    found.built.push(Built {
                         destination: registers[0],
                         literal,
                     });
@@ -147,7 +172,7 @@ fn scan(function: &Constructor, anchors: &Anchors) -> (Vec<Built>, Vec<Passed>) 
             registers[(word & 31) as usize] = Value::Unknown;
         }
     }
-    (built, passed)
+    found
 }
 
 /// The destination and source registers of a 64-bit register move, `mov xd, xm`, which is
@@ -187,7 +212,7 @@ pub fn arguments(
     strings: &BTreeMap<u64, String>,
 ) -> Vec<Argument> {
     scan(constructor, anchors)
-        .1
+        .passed
         .into_iter()
         .map(|passed| match passed {
             Passed::Built(literal) => {
@@ -208,7 +233,7 @@ pub fn globals(
 ) -> BTreeMap<u64, String> {
     let mut found: BTreeMap<u64, BTreeSet<String>> = BTreeMap::new();
     for initializer in initializers {
-        for built in scan(initializer, anchors).0 {
+        for built in scan(initializer, anchors).built {
             if let (Value::Constant(global), Some(path)) =
                 (built.destination, directory_path(strings, built.literal))
             {
@@ -221,6 +246,27 @@ pub fn globals(
         .filter(|(_, texts)| texts.len() == 1)
         .map(|(global, mut texts)| (global, texts.pop_first().expect("one text")))
         .collect()
+}
+
+/// The directory that a custom loader enumerates: the literal first argument of every
+/// file-enumeration call in `functions`, the database's own functions.
+pub fn loader_directory(
+    functions: &[Constructor],
+    anchors: &Anchors,
+    strings: &BTreeMap<u64, String>,
+) -> Directory {
+    let arguments: Vec<Argument> = functions
+        .iter()
+        .flat_map(|function| scan(function, anchors).enumerated)
+        .map(|value| match value {
+            Value::Constant(literal) => {
+                directory_path(strings, literal).map_or(Argument::Unknown, Argument::Literal)
+            }
+            _ => Argument::Unknown,
+        })
+        .collect();
+
+    directory(&arguments, &BTreeMap::new())
 }
 
 /// Resolve the directory from the arguments of every constructor body of one database class.
@@ -250,6 +296,7 @@ mod tests {
 
     const BASE: u64 = 0x1100;
     const STRING: u64 = 0x1200;
+    const ENUMERATE: u64 = 0x1300;
     const NOP: u32 = 0xd503_201f;
     // adrp x1, one page after the function at 0x1000.
     const ADRP_X1: u32 = 0xb000_0001;
@@ -259,6 +306,15 @@ mod tests {
 
     fn add_x1(immediate: u32) -> u32 {
         0x9100_0021 | immediate << 10
+    }
+    // adrp x0, one page after the function at 0x1000.
+    const ADRP_X0: u32 = 0xb000_0000;
+    fn add_x0(immediate: u32) -> u32 {
+        0x9100_0000 | immediate << 10
+    }
+    /// A custom loader that enumerates the files under the literal at `literal`.
+    fn loader(literal: u32) -> Constructor {
+        function(&[ADRP_X0, add_x0(literal), bl(2, ENUMERATE)])
     }
     fn bl(from_index: u64, target: u64) -> u32 {
         let offset = (target as i64 - (0x1000 + from_index as i64 * 4)) / 4;
@@ -274,6 +330,7 @@ mod tests {
         Anchors {
             base_constructors: BTreeSet::from([BASE]),
             string_constructors: BTreeSet::from([STRING]),
+            file_enumerations: BTreeSet::from([ENUMERATE]),
         }
     }
     fn strings() -> BTreeMap<u64, String> {
@@ -300,6 +357,28 @@ mod tests {
             .flat_map(|c| arguments(c, &anchors(), &strings()))
             .collect();
         directory(&arguments, globals)
+    }
+
+    #[test]
+    fn a_custom_loader_is_named_by_the_one_literal_it_enumerates() {
+        let named = loader_directory(&[loader(0x10), loader(0x10)], &anchors(), &strings());
+        assert_eq!(named, Directory::Named("common/examples".into()));
+
+        let several = loader_directory(&[loader(0x10), loader(0x20)], &anchors(), &strings());
+        assert_eq!(
+            several,
+            Directory::Ambiguous(vec!["common/examples".into(), "map/other".into()])
+        );
+
+        let unknown = function(&[ADD_X0_SP_8, bl(1, ENUMERATE)]);
+        assert_eq!(
+            loader_directory(&[loader(0x10), unknown], &anchors(), &strings()),
+            Directory::Missing
+        );
+        assert_eq!(
+            loader_directory(&[temporary(0x10)], &anchors(), &strings()),
+            Directory::Missing
+        );
     }
 
     #[test]
@@ -372,7 +451,7 @@ mod tests {
             ADD_X0_SP_8,
             bl(4, STRING),
         ]);
-        assert!(scan(&call, &anchors()).0.is_empty());
+        assert!(scan(&call, &anchors()).built.is_empty());
         // mov x1, x2 replaces the stack argument before the base constructor.
         let mut words = vec![
             ADRP_X1,
