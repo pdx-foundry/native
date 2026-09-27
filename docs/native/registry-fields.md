@@ -394,7 +394,7 @@ slot. SDK-602 removed an image-wide scan of these, which no live method read. It
   the bound slots, and `internals::inspect` names imports from the fixups directly.
 
 SDK-551 owns custom, nested and late loaders; SDK-552 owns mounted selection and duplicates;
-SDK-543 owns identifier grammar. Symbols and addresses locate evidence on one build only; the
+Identifier grammar is on [references](references.md#identifier-grammar). Symbols and addresses locate evidence on one build only; the
 prototype's synthetic identity is not a cross-build match.
 
 

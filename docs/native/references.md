@@ -179,11 +179,11 @@ alternative is unconditional.
 
 | Commands | Effects (1,074) | Triggers (1,096) |
 | --- | ---: | ---: |
-| Lookup joined to a child key, complete | 26 | 8 |
+| Lookup joined to a child key, complete | 26 | 9 |
 | Initialization lookup without an authored field | 7 | 4 |
-| Initializer with no lookup | 855 | 810 |
-| Initializer lookup not established | 49 | 40 |
-| Receiver join failed | 137 | 234 |
+| Initializer with no lookup | 855 | 963 |
+| Initializer lookup not established | 49 | 42 |
+| Receiver join failed | 137 | 78 |
 
 Joined effects include `create_ship` (`random_existing_design`, `common/ship_sizes`, `Equal`,
 empty key not looked up), `add_district` (`district_type`, `common/districts`, `FirstEqual`) and
@@ -224,6 +224,45 @@ value, which has no child key (`add_tradition`, `remove_relic`, `set_pre_ftl_age
   joins only when its string reader stores at the lookup's key offset.
 - A shared initializer can serve many commands: `CFireEventEffect::PostInit()` calls
   `CEventManager::GetEvent`, and its failure appears on 20 event-firing effects.
+
+## Identifier grammar
+
+What the executable states about a key, and where the method stops. Each row applies to the
+lookups and flags on this page.
+
+| Property | Result on M45-release | Evidence or boundary |
+| --- | --- | --- |
+| Case | Byte for byte, no case folding | The scan shapes compare length, then bytes or `memcmp`; the qualified `Find<CString>` hashes with `_PMurHash32`, then compares length and bytes |
+| Encoding | Bytes; the lookup decodes nothing | The lexer's encoding is outside the method |
+| Quoting | Readers take the lexed token text at `CReader+0x288` | Quote handling is a lexer fact. The SDK-482 Intel spike saw quoted and unquoted `corvette` select one ship size; it is not established here |
+| Length | The whole key is compared; nothing truncates it | No maximum length is established |
+| Namespaces | One registry per lookup; flags intern in one table for every flag kind and are stored per scope object or in the global store | `ReferenceTarget`; `DynamicNamespace` |
+| Normalization | None in a lookup or in `CreateFlagIndex` | Lexer normalization is outside the method |
+| Collisions | A scan returns the first equal item; equal flag names are one flag in every store | `FirstEqual`; the shared interner |
+| Missing key | The typed null object | `MissingResult::NullObject`, from the shape's miss edge |
+| Duplicate definitions | A scan returns the first in collection order; a map keeps what loading inserted | Load-time replacement belongs to SDK-552 |
+
+## SDK-482 prototype
+
+The first reference method, SDK-482, matched four whole-function templates on the 4.5 beta and
+was retired at milestone 2. Its sources, `qualification_controls.py`, `patterns.json` and
+evidence are in the `typed-extraction` bundle under `reference-observation-prototype/`, and its
+branch `prototype/sdk-482-reference-observations` is in the `source-git` bundle
+([retrieval](retrieval.md)). The Rust port is `git show 1da4abf^:src/engine/analysis/references.rs`,
+and its expected beta cases are `git show f184f08:docs/native/reference-method-cases.json`.
+The 27 controls are now authored tests (`control_01_…` to `control_27_…`).
+
+The "two unfamiliar resolver shapes" were those of the earlier Intel 4.4.6 spike, whose
+contiguous map-find matcher returned unknown for District (a linear scan) and Army (an
+event-target chain). What each retained case gives now:
+
+| Case | SDK-482 on the beta | M45-release now |
+| --- | --- | --- |
+| Ship | Candidate `CShipSize` through a typed map call | `create_ship#random_existing_design`: `common/ship_sizes`, owner initialization, `Equal`, empty key not looked up |
+| District | Candidate `CDistrictType` through a scan | `add_district#district_type`: `common/districts`, `FirstEqual` |
+| Planet class | Candidate `CPlanetClass` through a getter | Gap: `change_pc`'s receiver join stops at `command-vtable`, and planet classes have no joined directory |
+| Army | Unknown | `create_army#type`: `common/armies`, while reading, `FirstEqual`; `PostInit` classifies event-target keywords and makes no lookup |
+| Relic | Candidate `CRelic` through the same scan | The lookup is established; `add_relic` copies its key inline, so no child key joins it |
 
 ## Dynamic names
 

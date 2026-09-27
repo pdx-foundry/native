@@ -47,6 +47,7 @@ inspections (such as warnings and errors).
 - [Reader kinds](docs/native/reader-kinds.md) Shared reader identities and broad value kinds.
 - [Registry items](docs/native/registry-items.md) Loaded collections and observation completeness.
 - [Engine commands](docs/native/engine-commands.md) Commands, scopes, localization, on_actions and game rules.
+- [References and dynamic names](docs/native/references.md) Reference lookups, flag namespaces, their shapes and the SDK-482 history.
 - [Modifier families](docs/native/modifier-families.md) Generated names and the loaded modifier table.
 - [Targets](docs/native/targets.md) Exact executable identities and build adaptation findings.
 
@@ -68,7 +69,6 @@ inspections (such as warnings and errors).
 - [Milestone 2 field sweep](docs/native/milestone-2-registry-sweep.md) Historical v2 totals and their comparison with the Milestone 4 baseline.
 - [Milestone 3 review](docs/design/milestone-3-review.md) Exit-gate findings and preparation for Milestone 4.
 - [Milestone 4 field baseline](docs/native/milestone-4-field-baseline.md) Field and reader counts before Milestone 4 changes.
-- [Reference method retirement](docs/native/reference-method-retirement.md) Removed initializer analysis and retained findings.
 - [Performance](docs/native/performance.md) Static analysis and live-test costs.
 - [Integrity hashing](docs/native/performance/sdk-560.md) Measurements for one integrity hash per query.
 - [Shared discovery](docs/native/performance/sdk-561.md) Measurements for reusing static discovery.

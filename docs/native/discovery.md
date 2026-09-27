@@ -32,8 +32,8 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | `Native::modifier_families` | `modifier-families/v3` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `families/strings.rs` | [Generation calls and roots](modifier-families.md#engine-code-m45-release) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
-This page also holds the define read helpers and the reference counts. The retired SDK-482 reference seam is on
-[reference method retirement](reference-method-retirement.md).
+This page also holds the define read helpers and the reference and dynamic-name counts. The
+retired SDK-482 reference method is recorded on [references](references.md#sdk-482-prototype).
 
 ## References
 
@@ -45,8 +45,8 @@ population, the per-shape counts and the obstacles are on [references](reference
 The owner-initialization run covers all 309 `PostInit()` functions; 154 name a global instance:
 **61 complete, 2 partial, 91 failed**. Failure shapes: another shape (74), several lookups in one
 initializer (14), and a getter of another shape (3). Over the command inventory, 26 effects and
-8 triggers join a complete lookup to a child key, 11 commands have a lookup without an authored
-field, and 89 have an initializer lookup that is not established. The breakdown is on
+9 triggers join a complete lookup to a child key, 11 commands have a lookup without an authored
+field, and 91 have an initializer lookup that is not established. The breakdown is on
 [references](references.md#owner-initializers).
 
 ## Dynamic names
