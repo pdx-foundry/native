@@ -150,8 +150,8 @@ fn control_01_ship_map_skips_an_empty_key_and_selects_the_null_object() {
         InitializationLookup {
             database: "CShipSizeDatabase".into(),
             directory: Some("common/ship_sizes".into()),
-            input: 0x600,
-            output: 0x120,
+            key_offset: 0x600,
+            item_offset: 0x120,
             lookup: Lookup {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::Equal),
@@ -169,8 +169,8 @@ fn control_02_district_scan_selects_the_first_equal_item() {
         InitializationLookup {
             database: "CDistrictTypeDatabase".into(),
             directory: Some("common/districts".into()),
-            input: 0xa8,
-            output: 0xd0,
+            key_offset: 0xa8,
+            item_offset: 0xd0,
             lookup: Lookup {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),
@@ -190,7 +190,7 @@ fn control_03_planet_getter_is_an_equal_hash_search_with_a_null_substitute() {
 
     assert_eq!(lookup.database, "CPlanetClassDatabase");
     assert_eq!(lookup.directory, None, "ownership is a separate join");
-    assert_eq!((lookup.input, lookup.output), (0x238, 0x260));
+    assert_eq!((lookup.key_offset, lookup.item_offset), (0x238, 0x260));
     assert_eq!(
         lookup.lookup,
         Lookup {
@@ -422,7 +422,7 @@ fn control_17_coherent_changed_slots_stay_a_lookup_at_the_new_offsets() {
         DISTRICT,
     ));
 
-    assert_eq!((lookup.input, lookup.output), (0x1a8, 0x1d0));
+    assert_eq!((lookup.key_offset, lookup.item_offset), (0x1a8, 0x1d0));
     assert_eq!(lookup.lookup, found(district_baseline()).lookup);
 }
 

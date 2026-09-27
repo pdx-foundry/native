@@ -33,9 +33,9 @@ pub struct InitializationLookup {
     /// The database's content directory, when the directory join names one.
     pub directory: Option<String>,
     /// Owner offset of the key string.
-    pub input: i64,
+    pub key_offset: i64,
     /// Owner offset where the selected item or the null object is stored.
-    pub output: i64,
+    pub item_offset: i64,
     /// The lookup semantics that the shapes establish.
     pub lookup: Lookup,
 }
@@ -66,8 +66,8 @@ pub fn databases(lines: &[Line]) -> BTreeSet<&str> {
 /// A shape's lookup before the directory join.
 struct Found {
     database: String,
-    input: i64,
-    output: i64,
+    key_offset: i64,
+    item_offset: i64,
     key_match: Option<KeyMatch>,
     empty_key_looked_up: bool,
 }
@@ -92,8 +92,8 @@ impl Method<'_> {
             Ok(found) => Initialization::Lookup(InitializationLookup {
                 directory: self.directory(&found.database),
                 database: found.database,
-                input: found.input,
-                output: found.output,
+                key_offset: found.key_offset,
+                item_offset: found.item_offset,
                 lookup: Lookup {
                     stage: Stage::OwnerInitialization,
                     key_match: found.key_match,
@@ -141,8 +141,8 @@ impl Method<'_> {
 
         Ok(Found {
             database,
-            input,
-            output: offset(bindings, "output").ok_or_else(layout)?,
+            key_offset: input,
+            item_offset: offset(bindings, "output").ok_or_else(layout)?,
             key_match: self.map_find(bindings),
             empty_key_looked_up,
         })
@@ -166,8 +166,8 @@ impl Method<'_> {
 
         Ok(Found {
             database: database.to_owned(),
-            input: offset(bindings, "input").ok_or_else(layout)?,
-            output: offset(bindings, "output").ok_or_else(layout)?,
+            key_offset: offset(bindings, "input").ok_or_else(layout)?,
+            item_offset: offset(bindings, "output").ok_or_else(layout)?,
             key_match,
             empty_key_looked_up: true,
         })
@@ -214,8 +214,8 @@ fn scan(bindings: &Bindings, empty_key_looked_up: bool) -> Result<Found, Unresol
 
     Ok(Found {
         database,
-        input,
-        output: offset(bindings, "output").ok_or_else(layout)?,
+        key_offset: input,
+        item_offset: offset(bindings, "output").ok_or_else(layout)?,
         key_match: Some(KeyMatch::FirstEqual),
         empty_key_looked_up,
     })

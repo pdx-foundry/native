@@ -865,23 +865,22 @@ fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
     let expected = expected::<BTreeMap<String, Value>>("references.json");
     for (subject, value) in &expected {
         let (owner, name) = subject.split_once('#').unwrap_or((subject, ""));
-        let (answer, fields) = match command(owner) {
+        let (text, gaps, fields) = match command(owner) {
             Some((kind, command)) => {
                 let answer = native.command_grammar(kind, command).unwrap();
                 let fields = match &answer.value.fixed_keys {
                     GrammarProperty::Partial(fields) => fields.clone(),
                     _ => Vec::new(),
                 };
-                (serde_json::to_value(&answer).unwrap(), fields)
+                (serde_json::to_string(&answer).unwrap(), answer.gaps, fields)
             }
             None => {
                 let answer = native.registry_fields(owner).unwrap();
-                (serde_json::to_value(&answer).unwrap(), answer.value)
+                let text = serde_json::to_string(&answer).unwrap();
+                (text, answer.gaps, answer.value)
             }
         };
-        let text = answer.to_string();
         assert!(!text.contains("Database"), "{owner} names a database class");
-        let gaps: Vec<pdx_native::Gap> = serde_json::from_value(answer["gaps"].clone()).unwrap();
 
         if name.is_empty() {
             let details: Vec<String> = serde_json::from_value(value.clone()).unwrap();

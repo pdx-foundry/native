@@ -379,15 +379,15 @@ mod tests {
         }
     }
 
-    /// An initialization lookup of the key string at `this+input`.
-    fn scan_at(input: i64) -> Initialization {
+    /// An initialization lookup of the key string at `this+key_offset`.
+    fn scan_at(key_offset: i64) -> Initialization {
         use crate::engine::analysis::references::{KeyMatch, Lookup, Stage};
 
         Initialization::Lookup(InitializationLookup {
             database: "CDistrictTypeDatabase".into(),
             directory: Some("common/districts".into()),
-            input,
-            output: input + 0x28,
+            key_offset,
+            item_offset: key_offset + 0x28,
             lookup: Lookup {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),

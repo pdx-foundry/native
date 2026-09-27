@@ -164,7 +164,7 @@ pub(super) fn stores_initialization_key(
 ) -> bool {
     field.readers.iter().any(|join| {
         readers::classify(std::slice::from_ref(join)).kind == ReaderKind::String
-            && readers::destination(join) == Some(initialization.input)
+            && readers::destination(join) == Some(initialization.key_offset)
     })
 }
 
