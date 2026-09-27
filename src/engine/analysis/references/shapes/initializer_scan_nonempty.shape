@@ -1,0 +1,85 @@
+# {Owner}::PostInit() that returns at once for an empty key string (this+{input}, length
+# this+{input_length}, flag byte this+{input_flag}), and otherwise scans {database} as
+# initializer_scan.shape does, storing the first equal item or the typed null object {null} at
+# this+{output}.
+stp xr0,xr1,[sp,#-0x50]!
+stp xr2,xr3,[sp,#0x10]
+stp xr4,xr5,[sp,#0x20]
+stp xr6,xr7,[sp,#0x30]
+stp x29,x30,[sp,#0x40]
+add x29,sp,#0x40
+mov xr7,x0
+ldrsb wr8,[x0,#{input_flag}]
+and xr5,xr8,#0xff
+tbnz wr8,#0x1f,@+9
+mov xr8,xr5
+cbnz xr5,@+9
+ldp x29,x30,[sp,#0x40]
+ldp xr6,xr7,[sp,#0x30]
+ldp xr4,xr5,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x50
+ret
+ldr xr8,[xr7,#{input_length}]
+cbz xr8,@-7
+adrp xr8,PAGE
+ldr xr8,[xr8,G] = {database}
+ldr xr8,[xr8]
+ldr wr4,[xr8,#0x54]
+cmp wr4,#0x1
+b.lt @+46
+mov xr3,#0x0
+add xr2,xr7,#{input}
+sxtb wr9,wr5
+ldr xr1,[xr8,#0x48]
+ldr xr8,[xr7,#{input_length}]
+cmp wr9,#0x0
+csel xr6,xr8,xr5,lt
+b @+4
+add xr3,xr3,#0x1
+cmp xr3,xr4
+b.eq @+35
+ldr xr0,[xr1,xr3,lsl#3]
+ldrb wr9,[xr0,#{flag}]
+sxtb wr8,wr9
+ldr xr10,[xr0,#{length}]
+cmp wr8,#0x0
+csel xr8,xr10,xr9,lt
+cmp xr8,xr6
+b.ne @-10
+add xr8,xr0,#{key}
+sxtb wr10,wr9
+sxtb wr11,wr5
+ldr xr12,[xr8]
+cmp wr10,#0x0
+csel x0,xr12,xr8,lt
+ldr xr10,[xr2]
+cmp wr11,#0x0
+csel x1,xr10,xr2,lt
+tbnz wr9,#7,@+12
+cbz xr6,@+19
+sub xr9,xr9,#0x1
+ldrb wr10,[xr8],#0x1
+ldrb wr11,[x1],#0x1
+cmp wr10,wr11
+ccmp xr9,#0x0,#0x4,eq
+sub xr9,xr9,#0x1
+b.ne @-5
+cmp wr10,wr11
+b.ne @-30
+b @+9
+cbz xr6,@+8
+mov x2,xr6
+bl CALL = _memcmp
+cbnz w0,@-35
+b @+4
+adrp xr8,PAGE
+ldr xr8,[xr8,G] = {null}
+ldr xr0,[xr8]
+str xr0,[xr7,#{output}]
+ldp x29,x30,[sp,#0x40]
+ldp xr6,xr7,[sp,#0x30]
+ldp xr4,xr5,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x50
+ret

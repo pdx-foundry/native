@@ -1,0 +1,24 @@
+# {Owner}::PostInit() that searches the map of {database} (+0x58) with {find} for the key string at
+# this+{input}, including an empty one. A sentinel iterator (state byte 0xff) selects the typed null
+# object {null}; the item or the null object is stored at this+{output}.
+stp xr0,xr1,[sp,#-0x20]!
+stp x29,x30,[sp,#0x10]
+add x29,sp,#0x10
+mov xr1,x0
+adrp xr2,PAGE
+ldr xr2,[xr2,G] = {database}
+ldr xr2,[xr2]
+add x1,x0,#{input}
+add x0,xr2,#0x58
+bl CALL = {find}
+ldrb wr2,[x0,#0x4]
+add xr3,x0,#0x30
+adrp xr4,PAGE
+ldr xr4,[xr4,G] = {null}
+cmp wr2,#0xff
+csel xr2,xr4,xr3,eq
+ldr xr2,[xr2]
+str xr2,[xr1,#{output}]
+ldp x29,x30,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x20
+ret

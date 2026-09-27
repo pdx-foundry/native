@@ -118,7 +118,49 @@ fn reader_census(native: &Native) -> Result<Value, Box<dyn std::error::Error>> {
         "readers": facts.readers.len(),
         "by_form_and_status": counts,
         "unresolved": unresolved,
+        "initializers": initializer_census(&facts),
     }))
+}
+
+/// Every owner initializer in the executable, by what the method established about its lookup.
+/// Complete: a qualified shape, a content directory and a key match. Failed: the initializer
+/// searches a database, but no qualified shape established the lookup.
+fn initializer_census(facts: &reference_readers::ReferenceFacts) -> Value {
+    use reference_readers::Initialization;
+
+    let mut no_lookup = 0;
+    let mut complete = Vec::new();
+    let mut partial: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut failed: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (name, initialization) in &facts.initializers {
+        match initialization {
+            Initialization::NoLookup => no_lookup += 1,
+            Initialization::Lookup(found) => match (&found.directory, found.lookup.key_match) {
+                (Some(_), Some(_)) => complete.push(name.as_str()),
+                (None, _) => partial
+                    .entry("no-content-directory")
+                    .or_default()
+                    .push(name),
+                (Some(_), None) => partial
+                    .entry("search-not-qualified")
+                    .or_default()
+                    .push(name),
+            },
+            Initialization::Unresolved(stop) => failed.entry(stop.reason).or_default().push(name),
+        }
+    }
+    let count = |groups: &BTreeMap<&str, Vec<&str>>| groups.values().map(Vec::len).sum::<usize>();
+
+    json!({
+        "initializers": facts.initializers.len(),
+        "without_lookup": no_lookup,
+        "complete": complete.len(),
+        "partial": count(&partial),
+        "failed": count(&failed),
+        "complete_initializers": complete,
+        "partial_shapes": partial,
+        "failure_shapes": failed,
+    })
 }
 
 /// The report state gathered from each registry's query, in registry order.

@@ -12,7 +12,7 @@ const GETTER: &str = "CShipDatabase::GetShip(CString const&) const";
 /// Code and names built from shape text: each placeholder is replaced by a test value, scratch
 /// registers `xrN` become `x(8+N)`, and every named address gets its own location.
 #[derive(Default)]
-struct Image {
+pub(super) struct Image {
     functions: BTreeMap<String, Vec<Instruction>>,
     names: BTreeMap<u64, String>,
     next_function: u64,
@@ -30,7 +30,7 @@ impl Image {
     }
 
     /// Add the function `name`, built from `shape` with `values` substituted for placeholders.
-    fn add(&mut self, name: &str, shape: &str, values: &[(&str, &str)]) -> &mut Self {
+    pub(super) fn add(&mut self, name: &str, shape: &str, values: &[(&str, &str)]) -> &mut Self {
         let mut text = shape.to_owned();
         for (key, value) in values {
             text = text.replace(&format!("{{{key}}}"), value);
@@ -93,9 +93,14 @@ impl Image {
         }
     }
 
-    fn input(&self, readers: &[&str], directories: &[(&str, Directory)]) -> ReferenceInput {
+    pub(super) fn input(
+        &self,
+        readers: &[&str],
+        directories: &[(&str, Directory)],
+    ) -> ReferenceInput {
         ReferenceInput {
             readers: readers.iter().map(|reader| (*reader).to_owned()).collect(),
+            initializers: BTreeSet::new(),
             functions: self.functions.clone(),
             names: self.names.clone(),
             directories: directories
@@ -131,8 +136,15 @@ fn concrete_registers(operands: &str) -> String {
     result
 }
 
-fn shape(name: &str) -> &'static str {
+pub(super) fn shape(name: &str) -> &'static str {
     match name {
+        "initializer_scan" => include_str!("shapes/initializer_scan.shape"),
+        "initializer_scan_nonempty" => include_str!("shapes/initializer_scan_nonempty.shape"),
+        "initializer_map" => include_str!("shapes/initializer_map.shape"),
+        "initializer_map_nonempty" => include_str!("shapes/initializer_map_nonempty.shape"),
+        "initializer_getter" => include_str!("shapes/initializer_getter.shape"),
+        "null_getter" => include_str!("shapes/null_getter.shape"),
+        "hash_find" => include_str!("shapes/hash_find.shape"),
         "deferred" => include_str!("shapes/deferred.shape"),
         "immediate_scan" => include_str!("shapes/immediate_scan.shape"),
         "immediate_map" => include_str!("shapes/immediate_map.shape"),

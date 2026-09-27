@@ -80,10 +80,12 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     trigger_parser: ParserSlots {
         read: 0x30,
         member: 0x38,
+        initializer: 0x70,
     },
     effect_parser: ParserSlots {
         read: 0x10,
         member: 0x18,
+        initializer: 0x90,
     },
     persistent: PersistentRecipe {
         read_slot: 0x20,

@@ -4,7 +4,9 @@ use crate::engine::analysis::fields::{
     Value,
 };
 use crate::engine::analysis::readers;
-use crate::engine::analysis::references::{self, ReaderLookup, ReferenceFacts};
+use crate::engine::analysis::references::{
+    self, Lookup, ReferenceFacts, initialization::InitializationLookup,
+};
 use crate::{
     EmptyKey, Field, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
     FieldReadOutcome, FieldReference, FieldShape, KeyMatch, LookupStage, MissingResult, Reader,
@@ -124,16 +126,56 @@ pub(super) fn field(
     normalized
 }
 /// Normalize command children from their dispatch ledger, without registry storage or uses.
+/// `initialization` is the receiver's initialization lookup, which joins the child keys that
+/// store its key string.
 pub(super) fn grammar_fields(
     fields: &[RootField],
     paths: &[TokenPath],
     references: &ReferenceFacts,
+    initialization: Option<&InitializationLookup>,
 ) -> Vec<Field> {
     let persistent = BTreeMap::new();
     fields
         .iter()
-        .map(|field| ordinary_field(field, fields, paths, &persistent, references))
+        .map(|field| {
+            let mut normalized = ordinary_field(field, fields, paths, &persistent, references);
+            if let Some(initialization) =
+                initialization.filter(|lookup| stores_initialization_key(field, lookup))
+            {
+                normalized.reference = with_lookup(
+                    std::mem::take(&mut normalized.reference),
+                    reference_lookup(
+                        FieldCondition::Always,
+                        initialization.directory.clone(),
+                        Some(&initialization.lookup),
+                    ),
+                );
+            }
+            normalized
+        })
         .collect()
+}
+
+/// Whether a read alternative of `field` stores a string at the owner offset whose text the
+/// initialization lookup reads.
+pub(super) fn stores_initialization_key(
+    field: &RootField,
+    initialization: &InitializationLookup,
+) -> bool {
+    field.readers.iter().any(|join| {
+        readers::classify(std::slice::from_ref(join)).kind == ReaderKind::String
+            && readers::destination(join) == Some(initialization.input)
+    })
+}
+
+fn with_lookup(reference: FieldReference, lookup: ReferenceLookup) -> FieldReference {
+    match reference {
+        FieldReference::Lookups(mut lookups) => {
+            lookups.push(lookup);
+            FieldReference::Lookups(lookups)
+        }
+        _ => FieldReference::Lookups(vec![lookup]),
+    }
 }
 
 fn ordinary_field(
@@ -157,9 +199,11 @@ fn ordinary_field(
                 return None;
             };
             references::reader(callee)?;
+            let fact = references.readers.get(callee);
             Some(reference_lookup(
                 condition(conditions, fields),
-                references.readers.get(callee),
+                fact.and_then(|fact| fact.directory.clone()),
+                fact.and_then(|fact| fact.lookup.as_ref().ok()),
             ))
         })
         .collect();
@@ -241,12 +285,16 @@ fn ordinary_field(
 
 /// The public lookup of one reference read. Each fact that the method did not establish stays
 /// unresolved; the field's gap names it.
-fn reference_lookup(condition: FieldCondition, fact: Option<&ReaderLookup>) -> ReferenceLookup {
-    let target = match fact.and_then(|fact| fact.directory.clone()) {
+fn reference_lookup(
+    condition: FieldCondition,
+    directory: Option<String>,
+    lookup: Option<&Lookup>,
+) -> ReferenceLookup {
+    let target = match directory {
         Some(name) => ReferenceTarget::Registry { name },
         None => ReferenceTarget::Unresolved,
     };
-    let Some(Ok(lookup)) = fact.map(|fact| &fact.lookup) else {
+    let Some(lookup) = lookup else {
         return ReferenceLookup {
             condition,
             target,
@@ -263,6 +311,7 @@ fn reference_lookup(condition: FieldCondition, fact: Option<&ReaderLookup>) -> R
         stage: match lookup.stage {
             references::Stage::WhileReading => LookupStage::WhileReading,
             references::Stage::Deferred => LookupStage::Deferred,
+            references::Stage::OwnerInitialization => LookupStage::OwnerInitialization,
         },
         key_match: match lookup.key_match {
             Some(references::KeyMatch::Equal) => KeyMatch::Equal,
@@ -297,7 +346,7 @@ pub(super) fn reference_gap(field: &RootField, references: &ReferenceFacts) -> O
             }
             Some(fact) => {
                 if fact.directory.is_none() {
-                    missing.insert("the searched database has no established content directory");
+                    missing.insert(NO_DIRECTORY);
                 }
                 match &fact.lookup {
                     Err(stop) if stop.reason == "reference-list-form" => {
@@ -309,13 +358,34 @@ pub(super) fn reference_gap(field: &RootField, references: &ReferenceFacts) -> O
                         missing.insert("no qualified lookup shape matched the reader");
                     }
                     Ok(lookup) if lookup.key_match.is_none() => {
-                        missing.insert("the map search that compares keys is not qualified");
+                        missing.insert(UNQUALIFIED_SEARCH);
                     }
                     Ok(_) => {}
                 }
             }
         }
     }
+
+    unestablished(missing)
+}
+
+/// Why a joined owner-initialization lookup is not fully established.
+pub(super) fn initialization_gap(initialization: &InitializationLookup) -> Option<String> {
+    let mut missing = std::collections::BTreeSet::new();
+    if initialization.directory.is_none() {
+        missing.insert(NO_DIRECTORY);
+    }
+    if initialization.lookup.key_match.is_none() {
+        missing.insert(UNQUALIFIED_SEARCH);
+    }
+
+    unestablished(missing)
+}
+
+const NO_DIRECTORY: &str = "the searched database has no established content directory";
+const UNQUALIFIED_SEARCH: &str = "the map search that compares keys is not qualified";
+
+fn unestablished(missing: std::collections::BTreeSet<&str>) -> Option<String> {
     if missing.is_empty() {
         return None;
     }
@@ -685,6 +755,7 @@ mod tests {
                     lookup("CArmyDatabase", "common/armies"),
                 ),
             ]),
+            initializers: BTreeMap::new(),
         };
         let fields = [flag, target];
         let field = ordinary_field(&fields[1], &fields, &paths, &BTreeMap::new(), &references);

@@ -1,0 +1,13 @@
+# Database getter that searches its hash table (this+{table}) with {find} and substitutes the typed
+# null object {null} for a null result.
+stp x29,x30,[sp,#-0x10]!
+mov x29,sp
+add x0,x0,#{table}
+bl CALL = {find}
+adrp xr0,PAGE
+ldr xr0,[xr0,G] = {null}
+ldr xr0,[xr0]
+cmp x0,#0x0
+csel x0,xr0,x0,eq
+ldp x29,x30,[sp],#0x10
+ret

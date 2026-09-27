@@ -8,11 +8,13 @@
 //! the scan or map search that those call. The content directory comes from the binding's
 //! directory join, never from the database's class name. A fact that no join establishes stays
 //! unresolved with its reason.
+pub mod initialization;
 pub mod shapes;
 
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::directories::Directory;
 use crate::engine::analysis::stop::Unresolved;
+use initialization::Initialization;
 use shapes::{Bindings, Line, Shape, canonical};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
@@ -124,6 +126,8 @@ pub enum Stage {
     WhileReading,
     /// When the deferred resolver runs the registered lookup.
     Deferred,
+    /// When the owner's initializer runs, after the owner is read.
+    OwnerInitialization,
 }
 
 /// Which item a key selects.
@@ -164,6 +168,8 @@ pub struct ReaderLookup {
 pub struct ReferenceFacts {
     /// Keyed by the reader's demangled callee.
     pub readers: BTreeMap<String, ReaderLookup>,
+    /// Keyed by the initializer's demangled name.
+    pub initializers: BTreeMap<String, Initialization>,
 }
 
 /// The executable code and joins that the reference method reads.
@@ -171,40 +177,47 @@ pub struct ReferenceFacts {
 pub struct ReferenceInput {
     /// Every reference reader callee to analyze.
     pub readers: BTreeSet<String>,
-    /// Complete decoded bodies by demangled name: the readers, their resolver lambdas, and the
-    /// functions that those call.
+    /// Every owner initializer (`{Owner}::PostInit()`) to analyze.
+    pub initializers: BTreeSet<String>,
+    /// Complete decoded bodies by demangled name: the readers, their resolver lambdas, the
+    /// initializers, and the functions that those call.
     pub functions: BTreeMap<String, Vec<Instruction>>,
     /// Demangled names at symbol addresses and pointer slots.
     pub names: BTreeMap<u64, String>,
-    /// Content directory join of each database that a reader names.
+    /// Content directory join of each database that a reader or an initializer names.
     pub directories: BTreeMap<String, Directory>,
 }
 
-/// Establish the facts of every reader in `input`.
+/// Establish the facts of every reader and initializer in `input`.
 pub fn analyze(input: &ReferenceInput) -> ReferenceFacts {
+    let method = Method { input };
     let readers = input
         .readers
         .iter()
         .filter_map(|callee| {
             let reference = reader(callee)?;
-            let directory = match input.directories.get(reference.database) {
-                Some(Directory::Named(name)) => Some(name.clone()),
-                _ => None,
-            };
-            let lookup = Method { input }.lookup(callee, reference);
+            let lookup = method.lookup(callee, reference);
 
             Some((
                 callee.clone(),
                 ReaderLookup {
                     database: reference.database.to_owned(),
-                    directory,
+                    directory: method.directory(reference.database),
                     lookup,
                 },
             ))
         })
         .collect();
+    let initializers = input
+        .initializers
+        .iter()
+        .map(|name| (name.clone(), method.initialization(name)))
+        .collect();
 
-    ReferenceFacts { readers }
+    ReferenceFacts {
+        readers,
+        initializers,
+    }
 }
 
 /// The lambda call operator of the resolver function that `vtable` names.
@@ -228,6 +241,13 @@ impl Method<'_> {
             ReaderForm::DeferredList | ReaderForm::ImmediateList | ReaderForm::DeferredIndex => {
                 Err(Unresolved::new("reference-list-form"))
             }
+        }
+    }
+
+    fn directory(&self, database: &str) -> Option<String> {
+        match self.input.directories.get(database) {
+            Some(Directory::Named(name)) => Some(name.clone()),
+            _ => None,
         }
     }
 
@@ -342,24 +362,32 @@ fn null_object(bindings: &Bindings) -> bool {
 }
 
 /// Whether a scan's offsets agree with the engine's array and string layouts: the count follows
-/// the item pointer by `0xc`, and a key string's length and flag byte follow it by `0x8` and
-/// `0x17`. A scan that reads mismatched offsets is not comparing one key.
+/// the item pointer by `0xc`. A scan that reads mismatched offsets is not comparing one key.
 fn string_array_layout(bindings: &Bindings) -> bool {
-    let offset = |name: &str| {
-        let text = bindings[name].strip_prefix("0x")?;
-        i64::from_str_radix(text, 16).ok()
-    };
     let (Some(items), Some(count), Some(key), Some(length), Some(flag)) = (
-        offset("items"),
-        offset("count"),
-        offset("key"),
-        offset("length"),
-        offset("flag"),
+        offset(bindings, "items"),
+        offset(bindings, "count"),
+        offset(bindings, "key"),
+        offset(bindings, "length"),
+        offset(bindings, "flag"),
     ) else {
         return false;
     };
 
-    count == items + 0xc && length == key + 0x8 && flag == key + 0x17
+    count == items + 0xc && string_layout(key, length, flag)
+}
+
+/// Whether a string's length and flag byte follow the string at `0x8` and `0x17`, the engine's
+/// string layout.
+fn string_layout(string: i64, length: i64, flag: i64) -> bool {
+    length == string + 0x8 && flag == string + 0x17
+}
+
+/// The hexadecimal offset that the placeholder `name` captured.
+fn offset(bindings: &Bindings, name: &str) -> Option<i64> {
+    let text = bindings.get(name)?.strip_prefix("0x")?;
+
+    i64::from_str_radix(text, 16).ok()
 }
 
 static DEFERRED: LazyLock<Shape> =
