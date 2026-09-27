@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let mut output = match args.as_slice() {
+    let output = match args.as_slice() {
         [flag, before, after] if flag == "--diff" => {
             let before = serde_json::from_slice(&std::fs::read(before)?)?;
             let after = serde_json::from_slice(&std::fs::read(after)?)?;
@@ -31,7 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     if args.first().is_some_and(|flag| flag == "--baseline") {
-        population::remove_timings(&mut output);
+        println!(
+            "{}",
+            population::format_baseline(&output["build"], &normalized(&output))?
+        );
+        return Ok(());
     }
     if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
         && !members.is_empty()
@@ -287,6 +291,9 @@ fn stop_case(image: &Image, stage: &str, reason: &str, stop: Option<Stop>) -> Va
 
 /// Ignore timing and addresses. Include inventory uncertainty as well as answer and status changes.
 fn normalized(report: &Value) -> BTreeMap<String, Value> {
+    if let Some(answers) = population::baseline_answers(report) {
+        return answers;
+    }
     let mut result = BTreeMap::new();
     for inventory in report["inventories"].as_array().into_iter().flatten() {
         let kind = inventory["kind"].as_str().unwrap_or_default();
@@ -372,6 +379,21 @@ mod tests {
             member: Some(3),
             ..Chain::default()
         }
+    }
+
+    #[test]
+    fn compact_baseline_and_full_report_have_the_same_comparison_inputs() {
+        let full = report(vec![
+            json!({"name": "sample", "status": "partial", "answer": answer(Completeness::Partial, false)}),
+        ]);
+        let text = population::format_baseline(&json!("build"), &normalized(&full)).unwrap();
+        let baseline: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(normalized(&full), normalized(&baseline));
+        assert_eq!(diff(&baseline, &full)["changed"], 0);
+        let mut changed = baseline.clone();
+        let answers = changed["answers"].as_object_mut().unwrap();
+        answers.values_mut().next().unwrap()["status"] = json!("changed");
+        assert_eq!(diff(&baseline, &changed)["changed"], 1);
     }
 
     #[test]

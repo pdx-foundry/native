@@ -43,7 +43,7 @@ struct StopCase {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    let mut output = match arguments.as_slice() {
+    let output = match arguments.as_slice() {
         [flag, before, after] if flag == "--diff" => {
             diff(&read_report(before)?, &read_report(after)?)
         }
@@ -52,7 +52,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err(USAGE.into()),
     };
     if arguments.first().is_some_and(|flag| flag == "--baseline") {
-        population::remove_timings(&mut output);
+        println!(
+            "{}",
+            population::format_baseline(&output["build"], &normalized_cases(&output))?
+        );
+        return Ok(());
     }
     if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
         && !members.is_empty()
@@ -599,6 +603,9 @@ fn diff(before: &Value, after: &Value) -> Value {
 
 /// Each registry's status with its normalized answer or error.
 fn normalized_cases(report: &Value) -> BTreeMap<String, Value> {
+    if let Some(answers) = population::baseline_answers(report) {
+        return answers;
+    }
     report["cases"]
         .as_array()
         .into_iter()
@@ -665,6 +672,19 @@ mod tests {
             },
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn compact_baseline_and_full_report_have_the_same_comparison_inputs() {
+        let full = report(json!([case("common/a", &["x"], "r1", "complete")]));
+        let text = population::format_baseline(&json!("build"), &normalized_cases(&full)).unwrap();
+        let baseline: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(normalized_cases(&full), normalized_cases(&baseline));
+        assert_eq!(diff(&baseline, &full)["changed_registries"], 0);
+        let mut changed = baseline.clone();
+        let answers = changed["answers"].as_object_mut().unwrap();
+        answers.values_mut().next().unwrap()["status"] = json!("changed");
+        assert_eq!(diff(&baseline, &changed)["changed_registries"], 1);
     }
 
     #[test]

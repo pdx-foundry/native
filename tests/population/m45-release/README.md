@@ -1,11 +1,13 @@
 # M45-release population baselines
 
-These full static reports cover executable SHA-256
+These compact answer baselines cover executable SHA-256
 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`.
 Generate and review updates with the commands in
 [method authoring](../../../docs/native/method-authoring.md#run-over-the-whole-population).
-Update the affected report in the same PR that changes method answers. Baseline mode omits
-elapsed times; two runs of each report produced identical bytes and zero changed answers.
+Update the affected baseline in the same PR that changes method answers. Each subject occupies
+one JSON line. Only comparison inputs are tracked: answers, errors, status and command inventory
+uncertainty. Generate full diagnostic reports under the ignored `.local/population/` directory.
+Two runs of each baseline produced identical bytes and zero changed answers.
 
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
@@ -25,4 +27,4 @@ but incorrectly hides those established lookups. The comparison preserves them.
 The default summary names `value[].reference` and `value[].members.Fields[].reference` once each.
 The historical method stamp also changes from `registry-fields/v6` to `registry-fields/v7` for
 all 164 answers. Comparisons ignore method and Native version stamps, but retain build identity,
-basis, values, completeness, gaps and errors. The stored reports keep the full source stamps.
+basis, values, completeness, gaps and errors. The stored baselines keep the full source stamps.

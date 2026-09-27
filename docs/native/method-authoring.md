@@ -17,7 +17,8 @@ cargo run --release --example inspect -- --lookup-census 'NParserUtil::ReadKeyRe
 ```
 
 The census reads every matching text body in one process, excludes outlined cold clones, and
-prints counts, an example and every member of each group. It uses the reference matcher's canonical
+prints counts, an example and every member of each group. Symbol aliases at the same address
+count once, using the first matching name. It uses the reference matcher's canonical
 lines, normalizing template arguments and their occurrences in instantiated return/parameter types.
 `--normalize-field-offsets` additionally ignores immediate displacements inside memory operands
 based on object registers; stack/frame offsets, constants and branches remain exact. This is a
@@ -203,8 +204,9 @@ method over every discovered registry, or the whole command or other inventory i
 For fields, use [`registry-field-sweep.rs`](../../examples/registry-field-sweep.rs):
 
 ```sh
-cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > after.json
-cargo run --release --example registry-field-sweep -- --diff tests/population/m45-release/registry-field-sweep.json after.json
+mkdir -p .local/population
+cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > .local/population/fields.json
+cargo run --release --example registry-field-sweep -- --diff tests/population/m45-release/registry-field-sweep.json .local/population/fields.json
 ```
 
 The tracked [M45-release population reports](../../tests/population/m45-release/) are the baseline;
@@ -217,8 +219,8 @@ remain compared. The report also groups stops by instruction kind, obstacle and 
 For command grammars, run and compare the whole population:
 
 ```sh
-cargo run --release --example command-population -- "$STELLARIS_PATH" > commands-after.json
-cargo run --release --example command-population -- --diff tests/population/m45-release/command-population.json commands-after.json
+cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
+cargo run --release --example command-population -- --diff tests/population/m45-release/command-population.json .local/population/commands.json
 ```
 
 Review changed answers, then update the affected baseline in the same PR as the method change:
@@ -228,7 +230,9 @@ cargo run --release --example registry-field-sweep -- --baseline "$STELLARIS_PAT
 cargo run --release --example command-population -- --baseline "$STELLARIS_PATH" > tests/population/m45-release/command-population.json
 ```
 
-`--baseline` keeps the full report but omits elapsed times. The report includes the exact build;
+`--baseline` stores only comparison inputs, with one subject per line: answers, errors and status,
+plus command inventory uncertainty. It omits diagnostic groups, counters and timings. Full reports
+are generated into the ignored `.local/population/` directory. The baseline includes the exact build;
 use a separate directory for each supported build. An unchanged method gives zero changed answers,
 and repeated baseline generation is byte-identical.
 

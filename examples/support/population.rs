@@ -93,18 +93,38 @@ fn prune_defaults(
     }
 }
 
-/// Baselines keep the full report except wall-clock measurements.
-pub fn remove_timings(report: &mut Value) {
-    match report {
-        Value::Object(object) => {
-            object.remove("elapsed_ms");
-            for value in object.values_mut() {
-                remove_timings(value);
-            }
-        }
-        Value::Array(array) => array.iter_mut().for_each(remove_timings),
-        _ => {}
-    }
+/// Format only comparison inputs, with one subject per line so changes stay local in Git.
+pub fn format_baseline(
+    build: &Value,
+    answers: &BTreeMap<String, Value>,
+) -> serde_json::Result<String> {
+    let rows: Result<Vec<_>, _> = answers
+        .iter()
+        .map(|(subject, answer)| {
+            Ok(format!(
+                "    {}: {}",
+                serde_json::to_string(subject)?,
+                serde_json::to_string(answer)?
+            ))
+        })
+        .collect::<serde_json::Result<_>>();
+    Ok(format!(
+        "{{\n  \"build\": {},\n  \"answers\": {{\n{}\n  }}\n}}",
+        serde_json::to_string(build)?,
+        rows?.join(",\n")
+    ))
+}
+
+/// Read comparison inputs from a compact baseline; full reports have their own projection.
+pub fn baseline_answers(report: &Value) -> Option<BTreeMap<String, Value>> {
+    Some(
+        report
+            .get("answers")?
+            .as_object()?
+            .iter()
+            .map(|(subject, answer)| (subject.clone(), answer.clone()))
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -216,12 +236,26 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_members_are_not_reported_and_nested_timings_are_removed() {
+    fn unchanged_members_are_not_reported() {
         let mut before = report(json!({"required": "same", "reference": "NotEstablished"}));
         let mut after = before.clone();
         assert!(normalize_answers::<Answer>(&mut before, &mut after).is_empty());
-        let mut timed = json!({"elapsed_ms": 99, "cases": [{"elapsed_ms": 20, "answer": "kept"}]});
-        remove_timings(&mut timed);
-        assert_eq!(timed, json!({"cases": [{"answer": "kept"}]}));
+    }
+
+    #[test]
+    fn baseline_round_trip_keeps_each_subject_on_one_line() {
+        let answers = BTreeMap::from([
+            (
+                "a\"quoted".into(),
+                json!({"answer": {"value": [1, 2], "gaps": []}}),
+            ),
+            ("z".into(), json!({"error": "failed\nwith detail"})),
+        ]);
+        let text = format_baseline(&json!("build"), &answers).unwrap();
+        assert_eq!(text.lines().count(), answers.len() + 5);
+        let parsed: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["build"], "build");
+        assert_eq!(baseline_answers(&parsed).unwrap(), answers);
+        assert!(baseline_answers(&json!({"cases": []})).is_none());
     }
 }
