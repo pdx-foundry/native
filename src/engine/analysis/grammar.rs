@@ -260,7 +260,11 @@ fn analyze_reader_with_state(
             Ok(Some(_)) => {
                 nodes[node].ledger.push(LedgerEntry {
                     domain: path.domain,
-                    disposition: Disposition::Gap(None),
+                    disposition: ReaderNode::gap(
+                        path.domain,
+                        &input.tokens,
+                        Unresolved::new("ambiguous-numeric-reader"),
+                    ),
                 });
                 numeric_failed = true;
                 stops.push(Unresolved::new("ambiguous-numeric-reader"));
@@ -269,7 +273,7 @@ fn analyze_reader_with_state(
             Err(stop) => {
                 nodes[node].ledger.push(LedgerEntry {
                     domain: path.domain,
-                    disposition: Disposition::Gap(None),
+                    disposition: ReaderNode::gap(path.domain, &input.tokens, stop.clone()),
                 });
                 numeric_failed = true;
                 stops.push(stop);
@@ -295,8 +299,6 @@ fn analyze_reader_with_state(
                         domain: path.domain,
                         disposition: Disposition::Field {
                             name: token.name.clone(),
-                            kind: grammar.reader_kind,
-                            family: BlockFamily::Unknown,
                         },
                     });
                     constructed.insert(token.name.clone(), Box::new(grammar));
@@ -323,7 +325,11 @@ fn analyze_reader_with_state(
                 disposition: if path.conditions.is_empty() {
                     Disposition::Family
                 } else {
-                    Disposition::Gap(None)
+                    ReaderNode::gap(
+                        path.domain,
+                        &input.tokens,
+                        Unresolved::new("conditional-child-family"),
+                    )
                 },
             });
             if path.conditions.is_empty() && !families.contains(&family) {
@@ -347,19 +353,24 @@ fn analyze_reader_with_state(
         let Some(Value::Owner(offset)) = arguments.get("x0") else {
             nodes[node].ledger.push(LedgerEntry {
                 domain: path.domain,
-                disposition: Disposition::Gap(None),
+                disposition: ReaderNode::gap(
+                    path.domain,
+                    &input.tokens,
+                    Unresolved::new("delegate-receiver"),
+                ),
             });
             stops.push(Unresolved::new("delegate-receiver"));
             leaves.push(path);
             continue;
         };
         if chain.len() >= DELEGATION_LIMIT || chain.contains(callee) {
-            nodes[node]
-                .stops
-                .push(Unresolved::new("grammar-delegation-limit"));
             nodes[node].ledger.push(LedgerEntry {
                 domain: path.domain,
-                disposition: Disposition::Gap(None),
+                disposition: ReaderNode::gap(
+                    path.domain,
+                    &input.tokens,
+                    Unresolved::new("grammar-delegation-limit"),
+                ),
             });
             stops.push(Unresolved::new("grammar-delegation-limit"));
             leaves.push(path);
@@ -1075,6 +1086,126 @@ mod tests {
             },
         );
         input
+    }
+
+    fn normalize_block(mut result: GrammarResult) -> crate::Answer<crate::CommandGrammar> {
+        let forms = std::sync::Arc::make_mut(result.forms.as_mut().unwrap());
+        forms.complete = true;
+        forms.block = true;
+        forms.stops.clear();
+        let mut references = crate::engine::analysis::references::ReferenceFacts::default();
+        result.initializer = Ok("initializer".into());
+        references.initializers.insert(
+            "initializer".into(),
+            crate::engine::analysis::references::initialization::Initialization::NoLookup,
+        );
+        crate::session::grammar::normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &references,
+        )
+    }
+
+    #[test]
+    fn coverage_checks_the_grouped_key_reader() {
+        for mixed in [false, true] {
+            let mut input = nested_input();
+            input.symbols.push(Symbol {
+                address: 0xd000,
+                name: "CReader::Read(bool&)".into(),
+            });
+            let other = if mixed { 0xd000 } else { 0xb000 };
+            input.declarations.functions.get_mut(&ROOT).unwrap().code = arm64!(at ROOT;
+                cmp w2, #7; b.ne extern (ROOT + 48) as usize;
+                ldr w8, [x0, #8]; cbz w8, extern (ROOT + 32) as usize;
+                add x2, x0, #16; mov x0, x1; mov x1, x2; b extern 0xb000;
+                add x2, x0, #16; mov x0, x1; mov x1, x2; b extern other;
+                mov x0, x1; b extern 0xa000);
+            let result = analyze(&input, FACTORY).unwrap();
+            assert_eq!(
+                result.coverage().covered(),
+                !mixed,
+                "{:?}",
+                result.coverage()
+            );
+            let answer = normalize_block(result);
+            let keys = match &answer.value.fixed_keys {
+                crate::GrammarProperty::Known(keys) if !mixed => keys,
+                crate::GrammarProperty::Partial(keys) if mixed => keys,
+                other => panic!("unexpected keys: {other:?}"),
+            };
+            assert_eq!(
+                keys[0].reader.kind,
+                if mixed {
+                    crate::ReaderKind::Unknown
+                } else {
+                    crate::ReaderKind::String
+                }
+            );
+            assert_eq!(answer.completeness == crate::Completeness::Complete, !mixed);
+            if mixed {
+                assert!(
+                    answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.detail == "unknown-key-reader"
+                            && gap.subject == Some(crate::GapSubject::field("parent")))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn named_family_and_cycle_stops_keep_the_full_key_path() {
+        for nested in [false, true] {
+            for cycle in [false, true] {
+                let mut input = nested_input();
+                let (entry, token) = if nested { (DELEGATE, 8) } else { (ROOT, 7) };
+                let target = if cycle { 0xe000 } else { FAMILY };
+                if cycle {
+                    input.symbols.push(Symbol {
+                        address: 0xe000,
+                        name: "CCycle::ReadMember(CReader&, int)".into(),
+                    });
+                    input.declarations.functions.insert(
+                        0xe000,
+                        Body {
+                            address: 0xe000,
+                            code: arm64!(at 0xe000; b extern entry as usize),
+                        },
+                    );
+                }
+                input.families.insert(
+                    "CChildren::ReadMember(CReader&, int)".into(),
+                    BlockFamily::Effect,
+                );
+                input.declarations.functions.get_mut(&entry).unwrap().code = arm64!(at entry;
+                    cmp w2, #token; b.ne extern (entry + 20) as usize;
+                    ldr w8, [x0, #8]; cbz w8, extern (entry + 20) as usize;
+                    b extern target as usize;
+                    mov x0, x1; b extern 0xa000);
+                let answer = normalize_block(analyze(&input, FACTORY).unwrap());
+                let subject = if nested {
+                    crate::GapSubject::key_path(vec!["parent".into(), "child".into()])
+                } else {
+                    crate::GapSubject::field("parent")
+                };
+                let reason = if cycle {
+                    "grammar-delegation-limit"
+                } else {
+                    "conditional-child-family"
+                };
+                assert!(
+                    answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.detail == reason && gap.subject.as_ref() == Some(&subject)),
+                    "{:?}",
+                    answer.gaps
+                );
+            }
+        }
     }
 
     #[test]

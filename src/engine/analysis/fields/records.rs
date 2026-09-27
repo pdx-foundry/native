@@ -312,6 +312,9 @@ pub struct PersistentInput {
 /// Signature addresses for shared compound key-reader idioms.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct KeyReaders {
+    /// Destination sizes for target, optional string, and string array.
+    #[serde(default)]
+    pub compound_sizes: [i64; 3],
     pub array_data: i64,
     pub array_count: i64,
     pub string_stride: i64,

@@ -10,14 +10,15 @@ pub enum Disposition {
     Rejected,
     Field {
         name: String,
-        kind: ReaderKind,
-        family: BlockFamily,
     },
     Family,
     Numeric,
     Delegated(usize),
     Dynamic,
-    Gap(Option<(String, Unresolved)>),
+    Gap {
+        name: Option<String>,
+        stop: Unresolved,
+    },
 }
 
 /// An inclusive interval and its disposition on this path.
@@ -46,6 +47,18 @@ impl ReaderNode {
         }
     }
 
+    pub(super) fn gap(
+        domain: [i64; 2],
+        tokens: &BTreeMap<i64, fields::Token>,
+        stop: Unresolved,
+    ) -> Disposition {
+        let name = tokens
+            .get(&domain[0])
+            .filter(|token| !token.ambiguous && domain[0] == domain[1])
+            .map(|token| token.name.clone());
+        Disposition::Gap { name, stop }
+    }
+
     pub(super) fn record(
         &mut self,
         path: &fields::TokenPath,
@@ -55,29 +68,16 @@ impl ReaderNode {
         let disposition = match &path.outcome {
             PathOutcome::Rejected => Disposition::Rejected,
             PathOutcome::Gap(stop) | PathOutcome::Reader(ReaderJoin::Missing(stop)) => {
-                let key = tokens
-                    .get(&path.domain[0])
-                    .filter(|token| !token.ambiguous && path.domain[0] == path.domain[1]);
-                if let Some(key) = key {
-                    Disposition::Gap(Some((key.name.clone(), stop.clone())))
-                } else {
-                    self.stops.push(stop.clone());
-                    Disposition::Gap(None)
-                }
+                Self::gap(path.domain, tokens, stop.clone())
             }
-            PathOutcome::Reader(join) => {
+            PathOutcome::Reader(_) => {
                 match tokens
                     .get(&path.domain[0])
                     .filter(|token| !token.ambiguous && path.domain[0] == path.domain[1])
                 {
-                    Some(token) => {
-                        let classification = readers::classify(std::slice::from_ref(join));
-                        Disposition::Field {
-                            name: token.name.clone(),
-                            kind: classification.kind,
-                            family: classification.family,
-                        }
-                    }
+                    Some(token) => Disposition::Field {
+                        name: token.name.clone(),
+                    },
                     None => Disposition::Dynamic,
                 }
             }
@@ -152,15 +152,16 @@ fn visit(
     coverage
         .gaps
         .extend(node.stops.iter().cloned().map(|stop| (path.to_vec(), stop)));
+    let mut classifications = BTreeMap::new();
     for entry in &node.ledger {
         match &entry.disposition {
             Disposition::Rejected | Disposition::Family => {}
-            Disposition::Gap(Some((name, stop))) => {
+            Disposition::Gap { name, stop } => {
                 let mut key = path.to_vec();
-                key.push(name.clone());
+                key.extend(name.iter().cloned());
                 coverage.gaps.push((key, stop.clone()));
             }
-            Disposition::Gap(None) | Disposition::Dynamic => coverage
+            Disposition::Dynamic => coverage
                 .gaps
                 .push((path.to_vec(), Unresolved::new("member-ledger-gap"))),
             Disposition::Delegated(child) => visit(grammar, *child, path, active, coverage),
@@ -176,14 +177,25 @@ fn visit(
                     .gaps
                     .push((path.to_vec(), Unresolved::new("numeric-child-missing"))),
             },
-            Disposition::Field { name, kind, family } => {
+            Disposition::Field { name } => {
+                let classification = classifications.entry(name).or_insert_with(|| {
+                    let joins = grammar
+                        .fields
+                        .fields
+                        .iter()
+                        .find(|field| field.name == *name)
+                        .map_or(&[][..], |field| field.readers.as_slice());
+                    readers::classify(joins)
+                });
+                let kind = classification.kind;
+                let family = classification.family;
                 let mut key = path.to_vec();
                 key.push(name.clone());
-                if *kind == ReaderKind::Unknown {
+                if kind == ReaderKind::Unknown {
                     coverage
                         .gaps
                         .push((key, Unresolved::new("unknown-key-reader")));
-                } else if *kind == ReaderKind::Block && *family == BlockFamily::Unknown {
+                } else if kind == ReaderKind::Block && family == BlockFamily::Unknown {
                     match grammar.nested.get(name) {
                         Some(child) => visit(child, 0, &key, &mut BTreeSet::new(), coverage),
                         None => coverage.gaps.push((

@@ -564,6 +564,7 @@ fn m45_command_grammar_foundations_resolve_and_reuse_inputs() {
             [keys.array_data, keys.array_count, keys.string_stride],
             [8, 0x14, 0x28]
         );
+        assert_eq!(keys.compound_sizes, [0x190, 0x30, 0x18]);
         assert_eq!(keys.value_token, 0x278);
         assert_eq!(keys.token_text, 0x10);
         assert_eq!(

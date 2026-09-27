@@ -420,14 +420,6 @@
         }
       },
       {
-        "detail": "member-ledger-gap",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "set_timed_country_flag"
-        }
-      },
-      {
         "detail": "reader-routing",
         "kind": "UnresolvedPath",
         "subject": {
@@ -608,14 +600,6 @@
       {
         "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
         "kind": "OutsideMethod",
-        "subject": {
-          "kind": "answer_item",
-          "name": "add_resource"
-        }
-      },
-      {
-        "detail": "member-ledger-gap",
-        "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
           "name": "add_resource"
@@ -878,11 +862,19 @@
         }
       },
       {
-        "detail": "member-ledger-gap",
+        "detail": "conditional-child-family",
         "kind": "UnresolvedPath",
         "subject": {
-          "kind": "answer_item",
-          "name": "if"
+          "kind": "field",
+          "name": "else"
+        }
+      },
+      {
+        "detail": "unknown-key-reader",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "else"
         }
       }
     ],
@@ -1269,7 +1261,49 @@
             "name": "owner",
             "read": [
               {
-                "condition": "Always",
+                "condition": {
+                  "All": [
+                    "Unresolved",
+                    "Unresolved"
+                  ]
+                },
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "1b6f3b12faaef087",
+                      "kind": "Target",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": {
+                  "All": [
+                    "Unresolved",
+                    "Unresolved"
+                  ]
+                },
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "1b6f3b12faaef087",
+                      "kind": "Target",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": "Unresolved",
                 "outcome": {
                   "Read": {
                     "reader": {

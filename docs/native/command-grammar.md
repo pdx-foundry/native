@@ -67,8 +67,9 @@ rejected, a field, a family dispatch, a numeric child, a delegate, a dynamic key
 Family and numeric paths remain in the ledger. Conditional paths can overlap; the union must
 tile the full token range, and every overlapping disposition must be established.
 
-A covered node has no gap, dynamic key, table gap or stop. Every field has a known reader
-kind. A block field has an established family or a covered member node. Delegated, constructed
+A covered node has no gap, dynamic key, table gap or stop. Every named key has a known reader
+kind after grouping all of its reader paths. Disagreeing reader identities or kinds give
+`unknown-key-reader`. A block field has an established family or a covered member node. Delegated, constructed
 and numeric children must also be covered. Missing member vtables, cycles, cut bodies and the
 eight-level nesting bound leave coverage unresolved. The factory contributes only allocation
 bytes that agree on every returning path; eight agreed bytes at a member destination supply
@@ -82,7 +83,8 @@ value-only forms exclude the unreachable inherited member tree from both normali
 audit; partial forms never exclude it.
 
 A gap below two or more named keys uses `GapSubject::KeyPath`, with the names in outer-to-inner
-order. Top-level keys keep `Field` subjects. Numeric-child gaps still propagate to the parent
+order. Top-level keys keep `Field` subjects. Named family and delegation stops retain their
+original reason and the final key name. Numeric-child gaps still propagate to the parent
 answer with its existing subject; no artificial numeric key name is introduced. On M45,
 `random_list` and `locked_random_list` retain unresolved `modifier` and
 `complex_trigger_modifier` keys in their numeric child, with gaps on the parent answer item.
@@ -90,6 +92,14 @@ answer with its existing subject; no artificial numeric key name is introduced. 
 The shared field walker recognizes a copied value token constructed into a temporary event
 target and moved into the owner, an emplaced CString array element read as a string, and an
 optional CString set from the token text. The array shape establishes `Accumulate`.
+For these three compound shapes, a non-tail
+call must reach a clean caller return without a later store into the destination or a call
+that receives it; the array must also remain untouched. An overwrite gives
+`compound-reader-overwrite`. M45 protects 0x190 target bytes, 0x30 optional-string bytes
+(the presence byte followed by CString at +8), and the 0x18-byte array header.
+Ordinary shared reader joins still end at the first reader call. They do not prove that
+later caller instructions preserve the destination; extending that proof is a candidate
+follow-up. No such proof is inferred from the ordinary-reader convention.
 `CVariableValue::Read` remains unknown. Joined slot bodies retain up to 65,536 bytes; a cut
 body cannot establish coverage.
 

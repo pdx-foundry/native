@@ -112,9 +112,10 @@ fn deserialize_key_path<'de, D: serde::Deserializer<'de>>(
 
 impl GapSubject {
     /// Human-readable name of the subject; the innermost key for a key path.
+    /// Returns an empty string for a directly constructed empty key path.
     pub fn name(&self) -> &str {
         match self {
-            Self::KeyPath { path } => path.last().expect("key paths have at least two entries"),
+            Self::KeyPath { path } => path.last().map_or("", String::as_str),
             Self::Registry { name }
             | Self::Field { name }
             | Self::AnswerItem { name }
@@ -150,6 +151,11 @@ impl GapSubject {
 #[cfg(test)]
 mod gap_subject_tests {
     use super::*;
+
+    #[test]
+    fn empty_key_path_has_empty_name() {
+        assert_eq!(GapSubject::KeyPath { path: vec![] }.name(), "");
+    }
 
     #[test]
     fn nested_key_subject_round_trips() {

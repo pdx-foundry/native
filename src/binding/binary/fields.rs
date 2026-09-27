@@ -406,6 +406,7 @@ pub(super) fn key_readers(
         return Err(AnalysisError::InvalidRange);
     }
     Ok(crate::engine::analysis::fields::KeyReaders {
+        compound_sizes: recipe.compound_sizes,
         array_data: recipe.string_array[0],
         array_count: recipe.string_array[1],
         string_stride: recipe.string_array[2],
