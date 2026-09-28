@@ -240,6 +240,18 @@ are generated into the ignored `.local/population/` directory. The baseline incl
 use a separate directory for each supported build. An unchanged method gives zero changed answers,
 and repeated baseline generation is byte-identical.
 
+To record every command grammar of an installation as recorded answers, then check the record
+against a new static run apart from `Basis`:
+
+```sh
+cargo run --release --example record-command-grammars -- "$STELLARIS_PATH"
+cargo run --release --example record-command-grammars -- --verify .local/sdk-548/recorded-answers "$STELLARIS_PATH"
+```
+
+Each question reads and hashes the whole executable once. On M45 that integrity check costs
+about 0.4 s of the 0.58 s per grammar, so a full recording takes about 21 minutes. Do not skip
+the check to save time.
+
 For commands, [`declaration-list.rs`](../../examples/declaration-list.rs) prints both full
 inventories and their gaps when no name filter is supplied:
 

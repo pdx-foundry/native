@@ -7,13 +7,18 @@ Generate and review updates with the commands in
 Update the affected baseline in the same PR that changes method answers. Each subject occupies
 one JSON line. Only comparison inputs are tracked: answers, errors, status and command inventory
 uncertainty. Generate full diagnostic reports under the ignored `.local/population/` directory.
-Two runs of each baseline produced identical bytes and zero changed answers.
+Two runs of each baseline produced identical bytes and zero changed answers. The command
+grammar baseline takes about 80 seconds.
+
+`command-fixture-sample.json` is the SDK-548 live fixture sample, fixed before the final
+population run: the ordering rule, the eligible commands of each kind, and the 20 chosen.
+`cargo live fixture_argument` checks them.
 
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
 | Registry fields | 164 registries | 11 | 153 | 0 |
-| Effect grammars | 1,074 named commands | 346 | 718 | 10 |
-| Trigger grammars | 1,096 named commands | 131 | 963 | 2 |
+| Effect grammars | 1,074 named commands | 256 | 808 | 10 |
+| Trigger grammars | 1,096 named commands | 120 | 974 | 2 |
 
 ## Historical comparison control
 

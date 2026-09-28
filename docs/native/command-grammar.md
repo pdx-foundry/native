@@ -119,8 +119,29 @@ No audit condition fails.
 
 | Kind | Complete | Partial | Failed | `receiver-state` commands | `value-acceptance` commands |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Effect | 346 | 718 | 10 | 3 | 272 |
-| Trigger | 131 | 963 | 2 | 1 | 713 |
+| Effect | 256 | 808 | 10 | 3 | 272 |
+| Trigger | 120 | 974 | 2 | 1 | 713 |
+
+These are the final `command-grammar/v8` totals, target checks included. Two baseline runs give
+identical bytes in about 80 seconds each. Failure shapes, as commands per shape outside the
+`OutsideMethod` boundary (a command can have several):
+
+| Shape | Effects | Triggers | Meaning |
+| --- | ---: | ---: | --- |
+| `target-arguments` | 815 | 973 | The target list cannot be known, mostly because another property is not |
+| `value-acceptance` | 272 | 713 | A value chain is unresolved (stage and cause below) |
+| Unresolved child dispatch paths or names | 206 | 196 | Member ledger gaps |
+| `reader-routing` | 186 | 187 | A member dispatch that the walker cannot route |
+| `unknown-key-reader` | 175 | 27 | A named key whose reader kind is unknown |
+| `target-scope-check` | 174 | 69 | A target check that is not established (see target arguments) |
+| `nested-member-vtable` | 113 | 0 | A nested member without an established vtable |
+| `form-reader-call`, `form-path-limit`, `form-reader-kind` | 81, 81, 58 | 77, 239, 240 | Outer `Read` shapes that stop the forms run |
+| `loop-limit`, `path-limit` | 0, 9 | 280, 280 | Evaluator bounds |
+| `instruction` | 64 | 20 | An instruction that the evaluator does not model |
+| `receiver-state` | 3 | 1 | Results that depend on unestablished construction state |
+
+The failed answers are receiver joins that fail: `command-vtable` for 7 effects and both triggers
+(`switch`, `inverted_switch`), `factory-terminal` for 2 effects and `instruction` for `set_location`.
 
 Counts below are commands per stage and cause; a command can have several causes.
 
@@ -145,7 +166,7 @@ Counts below are commands per stage and cause; a command can have several causes
 False-result paths with no diagnostic anywhere in the chain: effects have 6 at `Assign` and
 827 at `PostValidate`; triggers have 4,076 at `PostValidate`. `Read` and `PostInit` are void,
 so they have no false-result count. Counts include each named command's paths, even when its
-receiver shares a cached analysis. The full run takes about 75 seconds on the development host.
+receiver shares a cached analysis.
 
 | Sample | Established result or named obstruction |
 | --- | --- |
@@ -170,6 +191,43 @@ function/stage groups: unclassified outer reads affect 23 effects and 39 trigger
 unclassified assignments affect 58 effects and 38 triggers. Raw-string assignment, initializer
 execution and receiver-state proof remain shared-method limits, not exceptions keyed by
 command name. The property gate never removes children from these partial value answers.
+
+## Live fixtures of complete grammars
+
+`cargo live fixture_argument` checks 20 complete grammars: 3 triggers and 17 effects, none in
+the first-release list. The sample was fixed before the final population run, in
+`tests/population/m45-release/command-fixture-sample.json`. Each case first asserts that the
+command's answer is `Complete`, then validates the samples in `common/traditions` (`potential`
+for triggers, `on_enabled` for effects). All 10 sessions pass with zero contradictions.
+
+| Commands | Accepted samples | Rejected samples and their diagnostic |
+| --- | --- | --- |
+| 12 Boolean value effects (`stop_crisis_sound`, `set_advisor_active`, ...) | `= yes` | `= native_not_boolean`: `CBoolEffect::Assign` logs through `CPdxLogFileAndLine`, stage `engine-parser-log` |
+| 5 block effects (`activate_saved_leader`, `store_country_backup_data`, `leave_alliance`, `reset_event_chain_counter`, `create_ship_design`) | each fixed key once, with a value of its kind; existing keys for references | an unknown key: `Rejected` disposition, `reader-unexpected-report` |
+| 3 block triggers (`get_councilor_level`, `is_ai_ship_role`, `has_completed_event_chain_counter`) | as for block effects | as for block effects |
+
+A rejected key gives a reader report that can upset the definitions after it, so each has its
+own session. The Boolean rejections are logs, so they share one session with the accepted samples.
+Rejected samples use only a rejection that the method established on every path. A value given
+to a block reader, or an alternative with an unresolved chain, is never a sample. These parser
+fixtures do not check execution-stage target scopes.
+
+**Known limit: few triggers have an established rejection.** Of 81 complete triggers outside the
+first-release list whose scopes include `country`, only 3 have one. The other 78 are blocks whose
+unlisted keys go to the family dispatch (72 also delegate, 2 also have fields, 4 have only the
+family). What the family dispatch accepts is outside the method, so an unknown key in these blocks
+is not an established rejection. For the same reason, trigger `if` is complete but not counted.
+Effects have 67 candidates: 59 Boolean value rejections and 8 key rejections. The census is in
+`.local/sdk-548/final-run-fixtures/`.
+
+Candidate follow-ups, with no tickets: prove the trigger `Assign` and `PostValidate` rejection
+routes; resolve the Boolean trigger chain (`always` returns false with no diagnostic); read the
+accepted operators; prove construction state for `receiver-state` commands; and prove whether an
+engine path acts on a stage result.
+
+Only the log routes that the fixture hooks observe are used. The formatted `CPdxLogFileAndLine`
+log and `CReader::ReportUnexpected` are hooked. The `CLogger::Log` stream route is hooked only at
+`CScriptedTrigger::PostValidate`, so no sample depends on another `CLogger::Log` caller.
 
 ## Engine facts on M45-release
 

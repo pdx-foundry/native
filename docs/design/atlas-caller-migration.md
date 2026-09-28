@@ -80,6 +80,12 @@ Unjoined generic persistent destinations have no ID. IDs remain opaque within a 
 `Native::command_grammar(kind, name)` returns independent `GrammarProperty` values. Preserve
 partial fixed keys, nested numeric-child grammar, ordering conditions, and unresolved siblings.
 A routing rule does not impose runtime order. `limit` is a child key, not a registered command.
+`forms` lists each accepted form: `CommandForm::Value` with its reader kind and reference, and
+`CommandForm::Block`. A value alternative is listed only when its whole stage chain accepts it.
+`targets` lists each target argument (the command's own value or a named key path) with its
+accepted scope types and `TargetCheckStage`. A known empty list means the command takes no target.
+Both are `#[serde(default)]`, so older recorded answers read them as `Unresolved`. Use
+`completeness == Complete` to decide whether a grammar can drive a validation rule.
 
 For fixture conclusions, request `.with_parsing()` on each question and `.through_validation()`
 on the field-outcome request when deferred errors matter. Require witnessed complete parsing and
