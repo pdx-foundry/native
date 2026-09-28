@@ -1,0 +1,67 @@
+sub sp,sp,#0x50
+stp xr0,xr1,[sp,#0x30]
+stp x29,x30,[sp,#0x40]
+add x29,sp,#0x40
+mov xr0,x1
+mov xr1,x0
+ldr x0,[x0,#0x30]
+ldr xr2,[x0]
+ldr xr2,[xr2,#0x20]
+blr xr2
+cbz w0,@+12
+str xzr,[sp]
+add x0,xr1,#{reader_token}
+mov x1,sp
+bl CALL = raw_conversion
+tbz w0,#0,@+19
+ldr xr2,[sp]
+str xr2,[xr0]
+ldp x29,x30,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x50
+ret
+add x0,xr1,#{reader_token}
+mov x1,xr0
+bl CALL = token_conversion
+tbnz w0,#0,@-7
+adrp x1,PAGE
+add x1,x1,G = {diagnostic}
+add x0,sp,#0x8
+bl CALL = diagnostic_string
+add x1,sp,#0x8
+mov x0,xr1
+bl CALL = report_malformed
+b @+8
+adrp x1,PAGE
+add x1,x1,G = {diagnostic}
+add x0,sp,#0x8
+bl CALL = diagnostic_string
+add x1,sp,#0x8
+mov x0,xr1
+bl CALL = report_malformed
+ldrsb wr2,[sp,#0x1f]
+tbz wr2,#0x1f,@-24
+add xr2,sp,#0x8
+add x0,xr2,#0x18
+ldr x1,[sp,#0x8]
+ldr xr2,[sp,#0x18]
+and x2,xr2,#0x7fffffffffffffff
+bl CALL = deallocate
+ldp x29,x30,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x50
+ret
+mov xr1,x0
+ldrsb wr2,[sp,#0x1f]
+tbz wr2,#0x1f,@+10
+add x0,sp,#0x8
+bl CALL = cold_one
+mov x0,xr1
+bl CALL = unwind
+mov xr1,x0
+ldrsb wr2,[sp,#0x1f]
+tbz wr2,#0x1f,@+3
+add x0,sp,#0x8
+bl CALL = cold_two
+mov x0,xr1
+bl CALL = unwind

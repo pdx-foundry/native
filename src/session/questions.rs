@@ -237,7 +237,23 @@ impl Native {
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let result = self.registry_field_result(registry)?;
         let references = self.reference_facts(Operation::RegistryFields)?;
-        Ok(self.registry_field_answer(registry, &result, references))
+        let numeric = self.numeric_facts(Operation::RegistryFields)?;
+        Ok(self.registry_field_answer(registry, &result, references, numeric))
+    }
+
+    pub(crate) fn numeric_facts(
+        &self,
+        operation: Operation,
+    ) -> Result<&crate::engine::analysis::numeric::NumericFacts, Error> {
+        self.bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation,
+                reason: "this build has no static analysis recipe".into(),
+            })?
+            .numeric_facts()
+            .map_err(|failure| error(operation, failure))
     }
 
     /// The lookup of every reference reader in the opened executable.
@@ -261,10 +277,13 @@ impl Native {
         registry: &str,
         result: &RegistryFieldResult,
         references: &ReferenceFacts,
+        numeric: &crate::engine::analysis::numeric::NumericFacts,
     ) -> Answer<Vec<Field>> {
-        let gaps = normalized_gaps(result, registry.trim_end_matches('/'), references);
+        let mut gaps = normalized_gaps(result, registry.trim_end_matches('/'), references);
+        let mut value = normalized_fields(result, references);
+        super::numeric::fields(&mut value, numeric, &[], &mut gaps);
         Answer {
-            value: normalized_fields(result, references),
+            value,
             completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),

@@ -215,6 +215,8 @@ pub enum GapKind {
     UnresolvedReader,
     /// The reader is identified, but its accepted values and behavior are not established.
     ReaderSemantics,
+    /// Numeric conversion properties are only partly established.
+    NumericConversion,
     /// A storage shape or nested reader is not established.
     UnresolvedStorage,
     /// A loader or use-time condition is not fully expressed.
@@ -1057,6 +1059,9 @@ pub enum EntryScope {
 /// The shared reader behind a field. Two fields with one reader report the same `id`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reader {
+    /// Numeric conversion facts; absent older recordings remain unresolved.
+    #[serde(default)]
+    pub numeric: crate::GrammarProperty<Option<crate::NumericConversion>>,
     /// Opaque reader identity within one build, or `None` when no reader is established.
     pub id: Option<ReaderId>,
     /// Value form that the reader accepts.
@@ -1130,6 +1135,8 @@ pub enum ReaderKind {
     Integer,
     /// A fixed-point numeric value.
     FixedPoint,
+    /// A binary floating-point numeric value.
+    Float,
     /// A string value.
     String,
     /// A deferred reference key.

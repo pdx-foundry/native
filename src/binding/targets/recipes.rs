@@ -39,6 +39,11 @@ pub(in crate::binding) struct PersistentRecipe {
 
 /// Layout facts that the declaration methods need on this exact build.
 pub(in crate::binding) struct DeclarationRecipe {
+    /// Concrete modifier parser and numeric-entry insertion functions.
+    pub numeric_modifier_member: &'static str,
+    pub numeric_modifier_insert: &'static str,
+    /// Numeric shared-reader signatures to bind; conversions are proved from their code.
+    pub numeric_types: &'static [&'static str],
     pub inline_fixtures: &'static [InlineFixtureRecipe],
     /// Virtual slots used by the two command families.
     pub create_slot: u64,
@@ -100,6 +105,21 @@ pub(super) const M45_RELEASE: Recipe = Recipe {
 };
 
 const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
+    numeric_modifier_member: "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::TryReadMember(CReader&, int)",
+    numeric_modifier_insert: "CPdxModifierEntry<ModifierType>& CPdxArray<CPdxModifierEntry<ModifierType>, int>::InsertAtEmplace<ModifierType, CFixedPoint&>(int, ModifierType, CFixedPoint&)",
+    numeric_types: &[
+        "signed char",
+        "unsigned char",
+        "short",
+        "unsigned short",
+        "int",
+        "unsigned int",
+        "long long",
+        "unsigned long long",
+        "CFixedPoint",
+        "fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>",
+        "float",
+    ],
     inline_fixtures: M45_INLINE_FIXTURES,
     scope_object_offset: 0x1c,
     create_slot: 0x10,

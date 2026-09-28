@@ -1249,3 +1249,75 @@ fn known_target_lists_have_covered_arguments() {
         .unwrap();
     }
 }
+
+/// The changed API properties are checked separately from unrelated static methods.
+#[test]
+#[ignore = "requires STELLARIS_PATH; NATIVE_NUMERIC_EXPECTED_OUT retains candidates for review"]
+fn numeric_reader_api_parity() {
+    let native = native();
+    let mut differences = Vec::new();
+    let names = FIELD_FILES
+        .iter()
+        .map(|(_, file)| *file)
+        .chain(["command-grammars.json"]);
+    for name in names {
+        let candidate = parity::candidate(&native, name).unwrap();
+        if let Some(directory) = std::env::var_os("NATIVE_NUMERIC_EXPECTED_OUT") {
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(std::path::Path::new(&directory).join(name), &candidate).unwrap();
+        }
+        let expected = std::fs::read(parity::expected_directory().join(name)).unwrap();
+        if candidate != expected {
+            differences.push(name);
+        }
+    }
+    assert!(
+        differences.is_empty(),
+        "review numeric API parity candidates: {differences:?}"
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn numeric_command_arguments_share_registry_conversion_facts() {
+    use pdx_native::GrammarProperty;
+    let native = native();
+    let fields = native.registry_fields("common/megastructures").unwrap();
+    for (command, key, registry_field, scale) in [
+        ("add_asteroid_belt", "radius", "build_time", 100000),
+        ("add_intel_report", "days", "sensor_range", 1),
+    ] {
+        let answer = native
+            .command_grammar(DeclarationKind::Effect, command)
+            .unwrap();
+        let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) =
+            &answer.value.fixed_keys
+        else {
+            panic!("{command}: keys unresolved");
+        };
+        let argument = keys.iter().find(|field| field.name == key).unwrap();
+        let field = fields
+            .value
+            .iter()
+            .find(|field| field.name == registry_field)
+            .unwrap();
+        assert_eq!(argument.reader.id, field.reader.id, "{command}/{key}");
+        assert_eq!(
+            argument.reader.numeric, field.reader.numeric,
+            "{command}/{key}"
+        );
+        let GrammarProperty::Partial(Some(conversion)) = &argument.reader.numeric else {
+            panic!("{command}/{key}: numeric facts absent");
+        };
+        assert_eq!(conversion.scale, GrammarProperty::Known(Some(scale)));
+        assert_eq!(conversion.accepted_range, GrammarProperty::Unresolved);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == pdx_native::GapKind::NumericConversion
+                    && gap.subject == Some(pdx_native::GapSubject::Field { name: key.into() }))
+        );
+        assert_eq!(answer.completeness, pdx_native::Completeness::Partial);
+    }
+}

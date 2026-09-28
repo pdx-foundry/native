@@ -17,10 +17,11 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v8` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v8`, `command-grammar/v9` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Native::registry_fields` | `registry-fields/v9` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v9`, `command-grammar/v10` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v9`, `command-grammar/v10` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v9` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v10` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -78,3 +79,28 @@ comparison with shipped content and config.
 
 The [SDK-542 architecture review verification](command-grammar-review.md) records confirmed
 repairs and the evidence for retained reader, family and observation boundaries.
+
+## Direct numeric conversion (SDK-644)
+
+The exact M45-release run covered all 164 discovered registries. Numeric fields occurred in
+63 registries: **0 complete, 184 partial, 0 failed** conversion answers, with no registry query
+failures. These are root field counts; repeated joins are not separate fields. The fields divide
+into 93 integer, 88 fixed-point and 3 float readers. Nested template storage has its separate
+live fixture and static reader control; it is not counted as a discovered root field.
+
+All 11 bound shared numeric readers have partial facts, including signatures with no root field
+in this population. The modifier entry boundary joins the direct fixed-point reader. Each numeric
+answer carries `GapKind::NumericConversion`. Remaining internal gap shapes are `numeric-overflow`,
+`numeric-lexical-boundary`, `numeric-trailing-text`, `numeric-external-library-conversion`, and,
+for fixed-point readers, `numeric-raw-value-mode`. Narrow integer signedness remains unresolved.
+No accepted range is inferred from storage width. No unsupported shape was encountered among
+these 11 bound readers; unmatched wrappers, token bodies, destinations, raw paths and modifier
+joins have authored negative controls and explicit unresolved results.
+
+The prior SDK-643 storage population had 181 broadly numeric root fields. The three additional
+fields here are float readers, now classified separately. This static run does not establish
+live storage decoding for float, byte, short, unsigned integer or long-long fields. The live
+matrix covers direct int, direct fixed point (including transfer to armies), and nested template
+fixed point: 80 cases, 84 stored occurrences. See [numeric conversion](numeric-conversion.md)
+for the observed boundary behavior and limits. The report is `.local/sdk-644/numeric-population.json`;
+reproduce it with `cargo run --release --example numeric-population` and `STELLARIS_PATH` set.

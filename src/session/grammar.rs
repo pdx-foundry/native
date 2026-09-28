@@ -30,7 +30,14 @@ impl Native {
         self.answer("command_grammar", Some(&subject), || {
             let result = self.command_grammar_result(kind, name)?;
             let references = self.reference_facts(Operation::CommandGrammar)?;
-            Ok(normalize(result.as_ref(), name, self.build(), references))
+            let numeric = self.numeric_facts(Operation::CommandGrammar)?;
+            Ok(normalize_with_numeric(
+                result.as_ref(),
+                name,
+                self.build(),
+                references,
+                numeric,
+            ))
         })
     }
 
@@ -107,6 +114,19 @@ pub(super) fn registered_factory(
     Ok(factories.first().copied())
 }
 
+pub(crate) fn normalize_with_numeric(
+    result: Result<&grammar::GrammarResult, &Unresolved>,
+    name: &str,
+    build: crate::BuildId,
+    references: &ReferenceFacts,
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+) -> Answer<CommandGrammar> {
+    let mut answer = normalize(result, name, build, references);
+    super::numeric::grammar(&mut answer.value, name, numeric, &mut answer.gaps);
+    answer.completeness = crate::Completeness::from_gaps(&answer.gaps);
+    answer
+}
+
 pub(crate) fn normalize(
     result: Result<&grammar::GrammarResult, &Unresolved>,
     name: &str,
@@ -117,6 +137,7 @@ pub(crate) fn normalize(
         forms: GrammarProperty::Unresolved,
         targets: GrammarProperty::Unresolved,
         reader: Reader {
+            numeric: crate::GrammarProperty::Unresolved,
             id: None,
             kind: ReaderKind::Unknown,
             family: BlockFamily::Unknown,
@@ -144,6 +165,7 @@ pub(crate) fn normalize(
             let identity =
                 super::fields::concrete_reader_id(&result.reader_name, &result.member_name);
             value.reader = Reader {
+                numeric: crate::GrammarProperty::Unresolved,
                 id: Some(identity),
                 kind: result.reader_kind,
                 family: result.reader_family,
@@ -481,6 +503,7 @@ fn form_value(
         .as_ref()
         .map(|join| super::fields::reader(std::slice::from_ref(join)))
         .unwrap_or(Reader {
+            numeric: crate::GrammarProperty::Unresolved,
             id: None,
             kind: value.kind,
             family: BlockFamily::NotApplicable,

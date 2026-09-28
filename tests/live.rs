@@ -62,6 +62,9 @@ const ITEM_COUNTS: [(&str, usize); 3] =
 
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
+#[path = "live/numeric.rs"]
+mod numeric_conversion;
+
 /// What the registry that receives a fault must give.
 #[derive(Clone, Copy)]
 enum Expect {
@@ -183,6 +186,7 @@ enum Case {
         fractional_final: i64,
     },
     FixtureNestedNumeric(Fault),
+    NumericConversionMatrix,
     /// Validation samples of one block field, each in its own definition of one fixture file.
     FixtureValidation {
         field: &'static str,
@@ -392,6 +396,10 @@ fn cases() -> Vec<(String, Case)> {
     cases.push((
         "fixture_numeric_nested_worker_loss".into(),
         Case::FixtureNestedNumeric(Fault::WorkerLoss),
+    ));
+    cases.push((
+        "fixture_numeric_conversion_matrix".into(),
+        Case::NumericConversionMatrix,
     ));
     let parser_log = Some("engine-parser-log");
     let validation_log = Some("engine-validation-log");
@@ -636,6 +644,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             fractional_final,
         } => fixture_numeric(registry, integer, fixed, fractional_final).await,
         Case::FixtureNestedNumeric(control) => fixture_nested_numeric(control).await,
+        Case::NumericConversionMatrix => numeric_conversion::matrix().await,
         Case::FixtureValidation { field, ref samples } => {
             fixture_validation(native, field, samples).await
         }

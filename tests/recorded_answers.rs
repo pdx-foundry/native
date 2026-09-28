@@ -419,6 +419,12 @@ fn static_questions_read_recorded_files_and_always_report_the_recorded_basis() {
         ]
     );
     assert_eq!(fields.source.basis, Basis::Recorded);
+    assert!(
+        fields
+            .value
+            .iter()
+            .all(|field| field.reader.numeric == pdx_native::GrammarProperty::Unresolved)
+    );
 }
 
 #[test]
@@ -685,13 +691,13 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
     let value = json!({
         "forms": "Unresolved",
         "targets": "Unresolved",
-        "reader": {"id": "shared-control-reader", "kind": "Block", "family": "Effect"},
+        "reader": {"id": "shared-control-reader", "kind": "Block", "family": "Effect", "numeric": "Unresolved"},
         "child_families": {"Known": ["Effect"]},
         "fixed_keys": {"Partial": []},
         "numeric_keys": {"Partial": {
             "forms": "Unresolved",
         "targets": "Unresolved",
-            "reader": {"id": "weighted-entry", "kind": "Block", "family": "Effect"},
+            "reader": {"id": "weighted-entry", "kind": "Block", "family": "Effect", "numeric": "Unresolved"},
             "child_families": {"Partial": ["Effect"]},
             "fixed_keys": "Unresolved",
             "numeric_keys": "Unresolved",
@@ -752,4 +758,32 @@ fn old_command_grammar_without_forms_and_targets_keeps_them_unresolved() {
     .unwrap();
     assert_eq!(grammar.forms, pdx_native::GrammarProperty::Unresolved);
     assert_eq!(grammar.targets, pdx_native::GrammarProperty::Unresolved);
+}
+
+#[test]
+fn recorded_numeric_facts_keep_partial_properties_and_exact_bounds() {
+    use pdx_native::{GrammarProperty, NumericBound, NumericConversion, NumericRange};
+    let root = recorded();
+    let mut field = recorded_field("number", "Integer");
+    let conversion = NumericConversion {
+        width_bits: GrammarProperty::Known(64),
+        accepted_range: GrammarProperty::Partial(Box::new(NumericRange {
+            minimum: GrammarProperty::Known(NumericBound::Signed(i64::MIN)),
+            maximum: GrammarProperty::Known(NumericBound::Unsigned(u64::MAX)),
+        })),
+        ..NumericConversion::default()
+    };
+    let numeric = GrammarProperty::Partial(Some(conversion));
+    field["reader"]["numeric"] = serde_json::to_value(&numeric).unwrap();
+    write(
+        root.path(),
+        "registry_fields/common/numeric.json",
+        json!({"Ok": {
+            "value": [field], "completeness": "Partial", "gaps": [], "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let answer = native.registry_fields("common/numeric").unwrap();
+    assert_eq!(answer.value[0].reader.numeric, numeric);
+    assert_eq!(answer.source.basis, Basis::Recorded);
 }

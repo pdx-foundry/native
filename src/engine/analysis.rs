@@ -14,6 +14,7 @@ pub mod grammar;
 pub mod localization;
 pub mod modifier_table;
 pub mod modifiers;
+pub(crate) mod numeric;
 pub mod readers;
 mod receivers;
 pub mod references;

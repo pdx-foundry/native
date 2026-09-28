@@ -15,6 +15,8 @@ pub(crate) mod grammar;
 mod language;
 mod loaded_modifiers;
 mod localization;
+mod numeric;
+pub mod numeric_readers;
 pub(crate) mod questions;
 pub mod reference_readers;
 pub mod registry_field_stops;

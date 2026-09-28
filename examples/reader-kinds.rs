@@ -8,10 +8,11 @@ const DEFAULT_REGISTRIES: &[&str] = &[
 ];
 
 /// Each known reader kind with its display label, in the order of the summary line.
-const KIND_LABELS: [(ReaderKind, &str); 7] = [
+const KIND_LABELS: [(ReaderKind, &str); 8] = [
     (ReaderKind::Boolean, "boolean"),
     (ReaderKind::Integer, "integer"),
     (ReaderKind::FixedPoint, "fixed-point"),
+    (ReaderKind::Float, "float"),
     (ReaderKind::String, "string"),
     (ReaderKind::Reference, "reference"),
     (ReaderKind::Block, "block"),

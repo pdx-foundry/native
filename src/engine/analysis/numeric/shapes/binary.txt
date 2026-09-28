@@ -1,0 +1,52 @@
+sub sp,sp,#0x40
+stp xr0,xr1,[sp,#0x20]
+stp x29,x30,[sp,#0x30]
+add x29,sp,#0x30
+mov xr1,x1
+ldr wr2,[x0]
+cmp wr2,#{raw_token}
+b.ne @+9
+ldr x0,[x0,#{token_text}]
+bl CALL = decimal_integer
+str x0,[xr1]
+mov w0,#0x1
+ldp x29,x30,[sp,#0x30]
+ldp xr0,xr1,[sp,#0x20]
+add sp,sp,#0x40
+ret
+stp xzr,xzr,[sp,#0x10]
+ldr x0,[x0,#{token_text}]
+ldrb wr0,[x0]
+add xr2,sp,#0x10
+add xr3,sp,#0x18
+stp xr3,xr2,[sp]
+adrp x1,PAGE
+add x1,x1,G = "%lld%lf"
+bl CALL = scan
+ldr xr2,[sp,#0x18]
+ldr d0,[sp,#0x10]
+mov xr3,#{fraction_scale}
+fmov d1,xr3
+fcmp d0,#0x0.0
+fmov d2,#0x0.50000000
+fmov d3,#0x0.50000000
+fcsel d4,d3,d2,ge
+fmadd d1,d0,d1,d4
+fcvtzs xr3,d1
+lsl xr2,xr2,#{scale_shift}
+sub xr3,xr2,xr3
+mov xr4,#{fraction_scale}
+fmov d1,xr4
+fcmp d0,#0x0.0
+fcsel d2,d3,d2,ge
+fmadd d0,d0,d1,d2
+fcvtzs xr4,d0
+add xr2,xr2,xr4
+cmp wr0,#0x2d
+csel x0,xr3,xr2,eq
+str x0,[xr1]
+mov w0,#0x1
+ldp x29,x30,[sp,#0x30]
+ldp xr0,xr1,[sp,#0x20]
+add sp,sp,#0x40
+ret

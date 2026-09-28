@@ -94,7 +94,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -108,7 +108,8 @@
       "reader": {
         "id": "7378e4e05563db32",
         "kind": "Unknown",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -160,7 +161,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -174,7 +175,8 @@
       "reader": {
         "id": "7378e4e05563db32",
         "kind": "Unknown",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -218,7 +220,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -232,7 +234,8 @@
       "reader": {
         "id": "f47e1d863a65b008",
         "kind": "Unknown",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -276,7 +279,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -293,7 +296,10 @@
               "reader": {
                 "id": null,
                 "kind": "Target",
-                "family": "NotApplicable"
+                "family": "NotApplicable",
+                "numeric": {
+                  "Known": null
+                }
               },
               "reference": "NotEstablished"
             }
@@ -309,7 +315,10 @@
       "reader": {
         "id": "46d0af6650219336",
         "kind": "Target",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": {
+          "Known": null
+        }
       },
       "targets": {
         "Partial": [
@@ -369,7 +378,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -387,7 +396,8 @@
       "reader": {
         "id": "662ea5268e37aea2",
         "kind": "Unknown",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -439,7 +449,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -457,7 +467,8 @@
       "reader": {
         "id": "662ea5268e37aea2",
         "kind": "Unknown",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -541,7 +552,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -562,7 +573,8 @@
             "reader": {
               "id": null,
               "kind": "Unknown",
-              "family": "Unknown"
+              "family": "Unknown",
+              "numeric": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -585,7 +597,8 @@
             "reader": {
               "id": null,
               "kind": "Unknown",
-              "family": "Unknown"
+              "family": "Unknown",
+              "numeric": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -608,7 +621,8 @@
             "reader": {
               "id": null,
               "kind": "Unknown",
-              "family": "Unknown"
+              "family": "Unknown",
+              "numeric": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -631,7 +645,8 @@
             "reader": {
               "id": null,
               "kind": "Unknown",
-              "family": "Unknown"
+              "family": "Unknown",
+              "numeric": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -652,7 +667,10 @@
       "reader": {
         "id": "5717e48b9a8ed2be",
         "kind": "Block",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": {
+          "Known": null
+        }
       },
       "targets": "Unresolved"
     }
@@ -720,7 +738,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -740,7 +758,8 @@
                     "reader": {
                       "id": "c61abc171edc30aa",
                       "kind": "Unknown",
-                      "family": "Unknown"
+                      "family": "Unknown",
+                      "numeric": "Unresolved"
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -753,7 +772,8 @@
             "reader": {
               "id": "c61abc171edc30aa",
               "kind": "Unknown",
-              "family": "Unknown"
+              "family": "Unknown",
+              "numeric": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -775,7 +795,8 @@
                     "reader": {
                       "id": "c61abc171edc30aa",
                       "kind": "Unknown",
-                      "family": "Unknown"
+                      "family": "Unknown",
+                      "numeric": "Unresolved"
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -788,7 +809,8 @@
             "reader": {
               "id": "c61abc171edc30aa",
               "kind": "Unknown",
-              "family": "Unknown"
+              "family": "Unknown",
+              "numeric": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -809,7 +831,10 @@
       "reader": {
         "id": "46f33fca79ddd2af",
         "kind": "Block",
-        "family": "Effect"
+        "family": "Effect",
+        "numeric": {
+          "Known": null
+        }
       },
       "targets": "Unresolved"
     }
@@ -829,7 +854,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -853,7 +878,10 @@
                     "reader": {
                       "id": "325efaa17499c32d",
                       "kind": "String",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -866,7 +894,10 @@
             "reader": {
               "id": "325efaa17499c32d",
               "kind": "String",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -888,7 +919,10 @@
                     "reader": {
                       "id": "85bd4238680bd5b9",
                       "kind": "Block",
-                      "family": "Trigger"
+                      "family": "Trigger",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -901,7 +935,10 @@
             "reader": {
               "id": "85bd4238680bd5b9",
               "kind": "Block",
-              "family": "Trigger"
+              "family": "Trigger",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -926,7 +963,10 @@
       "reader": {
         "id": "2c0d7eab19fb7c8f",
         "kind": "Block",
-        "family": "Trigger"
+        "family": "Trigger",
+        "numeric": {
+          "Known": null
+        }
       },
       "targets": {
         "Known": []
@@ -988,7 +1028,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1012,7 +1052,10 @@
                     "reader": {
                       "id": "85bd4238680bd5b9",
                       "kind": "Block",
-                      "family": "Trigger"
+                      "family": "Trigger",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1025,7 +1068,10 @@
             "reader": {
               "id": "85bd4238680bd5b9",
               "kind": "Block",
-              "family": "Trigger"
+              "family": "Trigger",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1047,7 +1093,10 @@
                     "reader": {
                       "id": "074177ea8f47c362",
                       "kind": "Block",
-                      "family": "Effect"
+                      "family": "Effect",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1068,7 +1117,10 @@
                     "reader": {
                       "id": "074177ea8f47c362",
                       "kind": "Block",
-                      "family": "Effect"
+                      "family": "Effect",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1089,7 +1141,8 @@
                     "reader": {
                       "id": "92536582bc473e17",
                       "kind": "Unknown",
-                      "family": "Unknown"
+                      "family": "Unknown",
+                      "numeric": "Unresolved"
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1102,7 +1155,8 @@
             "reader": {
               "id": null,
               "kind": "Unknown",
-              "family": "Unknown"
+              "family": "Unknown",
+              "numeric": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1132,7 +1186,10 @@
               "Read": {
                 "id": "074177ea8f47c362",
                 "kind": "Block",
-                "family": "Effect"
+                "family": "Effect",
+                "numeric": {
+                  "Known": null
+                }
               }
             }
           },
@@ -1156,7 +1213,10 @@
               "Read": {
                 "id": "074177ea8f47c362",
                 "kind": "Block",
-                "family": "Effect"
+                "family": "Effect",
+                "numeric": {
+                  "Known": null
+                }
               }
             }
           },
@@ -1185,7 +1245,10 @@
       "reader": {
         "id": "0062450650e51570",
         "kind": "Block",
-        "family": "Effect"
+        "family": "Effect",
+        "numeric": {
+          "Known": null
+        }
       },
       "targets": "Unresolved"
     }
@@ -1237,7 +1300,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1259,7 +1322,10 @@
                     "reader": {
                       "id": "325efaa17499c32d",
                       "kind": "String",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Replace",
@@ -1272,7 +1338,10 @@
             "reader": {
               "id": "325efaa17499c32d",
               "kind": "String",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1294,7 +1363,10 @@
                     "reader": {
                       "id": "a430a4b92eb2c8f6",
                       "kind": "Block",
-                      "family": "Effect"
+                      "family": "Effect",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1307,7 +1379,10 @@
             "reader": {
               "id": "a430a4b92eb2c8f6",
               "kind": "Block",
-              "family": "Effect"
+              "family": "Effect",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1329,7 +1404,10 @@
                     "reader": {
                       "id": "325efaa17499c32d",
                       "kind": "String",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Accumulate",
@@ -1342,7 +1420,10 @@
             "reader": {
               "id": "325efaa17499c32d",
               "kind": "String",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1364,7 +1445,10 @@
                     "reader": {
                       "id": "9852897cc48d100d",
                       "kind": "String",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1377,7 +1461,10 @@
             "reader": {
               "id": "9852897cc48d100d",
               "kind": "String",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1404,7 +1491,10 @@
                     "reader": {
                       "id": "1b6f3b12faaef087",
                       "kind": "Target",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1425,7 +1515,10 @@
                     "reader": {
                       "id": "1b6f3b12faaef087",
                       "kind": "Target",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1441,7 +1534,10 @@
                     "reader": {
                       "id": "1b6f3b12faaef087",
                       "kind": "Target",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1454,7 +1550,10 @@
             "reader": {
               "id": "1b6f3b12faaef087",
               "kind": "Target",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1476,7 +1575,10 @@
                     "reader": {
                       "id": "325efaa17499c32d",
                       "kind": "String",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Accumulate",
@@ -1489,7 +1591,10 @@
             "reader": {
               "id": "325efaa17499c32d",
               "kind": "String",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1514,7 +1619,10 @@
       "reader": {
         "id": "940ced26c41af5b8",
         "kind": "Block",
-        "family": "Effect"
+        "family": "Effect",
+        "numeric": {
+          "Known": null
+        }
       },
       "targets": {
         "Partial": [
@@ -1578,7 +1686,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v9",
+      "method": "command-grammar/v10",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1598,7 +1706,10 @@
                     "reader": {
                       "id": "325efaa17499c32d",
                       "kind": "String",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Replace",
@@ -1611,7 +1722,10 @@
             "reader": {
               "id": "325efaa17499c32d",
               "kind": "String",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": {
               "Lookups": [
@@ -1648,7 +1762,10 @@
                     "reader": {
                       "id": "b894933b2b2853a5",
                       "kind": "Boolean",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Replace",
@@ -1661,7 +1778,10 @@
             "reader": {
               "id": "b894933b2b2853a5",
               "kind": "Boolean",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1683,7 +1803,10 @@
                     "reader": {
                       "id": "b894933b2b2853a5",
                       "kind": "Boolean",
-                      "family": "NotApplicable"
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Known": null
+                      }
                     },
                     "shape": {
                       "repeat": "Replace",
@@ -1696,7 +1819,10 @@
             "reader": {
               "id": "b894933b2b2853a5",
               "kind": "Boolean",
-              "family": "NotApplicable"
+              "family": "NotApplicable",
+              "numeric": {
+                "Known": null
+              }
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1717,7 +1843,8 @@
       "reader": {
         "id": "de5847789bbc3a9f",
         "kind": "Unknown",
-        "family": "Unknown"
+        "family": "Unknown",
+        "numeric": "Unresolved"
       },
       "targets": "Unresolved"
     }

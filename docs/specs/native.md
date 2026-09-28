@@ -158,6 +158,11 @@ for contexts and scope types.
 - Parser storage, engine validation, and runtime outcome are separate values. A scope pointer does
   not establish scope availability. A candidate reference class does not establish lookup semantics.
 - Two fields that use one shared reader report the same reader identity.
+- `Reader.numeric` supplies independently known numeric representation, width, signedness, scale,
+  partial literal forms, accepted range and explicit reader clamp. `Known(None)` establishes a
+  nonnumeric reader; unresolved or partial properties must not be completed from storage limits
+  or finite fixture observations. Caller post-processing is outside the shared conversion.
+  Older recorded readers default this property to unresolved.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.

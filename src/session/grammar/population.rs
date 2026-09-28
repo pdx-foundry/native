@@ -65,7 +65,13 @@ fn m45_command_grammar_population() {
                 Ok(None) => unreachable!("the name came from this inventory"),
                 Err(stop) => Err(stop),
             };
-            let answer = normalize(result.as_ref(), name, native.build(), &references);
+            let answer = normalize_with_numeric(
+                result.as_ref(),
+                name,
+                native.build(),
+                &references,
+                native.numeric_facts(Operation::CommandGrammar).unwrap(),
+            );
             let group = if controls.contains(&name.as_str()) {
                 "target_controls"
             } else {

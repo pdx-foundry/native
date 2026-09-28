@@ -617,6 +617,7 @@ mod tests {
                     }),
                     kind: ReaderKind::Unknown,
                     family: BlockFamily::Unknown,
+                    numeric: GrammarProperty::Unresolved,
                 },
                 child_families: GrammarProperty::Unresolved,
                 fixed_keys: GrammarProperty::Unresolved,

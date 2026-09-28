@@ -71,8 +71,18 @@ pub fn render(name: &str, value: &Value, template: &[u8]) -> Result<Vec<u8>> {
     template.collect_orders(&mut orders);
     // New field reader objects use the same order even when no tracked reader had this shape.
     orders.insert(
-        vec!["family".into(), "id".into(), "kind".into()],
-        vec!["id".into(), "kind".into(), "family".into()],
+        vec![
+            "family".into(),
+            "id".into(),
+            "kind".into(),
+            "numeric".into(),
+        ],
+        vec![
+            "id".into(),
+            "kind".into(),
+            "family".into(),
+            "numeric".into(),
+        ],
     );
     let layout = Layout { name, orders };
     let mut text = String::new();

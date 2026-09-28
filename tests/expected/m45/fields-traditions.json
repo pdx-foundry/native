@@ -12,7 +12,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -25,7 +28,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -65,7 +71,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -78,7 +87,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -118,7 +130,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -131,7 +146,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -153,7 +171,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -166,7 +187,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -188,7 +212,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -201,7 +228,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -258,7 +288,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -271,7 +304,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -312,7 +348,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -334,7 +371,10 @@
       "reader": {
        "id": "f08cb83d92484a89",
        "kind": "Block",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -347,7 +387,10 @@
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -369,7 +412,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -382,7 +428,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -409,7 +458,10 @@
          "reader": {
           "id": "325efaa17499c32d",
           "kind": "String",
-          "family": "NotApplicable"
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -422,7 +474,10 @@
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
-      "family": "NotApplicable"
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -479,7 +534,10 @@
          "reader": {
           "id": null,
           "kind": "Block",
-          "family": "Unknown"
+          "family": "Unknown",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Unknown",
@@ -492,7 +550,10 @@
      "reader": {
       "id": null,
       "kind": "Block",
-      "family": "Unknown"
+      "family": "Unknown",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -514,7 +575,10 @@
          "reader": {
           "id": "325efaa17499c32d",
           "kind": "String",
-          "family": "NotApplicable"
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -527,7 +591,10 @@
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
-      "family": "NotApplicable"
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -567,7 +634,10 @@
          "reader": {
           "id": "325efaa17499c32d",
           "kind": "String",
-          "family": "NotApplicable"
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -580,7 +650,10 @@
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
-      "family": "NotApplicable"
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -620,7 +693,10 @@
          "reader": {
           "id": "e044b50825a1841d",
           "kind": "Block",
-          "family": "Trigger"
+          "family": "Trigger",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Unknown",
@@ -633,7 +709,10 @@
      "reader": {
       "id": "e044b50825a1841d",
       "kind": "Block",
-      "family": "Trigger"
+      "family": "Trigger",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -655,7 +734,10 @@
          "reader": {
           "id": "6e28a363faf61c52",
           "kind": "Block",
-          "family": "Effect"
+          "family": "Effect",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Unknown",
@@ -668,7 +750,10 @@
      "reader": {
       "id": "6e28a363faf61c52",
       "kind": "Block",
-      "family": "Effect"
+      "family": "Effect",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -725,7 +810,10 @@
          "reader": {
           "id": "6e28a363faf61c52",
           "kind": "Block",
-          "family": "Effect"
+          "family": "Effect",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Unknown",
@@ -738,7 +826,10 @@
      "reader": {
       "id": "6e28a363faf61c52",
       "kind": "Block",
-      "family": "Effect"
+      "family": "Effect",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -779,7 +870,8 @@
      "reader": {
       "id": null,
       "kind": "Unknown",
-      "family": "Unknown"
+      "family": "Unknown",
+      "numeric": "Unresolved"
      },
      "reference": "NotEstablished",
      "shape": {
@@ -801,7 +893,10 @@
          "reader": {
           "id": "325efaa17499c32d",
           "kind": "String",
-          "family": "NotApplicable"
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -814,7 +909,10 @@
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
-      "family": "NotApplicable"
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -836,7 +934,10 @@
          "reader": {
           "id": "b894933b2b2853a5",
           "kind": "Boolean",
-          "family": "NotApplicable"
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -849,7 +950,10 @@
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",
-      "family": "NotApplicable"
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -871,7 +975,10 @@
          "reader": {
           "id": "b894933b2b2853a5",
           "kind": "Boolean",
-          "family": "NotApplicable"
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -884,7 +991,10 @@
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",
-      "family": "NotApplicable"
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -906,7 +1016,10 @@
          "reader": {
           "id": "b894933b2b2853a5",
           "kind": "Boolean",
-          "family": "NotApplicable"
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -919,7 +1032,10 @@
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",
-      "family": "NotApplicable"
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -941,7 +1057,10 @@
          "reader": {
           "id": null,
           "kind": "Block",
-          "family": "Unknown"
+          "family": "Unknown",
+          "numeric": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Unknown",
@@ -954,7 +1073,10 @@
      "reader": {
       "id": null,
       "kind": "Block",
-      "family": "Unknown"
+      "family": "Unknown",
+      "numeric": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
@@ -974,7 +1096,10 @@
       "reader": {
        "id": "3e4a6b47b20070ea",
        "kind": "Block",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Accumulate",
@@ -987,7 +1112,10 @@
   "reader": {
    "id": "3e4a6b47b20070ea",
    "kind": "Block",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1009,7 +1137,10 @@
       "reader": {
        "id": "1c2988588f7e8eaa",
        "kind": "Block",
-       "family": "Modifier"
+       "family": "Modifier",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1022,7 +1153,10 @@
   "reader": {
    "id": "1c2988588f7e8eaa",
    "kind": "Block",
-   "family": "Modifier"
+   "family": "Modifier",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
