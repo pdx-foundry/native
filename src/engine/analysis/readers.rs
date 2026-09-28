@@ -76,6 +76,23 @@ pub(crate) fn entry(callee: &str) -> (ReaderKind, BlockFamily) {
     (classify_callee(callee), family_of_callee(callee))
 }
 
+/// The destination width of a shared scalar reader, when its parameter type fixes it.
+pub(crate) fn scalar_width(callee: &str) -> Option<u64> {
+    match callee {
+        "CReader::Read(bool&)"
+        | "CReader::Read(signed char&)"
+        | "CReader::Read(unsigned char&)" => Some(1),
+        "CReader::Read(short&)" | "CReader::Read(unsigned short&)" => Some(2),
+        "CReader::Read(int&)" | "CReader::Read(unsigned int&)" => Some(4),
+        "CReader::Read(long long&)"
+        | "CReader::Read(unsigned long long&)"
+        | "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
+            Some(8)
+        }
+        _ => None,
+    }
+}
+
 fn family_of_callee(callee: &str) -> BlockFamily {
     if matching_template(callee, "ReadTrigger") || callee == "CTrigger::Read(CReader&, EScopeType)"
     {
@@ -248,6 +265,21 @@ mod tests {
             callee: callee.into(),
             arguments: BTreeMap::new(),
             tail: true,
+        }
+    }
+
+    #[test]
+    fn scalar_width_follows_the_parameter_type() {
+        for (callee, width) in [
+            ("CReader::Read(bool&)", Some(1)),
+            ("CReader::Read(unsigned char&)", Some(1)),
+            ("CReader::Read(short&)", Some(2)),
+            ("CReader::Read(int&)", Some(4)),
+            ("CReader::Read(long long&)", Some(8)),
+            ("CReader::Read(CFixedPoint&)", None),
+            ("CReader::Read(CString&, bool)", None),
+        ] {
+            assert_eq!(scalar_width(callee), width, "{callee}");
         }
     }
 

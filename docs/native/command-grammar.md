@@ -1,7 +1,7 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v8`; field families use
+[targets](targets.md). The method is `command-grammar/v9`; field families use
 `registry-fields/v8`, and parser observations use `observe-fixture/v2`. The method includes
 [reference lookups](references.md), receiver initializer lookups and out-of-line factories.
 The current forms counts are below; the retained child-reader measurements appear in their
@@ -119,26 +119,27 @@ No audit condition fails.
 
 | Kind | Complete | Partial | Failed | `receiver-state` commands | `value-acceptance` commands |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Effect | 256 | 808 | 10 | 3 | 272 |
+| Effect | 256 | 808 | 10 | 2 | 271 |
 | Trigger | 120 | 974 | 2 | 1 | 713 |
 
-These are the final `command-grammar/v8` totals, target checks included. Two baseline runs give
+These are the final `command-grammar/v9` totals, target checks included. Two baseline runs give
 identical bytes in about 80 seconds each. Failure shapes, as commands per shape outside the
 `OutsideMethod` boundary (a command can have several):
 
 | Shape | Effects | Triggers | Meaning |
 | --- | ---: | ---: | --- |
 | `target-arguments` | 815 | 973 | The target list cannot be known, mostly because another property is not |
-| `value-acceptance` | 272 | 713 | A value chain is unresolved (stage and cause below) |
+| `value-acceptance` | 271 | 713 | A value chain is unresolved (stage and cause below) |
 | Unresolved child dispatch paths or names | 206 | 196 | Member ledger gaps |
 | `reader-routing` | 186 | 187 | A member dispatch that the walker cannot route |
 | `unknown-key-reader` | 175 | 27 | A named key whose reader kind is unknown |
 | `target-scope-check` | 174 | 69 | A target check that is not established (see target arguments) |
 | `nested-member-vtable` | 113 | 0 | A nested member without an established vtable |
-| `form-reader-call`, `form-path-limit`, `form-reader-kind` | 81, 81, 58 | 77, 239, 240 | Outer `Read` shapes that stop the forms run |
-| `loop-limit`, `path-limit` | 0, 9 | 280, 280 | Evaluator bounds |
+| `form-reader-call`, `form-path-limit`, `form-reader-kind` | 78, 81, 58 | 77, 239, 240 | Outer `Read` shapes that stop the forms run |
+| `form-command-call`, `form-token-coverage` | 6, 0 | 3, 2 | An unentered helper that receives the command; a token that the yes/no probes do not cover |
+| `loop-limit`, `path-limit` | 1, 8 | 280, 280 | Evaluator bounds |
 | `instruction` | 64 | 20 | An instruction that the evaluator does not model |
-| `receiver-state` | 3 | 1 | Results that depend on unestablished construction state |
+| `receiver-state` | 2 | 1 | Results that depend on unestablished construction state |
 
 The failed answers are receiver joins that fail: `command-vtable` for 7 effects and both triggers
 (`switch`, `inverted_switch`), `factory-terminal` for 2 effects and `instruction` for `set_location`.
@@ -148,7 +149,8 @@ Counts below are commands per stage and cause; a command can have several causes
 | Stage and cause | Effects | Triggers |
 | --- | ---: | ---: |
 | `Assign: false without diagnostic` | 1 | 179 |
-| `Assign: form-reader-call` | 58 | 38 |
+| `Assign: form-command-call` | 3 | 1 |
+| `Assign: form-reader-call` | 55 | 38 |
 | `Assign: loop-limit` | 1 | 280 |
 | `Assign: outside-code` | 0 | 6 |
 | `Assign: path limit` | 5 | 189 |
@@ -161,7 +163,7 @@ Counts below are commands per stage and cause; a command can have several causes
 | `PostValidate: path limit` | 81 | 239 |
 | `PostValidate: path-limit` | 14 | 28 |
 | `PostValidate: unknown result` | 6 | 3 |
-| `Read: mixed paths or unknown reader kind` | 70 | 241 |
+| `Read: mixed paths or unknown reader kind` | 69 | 241 |
 
 False-result paths with no diagnostic anywhere in the chain: effects have 6 at `Assign` and
 827 at `PostValidate`; triggers have 4,076 at `PostValidate`. `Read` and `PostInit` are void,
@@ -191,6 +193,38 @@ function/stage groups: unclassified outer reads affect 23 effects and 39 trigger
 unclassified assignments affect 58 effects and 38 triggers. Raw-string assignment, initializer
 execution and receiver-state proof remain shared-method limits, not exceptions keyed by
 command name. The property gate never removes children from these partial value answers.
+
+## Pitfalls found in review
+
+Each of these let an unproved path support a `Known` or `Complete` answer. Each is now a stop
+or a gap, with an authored test.
+
+- **An unentered helper can act on the command.** A call in `Read` or `Assign` that receives the
+  command, and that no rule classifies, is the stop `form-command-call`. The helper could log a
+  diagnostic or change state that a later stage reads. Later stages already stop with
+  `form-stage-call`.
+- **Three probes do not stand for every token.** The yes/no probes and the marker probe are
+  complete only when every outcome of the run with an unknown token also occurs in one of them.
+  An outcome is the path class, block, assignment and value form, and the stored bytes of an
+  accepting path. Compare outcomes as sets, not counts: the evaluator keeps no negative
+  constraints, so the unknown-token run repeats an outcome on infeasible forks. Otherwise the
+  stop is `form-token-coverage`.
+- **An accepted value can carry an unestablished lookup.** A listed `Reference` alternative whose
+  directory, lookup shape or key match is not established gives a `value reference` gap.
+- **Nested initializers count.** A nested member's unreadable, unresolved or unjoined initializer
+  gives the same gap as the top-level one, at the member's key path.
+- **A tail call does not return.** A compound helper reached through `b` ends the path with
+  `compound-reader-return`; the walker never continues at the next instruction.
+- **One key, one construction.** A second, different construction of a fixed key's child is the
+  stop `ambiguous-constructed-child`. `numeric::constructed` already refuses a construction
+  after a branch, so no authored case reaches this guard; it is a defence.
+- **Execution sees the parsed command.** The execution probe installs only the vtable. Factory
+  bytes can be overwritten by readers that the method does not always list, so a branch on any
+  receiver byte keeps both sides.
+- **Stores through unknown addresses end initial reads.** After such a store, a later load of an
+  unprotected watched byte is not initial receiver state and adds no cache-key byte.
+- **Scalar widths come from the reader.** A scalar value marks only its reader's width as
+  script-written (1, 2, 4 or 8 bytes); an unlisted scalar keeps 8.
 
 ## Live fixtures of complete grammars
 
@@ -233,7 +267,7 @@ log and `CReader::ReportUnexpected` are hooked. The `CLogger::Log` stream route 
 
 Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
 ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-These are current engine facts for `command-grammar/v8`, with `dynamic-names/v2` and
+These are current engine facts for `command-grammar/v9`, with `dynamic-names/v2` and
 `registry-fields/v8`. They do not establish complete value grammars or target-scope answers.
 
 ### F1. The family dispatch always calls `Read`
@@ -404,20 +438,22 @@ first is not entered. Unknown stores retain the evaluator's existing invalidatio
 
 ### F6. Present state of the acceptance samples
 
-| Command | Outer `Read` | Member reader | Established keys | Stops |
+| Command | Outer `Read` | Member reader | Established keys | Remaining stops |
 | --- | --- | --- | --- | --- |
-| `create_starbase` | `CEffect::Read` | its own | `size` String, `effect` Block; `owner`, `design`, `module`, `building` Unknown | `reader-routing` |
-| `add_district` | both forms | its own | `district_type` String, `ignore_cap` and `type_conversion` Boolean | none |
+| `create_starbase` | `CEffect::Read` | its own | `size`, `design`, `module`, `building` String; `effect` Block; `owner` Target | `target-scope-check` |
+| `add_district` | both forms | its own | `district_type` String; `ignore_cap`, `type_conversion` Boolean | value branch at `Assign: form-reader-call` |
 | `set_timed_country_flag` | `CComplexIntEffect::Read` | its own | `flag`, `days`, `months`, `years` Unknown | `reader-routing` |
-| `set_country_flag`, `remove_country_flag`, `add_tradition` | simple assign | family dispatch (inherited) | none | none |
-| `always`, `has_country_flag` | simple assign | `CTrigger::ReadMember` | none | none |
-| `has_tradition` | database object | `CTrigger::ReadMember` | none | none |
-| `add_resource`, `join_war_on_side`, `exists` | not joined | — | — | `command-vtable` |
+| `set_country_flag`, `remove_country_flag`, `add_tradition` | simple assign | family dispatch (inherited, not reported) | none | `value-acceptance` |
+| `always`, `has_country_flag` | simple assign | `CTrigger::ReadMember` | none | `value-acceptance` |
+| `has_tradition` | database object | `CTrigger::ReadMember` | none | `value-acceptance: PostValidate` |
+| `add_resource` | `CEffect::Read` | its own | `multiplier`, `mult` Unknown | `reader-routing`, `unknown-key-reader` |
+| `join_war_on_side` | `CEffect::Read` | its own | `war` Target; `side` Unknown | `instruction`, `target-scope-check` |
+| `exists` | `CExistsTrigger::Read` | `CTrigger::ReadMember` | none | `form-path-limit`; `PostValidate` bounds |
 
-`create_starbase` key shapes behind `reader-routing`: the target idiom (`owner`); an array
-element made by `CPdxArray<CString, int>::SetSizeAndEmplace` and read by
-`CReader::Read(CString&, bool)` (`module`, `building`); `CPdxOptional<CString>::SetEmplace`
-from the token text (`design`).
+The receiver repair joins `add_resource`, `join_war_on_side` and `exists`. The `create_starbase`
+keys use the compound shapes: the target idiom (`owner`); an array element made by
+`CPdxArray<CString, int>::SetSizeAndEmplace` and read by `CReader::Read(CString&, bool)`
+(`module`, `building`); `CPdxOptional<CString>::SetEmplace` from the token text (`design`).
 
 Reproduce:
 
@@ -841,7 +877,8 @@ The retained `scope-destructor.txt` is reproduced with `--function 0x10003fe68` 
 Evidence: `.local/sdk-548/targets-cross-check/country-getter.txt`, `country-scope-getter.txt`, and
 `country-target-accessor.txt` in the same directory.
 
-A target can be checked while reading, during validation, or at execution. Every touched stage
+A target can be checked while reading, after reading (in `PostInit` or `PostValidate`, both
+reported as `Validation`), or at execution. Every touched stage
 must be established. The earliest established stage supplies the answer only when each later set
 contains its accepted set. Otherwise the scopes and stage remain unresolved with
 `target-scope-check`; the method does not assign an intersection to one stage. A false validation

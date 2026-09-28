@@ -13,7 +13,7 @@ const DECODED: u64 = 0;
 const VTABLE: u64 = 1;
 const CHILD: u64 = 2;
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(super) struct Child {
     pub reader: CommandReader,
     pub bytes: std::collections::BTreeMap<u64, u8>,

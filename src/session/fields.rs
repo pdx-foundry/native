@@ -368,8 +368,16 @@ pub(super) fn reference_lookup(
 
 /// Why a field's reference lookups are not fully established, when a reference reader reads it.
 pub(super) fn reference_gap(field: &RootField, references: &ReferenceFacts) -> Option<String> {
+    readers_reference_gap(&field.readers, references)
+}
+
+/// Why the lookups of these reader joins are not fully established.
+pub(super) fn readers_reference_gap(
+    readers: &[ReaderJoin],
+    references: &ReferenceFacts,
+) -> Option<String> {
     let mut missing = std::collections::BTreeSet::new();
-    for join in &field.readers {
+    for join in readers {
         let ReaderJoin::Joined { callee, .. } = join else {
             continue;
         };

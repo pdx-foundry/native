@@ -131,13 +131,7 @@ fn checks(input: &GrammarInput) -> [Check; 3] {
     [
         read,
         validate,
-        execution(
-            input,
-            reader(),
-            &BTreeMap::new(),
-            0x40,
-            &BTreeSet::from([0x40]),
-        ),
+        execution(input, reader(), 0x40, &BTreeSet::from([0x40])),
     ]
 }
 
@@ -382,15 +376,10 @@ fn execution_facts_require_only_influential_receiver_state() {
                 Check::Unresolved("receiver-state")
             }
         );
+        // A factory byte does not decide execution: a reader can overwrite it.
         assert_eq!(
-            execution(
-                &input,
-                reader(),
-                &BTreeMap::from([(0x30, 1)]),
-                0x40,
-                &BTreeSet::from([0x40])
-            ),
-            Check::Established(4)
+            execution(&input, reader(), 0x40, &BTreeSet::from([0x40])),
+            checks(&input)[2]
         );
     }
 }
@@ -504,13 +493,7 @@ fn distinct_target_getters_establish_each_arguments_own_set() {
         add x0, x19, #0x60; bl extern 0x9100; ret);
     let input = two_getters(role);
     for (offset, mask) in [(0x40, 4), (0x60, 8)] {
-        let check = execution(
-            &input,
-            reader(),
-            &BTreeMap::new(),
-            offset,
-            &BTreeSet::from([0x40, 0x60]),
-        );
+        let check = execution(&input, reader(), offset, &BTreeSet::from([0x40, 0x60]));
         assert_eq!(
             combine(&[Check::Absent, Check::Absent, check]),
             Ok((mask, crate::TargetCheckStage::Execution))
@@ -525,13 +508,7 @@ fn a_second_getter_on_the_current_target_is_still_a_constraint() {
         add x0, x19, #0x40; bl extern 0x9100; ret);
     let input = two_getters(role);
     assert_eq!(
-        execution(
-            &input,
-            reader(),
-            &BTreeMap::new(),
-            0x40,
-            &BTreeSet::from([0x40, 0x60])
-        ),
+        execution(&input, reader(), 0x40, &BTreeSet::from([0x40, 0x60])),
         Check::Unresolved("different type sets")
     );
 }
@@ -551,13 +528,7 @@ fn only_exact_disjoint_collected_targets_are_unrelated() {
         arm64!(role; ret);
         let input = two_getters(role);
         assert_eq!(
-            execution(
-                &input,
-                reader(),
-                &BTreeMap::new(),
-                0x40,
-                &BTreeSet::from([0x40, collected])
-            ),
+            execution(&input, reader(), 0x40, &BTreeSet::from([0x40, collected])),
             Check::Unresolved("unclassified execution call")
         );
     }
@@ -572,13 +543,7 @@ fn another_resolvers_accessors_do_not_check_this_target() {
         add x0, x19, #0x40; bl extern 0x8100; add sp, sp, #64; ret);
     let input = two_getters(role);
     assert_eq!(
-        execution(
-            &input,
-            reader(),
-            &BTreeMap::new(),
-            0x40,
-            &BTreeSet::from([0x40, 0x60])
-        ),
+        execution(&input, reader(), 0x40, &BTreeSet::from([0x40, 0x60])),
         Check::Established(4)
     );
 }
@@ -634,13 +599,7 @@ fn other_target_results_preserve_both_branch_outcomes() {
             arm64!(role; done:; add sp, sp, #64; ret);
             let input = two_getters(role);
             assert_eq!(
-                execution(
-                    &input,
-                    reader(),
-                    &BTreeMap::new(),
-                    0x40,
-                    &BTreeSet::from([0x40, 0x60])
-                ),
+                execution(&input, reader(), 0x40, &BTreeSet::from([0x40, 0x60])),
                 if same_getter {
                     Check::Established(4)
                 } else {

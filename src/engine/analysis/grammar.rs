@@ -28,7 +28,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v8";
+pub const METHOD: &str = "command-grammar/v9";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -233,6 +233,7 @@ fn analyze_reader_with_state(
     let mut stops = Vec::new();
     let mut ordering = Vec::new();
     let mut constructed = BTreeMap::new();
+    let mut constructed_from = BTreeMap::new();
     let mut numeric_reader: Option<numeric::Child> = None;
     let mut numeric_failed = false;
     let mut visited = 0;
@@ -292,6 +293,19 @@ fn analyze_reader_with_state(
                 .get(&path.domain[0])
                 .filter(|token| !token.ambiguous)
         {
+            // Two paths can construct the same key's child with different agreed bytes. Coverage
+            // walks one child per key, so a second, different construction is not established.
+            if constructed_from
+                .get(&token.name)
+                .is_some_and(|known| known != &child)
+            {
+                nodes[node]
+                    .stops
+                    .push(Unresolved::new("ambiguous-constructed-child"));
+                leaves.push(path);
+                continue;
+            }
+            constructed_from.insert(token.name.clone(), child.clone());
             match analyze_reader_with_state(input, child.reader, depth + 1, &child.bytes) {
                 Ok(grammar) => {
                     let mut path = path;
@@ -1369,23 +1383,44 @@ mod tests {
         forms.block = true;
         forms.stops.clear();
         let mut references = crate::engine::analysis::references::ReferenceFacts::default();
-        result.initializer = Ok("initializer".into());
+        fn set_initializers(result: &mut GrammarResult) {
+            result.initializer = Ok("initializer".into());
+            for child in result.nested.values_mut() {
+                set_initializers(child);
+            }
+        }
+        set_initializers(&mut result);
         references.initializers.insert(
             "initializer".into(),
             crate::engine::analysis::references::initialization::Initialization::NoLookup,
         );
-        let answer = crate::session::grammar::normalize(
-            Ok(&result),
-            "example",
-            crate::BuildId("authored".into()),
-            &references,
-        );
+        let normalize = |result: &GrammarResult| {
+            crate::session::grammar::normalize(
+                Ok(result),
+                "example",
+                crate::BuildId("authored".into()),
+                &references,
+            )
+        };
+        let answer = normalize(&result);
         assert_eq!(
             answer.completeness,
             crate::Completeness::Complete,
             "{:?}",
             answer.gaps
         );
+        // A nested initializer that cannot be read keeps the answer partial at its key path.
+        let child = &mut result.nested.get_mut("parent").unwrap().nested;
+        child.get_mut("child").unwrap().initializer = Err(Unresolved::new("unread"));
+        let unread = normalize(&result);
+        assert_eq!(unread.completeness, crate::Completeness::Partial);
+        assert!(unread.gaps.iter().any(|gap| gap.subject
+            == Some(crate::GapSubject::key_path(vec![
+                "parent".into(),
+                "child".into()
+            ]))
+            && gap.kind == crate::GapKind::UnreadableInput));
+        set_initializers(&mut result);
         assert!(matches!(
             answer.value.fixed_keys,
             crate::GrammarProperty::Known(_)

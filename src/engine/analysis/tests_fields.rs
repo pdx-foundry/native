@@ -1514,6 +1514,32 @@ fn compound_array_requires_emplace_before_reading_last_string() {
 }
 
 #[test]
+fn compound_tail_call_does_not_return_to_the_next_instruction() {
+    let code = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1;
+        add x0, x19, #0x80;
+        ldr w8, [x19, #0x94]; add w1, w8, #1;
+        b extern 0xd000; // the emplace helper returns to this reader's caller
+        ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+        mov w10, #0x28; madd x8, x9, x10, x8;
+        sub x1, x8, #0x28; mov x0, x20; b extern 0xf000
+    );
+    let result = derive(compound_fixture(code));
+    assert!(result.fields.iter().all(|field| {
+        field
+            .readers
+            .iter()
+            .all(|join| !matches!(join, ReaderJoin::Stored { .. }))
+    }));
+    assert!(
+        format!("{result:?}").contains("compound-reader-return"),
+        "{result:?}"
+    );
+}
+
+#[test]
 fn compound_optional_string_requires_value_token_text() {
     for offset in [0x288, 0x280] {
         let code = arm64!(at 0x1000;

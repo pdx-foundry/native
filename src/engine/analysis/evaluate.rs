@@ -2042,6 +2042,22 @@ impl<'a> Machine<'a> {
             }
         }
         self.trace_unknown_store(&overwritten);
+        // The store may have written any unprotected watched byte, so a later load of one is not
+        // initial receiver state.
+        if let Some(watch) = &mut self.read_watch {
+            for at in watch.start..watch.end {
+                if !self
+                    .protected
+                    .iter()
+                    .any(|(start, end)| (*start..*end).contains(&at))
+                {
+                    watch.written.insert(at);
+                    if let Some(provenance) = &mut self.provenance {
+                        provenance.memory.remove(&at);
+                    }
+                }
+            }
+        }
     }
 
     fn store(&mut self, address: u64, width: u64, value: Option<u64>) {
@@ -2784,6 +2800,19 @@ mod tests {
         );
         machine.load(command - 4, 8);
         assert_eq!(machine.receiver_reads().len(), 1);
+    }
+
+    #[test]
+    fn a_store_through_an_unknown_address_ends_initial_receiver_reads() {
+        let code = super::Code::default();
+        let data = super::ReadOnlyData::default();
+        let mut machine = super::Machine::new(&code, &data);
+        let command = machine.reserve(16);
+        machine.write(command + 4, 4, 7);
+        machine.watch_reads(command, 16);
+        machine.store_to_unknown(&[None]);
+        machine.load(command + 4, 4);
+        assert!(machine.receiver_reads().is_empty());
     }
 
     use super::*;

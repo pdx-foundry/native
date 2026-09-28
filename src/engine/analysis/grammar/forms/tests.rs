@@ -219,6 +219,59 @@ fn unresolved_boolean_marker_keeps_forms_partial() {
 }
 
 #[test]
+fn a_third_token_that_assign_accepts_keeps_boolean_forms_partial() {
+    let mut assign = Arm64::at(ASSIGN_BODY);
+    arm64!(assign;
+        ldr w8, [x1];
+        cmp w8, #7; // first Boolean token
+        b.eq >yes;
+        cmp w8, #8; // second Boolean token
+        b.eq >no;
+        cmp w8, #9; // a third token that the marker probe never takes
+        b.eq >third;
+        strb wzr, [x0, #0x41]; // invalid marker
+        mov w0, #0; ret;
+        yes:; mov w8, #1; b >store;
+        no:; mov w8, #0; b >store;
+        third:; mov w8, #2;
+        store:; strb w8, [x0, #0x40];
+        mov w8, #1; strb w8, [x0, #0x41];
+        mov w0, #1; ret
+    );
+    let result = analyze(&input(assign_read(), assign, boolean_validation()));
+    assert!(!result.complete, "{result:?}");
+    assert!(
+        result
+            .stops
+            .iter()
+            .any(|stop| stop.reason == "form-token-coverage")
+    );
+}
+
+#[test]
+fn an_unentered_helper_that_receives_the_command_is_a_stop() {
+    for (passes_command, complete) in [(true, false), (false, true)] {
+        let mut read = Arm64::at(READ);
+        arm64!(read; mov x19, x0; mov x20, x1; mov x1, #0);
+        if !passes_command {
+            arm64!(read; mov x0, #0);
+        }
+        arm64!(read; bl extern 0xa000; mov x0, x20; add x1, x19, #0x40; b extern STRING as usize);
+        let result = analyze(&input(read, false_assign(), true_validation()));
+        assert_eq!(result.complete, complete, "{:?}", result.stops);
+        assert_eq!(
+            result
+                .stops
+                .iter()
+                .any(|stop| stop.reason == "form-command-call"),
+            passes_command,
+            "{:?}",
+            result.stops
+        );
+    }
+}
+
+#[test]
 fn block_reader_is_a_boundary_without_a_diagnostic_claim() {
     let mut read = Arm64::at(READ);
     arm64!(read; b extern 0x9000);

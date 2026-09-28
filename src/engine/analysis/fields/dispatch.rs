@@ -884,6 +884,14 @@ pub(crate) fn explore_member(
                 }
                 if let Some(target) = target {
                     match compound_call(input.key_readers, target, &mut state) {
+                        // A tail call does not return to the next instruction.
+                        CompoundCall::Continue if row.operation == "b" => {
+                            leaves.push(state.finish(
+                                row.address,
+                                PathOutcome::Gap(stop("compound-reader-return", Obstacle::Call)),
+                            ));
+                            break;
+                        }
                         CompoundCall::Continue => continue,
                         CompoundCall::Stored {
                             kind,
