@@ -214,8 +214,11 @@ owner, so it cannot mount and join that candidate to the required storage window
 
 The trace and token-reader disassembly are retained in `.local/sdk-643/template-callers.txt` and
 `.local/sdk-643/template-token-reader.txt`, including both build hashes. Static decoding alone
-does not satisfy SDK-643's template live criterion; that criterion remains open. The next repair
-must establish a fixture loader plus nested-owner/source joins for an actual template-reader
-caller before adding boundary, fractional and malformed live cases. A world-object reader is
+does not satisfy the template live criterion. With maintainer approval on 2026-09-28, that
+criterion moved to [SDK-648](https://linear.app/unnamed-system/issue/SDK-648/observe-template-fixed-point-storage-through-a-nested-fixture-owner),
+a sibling of SDK-643 under SDK-544. SDK-643 now covers the verified direct `int&` and
+`CFixedPoint&` observations and can close when PR #105 merges. SDK-544 keeps the template proof
+open through SDK-648, which must establish a fixture loader plus nested-owner/source joins for
+an actual template-reader caller before adding boundary, fractional and malformed live cases. A world-object reader is
 outside this initial-load method. Duration expiry and scoped numeric evaluation remain with
 SDK-544's other children.
