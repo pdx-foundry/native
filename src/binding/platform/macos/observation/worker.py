@@ -29,7 +29,7 @@ modifiers = None
 
 class SessionProgress:
     """Observed boundaries and failures; observers never choose the session's pause."""
-    def __init__(self, active_registries=(), modifier_active=False, fixture_validation=False):
+    def __init__(self, active_registries=(), modifier_active=False, fixture_pending=False):
         self.active_registries = set(active_registries)
         if modifier_active:
             self.pause_owner = 'modifiers'
@@ -39,7 +39,7 @@ class SessionProgress:
             self.pause_owner = None
         self.returned_registries = []
         self.modifier_returned = False
-        self.fixture_validation_pending = fixture_validation
+        self.fixture_pending = fixture_pending
         self.callback_active = False
         self.callback_failed = False
         self.worker_loss_ready = False
@@ -56,9 +56,9 @@ def decide_pause(state):
         return PauseDecision(False, None)
     if state.callback_failed or state.worker_loss_ready:
         return PauseDecision(True, None)
-    if state.pause_owner == 'modifiers' and state.modifier_returned and not state.fixture_validation_pending:
+    if state.pause_owner == 'modifiers' and state.modifier_returned and not state.fixture_pending:
         return PauseDecision(True, 'content-loaded')
-    if state.pause_owner == 'registries' and state.active_registries.issubset(state.returned_registries) and not state.fixture_validation_pending:
+    if state.pause_owner == 'registries' and state.active_registries.issubset(state.returned_registries) and not state.fixture_pending:
         return PauseDecision(True, 'loaders-returned')
     if state.deadline_stopped:
         return PauseDecision(True, 'deadline')
@@ -90,6 +90,8 @@ def controlled_hook(session_request):
         return None
     if session_request['fixture']['field_reads']:
         return protocol.HOOK['fixture_field']
+    if not session_request['fixture']['registration_entries']:
+        return protocol.HOOK['fixture_member']
     return protocol.HOOK['fixture_registration']
 
 
@@ -387,6 +389,8 @@ class FixtureObserver:
         process = frame.GetThread().GetProcess()
         hook = process.GetTarget().BreakpointCreateByAddress(register(frame, request['machine']['registers']['return']))
         hook.SetThreadID(frame.GetThread().GetThreadID())
+        # Recursive CPersistent reads share a return address but have different caller stacks.
+        hook.SetCondition('$sp == ' + hex(register(frame, 'sp')))
         hook.SetOneShot(True)
         hook.SetScriptCallbackFunction('worker.callback')
         if hook.GetNumResolvedLocations() != 1:
@@ -414,6 +418,8 @@ class FixtureObserver:
                 parsing_unavailable = None
                 if question['token'] is None:
                     parsing_unavailable = 'No proven field token for parser observation'
+                elif question.get('nested') and unavailable:
+                    parsing_unavailable = unavailable
                 elif owner is None:
                     parsing_unavailable = 'Requested definition constructor was not observed'
                 self.emit('parsing-terminal', thread, question=index,
@@ -615,7 +621,7 @@ class FixtureObserver:
         self.emit('validation-complete', thread, file=self.config['file'])
         self.finish_diagnostics(thread)
         self.finish(thread)
-        progress.fixture_validation_pending = False
+        progress.fixture_pending = False
         return False
 
     def on_field(self, frame, process, thread, registers, name):
@@ -709,6 +715,262 @@ class FixtureObserver:
         if name == protocol.HOOK['fixture_validated']:
             return self.on_validated(thread)
         return False
+
+
+NestedSelector = namedtuple('NestedSelector', 'parent_token owner_offset member_entry leaf_token')
+
+
+class InlineFixtureObserver(FixtureObserver):
+    """One inline file loop; keys become known only when each root read returns."""
+    def __init__(self, config):
+        super().__init__(config)
+        self.inline = self.outcome_binding['inline']
+        self.root = None
+        self.parent = None
+        self.leaf = None
+        self.invocations = 0
+        self.root_count = 0
+        self.thread = None
+        self.buffer = []
+        self.root_occurrences = {}
+        self.root_unavailable = {}
+        self.selectors = {}
+        for question in self.questions.values():
+            nested = question.get('nested')
+            if nested:
+                selector = NestedSelector(nested['parent_token'], nested['owner_offset'], nested['member_entry'], question['token'])
+                self.selectors.setdefault(selector, []).append(question)
+
+    def hooks(self):
+        binding = self.outcome_binding
+        hooks = [
+            (protocol.HOOK['fixture_load'], binding['load_entry']),
+            (protocol.HOOK['fixture_reader'], binding['reader_entry']),
+            (protocol.HOOK['fixture_constructor'], self.inline['root_return']),
+            (protocol.HOOK['fixture_member'], binding['member_entry']),
+            (protocol.HOOK['fixture_return'], binding['reader_return']),
+        ]
+        hooks.extend((protocol.HOOK['fixture_nested'] + str(entry), entry)
+                     for entry in sorted({selector.member_entry for selector in self.selectors}))
+        if self.diagnostics_requested:
+            hooks.extend([
+                (protocol.HOOK['fixture_malformed'], binding['malformed_entry']),
+                (protocol.HOOK['fixture_unexpected'], binding['unexpected_entry']),
+            ])
+        return hooks
+
+    def begin_file(self, frame, process, thread):
+        lexer = register(frame, 'x1')
+        source = uint(process, lexer + self.bindings['lexer_file_offset'])
+        file = self.stored_string(process, source + self.bindings['file_name_offset'])
+        if file != self.config['file']:
+            return False
+        if self.loading:
+            raise RuntimeError('fixture loader entered more than once')
+        self.loading = True
+        self.thread = thread
+        self.active_reader = register(frame, 'x0')
+        self.emit('load-start', thread, file=file)
+        for index, question in self.questions.items():
+            storage = question['storage']
+            self.emit('field-authority', thread, question=index,
+                reader_id=question['reader_id'], reader_kind=question['reader_kind'],
+                reader_family=question['reader_family'], storage_decoder=storage['decoder'] if storage else None,
+                unavailable=question['storage_unavailable'])
+        if self.control == protocol.CONTROL['access_failure']:
+            uint(process, 0)
+            raise RuntimeError('access failure unexpectedly read zero')
+        return False
+
+    def begin_root(self, frame, process):
+        if not self.loading or self.returned:
+            return False
+        if register(frame, 'x1') != self.active_reader:
+            raise RuntimeError('inline definition has a different file reader')
+        if self.root is not None or self.parent is not None or self.leaf is not None:
+            raise RuntimeError('inline definition overlaps an unfinished read')
+        file, line = self.location(process, self.active_reader)
+        if file != self.config['file']:
+            raise RuntimeError('inline definition source differs from selected file')
+        self.root_count += 1
+        if self.root_count > 256:
+            raise RuntimeError('fixture definition bound exceeded')
+        self.root = dict(owner=register(frame, 'x0'), line=line)
+        self.buffer = []
+        self.root_occurrences = {}
+        self.root_unavailable = {}
+        return False
+
+    def begin_parent(self, frame, process):
+        if self.root is None or register(frame, 'x0') != self.root['owner']:
+            return False
+        token = register(frame, 'w2')
+        selectors = [selector for selector in self.selectors if selector.parent_token == token]
+        if not selectors:
+            return False
+        if self.parent is not None or self.leaf is not None:
+            raise RuntimeError('nested parent overlaps an unfinished read')
+        reader = register(frame, 'x1')
+        if reader != self.active_reader or self.location(process, reader)[0] != self.config['file']:
+            for selector in selectors:
+                self.root_unavailable[selector] = 'Nested parent source or reader does not match the file reader'
+            return False
+        if self.control == protocol.CONTROL['worker_loss']:
+            emit('worker-loss-ready')
+            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+            return True
+        self.invocations += 1
+        if self.invocations > 4096:
+            raise RuntimeError('nested fixture invocation bound exceeded')
+        name = protocol.HOOK['fixture_parent_return'] + str(self.invocations)
+        self.parent = dict(token=token, name=name)
+        self.return_hook(frame, name)
+        return False
+
+    def begin_leaf(self, frame, process, entry):
+        if self.root is None or self.parent is None:
+            return False
+        token = register(frame, 'w2')
+        selectors = [selector for selector in self.selectors
+                     if selector.parent_token == self.parent['token'] and selector.member_entry == entry and selector.leaf_token == token]
+        if not selectors:
+            return False
+        if self.leaf is not None:
+            raise RuntimeError('nested member overlaps an unfinished read')
+        reader = register(frame, 'x1')
+        for selector in selectors:
+            if register(frame, 'x0') != self.root['owner'] + selector.owner_offset:
+                self.root_unavailable[selector] = 'Nested member owner does not match the embedded receiver'
+                continue
+            if reader != self.active_reader:
+                self.root_unavailable[selector] = 'Nested member uses a different source reader'
+                continue
+            file, line = self.location(process, reader)
+            if file != self.config['file']:
+                self.root_unavailable[selector] = 'Nested member source differs from selected file'
+                continue
+            occurrence = self.root_occurrences.get(selector, 0) + 1
+            if occurrence > 128:
+                raise RuntimeError('fixture field occurrence bound exceeded')
+            self.root_occurrences[selector] = occurrence
+            self.invocations += 1
+            if self.invocations > 4096:
+                raise RuntimeError('nested fixture invocation bound exceeded')
+            name = protocol.HOOK['fixture_member_return'] + str(self.invocations)
+            self.leaf = dict(selector=selector, reader=reader, line=line, occurrence=occurrence, name=name)
+            self.buffer.append(('parse', dict(self.leaf, returned=False)))
+            self.return_hook(frame, name)
+        return False
+
+    def finish_leaf(self, process, name):
+        breakpoints[name].SetEnabled(False)
+        if self.leaf is None or self.leaf['name'] != name or self.root is None:
+            raise RuntimeError('nested member return has no matching entry')
+        file, line = self.location(process, self.leaf['reader'])
+        if file != self.config['file']:
+            self.root_unavailable[self.leaf['selector']] = 'Nested member return source differs from selected file'
+        else:
+            question = self.selectors[self.leaf['selector']][0]
+            value = self.stored_value(process, self.root['owner'], question['storage'])
+            self.buffer.append(('parse', dict(self.leaf, line=line, returned=True)))
+            self.buffer.append(('storage', dict(self.leaf, value=value)))
+        self.leaf = None
+        return False
+
+    def finish_root(self, process, thread):
+        if not self.loading or self.returned:
+            return False
+        if self.root is None or self.parent is not None or self.leaf is not None:
+            raise RuntimeError('inline definition returned with an unfinished owner join')
+        key = self.stored_value(process, self.root['owner'], self.inline['key_storage'])['String']
+        requested = key in self.requested_definitions
+        if requested:
+            if key in self.definitions:
+                raise RuntimeError('fixture definition key read more than once')
+            self.definitions[key] = dict(self.root, definition=key)
+            self.emit('definition', thread, file=self.config['file'], line=self.root['line'],
+                definition=key, owner=hex(self.root['owner']))
+        for selector, reason in self.root_unavailable.items():
+            for question in self.selectors[selector]:
+                if question['definition'] == key:
+                    question['storage_unavailable'] = reason
+        for kind, event in self.buffer:
+            selector = event.get('selector')
+            question = next((question for question in self.selectors.get(selector, []) if question['definition'] == key), None)
+            if kind == 'diagnostic':
+                self.emit('diagnostic', thread, text=event['text'], stage=event['stage'],
+                    file=event['file'], line=event['line'],
+                    definition=key if question else None, field=question['field'] if question else None,
+                    parent_field=question['parent_field'] if question else None,
+                    occurrence=event['occurrence'] if question else None)
+                continue
+            if question is None:
+                continue
+            index = question['index']
+            self.occurrences[index] = self.root_occurrences[selector]
+            fields = dict(question=index, file=self.config['file'], line=event['line'],
+                definition=key, field=question['field'], owner=hex(self.root['owner']), occurrence=event['occurrence'])
+            if kind == 'parse' and question['parsing']:
+                self.emit('field-parse', thread, **fields, returned=event['returned'])
+            elif kind == 'storage':
+                self.emit('field-storage', thread, **fields, value=event['value'])
+        self.root = None
+        self.buffer = []
+        return False
+
+    def on_diagnostic(self, frame, process, thread, registers, stage):
+        if not self.loading or self.returned:
+            return False
+        reader = register(frame, registers['owner'])
+        file, line = self.location(process, reader)
+        if file != self.config['file']:
+            return False
+        if self.diagnostics >= 128:
+            raise RuntimeError('fixture diagnostic bound exceeded')
+        text = self.stored_string(process, register(frame, registers['reader']))
+        self.diagnostics += 1
+        pending = self.leaf if self.leaf and self.leaf['reader'] == reader else None
+        event = dict(text=text, stage=stage, file=file, line=line,
+            selector=pending['selector'] if pending else None,
+            occurrence=pending['occurrence'] if pending else None)
+        if self.root is not None:
+            self.buffer.append(('diagnostic', event))
+        else:
+            self.emit('diagnostic', thread, text=text, stage=stage, file=file, line=line,
+                definition=None, field=None, occurrence=None)
+        return False
+
+    def callback(self, frame, name):
+        process = frame.GetThread().GetProcess()
+        thread = frame.GetThread().GetThreadID()
+        if self.loading and not self.returned and thread != self.thread:
+            raise RuntimeError('nested fixture callback moved to another thread')
+        if name == protocol.HOOK['fixture_load']:
+            return self.begin_file(frame, process, thread)
+        if name == protocol.HOOK['fixture_reader']:
+            return self.begin_root(frame, process)
+        if name == protocol.HOOK['fixture_constructor']:
+            return self.finish_root(process, thread)
+        if name == protocol.HOOK['fixture_member']:
+            return self.begin_parent(frame, process)
+        if name.startswith(protocol.HOOK['fixture_nested']):
+            return self.begin_leaf(frame, process, int(name[len(protocol.HOOK['fixture_nested']):]))
+        if name.startswith(protocol.HOOK['fixture_member_return']):
+            return self.finish_leaf(process, name)
+        if name.startswith(protocol.HOOK['fixture_parent_return']):
+            breakpoints[name].SetEnabled(False)
+            if self.parent is None or self.parent['name'] != name or self.leaf is not None:
+                raise RuntimeError('nested parent return has no completed member join')
+            self.parent = None
+            return False
+        if name == protocol.HOOK['fixture_return']:
+            if not self.loading or self.returned or register(frame, 'x0') != self.active_reader:
+                return False
+            if self.root is not None or self.parent is not None or self.leaf is not None:
+                raise RuntimeError('fixture file ended with an unfinished owner join')
+            progress.fixture_pending = False
+            return self.on_return(process, thread)
+        return super().callback(frame, name)
 
 
 # Bounds that no plausible table exceeds; each bounds a read before it is made.
@@ -867,6 +1129,7 @@ def callback(frame, loc, _):
                 worker_loss_ready = fixture.callback(frame, name)
             except Exception:
                 fixture.emit('unavailable', frame.GetThread().GetThreadID(), reason=traceback.format_exc())
+                progress.fixture_pending = False
         elif name.startswith(protocol.HOOK['modifiers']):
             worker_loss_ready = modifiers.callback(frame, name)
         else:
@@ -911,6 +1174,8 @@ def run(debugger):
     request = protocol.decode('request', (ROOT / 'worker-request.json').read_bytes())
     progress = SessionProgress()
     fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
+    if fixture and fixture.outcome_binding and fixture.outcome_binding.get('inline'):
+        fixture = InlineFixtureObserver(request['fixture'])
     modifiers = ModifierObserver(request['modifiers']) if request['modifiers'] else None
     control = request['fault']['control'] if request['fault'] else protocol.CONTROL['normal']
     modifier_active = False
@@ -967,7 +1232,7 @@ def run(debugger):
                 fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
             else:
                 emit('registry-unavailable', name=name.removeprefix(protocol.HOOK['registry']), reason='required registry hook missing or late before resume')
-    progress = SessionProgress(active_registries, modifier_active, bool(fixture and fixture.validation))
+    progress = SessionProgress(active_registries, modifier_active, bool(fixture and (fixture.validation or isinstance(fixture, InlineFixtureObserver))))
     if decide_pause(progress).stop:
         return
     emit('hooks-active-before-resume', hooks=state)

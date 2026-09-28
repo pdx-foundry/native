@@ -31,6 +31,20 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             wire.encode('request', request)
 
+    def test_nested_fixture_binding_and_diagnostic_codec(self):
+        root = wire.SCHEMAS['request']
+        nested = dict(parent_token=7, owner_offset=64, member_entry=4096)
+        inline = dict(root_return=8192, key_storage=dict(offset=8, decoder='String'))
+        for value, name in [(nested, 'FixtureNestedField'), (inline, 'FixtureInlineLoader')]:
+            wire.validate(value, root['$defs'][name], root)
+            for bad in [dict(value, unknown=True), {key: -1 if isinstance(item, int) else item for key, item in value.items()}]:
+                with self.assertRaises(ValueError):
+                    wire.validate(bad, root['$defs'][name], root)
+        row = dict(run='test', seq=1, thread=7, kind='fixture', event=dict(
+            kind='diagnostic', text='bad', stage='reader-malformed-report', file='common/test/a.txt',
+            line=3, definition='sample', parent_field='requirements', field='number', occurrence=1))
+        self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
+
     def test_every_reader_kind_round_trips_in_fixture_events(self):
         schema_values = {variant['const'] for variant in wire.SCHEMAS['reader_kind']['oneOf']}
         self.assertEqual(set(wire.READER_KIND.values()), schema_values)

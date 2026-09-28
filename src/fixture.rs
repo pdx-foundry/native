@@ -19,7 +19,7 @@ pub enum FixtureWindow {
     /// Initial registration through the supplied category file's loader return.
     /// At most three registration entries and two category field reads are observed.
     InitialCategoryLoad,
-    /// Initial parsing of the supplied file, ending when its reader returns to `LoadFile`.
+    /// Initial parsing of the supplied file, ending at its verified file-load boundary.
     InitialFileLoad,
     /// Initial parsing and subsequent validation, ending at the bound content-loaded point.
     InitialFileLoadAndValidation,
@@ -34,8 +34,13 @@ pub struct FixtureFieldQuestion {
     /// Definition key as observed by the engine. Nonempty, at most 128 bytes of ASCII letters,
     /// digits, `_`, `-`, `.` or `:`.
     pub definition: String,
-    /// Root field name, with the same character and length limits as `definition`.
+    /// Field name, with the same character and length limits as `definition`.
     pub field: String,
+    /// Optional enclosing field for one level of embedded-owner storage observation.
+    /// Uses the same name limits as `definition`. Unsupported owner joins are unavailable.
+    /// See [`Self::with_parent_field`] for supported setup.
+    #[serde(default)]
+    pub parent_field: Option<String>,
     /// Whether to witness field-reader entries and returns independently of storage.
     #[serde(default)]
     pub parsing: bool,
@@ -56,10 +61,32 @@ impl FixtureFieldQuestion {
             registry: registry.into(),
             definition: definition.into(),
             field: field.into(),
+            parent_field: None,
             parsing: false,
             diagnostics: true,
             runtime: false,
         }
+    }
+
+    /// Select a field inside an embedded block of the named definition.
+    ///
+    /// The M45-release binding supports `common/special_projects` in an initial file-load
+    /// field-outcome request. Registration and validation observations are not supported
+    /// for this loader. Other parent or leaf shapes report unavailable when not proven.
+    ///
+    /// ```
+    /// use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+    /// let request = FixtureRequest::field_outcomes(
+    ///     "common/special_projects/sample.txt",
+    ///     "special_project = { key = sample requirements = { fleet_power = 1.25 } }",
+    ///     [FixtureFieldQuestion::new("common/special_projects", "sample", "fleet_power")
+    ///         .with_parent_field("requirements")
+    ///         .with_parsing()],
+    /// );
+    /// ```
+    pub fn with_parent_field(mut self, parent: impl Into<String>) -> Self {
+        self.parent_field = Some(parent.into());
+        self
     }
 
     /// Also observe parser entries and returns, including fields with no storage decoder.
@@ -85,7 +112,7 @@ pub struct FixtureRequest {
     /// A nonempty set of the requested event kinds, with no duplicates.
     pub observations: Vec<FixtureObservationKind>,
     /// At most 32 field-outcome questions, sorted in ascending `Ord` order. Each
-    /// `(registry, definition, field)` identity must be unique. `field_outcomes` sorts its
+    /// `(registry, definition, parent_field, field)` identity must be unique. `field_outcomes` sorts its
     /// questions.
     pub field_questions: Vec<FixtureFieldQuestion>,
     /// The engine phase in which to observe the fixture.
@@ -175,7 +202,14 @@ impl FixtureRequest {
         let identities = self
             .field_questions
             .iter()
-            .map(|question| (&question.registry, &question.definition, &question.field))
+            .map(|question| {
+                (
+                    &question.registry,
+                    &question.definition,
+                    &question.parent_field,
+                    &question.field,
+                )
+            })
             .collect::<BTreeSet<_>>();
         if self.field_questions.len() > 32
             || identities.len() != self.field_questions.len()
@@ -199,6 +233,10 @@ impl FixtureRequest {
             if question.registry != registry
                 || !valid_name(&question.definition)
                 || !valid_name(&question.field)
+                || question
+                    .parent_field
+                    .as_ref()
+                    .is_some_and(|name| !valid_name(name))
             {
                 return Err(reject(
                     "Field questions must name this fixture registry and bounded nonempty names",
@@ -498,6 +536,36 @@ pub struct FixtureObservation {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn nested_selectors_validate_and_have_distinct_recording_keys() {
+        use super::*;
+        let root = FixtureFieldQuestion::new("common/example", "sample", "number");
+        let nested = root.clone().with_parent_field("requirements");
+        let request = |questions| {
+            FixtureRequest::field_outcomes("common/example/sample.txt", "sample = {}", questions)
+        };
+        assert!(
+            request(vec![root.clone(), nested.clone()])
+                .validate()
+                .is_ok()
+        );
+        assert_ne!(
+            request(vec![root]).recorded_subject(),
+            request(vec![nested.clone()]).recorded_subject()
+        );
+        assert!(request(vec![nested.clone(), nested]).validate().is_err());
+        for parent in ["", "one/two", "one.two.three "] {
+            assert!(
+                request(vec![
+                    FixtureFieldQuestion::new("common/example", "sample", "number")
+                        .with_parent_field(parent)
+                ])
+                .validate()
+                .is_err()
+            );
+        }
+    }
+
     use super::*;
 
     const FILE: &str = "common/tradition_categories/example.txt";

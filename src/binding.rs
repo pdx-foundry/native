@@ -447,7 +447,9 @@ impl ExecutionPlan {
         index: usize,
         question: &crate::FixtureFieldQuestion,
     ) -> crate::protocol::observation::FixtureQuestionSetup {
-        let field = fields.iter().find(|field| field.name == question.field);
+        let field = fields
+            .iter()
+            .find(|field| question.parent_field.is_none() && field.name == question.field);
         let exact = bindings
             .outcome_registries
             .iter()
@@ -456,7 +458,7 @@ impl ExecutionPlan {
                 binding
                     .fields
                     .iter()
-                    .find(|field| field.name == question.field)
+                    .find(|field| question.parent_field.is_none() && field.name == question.field)
             });
         let reader_kind = field
             .map(|field| field.reader.kind)
@@ -473,6 +475,8 @@ impl ExecutionPlan {
             index: index as u64,
             definition: question.definition.clone(),
             field: question.field.clone(),
+            nested: None,
+            parent_field: question.parent_field.clone(),
             parsing: question.parsing,
             diagnostics: question.diagnostics,
             runtime: question.runtime,
@@ -548,6 +552,21 @@ impl ExecutionPlan {
             return Err(crate::supervisor::SupervisorError(
                 "No fixture validation binding for this build".into(),
             ));
+        }
+        if let Some(analysis) = &self.binding.analysis
+            && let Some((inline, questions)) = analysis
+                .inline_fixture(fixture, &bindings.outcome_registries[0])
+                .map_err(crate::supervisor::SupervisorError)?
+        {
+            bindings.outcome_registries.push(inline);
+            return Ok(crate::protocol::observation::FixtureSetup {
+                file: fixture.file().into(),
+                registration_entries: false,
+                field_reads: false,
+                validation: false,
+                questions,
+                bindings,
+            });
         }
         let fields = if fixture.field_questions.is_empty() {
             Vec::new()

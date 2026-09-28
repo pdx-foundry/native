@@ -31,6 +31,8 @@ hooks! {
     FIXTURE_RETURN = "fixture:return",
     FIXTURE_CONSTRUCTOR_RETURN = "fixture:constructor-return:",
     FIXTURE_MEMBER_RETURN = "fixture:member-return:",
+    FIXTURE_NESTED = "fixture:nested:",
+    FIXTURE_PARENT_RETURN = "fixture:parent-return:",
     MODIFIERS = "modifiers:",
     MODIFIERS_DOCUMENTATION = "modifiers:documentation",
     MODIFIERS_RETURN = "modifiers:return",

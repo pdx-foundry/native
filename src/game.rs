@@ -67,8 +67,10 @@ impl GameOptions {
     }
     /// Select the content directories whose initial loads this session observes. Use names from
     /// `Native::registries`. Choose one or more unique names before `start_game`; an empty,
-    /// duplicate or unknown selection is refused. Include the fixture's registry when using
-    /// `fixture`. Without a selection, the build's defaults are observed.
+    /// duplicate or unknown selection is refused. Include the fixture's registry when it is
+    /// returned by `Native::registries`. A fixture with a separately bound inline loader, such
+    /// as M45-release `common/special_projects`, is observed independently: do not add that
+    /// directory to this selection. Without a selection, the build's defaults are observed.
     pub fn registries<I, S>(mut self, names: I) -> Self
     where
         I: IntoIterator<Item = S>,

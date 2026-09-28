@@ -1100,6 +1100,14 @@ pub enum BlockFamily {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReaderId(pub(crate) String);
 
+impl ReaderId {
+    pub(crate) fn from_callee(callee: &str) -> Self {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(callee.as_bytes());
+        Self(format!("{digest:x}")[..16].to_owned())
+    }
+}
+
 /// Broad value form accepted by a shared reader.
 #[derive(
     Debug,

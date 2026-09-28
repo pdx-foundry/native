@@ -222,3 +222,56 @@ open through SDK-648, which must establish a fixture loader plus nested-owner/so
 an actual template-reader caller before adding boundary, fractional and malformed live cases. A world-object reader is
 outside this initial-load method. Duration expiry and scoped numeric evaluation remain with
 SDK-544's other children.
+
+## Nested template numeric storage (SDK-648, M45-release)
+
+SDK-648 closes the template-reader gap above on the same verified M45-release executable
+(`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`, ARM64 slice
+`a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`).
+`FixtureFieldQuestion::with_parent_field` selects one embedded parent. The method stamp is
+`observe-fixture/v4`. The first supported inline loader is `common/special_projects`; it remains
+outside the template registry inventory. Its exact-build recipe binds the file reader's
+construction and destruction and the root object's virtual read call. Field names, tokens,
+embedded offsets and storage destinations come from static analysis of the executable.
+
+The root `CSpecialProjectType` constructor establishes an embedded `SProjectRequirements`.
+Its `fleet_power` reader reaches the template fixed-point decoder after reading the comparison
+operator. The storage proof permits that comparison call with the same reader, then requires
+one unconditional tail call with a proven owner-relative destination. It does not interpret
+comparison semantics. Disassembly is retained under `.local/sdk-648/`.
+
+The live `fixture_numeric_nested_projects` case places each key after the requirements block.
+The worker buffers events until the root read returns and establishes the key, preserving source
+lines and occurrence order. Parent and leaf reads must use the same file reader, thread and
+source file, and the leaf receiver must equal the root plus its proven embedded offset. Their
+return hooks also check the entry stack pointer: the first live attempt showed that recursive
+`CPersistent` reads share a return address, so an address-only hook fired before the parent
+returned. File-final values are read again at reader destruction, before directory postprocessing.
+
+| Input | Value after member return | Value at file completion |
+| --- | --- | --- |
+| `-281474976710656.0` | raw `-9223372036854775808` | same |
+| `-1.25` | raw `-40960` | same |
+| `7`, then `not_a_number` | raw `229376`, then raw `0` | raw `0` |
+
+Every value has scale 32,768. The live run completed with all owner, source, parser-return and
+file-terminal joins intact. Diagnostic coverage completed with no diagnostics for these inputs,
+including `not_a_number`. This differs from the direct `CFixedPoint` observation; neither result
+establishes a general validity or conversion rule. Recorded answers round-trip these typed values.
+
+Only initial file-load field outcomes are supported for the inline loader. Validation, world
+state and runtime evaluation are outside this method. Unproven parents, receivers, destinations
+or readers remain unavailable. A nested read through another source reader, such as an inline
+script, cannot be reported as a complete omitted field. No leaf occurrence means no observed
+write; when storage is proven, the separate file-final read can still report its initialized value.
+
+The SDK-648 inventory rerun completed all 164 discovered registry queries with no failed query.
+It found the same 181 numeric root fields in 62 registries as SDK-643: 65 with both a direct
+storage proof and loader boundary, 17 with storage but no loader boundary, and 99 without a
+proven direct destination or decoder. The failure shapes and per-reader counts in the earlier
+table are unchanged. The new inline nested fixture is outside that inventory and passed its
+separate binding and live checks. The report is `.local/sdk-648/numeric-population.txt`; the
+complete template live answer is `.local/sdk-648/template-live.txt`. The full default Rust suite,
+Clippy, documentation checks, 52 Python worker/codec tests, and all three numeric live cases pass.
+The nested worker-loss live control also passes with confirmed process disposal. Both nested
+cases explicitly select the traditions registry while the inline fixture loads independently.

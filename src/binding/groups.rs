@@ -53,6 +53,7 @@ pub(super) fn fixture(
                     malformed_entry: 0x1025b274c,
                     unexpected_entry: 0x1025b24d4,
                     fields: Vec::new(),
+                    inline: None,
                 },
             ],
         })

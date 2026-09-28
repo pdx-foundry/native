@@ -105,16 +105,16 @@ class PauseTests(unittest.TestCase):
 
     def test_validation_delays_the_existing_pause_owner(self):
         for modifiers in [False, True]:
-            state = worker.SessionProgress(['one'], modifiers, fixture_validation=True)
+            state = worker.SessionProgress(['one'], modifiers, fixture_pending=True)
             state.returned_registries.append('one')
             state.modifier_returned = modifiers
             self.assertEqual(worker.decide_pause(state), (False, None))
-            state.fixture_validation_pending = False
+            state.fixture_pending = False
             boundary = 'content-loaded' if modifiers else 'loaders-returned'
             self.assertEqual(worker.decide_pause(state), (True, boundary))
 
     def test_validation_cannot_hide_failure_or_deadline(self):
-        state = worker.SessionProgress(['one'], fixture_validation=True)
+        state = worker.SessionProgress(['one'], fixture_pending=True)
         state.deadline_stopped = True
         self.assertEqual(worker.decide_pause(state), (True, 'deadline'))
         state.callback_failed = True
@@ -242,7 +242,7 @@ class PauseTests(unittest.TestCase):
 
         fixture = Mock()
         fixture.hooks.return_value = [(protocol.HOOK['fixture_field'], 48)]
-        request = dict(registries={}, fixture=dict(field_reads=True),
+        request = dict(registries={}, fixture=dict(field_reads=True, registration_entries=True),
                        fault=dict(target='fixture', control=protocol.CONTROL['late_hook']))
         self.assertEqual(worker.requested_hooks(request, None, fixture), [(protocol.HOOK['fixture_field'], 48)])
         self.assertEqual(worker.controlled_hook(request), protocol.HOOK['fixture_field'])
@@ -398,13 +398,13 @@ class ParserObservationTests(unittest.TestCase):
 
     def test_validation_requires_a_returned_load_and_finishes_before_pause(self):
         self.observer.validation = True
-        worker.progress = worker.SessionProgress(['one'], fixture_validation=True)
+        worker.progress = worker.SessionProgress(['one'], fixture_pending=True)
         with self.assertRaises(RuntimeError):
             self.observer.on_validated(7)
-        self.assertTrue(worker.progress.fixture_validation_pending)
+        self.assertTrue(worker.progress.fixture_pending)
         self.observer.returned = True
         self.observer.on_validated(7)
-        self.assertFalse(worker.progress.fixture_validation_pending)
+        self.assertFalse(worker.progress.fixture_pending)
         kinds = [call.args[0] for call in self.observer.emit.call_args_list]
         self.assertEqual(kinds, ['validation-complete', 'diagnostics-unavailable', 'end'])
         with self.assertRaises(RuntimeError):
@@ -439,3 +439,154 @@ class NumericStorageTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NestedFixtureTests(unittest.TestCase):
+    def setUp(self):
+        worker.request = dict(fault=None, machine=dict(registers={'owner': 'x0', 'reader': 'x1'}))
+        worker.breakpoints.clear()
+        self.question = dict(index=0, definition='late_key', field='number', parent_field='block',
+            nested=dict(parent_token=7, owner_offset=64, member_entry=900), token=8,
+            storage=dict(offset=80, decoder={'FixedPoint': {'scale': 32768}}),
+            storage_unavailable=None, reader_id='reader', reader_kind='FixedPoint', reader_family='NotApplicable',
+            parsing=True, diagnostics=True, runtime=False)
+        binding = dict(registry='common/example', load_entry=10, reader_entry=20, constructor_entry=24,
+            member_entry=30, reader_return=40, malformed_entry=50, unexpected_entry=60, fields=[],
+            inline=dict(root_return=24, key_storage=dict(offset=8, decoder='String')))
+        config = dict(file='common/example/nested.txt', questions=[self.question], validation=False,
+            registration_entries=False, field_reads=False, bindings=dict(fields=[], outcome_registries=[binding]))
+        self.observer = worker.InlineFixtureObserver(config)
+        self.observer.loading = True
+        self.observer.thread = 7
+        self.observer.active_reader = 2000
+        self.frame = Mock()
+        self.frame.GetThread().GetThreadID.return_value = 7
+        self.registers = {'x0': 1000, 'x1': 2000, 'w2': 7}
+        patch.object(worker, 'register', side_effect=lambda frame, name: self.registers[name]).start()
+        self.observer.location = Mock(return_value=(config['file'], 2))
+        self.observer.emit = Mock()
+        self.observer.return_hook = Mock(side_effect=lambda frame, name: worker.breakpoints.setdefault(name, Mock()))
+        self.observer.stored_value = Mock(side_effect=lambda process, owner, storage:
+            {'String': 'late_key'} if storage['decoder'] == 'String' else {'FixedPoint': {'raw': 40960, 'scale': 32768}})
+        self.addCleanup(patch.stopall)
+        self.observer.begin_root(self.frame, None)
+
+    def begin_leaf(self):
+        self.observer.begin_parent(self.frame, None)
+        self.registers.update(x0=1064, w2=8)
+        self.observer.begin_leaf(self.frame, None, 900)
+
+    def finish_parent(self):
+        self.observer.callback(self.frame, self.observer.parent['name'])
+
+    def test_late_key_preserves_source_occurrences_and_root_identity(self):
+        self.begin_leaf()
+        self.assertFalse(self.observer.emit.called)
+        self.observer.finish_leaf(None, self.observer.leaf['name'])
+        self.finish_parent()
+        self.observer.finish_root(None, 7)
+        calls = self.observer.emit.call_args_list
+        self.assertEqual([call.args[0] for call in calls], ['definition', 'field-parse', 'field-parse', 'field-storage'])
+        self.assertTrue(all(call.kwargs['owner'] == hex(1000) for call in calls))
+        self.assertEqual(calls[-1].kwargs['line'], 2)
+        self.assertEqual(calls[-1].kwargs['value']['FixedPoint']['raw'], 40960)
+        self.assertEqual(self.observer.occurrences[0], 1)
+        self.observer.finish_questions(None, 7)
+        terminal = next(call for call in self.observer.emit.call_args_list if call.args[0] == 'field-terminal')
+        self.assertEqual(terminal.kwargs['final_value']['FixedPoint']['scale'], 32768)
+
+    def test_shared_return_address_is_restricted_to_each_call_stack(self):
+        worker.request['machine']['registers']['return'] = 'x30'
+        self.registers.update(x30=3000, sp=4096)
+        target = self.frame.GetThread().GetProcess().GetTarget()
+        parent_hook, leaf_hook = Mock(), Mock()
+        for hook in (parent_hook, leaf_hook):
+            hook.GetNumResolvedLocations.return_value = 1
+        target.BreakpointCreateByAddress.side_effect = [parent_hook, leaf_hook]
+        worker.FixtureObserver.return_hook(self.observer, self.frame, 'parent')
+        self.registers['sp'] = 3840
+        worker.FixtureObserver.return_hook(self.observer, self.frame, 'leaf')
+        self.assertEqual([call.args[0] for call in target.BreakpointCreateByAddress.call_args_list], [3000, 3000])
+        parent_hook.SetCondition.assert_called_once_with('$sp == 0x1000')
+        leaf_hook.SetCondition.assert_called_once_with('$sp == 0xf00')
+
+    def test_wrong_nested_owner_reader_or_source_remains_unavailable(self):
+        for changes, location in [({'x0': 1065}, 'common/example/nested.txt'),
+                                  ({'x1': 2001}, 'common/example/nested.txt'),
+                                  ({}, 'common/other/inline.txt')]:
+            with self.subTest(changes=changes, location=location):
+                self.observer.parent = None
+                self.registers.update(x0=1000, x1=2000, w2=7)
+                self.observer.location.return_value = ('common/example/nested.txt', 2)
+                self.observer.begin_parent(self.frame, None)
+                self.registers.update(x0=1064, w2=8)
+                self.registers.update(changes)
+                self.observer.location.return_value = (location, 2)
+                self.observer.begin_leaf(self.frame, None, 900)
+                self.assertIsNone(self.observer.leaf)
+                self.assertTrue(self.observer.root_unavailable)
+        self.finish_parent()
+        self.observer.finish_root(None, 7)
+        self.assertIsNotNone(self.question['storage_unavailable'])
+        self.assertFalse(any(call.args[0] == 'field-storage' for call in self.observer.emit.call_args_list))
+        self.observer.finish_questions(None, 7)
+        terminal = next(call for call in self.observer.emit.call_args_list if call.args[0] == 'parsing-terminal')
+        self.assertIsNotNone(terminal.kwargs['unavailable'])
+
+    def test_root_and_file_terminal_refuse_unfinished_member(self):
+        self.begin_leaf()
+        with self.assertRaisesRegex(RuntimeError, 'unfinished owner join'):
+            self.observer.finish_root(None, 7)
+        self.registers['x0'] = 2000
+        with self.assertRaisesRegex(RuntimeError, 'unfinished owner join'):
+            self.observer.callback(self.frame, protocol.HOOK['fixture_return'])
+
+    def test_nested_callbacks_cannot_hide_a_thread_change_in_the_buffer(self):
+        self.frame.GetThread().GetThreadID.return_value = 8
+        with self.assertRaisesRegex(RuntimeError, 'another thread'):
+            self.observer.callback(self.frame, protocol.HOOK['fixture_member'])
+
+    def test_unrequested_root_keeps_diagnostics_unscoped(self):
+        self.observer.buffer = [('diagnostic', dict(selector=None, occurrence=None, text='bad token',
+            stage=protocol.DIAGNOSTIC_STAGE['reader_malformed'], file='common/example/nested.txt', line=3))]
+        self.observer.stored_value.return_value = {'String': 'other'}
+        self.observer.stored_value.side_effect = None
+        self.observer.finish_root(None, 7)
+        self.observer.emit.assert_called_once()
+        self.assertEqual(self.observer.emit.call_args.args[0], 'diagnostic')
+        self.assertIsNone(self.observer.emit.call_args.kwargs['definition'])
+
+    def test_file_final_value_is_read_again_after_root_completion(self):
+        self.begin_leaf()
+        self.observer.finish_leaf(None, self.observer.leaf['name'])
+        self.finish_parent()
+        self.observer.finish_root(None, 7)
+        self.observer.stored_value.side_effect = None
+        self.observer.stored_value.return_value = {'FixedPoint': {'raw': 99, 'scale': 32768}}
+        self.observer.finish_questions(None, 7)
+        terminal = next(call for call in self.observer.emit.call_args_list if call.args[0] == 'field-terminal')
+        self.assertEqual(terminal.kwargs['final_value']['FixedPoint']['raw'], 99)
+
+    def test_pause_waits_for_the_inline_file_boundary(self):
+        state = worker.SessionProgress(['registry'], fixture_pending=True)
+        state.returned_registries = ['registry']
+        self.assertFalse(worker.decide_pause(state).stop)
+        state.fixture_pending = False
+        self.assertTrue(worker.decide_pause(state).stop)
+
+    def test_worker_loss_waits_for_a_joined_parent_in_the_selected_file(self):
+        self.observer.control = protocol.CONTROL['worker_loss']
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)), patch.object(worker, 'emit') as emit:
+            marker = Path(root) / 'worker-loss-ready'
+            self.registers['x0'] = 999
+            self.assertFalse(self.observer.callback(self.frame, protocol.HOOK['fixture_member']))
+            self.assertFalse(marker.exists())
+            self.registers['x0'] = 1000
+            self.observer.location.return_value = ('common/other/source.txt', 2)
+            self.assertFalse(self.observer.callback(self.frame, protocol.HOOK['fixture_member']))
+            self.assertFalse(marker.exists())
+            self.observer.location.return_value = ('common/example/nested.txt', 2)
+            self.assertTrue(self.observer.callback(self.frame, protocol.HOOK['fixture_member']))
+            self.assertTrue(marker.exists())
+            emit.assert_called_once_with('worker-loss-ready')
+            self.observer.return_hook.assert_not_called()

@@ -181,6 +181,10 @@ impl Native {
             .unwrap_or_else(|| binding.default_registries());
         if let Some(fixture) = &options.fixture
             && !registries.iter().any(|name| name == fixture.registry())
+            && !binding
+                .analysis
+                .as_ref()
+                .is_some_and(|analysis| analysis.has_inline_fixture(fixture.registry()))
         {
             return Err(Error::FixtureRequest {
                 reason: format!(

@@ -182,6 +182,7 @@ enum Case {
         fixed: &'static str,
         fractional_final: i64,
     },
+    FixtureNestedNumeric(Fault),
     /// Validation samples of one block field, each in its own definition of one fixture file.
     FixtureValidation {
         field: &'static str,
@@ -383,6 +384,14 @@ fn cases() -> Vec<(String, Case)> {
             fixed: "war_exhaustion",
             fractional_final: -123_456,
         },
+    ));
+    cases.push((
+        "fixture_numeric_nested_projects".into(),
+        Case::FixtureNestedNumeric(Fault::Normal),
+    ));
+    cases.push((
+        "fixture_numeric_nested_worker_loss".into(),
+        Case::FixtureNestedNumeric(Fault::WorkerLoss),
     ));
     let parser_log = Some("engine-parser-log");
     let validation_log = Some("engine-validation-log");
@@ -626,6 +635,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             fixed,
             fractional_final,
         } => fixture_numeric(registry, integer, fixed, fractional_final).await,
+        Case::FixtureNestedNumeric(control) => fixture_nested_numeric(control).await,
         Case::FixtureValidation { field, ref samples } => {
             fixture_validation(native, field, samples).await
         }
@@ -2914,4 +2924,102 @@ fn child_processes() -> Vec<u32> {
         .filter(|(_, parent, command)| *parent == this && !command.ends_with("ps"))
         .map(|(pid, _, _)| pid)
         .collect()
+}
+
+async fn fixture_nested_numeric(control: Fault) -> Outcome {
+    use pdx_native::{
+        FixtureFieldQuestion, FixtureParsing, FixtureRequest, FixtureStorage, FixtureValue,
+        StoredFieldOccurrence,
+    };
+    use std::fmt::Write;
+    let registry = "common/special_projects";
+    let mut text = String::new();
+    let mut questions = Vec::new();
+    let mut expected = std::collections::BTreeMap::new();
+    for (key, inputs, values) in [
+        (
+            "nested_boundary",
+            vec!["-281474976710656.0"],
+            vec![i64::MIN],
+        ),
+        ("nested_fractional", vec!["-1.25"], vec![-40960]),
+        (
+            "nested_malformed",
+            vec!["7", "not_a_number"],
+            vec![229376, 0],
+        ),
+    ] {
+        writeln!(text, "special_project = {{\n requirements = {{")?;
+        let mut occurrences = Vec::new();
+        for (index, (input, raw)) in inputs.iter().zip(&values).enumerate() {
+            let line = text.lines().count() as u64 + 1;
+            writeln!(text, "  fleet_power = {input}")?;
+            occurrences.push(StoredFieldOccurrence {
+                line,
+                occurrence: index as u64 + 1,
+                value: FixtureValue::FixedPoint {
+                    raw: *raw,
+                    scale: 32768,
+                },
+            });
+        }
+        writeln!(text, " }}\n key = {key}\n}}")?;
+        questions.push(
+            FixtureFieldQuestion::new(registry, key, "fleet_power")
+                .with_parent_field("requirements")
+                .with_parsing(),
+        );
+        expected.insert(key.to_owned(), occurrences);
+    }
+    let request =
+        FixtureRequest::field_outcomes(format!("{registry}/native_nested.txt"), text, questions);
+    let recorded = tempfile::tempdir()?;
+    let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
+        .record_answers_to(recorded.path());
+    let mut prepared = options().registries([TRADITIONS]).fixture(request.clone());
+    if control != Fault::Normal {
+        prepared = prepared.fault(ObservationTarget::Fixture, control);
+    }
+    let started = native.start_game(prepared).await;
+    if control == Fault::WorkerLoss {
+        return match started {
+            Err(Error::Startup {
+                disposal: Disposal::Confirmed,
+                reason,
+            }) if reason.contains("WorkerLost") => Ok(()),
+            Ok(mut game) => {
+                let _ = game.close().await;
+                Err("nested fixture worker loss unexpectedly started a session".into())
+            }
+            Err(error) => Err(format!("nested fixture worker loss: {error:?}").into()),
+        };
+    }
+    let mut game = started?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.completeness != Completeness::Complete || !answer.gaps.is_empty() {
+            return Err(format!("nested numeric observation incomplete: {answer:?}").into());
+        }
+        if !matches!(answer.value.diagnostic_coverage, pdx_native::DiagnosticCoverage::Complete {
+            window: pdx_native::DiagnosticWindow::FixtureFileLoad
+        }) || !answer.value.diagnostics.is_empty() {
+            return Err(format!("nested diagnostic coverage differs: {answer:?}").into());
+        }
+        for outcome in &answer.value.field_outcomes {
+            let occurrences = &expected[&outcome.question.definition];
+            let storage = FixtureStorage::Observed { occurrences: occurrences.clone(),
+                final_value: occurrences.last().map(|item| item.value.clone()), completeness: Completeness::Complete };
+            if outcome.storage != storage || outcome.owner.is_none() {
+                return Err(format!("nested storage differs: expected {storage:?}; got {outcome:?}").into());
+            }
+            if !matches!(&outcome.parsing, FixtureParsing::Observed { occurrences: parsed, completeness: Completeness::Complete } if parsed.len() == occurrences.len() && parsed.iter().zip(occurrences).all(|(parsed, stored)| parsed.line == stored.line && parsed.occurrence == stored.occurrence && parsed.return_line == Some(stored.line))) {
+                return Err(format!("nested parsing incomplete: {outcome:?}").into());
+            }
+        }
+        if answer.value.field_outcomes.len() != expected.len() { return Err("missing nested field outcomes".into()); }
+        assert_recorded_fixture(recorded.path(), request, &answer).await?;
+        Ok(())
+    }.await;
+    and_close(&mut result, &mut game).await;
+    result
 }

@@ -18,10 +18,7 @@ use std::collections::BTreeMap;
 pub(super) fn reader(joins: &[ReaderJoin]) -> Reader {
     let classification = readers::classify(joins);
     Reader {
-        id: classification.callee.map(|callee| {
-            let digest = Sha256::digest(callee.as_bytes());
-            ReaderId(format!("{digest:x}")[..16].to_owned())
-        }),
+        id: classification.callee.map(ReaderId::from_callee),
         kind: classification.kind,
         family: classification.family,
     }
