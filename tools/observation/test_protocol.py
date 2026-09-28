@@ -15,7 +15,7 @@ class ProtocolTests(unittest.TestCase):
                        reader_return=16416, constructor_entry=16432, member_entry=16448,
                        malformed_entry=16464, unexpected_entry=16480,
                        fields=[dict(token=10001, name='custom_tooltip',
-                       storage_offset=448)])
+                       storage=dict(offset=448, decoder="String"))])
         fixture = dict(file='common/tradition_categories/atlas.txt', registration_entries=True,
                        field_reads=True, validation=False, questions=[], bindings=dict(validation=None, registration_entry=4096, load_entry=8192,
                        field_entry=12288, reader_lexer_offset=48, lexer_file_offset=8,
@@ -38,7 +38,7 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.assertEqual(wire.decode('reader_kind', wire.encode('reader_kind', kind)), kind)
                 event = dict(kind='field-authority', question=0, reader_id=None,
-                             reader_kind=kind, reader_family='Unknown', storage_supported=False, unavailable='unsupported')
+                             reader_kind=kind, reader_family='Unknown', storage_decoder=None, unavailable='unsupported')
                 row = dict(run='a', seq=1, thread=7, kind='fixture', event=event)
                 self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
         for kind in ['string', 'Unsupported', 1, None]:
@@ -126,6 +126,26 @@ class ProtocolTests(unittest.TestCase):
                 wire.decode('grant', body)
         with self.assertRaises(ValueError):
             wire.encode('record', dict(seq=1, run='a', kind='callback-error', error='x' * wire.MAX_RECORD))
+
+
+
+class NumericProtocolTests(unittest.TestCase):
+    def test_numeric_values_round_trip_without_float_conversion(self):
+        row = dict(run='attempt', seq=9, thread=7, kind='fixture', event=dict(
+            kind='field-storage', question=0, file='common/synthetic/test.txt', line=2,
+            definition='one', field='number', owner='0x2000', occurrence=1))
+        for value in [{'Integer': -2**31}, {'Integer': 2**31-1},
+                      {'FixedPoint': dict(raw=-2**63, scale=100000)},
+                      {'FixedPoint': dict(raw=2**63-1, scale=32768)}]:
+            with self.subTest(value=value):
+                record = dict(row, event=dict(row['event'], value=value))
+                self.assertEqual(wire.decode('record', wire.encode('record', record)), record)
+        for value in [{'Integer': 2**31}, {'Integer': True}, {'Integer': 1.5},
+                      {'FixedPoint': dict(raw=2**63, scale=32768)},
+                      {'FixedPoint': dict(raw=1, scale=-1)},
+                      {'FixedPoint': dict(raw=1)}, {'Unknown': 1}]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                wire.encode('record', dict(row, event=dict(row['event'], value=value)))
 
 
 if __name__ == '__main__':

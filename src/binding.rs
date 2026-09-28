@@ -463,13 +463,9 @@ impl ExecutionPlan {
             .unwrap_or(crate::ReaderKind::Unknown);
         let storage_unavailable = match (field, exact) {
             (None, _) => Some("The field is not established by registry_fields".into()),
-            (Some(field), _) if field.reader.kind != crate::ReaderKind::String => Some(format!(
-                "The {:?} reader has no storage decoder in this method",
-                field.reader.kind
-            )),
             (Some(_), None) => Some("No exact-build storage binding for this field".into()),
-            (Some(_), Some(binding)) if binding.storage_offset.is_none() => {
-                Some("No proven string storage for this field".into())
+            (Some(_), Some(binding)) if binding.storage.is_none() => {
+                Some("No proven direct storage decoder and destination for this field".into())
             }
             _ => None,
         };
@@ -484,13 +480,13 @@ impl ExecutionPlan {
             reader_kind,
             reader_family: field.map_or(crate::BlockFamily::Unknown, |field| field.reader.family),
             token: exact.map(|field| field.token),
-            storage_offset: exact.and_then(|field| field.storage_offset),
+            storage: exact.and_then(|field| field.storage),
             storage_unavailable,
         }
     }
 
     /// Give field questions an outcome binding for the fixture registry: its loader, when the
-    /// build binding has none, and the string storage that its reader arguments prove. Returns
+    /// build binding has none, and the storage that its reader arguments prove. Returns
     /// the registry's analyzed fields.
     fn bind_fixture_registry(
         &self,

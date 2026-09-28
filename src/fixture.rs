@@ -321,28 +321,45 @@ pub struct FieldRead {
     pub stage: ProcessingStage,
 }
 
-/// One stored string read after a source occurrence returned.
+/// An exact value read from the definition's storage, independently of parser diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub enum FixtureValue {
+    /// Text stored by the string reader.
+    String(String),
+    /// A signed 32-bit integer stored by the direct integer reader.
+    Integer(i32),
+    /// A signed fixed-point value. Divide `raw` by `scale` to interpret it exactly.
+    FixedPoint {
+        /// The signed integer held in storage, without conversion or rounding.
+        raw: i64,
+        /// Positive number of stored units per whole unit.
+        scale: u64,
+    },
+}
+
+/// One stored value read after a source occurrence returned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StoredStringOccurrence {
+pub struct StoredFieldOccurrence {
     /// One-based source line reported by the engine.
     pub line: u64,
     /// One-based occurrence of this field on this definition.
     pub occurrence: u64,
-    /// Actual string in the definition after the reader returned.
-    pub value: String,
+    /// Actual value in the definition after the reader returned.
+    pub value: FixtureValue,
 }
 
 /// Independently observed parser storage for one requested field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FixtureStorage {
-    /// No String storage observation was established; the reason states what was unavailable.
+    /// No storage observation was established; the reason states what was unavailable.
     Unavailable(String),
     /// Values after each occurrence and the value when the file load completed.
-    String {
+    Observed {
         /// Source-ordered values after each joined reader return.
-        occurrences: Vec<StoredStringOccurrence>,
+        occurrences: Vec<StoredFieldOccurrence>,
         /// Value at the file-load terminal, including constructor initialization when observed.
-        final_value: Option<String>,
+        final_value: Option<FixtureValue>,
         /// Whether all storage records and terminals completed intact.
         completeness: crate::Completeness,
     },

@@ -48,8 +48,9 @@ pub use field::{
 pub use fixture::{
     DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,
     FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureObservationKind,
-    FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime, FixtureStorage, FixtureWindow,
-    ParsedFieldOccurrence, ProcessingStage, RegistrationEntry, StoredStringOccurrence,
+    FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime, FixtureStorage, FixtureValue,
+    FixtureWindow, ParsedFieldOccurrence, ProcessingStage, RegistrationEntry,
+    StoredFieldOccurrence,
 };
 pub use game::{Game, GameOptions};
 pub use grammar::{

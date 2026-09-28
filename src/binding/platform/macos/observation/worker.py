@@ -281,6 +281,10 @@ def registry_callback(frame, name):
     return False
 
 
+def signed_integer(raw, bits):
+    return raw - (1 << bits) if raw >= (1 << (bits - 1)) else raw
+
+
 def interpret_fixture_log(text, file, file_prefix, line_prefix, returned):
     """Keep a matching file's diagnostic, with a line only when its source is unambiguous."""
     if file not in text:
@@ -365,6 +369,20 @@ class FixtureObserver:
     def stored_string(self, process, storage):
         return cstring(process, storage, self.bindings['string_tag_offset'])
 
+    def stored_value(self, process, owner, storage):
+        address = owner + storage['offset']
+        decoder = storage['decoder']
+        if decoder == 'String':
+            return {'String': self.stored_string(process, address)}
+        if decoder == 'Integer':
+            raw = uint(process, address, 4)
+            return {'Integer': signed_integer(raw, 32)}
+        if isinstance(decoder, dict) and 'FixedPoint' in decoder:
+            raw = uint(process, address, 8)
+            signed = signed_integer(raw, 64)
+            return {'FixedPoint': dict(raw=signed, scale=decoder['FixedPoint']['scale'])}
+        raise RuntimeError('fixture storage decoder is unavailable')
+
     def return_hook(self, frame, name):
         process = frame.GetThread().GetProcess()
         hook = process.GetTarget().BreakpointCreateByAddress(register(frame, request['machine']['registers']['return']))
@@ -388,7 +406,7 @@ class FixtureObserver:
                     reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
                     final_value=None, unavailable='Requested definition constructor was not observed')
             else:
-                value = self.stored_string(process, owner['owner'] + question['storage_offset'])
+                value = self.stored_value(process, owner['owner'], question['storage'])
                 self.emit('field-terminal', thread, question=index, owner=hex(owner['owner']),
                     definition_line=owner['line'], reader_id=question['reader_id'],
                     reader_kind=question['reader_kind'], reader_family=question['reader_family'], final_value=value, unavailable=None)
@@ -431,12 +449,11 @@ class FixtureObserver:
         self.loading = True
         self.emit('load-start', thread, file=file)
         for index, question in self.questions.items():
-            supported = (question['storage_unavailable'] is None and question['reader_kind'] == protocol.READER_KIND['string']
-                and question['reader_id'] is not None and question['token'] is not None
-                and question['storage_offset'] is not None)
+            storage = question['storage']
+            decoder = storage['decoder'] if storage and question['storage_unavailable'] is None else None
             self.emit('field-authority', thread, question=index,
                 reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
-                storage_supported=supported, unavailable=question['storage_unavailable'])
+                storage_decoder=decoder, unavailable=question['storage_unavailable'])
         if self.questions and self.outcome_binding:
             return_address = process.GetTarget().ResolveFileAddress(self.outcome_binding['reader_return'])
             hook = process.GetTarget().BreakpointCreateBySBAddress(return_address)
@@ -527,7 +544,7 @@ class FixtureObserver:
                 occurrence=pending['occurrence'], returned=True)
         if question['storage_unavailable'] is not None:
             return False
-        value = self.stored_string(process, pending['owner'] + question['storage_offset'])
+        value = self.stored_value(process, pending['owner'], question['storage'])
         self.emit('field-storage', thread, question=pending['question'], file=self.config['file'],
             line=pending['line'], definition=pending['definition'], field=pending['field'],
             owner=hex(pending['owner']), occurrence=pending['occurrence'], value=value)

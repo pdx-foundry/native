@@ -3,14 +3,15 @@
 use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
 use crate::protocol::{
     hooks,
-    observation::{FixtureFieldBinding, diagnostic_stage},
+    observation::{FixtureFieldBinding, FixtureStorageDecoder, diagnostic_stage},
 };
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
     Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
     FixtureObservationKind as Kind, FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime,
-    FixtureStorage, Gap, GapKind, GapSubject, Operation, ParsedFieldOccurrence, ProcessingStage,
-    Reader, ReaderId, ReaderKind, RegistrationEntry, Source, StoredStringOccurrence,
+    FixtureStorage, FixtureValue, Gap, GapKind, GapSubject, Operation, ParsedFieldOccurrence,
+    ProcessingStage, Reader, ReaderId, ReaderKind, RegistrationEntry, Source,
+    StoredFieldOccurrence,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -47,7 +48,7 @@ pub(crate) enum FixtureEvent {
         reader_kind: ReaderKind,
         #[serde(default)]
         reader_family: crate::BlockFamily,
-        storage_supported: bool,
+        storage_decoder: Option<FixtureStorageDecoder>,
         unavailable: Option<String>,
     },
     FieldStorage {
@@ -58,7 +59,7 @@ pub(crate) enum FixtureEvent {
         field: String,
         owner: String,
         occurrence: u64,
-        value: String,
+        value: FixtureValue,
     },
     FieldParse {
         question: u64,
@@ -92,7 +93,7 @@ pub(crate) enum FixtureEvent {
         reader_kind: ReaderKind,
         #[serde(default)]
         reader_family: crate::BlockFamily,
-        final_value: Option<String>,
+        final_value: Option<FixtureValue>,
         unavailable: Option<String>,
     },
     DiagnosticsTerminal {
@@ -228,12 +229,12 @@ struct DefinitionState {
 struct FieldAuthorityState {
     reader: Reader,
     coherent: bool,
-    storage_supported: bool,
+    storage_decoder: Option<FixtureStorageDecoder>,
     unavailable: Option<String>,
 }
 
 struct FieldTerminalState {
-    final_value: Option<String>,
+    final_value: Option<FixtureValue>,
     unavailable: Option<String>,
 }
 
@@ -283,7 +284,7 @@ struct Window<'a> {
     next_owner_id: u64,
     definitions: BTreeMap<String, DefinitionState>,
     field_authorities: BTreeMap<u64, FieldAuthorityState>,
-    occurrences: BTreeMap<u64, Vec<StoredStringOccurrence>>,
+    occurrences: BTreeMap<u64, Vec<StoredFieldOccurrence>>,
     parse_occurrences: BTreeMap<u64, Vec<ParsedFieldOccurrence>>,
     parsing_terminals: BTreeMap<u64, Option<String>>,
     parsing_issues: BTreeSet<u64>,
@@ -453,14 +454,14 @@ impl<'a> Window<'a> {
                 reader_id,
                 reader_kind,
                 reader_family,
-                storage_supported,
+                storage_decoder,
                 unavailable,
             } => self.accept_field_authority(
                 *question,
                 reader_id,
                 reader_kind,
                 reader_family,
-                *storage_supported,
+                *storage_decoder,
                 unavailable,
             ),
             FixtureEvent::FieldStorage { .. } => self.accept_field_storage(event),
@@ -617,7 +618,7 @@ impl<'a> Window<'a> {
         reader_id: &Option<String>,
         reader_kind: &ReaderKind,
         reader_family: &crate::BlockFamily,
-        storage_supported: bool,
+        storage_decoder: Option<FixtureStorageDecoder>,
         unavailable: &Option<String>,
     ) {
         let Some(_) = self.request.field_questions.get(question as usize) else {
@@ -633,8 +634,11 @@ impl<'a> Window<'a> {
             kind: *reader_kind,
             family: *reader_family,
         };
-        let coherent = if storage_supported {
-            reader.kind == ReaderKind::String && reader.id.is_some() && unavailable.is_none()
+        let coherent = if let Some(decoder) = storage_decoder {
+            reader.kind == decoder.reader_kind()
+                && reader.id.is_some()
+                && unavailable.is_none()
+                && !matches!(decoder, FixtureStorageDecoder::FixedPoint { scale: 0 })
         } else {
             unavailable.is_some()
         };
@@ -646,7 +650,7 @@ impl<'a> Window<'a> {
             FieldAuthorityState {
                 reader,
                 coherent,
-                storage_supported: storage_supported && coherent,
+                storage_decoder: storage_decoder.filter(|_| coherent),
                 unavailable: unavailable.clone(),
             },
         );
@@ -685,10 +689,21 @@ impl<'a> Window<'a> {
         let storage_supported = self
             .field_authorities
             .get(question)
-            .is_some_and(|authority| authority.storage_supported);
+            .is_some_and(|authority| authority.storage_decoder.is_some());
+        let value_matches = self
+            .field_authorities
+            .get(question)
+            .and_then(|authority| authority.storage_decoder)
+            .is_some_and(|decoder| decoder.accepts(value));
         let in_order = *occurrence == next_occurrence;
 
-        if !(in_window && in_source && asked_field && owner_joins && storage_supported && in_order)
+        if !(in_window
+            && in_source
+            && asked_field
+            && owner_joins
+            && storage_supported
+            && value_matches
+            && in_order)
         {
             self.field_gap(
                 *question,
@@ -699,7 +714,7 @@ impl<'a> Window<'a> {
         self.occurrences
             .entry(*question)
             .or_default()
-            .push(StoredStringOccurrence {
+            .push(StoredFieldOccurrence {
                 line: *line,
                 occurrence: *occurrence,
                 value: value.clone(),
@@ -895,7 +910,7 @@ impl<'a> Window<'a> {
         let storage_supported = self
             .field_authorities
             .get(question)
-            .is_some_and(|authority| authority.storage_supported);
+            .is_some_and(|authority| authority.storage_decoder.is_some());
         let owner_joined = owner.as_ref().is_some_and(|pointer| {
             self.definitions
                 .get(&asked.definition)
@@ -904,7 +919,14 @@ impl<'a> Window<'a> {
                 })
         });
         let shape_valid = if storage_supported {
-            owner_joined && final_value.is_some() && unavailable.is_none()
+            owner_joined
+                && unavailable.is_none()
+                && final_value.as_ref().is_some_and(|value| {
+                    self.field_authorities
+                        .get(question)
+                        .and_then(|authority| authority.storage_decoder)
+                        .is_some_and(|decoder| decoder.accepts(value))
+                })
         } else {
             final_value.is_none() && unavailable.is_some()
         };
@@ -917,7 +939,7 @@ impl<'a> Window<'a> {
         self.field_terminals.insert(
             *question,
             FieldTerminalState {
-                final_value: (authority_matches && owner_joined)
+                final_value: (authority_matches && owner_joined && shape_valid)
                     .then(|| final_value.clone())
                     .flatten(),
                 unavailable: unavailable.clone(),
@@ -1188,7 +1210,7 @@ impl<'a> Window<'a> {
             );
             let storage = if authority
                 .as_ref()
-                .is_some_and(|authority| authority.storage_supported)
+                .is_some_and(|authority| authority.storage_decoder.is_some())
             {
                 let final_value = terminal
                     .as_ref()
@@ -1201,7 +1223,7 @@ impl<'a> Window<'a> {
                         && terminal.is_some()
                         && final_value.is_some()
                         && definition.is_some();
-                    FixtureStorage::String {
+                    FixtureStorage::Observed {
                         occurrences,
                         final_value,
                         completeness: if complete {
@@ -1214,7 +1236,7 @@ impl<'a> Window<'a> {
                     let reason = terminal
                         .as_ref()
                         .and_then(|terminal| terminal.unavailable.clone())
-                        .unwrap_or_else(|| "No String storage observation was established".into());
+                        .unwrap_or_else(|| "No storage observation was established".into());
                     self.field_gap(index, &reason);
                     FixtureStorage::Unavailable(reason)
                 }
@@ -1320,7 +1342,7 @@ impl<'a> Window<'a> {
             },
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v2", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v3", Basis::LiveObservation),
         }
     }
 }
@@ -1408,7 +1430,7 @@ mod tests {
         field_outcome_session(
             vec![
                 json!({"kind":"load-start","file":"common/traditions/sample.txt"}),
-                json!({"kind":"field-authority","question":0,"reader_id":"block-reader","reader_kind":"Block","storage_supported":false,"unavailable":"No block storage decoder"}),
+                json!({"kind":"field-authority","question":0,"reader_id":"block-reader","reader_kind":"Block","storage_decoder":null,"unavailable":"No block storage decoder"}),
                 json!({"kind":"definition","file":"common/traditions/sample.txt","line":1,"definition":"sample","owner":"0x2000"}),
                 json!({"kind":"field-parse","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"potential","owner":"0x2000","occurrence":1,"returned":false}),
                 json!({"kind":"diagnostic","text":"Rejected nested child","stage":"reader-unexpected-report","file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"potential","occurrence":1}),
@@ -1778,12 +1800,12 @@ mod tests {
         field_outcome_session(
             vec![
                 json!({"kind":"load-start","file":"common/traditions/sample.txt"}),
-                json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":true,"unavailable":null}),
+                json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_decoder":"String","unavailable":null}),
                 json!({"kind":"definition","file":"common/traditions/sample.txt","line":1,"definition":"sample","owner":"0x2000"}),
-                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":1,"value":"one"}),
+                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":1,"value":{"String":"one"}}),
                 json!({"kind":"diagnostic","text":"malformed value","stage":"reader-malformed-report","file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","occurrence":1}),
-                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":2,"value":"two"}),
-                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":"two","unavailable":null}),
+                json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":2,"value":{"String":"two"}}),
+                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":{"String":"two"},"unavailable":null}),
                 json!({"kind":"diagnostics-terminal","count":1}),
                 json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
             ],
@@ -1822,7 +1844,7 @@ mod tests {
                 Some("field-authority") => {
                     event["event"]["reader_id"] = Value::Null;
                     event["event"]["reader_kind"] = json!(reader_kind);
-                    event["event"]["storage_supported"] = json!(false);
+                    event["event"]["storage_decoder"] = json!(null);
                     event["event"]["unavailable"] = json!("Storage decoder unavailable");
                 }
                 Some("diagnostics-terminal") => event["event"]["count"] = json!(0),
@@ -1877,7 +1899,7 @@ mod tests {
         field_outcome_session(
             vec![
                 json!({"kind":"load-start","file":"common/tradition_categories/sample.txt"}),
-                json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":false,"unavailable":"No exact-build storage binding for this field"}),
+                json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_decoder":null,"unavailable":"No exact-build storage binding for this field"}),
                 json!({"kind":"field-terminal","question":0,"owner":null,"definition_line":null,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":null,"unavailable":"No exact-build storage binding for this field"}),
                 json!({"kind":"diagnostics-unavailable","reason":"Parser diagnostics are outside this registry binding"}),
                 json!({"kind":"load-returned","file":"common/tradition_categories/sample.txt","field_count":0}),
@@ -1898,9 +1920,9 @@ mod tests {
     }
 
     fn two_field_events() -> Vec<Value> {
-        let authority = |question: u64| json!({"kind":"field-authority","question":question,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_supported":true,"unavailable":null});
-        let storage = |question: u64, line: u64, field: &str, value: &str| json!({"kind":"field-storage","question":question,"file":"common/traditions/sample.txt","line":line,"definition":"sample","field":field,"owner":"0x2000","occurrence":1,"value":value});
-        let terminal = |question: u64, value: &str| json!({"kind":"field-terminal","question":question,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":value,"unavailable":null});
+        let authority = |question: u64| json!({"kind":"field-authority","question":question,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_decoder":"String","unavailable":null});
+        let storage = |question: u64, line: u64, field: &str, value: &str| json!({"kind":"field-storage","question":question,"file":"common/traditions/sample.txt","line":line,"definition":"sample","field":field,"owner":"0x2000","occurrence":1,"value":{"String":value}});
+        let terminal = |question: u64, value: &str| json!({"kind":"field-terminal","question":question,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":{"String":value},"unavailable":null});
         field_outcome_session(
             vec![
                 json!({"kind":"load-start","file":"common/traditions/sample.txt"}),
@@ -2261,9 +2283,9 @@ mod tests {
         assert_eq!(outcome.runtime, FixtureRuntime::NotRequested);
         assert!(matches!(
             &outcome.storage,
-            FixtureStorage::String { occurrences, final_value, completeness }
-                if occurrences.iter().map(|item| item.value.as_str()).collect::<Vec<_>>() == ["one", "two"]
-                    && final_value.as_deref() == Some("two")
+            FixtureStorage::Observed { occurrences, final_value, completeness }
+                if occurrences.iter().map(|item| item.value.clone()).collect::<Vec<_>>() == [FixtureValue::String("one".into()), FixtureValue::String("two".into())]
+                    && final_value.as_ref() == Some(&FixtureValue::String("two".into()))
                     && *completeness == Completeness::Complete
         ));
 
@@ -2502,7 +2524,7 @@ mod tests {
         ));
         assert!(matches!(
             answer.value.field_outcomes[0].storage,
-            FixtureStorage::String {
+            FixtureStorage::Observed {
                 final_value: Some(_),
                 completeness: Completeness::Partial,
                 ..
@@ -2524,7 +2546,7 @@ mod tests {
         .unwrap();
         assert!(matches!(
             answer.value.field_outcomes[0].storage,
-            FixtureStorage::String {
+            FixtureStorage::Observed {
                 final_value: None,
                 completeness: Completeness::Partial,
                 ..
@@ -2544,7 +2566,7 @@ mod tests {
         .unwrap();
         assert!(matches!(
             answer.value.field_outcomes[0].storage,
-            FixtureStorage::String {
+            FixtureStorage::Observed {
                 ref occurrences,
                 final_value: None,
                 completeness: Completeness::Partial,
@@ -2656,7 +2678,7 @@ mod tests {
         assert_eq!(partial.completeness, Completeness::Partial);
         assert!(matches!(
             &partial.value.field_outcomes[0].storage,
-            FixtureStorage::String {
+            FixtureStorage::Observed {
                 occurrences,
                 final_value: None,
                 completeness: Completeness::Partial,
@@ -2677,7 +2699,7 @@ mod tests {
         assert_eq!(partial.completeness, Completeness::Partial);
         assert!(matches!(
             &partial.value.field_outcomes[0].storage,
-            FixtureStorage::String { occurrences, .. } if occurrences.len() == 2
+            FixtureStorage::Observed { occurrences, .. } if occurrences.len() == 2
         ));
 
         let mut missing_end = field_events();
@@ -2708,5 +2730,87 @@ mod tests {
             partial.value.diagnostic_coverage,
             DiagnosticCoverage::Complete { .. }
         ));
+    }
+    #[test]
+    fn numeric_storage_keeps_exact_values_and_rejects_wrong_types_and_scales() {
+        for (kind, decoder, first, last) in [
+            (
+                "Integer",
+                json!("Integer"),
+                json!({"Integer": i32::MIN}),
+                json!({"Integer": i32::MAX}),
+            ),
+            (
+                "FixedPoint",
+                json!({"FixedPoint":{"scale":100000}}),
+                json!({"FixedPoint":{"raw":i64::MIN,"scale":100000}}),
+                json!({"FixedPoint":{"raw":125000,"scale":100000}}),
+            ),
+            (
+                "FixedPoint",
+                json!({"FixedPoint":{"scale":32768}}),
+                json!({"FixedPoint":{"raw":i64::MAX,"scale":32768}}),
+                json!({"FixedPoint":{"raw":-40960,"scale":32768}}),
+            ),
+        ] {
+            let mut events = field_events();
+            events[4]["event"]["reader_kind"] = json!(kind);
+            events[4]["event"]["storage_decoder"] = decoder;
+            events[6]["event"]["value"] = first.clone();
+            events[8]["event"]["value"] = last.clone();
+            events[9]["event"]["reader_kind"] = json!(kind);
+            events[9]["event"]["final_value"] = last.clone();
+            let run = |events| {
+                reduce(
+                    &field_request(false),
+                    &category_fields(),
+                    &records(events),
+                    &owner(),
+                    BuildId("b".into()),
+                )
+                .unwrap()
+            };
+            let answer = run(events.clone());
+            assert_eq!(answer.completeness, Completeness::Complete);
+            let FixtureStorage::Observed {
+                occurrences,
+                final_value,
+                completeness,
+            } = &answer.value.field_outcomes[0].storage
+            else {
+                panic!("{answer:?}")
+            };
+            assert_eq!(*completeness, Completeness::Complete);
+            assert_eq!(serde_json::to_value(&occurrences[0].value).unwrap(), first);
+            assert_eq!(serde_json::to_value(final_value).unwrap(), last);
+            assert_eq!(answer.value.diagnostics.len(), 1);
+            for wrong in [
+                json!({"String":"wrong"}),
+                json!({"FixedPoint":{"raw":1,"scale":0}}),
+                json!({"FixedPoint":{"raw":1,"scale":42}}),
+            ] {
+                let mut invalid = events.clone();
+                invalid[8]["event"]["value"] = wrong.clone();
+                invalid[9]["event"]["final_value"] = wrong;
+                let answer = run(invalid);
+                let FixtureStorage::Observed {
+                    occurrences,
+                    final_value,
+                    completeness,
+                } = &answer.value.field_outcomes[0].storage
+                else {
+                    panic!("{answer:?}")
+                };
+                assert_eq!(occurrences.len(), 1);
+                assert!(final_value.is_none());
+                assert_eq!(*completeness, Completeness::Partial);
+            }
+            let mut missing = events.clone();
+            missing.retain(|row| row["event"]["kind"] != "field-terminal");
+            renumber(&mut missing);
+            let answer = run(missing);
+            assert!(matches!(&answer.value.field_outcomes[0].storage,
+                FixtureStorage::Observed { occurrences, final_value: None, completeness: Completeness::Partial } if occurrences.len() == 2));
+        }
     }
 }

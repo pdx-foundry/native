@@ -142,3 +142,83 @@ the registry check in `src/fixture.rs`. Since SDK-569, the fixture reducer takes
 field names and their count from the binding's `FixtureBinding.fields`, not from its own
 constants. The reducer's three registration entries are part of the same window and are
 removed with this exception.
+
+## Direct numeric storage (SDK-643, M45-release)
+
+The attempt began on 2026-09-28 within the accepted one-working-day bound, including verification.
+The executable and slice match the M45-release identities in [targets](targets.md). The existing
+owner, source, member-return and file-terminal joins now carry a typed storage value. A direct
+`CReader::Read(int&)` writes a signed 32-bit integer. `CReader::Read(CFixedPoint&)` writes a signed
+64-bit integer at scale 100,000. The reader and `CToken::ReadValue` bodies establish these
+representations on this build; the binding selects them by the joined callee, never by field name.
+Conditional paths, multiple reader alternatives, an unproven token or destination, and other
+numeric reader signatures remain unavailable. The public answer makes no conversion or range
+rule claim.
+
+`FixtureStorage::Observed` replaces `FixtureStorage::String`; each `StoredFieldOccurrence`
+replaces `StoredStringOccurrence` and holds a `FixtureValue`. Its variants are `String`, `Integer`
+and `FixedPoint { raw, scale }`. The final value has the same type. This changes the serialized
+fixture answer, so older recorded string answers need recapture. The method stamp is
+`observe-fixture/v3`. Storage and parser diagnostics still complete independently.
+
+### Exact-build observations
+
+The fixture cases are `fixture_numeric_megastructures` and `fixture_numeric_armies` in
+`tests/live.rs`. Each supplies boundary, fractional and malformed inputs. The malformed definition
+first stores `7`, then reads `not_a_number`; both occurrences remain source-correlated.
+
+| Field | Boundary input and stored value | Fractional input and member-return value | Malformed input after `7` |
+| --- | --- | --- | --- |
+| `common/megastructures#sensor_range` | `2147483647` → `2147483647` | `-1.234567` → `-1` | Retains `7`; separate `Malformed token` diagnostic |
+| `common/megastructures#build_time` | `92233720368547.75807` → raw `9223372036854775807` | `-1.234567` → raw `-123456` | Retains raw `700000`; separate diagnostic |
+| `common/armies#war_exhaustion` | Same fixed-point boundary | Same fixed-point fraction | Same retained value and separate diagnostic |
+
+Both numeric live cases passed, along with all 12 existing field-outcome cases and both string
+transfer cases (16 live cases total). The full default Rust suite and all 42 worker/codec tests
+also passed. Both fixed-point fields use scale 100,000. The army case transfers the method to a second owner
+class and registry without a new decoder. These observations concern these inputs and this load
+window, not general rounding, overflow, validity or gameplay semantics.
+
+**A member return and a file terminal can differ.** The first megastructure assertion assumed
+that `build_time = -1.234567` would remain unchanged. The actual member-return value was raw
+`-123456`, while the file-terminal value was raw `100000` (one whole unit), with no parser
+error. The observation was complete; the test expectation was wrong. The test now checks both
+values separately. The original fixture, complete trace and run summary are retained in
+`.local/sdk-643/fractional-terminal/`. The observer does not infer a general clamp rule from this.
+
+### Population and remaining template gap
+
+The ignored `binding::analysis::tests::numeric_fixture_storage_population` test scanned every one
+of the 164 discovered registries. It found 181 broadly numeric fields in 62 registries. Static
+storage coverage is separate from live observation completeness:
+
+| Reader kind | Decoder and verified loader boundary | Decoder, no verified loader boundary | No proven direct decoder/destination |
+| --- | ---: | ---: | ---: |
+| Integer | 37 | 8 | 48 |
+| Fixed-point (`CFixedPoint`) | 28 | 9 | 51 |
+
+All 164 analysis queries completed; none failed. The 65 fields in the first column are candidates
+for live observation, not 65 completed live answers. The unavailable group does not pass the
+single unconditional reader, matching token and owner-destination rule, or uses a different
+numeric signature. Missing loader/constructor/member joins prevent a live session even when
+storage is statically known. The full report is `.local/sdk-643/numeric-population.json`.
+
+The template form `CReader::Read(fpml::fixed_point<long long, (unsigned char)48,
+(unsigned char)15>&)` has an authored decoder control but **no completed live fixture**. Its token
+reader stores 64 bits and shifts the whole part by 15, with fractional conversion at scale 32,768.
+The direct-call trace finds 11 calls in `SCameraParams`, `CCountry`, `CFleetIntel`,
+`SProjectRequirements`, `CFleet` and `CShipGrowthStage::CSerializer`. None is a numeric root field
+in the 164-registry scan. `SProjectRequirements` is a nested serializer; `common/special_projects`
+is not a discovered registry. The current fixture API accepts root fields on a verified registry
+owner, so it cannot mount and join that candidate to the required storage window.
+
+The trace and token-reader disassembly are retained in `.local/sdk-643/template-callers.txt` and
+`.local/sdk-643/template-token-reader.txt`, including both build hashes. Static decoding alone
+does not satisfy the template live criterion. With maintainer approval on 2026-09-28, that
+criterion moved to [SDK-648](https://linear.app/unnamed-system/issue/SDK-648/observe-template-fixed-point-storage-through-a-nested-fixture-owner),
+a sibling of SDK-643 under SDK-544. SDK-643 now covers the verified direct `int&` and
+`CFixedPoint&` observations and can close when PR #105 merges. SDK-544 keeps the template proof
+open through SDK-648, which must establish a fixture loader plus nested-owner/source joins for
+an actual template-reader caller before adding boundary, fractional and malformed live cases. A world-object reader is
+outside this initial-load method. Duration expiry and scoped numeric evaluation remain with
+SDK-544's other children.

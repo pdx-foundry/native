@@ -9,7 +9,7 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     let fields = analysis.fixture_fields("common/traditions").unwrap();
     let found: Vec<_> = fields
         .iter()
-        .filter_map(|field| Some((field.name.as_str(), field.token, field.storage_offset?)))
+        .filter_map(|field| Some((field.name.as_str(), field.token, field.storage?.offset)))
         .collect();
     assert_eq!(
         found,
@@ -40,11 +40,8 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
         })
     );
     let relic_fields = analysis.fixture_fields("common/relics").unwrap();
-    assert!(
-        relic_fields
-            .iter()
-            .any(|field| field.name == "portrait" && field.storage_offset == Some(728))
-    );
+    assert!(relic_fields.iter().any(|field| field.name == "portrait"
+        && field.storage.map(|storage| storage.offset) == Some(728)));
 }
 
 use crate::engine::analysis::analysis_support as support;
@@ -887,4 +884,111 @@ fn cached_grammar_still_checks_executable_integrity() {
         analysis.grammar_input(crate::DeclarationKind::Effect),
         Err(AnalysisError::Unavailable { .. })
     ));
+}
+
+#[test]
+fn fixture_storage_requires_one_unconditional_owner_destination() {
+    use crate::engine::analysis::fields::{
+        Condition, PathOutcome, ReaderJoin, RootField, TokenPath, Value,
+    };
+    use crate::protocol::observation::FixtureStorageDecoder;
+    let mut field = RootField {
+        name: "synthetic".into(),
+        token: 7,
+        constructor: 0x1000,
+        paths: vec![0],
+        readers: vec![ReaderJoin::Joined {
+            callee: "CReader::Read(int&)".into(),
+            tail: true,
+            arguments: BTreeMap::from([
+                ("x0".into(), Value::Reader(0)),
+                ("x1".into(), Value::Owner(48)),
+                ("x8".into(), Value::Constant(7)),
+            ]),
+        }],
+    };
+    let mut paths = vec![TokenPath {
+        domain: [7, 7],
+        conditions: vec![],
+        instructions: vec![0x1000],
+        terminal: 0x1000,
+        outcome: PathOutcome::Reader(field.readers[0].clone()),
+    }];
+    for (callee, decoder) in [
+        ("CReader::Read(int&)", FixtureStorageDecoder::Integer),
+        (
+            "CReader::Read(CFixedPoint&)",
+            FixtureStorageDecoder::FixedPoint { scale: 100_000 },
+        ),
+        (
+            "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)",
+            FixtureStorageDecoder::FixedPoint { scale: 32_768 },
+        ),
+        (
+            "CReader::Read(CString&, bool)",
+            FixtureStorageDecoder::String,
+        ),
+    ] {
+        let ReaderJoin::Joined { callee: target, .. } = &mut field.readers[0] else {
+            unreachable!()
+        };
+        *target = callee.into();
+        let bound = fixture_storage_binding(&field, &paths).unwrap();
+        assert_eq!(bound.offset, 48);
+        assert_eq!(bound.decoder, decoder);
+    }
+    let original = field.clone();
+    for (register, value) in [
+        ("x0", Value::Owner(0)),
+        ("x1", Value::Constant(48)),
+        ("x1", Value::Owner(-1)),
+        ("x8", Value::Constant(8)),
+    ] {
+        field = original.clone();
+        let ReaderJoin::Joined { arguments, .. } = &mut field.readers[0] else {
+            unreachable!()
+        };
+        arguments.insert(register.into(), value);
+        assert!(fixture_storage_binding(&field, &paths).is_none());
+    }
+    field = original.clone();
+    let ReaderJoin::Joined { callee, .. } = &mut field.readers[0] else {
+        unreachable!()
+    };
+    *callee = "CReader::Read(unsigned int&)".into();
+    assert!(fixture_storage_binding(&field, &paths).is_none());
+    field = original.clone();
+    field.readers.push(field.readers[0].clone());
+    assert!(fixture_storage_binding(&field, &paths).is_none());
+    paths[0].conditions.push(Condition {
+        at: 0x1000,
+        value: None,
+        zero: true,
+    });
+    assert!(fixture_storage_binding(&original, &paths).is_none());
+}
+
+/// Report storage coverage independently of whether the registry has a live loader boundary.
+#[test]
+#[ignore = "requires STELLARIS_PATH; reports every numeric registry field"]
+fn numeric_fixture_storage_population() {
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let analysis = native.bound().analysis.as_ref().unwrap();
+    for registry in native.registries().unwrap().value {
+        let fields = analysis
+            .registry_fields(&registry.name)
+            .unwrap()
+            .unwrap_or_default();
+        let bindings = analysis.fixture_fields(&registry.name).unwrap();
+        let numeric: Vec<_> = fields.iter().filter(|field|
+            matches!(field.reader.kind, crate::ReaderKind::Integer | crate::ReaderKind::FixedPoint))
+            .map(|field| serde_json::json!({"field": field.name, "reader": field.reader,
+                "storage": bindings.iter().find(|bound| bound.name == field.name).and_then(|bound| bound.storage)}))
+            .collect();
+        println!(
+            "{}",
+            serde_json::json!({"registry": registry.name, "numeric": numeric,
+            "loader": analysis.fixture_loader(&registry.name).unwrap().is_some()})
+        );
+    }
 }

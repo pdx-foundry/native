@@ -130,7 +130,7 @@ mod tests {
             assert_eq!(serde_json::to_value(kind).unwrap(), *value);
             let event = serde_json::json!({
                 "kind": "field-authority", "question": 0, "reader_id": null,
-                "reader_kind": value, "reader_family": "Unknown", "storage_supported": false, "unavailable": "unsupported"
+                "reader_kind": value, "reader_family": "Unknown", "storage_decoder": null, "unavailable": "unsupported"
             });
             let typed: crate::engine::operations::fixture::FixtureEvent =
                 serde_json::from_value(event.clone()).unwrap();
@@ -144,7 +144,7 @@ mod tests {
             let event = serde_json::json!({
                 "kind": "field-authority", "question": 0, "reader_id": null,
                 "reader_kind": "Block", "reader_family": value,
-                "storage_supported": false, "unavailable": "unsupported"
+                "storage_decoder": null, "unavailable": "unsupported"
             });
             let typed: crate::engine::operations::fixture::FixtureEvent =
                 serde_json::from_value(event.clone()).unwrap();
@@ -237,13 +237,51 @@ pub(crate) struct FixtureOutcomeRegistryBinding {
     pub fields: Vec<FixtureOutcomeFieldBinding>,
 }
 
-/// One field's exact token and optional proven string storage.
+/// A decoder whose representation is established by the selected build binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) enum FixtureStorageDecoder {
+    String,
+    Integer,
+    FixedPoint { scale: u64 },
+}
+
+impl FixtureStorageDecoder {
+    pub(crate) fn reader_kind(self) -> crate::ReaderKind {
+        match self {
+            Self::String => crate::ReaderKind::String,
+            Self::Integer => crate::ReaderKind::Integer,
+            Self::FixedPoint { .. } => crate::ReaderKind::FixedPoint,
+        }
+    }
+
+    pub(crate) fn accepts(self, value: &crate::FixtureValue) -> bool {
+        match (self, value) {
+            (Self::String, crate::FixtureValue::String(_))
+            | (Self::Integer, crate::FixtureValue::Integer(_)) => true,
+            (Self::FixedPoint { scale }, crate::FixtureValue::FixedPoint { scale: actual, .. }) => {
+                scale > 0 && scale == *actual
+            }
+            _ => false,
+        }
+    }
+}
+
+/// One field's exact token and optional proven owner storage.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixtureOutcomeFieldBinding {
     pub token: u64,
     pub name: String,
-    pub storage_offset: Option<u64>,
+    pub storage: Option<FixtureStorageBinding>,
+}
+
+/// A proven owner-relative destination and its exact-build decoder.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureStorageBinding {
+    pub offset: u64,
+    pub decoder: FixtureStorageDecoder,
 }
 
 /// One public question resolved against static reader evidence and exact live bindings.
@@ -260,7 +298,7 @@ pub(crate) struct FixtureQuestionSetup {
     pub reader_kind: crate::ReaderKind,
     pub reader_family: crate::BlockFamily,
     pub token: Option<u64>,
-    pub storage_offset: Option<u64>,
+    pub storage: Option<FixtureStorageBinding>,
     pub storage_unavailable: Option<String>,
 }
 

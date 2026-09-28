@@ -114,7 +114,7 @@ the state after the simplification effort:
 | `defines` | Implemented for M45-release | — | Define namespace, name and engine read type from compiled read helpers; unresolved helpers are gaps. No shipped define or config file is read. |
 | `Game::observe_fixture`: registration entries | M45-release only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
 | `Game::observe_fixture`: category reads | M45-release only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
-| `Game::observe_fixture`: field outcomes | M45-release only; initial file load, optionally through bounded deferred validation, for a registry with verified boundaries | At most 32 named definition and field questions in one bounded relative text file | Separate parser entry/return occurrences, source-correlated diagnostics and string storage where bound; other dimensions report unavailable. Lost observations cannot establish acceptance. |
+| `Game::observe_fixture`: field outcomes | M45-release only; initial file load, optionally through bounded deferred validation, for a registry with verified boundaries | At most 32 named definition and field questions in one bounded relative text file | Separate parser entry/return occurrences, source-correlated diagnostics and typed string, integer or fixed-point storage where bound; other dimensions report unavailable. Lost observations cannot establish acceptance. |
 
 Rules for the API:
 
