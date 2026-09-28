@@ -377,36 +377,8 @@ fn reader_join(
     let Some(name) = name else {
         return ReaderJoin::Missing(Unresolved::at("callee", at, entry, Obstacle::Call));
     };
-    let get = |key: &str| state.registers.get(key);
-    let owner = |value: Option<&Value>| matches!(value, Some(Value::Owner(_)));
-    let joined = if crate::engine::analysis::readers::is_member(name) {
-        member_delegates
-            && owner(get("x0"))
-            && get("x1") == Some(&Value::Reader(0))
-            && matches!(get("x2"), Some(Value::Token | Value::TokenWord(0)))
-    } else if name.ends_with("::Read(CReader&, EScopeType)") {
-        owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
-    } else if name.starts_with("CReader::Read(") {
-        get("x0") == Some(&Value::Reader(0)) && owner(get("x1"))
-    } else if name == "CVariableValue::Read(CReader&, EScopeType)" {
-        owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
-    } else if name.starts_with("void NParserUtil::ReadEffect<")
-        || name.starts_with("void NParserUtil::ReadTrigger<")
-    {
-        get("x0") == Some(&Value::Reader(0)) && owner(get("x1"))
-    } else if let Some(reference) = crate::engine::analysis::references::reader(name) {
-        use crate::engine::analysis::references::ReaderForm;
-
-        match reference.form {
-            ReaderForm::Deferred | ReaderForm::DeferredList | ReaderForm::DeferredIndex => {
-                owner(get("x0")) && get("x1") == Some(&Value::Reader(0)) && owner(get("x2"))
-            }
-            ReaderForm::Immediate => get("x0") == Some(&Value::Reader(0)),
-            ReaderForm::ImmediateList => get("x0") == Some(&Value::Reader(0)) && owner(get("x2")),
-        }
-    } else {
-        false
-    };
+    let joined =
+        crate::engine::analysis::readers::arguments_join(name, &state.registers, member_delegates);
     if joined {
         ReaderJoin::Joined {
             callee: name.into(),

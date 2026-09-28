@@ -3,9 +3,10 @@ use crate::{BlockFamily, Field, Reader};
 use serde::{Deserialize, Serialize};
 
 /// An extracted property, with missing evidence kept distinct from an empty result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GrammarProperty<T> {
     /// No value was established.
+    #[default]
     Unresolved,
     /// These values were established, but more may exist.
     Partial(T),
@@ -61,4 +62,18 @@ pub enum ChildOrderOutcome {
     Read(Reader),
     /// The key is delegated to this command collection.
     Dispatch(BlockFamily),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GrammarProperty;
+
+    #[test]
+    fn default_property_is_unresolved_without_a_value_default() {
+        struct NoDefault;
+        assert!(matches!(
+            GrammarProperty::<NoDefault>::default(),
+            GrammarProperty::Unresolved
+        ));
+    }
 }

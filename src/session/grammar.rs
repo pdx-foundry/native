@@ -46,8 +46,8 @@ impl Native {
             .declaration_analysis(operation)?
             .grammar_input(kind)
             .map_err(|failure| error(operation, failure))?;
-        match registered_factory(&declarations, name) {
-            Ok(Some(factory)) => Ok(grammar::analyze(&input, factory)),
+        match registered_factory(declarations, name) {
+            Ok(Some(factory)) => Ok(grammar::analyze(input, factory)),
             Ok(None) => Err(Error::UnknownCommand {
                 kind,
                 name: name.into(),

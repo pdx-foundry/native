@@ -60,8 +60,8 @@ fn m45_command_grammar_population() {
         let mut failures = BTreeMap::<String, Vec<String>>::new();
         let mut cases = Vec::<Value>::new();
         for name in &names {
-            let result = match registered_factory(&inventory, name) {
-                Ok(Some(factory)) => grammar::analyze(&input, factory),
+            let result = match registered_factory(inventory, name) {
+                Ok(Some(factory)) => grammar::analyze(input, factory),
                 Ok(None) => unreachable!("the name came from this inventory"),
                 Err(stop) => Err(stop),
             };

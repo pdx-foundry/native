@@ -28,9 +28,61 @@ pub const METHOD: &str = "command-grammar/v4";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
+/// Executable-bound inputs for value forms, validation and target checks.
+#[allow(dead_code)] // Consumed by the forms and target stages in the next SDK-548 chunks.
+#[cfg_attr(test, derive(Default))]
+pub struct CommandBindings {
+    /// Offset of the assigned value token within the reader.
+    pub reader_value_token_offset: u64,
+    /// Assignment slot reused from the dynamic-name recipe.
+    pub assign_slot: u64,
+    /// PostValidate slot relative to the command vtable address point.
+    pub validation_slot: u64,
+    /// GetSupportedScopeTargets slot, for the developer cross-check only.
+    pub target_getter_slot: u64,
+    /// Token ids for the true and false Boolean literals, in that order.
+    pub boolean_tokens: [i64; 2],
+    /// All entry points for copying a token.
+    pub token_copy: BTreeSet<u64>,
+    /// All entry points for constructing a target from a scoped token.
+    pub target_from_token: BTreeSet<u64>,
+    /// All entry points for constructing a target from a token id.
+    pub target_from_id: BTreeSet<u64>,
+    /// Wrapper that constructs a target at the indirect result address.
+    pub target_create_from_token: u64,
+    /// Move assignment into a target destination.
+    pub target_move: u64,
+    /// Resolver that writes a scope through its indirect result address.
+    pub target_resolver: u64,
+    /// Typed scope and target getters, including getters with error logging.
+    pub target_getters: BTreeSet<u64>,
+    /// Each typed scope accessor and its rejection null-object binding.
+    pub scope_accessors: BTreeMap<u64, AccessorNullObject>,
+    /// Getter for the scope type of a stored target.
+    pub target_scope_type: u64,
+    /// Assignment and comparison operator readers, in that order.
+    pub operator_readers: [u64; 2],
+    /// Assignment of a variable-valued argument.
+    pub variable_assign: u64,
+    /// Diagnostic entry points for logger, stream and file-and-line routes.
+    pub error_logs: BTreeSet<u64>,
+}
+
+/// The rejection object of a typed scope accessor, without assuming literal zero is rejection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessorNullObject {
+    /// Address of the global pointer slot containing the null object.
+    Global(u64),
+    /// This accessor has no null object; the getter analysis must leave it unresolved.
+    NoNullObject,
+}
+
 /// Inputs collected from one verified executable buffer.
 pub struct GrammarInput {
     pub declarations: DeclarationInput,
+    /// Functions and layout for the subsequent forms and target analyses.
+    #[allow(dead_code)] // Used by the subsequent SDK-548 forms and target stages.
+    pub command_bindings: CommandBindings,
     pub child_layout: ChildLayout,
     pub numeric_decoder: u64,
     pub reader_token_offset: u64,
@@ -424,6 +476,7 @@ mod tests {
             },
         };
         GrammarInput {
+            command_bindings: CommandBindings::default(),
             child_layout: ChildLayout {
                 data: 0x10,
                 count: 0x1c,
@@ -752,7 +805,7 @@ mod tests {
                 .grammar_input(kind)
                 .unwrap();
             let mut found = BTreeSet::new();
-            for (_, site) in inventory.sites {
+            for (_, site) in &inventory.sites {
                 let declarations::Site::Declared { name, factory, .. } = site else {
                     continue;
                 };
@@ -760,7 +813,7 @@ mod tests {
                     continue;
                 }
                 found.insert(name.clone());
-                match analyze(&input, factory) {
+                match analyze(input, *factory) {
                     Ok(result) => {
                         if kind == crate::DeclarationKind::Effect
                             && ["if", "else_if", "else"].contains(&name.as_str())

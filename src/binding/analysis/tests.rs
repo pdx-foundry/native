@@ -535,3 +535,329 @@ fn m45_persistent_field_families() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn m45_command_grammar_foundations_resolve_and_reuse_inputs() {
+    use crate::DeclarationKind::{Effect, Trigger};
+
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let analysis = native.bound().analysis.as_ref().unwrap();
+    let verified = analysis.verified().unwrap();
+    let name_at = |address| {
+        verified
+            .catalog
+            .symbols
+            .iter()
+            .find(|symbol| symbol.address == address)
+            .map(|symbol| symbol.name.as_str())
+            .expect("binding has a symbol")
+    };
+    for (kind, assign, validation, target_getter) in
+        [(Effect, 0x20, 0x98, 0x88), (Trigger, 0x28, 0x68, 0x80)]
+    {
+        let cached = analysis.grammar_input(kind).unwrap();
+        assert!(std::ptr::eq(cached, analysis.grammar_input(kind).unwrap()));
+        let bindings = &cached.0.command_bindings;
+        assert_eq!(bindings.reader_value_token_offset, 0x278);
+        assert_eq!(bindings.assign_slot, assign);
+        assert_eq!(bindings.validation_slot, validation);
+        assert_eq!(bindings.target_getter_slot, target_getter);
+        assert_eq!(bindings.boolean_tokens, [0x3fef, 0x2cac]);
+        assert_eq!(cached.0.tokens[&bindings.boolean_tokens[0]].name, "yes");
+        assert_eq!(cached.0.tokens[&bindings.boolean_tokens[1]].name, "no");
+        for (addresses, name, count) in [
+            (&bindings.token_copy, "CToken::CToken(CToken const&)", 2),
+            (
+                &bindings.target_from_token,
+                "CEventTarget::CEventTarget(CToken, EScopeType, CString const&)",
+                2,
+            ),
+            (
+                &bindings.target_from_id,
+                "CEventTarget::CEventTarget(int)",
+                2,
+            ),
+        ] {
+            assert_eq!(addresses.len(), count, "{name}");
+            for &address in addresses {
+                assert_eq!(name_at(address), name);
+            }
+        }
+        for (address, name) in [
+            (
+                bindings.target_create_from_token,
+                "CEventTarget::CreateFromToken(int)",
+            ),
+            (
+                bindings.target_move,
+                "CEventTarget::operator=(CEventTarget&&)",
+            ),
+            (
+                bindings.target_resolver,
+                "CEventTarget::GetScope(CEventScope&, char const*) const",
+            ),
+            (
+                bindings.target_scope_type,
+                "CEventTarget::GetScopeType() const",
+            ),
+            (
+                bindings.operator_readers[0],
+                "CAssignOperator::Read(CReader&)",
+            ),
+            (
+                bindings.operator_readers[1],
+                "CCompareOperator::Read(CReader&)",
+            ),
+            (
+                bindings.variable_assign,
+                "CVariableValue::Assign(CToken const&, EScopeType, CString const&)",
+            ),
+        ] {
+            assert_eq!(name_at(address), name);
+        }
+        assert_eq!(bindings.target_getters.len(), 27);
+        assert_eq!(bindings.scope_accessors.len(), 41);
+        assert_eq!(bindings.error_logs.len(), 5);
+        use crate::engine::analysis::grammar::AccessorNullObject;
+        let expected_accessors = [
+            (
+                "CGalacticCommunity const* CScopeObjectReference::GetObject<CGalacticCommunity>() const",
+                None,
+            ),
+            (
+                "CPopGroup const* CScopeObjectReference::GetObject<CPopGroup>() const",
+                Some("TPdxNullObject<CPopGroup>::_pInstance"),
+            ),
+            (
+                "CPopJob const* CScopeObjectReference::GetObject<CPopJob>() const",
+                Some("TPdxNullObject<CPopJob>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetAgreement() const",
+                Some("TPdxNullObject<CAgreement>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetAmbientObject() const",
+                Some("TPdxNullObject<CAmbientObject>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetArchaeologicalSite() const",
+                Some("TPdxNullObject<CArchaeologicalSite>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetArmy() const",
+                Some("TPdxNullObject<CArmy>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetAstralRift() const",
+                Some("TPdxNullObject<CAstralRift>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetBypass() const",
+                Some("TPdxNullObject<CBypass>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetColony() const",
+                Some("TPdxNullObject<CColony>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetCosmicStorm() const",
+                Some("TPdxNullObject<CCosmicStorm>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetCosmicStormInfluenceField() const",
+                Some("TPdxNullObject<CCosmicStormInfluenceField>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetCountry() const",
+                Some("TPdxNullObject<CCountry>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetDebris() const",
+                Some("TPdxNullObject<CDebris>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetDeposit() const",
+                Some("TPdxNullObject<CDeposit>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetDesign() const",
+                Some("TPdxNullObject<CShipDesign>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetDlcRecommendation() const",
+                Some("TPdxNullObject<SDlcRecommendationScriptData>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetEspionageAsset() const",
+                Some("TPdxNullObject<CEspionageAsset>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetEspionageOperation() const",
+                Some("TPdxNullObject<CEspionageOperation>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetExhibit() const",
+                Some("TPdxNullObject<CExhibit>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetFederation() const",
+                Some("TPdxNullObject<CFederation>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetFirstContact() const",
+                Some("TPdxNullObject<CFirstContact>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetFleet() const",
+                Some("TPdxNullObject<CFleet>::_pInstance"),
+            ),
+            ("CScopeObjectReference::GetGalacticCommunity() const", None),
+            (
+                "CScopeObjectReference::GetGalacticObject() const",
+                Some("TPdxNullObject<CGalacticObject>::_pInstance"),
+            ),
+            ("CScopeObjectReference::GetGrowthStage() const", None),
+            (
+                "CScopeObjectReference::GetLeader() const",
+                Some("TPdxNullObject<CLeader>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetMegaStructure() const",
+                Some("TPdxNullObject<CMegaStructure>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetMission() const",
+                Some("TPdxNullObject<CMission>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetPlanet() const",
+                Some("TPdxNullObject<CPlanet>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetPopFaction() const",
+                Some("TPdxNullObject<CPopFaction>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetPopGroup() const",
+                Some("TPdxNullObject<CPopGroup>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetPopJob() const",
+                Some("TPdxNullObject<CPopJob>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetSector() const",
+                Some("TPdxNullObject<CSector>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetShip() const",
+                Some("TPdxNullObject<CShip>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetSituation() const",
+                Some("TPdxNullObject<CSituation>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetSpecies() const",
+                Some("TPdxNullObject<CSpecies>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetSpyNetwork() const",
+                Some("TPdxNullObject<CSpyNetwork>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetStarbase() const",
+                Some("TPdxNullObject<CStarbase>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetTrait() const",
+                Some("TPdxNullObject<CTrait>::_pInstance"),
+            ),
+            (
+                "CScopeObjectReference::GetWar() const",
+                Some("TPdxNullObject<CWar>::_pInstance"),
+            ),
+        ];
+        let mut actual_accessors: Vec<_> = bindings
+            .scope_accessors
+            .iter()
+            .map(|(&address, null)| {
+                let null_name = match null {
+                    AccessorNullObject::Global(slot) => Some(name_at(*slot)),
+                    AccessorNullObject::NoNullObject => None,
+                };
+                (name_at(address), null_name)
+            })
+            .collect();
+        actual_accessors.sort();
+        assert_eq!(actual_accessors, expected_accessors);
+        let without_null_object: Vec<_> = bindings
+            .scope_accessors
+            .iter()
+            .filter(|(_, null)| matches!(null, AccessorNullObject::NoNullObject))
+            .map(|(&address, _)| name_at(address))
+            .collect();
+        assert_eq!(
+            without_null_object,
+            [
+                "CScopeObjectReference::GetGalacticCommunity() const",
+                "CGalacticCommunity const* CScopeObjectReference::GetObject<CGalacticCommunity>() const",
+                "CScopeObjectReference::GetGrowthStage() const",
+            ]
+        );
+        for (&address, null) in &bindings.scope_accessors {
+            match null {
+                AccessorNullObject::Global(slot) => {
+                    assert!(name_at(*slot).starts_with("TPdxNullObject<"));
+                    eprintln!("{} -> {}", name_at(address), name_at(*slot));
+                }
+                AccessorNullObject::NoNullObject => {
+                    eprintln!("{} -> no null object", name_at(address))
+                }
+            }
+        }
+        for (label, addresses) in [
+            ("typed target getters", &bindings.target_getters),
+            ("error logs", &bindings.error_logs),
+        ] {
+            assert!(!addresses.is_empty(), "{label}");
+            eprintln!("{kind:?} {label}: {} bindings", addresses.len());
+            for &address in addresses {
+                eprintln!("  {address:#x} {}", name_at(address));
+            }
+        }
+    }
+    let dynamic = analysis.dynamic_name_input().unwrap();
+    for family in &dynamic.families {
+        let cached = analysis.grammar_input(family.kind).unwrap();
+        assert!(std::ptr::eq(family.declarations, &cached.0.declarations));
+        assert!(std::ptr::eq(family.inventory, &cached.1));
+    }
+}
+
+#[test]
+fn cached_grammar_still_checks_executable_integrity() {
+    let (root, analysis) = fixture();
+    for cache in &analysis.grammar {
+        assert!(cache.set(Err(AnalysisError::InvalidRange)).is_ok());
+    }
+    let path = root.path().join("image");
+    let original = fs::read(&path).unwrap();
+    fs::write(&path, "changed").unwrap();
+    for kind in [
+        crate::DeclarationKind::Effect,
+        crate::DeclarationKind::Trigger,
+    ] {
+        assert!(matches!(
+            analysis.grammar_input(kind),
+            Err(AnalysisError::Unavailable { .. })
+        ));
+    }
+    fs::write(path, original).unwrap();
+    assert!(matches!(
+        analysis.grammar_input(crate::DeclarationKind::Effect),
+        Err(AnalysisError::Unavailable { .. })
+    ));
+}
