@@ -17,6 +17,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
 | Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |
 | Discovery method index | [Discovery methods](native/discovery.md) | Operations, source stamps, owning modules and knowledge sections; define read helpers |
+| Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope and Boolean messages, target validation, generic reader errors and ordinary-log/source-filter gaps |
 | Write a method | [Method authoring](native/method-authoring.md) | Inspector, stop diagnostics, authored tests, parity and whole-inventory runs |
 | Registry fields and scheduling | [Registry fields](native/registry-fields.md) | The current field sweep and its stops, compiler jump tables and bit fields, token paths, members and shared readers, scheduler table, owner joins |
 | Engine commands and scopes | [Engine commands](native/engine-commands.md) | Engine documentation commands, target getters, modifier, category, scope and link declarations, localization tables, on_action and game rule call sites |

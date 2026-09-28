@@ -527,6 +527,11 @@ cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'C
 
 ## Parser observation
 
+The [2026-09-28 diagnostic survey](diagnostic-survey.md) records full messages and capture
+limits. It also corrects the historical effect scope control: `set_planet_class` was invalid
+on M45-release and produced an unrelated Boolean complaint; the verified effect is `change_pc`.
+The earlier stage/location-only test pass did not establish that old effect scope claim.
+
 Field parser entry and return are separate from storage decoding. The live
 `fixture_block_parsing` case observed two `potential` occurrences, with source lines,
 the same definition owner, and paired returns. It passed in 28 seconds. Block storage

@@ -467,7 +467,7 @@ fn cases() -> Vec<(String, Case)> {
     }
     let mut effects = vec![
         ValidationSample::new("valid", "set_country_flag = native_fixture_flag", None),
-        ValidationSample::new("wrong_scope", "set_planet_class = pc_barren", parser_log),
+        ValidationSample::new("wrong_scope", "change_pc = pc_barren", parser_log),
         ValidationSample::new("unknown", "native_unknown_effect = yes", validation_log),
     ];
     for (name, accepted, rejected) in [
