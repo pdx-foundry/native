@@ -34,3 +34,11 @@ The agenda cost uses `CVariableValue` and intentionally remains unknown: its sco
 grammar is not a plain integer or fixed-point read. Unknown and missing readers have field-specific
 typed gaps. Every answer remains partial because nested grammar and runtime semantics are outside
 this bounded method.
+
+## Numeric properties
+
+SDK-644 adds a separate `Reader.numeric` property and the broad `Float` kind. The identity and
+broad kind still do not promise a complete grammar. Conversion properties establish storage,
+scale, partial literal forms and explicit reader clamps independently. Missing accepted ranges,
+overflow behavior and unsupported shapes remain gaps. See [numeric conversion](numeric-conversion.md)
+for the exact-build controls, live comparisons and population limits.

@@ -1,0 +1,13 @@
+sub sp,sp,#0x20
+stp x29,x30,[sp,#0x10]
+add x29,sp,#0x10
+ldr x0,[x0,#{token_text}]
+str x1,[sp]
+adrp x1,PAGE
+add x1,x1,G = {format}
+bl CALL = scan
+cmp w0,#0x0
+cset w0,ne
+ldp x29,x30,[sp,#0x10]
+add sp,sp,#0x20
+ret

@@ -12,7 +12,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -25,7 +28,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -47,7 +53,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -60,7 +69,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -82,7 +94,34 @@
       "reader": {
        "id": "a9818fec780f8313",
        "kind": "FixedPoint",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 64
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 100000
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "DecimalFraction",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -95,7 +134,34 @@
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 64
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 100000
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "DecimalFraction",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -117,7 +183,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -130,7 +199,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -152,7 +224,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -165,7 +240,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -188,7 +266,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -211,7 +290,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -233,7 +313,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -246,7 +329,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -268,7 +354,33 @@
       "reader": {
        "id": "d7a95ab8c8d44489",
        "kind": "Integer",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 32
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 1
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -281,7 +393,33 @@
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 32
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 1
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -303,7 +441,10 @@
       "reader": {
        "id": "ba5f8cddeba0d833",
        "kind": "Block",
-       "family": "Modifier"
+       "family": "Modifier",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -316,7 +457,10 @@
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
-   "family": "Modifier"
+   "family": "Modifier",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -338,7 +482,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -351,7 +498,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -374,7 +524,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -397,7 +548,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -419,7 +571,10 @@
       "reader": {
        "id": "ba5f8cddeba0d833",
        "kind": "Block",
-       "family": "Modifier"
+       "family": "Modifier",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -432,7 +587,10 @@
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
-   "family": "Modifier"
+   "family": "Modifier",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -455,7 +613,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -477,7 +636,10 @@
       "reader": {
        "id": "ba5f8cddeba0d833",
        "kind": "Block",
-       "family": "Modifier"
+       "family": "Modifier",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -490,7 +652,10 @@
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
-   "family": "Modifier"
+   "family": "Modifier",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -512,7 +677,10 @@
       "reader": {
        "id": "ba5f8cddeba0d833",
        "kind": "Block",
-       "family": "Modifier"
+       "family": "Modifier",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -525,7 +693,10 @@
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
-   "family": "Modifier"
+   "family": "Modifier",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -547,7 +718,34 @@
       "reader": {
        "id": "a9818fec780f8313",
        "kind": "FixedPoint",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 64
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 100000
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "DecimalFraction",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -560,7 +758,34 @@
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 64
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 100000
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "DecimalFraction",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -582,7 +807,34 @@
       "reader": {
        "id": "a9818fec780f8313",
        "kind": "FixedPoint",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 64
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 100000
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "DecimalFraction",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -595,7 +847,34 @@
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 64
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 100000
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "DecimalFraction",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -618,7 +897,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -640,7 +920,10 @@
       "reader": {
        "id": "f08cb83d92484a89",
        "kind": "Block",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -653,7 +936,10 @@
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -675,7 +961,8 @@
       "reader": {
        "id": "784ec4ab3c469836",
        "kind": "Unknown",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": "Unresolved"
       },
       "shape": {
        "repeat": "Unknown",
@@ -688,7 +975,8 @@
   "reader": {
    "id": "784ec4ab3c469836",
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -710,7 +998,34 @@
       "reader": {
        "id": "a9818fec780f8313",
        "kind": "FixedPoint",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 64
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 100000
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "DecimalFraction",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -723,7 +1038,34 @@
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 64
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 100000
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "DecimalFraction",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -745,7 +1087,34 @@
       "reader": {
        "id": "a9818fec780f8313",
        "kind": "FixedPoint",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 64
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 100000
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "DecimalFraction",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -758,7 +1127,34 @@
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 64
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 100000
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "DecimalFraction",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -780,7 +1176,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -793,7 +1192,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -815,7 +1217,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -828,7 +1233,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -850,7 +1258,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -863,7 +1274,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -885,7 +1299,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -898,7 +1315,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -920,7 +1340,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -933,7 +1356,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -955,7 +1381,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -968,7 +1397,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -990,7 +1422,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1003,7 +1438,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1025,7 +1463,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1038,7 +1479,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1060,7 +1504,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1073,7 +1520,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1095,7 +1545,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1108,7 +1561,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1130,7 +1586,10 @@
       "reader": {
        "id": "f08cb83d92484a89",
        "kind": "Block",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1143,7 +1602,10 @@
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1165,7 +1627,33 @@
       "reader": {
        "id": "d7a95ab8c8d44489",
        "kind": "Integer",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 32
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 1
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1178,7 +1666,33 @@
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 32
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 1
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1200,7 +1714,33 @@
       "reader": {
        "id": "d7a95ab8c8d44489",
        "kind": "Integer",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 32
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 1
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1213,7 +1753,33 @@
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 32
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 1
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1235,7 +1801,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1248,7 +1817,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1270,7 +1842,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1283,7 +1858,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1306,7 +1884,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1329,7 +1908,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1351,7 +1931,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1364,7 +1947,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1386,7 +1972,10 @@
       "reader": {
        "id": "716290887881acb1",
        "kind": "Block",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1399,7 +1988,10 @@
   "reader": {
    "id": "716290887881acb1",
    "kind": "Block",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1422,7 +2014,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1445,7 +2038,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1467,7 +2061,10 @@
       "reader": {
        "id": "782b36da9ac3ef37",
        "kind": "Reference",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1480,7 +2077,10 @@
   "reader": {
    "id": "782b36da9ac3ef37",
    "kind": "Reference",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": {
    "Lookups": [
@@ -1536,7 +2136,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1558,7 +2159,10 @@
       "reader": {
        "id": "98c58513111b8c6e",
        "kind": "Reference",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1571,7 +2175,10 @@
   "reader": {
    "id": "98c58513111b8c6e",
    "kind": "Reference",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": {
    "Lookups": [
@@ -1608,7 +2215,10 @@
       "reader": {
        "id": "ba5f8cddeba0d833",
        "kind": "Block",
-       "family": "Modifier"
+       "family": "Modifier",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1621,7 +2231,10 @@
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
-   "family": "Modifier"
+   "family": "Modifier",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1644,7 +2257,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1667,7 +2281,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1689,7 +2304,10 @@
       "reader": {
        "id": "14a90b8d8c823a11",
        "kind": "Reference",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1702,7 +2320,10 @@
   "reader": {
    "id": "14a90b8d8c823a11",
    "kind": "Reference",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": {
    "Lookups": [
@@ -1740,7 +2361,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1763,7 +2385,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1785,7 +2408,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -1798,7 +2424,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1820,7 +2449,33 @@
       "reader": {
        "id": "d7a95ab8c8d44489",
        "kind": "Integer",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 32
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 1
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1833,7 +2488,33 @@
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 32
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 1
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1855,7 +2536,34 @@
       "reader": {
        "id": "a9818fec780f8313",
        "kind": "FixedPoint",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 64
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 100000
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "DecimalFraction",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1868,7 +2576,34 @@
   "reader": {
    "id": "a9818fec780f8313",
    "kind": "FixedPoint",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 64
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 100000
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "DecimalFraction",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1891,7 +2626,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1913,7 +2649,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -1926,7 +2665,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1949,7 +2691,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1972,7 +2715,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1994,7 +2738,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -2007,7 +2754,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2030,7 +2780,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2053,7 +2804,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2076,7 +2828,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2099,7 +2852,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2122,7 +2876,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2144,7 +2899,10 @@
       "reader": {
        "id": "5c598b137a53d15a",
        "kind": "Reference",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2157,7 +2915,10 @@
   "reader": {
    "id": "5c598b137a53d15a",
    "kind": "Reference",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": {
    "Lookups": [
@@ -2194,7 +2955,10 @@
       "reader": {
        "id": "6e28a363faf61c52",
        "kind": "Block",
-       "family": "Effect"
+       "family": "Effect",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2207,7 +2971,10 @@
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
-   "family": "Effect"
+   "family": "Effect",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2229,7 +2996,8 @@
       "reader": {
        "id": "c61abc171edc30aa",
        "kind": "Unknown",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": "Unresolved"
       },
       "shape": {
        "repeat": "Unknown",
@@ -2242,7 +3010,8 @@
   "reader": {
    "id": "c61abc171edc30aa",
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2264,7 +3033,10 @@
       "reader": {
        "id": "9cc4a8b09a789cf4",
        "kind": "Block",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2277,7 +3049,10 @@
   "reader": {
    "id": "9cc4a8b09a789cf4",
    "kind": "Block",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2299,7 +3074,10 @@
       "reader": {
        "id": "9cc4a8b09a789cf4",
        "kind": "Block",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2312,7 +3090,10 @@
   "reader": {
    "id": "9cc4a8b09a789cf4",
    "kind": "Block",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2334,7 +3115,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -2347,7 +3131,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2369,7 +3156,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -2382,7 +3172,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2405,7 +3198,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2427,7 +3221,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2440,7 +3237,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2462,7 +3262,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2475,7 +3278,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2498,7 +3304,8 @@
   "reader": {
    "id": null,
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2520,7 +3327,10 @@
       "reader": {
        "id": "325efaa17499c32d",
        "kind": "String",
-       "family": "NotApplicable"
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Replace",
@@ -2533,7 +3343,10 @@
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
-   "family": "NotApplicable"
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2555,7 +3368,8 @@
       "reader": {
        "id": "c61abc171edc30aa",
        "kind": "Unknown",
-       "family": "Unknown"
+       "family": "Unknown",
+       "numeric": "Unresolved"
       },
       "shape": {
        "repeat": "Unknown",
@@ -2568,7 +3382,8 @@
   "reader": {
    "id": "c61abc171edc30aa",
    "kind": "Unknown",
-   "family": "Unknown"
+   "family": "Unknown",
+   "numeric": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2590,7 +3405,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2603,7 +3421,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2625,7 +3446,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2638,7 +3462,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2660,7 +3487,10 @@
       "reader": {
        "id": "e044b50825a1841d",
        "kind": "Block",
-       "family": "Trigger"
+       "family": "Trigger",
+       "numeric": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -2673,7 +3503,10 @@
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
-   "family": "Trigger"
+   "family": "Trigger",
+   "numeric": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {

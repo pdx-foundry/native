@@ -27,6 +27,7 @@ pub(crate) struct BoundAnalysis {
     families: OnceLock<Result<FamilyIndex, AnalysisError>>,
     /// Derived from the catalog's executable; every read checks the executable first.
     references: OnceLock<Result<ReferenceFacts, AnalysisError>>,
+    numeric: OnceLock<Result<crate::engine::analysis::numeric::NumericFacts, AnalysisError>>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
 }
@@ -494,6 +495,7 @@ impl BoundAnalysis {
             catalog: OnceLock::new(),
             families: OnceLock::new(),
             references: OnceLock::new(),
+            numeric: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
         }
     }
@@ -682,6 +684,28 @@ impl BoundAnalysis {
             bound_slots: input.bound_slots,
             imports: input.imports,
         })
+    }
+
+    /// Numeric conversions derived once per installation. Every access verifies the image.
+    pub(crate) fn numeric_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::numeric::NumericFacts, AnalysisError> {
+        let verified = self.verified()?;
+        self.numeric
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                let image = binary::references::Image {
+                    bytes: &verified.executable,
+                    symbols: &verified.catalog.symbols,
+                    strings: &verified.catalog.strings,
+                    pointers: &verified.catalog.pointers,
+                    imports: &verified.catalog.imports,
+                };
+                let input = binary::numeric::read(&image, recipe)?;
+                Ok(crate::engine::analysis::numeric::analyze(&input))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
     }
 
     /// The lookup of every reference reader in the executable.

@@ -83,7 +83,7 @@ pub(crate) fn scalar_width(callee: &str) -> Option<u64> {
         | "CReader::Read(signed char&)"
         | "CReader::Read(unsigned char&)" => Some(1),
         "CReader::Read(short&)" | "CReader::Read(unsigned short&)" => Some(2),
-        "CReader::Read(int&)" | "CReader::Read(unsigned int&)" => Some(4),
+        "CReader::Read(int&)" | "CReader::Read(unsigned int&)" | "CReader::Read(float&)" => Some(4),
         "CReader::Read(long long&)"
         | "CReader::Read(unsigned long long&)"
         | "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
@@ -114,6 +114,7 @@ fn family_of_callee(callee: &str) -> BlockFamily {
 fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
         "CReader::Read(bool&)" => ReaderKind::Boolean,
+        "CReader::Read(float&)" => ReaderKind::Float,
         "CReader::Read(signed char&)"
         | "CReader::Read(unsigned char&)"
         | "CReader::Read(short&)"
@@ -305,9 +306,12 @@ mod tests {
 
     #[test]
     fn unsupported_signatures_and_unjoined_alternatives_stay_unknown() {
+        assert_eq!(
+            classify(&[joined("CReader::Read(float&)")]).kind,
+            ReaderKind::Float
+        );
         for callee in [
             "CVariableValue::Read(CReader&, EScopeType)",
-            "CReader::Read(float&)",
             "CReader::Read(CUTF8String&)",
             "void NParserUtil::ReadTrigger<A>(CReader&, B&, EScopeType)",
         ] {

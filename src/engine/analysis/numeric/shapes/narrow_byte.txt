@@ -1,0 +1,21 @@
+sub sp,sp,#0x30
+stp xr0,xr1,[sp,#0x10]
+stp x29,x30,[sp,#0x20]
+add x29,sp,#0x20
+mov xr1,x1
+str wzr,[sp,#0xc]
+ldr x0,[x0,#{token_text}]
+add xr2,sp,#0xc
+str xr2,[sp]
+adrp x1,PAGE
+add x1,x1,G = "%d"
+bl CALL = scan
+ldrb wr2,[sp,#0xc]
+cmp w0,#0x0
+csel wr2,wzr,wr2,eq
+cset w0,ne
+strb wr2,[xr1]
+ldp x29,x30,[sp,#0x20]
+ldp xr0,xr1,[sp,#0x10]
+add sp,sp,#0x30
+ret

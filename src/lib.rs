@@ -16,6 +16,7 @@ mod field;
 mod fixture;
 mod game;
 mod grammar;
+mod numeric;
 mod protocol;
 mod recorded;
 mod session;
@@ -57,6 +58,10 @@ pub use grammar::{
     ArgumentPath, ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, CommandForm,
     CommandGrammar, CommandValue, GrammarProperty, TargetArgument, TargetCheckStage,
 };
+pub use numeric::{
+    NumericBound, NumericConversion, NumericLiteralSyntax, NumericRange, NumericRepresentation,
+    NumericSignedness,
+};
 pub use session::Native;
 
 pub(crate) use api::UnavailableReason;
@@ -74,7 +79,7 @@ pub mod internals {
     pub use crate::engine::analysis::grammar::METHOD as COMMAND_GRAMMAR_METHOD;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::{
-        command_grammar_stops, dynamic_name_commands, reference_readers, registry_field_stops,
-        target_getters,
+        command_grammar_stops, dynamic_name_commands, numeric_readers, reference_readers,
+        registry_field_stops, target_getters,
     };
 }

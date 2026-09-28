@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 pub(super) fn reader(joins: &[ReaderJoin]) -> Reader {
     let classification = readers::classify(joins);
     Reader {
+        numeric: crate::GrammarProperty::Unresolved,
         id: classification.callee.map(ReaderId::from_callee),
         kind: classification.kind,
         family: classification.family,
@@ -77,7 +78,11 @@ fn shape(join: &ReaderJoin) -> FieldShape {
     let replaces = matches!(join, ReaderJoin::Joined { tail: true, .. })
         && matches!(
             classification.kind,
-            ReaderKind::Boolean | ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::String
+            ReaderKind::Boolean
+                | ReaderKind::Integer
+                | ReaderKind::FixedPoint
+                | ReaderKind::Float
+                | ReaderKind::String
         );
     FieldShape {
         value,
@@ -444,6 +449,7 @@ fn collection_field(
     references: &ReferenceFacts,
 ) -> Field {
     let reader = Reader {
+        numeric: crate::GrammarProperty::Unresolved,
         id: Some(concrete_reader_id(
             "CPersistent::Read(CReader&)",
             &format!("{}::ReadMember(CReader&, int)", collection.class),

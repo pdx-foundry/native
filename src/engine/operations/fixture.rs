@@ -633,6 +633,7 @@ impl<'a> Window<'a> {
             return;
         }
         let reader = Reader {
+            numeric: crate::GrammarProperty::Unresolved,
             id: reader_id.clone().map(ReaderId),
             kind: *reader_kind,
             family: *reader_family,
@@ -1202,6 +1203,7 @@ impl<'a> Window<'a> {
             let occurrences = self.occurrences.remove(&index).unwrap_or_default();
             let reader = authority.as_ref().map_or(
                 Reader {
+                    numeric: crate::GrammarProperty::Unresolved,
                     id: None,
                     kind: ReaderKind::Unknown,
                     family: crate::BlockFamily::Unknown,

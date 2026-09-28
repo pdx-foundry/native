@@ -1,0 +1,7 @@
+{
+  "Ok": {
+    "shared_callee": "CReader::Read(CFixedPoint&)",
+    "reader_id": "a9818fec780f8313",
+    "storage_width_bits": 64
+  }
+}

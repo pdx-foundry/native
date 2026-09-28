@@ -20,7 +20,7 @@ use crate::engine::analysis::{
 };
 use std::collections::BTreeSet;
 
-use super::{Native, grammar::normalize};
+use super::Native;
 use crate::{Answer, CommandGrammar, DeclarationKind, Error, Operation};
 
 pub use crate::engine::analysis::declarations::ScopeOutcome;
@@ -58,12 +58,14 @@ pub fn run(native: &Native, kind: DeclarationKind, name: &str) -> Result<Run, Er
             });
         }
         let references = native.reference_facts(Operation::CommandGrammar)?;
+        let numeric = native.numeric_facts(Operation::CommandGrammar)?;
         Ok(inspect_command(
             input,
             inventory,
             name,
             native.build(),
             references,
+            numeric,
         ))
     })
 }
@@ -129,10 +131,11 @@ pub fn population(
             .map_err(|failure| super::questions::error(Operation::CommandGrammar, failure))?;
         let (names, unknown_registrations) = inventory_names(inventory);
         let references = native.reference_facts(Operation::CommandGrammar)?;
+        let numeric = native.numeric_facts(Operation::CommandGrammar)?;
         for name in names {
             visit(
                 &name,
-                inspect_command(input, inventory, &name, native.build(), references),
+                inspect_command(input, inventory, &name, native.build(), references, numeric),
             );
         }
         Ok(Population {
@@ -174,6 +177,7 @@ fn inspect_command(
     name: &str,
     build: crate::BuildId,
     references: &ReferenceFacts,
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
 ) -> Run {
     let mut chain = Chain {
         stopped_at: Some("registration"),
@@ -228,7 +232,13 @@ fn inspect_command(
         Ok(result)
     })();
     Run {
-        answer: normalize(result.as_ref(), name, build, references),
+        answer: super::grammar::normalize_with_numeric(
+            result.as_ref(),
+            name,
+            build,
+            references,
+            numeric,
+        ),
         result,
         chain,
     }
