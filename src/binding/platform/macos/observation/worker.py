@@ -1144,6 +1144,33 @@ def callback(frame, loc, _):
     return decide_pause(progress).stop
 
 
+def probe_log(record):
+    record['time'] = time.time()
+    (ROOT / 'probe').mkdir(exist_ok=True)
+    with open(ROOT / 'probe' / 'loop.jsonl', 'a') as f:
+        f.write(json.dumps(record) + '\n')
+
+
+def run_probe(process, path, number):
+    """Spike only: run a dropped-in script against the paused game, then record its output."""
+    import lldb
+    directory = path.parent
+    code = path.read_text()
+    path.rename(directory / f'request-{number}.py')
+    (directory / f'running-{number}').touch()
+    output = {}
+    namespace = dict(lldb=lldb, process=process, target=process.GetTarget(), output=output,
+        directory=directory, request=request)
+    started = time.monotonic()
+    try:
+        exec(compile(code, f'request-{number}.py', 'exec'), namespace)
+        output['error'] = None
+    except Exception:
+        output['error'] = traceback.format_exc()
+    output['seconds'] = time.monotonic() - started
+    (directory / f'result-{number}.json').write_text(json.dumps(output, indent=2, default=str))
+
+
 def attach(target, info, error, timeout=15):
     completed = Event()
 
@@ -1273,9 +1300,27 @@ def run(debugger):
         witness = dict(attempt=request['attempt'], game=request['game'], worker=os.getpid(),
             thread=entry_thread, returned=progress.returned_registries, generation=0)
         atomic('pause', 'session-paused.json', witness)
+        probes = 0
+        probe_thread = None
         while not (ROOT / 'session-release').exists():
-            if not process.IsValid() or process.GetState() != lldb.eStateStopped or paused_thread.GetFrameAtIndex(0).GetPC() != paused_pc:
-                raise RuntimeError('session no longer held at the witnessed paused frame')
+            probe = ROOT / 'probe' / 'request.py'
+            probing = probe_thread is not None and probe_thread.is_alive()
+            if probe.exists() and not probing:
+                probes += 1
+                probe_thread = Thread(target=run_probe, args=(process, probe, probes), daemon=True)
+                probe_thread.start()
+                probing = True
+            # A running probe moves the paused thread's PC inside its expression.
+            if probes and not probing:
+                # Spike: an expression can leave the cached thread object with a stale frame.
+                paused_thread = process.GetThreadByID(entry_thread)
+            if not probing and (not process.IsValid() or process.GetState() != lldb.eStateStopped or paused_thread.GetFrameAtIndex(0).GetPC() != paused_pc):
+                probe_log(dict(event='held-check-failed', valid=process.IsValid(), state=process.GetState(),
+                    pc=paused_thread.GetFrameAtIndex(0).GetPC(), paused_pc=paused_pc,
+                    frames=[paused_thread.GetFrameAtIndex(i).GetFunctionName() for i in range(4)]))
+                if not probes:
+                    raise RuntimeError('session no longer held at the witnessed paused frame')
+                paused_pc = paused_thread.GetFrameAtIndex(0).GetPC()  # Spike: keep probing.
             check_path = ROOT / 'pause-check.json'
             if check_path.exists():
                 check = protocol.decode('pause_check', check_path.read_bytes())
@@ -1284,6 +1329,7 @@ def run(debugger):
                 if check['generation'] > witness['generation']:
                     witness['generation'] = check['generation']
                     atomic('pause', 'session-paused.json', witness)
+                    probe_log(dict(event='pause-confirmed', generation=check['generation'], probing=probing))
             time.sleep(.02)
         # Complete pending exit handling before the debugger goes away. The independent
         # owner still must waitpid its original child; this response proves no disposal.

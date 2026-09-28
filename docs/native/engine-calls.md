@@ -42,3 +42,45 @@ Failed approaches remain useful: `every_galaxy_planet` did not see a new live pa
 Evidence: `sdk-testing/sdk-testing/scratch/{native-bridge-probe,rust-bridge-probe,resource-read-probe,time-control-probe}/REPORT.md`; `linear-records/linear/doc-country-and-planet-locator-identity-native-evidence-753293d05d90.json` and asset `83ad732d-c67f-4dd0-aeae-a6ed3c416856`; script/stockpile assets `9023851d-51f5-4803-aa1d-51008f79490e` and `8f8f3d75-c08a-4eab-b122-1ce0e8c794bb`. Relevant native source snapshots and binaries are private, retained with original manifests and licenses.
 
 Prerequisites for fresh runs are the exact historical executable, compatible save/content, host tools and engine context. No M45-observe ready-world ABI qualification follows from M45-old addresses. Multiplayer, arbitrary scopes, concurrent callbacks, universal UI operations and production lifetime guarantees remain outside these bounded experiments.
+
+## In-process parse probes (M45-release)
+
+A spike on 2026-09-28 parsed trigger text inside the paused game, with no new launch per probe.
+It applies only to the M45-release executable in [targets](targets.md). The worker patch, probe
+scripts and results are in `.local/evidence/in-process-probe-2026-09-28/`; the patch is on branch
+`spike/in-process-probe`, not in `main`.
+
+**Route.** The debug console's `trigger_file` and `effect` commands parse text through
+`ReadAndEvaluateTrigger` and `ReadAndExecuteEffect`. The probe repeats the trigger route up to
+validation: `CString(char const*)` → `CBlob::Append` → `CMemoryFile(blob, 1, 0, false)` →
+`CTextLexer(CFile*, false)` → `CReader(CLexer&)`, then a `CAndTrigger` built as that function
+builds it on its stack (`CTrigger()`, then the `CAndTrigger` vtable at `+0x0`, a child array at
+`+0x68` and byte `+0x60` = 1), `CTrigger::Read(CReader&, EScopeType)`, and
+`CTriggerDatabase::PostInit` and `PostValidate`. Evaluation needs a game state; it was not run.
+`EScopeType` is a bit value: planet 2, country 4, fleet 64. `NEventScope::GetScopeName` names
+each bit.
+
+**Calls.** LLDB `EvaluateExpression` on the paused main thread, with breakpoints ignored and
+other threads held, calls each function through a cast of its slid address. Memory comes from
+`SBProcess::AllocateMemory` and is never freed, because deferred references can keep pointers
+to it. One call takes about 9 ms. One trigger probe takes 0.19 s; `PostInit` and `PostValidate`
+take most of it. 32 scope types for one trigger took 9.9 s.
+
+**Results.** Diagnostics appear in the ordinary `error.log` at once, with an empty file name and
+the line number inside the snippet. A wrong scope gives the same text as a file fixture. An
+unknown key in `get_councilor_level` gives `Unexpected token: <key>`, and the next probe is clean:
+each snippet has its own reader, so a destructive parser error does not reach the next probe.
+A missing `has_technology` key gives both `Invalid technology being referenced` and the deferred
+read failure, joined by the probe itself. A text value for `always` gives the Boolean trigger
+message. The `is_planet_class` scope matrix accepted planet, ship and dlc_recommendation and
+rejected the other 29 named bits; its message also lists colony, which is not a separate bit.
+
+**Pitfalls.**
+
+- The ordinary log drops a message identical to the one before it. Give each probe a distinct
+  line (leading newlines) or text. `CLogger::GetLogCount` stayed zero and is not an error counter.
+- The supervisor confirms the pause every 100 ms and allows 2 s. Run probes on a separate worker
+  thread, or the session ends.
+- After an expression, a cached `SBThread` can report a stale frame 0. The registers did not
+  change (`pc`, `sp`, `fp` and `lr` were equal before and after), but the worker's paused-frame
+  check compared frame 0 and ended the session. Read the thread again, and compare registers.
