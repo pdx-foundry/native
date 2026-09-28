@@ -176,6 +176,12 @@ enum Case {
     FixtureTransfer,
     FixtureRelicPortrait,
     FixtureBlockParsing,
+    FixtureNumeric {
+        registry: &'static str,
+        integer: Option<&'static str>,
+        fixed: &'static str,
+        fractional_final: i64,
+    },
     /// Validation samples of one block field, each in its own definition of one fixture file.
     FixtureValidation {
         field: &'static str,
@@ -360,6 +366,24 @@ fn cases() -> Vec<(String, Case)> {
         Case::FixtureRelicPortrait,
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
+    cases.push((
+        "fixture_numeric_megastructures".into(),
+        Case::FixtureNumeric {
+            registry: "common/megastructures",
+            integer: Some("sensor_range"),
+            fixed: "build_time",
+            fractional_final: 100_000,
+        },
+    ));
+    cases.push((
+        "fixture_numeric_armies".into(),
+        Case::FixtureNumeric {
+            registry: "common/armies",
+            integer: None,
+            fixed: "war_exhaustion",
+            fractional_final: -123_456,
+        },
+    ));
     let parser_log = Some("engine-parser-log");
     let validation_log = Some("engine-validation-log");
     let mut triggers = vec![
@@ -596,6 +620,12 @@ fn cases() -> Vec<(String, Case)> {
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
+        Case::FixtureNumeric {
+            registry,
+            integer,
+            fixed,
+            fractional_final,
+        } => fixture_numeric(registry, integer, fixed, fractional_final).await,
         Case::FixtureValidation { field, ref samples } => {
             fixture_validation(native, field, samples).await
         }
@@ -841,7 +871,7 @@ async fn fixture_transfer(native: &Native) -> Outcome {
             return Err(format!("transfer owner join: {answer:?}").into());
         }
         for (outcome, expected) in [(tooltip, "transfer_tip"), (agenda, "transfer_agenda")] {
-            let FixtureStorage::String {
+            let FixtureStorage::Observed {
                 occurrences,
                 final_value,
                 completeness: Completeness::Complete,
@@ -850,8 +880,8 @@ async fn fixture_transfer(native: &Native) -> Outcome {
                 return Err(format!("transfer storage: {answer:?}").into());
             };
             if occurrences.len() != 1
-                || occurrences[0].value != expected
-                || final_value.as_deref() != Some(expected)
+                || occurrences[0].value != pdx_native::FixtureValue::String(expected.into())
+                || final_value.as_ref() != Some(&pdx_native::FixtureValue::String(expected.into()))
             {
                 return Err(format!("transfer value: {answer:?}").into());
             }
@@ -889,7 +919,7 @@ async fn fixture_relic_portrait(native: &Native) -> Outcome {
         if outcome.owner.is_none() {
             return Err(format!("novel field owner: {answer:?}").into());
         }
-        let FixtureStorage::String {
+        let FixtureStorage::Observed {
             occurrences,
             final_value,
             completeness: Completeness::Complete,
@@ -898,11 +928,180 @@ async fn fixture_relic_portrait(native: &Native) -> Outcome {
             return Err(format!("novel field storage: {answer:?}").into());
         };
         if occurrences.len() != 1
-            || occurrences[0].value != "transfer_relic_portrait"
-            || final_value.as_deref() != Some("transfer_relic_portrait")
+            || occurrences[0].value
+                != pdx_native::FixtureValue::String("transfer_relic_portrait".into())
+            || final_value.as_ref()
+                != Some(&pdx_native::FixtureValue::String(
+                    "transfer_relic_portrait".into(),
+                ))
         {
             return Err(format!("novel field value: {answer:?}").into());
         }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+type NumericExpectations = std::collections::BTreeMap<
+    (String, String),
+    (
+        Vec<pdx_native::StoredFieldOccurrence>,
+        pdx_native::FixtureValue,
+    ),
+>;
+
+fn numeric_fixture(
+    registry: &str,
+    integer: Option<&str>,
+    fixed: &str,
+    fractional_final: i64,
+) -> Result<(pdx_native::FixtureRequest, NumericExpectations), std::fmt::Error> {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest, FixtureValue, StoredFieldOccurrence};
+
+    let mut text = String::new();
+    let mut questions = Vec::new();
+    let mut expected = std::collections::BTreeMap::new();
+    for definition in [
+        "numeric_boundary",
+        "numeric_fractional",
+        "numeric_malformed",
+    ] {
+        writeln!(text, "{definition} = {{")?;
+        for (field, is_integer) in integer
+            .into_iter()
+            .map(|name| (name, true))
+            .chain([(fixed, false)])
+        {
+            let (inputs, value) = match (definition, is_integer) {
+                ("numeric_boundary", true) => (vec!["2147483647"], FixtureValue::Integer(i32::MAX)),
+                ("numeric_boundary", false) => (
+                    vec!["92233720368547.75807"],
+                    FixtureValue::FixedPoint {
+                        raw: i64::MAX,
+                        scale: 100_000,
+                    },
+                ),
+                ("numeric_fractional", true) => (vec!["-1.234567"], FixtureValue::Integer(-1)),
+                ("numeric_fractional", false) => (
+                    vec!["-1.234567"],
+                    FixtureValue::FixedPoint {
+                        raw: -123_456,
+                        scale: 100_000,
+                    },
+                ),
+                (_, true) => (vec!["7", "not_a_number"], FixtureValue::Integer(7)),
+                (_, false) => (
+                    vec!["7", "not_a_number"],
+                    FixtureValue::FixedPoint {
+                        raw: 700_000,
+                        scale: 100_000,
+                    },
+                ),
+            };
+            let mut occurrences = Vec::new();
+            for (index, input) in inputs.iter().enumerate() {
+                let line = text.lines().count() as u64 + 1;
+                writeln!(text, " {field} = {input}")?;
+                occurrences.push(StoredFieldOccurrence {
+                    line,
+                    occurrence: index as u64 + 1,
+                    value: value.clone(),
+                });
+            }
+            questions.push(FixtureFieldQuestion::new(registry, definition, field).with_parsing());
+            let final_value = if definition == "numeric_fractional" && !is_integer {
+                FixtureValue::FixedPoint {
+                    raw: fractional_final,
+                    scale: 100_000,
+                }
+            } else {
+                value
+            };
+            expected.insert(
+                (definition.to_owned(), field.to_owned()),
+                (occurrences, final_value),
+            );
+        }
+        writeln!(text, "}}")?;
+    }
+    let request =
+        FixtureRequest::field_outcomes(format!("{registry}/native_numeric.txt"), text, questions);
+    Ok((request, expected))
+}
+
+async fn fixture_numeric(
+    registry: &str,
+    integer: Option<&str>,
+    fixed: &str,
+    fractional_final: i64,
+) -> Outcome {
+    use pdx_native::{DiagnosticCoverage, DiagnosticWindow, FixtureParsing, FixtureStorage};
+
+    let (request, expected) = numeric_fixture(registry, integer, fixed, fractional_final)?;
+    let recorded = tempfile::tempdir()?;
+    let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
+        .record_answers_to(recorded.path());
+    let mut game = native
+        .start_game(options().registries([registry]).fixture(request.clone()))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.completeness != Completeness::Complete
+            || !answer.gaps.is_empty()
+            || answer.value.diagnostic_coverage
+                != (DiagnosticCoverage::Complete {
+                    window: DiagnosticWindow::FixtureFileLoad,
+                })
+        {
+            return Err(format!("numeric observation incomplete: {answer:?}").into());
+        }
+        for outcome in &answer.value.field_outcomes {
+            let (occurrences, final_value) = &expected[&(
+                outcome.question.definition.clone(),
+                outcome.question.field.clone(),
+            )];
+            let expected_storage = FixtureStorage::Observed {
+                occurrences: occurrences.clone(),
+                final_value: Some(final_value.clone()),
+                completeness: Completeness::Complete,
+            };
+            if outcome.owner.is_none() || outcome.storage != expected_storage {
+                return Err(format!(
+                    "numeric storage differs: expected {expected_storage:?}; got {outcome:?}"
+                )
+                .into());
+            }
+            let FixtureParsing::Observed {
+                occurrences: parsed,
+                completeness: Completeness::Complete,
+            } = &outcome.parsing
+            else {
+                return Err(format!("numeric parsing incomplete: {outcome:?}").into());
+            };
+            if parsed.len() != occurrences.len()
+                || parsed.iter().any(|item| item.return_line.is_none())
+            {
+                return Err(format!("numeric parser occurrences: {outcome:?}").into());
+            }
+            let malformed = outcome.question.definition == "numeric_malformed";
+            if outcome.diagnostics.len() != usize::from(malformed) {
+                return Err(format!("numeric diagnostics differ: {answer:?}").into());
+            }
+            if malformed {
+                let diagnostic = &answer.value.diagnostics[outcome.diagnostics[0]];
+                if diagnostic.text != "Malformed token"
+                    || diagnostic.stage != "reader-malformed-report"
+                {
+                    return Err(format!("numeric malformed diagnostic: {diagnostic:?}").into());
+                }
+            }
+        }
+        if answer.value.field_outcomes.len() != expected.len() {
+            return Err(format!("missing numeric outcomes: {answer:?}").into());
+        }
+        assert_recorded_fixture(recorded.path(), request, &answer).await?;
         Ok(())
     }
     .await;
@@ -1493,7 +1692,7 @@ fn assert_string_storage(
     expected: &[(u64, u64, &str)],
     expected_final: Option<&str>,
 ) -> Outcome {
-    let pdx_native::FixtureStorage::String {
+    let pdx_native::FixtureStorage::Observed {
         occurrences,
         final_value,
         completeness,
@@ -1507,12 +1706,23 @@ fn assert_string_storage(
             (
                 occurrence.line,
                 occurrence.occurrence,
-                occurrence.value.as_str(),
+                occurrence.value.clone(),
             )
         })
         .collect::<Vec<_>>();
+    let expected: Vec<_> = expected
+        .iter()
+        .map(|(line, ordinal, value)| {
+            (
+                *line,
+                *ordinal,
+                pdx_native::FixtureValue::String((*value).into()),
+            )
+        })
+        .collect();
     if actual != expected
-        || final_value.as_deref() != expected_final
+        || *final_value
+            != expected_final.map(|value| pdx_native::FixtureValue::String(value.into()))
         || *completeness != Completeness::Complete
     {
         return Err(format!("field storage values: {outcome:?}").into());

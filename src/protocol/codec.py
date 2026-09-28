@@ -57,7 +57,7 @@ def validate(value, schema, root=None):
     if type(value) is int:
         if value < schema.get('minimum', value) or value > schema.get('maximum', value):
             raise ValueError('integer outside bounds')
-        limits = {'uint64': (0, 2**64-1), 'uint32': (0, 2**32-1), 'int64': (-2**63, 2**63-1)}
+        limits = {'uint64': (0, 2**64-1), 'uint32': (0, 2**32-1), 'int64': (-2**63, 2**63-1), 'int32': (-2**31, 2**31-1)}
         if schema.get('format') in limits:
             low, high = limits[schema['format']]
             if not low <= value <= high:

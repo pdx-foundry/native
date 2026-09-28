@@ -270,7 +270,7 @@ class ParserObservationTests(unittest.TestCase):
         self.file = 'common/traditions/example.txt'
         question = dict(index=0, definition='one', field='potential', token=1,
                         parsing=True, diagnostics=True, runtime=False, reader_id='block', reader_family='Trigger',
-                        reader_kind='Block', storage_offset=None, storage_unavailable='No storage decoder')
+                        reader_kind='Block', storage=None, storage_unavailable='No storage decoder')
         self.observer = worker.FixtureObserver(dict(validation=False, file=self.file,
             bindings=dict(fields=[], outcome_registries=[]), questions=[question]))
         self.observer.loading = True
@@ -409,6 +409,32 @@ class ParserObservationTests(unittest.TestCase):
         self.assertEqual(kinds, ['validation-complete', 'diagnostics-unavailable', 'end'])
         with self.assertRaises(RuntimeError):
             self.observer.on_validated(7)
+
+
+
+class NumericStorageTests(unittest.TestCase):
+    def setUp(self):
+        patch.object(worker, 'request', dict(fault=None)).start()
+        self.addCleanup(patch.stopall)
+
+    def test_signed_storage_uses_the_bound_width_and_owner_offset(self):
+        observer = worker.FixtureObserver(dict(validation=False, file='common/synthetic/test.txt',
+            bindings=dict(fields=[], outcome_registries=[]), questions=[]))
+        for decoder, width, raw, expected in [
+            ('Integer', 4, 0x80000000, {'Integer': -2147483648}),
+            ('Integer', 4, 0x7fffffff, {'Integer': 2147483647}),
+            ({'FixedPoint': {'scale': 100000}}, 8, 2**64 - 125000,
+             {'FixedPoint': {'raw': -125000, 'scale': 100000}}),
+            ({'FixedPoint': {'scale': 32768}}, 8, 2**63,
+             {'FixedPoint': {'raw': -(2**63), 'scale': 32768}}),
+        ]:
+            with self.subTest(decoder=decoder, raw=raw), patch.object(worker, 'uint', return_value=raw) as read:
+                process = Mock()
+                self.assertEqual(observer.stored_value(process, 0x2000, dict(offset=48, decoder=decoder)), expected)
+                read.assert_called_once_with(process, 0x2030, width)
+        with patch.object(worker, 'uint', side_effect=RuntimeError('unreadable')):
+            with self.assertRaisesRegex(RuntimeError, 'unreadable'):
+                observer.stored_value(Mock(), 0x2000, dict(offset=48, decoder='Integer'))
 
 
 if __name__ == '__main__':

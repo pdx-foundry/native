@@ -624,7 +624,7 @@ impl ParsingSummary {
 #[serde(rename_all = "kebab-case")]
 enum StorageSummary {
     Unavailable(String),
-    String {
+    Observed {
         occurrences: usize,
         completeness: Completeness,
     },
@@ -634,11 +634,11 @@ impl StorageSummary {
     fn new(storage: &FixtureStorage) -> Self {
         match storage {
             FixtureStorage::Unavailable(reason) => Self::Unavailable(cut(reason)),
-            FixtureStorage::String {
+            FixtureStorage::Observed {
                 occurrences,
                 completeness,
                 ..
-            } => Self::String {
+            } => Self::Observed {
                 occurrences: occurrences.len(),
                 completeness: *completeness,
             },
@@ -704,7 +704,7 @@ mod tests {
     use crate::{
         Answer, Basis, DiagnosticJoin, DiagnosticWindow, FixtureDiagnostic, FixtureFieldOutcome,
         FixtureFieldQuestion, Gap, GapKind, ParsedFieldOccurrence, Reader, ReaderKind, Source,
-        StoredStringOccurrence,
+        StoredFieldOccurrence,
     };
     use serde_json::{Value, json};
     use std::time::Duration;
@@ -910,13 +910,13 @@ mod tests {
         let stored = outcome(
             "traditions",
             FixtureParsing::NotRequested,
-            FixtureStorage::String {
-                occurrences: vec![StoredStringOccurrence {
+            FixtureStorage::Observed {
+                occurrences: vec![StoredFieldOccurrence {
                     line: 3,
                     occurrence: 1,
-                    value: "x".into(),
+                    value: crate::FixtureValue::String("x".into()),
                 }],
-                final_value: Some("x".into()),
+                final_value: Some(crate::FixtureValue::String("x".into())),
                 completeness: Completeness::Complete,
             },
             vec![],
@@ -967,7 +967,7 @@ mod tests {
                      "runtime":"NotRequested"},
                     {"question":"common/tradition_categories/atlas.traditions",
                      "parsing":"not-requested",
-                     "storage":{"string":{"occurrences":1,"completeness":"Complete"}},
+                     "storage":{"observed":{"occurrences":1,"completeness":"Complete"}},
                      "validation":{},
                      "runtime":{"Unavailable":"outside the initial load"}}]}})
         );

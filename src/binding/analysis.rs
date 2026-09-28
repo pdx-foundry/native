@@ -454,7 +454,7 @@ impl BoundAnalysis {
         }))
     }
 
-    /// Bind root field tokens, with string storage only when reader arguments prove it.
+    /// Bind root field tokens, with storage only when reader arguments prove it.
     pub(crate) fn fixture_fields(
         &self,
         registry: &str,
@@ -474,8 +474,7 @@ impl BoundAnalysis {
                 Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
                     token: u64::try_from(field.token).ok()?,
                     name: field.name.clone(),
-                    storage_offset: string_field_binding(field, &result.paths)
-                        .and_then(|binding| binding.storage_offset),
+                    storage: fixture_storage_binding(field, &result.paths),
                 })
             })
             .collect())
@@ -537,14 +536,13 @@ impl BoundAnalysis {
     }
 }
 
-/// The storage binding of a field that the root reader always reads as one `CString`: a single
-/// reader join with no path condition, a direct `CReader::Read(CString&, bool)` of the root
-/// reader with the field's token, into owner storage.
-fn string_field_binding(
+/// Bind one unconditional direct read of the root reader into owner storage.
+fn fixture_storage_binding(
     field: &crate::engine::analysis::fields::RootField,
     paths: &[crate::engine::analysis::fields::TokenPath],
-) -> Option<crate::protocol::observation::FixtureOutcomeFieldBinding> {
+) -> Option<crate::protocol::observation::FixtureStorageBinding> {
     use crate::engine::analysis::fields::{ReaderJoin, Value};
+    use crate::protocol::observation::{FixtureStorageBinding, FixtureStorageDecoder};
 
     let [
         ReaderJoin::Joined {
@@ -554,12 +552,11 @@ fn string_field_binding(
     else {
         return None;
     };
-    let unconditional = field
-        .paths
-        .iter()
-        .all(|&path| paths[path].conditions.is_empty());
-    if !unconditional
-        || callee != "CReader::Read(CString&, bool)"
+    if field.paths.is_empty()
+        || !field
+            .paths
+            .iter()
+            .all(|&path| paths[path].conditions.is_empty())
         || arguments.get("x0") != Some(&Value::Reader(0))
         || arguments.get("x8") != Some(&Value::Constant(field.token))
     {
@@ -568,15 +565,20 @@ fn string_field_binding(
     let Some(Value::Owner(offset)) = arguments.get("x1") else {
         return None;
     };
-    let (Ok(token), Ok(storage_offset)) = (u64::try_from(field.token), u64::try_from(*offset))
-    else {
-        return None;
+    // These representations were checked in the exact M45-release reader and token bodies.
+    // This binding is used only after the installation's catalogue identity is verified.
+    let decoder = match callee.as_str() {
+        "CReader::Read(CString&, bool)" => FixtureStorageDecoder::String,
+        "CReader::Read(int&)" => FixtureStorageDecoder::Integer,
+        "CReader::Read(CFixedPoint&)" => FixtureStorageDecoder::FixedPoint { scale: 100_000 },
+        "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
+            FixtureStorageDecoder::FixedPoint { scale: 32_768 }
+        }
+        _ => return None,
     };
-
-    Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
-        token,
-        name: field.name.clone(),
-        storage_offset: Some(storage_offset),
+    Some(FixtureStorageBinding {
+        offset: u64::try_from(*offset).ok()?,
+        decoder,
     })
 }
 

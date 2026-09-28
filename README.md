@@ -147,14 +147,16 @@ engine's responsibility; an unobserved file or a read outside the bounded window
 complete answer.
 
 For parser outcomes, use `FixtureRequest::field_outcomes` with one or more
-`FixtureFieldQuestion` values. The file may be in `common/traditions` or
-`common/tradition_categories`. Each outcome keeps these dimensions separate:
+`FixtureFieldQuestion` values. The file may be in a discovered registry whose loader and owner boundaries are verified. Each outcome keeps these dimensions separate:
 
 - `FixtureParsing` contains source-located entry/return occurrences when `.with_parsing()` is
   requested. Block parsing needs no storage decoder; a return does not establish runtime success.
-- `FixtureStorage` contains actual String storage after each joined occurrence and an optional
-  file-terminal value, or a typed unavailable reason. Its own completeness keeps witnessed values
-  when a later record or terminal is missing. A complete zero-occurrence result requires a
+- `FixtureStorage::Observed` contains typed storage after each joined occurrence and an optional
+  file-terminal value, or `Unavailable` with its reason. `FixtureValue` distinguishes strings,
+  signed 32-bit integers, and fixed-point values (`raw: i64`, `scale: u64`). Fixed-point values
+  remain exact: divide the raw integer by the scale, without converting through floating point.
+  `StoredFieldOccurrence` keeps each source line and occurrence number. Storage completeness
+  keeps witnessed values when a later record or terminal is missing. A complete zero-occurrence result requires a
   witnessed definition constructor and completed file-load window.
 - `diagnostics` preserves messages captured at the engine reader-report stage, with a source join
   or a missing-join reason. `DiagnosticCoverage::Complete` names its bounded window.
