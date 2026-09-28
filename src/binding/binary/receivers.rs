@@ -3,8 +3,9 @@ use crate::AnalysisError;
 use crate::engine::analysis::{declarations::Function, decode::decode_arm64, discovery::Symbol};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Constructor entries reached directly from these object factories, with their compiler
-/// vtable-group address points. A class name selects metadata, never grammar behavior.
+/// Constructor entries reached directly or through register-move wrappers, with their compiler
+/// vtable-group address points. An absent group gives an empty summary.
+/// A class name selects metadata, never grammar behavior.
 pub(super) fn constructors(
     bytes: &[u8],
     symbols: &[Symbol],
@@ -20,6 +21,23 @@ pub(super) fn constructors(
             if let Some(address) = crate::engine::analysis::declarations::number(&row.operands) {
                 calls.insert(address);
             }
+        }
+    }
+    let text = super::declarations::Text::read(bytes, symbols)?;
+    let direct_calls: Vec<_> = calls.iter().copied().collect();
+    for address in direct_calls {
+        if !text.starts.contains(&address) {
+            continue;
+        }
+        let (address, code) = text.function(address)?;
+        let body = Function {
+            address,
+            code: code.to_vec(),
+        };
+        if let Some(target) =
+            crate::engine::analysis::declarations::register_move_tail_target(&body)
+        {
+            calls.insert(target);
         }
     }
     let mut classes = BTreeMap::<String, BTreeSet<u64>>::new();
@@ -40,14 +58,11 @@ pub(super) fn constructors(
     let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut summaries = BTreeMap::new();
     for (class, entries) in classes {
-        let Some(group) = super::families::vtable_group(symbols, &data, &class) else {
-            continue;
-        };
+        let points = super::families::vtable_group(symbols, &data, &class)
+            .map(|group| group.address_points)
+            .unwrap_or_default();
         for entry in entries {
-            if summaries
-                .insert(entry, group.address_points.clone())
-                .is_some()
-            {
+            if summaries.insert(entry, points.clone()).is_some() {
                 return Err(AnalysisError::InvalidRange);
             }
         }

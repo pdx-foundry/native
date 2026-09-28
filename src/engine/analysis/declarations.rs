@@ -16,7 +16,7 @@ use super::{
 };
 mod composition;
 mod receiver;
-pub(crate) use receiver::{factory_vtable, tail_callees};
+pub(crate) use receiver::{factory_vtable, register_move_tail_target, tail_callees};
 
 pub use composition::{CALLER_DEPTH, Composition};
 

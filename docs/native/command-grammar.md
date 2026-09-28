@@ -1,7 +1,7 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v4`; field families use
+[targets](targets.md). The method is `command-grammar/v5`; field families use
 `registry-fields/v7`, and parser observations use `observe-fixture/v2`. Versions 2 and 7 add
 [reference lookups](references.md), version 3 adds the receiver initializer's lookup of a
 child key, and version 4 follows out-of-line trigger factories; the counts on this page were
@@ -11,7 +11,7 @@ measured with versions 1 and 6.
 
 Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
 ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-These are current engine facts for `command-grammar/v4`, with `dynamic-names/v1` and
+These are current engine facts for `command-grammar/v5`, with `dynamic-names/v2` and
 `registry-fields/v7`. They do not establish complete value grammars or target-scope answers.
 
 ### F1. The family dispatch always calls `Read`
@@ -34,18 +34,18 @@ cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'C
 
 Count of joined commands for each outer `Read`, from `examples/command-population`:
 
-| Outer `Read` | Effects (937 joined) | Triggers (1,018 joined) | What the body does |
+| Outer `Read` | Effects (1,064 joined) | Triggers (1,094 joined) | What the body does |
 | --- | ---: | ---: | --- |
-| `CEffect::Read` / `CTrigger::Read` | 463 | 244 | Block. If the reader's value kind (`[reader+0x278]`) is not 3 and the command's byte at `+0x78` (effects) or `+0x60` (triggers) is 0, it logs `Expected "<name> = {", but got …` through `CLogger::Log` and `CLogStream`, then continues. On every path, the loop calls `CReader::ReadSimpleStatement()`, loads the key token from `[reader+0x38]`, and calls the virtual `ReadMember` (effects `+0x18`, triggers `+0x38`). Token `0x438` (inline script) makes a new reader, sets the byte to 1, calls `Read` again and restores the byte. |
-| `CSimpleAssignEffect::Read` / `CSimpleAssignTrigger::Read` | 298 | 329 | Value. Tail call to the virtual `Assign` (effects `+0x20`, triggers `+0x28`) with `x1 = reader + 0x278`. The trigger form first calls `CAssignOperator::Read(CReader&)` into command `+0x64`. It does not test the value kind. |
+| `CEffect::Read` / `CTrigger::Read` | 523 | 273 | Block. If the reader's value kind (`[reader+0x278]`) is not 3 and the command's byte at `+0x78` (effects) or `+0x60` (triggers) is 0, it logs `Expected "<name> = {", but got …` through `CLogger::Log` and `CLogStream`, then continues. On every path, the loop calls `CReader::ReadSimpleStatement()`, loads the key token from `[reader+0x38]`, and calls the virtual `ReadMember` (effects `+0x18`, triggers `+0x38`). Token `0x438` (inline script) makes a new reader, sets the byte to 1, calls `Read` again and restores the byte. |
+| `CSimpleAssignEffect::Read` / `CSimpleAssignTrigger::Read` | 332 | 355 | Value. Tail call to the virtual `Assign` (effects `+0x20`, triggers `+0x28`) with `x1 = reader + 0x278`. The trigger form first calls `CAssignOperator::Read(CReader&)` into command `+0x64`. It does not test the value kind. |
 | `CCompareTrigger::Read` | — | 242 | Value with a comparison operator: `CCompareOperator::Read(CReader&)`, then the virtual `Assign`. |
 | `CDatabaseObjectEffect<D>::Read` / `…Trigger<D>::Read` | 61 | 120 | Reference. Tail call to `NParserUtil::ReadKeyReferenceDeferred<D>`. |
 | `CEventTargetEffect::Read` | 39 | — | Target value (F4), stored at command `+0xa8`. |
-| `CComplexIntEffect::Read`, `CComplexIntTrigger::Read`, `CComplexValue…::Read` | 40 | 46 | Tail call to the base block reader. |
+| `CComplexIntEffect::Read`, `CComplexIntTrigger::Read`, `CComplexValue…::Read` | 55 | 66 | Tail call to the base block reader. |
 | Both forms: `CAddDistrictEffect::Read` and 15 more bodies of one shape | 16 bodies | — | `[reader+0x278] == 3`: tail call to `CEffect::Read`. Otherwise: tail call to the virtual `Assign`. |
-| Other bodies | 20 | 37 | One to eight commands each. |
+| Other bodies | 38 | 38 | One to eight commands each. |
 
-Not joined: effects 134 `command-vtable`, 2 `factory-terminal`, 1 `instruction`; triggers 78
+Not joined: effects 7 `command-vtable`, 2 `factory-terminal`, 1 `instruction`; triggers 2
 `command-vtable`.
 
 Reproduce:
@@ -149,14 +149,16 @@ cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'C
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CGalacticCommunity const* CScopeObjectReference::GetObject<CGalacticCommunity>() const'
 ```
 
-### F5. Receiver stops
+### F5. Member constructors and receiver stops
 
 - `add_resource`: `CEffectEntry<CAddResourceEffect>::Create()` stores the vtable, then calls
   `CFixedResourceTable::CFixedResourceTable()` with `x0 = object + 0xa8`. That class has no
-  vtable group, so the walk forgets the allocation.
+  vtable group. Its empty constructor summary forgets only the member suffix, preserving the
+  primary vtable and joining the concrete receiver.
 - `exists`: the create method calls `CEventTarget::CreateFromToken(int)` with `x8 = object +
   0x68`. That function is `mov x1, x0; mov x0, x8; b CEventTarget::CEventTarget(int)`: a wrapper
-  that tail-calls a constructor with the result address as receiver.
+  that tail-calls a constructor with the result address as receiver. The walk enters this
+  register-move wrapper and applies the member constructor summary, preserving the primary vtable.
 
 Reproduce:
 
@@ -166,6 +168,13 @@ cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'C
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar exists --trace
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventTarget::CreateFromToken(int)'
 ```
+
+The repair applies to 127 effects and 76 triggers. No previously joined command loses its
+receiver. A constructor without a vtable summary is accepted only at a nonzero offset inside
+the allocation. At offset zero, outside it, or with an unknown receiver, the call keeps the
+unknown-call fallback. This matters for `add_zone` and `remove_zone`: their stack temporary is
+constructed before the command's final vtable store. A wrapper that calls another function
+first is not entered. Unknown stores retain the evaluator's existing invalidation rule.
 
 ### F6. Present state of the acceptance samples
 

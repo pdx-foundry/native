@@ -144,7 +144,7 @@
   "The receiver's initializer looks up a stored key that no child key's string reader is joined to."
  ],
  "effect/change_pc": [
-  "command-vtable"
+  "The receiver's initializer looks up a stored key that no child key's string reader is joined to."
  ],
  "effect/create_army#type": {
   "Lookups": [
