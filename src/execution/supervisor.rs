@@ -194,7 +194,6 @@ fn run(
         if binding::conflicting_game(None)? {
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
-        binding::debugger_authorized()?;
         prepare_profile(&work)?;
         plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
         if !plan.session_content_unchanged(&request.registries, &content) {

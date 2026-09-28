@@ -871,7 +871,8 @@ def attach(target, info, error, timeout=15):
         if completed.wait(timeout):
             return
         try:
-            emit('capability-unavailable', reason=f'debugger attach timed out after {timeout:g} seconds')
+            emit('capability-unavailable', reason=f'debugger attach timed out after {timeout:g} seconds; '
+                 'approve one debugger attach in a terminal in the same login session, then retry')
         finally:
             # LLDB shutdown can wait on the blocked attach. The supervisor owns cleanup.
             os._exit(1)
