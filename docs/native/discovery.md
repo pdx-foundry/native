@@ -44,9 +44,9 @@ population, the per-shape counts and the obstacles are on [references](reference
 
 The owner-initialization run covers all 309 `PostInit()` functions; 154 name a global instance:
 **61 complete, 2 partial, 91 failed**. Failure shapes: another shape (74), several lookups in one
-initializer (14), and a getter of another shape (3). Over the command inventory, 26 effects and
-9 triggers join a complete lookup to a child key, 11 commands have a lookup without an authored
-field, and 91 have an initializer lookup that is not established. The breakdown is on
+initializer (14), and a getter of another shape (3). Over the command inventory, 16 effects and
+8 triggers join a complete lookup to a child key, 41 commands have a lookup without an authored
+field, and 112 have an initializer lookup that is not established. The breakdown is on
 [references](references.md#owner-initializers).
 
 ## Dynamic names
