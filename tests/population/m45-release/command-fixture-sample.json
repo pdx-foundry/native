@@ -1,0 +1,524 @@
+{
+ "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+ "method": "command-grammar/v8",
+ "rule": "Order each kind by SHA-256 of '<kind>/<name>' (lowercase kind). Eligible: not in list A, complete, declared scopes Any or include country, and at least one rejection that the method established on every path with a hooked diagnostic (a Rejected key disposition, a rejected value chain, or an unknown key in the deepest member block). Take every eligible trigger, then eligible effects in order until 20 commands outside list A are counted. A complete list A command counts only with an established rejection.",
+ "list_a": {
+  "Trigger": {
+   "always": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "value-acceptance: Assign: false without diagnostic",
+     "value-acceptance: Assign: loop-limit",
+     "value-acceptance: Assign: path limit",
+     "value-acceptance: Assign: path-limit",
+     "value-acceptance: PostValidate: path limit",
+     "form-path-limit",
+     "loop-limit",
+     "path-limit",
+     "target-arguments",
+     "ReaderSemantics"
+    ]
+   },
+   "has_country_flag": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "value-acceptance: PostValidate: path limit",
+     "form-path-limit",
+     "target-arguments",
+     "ReaderSemantics"
+    ]
+   },
+   "has_tradition": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "value-acceptance: PostValidate: branch-value",
+     "target-arguments",
+     "ReaderSemantics"
+    ]
+   },
+   "if": {
+    "status": "complete",
+    "counted": false,
+    "reason": "complete; no established rejection (family dispatch)"
+   }
+  },
+  "Effect": {
+   "set_country_flag": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "value-acceptance: PostValidate: path limit",
+     "form-path-limit",
+     "target-arguments",
+     "ReaderSemantics"
+    ]
+   },
+   "remove_country_flag": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "value-acceptance: PostValidate: path limit",
+     "form-path-limit",
+     "target-arguments",
+     "ReaderSemantics"
+    ]
+   },
+   "set_timed_country_flag": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "reader-routing",
+     "Some child dispatch paths or names remain unresolved.",
+     "target-arguments",
+     "ReaderSemantics",
+     "reader-routing",
+     "reader-routing",
+     "reader-routing",
+     "reader-routing"
+    ]
+   },
+   "add_resource": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "reader-routing",
+     "Some child dispatch paths or names remain unresolved.",
+     "target-arguments",
+     "ReaderSemantics",
+     "unknown-key-reader",
+     "unknown-key-reader"
+    ]
+   },
+   "if": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "conditional-child-family",
+     "target-arguments",
+     "ReaderSemantics",
+     "conditional-child-family",
+     "unknown-key-reader"
+    ]
+   },
+   "create_starbase": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "ReaderSemantics",
+     "target-arguments",
+     "ReaderSemantics",
+     "target-scope-check: unclassified getter call"
+    ]
+   },
+   "add_district": {
+    "status": "partial",
+    "counted": false,
+    "reason": "not complete",
+    "gaps": [
+     "value-acceptance: Assign: form-reader-call",
+     "form-reader-call",
+     "target-arguments",
+     "ReaderSemantics"
+    ]
+   }
+  }
+ },
+ "skip_counts": {
+  "Trigger": {
+   "not complete": 973,
+   "scope": 38,
+   "no established rejection": 78,
+   "list A": 4
+  },
+  "Effect": {
+   "not complete": 811,
+   "list A": 7,
+   "scope": 112,
+   "no established rejection": 77
+  }
+ },
+ "eligible": {
+  "Trigger": [
+   {
+    "name": "get_councilor_level",
+    "rejection": "key"
+   },
+   {
+    "name": "is_ai_ship_role",
+    "rejection": "key"
+   },
+   {
+    "name": "has_completed_event_chain_counter",
+    "rejection": "key"
+   }
+  ],
+  "Effect": [
+   {
+    "name": "stop_crisis_sound",
+    "rejection": "value"
+   },
+   {
+    "name": "set_advisor_active",
+    "rejection": "value"
+   },
+   {
+    "name": "remove_from_galactic_community",
+    "rejection": "value"
+   },
+   {
+    "name": "set_galactic_defense_force",
+    "rejection": "value"
+   },
+   {
+    "name": "set_council_emergency_measures",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_starbase_shields_ratio",
+    "rejection": "value"
+   },
+   {
+    "name": "downgrade_all_buildings",
+    "rejection": "value"
+   },
+   {
+    "name": "open_shroud_tab",
+    "rejection": "value"
+   },
+   {
+    "name": "run_ai_strategic_war_data",
+    "rejection": "value"
+   },
+   {
+    "name": "unlock_council_selection",
+    "rejection": "value"
+   },
+   {
+    "name": "reset_policy_cooldowns",
+    "rejection": "value"
+   },
+   {
+    "name": "activate_saved_leader",
+    "rejection": "key"
+   },
+   {
+    "name": "add_to_galactic_community_no_message",
+    "rejection": "value"
+   },
+   {
+    "name": "store_country_backup_data",
+    "rejection": "key"
+   },
+   {
+    "name": "leave_alliance",
+    "rejection": "key"
+   },
+   {
+    "name": "reset_event_chain_counter",
+    "rejection": "key"
+   },
+   {
+    "name": "create_ship_design",
+    "rejection": "key"
+   },
+   {
+    "name": "roll_ai_preferred_patron",
+    "rejection": "value"
+   },
+   {
+    "name": "integrate_species",
+    "rejection": "value"
+   },
+   {
+    "name": "finish_council_agenda",
+    "rejection": "value"
+   },
+   {
+    "name": "add_to_galactic_council",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_armor_ratio",
+    "rejection": "value"
+   },
+   {
+    "name": "refuse_covenant",
+    "rejection": "key"
+   },
+   {
+    "name": "destroy_country",
+    "rejection": "value"
+   },
+   {
+    "name": "perform_astral_action_unlock_check",
+    "rejection": "value"
+   },
+   {
+    "name": "enable_galactic_market",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ethos",
+    "rejection": "value"
+   },
+   {
+    "name": "date_distortion",
+    "rejection": "value"
+   },
+   {
+    "name": "add_to_galactic_community",
+    "rejection": "value"
+   },
+   {
+    "name": "advanced_authority_refresh",
+    "rejection": "value"
+   },
+   {
+    "name": "remove_from_federation",
+    "rejection": "value"
+   },
+   {
+    "name": "run_ai_strategic_data",
+    "rejection": "value"
+   },
+   {
+    "name": "refresh_psionic_aura_type",
+    "rejection": "value"
+   },
+   {
+    "name": "calculate_modifier",
+    "rejection": "value"
+   },
+   {
+    "name": "set_market_leader",
+    "rejection": "value"
+   },
+   {
+    "name": "win",
+    "rejection": "value"
+   },
+   {
+    "name": "deactivate_fog_machine",
+    "rejection": "value"
+   },
+   {
+    "name": "set_council_veto",
+    "rejection": "value"
+   },
+   {
+    "name": "fill_astral_rift_event_pool",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_starbase_weapon_preference",
+    "rejection": "value"
+   },
+   {
+    "name": "set_galactic_emperor",
+    "rejection": "value"
+   },
+   {
+    "name": "decrease_council_size",
+    "rejection": "value"
+   },
+   {
+    "name": "go_to_next_pre_ftl_age",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_custom_ruler_and_heir_titles",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_ship_roles",
+    "rejection": "value"
+   },
+   {
+    "name": "refresh_leader_pool",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_shields_ratio",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_starbase_armor_ratio",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_weapon_preference",
+    "rejection": "value"
+   },
+   {
+    "name": "remove_permanent_councillor",
+    "rejection": "value"
+   },
+   {
+    "name": "increase_council_size",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_global_event_targets",
+    "rejection": "value"
+   },
+   {
+    "name": "give_technology",
+    "rejection": "key"
+   },
+   {
+    "name": "refresh_accords",
+    "rejection": "value"
+   },
+   {
+    "name": "reset_years_of_peace",
+    "rejection": "value"
+   },
+   {
+    "name": "break",
+    "rejection": "value"
+   },
+   {
+    "name": "set_galactic_custodian",
+    "rejection": "value"
+   },
+   {
+    "name": "finish_all_researches",
+    "rejection": "value"
+   },
+   {
+    "name": "reroll_random",
+    "rejection": "value"
+   },
+   {
+    "name": "set_emperor_can_change_council_members",
+    "rejection": "value"
+   },
+   {
+    "name": "set_attunement",
+    "rejection": "key"
+   },
+   {
+    "name": "remove_from_galactic_council",
+    "rejection": "value"
+   },
+   {
+    "name": "restore_country_backup_data",
+    "rejection": "value"
+   },
+   {
+    "name": "set_emergency_fund_active",
+    "rejection": "value"
+   },
+   {
+    "name": "merge_species",
+    "rejection": "value"
+   },
+   {
+    "name": "refresh_species_rights",
+    "rejection": "value"
+   },
+   {
+    "name": "add_permanent_councillor",
+    "rejection": "value"
+   }
+  ]
+ },
+ "sample": {
+  "Trigger": [
+   {
+    "name": "get_councilor_level",
+    "rejection": "key"
+   },
+   {
+    "name": "is_ai_ship_role",
+    "rejection": "key"
+   },
+   {
+    "name": "has_completed_event_chain_counter",
+    "rejection": "key"
+   }
+  ],
+  "Effect": [
+   {
+    "name": "stop_crisis_sound",
+    "rejection": "value"
+   },
+   {
+    "name": "set_advisor_active",
+    "rejection": "value"
+   },
+   {
+    "name": "remove_from_galactic_community",
+    "rejection": "value"
+   },
+   {
+    "name": "set_galactic_defense_force",
+    "rejection": "value"
+   },
+   {
+    "name": "set_council_emergency_measures",
+    "rejection": "value"
+   },
+   {
+    "name": "clear_ai_starbase_shields_ratio",
+    "rejection": "value"
+   },
+   {
+    "name": "downgrade_all_buildings",
+    "rejection": "value"
+   },
+   {
+    "name": "open_shroud_tab",
+    "rejection": "value"
+   },
+   {
+    "name": "run_ai_strategic_war_data",
+    "rejection": "value"
+   },
+   {
+    "name": "unlock_council_selection",
+    "rejection": "value"
+   },
+   {
+    "name": "reset_policy_cooldowns",
+    "rejection": "value"
+   },
+   {
+    "name": "activate_saved_leader",
+    "rejection": "key"
+   },
+   {
+    "name": "add_to_galactic_community_no_message",
+    "rejection": "value"
+   },
+   {
+    "name": "store_country_backup_data",
+    "rejection": "key"
+   },
+   {
+    "name": "leave_alliance",
+    "rejection": "key"
+   },
+   {
+    "name": "reset_event_chain_counter",
+    "rejection": "key"
+   },
+   {
+    "name": "create_ship_design",
+    "rejection": "key"
+   }
+  ]
+ }
+}
