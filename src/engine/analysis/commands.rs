@@ -33,3 +33,49 @@ pub(crate) fn forget_if_passed(machine: &mut Machine<'_>, command: u64) {
         machine.forget(command, OBJECT_SPAN);
     }
 }
+
+use super::evaluate::Decision;
+
+/// Compare one fact only across opposite sides of the same receiver fork. Other decisions,
+/// including script input and other receiver forks, must be identical. Missing peers cannot
+/// establish a fact: one receiver side may never have reached that script decision.
+pub(crate) fn receiver_dependent<T: PartialEq>(paths: &[(Vec<Decision>, Option<T>)]) -> bool {
+    for path in paths {
+        for decision in path.0.iter().filter(|d| !d.receiver.is_empty()) {
+            let without = |other: &(Vec<Decision>, Option<T>)| {
+                other
+                    .0
+                    .iter()
+                    .filter(|d| !same_fork(d, decision))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
+            let rest = without(path);
+            let peers: Vec<_> = paths
+                .iter()
+                .filter(|other| {
+                    other
+                        .0
+                        .iter()
+                        .any(|d| same_fork(d, decision) && d.side != decision.side)
+                        && without(other) == rest
+                })
+                .collect();
+            if peers.is_empty() {
+                if path.1.is_some() {
+                    return true;
+                }
+            } else if peers.iter().any(|other| path.1 != other.1) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn same_fork(left: &Decision, right: &Decision) -> bool {
+    left.entry == right.entry
+        && left.instruction == right.instruction
+        && left.occurrence == right.occurrence
+        && left.receiver == right.receiver
+}

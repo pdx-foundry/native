@@ -18,6 +18,7 @@ mod localization;
 pub(crate) mod questions;
 pub mod reference_readers;
 pub mod registry_field_stops;
+pub mod target_getters;
 
 #[derive(Debug)]
 enum Backend {

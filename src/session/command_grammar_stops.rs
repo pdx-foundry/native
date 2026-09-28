@@ -23,6 +23,7 @@ use std::collections::BTreeSet;
 use super::{Native, grammar::normalize};
 use crate::{Answer, CommandGrammar, DeclarationKind, Error, Operation};
 
+pub use crate::engine::analysis::declarations::ScopeOutcome;
 pub use crate::engine::analysis::grammar::forms::{PathClass, Stage};
 pub use crate::engine::analysis::grammar::{ChildFields, GrammarResult};
 pub use crate::engine::analysis::stop::{Cause, CauseKind, Trace, Unresolved};

@@ -53,8 +53,8 @@ pub use fixture::{
 };
 pub use game::{Game, GameOptions};
 pub use grammar::{
-    ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, CommandForm, CommandGrammar,
-    CommandValue, GrammarProperty,
+    ArgumentPath, ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, CommandForm,
+    CommandGrammar, CommandValue, GrammarProperty, TargetArgument, TargetCheckStage,
 };
 pub use session::Native;
 
@@ -74,5 +74,6 @@ pub mod internals {
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::{
         command_grammar_stops, dynamic_name_commands, reference_readers, registry_field_stops,
+        target_getters,
     };
 }

@@ -225,7 +225,9 @@ fn examine(
     ];
     let mut runs = Vec::new();
     for token in probes {
-        runs.push(run(input, &code, reader, state, functions, token, false));
+        runs.push(run(
+            input, &code, reader, state, functions, token, false, None,
+        ));
     }
     for run in &runs {
         extend_key(&mut result.key, run, state);
@@ -311,7 +313,7 @@ fn examine(
         .alternatives
         .iter()
         .any(|alternative| alternative.value.kind == ReaderKind::Reference)
-        .then(|| run(input, &code, reader, state, functions, None, true));
+        .then(|| run(input, &code, reader, state, functions, None, true, None));
     if let Some(missing) = &missing {
         extend_key(&mut result.key, missing, state);
     }
@@ -401,6 +403,9 @@ struct Run {
     stops: Vec<Unresolved>,
 }
 struct ReadPath {
+    trapped: bool,
+    target_touches: [bool; 2],
+    target_load: bool,
     decisions: Vec<Decision>,
     value: Option<ValueForm>,
     assigned: bool,
@@ -409,51 +414,15 @@ struct ReadPath {
     bytes: BTreeMap<u64, u8>,
 }
 
-/// Compare one fact only across opposite sides of the same receiver fork. Other decisions,
-/// including script input and other receiver forks, must be identical. Missing peers cannot
-/// establish a fact: one receiver side may never have reached that script decision.
 fn receiver_dependent<T: PartialEq>(
     paths: &[ReadPath],
     fact: impl Fn(&ReadPath) -> Option<T>,
 ) -> bool {
-    for path in paths {
-        for decision in path.decisions.iter().filter(|d| !d.receiver.is_empty()) {
-            let without = |other: &ReadPath| {
-                other
-                    .decisions
-                    .iter()
-                    .filter(|d| !same_fork(d, decision))
-                    .cloned()
-                    .collect::<Vec<_>>()
-            };
-            let rest = without(path);
-            let peers: Vec<_> = paths
-                .iter()
-                .filter(|other| {
-                    other
-                        .decisions
-                        .iter()
-                        .any(|d| same_fork(d, decision) && d.side != decision.side)
-                        && without(other) == rest
-                })
-                .collect();
-            if peers.is_empty() {
-                if fact(path).is_some() {
-                    return true;
-                }
-            } else if peers.iter().any(|other| fact(path) != fact(other)) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn same_fork(left: &Decision, right: &Decision) -> bool {
-    left.entry == right.entry
-        && left.instruction == right.instruction
-        && left.occurrence == right.occurrence
-        && left.receiver == right.receiver
+    let facts: Vec<_> = paths
+        .iter()
+        .map(|path| (path.decisions.clone(), fact(path)))
+        .collect();
+    crate::engine::analysis::commands::receiver_dependent(&facts)
 }
 
 fn boolean_difference(yes: &Run, no: &Run) -> bool {
@@ -482,6 +451,7 @@ fn boolean_difference(yes: &Run, no: &Run) -> bool {
     accepted(yes) && accepted(no) && paired(yes, no) && paired(no, yes)
 }
 
+#[allow(clippy::too_many_arguments)] // The optional target probe reuses this exact stage chain.
 fn run(
     input: &GrammarInput,
     code: &Code,
@@ -490,12 +460,14 @@ fn run(
     functions: [Option<u64>; 6],
     token: Option<u64>,
     missing: bool,
+    probe: Option<TargetProbe>,
 ) -> Run {
-    if input
-        .forms
-        .shared
-        .get(&reader.read)
-        .is_some_and(|name| readers::entry(name).0 == ReaderKind::Block)
+    if probe.is_none_or(|probe| probe.member.is_none())
+        && input
+            .forms
+            .shared
+            .get(&reader.read)
+            .is_some_and(|name| readers::entry(name).0 == ReaderKind::Block)
     {
         return Run {
             functions: BTreeSet::from([reader.read]),
@@ -532,18 +504,31 @@ fn run(
         );
     }
     machine.watch_reads(command, OBJECT_SPAN);
+    if probe.is_some() {
+        machine.watch_accesses();
+    }
     machine.set_register(0, command);
     machine.set_register(1, source);
+    if let Some(member) = probe.and_then(|probe| probe.member) {
+        machine.set_register(0, command + member.receiver);
+        machine.set_register(2, member.token as u64);
+    }
     let mut calls = Calls {
         input,
         command,
         source,
         reader,
         functions,
+        probe,
         values: vec![],
         reached: functions.into_iter().flatten().collect(),
     };
-    let paths = machine.run_paths_joining(reader.read, &mut |at, machine| calls.read(at, machine));
+    let paths = machine.run_paths_joining(
+        probe
+            .and_then(|probe| probe.member)
+            .map_or(reader.read, |member| member.entry),
+        &mut |at, machine| calls.read(at, machine),
+    );
     let mut result = Run {
         functions: BTreeSet::new(),
         paths: vec![],
@@ -585,6 +570,11 @@ fn run(
                 result.stops.push(Unresolved::new("form-reader-call"));
             }
             result.paths.push(ReadPath {
+                trapped: path.end == Ok(Exit::Trapped),
+                target_touches: target_touches(&path.machine),
+                target_load: probe.is_some_and(|probe| {
+                    path.machine.accessed(probe.offset, input.forms.target_size)
+                }),
                 decisions: path.machine.decisions(),
                 value,
                 assigned,
@@ -598,6 +588,11 @@ fn run(
         if path.end != Ok(Exit::Returned) {
             result.reads.extend(path.machine.receiver_reads());
             result.paths.push(ReadPath {
+                trapped: path.end == Ok(Exit::Trapped),
+                target_touches: target_touches(&path.machine),
+                target_load: probe.is_some_and(|probe| {
+                    path.machine.accessed(probe.offset, input.forms.target_size)
+                }),
                 decisions: path.machine.decisions(),
                 value,
                 assigned,
@@ -619,6 +614,10 @@ fn run(
         for (path, chain) in chained {
             result.reads.extend(path.receiver_reads());
             result.paths.push(ReadPath {
+                trapped: path.labelled(52).is_some(),
+                target_touches: target_touches(&path),
+                target_load: probe
+                    .is_some_and(|probe| path.accessed(probe.offset, input.forms.target_size)),
                 decisions: path.decisions(),
                 value: value.clone(),
                 assigned,
@@ -712,6 +711,10 @@ fn stages<'a>(
     ] {
         let mut next = Vec::new();
         for (mut machine, mut stages, stops) in pending {
+            if calls.probe.is_some() && machine.labelled(52).is_some() {
+                next.push((machine, stages, stops));
+                continue;
+            }
             if !stops.is_empty()
                 || stages.iter().any(|stage| {
                     matches!(
@@ -800,7 +803,10 @@ fn stages<'a>(
             let paths = machine.run_paths_joining(function, &mut |at, machine| {
                 calls.stage(at, machine, function, selected)
             });
-            for path in paths {
+            for mut path in paths {
+                if calls.probe.is_some() && path.end == Ok(Exit::Trapped) {
+                    path.machine.label(52, 1);
+                }
                 let mut stages = stages.clone();
                 stages.push(stage_result(&path, stage, stage == Stage::PostValidate));
                 let mut stops = stops.clone();
@@ -831,6 +837,7 @@ fn stages<'a>(
 }
 
 struct Calls<'a> {
+    probe: Option<TargetProbe>,
     input: &'a GrammarInput,
     command: u64,
     source: u64,
@@ -840,6 +847,22 @@ struct Calls<'a> {
     reached: BTreeSet<u64>,
 }
 impl Calls<'_> {
+    fn target_type(
+        &self,
+        callee: Option<u64>,
+        machine: &mut Machine<'_>,
+        label: u64,
+    ) -> Option<std::result::Result<Call, Unresolved>> {
+        let probe = self.probe?;
+        if callee == Some(self.input.command_bindings.target_scope_type)
+            && machine.register(0) == Some(self.command + probe.offset)
+        {
+            machine.label(label, 1);
+            return Some(Ok(Call::Return(Some(probe.bit))));
+        }
+        None
+    }
+
     fn owner_offset(&self, address: Option<u64>) -> Option<u64> {
         address
             .filter(|address| (self.command..self.command + OBJECT_SPAN).contains(address))
@@ -862,6 +885,9 @@ impl Calls<'_> {
         machine: &mut Machine<'_>,
     ) -> std::result::Result<Call, Unresolved> {
         self.reached.extend(target);
+        if let Some(call) = self.target_type(target, machine, 50) {
+            return call;
+        }
         let binding = &self.input.command_bindings;
         let token = self.source + binding.reader_value_token_offset;
         let receiver = machine.register(0);
@@ -1083,11 +1109,19 @@ impl Calls<'_> {
             }
         }
         if target.is_some_and(|at| self.input.forms.harmless.contains(&at)) {
+            if self.probe.is_some()
+                && (0..8).any(|r| self.owner_offset(machine.register(r)).is_some())
+            {
+                return Err(Unresolved::new("unclassified target call"));
+            }
             forget_if_passed(machine, self.command);
             return Ok(Call::Return(None));
         }
         if (0..8).any(|r| matches!(machine.register(r), Some(value) if value == self.source || value == token || value == token + self.input.forms.token_text_offset || value == TOKEN_TEXT || Some(value) == machine.labelled(STRING_TEMP))) {
             return Err(Unresolved::new("form-reader-call"));
+        }
+        if self.probe.is_some() {
+            return Err(Unresolved::new("unclassified target call"));
         }
         forget_if_passed(machine, self.command);
         Ok(Call::Return(None))
@@ -1100,6 +1134,9 @@ impl Calls<'_> {
         selected: u64,
     ) -> std::result::Result<Call, Unresolved> {
         self.reached.extend(target);
+        if let Some(call) = self.target_type(target, machine, 51) {
+            return call;
+        }
         if target.is_some_and(|at| self.input.command_bindings.error_logs.contains(&at)) {
             machine.label(DIAGNOSED, 1);
             return Ok(Call::Return(None));
@@ -1118,9 +1155,162 @@ impl Calls<'_> {
         if (0..8).any(|r| self.owner_offset(machine.register(r)).is_some()) {
             return Err(Unresolved::new("form-stage-call"));
         }
+        if self.probe.is_some() {
+            return Err(Unresolved::new("unclassified target call"));
+        }
         Ok(Call::Return(None))
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+fn target_touches(machine: &Machine<'_>) -> [bool; 2] {
+    [
+        machine.labelled(50).is_some(),
+        machine.labelled(51).is_some(),
+    ]
+}
+
+#[derive(Clone, Copy)]
+struct TargetProbe {
+    offset: u64,
+    bit: u64,
+    member: Option<super::targets::Member>,
+}
+
+/// Reuse the full read/initialization/validation chain for each concrete target type.
+pub(super) fn target_checks(
+    input: &GrammarInput,
+    reader: CommandReader,
+    state: &BTreeMap<u64, u8>,
+    offset: u64,
+    member: Option<super::targets::Member>,
+) -> [super::targets::Check; 2] {
+    use super::targets::Check;
+    let at = |slot| {
+        input
+            .declarations
+            .pointers
+            .get(&(reader.vtable + slot))
+            .copied()
+    };
+    let functions = [
+        Some(reader.read),
+        Some(member.map_or(reader.member, |member| member.entry)),
+        at(input.command_bindings.assign_slot),
+        at(input.declarations.parser_slots.initializer),
+        at(input.command_bindings.validation_slot),
+        at(input.forms.role_slot),
+    ];
+    let Ok(code) = code(input, &functions) else {
+        return [
+            Check::Unresolved("target chain code"),
+            Check::Unresolved("target chain code"),
+        ];
+    };
+    let count = input
+        .declarations
+        .scope_names
+        .as_ref()
+        .map_or(64, Vec::len)
+        .min(64);
+    let probe = |bit| {
+        run(
+            input,
+            &code,
+            reader,
+            state,
+            functions,
+            None,
+            false,
+            Some(TargetProbe {
+                offset,
+                bit: 1u64 << bit,
+                member,
+            }),
+        )
+    };
+    let first = probe(0);
+    // With no scope-type call on any path, changing its return cannot change this run.
+    let checks_type = first
+        .paths
+        .iter()
+        .any(|path| path.target_touches.iter().any(|touch| *touch));
+    let mut runs = vec![first];
+    if checks_type {
+        runs.extend((1..count).map(probe));
+    }
+    std::array::from_fn(|stage| {
+        if !runs.iter().any(|run| {
+            run.paths
+                .iter()
+                .any(|path| !path.trapped && path.target_touches[stage])
+        }) {
+            if runs.iter().any(|run| {
+                !run.stops.is_empty()
+                    || run
+                        .paths
+                        .iter()
+                        .any(|path| !path.trapped && path.target_load)
+            }) {
+                return Check::Unresolved("target chain unfinished");
+            }
+            return Check::Absent;
+        }
+        let mut mask = 0;
+        for (bit, run) in runs.iter().enumerate() {
+            if receiver_dependent(&run.paths, |path| {
+                (!path.trapped).then_some((path.target_touches, path.chain.class))
+            }) {
+                return Check::Unresolved("receiver-state");
+            }
+            if !run.stops.is_empty() || run.paths.is_empty() || run.paths.len() > 64 {
+                return Check::Unresolved("target chain unfinished");
+            }
+            let classes: Vec<_> = run
+                .paths
+                .iter()
+                .filter(|path| !path.trapped)
+                .map(|path| {
+                    if path.target_load {
+                        return PathClass::Unresolved;
+                    }
+                    if stage == 0 {
+                        chain(
+                            path.chain
+                                .stages
+                                .iter()
+                                .filter(|s| matches!(s.stage, Stage::Read | Stage::Assign))
+                                .cloned()
+                                .collect(),
+                            vec![],
+                        )
+                        .class
+                    } else {
+                        path.chain.class
+                    }
+                })
+                .collect();
+            if classes.is_empty() {
+                return Check::Unresolved("no returning target path");
+            }
+            if classes.iter().all(|class| *class == PathClass::Accepting) {
+                mask |= 1 << bit;
+            } else if !classes.iter().all(|class| *class == PathClass::Rejecting) {
+                let false_without_log = run.paths.iter().any(|path| {
+                    path.chain
+                        .stages
+                        .iter()
+                        .any(|stage| stage.cause == Some("false without diagnostic"))
+                });
+                return Check::Unresolved(if false_without_log {
+                    "false without diagnostic"
+                } else {
+                    "target chain unresolved or mixed"
+                });
+            }
+        }
+        Check::Established(mask)
+    })
+}

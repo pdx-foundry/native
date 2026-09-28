@@ -684,11 +684,13 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
     let root = recorded();
     let value = json!({
         "forms": "Unresolved",
+        "targets": "Unresolved",
         "reader": {"id": "shared-control-reader", "kind": "Block", "family": "Effect"},
         "child_families": {"Known": ["Effect"]},
         "fixed_keys": {"Partial": []},
         "numeric_keys": {"Partial": {
             "forms": "Unresolved",
+        "targets": "Unresolved",
             "reader": {"id": "weighted-entry", "kind": "Block", "family": "Effect"},
             "child_families": {"Partial": ["Effect"]},
             "fixed_keys": "Unresolved",
@@ -741,7 +743,7 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
 }
 
 #[test]
-fn old_command_grammar_without_forms_keeps_forms_unresolved() {
+fn old_command_grammar_without_forms_and_targets_keeps_them_unresolved() {
     let grammar: pdx_native::CommandGrammar = serde_json::from_value(json!({
         "reader": {"id": null, "kind": "Unknown", "family": "Unknown"},
         "child_families": "Unresolved", "fixed_keys": "Unresolved",
@@ -749,4 +751,5 @@ fn old_command_grammar_without_forms_keeps_forms_unresolved() {
     }))
     .unwrap();
     assert_eq!(grammar.forms, pdx_native::GrammarProperty::Unresolved);
+    assert_eq!(grammar.targets, pdx_native::GrammarProperty::Unresolved);
 }

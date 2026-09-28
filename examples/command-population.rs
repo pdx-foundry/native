@@ -64,12 +64,18 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
         let mut report = Report::default();
         let mut initialization = InitializationTally::default();
         let mut forms = FormsTally::default();
+        let getters = pdx_native::internals::target_getters::run(&native, kind)?;
+        let mut targets = TargetsTally::default();
         let population = command_grammar_stops::population(&native, kind, |name, run| {
             let diagnostics = diagnostics(&image, &run);
             initialization.add(name, &run, &references);
             forms.add(name, &run);
+            targets.add(name, &run, getters.commands.get(name).copied());
             report.add(name, run.answer, &run.chain, diagnostics);
         })?;
+        if !targets.failures.is_empty() {
+            return Err(targets.failures.join("\n").into());
+        }
         if !forms.failures.is_empty() {
             return Err(forms.failures.join("\n").into());
         }
@@ -84,6 +90,8 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
             "stop_groups": report.stop_groups,
             "initialization_lookups": initialization.report(),
             "forms": forms,
+            "targets": targets,
+            "target_getters": getters,
             "cases": report.cases,
         }));
     }
@@ -127,7 +135,8 @@ impl Report {
                     .insert(name.into());
             }
         }
-        let failed = matches!(answer.value.forms, GrammarProperty::Unresolved)
+        let failed = matches!(answer.value.targets, GrammarProperty::Unresolved)
+            && matches!(answer.value.forms, GrammarProperty::Unresolved)
             && matches!(answer.value.fixed_keys, GrammarProperty::Unresolved)
             && matches!(answer.value.child_families, GrammarProperty::Unresolved)
             && matches!(answer.value.numeric_keys, GrammarProperty::Unresolved)
@@ -159,6 +168,94 @@ impl Report {
         self.cases.push(
             json!({"name": name, "status": status, "answer": answer, "diagnostics": diagnostics}),
         );
+    }
+}
+
+#[derive(Default, serde::Serialize)]
+struct TargetsTally {
+    lists: BTreeMap<String, usize>,
+    stages: BTreeMap<String, usize>,
+    multiple_stages: BTreeMap<String, usize>,
+    execution_unresolved: BTreeMap<String, usize>,
+    disagreements: Vec<Value>,
+    failures: Vec<String>,
+}
+
+impl TargetsTally {
+    fn add(&mut self, name: &str, run: &Run, declared: Option<u64>) {
+        use pdx_native::internals::target_getters::Check;
+        let (state, arguments) = match &run.answer.value.targets {
+            GrammarProperty::Known(arguments) => ("Known", arguments.as_slice()),
+            GrammarProperty::Partial(arguments) => ("Partial", arguments.as_slice()),
+            GrammarProperty::Unresolved => ("Unresolved", &[][..]),
+        };
+        *self.lists.entry(state.into()).or_default() += 1;
+        for target in arguments {
+            *self
+                .stages
+                .entry(format!("{:?}", target.stage))
+                .or_default() += 1;
+        }
+        let Ok(result) = &run.result else {
+            return;
+        };
+        if state == "Known"
+            && (!matches!(run.answer.value.forms, GrammarProperty::Known(_))
+                || !matches!(run.answer.value.fixed_keys, GrammarProperty::Known(_))
+                || !matches!(run.answer.value.numeric_keys, GrammarProperty::Known(_))
+                || (!result.value_only() && !result.coverage().covered())
+                || result.targets.iter().any(|target| target.cause.is_some()))
+        {
+            self.failures
+                .push(format!("{name}: Known targets without covered arguments"));
+        }
+        for target in &result.targets {
+            if target
+                .checks
+                .iter()
+                .filter(|check| matches!(check, Check::Established(_)))
+                .count()
+                > 1
+            {
+                let outcome = if target.cause == Some("stage type sets differ") {
+                    "different sets"
+                } else if target.cause.is_none() {
+                    "earliest stage"
+                } else {
+                    "other unresolved stage"
+                };
+                *self.multiple_stages.entry(outcome.into()).or_default() += 1;
+            }
+            if let Check::Unresolved(reason) = &target.checks[2] {
+                *self
+                    .execution_unresolved
+                    .entry((*reason).into())
+                    .or_default() += 1;
+            }
+        }
+        if let Some(mask) = declared.filter(|mask| ![0, 2, 0xfffc].contains(mask)) {
+            let union =
+                result
+                    .targets
+                    .iter()
+                    .try_fold(0u64, |union, target| match &target.scopes {
+                        pdx_native::internals::command_grammar_stops::ScopeOutcome::Any => {
+                            Some(u64::MAX)
+                        }
+                        pdx_native::internals::command_grammar_stops::ScopeOutcome::Listed(
+                            scopes,
+                        ) => Some(
+                            scopes
+                                .iter()
+                                .fold(union, |union, scope| union | (1 << scope.bit)),
+                        ),
+                        _ => None,
+                    });
+            if union != Some(mask) {
+                self.disagreements.push(json!({"name": name, "getter_mask": mask, "target_union": union,
+                    "cause": if union.is_none() { "target check unresolved" } else { "getter result type differs from accepted input scopes" }}));
+            }
+        }
     }
 }
 
@@ -508,6 +605,7 @@ mod tests {
         };
         Answer {
             value: CommandGrammar {
+                targets: GrammarProperty::Unresolved,
                 forms: if joined {
                     GrammarProperty::Partial(vec![])
                 } else {

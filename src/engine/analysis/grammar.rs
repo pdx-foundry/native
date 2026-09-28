@@ -15,6 +15,7 @@ use crate::BlockFamily;
 mod coverage;
 pub mod forms;
 mod numeric;
+pub mod targets;
 pub use coverage::{Disposition, LedgerEntry, ReaderNode};
 mod ordering;
 
@@ -27,12 +28,11 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v7";
+pub const METHOD: &str = "command-grammar/v8";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
 /// Executable-bound inputs for value forms, validation and target checks.
-#[allow(dead_code)] // Consumed by the forms and target stages in the next SDK-548 chunks.
 #[cfg_attr(test, derive(Default))]
 pub struct CommandBindings {
     /// Offset of the assigned value token within the reader.
@@ -50,8 +50,10 @@ pub struct CommandBindings {
     /// All entry points for constructing a target from a scoped token.
     pub target_from_token: BTreeSet<u64>,
     /// All entry points for constructing a target from a token id.
+    #[allow(dead_code)] // Bound, but this constructor form is not yet classified.
     pub target_from_id: BTreeSet<u64>,
     /// Wrapper that constructs a target at the indirect result address.
+    #[allow(dead_code)] // Bound, but this wrapper form is not yet classified.
     pub target_create_from_token: u64,
     /// Move assignment into a target destination.
     pub target_move: u64,
@@ -82,12 +84,12 @@ pub enum AccessorNullObject {
 
 /// Inputs collected from one verified executable buffer.
 pub struct GrammarInput {
+    pub targets: targets::Input,
     pub key_readers: fields::KeyReaders,
     pub persistent_slots: [u64; 2],
     pub forms: forms::Input,
     pub declarations: DeclarationInput,
     /// Functions and layout for the subsequent forms and target analyses.
-    #[allow(dead_code)] // Used by the subsequent SDK-548 forms and target stages.
     pub command_bindings: CommandBindings,
     pub child_layout: ChildLayout,
     pub numeric_decoder: u64,
@@ -107,6 +109,8 @@ pub enum OrderOutcome {
 
 /// The child grammar of one command reader, as far as the method follows it.
 pub struct GrammarResult {
+    /// Scope checks for the arguments stored by this command.
+    pub targets: Vec<targets::Argument>,
     /// Member nodes with their local disposition ledgers and delegated edges.
     pub nodes: Vec<ReaderNode>,
     /// The failed joins of nested member receivers.
@@ -162,6 +166,7 @@ pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unre
     let (forms, key) = forms::analyze(input, reader, &state.bytes);
     result.forms = Some(forms);
     result.forms_key = Some(key);
+    result.targets = targets::analyze(input, &result, &state.bytes);
     Ok(result)
 }
 
@@ -431,6 +436,7 @@ fn analyze_reader_with_state(
                 let (forms, key) = forms::analyze(input, child.reader, &child.bytes);
                 grammar.forms = Some(forms);
                 grammar.forms_key = Some(key);
+                grammar.targets = targets::analyze(input, &grammar, &child.bytes);
                 Some(Box::new(grammar))
             }
             Err(stop) => {
@@ -499,6 +505,7 @@ fn analyze_reader_with_state(
     let (reader_kind, reader_family) = super::readers::entry(&reader_name);
     super::stop::sort_and_dedup(&mut stops);
     Ok(GrammarResult {
+        targets: vec![],
         nodes,
         nested,
         nested_stops,
@@ -703,6 +710,7 @@ mod tests {
             },
         };
         GrammarInput {
+            targets: Default::default(),
             key_readers: Default::default(),
             persistent_slots: [0x20, 0x28],
             forms: Default::default(),
@@ -1004,7 +1012,7 @@ mod tests {
         }
     }
 
-    fn nested_input() -> GrammarInput {
+    pub(super) fn nested_input() -> GrammarInput {
         let mut root = Arm64::at(ROOT);
         arm64!(root; cmp w2, #7; b.ne extern (ROOT + 24) as usize;
             add x2, x0, #32; mov x0, x1; mov x1, x2; b extern CHILD as usize;
@@ -1382,6 +1390,7 @@ mod tests {
             answer.value.fixed_keys,
             crate::GrammarProperty::Known(_)
         ));
+        assert_eq!(answer.value.targets, crate::GrammarProperty::Known(vec![]));
         assert_eq!(
             result.nested["parent"].nested["child"].fields.fields[0].name,
             "value"
@@ -1430,6 +1439,7 @@ mod tests {
             crate::BuildId("authored".into()),
             &Default::default(),
         );
+        assert_eq!(answer.value.targets, crate::GrammarProperty::Unresolved);
         assert!(matches!(
             answer.value.fixed_keys,
             crate::GrammarProperty::Partial(_)

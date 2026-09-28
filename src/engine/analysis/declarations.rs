@@ -143,8 +143,11 @@ pub enum Site {
 /// Scope mask followed through the factory and command virtual methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScopeOutcome {
+    /// Every scope bit.
     Any,
+    /// Explicit accepted input bits.
     Listed(Vec<ScopeType>),
+    /// The scope mask was not established.
     Unresolved(Unresolved),
 }
 
@@ -631,7 +634,7 @@ fn create_rows(input: &DeclarationInput, address: u64, depth: usize) -> Option<V
     Some(rows[..end].to_vec())
 }
 
-fn constant_return(rows: &[Instruction]) -> Option<u64> {
+pub(crate) fn constant_return(rows: &[Instruction]) -> Option<u64> {
     let mut value = None;
     for row in rows.iter().take(64) {
         if row.operation == "ret" {

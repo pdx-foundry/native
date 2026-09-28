@@ -210,6 +210,12 @@ fn print_registry_fields(
 
 /// The child paths that stopped, with the grammar's own stops and its numeric child grammar.
 fn print_grammar(image: &Image, result: &GrammarResult, traced: bool) {
+    for target in &result.targets {
+        println!(
+            "target {:?}: {:?}, checks {:?}, cause {:?}",
+            target.path, target.stage, target.checks, target.cause
+        );
+    }
     if let Some(forms) = &result.forms {
         println!(
             "forms: complete={}, block={}, receiver-state={}",

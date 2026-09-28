@@ -67,6 +67,14 @@
         }
       },
       {
+        "detail": "target-arguments",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
         "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
         "kind": "ReaderSemantics",
         "subject": {
@@ -81,12 +89,20 @@
           "kind": "answer_item",
           "name": "always"
         }
+      },
+      {
+        "detail": "target-scope-check: target chain unfinished",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -101,6 +117,15 @@
         "id": "7378e4e05563db32",
         "kind": "Unknown",
         "family": "Unknown"
+      },
+      "targets": {
+        "Partial": [
+          {
+            "argument": "Value",
+            "scopes": "Unresolved",
+            "stage": "Unresolved"
+          }
+        ]
       }
     }
   },
@@ -124,6 +149,14 @@
         }
       },
       {
+        "detail": "target-arguments",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_country_flag"
+        }
+      },
+      {
         "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
         "kind": "ReaderSemantics",
         "subject": {
@@ -143,7 +176,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -158,7 +191,8 @@
         "id": "7378e4e05563db32",
         "kind": "Unknown",
         "family": "Unknown"
-      }
+      },
+      "targets": "Unresolved"
     }
   },
   "trigger/has_tradition": {
@@ -166,6 +200,14 @@
     "gaps": [
       {
         "detail": "value-acceptance: PostValidate: branch-value",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_tradition"
+        }
+      },
+      {
+        "detail": "target-arguments",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -192,7 +234,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -207,15 +249,40 @@
         "id": "f47e1d863a65b008",
         "kind": "Unknown",
         "family": "Unknown"
-      }
+      },
+      "targets": "Unresolved"
     }
   },
   "effect/set_owner": {
-    "completeness": "Complete",
+    "completeness": "Partial",
     "gaps": [
+      {
+        "detail": "target-arguments",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_owner"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_owner"
+        }
+      },
       {
         "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
         "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_owner"
+        }
+      },
+      {
+        "detail": "target-scope-check: unclassified getter call",
+        "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
           "name": "set_owner"
@@ -225,7 +292,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -259,6 +326,15 @@
         "id": "46d0af6650219336",
         "kind": "Target",
         "family": "Unknown"
+      },
+      "targets": {
+        "Partial": [
+          {
+            "argument": "Value",
+            "scopes": "Unresolved",
+            "stage": "Unresolved"
+          }
+        ]
       }
     }
   },
@@ -282,6 +358,14 @@
         }
       },
       {
+        "detail": "target-arguments",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_country_flag"
+        }
+      },
+      {
         "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
         "kind": "ReaderSemantics",
         "subject": {
@@ -301,7 +385,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -320,7 +404,8 @@
         "id": "662ea5268e37aea2",
         "kind": "Unknown",
         "family": "Unknown"
-      }
+      },
+      "targets": "Unresolved"
     }
   },
   "effect/remove_country_flag": {
@@ -343,6 +428,14 @@
         }
       },
       {
+        "detail": "target-arguments",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "remove_country_flag"
+        }
+      },
+      {
         "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
         "kind": "ReaderSemantics",
         "subject": {
@@ -362,7 +455,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -381,7 +474,8 @@
         "id": "662ea5268e37aea2",
         "kind": "Unknown",
         "family": "Unknown"
-      }
+      },
+      "targets": "Unresolved"
     }
   },
   "effect/set_timed_country_flag": {
@@ -397,6 +491,14 @@
       },
       {
         "detail": "Some child dispatch paths or names remain unresolved.",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_timed_country_flag"
+        }
+      },
+      {
+        "detail": "target-arguments",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -455,7 +557,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -567,7 +669,8 @@
         "id": "5717e48b9a8ed2be",
         "kind": "Block",
         "family": "Unknown"
-      }
+      },
+      "targets": "Unresolved"
     }
   },
   "effect/add_resource": {
@@ -583,6 +686,14 @@
       },
       {
         "detail": "Some child dispatch paths or names remain unresolved.",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_resource"
+        }
+      },
+      {
+        "detail": "target-arguments",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -625,7 +736,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -715,7 +826,8 @@
         "id": "46f33fca79ddd2af",
         "kind": "Block",
         "family": "Effect"
-      }
+      },
+      "targets": "Unresolved"
     }
   },
   "trigger/if": {
@@ -733,7 +845,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -831,6 +943,9 @@
         "id": "2c0d7eab19fb7c8f",
         "kind": "Block",
         "family": "Trigger"
+      },
+      "targets": {
+        "Known": []
       }
     }
   },
@@ -839,6 +954,14 @@
     "gaps": [
       {
         "detail": "conditional-child-family",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "if"
+        }
+      },
+      {
+        "detail": "target-arguments",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -881,7 +1004,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1079,7 +1202,8 @@
         "id": "0062450650e51570",
         "kind": "Block",
         "family": "Effect"
-      }
+      },
+      "targets": "Unresolved"
     }
   },
   "effect/create_starbase": {
@@ -1094,18 +1218,42 @@
         }
       },
       {
+        "detail": "target-arguments",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "create_starbase"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "create_starbase"
+        }
+      },
+      {
         "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
         "kind": "OutsideMethod",
         "subject": {
           "kind": "answer_item",
           "name": "create_starbase"
         }
+      },
+      {
+        "detail": "target-scope-check: unclassified getter call",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "owner"
+        }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1383,6 +1531,19 @@
         "id": "940ced26c41af5b8",
         "kind": "Block",
         "family": "Effect"
+      },
+      "targets": {
+        "Partial": [
+          {
+            "argument": {
+              "Key": [
+                "owner"
+              ]
+            },
+            "scopes": "Unresolved",
+            "stage": "Unresolved"
+          }
+        ]
       }
     }
   },
@@ -1399,6 +1560,14 @@
       },
       {
         "detail": "form-reader-call",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_district"
+        }
+      },
+      {
+        "detail": "target-arguments",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -1425,7 +1594,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v7",
+      "method": "command-grammar/v8",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1565,7 +1734,8 @@
         "id": "de5847789bbc3a9f",
         "kind": "Unknown",
         "family": "Unknown"
-      }
+      },
+      "targets": "Unresolved"
     }
   }
 }

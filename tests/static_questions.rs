@@ -1140,6 +1140,22 @@ fn command_forms_keep_m45_acceptance_and_named_stage_gaps() {
         matches!(forms.as_slice(), [CommandForm::Value(value)] if value.reader.kind == ReaderKind::Target)
     );
     assert_eq!(owner.value.fixed_keys, GrammarProperty::Known(vec![]));
+    // The country result getter has unproved owner-conversion routes on this build.
+    let GrammarProperty::Partial(targets) = &owner.value.targets else {
+        panic!("{owner:?}");
+    };
+    assert!(
+        matches!(targets.as_slice(), [target] if target.argument == pdx_native::ArgumentPath::Value
+        && target.scopes == pdx_native::DeclaredScopes::Unresolved
+        && target.stage == pdx_native::TargetCheckStage::Unresolved)
+    );
+    assert!(
+        owner
+            .gaps
+            .iter()
+            .any(|gap| gap.detail == "target-scope-check: unclassified getter call")
+    );
+
     for (kind, name, gap) in [
         (
             DeclarationKind::Trigger,
@@ -1191,4 +1207,45 @@ fn command_forms_keep_m45_acceptance_and_named_stage_gaps() {
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn sdk492_fixed_key_grammars_match_the_engine() {
     assert_sdk492_keys(&native());
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build; also audited by command-population"]
+fn known_target_lists_have_covered_arguments() {
+    use pdx_native::{CommandForm, Field, FieldMembers, GrammarProperty, ReaderKind};
+    fn known_fields(fields: &[Field]) -> bool {
+        fields.iter().all(|field| {
+            field.reader.kind != ReaderKind::Unknown
+                && match &field.members {
+                    FieldMembers::Fields(children) => known_fields(children),
+                    _ => true,
+                }
+        })
+    }
+    let native = native();
+    for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
+        command_grammar_stops::population(&native, kind, |name, run| {
+            if !matches!(run.answer.value.targets, GrammarProperty::Known(_)) {
+                return;
+            }
+            let result = run.result.as_ref().unwrap();
+            assert!(result.value_only() || result.coverage().covered(), "{name}");
+            let GrammarProperty::Known(forms) = &run.answer.value.forms else {
+                panic!("{name}");
+            };
+            assert!(
+                forms.iter().all(|form| match form {
+                    CommandForm::Value(value) => value.reader.kind != ReaderKind::Unknown,
+                    CommandForm::Block => true,
+                    _ => false,
+                }),
+                "{name}"
+            );
+            let GrammarProperty::Known(keys) = &run.answer.value.fixed_keys else {
+                panic!("{name}");
+            };
+            assert!(known_fields(keys), "{name}");
+        })
+        .unwrap();
+    }
 }
