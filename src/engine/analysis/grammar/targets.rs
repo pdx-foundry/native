@@ -312,14 +312,14 @@ fn execution(
                 return Err(Unresolved::new("overlapping resolved scopes"));
             }
             machine.label(destination, OTHER_RESOLVED);
-            return Ok(Call::Return(Some(machine.reserve(OBJECT_SPAN))));
+            return Ok(Call::Return(None));
         }
         if (other_target && typed_getter)
             || (accessor
                 && receiver
                     .is_some_and(|address| machine.labelled(address) == Some(OTHER_RESOLVED)))
         {
-            return Ok(Call::Return(Some(machine.reserve(OBJECT_SPAN))));
+            return Ok(Call::Return(None));
         }
         if callee == Some(input.command_bindings.target_resolver) && receiver == Some(target_start)
         {

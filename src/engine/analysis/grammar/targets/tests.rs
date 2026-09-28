@@ -616,3 +616,38 @@ fn rejected_and_unresolved_value_targets_are_not_collected() {
         }
     }
 }
+
+#[test]
+fn other_target_results_preserve_both_branch_outcomes() {
+    for other_call in [0x9100, 0x8200, 0x9000] {
+        for same_getter in [false, true] {
+            let mut role = Arm64::at(0x6400);
+            arm64!(role; mov x19, x0; sub sp, sp, #64;
+                add x0, x19, #0x60; mov x8, sp);
+            if other_call == 0x9000 {
+                arm64!(role; bl extern 0x8200; mov x0, sp);
+            }
+            role.call(other_call);
+            arm64!(role; cbz x0, >null; add x0, x19, #0x40;
+                bl extern 0x8100; b >done; null:; add x0, x19, #0x40);
+            role.call(if same_getter { 0x8100 } else { 0x9100 });
+            arm64!(role; done:; add sp, sp, #64; ret);
+            let input = two_getters(role);
+            assert_eq!(
+                execution(
+                    &input,
+                    reader(),
+                    &BTreeMap::new(),
+                    0x40,
+                    &BTreeSet::from([0x40, 0x60])
+                ),
+                if same_getter {
+                    Check::Established(4)
+                } else {
+                    Check::Unresolved("different type sets")
+                },
+                "other call {other_call:#x}, same getter {same_getter}",
+            );
+        }
+    }
+}

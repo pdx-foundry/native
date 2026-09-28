@@ -801,8 +801,9 @@ prevent even a known empty list and give `target-arguments`. Nested targets use 
 path; numeric-child targets belong to that child's grammar. Only accepted value alternatives
 contribute targets. Unresolved alternatives keep forms partial and prevent a known target list.
 A bound getter or resolver at the exact start of another collected, disjoint target is unrelated
-to the current probe. Its scope result is tracked separately. Interior pointers, overlapping
-targets and other owner-derived addresses do not qualify. Target probes stop at otherwise
+to the current probe. Its scope result is tracked separately, and its return register stays
+unknown so that later branches keep both outcomes. Interior pointers, overlapping targets and
+other owner-derived addresses do not qualify. Target probes stop at otherwise
 unclassified calls; no absence is inferred through an opaque helper. This also covers owner
 pointers saved in a stack frame. Scope-result loads and calls must
 be classified too; resolving a target alone cannot hide an additional scope check.
