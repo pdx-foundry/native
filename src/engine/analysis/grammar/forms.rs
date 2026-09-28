@@ -233,6 +233,12 @@ fn examine(
         extend_key(&mut result.key, run, state);
     }
     let boolean = boolean_difference(&runs[1], &runs[2]);
+    // The three concrete probes stand for every token only when they cover each outcome of the
+    // unbounded run. A token that the reader or `Assign` compares specially adds outcomes there.
+    if boolean && !probes_cover(&runs[0], &runs[1..]) {
+        result.complete = false;
+        result.stops.push(Unresolved::new("form-token-coverage"));
+    }
     for (probe, run) in runs.iter_mut().enumerate() {
         if matches!(probe, 1 | 2) && boolean {
             for path in &mut run.paths {
@@ -423,6 +429,35 @@ fn receiver_dependent<T: PartialEq>(
         .map(|path| (path.decisions.clone(), fact(path)))
         .collect();
     crate::engine::analysis::commands::receiver_dependent(&facts)
+}
+
+/// Whether every outcome of the unbounded run also occurs in a concrete-token run, and the
+/// unbounded run has no stop of its own. An outcome is the path class, block, assignment and
+/// value form, with the stored command bytes of an accepting path. Outcomes are compared as sets:
+/// without negative constraints, the unbounded run can repeat an outcome on an infeasible fork.
+fn probes_cover(unbounded: &Run, probes: &[Run]) -> bool {
+    let outcome = |path: &ReadPath| {
+        let accepting = path.chain.class == PathClass::Accepting;
+        (
+            path.chain.class,
+            path.block,
+            path.assigned,
+            path.value
+                .as_ref()
+                .map(|value| (value.kind, value.destination, value.reader.clone())),
+            accepting.then(|| path.bytes.clone()),
+        )
+    };
+    let probed: Vec<_> = probes
+        .iter()
+        .flat_map(|run| &run.paths)
+        .map(outcome)
+        .collect();
+    unbounded.stops.is_empty()
+        && unbounded
+            .paths
+            .iter()
+            .all(|path| probed.contains(&outcome(path)))
 }
 
 fn boolean_difference(yes: &Run, no: &Run) -> bool {
@@ -1101,7 +1136,9 @@ impl Calls<'_> {
                     let width = match kind {
                         ReaderKind::String => self.input.forms.string_size,
                         ReaderKind::Boolean => 1,
-                        _ => 8,
+                        // A reference destination is a pointer; an unlisted scalar keeps the
+                        // widest width, which only withholds facts.
+                        _ => readers::scalar_width(name).unwrap_or(8),
                     };
                     machine.write_unknown(self.command + destination, width);
                     return Ok(Call::Return(None));
@@ -1123,7 +1160,10 @@ impl Calls<'_> {
         if self.probe.is_some() {
             return Err(Unresolved::new("unclassified target call"));
         }
-        forget_if_passed(machine, self.command);
+        // An unentered helper that can reach the command can log or change acceptance state.
+        if (0..8).any(|r| self.owner_offset(machine.register(r)).is_some()) {
+            return Err(Unresolved::new("form-command-call"));
+        }
         Ok(Call::Return(None))
     }
     fn stage(

@@ -179,19 +179,22 @@ alternative is unconditional.
 
 | Commands | Effects (1,074) | Triggers (1,096) |
 | --- | ---: | ---: |
-| Lookup joined to a child key, complete | 26 | 9 |
-| Initialization lookup without an authored field | 7 | 4 |
-| Initializer with no lookup | 855 | 963 |
-| Initializer lookup not established | 49 | 42 |
-| Receiver join failed | 137 | 78 |
+| Lookup joined to a child key, complete | 16 | 8 |
+| Initialization lookup without an authored field | 32 | 9 |
+| Initializer with no lookup | 956 | 1,025 |
+| Initializer lookup not established | 60 | 52 |
+| Receiver join failed | 10 | 2 |
+
+Counts are from `command-population` at `command-grammar/v9` (`inventories[].initialization_lookups`).
 
 Joined effects include `create_ship` (`random_existing_design`, `common/ship_sizes`, `Equal`,
 empty key not looked up), `add_district` (`district_type`, `common/districts`, `FirstEqual`) and
-`spawn_megastructure`. In the 11 commands without an authored field, no joined
+`spawn_megastructure`. In the 41 commands without an authored field, no joined
 `CReader::Read(CString&, bool)` stores the key: the child key's path stops at `reader-routing`
 (`add_relic` copies the token text inline after `strlen`), or the key is the command's assigned
 value, which has no child key (`add_tradition`, `remove_relic`, `set_pre_ftl_age`).
-`change_pc`'s receiver join stops at `command-vtable`, so its answer has no child key.
+`change_pc`'s receiver joins and its initializer looks up a stored key, but no child key's
+string reader stores that key.
 `create_army`'s `type` is `common/armies`, `WhileReading`, `FirstEqual`: the grammar reaches
 `CCreateOrModifyArmyParentEffect::ReadMember` and its `ReadKeyReference<CArmyTypeDatabase>`.
 
@@ -260,7 +263,7 @@ event-target chain). What each retained case gives now:
 | --- | --- | --- |
 | Ship | Candidate `CShipSize` through a typed map call | `create_ship#random_existing_design`: `common/ship_sizes`, owner initialization, `Equal`, empty key not looked up |
 | District | Candidate `CDistrictType` through a scan | `add_district#district_type`: `common/districts`, `FirstEqual` |
-| Planet class | Candidate `CPlanetClass` through a getter | Gap: `change_pc`'s receiver join stops at `command-vtable`, and planet classes have no joined directory |
+| Planet class | Candidate `CPlanetClass` through a getter | Gap: `change_pc`'s initializer lookup joins no child key, and planet classes have no joined directory |
 | Army | Unknown | `create_army#type`: `common/armies`, while reading, `FirstEqual`; `PostInit` classifies event-target keywords and makes no lookup |
 | Relic | Candidate `CRelic` through the same scan | The lookup is established; `add_relic` copies its key inline, so no child key joins it |
 

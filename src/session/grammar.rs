@@ -159,6 +159,12 @@ pub(crate) fn normalize(
                             &alternative.value,
                             references,
                         )));
+                        if let Some(detail) = value_reference_gap(&alternative.value, references) {
+                            gap(
+                                GapKind::ReaderSemantics,
+                                format!("value reference: {detail}"),
+                            );
+                        }
                     }
                     if !alternative.accepted
                         && alternative
@@ -435,6 +441,16 @@ fn nested_reference_gaps(
             Some(Initialization::Lookup(lookup)) => Some(lookup),
             _ => None,
         };
+        if let Some((kind, detail)) = initialization_gap(child, initialization) {
+            gaps.push(Gap {
+                kind,
+                subject: Some(match path.as_slice() {
+                    [key] => GapSubject::field(key.clone()),
+                    _ => GapSubject::key_path(path.clone()),
+                }),
+                detail,
+            });
+        }
         for mut gap in reference_gaps(child, references, lookup) {
             if let Some(GapSubject::Field { name }) = gap.subject {
                 let mut key = path.clone();
@@ -491,6 +507,19 @@ fn form_value(
         crate::FieldReference::NotEstablished
     };
     crate::CommandValue { reader, reference }
+}
+
+/// Why an accepted value's reference lookup is not fully established.
+fn value_reference_gap(
+    value: &grammar::forms::ValueForm,
+    references: &ReferenceFacts,
+) -> Option<String> {
+    if let Some(lookup) = &value.initialization {
+        return super::fields::initialization_gap(lookup);
+    }
+    value.reader.as_ref().and_then(|join| {
+        super::fields::readers_reference_gap(std::slice::from_ref(join), references)
+    })
 }
 
 /// One gap for each child key whose reference lookups are not fully established: the lookups of
@@ -1058,6 +1087,30 @@ mod tests {
             answer.value.numeric_keys,
             GrammarProperty::Partial(Some(_))
         ));
+    }
+
+    #[test]
+    fn an_accepted_value_with_an_unestablished_lookup_has_a_gap() {
+        use crate::engine::analysis::fields::ReaderJoin;
+
+        let deferred = "void NParserUtil::ReadKeyReferenceDeferred<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CShipDatabase::ValueType const**)";
+        let mut value = grammar::forms::ValueForm {
+            kind: ReaderKind::Reference,
+            destination: Some(0x40),
+            reader: Some(ReaderJoin::Joined {
+                callee: deferred.into(),
+                arguments: Default::default(),
+                tail: true,
+            }),
+            initialization: None,
+            deferred_null: None,
+        };
+        assert!(value_reference_gap(&value, &ReferenceFacts::default()).is_some());
+        value.reader = None;
+        assert_eq!(
+            value_reference_gap(&value, &ReferenceFacts::default()),
+            None
+        );
     }
 
     #[test]

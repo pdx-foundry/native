@@ -257,10 +257,12 @@ const CHECKED: u64 = 40;
 const RESOLVED: u64 = 41;
 const OTHER_RESOLVED: u64 = 42;
 
+/// Execution runs on the parsed command. The factory's bytes do not describe it, because readers
+/// overwrite members that the method cannot always list, so only the vtable is installed. A
+/// branch on any receiver byte keeps both sides, and differing facts give `receiver-state`.
 fn execution(
     input: &GrammarInput,
     reader: crate::engine::analysis::declarations::CommandReader,
-    state: &BTreeMap<u64, u8>,
     offset: u64,
     targets: &BTreeSet<u64>,
 ) -> Check {
@@ -283,9 +285,6 @@ fn execution(
     };
     let mut machine = Machine::new(&code, input.declarations.pointer_data());
     let owner = stand_in_command(&mut machine, reader.vtable);
-    for (&at, &byte) in state {
-        machine.write(owner + at, 1, byte.into());
-    }
     machine.watch_reads(owner, OBJECT_SPAN);
     machine.watch_accesses();
     let context = machine.reserve(OBJECT_SPAN);
@@ -457,7 +456,7 @@ pub fn analyze(
             [
                 earlier[0].clone(),
                 earlier[1].clone(),
-                execution(input, grammar.reader, state, offset, &targets),
+                execution(input, grammar.reader, offset, &targets),
             ]
         } else {
             [

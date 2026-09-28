@@ -94,7 +94,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -160,7 +160,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -218,7 +218,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -276,7 +276,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -369,7 +369,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -439,7 +439,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -541,7 +541,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -720,7 +720,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -829,7 +829,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -988,7 +988,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1237,7 +1237,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1578,7 +1578,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v8",
+      "method": "command-grammar/v9",
       "native_version": "0.1.0"
     },
     "value": {

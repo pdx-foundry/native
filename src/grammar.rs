@@ -72,7 +72,7 @@ pub struct TargetArgument {
 pub enum TargetCheckStage {
     /// During parsing or assignment.
     WhileReading,
-    /// During validation after initialization.
+    /// After reading and before execution: in the command's initialization or validation.
     Validation,
     /// When the command executes or evaluates.
     Execution,
