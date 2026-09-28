@@ -344,6 +344,7 @@ struct ReadWatch {
     start: u64,
     end: u64,
     written: BTreeSet<u64>,
+    accesses: Option<BTreeSet<(u64, u64)>>,
     reads: BTreeMap<(u64, u64), Option<u64>>,
 }
 
@@ -502,6 +503,7 @@ impl<'a> Machine<'a> {
             start: address,
             end: address + length,
             written: BTreeSet::new(),
+            accesses: None,
             reads: BTreeMap::new(),
         });
     }
@@ -512,6 +514,29 @@ impl<'a> Machine<'a> {
             .as_ref()
             .map(|watch| watch.reads.clone())
             .unwrap_or_default()
+    }
+
+    /// Include instruction loads of script-written bytes in the current watch.
+    pub fn watch_accesses(&mut self) {
+        if let Some(watch) = &mut self.read_watch {
+            watch.accesses = Some(BTreeSet::new());
+        }
+    }
+
+    /// Whether an instruction loaded any byte in this object-relative range, including script stores.
+    pub fn accessed(&self, offset: u64, width: u64) -> bool {
+        self.read_watch
+            .as_ref()
+            .is_some_and(|watch| self.accessed_address(watch.start + offset, width))
+    }
+
+    /// Whether the active access watch saw a load in this absolute range.
+    pub fn accessed_address(&self, address: u64, width: u64) -> bool {
+        self.read_watch.as_ref().is_some_and(|watch| {
+            watch.accesses.iter().flatten().any(|&(at, size)| {
+                at < address.saturating_add(width) && at.saturating_add(size) > address
+            })
+        })
     }
 
     /// Store bytes from classified script input whose values are unknown.
@@ -544,6 +569,11 @@ impl<'a> Machine<'a> {
 
     fn load_bytes(&mut self, address: u64, width: u64) -> Option<u128> {
         let value = self.read_bytes(address, width);
+        if let Some(watch) = &mut self.read_watch
+            && let Some(accesses) = &mut watch.accesses
+        {
+            accesses.insert((address, width));
+        }
         if value.is_none()
             && let Some(provenance) = &self.provenance
         {

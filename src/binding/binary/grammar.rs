@@ -119,7 +119,9 @@ pub(in crate::binding) fn read(
             form_input.cut_bodies.insert(symbol.address);
         }
     }
+    let targets = target_input(symbols, recipe, &command_bindings)?;
     Ok(GrammarInput {
+        targets,
         key_readers: super::fields::key_readers(symbols, &recipe.persistent)?,
         persistent_slots: [recipe.persistent.read_slot, recipe.persistent.member_slot],
         forms: form_input,
@@ -351,4 +353,57 @@ pub(in crate::binding) fn initializers(
         }
     }
     Ok(bound)
+}
+
+/// Bind executable routes, not an assumed input type set based on the getter name.
+fn target_input(
+    symbols: &[Symbol],
+    recipe: &DeclarationRecipe,
+    bindings: &CommandBindings,
+) -> Result<crate::engine::analysis::grammar::targets::Input, AnalysisError> {
+    let mut input = crate::engine::analysis::grammar::targets::Input {
+        scope_type_offset: recipe.callbacks.scope_type_offset,
+        scope_object_offset: recipe.scope_object_offset,
+        ..Default::default()
+    };
+    input.nulls.extend(bindings.scope_accessors.clone());
+    for symbol in symbols {
+        if bindings.target_getters.contains(&symbol.address) {
+            let suffix = symbol.name.strip_prefix("CEventTarget::").unwrap();
+            let kind = suffix
+                .strip_prefix("AccessTarget")
+                .or_else(|| suffix.strip_prefix("GetTarget"))
+                .or_else(|| suffix.strip_prefix("GetScope"))
+                .unwrap();
+            let kind = kind
+                .split(['(', '<'])
+                .next()
+                .unwrap()
+                .trim_end_matches("WithErrorLogging");
+            let kind = match kind {
+                "System" => "GalacticObject",
+                kind => kind,
+            };
+            let accessor = format!("CScopeObjectReference::Get{kind}() const");
+            let null = symbols
+                .iter()
+                .find(|entry| entry.name == accessor)
+                .and_then(|entry| bindings.scope_accessors.get(&entry.address))
+                .copied()
+                .ok_or_else(|| {
+                    InputError(format!(
+                        "target getter has no accessor binding: {}",
+                        symbol.name
+                    ))
+                })?;
+            input.nulls.insert(symbol.address, null);
+        }
+        if symbol.name.starts_with("CEventScope::GetTarget")
+            || symbol.name.starts_with("CEventScope::GetScope")
+            || symbol.name.starts_with("CEventScope::AccessTarget")
+        {
+            input.helpers.insert(symbol.address);
+        }
+    }
+    Ok(input)
 }

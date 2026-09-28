@@ -115,6 +115,7 @@ pub(crate) fn normalize(
 ) -> Answer<CommandGrammar> {
     let mut value = CommandGrammar {
         forms: GrammarProperty::Unresolved,
+        targets: GrammarProperty::Unresolved,
         reader: Reader {
             id: None,
             kind: ReaderKind::Unknown,
@@ -315,7 +316,57 @@ pub(crate) fn normalize(
                     );
                 }
             }
+            let targets: Vec<_> = result
+                .targets
+                .iter()
+                .map(|target| {
+                    let scopes = match &target.scopes {
+                        declarations::ScopeOutcome::Any => crate::DeclaredScopes::Any,
+                        declarations::ScopeOutcome::Listed(types) => {
+                            crate::DeclaredScopes::Listed(super::questions::scope_references(types))
+                        }
+                        declarations::ScopeOutcome::Unresolved(_) => {
+                            crate::DeclaredScopes::Unresolved
+                        }
+                    };
+                    if let Some(cause) = target.cause {
+                        let subject = match &target.path {
+                            crate::ArgumentPath::Value => GapSubject::answer_item(name),
+                            crate::ArgumentPath::Key(path) if path.len() == 1 => {
+                                GapSubject::field(path[0].clone())
+                            }
+                            crate::ArgumentPath::Key(path) => GapSubject::key_path(path.clone()),
+                        };
+                        key_gaps.push(Gap {
+                            kind: GapKind::UnresolvedPath,
+                            subject: Some(subject),
+                            detail: format!("target-scope-check: {cause}"),
+                        });
+                    }
+                    crate::TargetArgument {
+                        argument: target.path.clone(),
+                        scopes,
+                        stage: target.stage,
+                    }
+                })
+                .collect();
+            let covered = matches!(value.forms, GrammarProperty::Known(_))
+                && matches!(value.fixed_keys, GrammarProperty::Known(_))
+                && matches!(value.numeric_keys, GrammarProperty::Known(_));
+            let established = targets
+                .iter()
+                .all(|target| target.scopes != crate::DeclaredScopes::Unresolved);
+            value.targets = if covered && established {
+                GrammarProperty::Known(targets)
+            } else if targets.is_empty() {
+                GrammarProperty::Unresolved
+            } else {
+                GrammarProperty::Partial(targets)
+            };
         }
+    }
+    if !matches!(value.targets, GrammarProperty::Known(_)) {
+        gap(GapKind::UnresolvedPath, "target-arguments".into());
     }
     if !properties_known(&value) {
         gap(
@@ -398,6 +449,7 @@ fn nested_reference_gaps(
 
 fn properties_known(value: &CommandGrammar) -> bool {
     matches!(value.forms, GrammarProperty::Known(_))
+        && matches!(value.targets, GrammarProperty::Known(_))
         && matches!(value.child_families, GrammarProperty::Known(_))
         && matches!(value.fixed_keys, GrammarProperty::Known(_))
         && matches!(value.numeric_keys, GrammarProperty::Known(_))
@@ -553,6 +605,7 @@ mod tests {
             tail: true,
         };
         grammar::GrammarResult {
+            targets: vec![],
             nodes: vec![],
             nested: Default::default(),
             nested_stops: Default::default(),
@@ -656,6 +709,7 @@ mod tests {
         assert_eq!(answer.value.fixed_keys, GrammarProperty::Known(vec![]));
         assert_eq!(answer.value.numeric_keys, GrammarProperty::Known(None));
         assert_eq!(answer.value.ordering, GrammarProperty::Known(vec![]));
+        assert_eq!(answer.value.targets, GrammarProperty::Known(vec![]));
         assert_eq!(answer.completeness, crate::Completeness::Complete);
         assert!(
             !answer
@@ -682,6 +736,13 @@ mod tests {
             GrammarProperty::Partial(_)
         ));
         assert_eq!(answer.completeness, crate::Completeness::Partial);
+        assert_eq!(answer.value.targets, GrammarProperty::Unresolved);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.detail == "target-arguments")
+        );
     }
 
     #[test]
@@ -928,6 +989,7 @@ mod tests {
     #[test]
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
+            targets: vec![],
             nodes: vec![grammar::ReaderNode {
                 domain: [i32::MIN as i64, i32::MAX as i64],
                 ledger: vec![grammar::LedgerEntry {
@@ -969,13 +1031,28 @@ mod tests {
             crate::BuildId("authored".into()),
             &facts(Initialization::NoLookup),
         );
-        assert_eq!(answer.gaps.len(), 3);
+        assert_eq!(answer.gaps.len(), 4);
+        assert_eq!(
+            answer
+                .gaps
+                .iter()
+                .filter(|gap| gap.detail == "target-arguments")
+                .count(),
+            1
+        );
         for kind in [
             GapKind::OutsideMethod,
             GapKind::ReaderSemantics,
             GapKind::UnresolvedPath,
         ] {
-            assert_eq!(answer.gaps.iter().filter(|gap| gap.kind == kind).count(), 1);
+            assert_eq!(
+                answer
+                    .gaps
+                    .iter()
+                    .filter(|gap| gap.kind == kind && gap.detail != "target-arguments")
+                    .count(),
+                1
+            );
         }
         assert!(matches!(
             answer.value.numeric_keys,
@@ -1005,6 +1082,7 @@ mod tests {
             }],
         };
         let result = grammar::GrammarResult {
+            targets: vec![],
             nodes: vec![],
             nested: Default::default(),
             nested_stops: Default::default(),
@@ -1050,6 +1128,7 @@ mod tests {
     #[test]
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
+            targets: vec![],
             nodes: vec![],
             nested: Default::default(),
             nested_stops: Default::default(),

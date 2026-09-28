@@ -1,7 +1,7 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v7`; field families use
+[targets](targets.md). The method is `command-grammar/v8`; field families use
 `registry-fields/v8`, and parser observations use `observe-fixture/v2`. The method includes
 [reference lookups](references.md), receiver initializer lookups and out-of-line factories.
 The current forms counts are below; the retained child-reader measurements appear in their
@@ -175,7 +175,7 @@ command name. The property gate never removes children from these partial value 
 
 Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
 ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-These are current engine facts for `command-grammar/v7`, with `dynamic-names/v2` and
+These are current engine facts for `command-grammar/v8`, with `dynamic-names/v2` and
 `registry-fields/v8`. They do not establish complete value grammars or target-scope answers.
 
 ### F1. The family dispatch always calls `Read`
@@ -270,7 +270,11 @@ cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'C
   getters are `CEventTarget::GetScope<Type>`, `GetTarget<Type>WithErrorLogging` and
   `AccessTarget<Type>WithErrorLogging`. Each calls
   `CEventTarget::GetScope(CEventScope&, char const*)`, which returns a scope object through
-  `x8`, and then a typed accessor such as `CScopeObjectReference::GetCountry()`.
+  `x8`. The logging variants call `CEventScope::AccessTarget<Type>WithErrorLogging` or
+  `GetTarget<Type>WithErrorLogging`, then `CEventScope::GetTarget<Type>`. These include conversion
+  routes: the country getter can read a megastructure or leader and then its owner.
+  `CScopeObjectReference::GetCountry()` is only one branch. The System getter ultimately uses
+  `GetGalacticObject()`. A getter's result type does not bound its accepted input scopes.
 - Most typed accessors compare the scope's type field (`+0x8`) with one constant
   (`GetCountry`: 4, `GetShip`: 8) and return `TPdxNullObject<T>::_pInstance` for another type.
   `GetGrowthStage()` instead compares with `0x8000000000` and returns literal zero on mismatch.
@@ -756,3 +760,113 @@ public unresolved-path gap. The reporter also groups each shape by instruction k
 and function, preserving stops where present and saying when no instruction was located.
 Named inspection was checked for a successful `if` receiver chain and the failed
 `has_country_flag` factory return, including its retained cause trace.
+
+
+### Target arguments and their checks
+
+The getter table runs each typed getter and scope accessor for each input type bit. The scope
+reference has its type at `+0x8` and an established local object pointer at `+0x1c`. The resolver
+writes that scope to its indirect result address. Acceptance requires a proved object;
+rejection requires every returning path to return the bound null object. Unknown returns,
+unclassified conversions, unresolved indirect calls, stops and bounds keep the getter unresolved.
+The three accessors without a bound null object also remain unresolved. Getter results are
+memoized by address within the verified build input.
+
+**Pitfall: getter name ≠ accepted input scopes.** `set_owner` reaches the country getter's
+conversion routes; the current method cannot establish those routes and reports its Value target
+with unresolved scopes and stage, plus `target-scope-check: unclassified getter call`.
+Conversion-route summaries for typed getters are a candidate follow-up, not assumed effects.
+The non-logging `GetScope` wrappers also call scope cleanup. Cleanup is not summarized:
+`CEventScope::~CEventScope()` traverses parameters and uses indirect calls. An unclassified getter
+call can therefore be cleanup or conversion; it is not evidence that a conversion accepts a type.
+The retained `scope-destructor.txt` is reproduced with `--function 0x10003fe68` on this build.
+Evidence: `.local/sdk-548/targets-cross-check/country-getter.txt`, `country-scope-getter.txt`, and
+`country-target-accessor.txt` in the same directory.
+
+A target can be checked while reading, during validation, or at execution. Every touched stage
+must be established. The earliest established stage supplies the answer only when each later set
+contains its accepted set. Otherwise the scopes and stage remain unresolved with
+`target-scope-check`; the method does not assign an intersection to one stage. A false validation
+result without a diagnostic is unresolved and prevents an execution-stage answer. No read or a
+zero mask never establishes `Any`.
+
+`CAutoFollowFleetEffect` checks its target at `+0xa8` with `GetScopeType` in `PostValidate`, then
+resolves it through `GetFleet` during execution. Evidence is in
+`.local/sdk-548/targets-cross-check/auto-follow-fleet-validation.txt` and
+`auto-follow-fleet-execution.txt`. This is why stage precedence requires compatible sets.
+
+`targets` is known only when forms, fixed keys and numeric keys are known, the reachable member
+tree is covered, and every target check is established. Unknown readers or unfinished members
+prevent even a known empty list and give `target-arguments`. Nested targets use their named key
+path; numeric-child targets belong to that child's grammar. Only accepted value alternatives
+contribute targets. Unresolved alternatives keep forms partial and prevent a known target list.
+A bound getter or resolver at the exact start of another collected, disjoint target is unrelated
+to the current probe. Its scope result is tracked separately, and its return register stays
+unknown so that later branches keep both outcomes. Interior pointers, overlapping targets and
+other owner-derived addresses do not qualify. Target probes stop at otherwise
+unclassified calls; no absence is inferred through an opaque helper. This also covers owner
+pointers saved in a stack frame. Scope-result loads and calls must
+be classified too; resolving a target alone cannot hide an additional scope check.
+
+`would_join_war` has three target keys: `side`, `attacker` and `defender`. Each probe reaches
+its own getter; all three remain unresolved at an unclassified getter call. Separate target
+getters do not establish the input set of the currently probed argument.
+
+Reproduce the getter and stage facts:
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventTarget::AccessTargetCountryWithErrorLogging(CEventScope&, CString const&, char const*) const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventScope::AccessTargetCountryWithErrorLogging(char const*, CString const&, char const*)'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventScope::GetTargetCountry() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar would_join_war
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CAutoFollowFleetEffect::PostValidate() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CAutoFollowFleetEffect::ExecuteActual(CEventScope&) const'
+```
+
+On M45, none of the 27 typed target getters has a complete input-bit table. Seventeen stop at
+an unclassified getter call (conversion or scope cleanup); ten stop at an unresolved indirect
+call. Of 41 scope accessors, 37 have established tables, three have no bound null object, and
+`GetDlcRecommendation` reads unestablished scope state. The country getter has an unresolved
+result for every input bit. Its exact per-bit table is retained in
+`.local/sdk-548/targets-cross-check/country-per-bit.tsv`; the named census is in
+`effect-getter-census.txt` in that directory. The population example emits both tables.
+
+| Kind | Complete / partial / failed | Target lists known / partial / unresolved | Arguments with unresolved stage |
+| --- | --- | --- | ---: |
+| Effects | 256 / 808 / 10 | 259 / 174 / 641 | 199 |
+| Triggers | 120 / 974 / 2 | 123 / 69 / 904 | 76 |
+
+Unresolved getter tables stop 49 effect arguments and 11 trigger arguments at execution.
+Other execution stops are 132/57 unclassified calls and 17/0 unresolved indirect calls
+(effects/triggers). No argument has an established public stage on this build. There are no arguments with more
+than one established stage, either reported at the earliest stage or rejected for differing
+sets. These limits do not weaken the authored controls: those establish execution, validation
+and reading checks and reject mixed sets and false results without diagnostics. The 90 effects
+and 11 triggers that cease to be complete retain their prior forms and child properties; their
+new target constraints are unresolved. Numeric children of `random_list` and
+`locked_random_list` have unresolved target lists with no identified target arguments.
+
+The SDK-568 slot comparison has these disagreements. Thirteen unions are unresolved. The other three
+(`is_background_planet`, `is_being_integrated_by`, `is_default_species`) are empty because no
+accepted target alternative was established; their target lists remain unresolved. Thus a
+disagreement does not establish a different accepted set. Conversion routes can explain a difference between
+a getter's result type and input scopes, but no such route is assumed here.
+
+| Kind | Command | Slot mask | Unfinished target check |
+| --- | --- | ---: | --- |
+| Effect | `steal_planet_output` | 12 | Getter and execution indirect calls |
+| Effect | `transfer_galactic_defense_force_fleets` | 4 | Unclassified getter call |
+| Effect | `transfer_resource_stockpile` | 12 | Unclassified execution call |
+| Effect | `transfer_resources_to_empire` | 4 | Unclassified execution call |
+| Trigger | `can_afford_special_offer` | 4 | Unclassified execution call |
+| Trigger | `has_attitude_behavior` | 4 | Unclassified execution call |
+| Trigger | `has_casus_belli` | 4 | Unclassified execution call |
+| Trigger | `has_intel` | 4 | Unclassified execution call |
+| Trigger | `has_intel_level` | 4 | Unclassified execution call |
+| Trigger | `has_intel_report` | 4 | Unclassified execution call |
+| Trigger | `has_stale_intel` | 4 | Unclassified execution call |
+| Trigger | `intel` | 4 | Unclassified execution call |
+| Trigger | `is_background_planet` | 1099511627778 | No accepted target alternative; forms unresolved |
+| Trigger | `is_being_integrated_by` | 4 | No accepted target alternative; forms unresolved |
+| Trigger | `is_default_species` | 2048 | No accepted target alternative; forms unresolved |
+| Trigger | `is_offer_terms_actual` | 4 | Unclassified execution call |

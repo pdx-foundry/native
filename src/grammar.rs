@@ -1,5 +1,5 @@
 //! Structured facts about a registered command's block reader.
-use crate::{BlockFamily, Field, FieldReference, Reader};
+use crate::{BlockFamily, DeclaredScopes, Field, FieldReference, Reader};
 use serde::{Deserialize, Serialize};
 
 /// An extracted property, with missing evidence kept distinct from an empty result.
@@ -22,6 +22,10 @@ pub struct CommandGrammar {
     /// Each way to write the command's value. `Known` lists every accepted form.
     #[serde(default)]
     pub forms: GrammarProperty<Vec<CommandForm>>,
+    /// Each argument that the reader stores as an event target. A known empty list means that
+    /// the command takes no target argument. A partial or unresolved list proves no absence.
+    #[serde(default)]
+    pub targets: GrammarProperty<Vec<TargetArgument>>,
     /// Command families that the block can dispatch to.
     pub child_families: GrammarProperty<Vec<BlockFamily>>,
     /// Named child keys and their conditional read alternatives.
@@ -49,6 +53,41 @@ pub struct CommandValue {
     pub reader: Reader,
     /// Lookup performed for a reference value; acceptance assumes a found key.
     pub reference: FieldReference,
+}
+
+/// A stored event-target argument and the scope check that constrains it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetArgument {
+    /// Location of the argument in the command's grammar.
+    pub argument: ArgumentPath,
+    /// Scope types accepted by the established check.
+    pub scopes: DeclaredScopes,
+    /// Earliest check that decides the accepted set without a stricter later check.
+    pub stage: TargetCheckStage,
+}
+
+/// When the engine checks a stored target's scope type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum TargetCheckStage {
+    /// During parsing or assignment.
+    WhileReading,
+    /// During validation after initialization.
+    Validation,
+    /// When the command executes or evaluates.
+    Execution,
+    /// No single complete check was established.
+    Unresolved,
+}
+
+/// Location of an event-target argument relative to its command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ArgumentPath {
+    /// The command's own value.
+    Value,
+    /// Named keys from the outermost key to the argument.
+    Key(Vec<String>),
 }
 
 /// A reader selection that depends on the sequence of already parsed children.

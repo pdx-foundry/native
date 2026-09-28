@@ -41,6 +41,8 @@ pub(in crate::binding) struct PersistentRecipe {
 pub(in crate::binding) struct DeclarationRecipe {
     /// Virtual slots used by the two command families.
     pub create_slot: u64,
+    /// Local object pointer of a scope reference.
+    pub scope_object_offset: u64,
     pub trigger_scope_slot: u64,
     pub effect_scope_slot: u64,
     pub trigger_parser: ParserSlots,
@@ -97,6 +99,7 @@ pub(super) const M45_RELEASE: Recipe = Recipe {
 };
 
 const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
+    scope_object_offset: 0x1c,
     create_slot: 0x10,
     trigger_scope_slot: 0x78,
     effect_scope_slot: 0x80,
