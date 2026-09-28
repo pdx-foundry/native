@@ -11,9 +11,9 @@ Two runs of each baseline produced identical bytes and zero changed answers.
 
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Registry fields | 164 registries | 10 | 154 | 0 |
-| Effect grammars | 1,074 named commands | 0 | 1,074 | 0 |
-| Trigger grammars | 1,096 named commands | 0 | 1,096 | 0 |
+| Registry fields | 164 registries | 11 | 153 | 0 |
+| Effect grammars | 1,074 named commands | 346 | 718 | 10 |
+| Trigger grammars | 1,096 named commands | 131 | 963 | 2 |
 
 ## Historical comparison control
 

@@ -16,6 +16,7 @@ fn fixture() -> FieldInput {
         Symbol{name:"CPersistent::ReadMember(CReader&, int)".into(),address:0x5000},Symbol{name:"CReader::ReportUnexpected()".into(),address:0x6000},
     ];
     FieldInput {
+        key_readers: Default::default(),
         persistent: None,
         objects: vec![],
         selection: candidates(&symbols).remove(0),
@@ -1411,5 +1412,350 @@ fn known_comparisons_do_not_invent_unreachable_readers() {
                 );
             }
         }
+    }
+}
+
+fn compound_fixture(code: Vec<u8>) -> FieldInput {
+    let mut input = fixture();
+    input.functions[0].code = code;
+    input.key_readers = fields::KeyReaders {
+        compound_sizes: [0x190, 0x30, 0x18],
+        value_token: 0x278,
+        token_text: 0x10,
+        token_copy: vec![0xa000],
+        target_construct: vec![0xb000],
+        target_move: Some(0xc000),
+        string_emplace: Some(0xd000),
+        optional_string: Some(0xe000),
+        string_read: Some(0xf000),
+        persistent_read: None,
+        array_data: 8,
+        array_count: 0x14,
+        string_stride: 0x28,
+    };
+    for (address, name) in [
+        (0xa000, "copy"),
+        (0xb000, "construct"),
+        (0xc000, "move"),
+        (0xd000, "emplace"),
+        (0xe000, "optional"),
+        (0xf000, "CReader::Read(CString&, bool)"),
+    ] {
+        input.symbols.push(Symbol {
+            address,
+            name: name.into(),
+        });
+    }
+    input
+}
+
+#[test]
+fn compound_target_requires_original_value_and_owner_destination() {
+    for (token_offset, stack_destination) in [(0x278, false), (0x270, false), (0x278, true)] {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1;
+            sub sp, sp, #0x200;
+            add x1, x20, #token_offset;
+            mov x0, sp; bl extern 0xa000;
+            add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+            add x0, x19, #0x80
+        );
+        if stack_destination {
+            arm64!(code; mov x0, sp);
+        }
+        arm64!(code; add x1, sp, #0x120; bl extern 0xc000; ret);
+        let result = derive(compound_fixture(code.bytes()));
+        let kind = crate::engine::analysis::readers::classify(&result.fields[0].readers).kind;
+        assert_eq!(
+            kind == crate::ReaderKind::Target,
+            token_offset == 0x278 && !stack_destination
+        );
+        if kind == crate::ReaderKind::Target {
+            assert_eq!(
+                crate::engine::analysis::readers::destination(&result.fields[0].readers[0]),
+                Some(0x80)
+            );
+        }
+    }
+}
+
+#[test]
+fn compound_array_requires_emplace_before_reading_last_string() {
+    for callee in [0xd000, 0xd004] {
+        let code = arm64!(at 0x1000;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1;
+            add x0, x19, #0x80;
+            ldr w8, [x19, #0x94]; add w1, w8, #1;
+            bl extern callee;
+            ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+            mov w10, #0x28; madd x8, x9, x10, x8;
+            sub x1, x8, #0x28; mov x0, x20; b extern 0xf000
+        );
+        let result = derive(compound_fixture(code));
+        let join = &result.fields[0].readers[0];
+        assert_eq!(
+            matches!(
+                join,
+                ReaderJoin::Stored {
+                    kind: crate::ReaderKind::String,
+                    repeat: crate::RepeatBehavior::Accumulate,
+                    destination: 0x80,
+                    ..
+                }
+            ),
+            callee == 0xd000
+        );
+    }
+}
+
+#[test]
+fn compound_optional_string_requires_value_token_text() {
+    for offset in [0x288, 0x280] {
+        let code = arm64!(at 0x1000;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            sub sp, sp, #16;
+            ldr x8, [x1, #offset]; str x8, [sp];
+            add x0, x0, #0x80; mov x1, sp; bl extern 0xe000; ret
+        );
+        let result = derive(compound_fixture(code));
+        assert_eq!(
+            matches!(
+                result.fields[0].readers[0],
+                ReaderJoin::Stored {
+                    kind: crate::ReaderKind::String,
+                    ..
+                }
+            ),
+            offset == 0x288
+        );
+    }
+}
+
+#[test]
+fn compound_readers_forget_overwritten_stack_evidence() {
+    let target = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1; sub sp, sp, #0x200;
+        add x1, x20, #0x278; mov x0, sp; bl extern 0xa000;
+        str xzr, [sp];
+        add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+        add x0, x19, #0x80; add x1, sp, #0x120; bl extern 0xc000; ret
+    );
+    let optional = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        sub sp, sp, #16; ldr x8, [x1, #0x288]; strb w8, [sp];
+        add x0, x0, #0x80; mov x1, sp; bl extern 0xe000; ret
+    );
+    for code in [target, optional] {
+        let result = derive(compound_fixture(code));
+        assert!(!matches!(
+            result.fields[0].readers[0],
+            ReaderJoin::Stored { .. }
+        ));
+    }
+}
+
+#[test]
+fn compound_target_overwrite_cannot_establish_a_reader() {
+    for overwrite in [false, true] {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1; sub sp, sp, #0x200;
+            add x1, x20, #0x278; mov x0, sp; bl extern 0xa000;
+            add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+            add x0, x19, #0x80; add x1, sp, #0x120; bl extern 0xc000);
+        if overwrite {
+            arm64!(code; str xzr, [x19, #0x88]);
+        }
+        arm64!(code; ret);
+        let result = derive(compound_fixture(code.bytes()));
+        assert_eq!(
+            result
+                .fields
+                .first()
+                .is_some_and(
+                    |field| crate::engine::analysis::readers::classify(&field.readers).kind
+                        == crate::ReaderKind::Target
+                ),
+            !overwrite
+        );
+        if overwrite {
+            assert!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")));
+        }
+    }
+}
+
+#[test]
+fn compound_string_array_clear_cannot_establish_accumulation() {
+    for clear in [false, true] {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1; add x0, x19, #0x80;
+            ldr w8, [x19, #0x94]; add w1, w8, #1; bl extern 0xd000;
+            ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+            mov w10, #0x28; madd x8, x9, x10, x8;
+            sub x1, x8, #0x28; mov x0, x20; bl extern 0xf000);
+        if clear {
+            arm64!(code; add x0, x19, #0x80; bl extern 0x11000);
+        }
+        arm64!(code; ret);
+        let result = derive(compound_fixture(code.bytes()));
+        assert_eq!(
+            result.fields.first().is_some_and(|field| matches!(
+                field.readers[0],
+                ReaderJoin::Stored {
+                    repeat: crate::RepeatBehavior::Accumulate,
+                    ..
+                }
+            )),
+            !clear
+        );
+        if clear {
+            assert!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")));
+        }
+    }
+}
+
+#[test]
+fn compound_cleanup_checks_both_pointer_comparison_paths() {
+    for overwrite in [false, true] {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; sub sp, sp, #16;
+            ldr x8, [x1, #0x288]; str x8, [sp];
+            add x0, x19, #0x80; mov x1, sp; bl extern 0xe000;
+            ldr x8, [sp]; mov x9, sp; cmp x8, x9; b.eq extern 0x1040);
+        if overwrite {
+            arm64!(code; str xzr, [x19, #0x88]);
+        } else {
+            arm64!(code; nop);
+        }
+        arm64!(code; ret);
+        let result = derive(compound_fixture(code.bytes()));
+        assert_eq!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")), overwrite);
+        if !overwrite {
+            assert!(
+                result
+                    .paths
+                    .iter()
+                    .filter(|path| path.domain == [7, 7])
+                    .all(|path| matches!(
+                        path.outcome,
+                        PathOutcome::Reader(ReaderJoin::Stored { .. })
+                    ))
+            );
+        }
+    }
+}
+
+#[test]
+fn compound_destination_saved_on_stack_is_still_protected() {
+    let code = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; sub sp, sp, #32;
+        add x8, x19, #0x80; str x8, [sp, #24];
+        ldr x8, [x1, #0x288]; str x8, [sp];
+        add x0, x19, #0x80; mov x1, sp; bl extern 0xe000;
+        str xzr, [sp, #8]; ldr x0, [sp, #24]; bl extern 0x11000; ret);
+    let result = derive(compound_fixture(code));
+    assert!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")));
+}
+
+#[test]
+fn compound_reader_rejects_helpers_with_any_owner_address() {
+    for owner_offset in [None, Some(0), Some(0x20), Some(0x300)] {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1; sub sp, sp, #0x200;
+            add x1, x20, #0x278; mov x0, sp; bl extern 0xa000;
+            add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+            add x0, x19, #0x80; add x1, sp, #0x120; bl extern 0xc000);
+        if let Some(offset) = owner_offset {
+            arm64!(code; add x0, x19, #offset);
+        } else {
+            arm64!(code; mov x0, sp);
+        }
+        arm64!(code; bl extern 0x11000; ret);
+        let mut input = compound_fixture(code.bytes());
+        input.symbols.push(Symbol {
+            address: 0x11000,
+            name: "helper".into(),
+        });
+        input.functions.push(Function {
+            address: 0x11000,
+            name: "helper".into(),
+            code: arm64!(at 0x11000; str xzr, [x0, #0x80]; ret),
+        });
+        let result = derive(input);
+        assert_eq!(
+            result
+                .fields
+                .first()
+                .is_some_and(
+                    |field| crate::engine::analysis::readers::classify(&field.readers).kind
+                        == crate::ReaderKind::Target
+                ),
+            owner_offset.is_none()
+        );
+        assert_eq!(result.paths.iter().any(|path| matches!(&path.outcome, PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")), owner_offset.is_some());
+    }
+}
+
+#[test]
+fn compound_reader_rejects_owner_pointers_reachable_through_the_stack() {
+    for case in 0..4 {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1; sub sp, sp, #0x200;
+            add x1, x20, #0x278; mov x0, sp; bl extern 0xa000;
+            add x0, sp, #0x120; mov x1, sp; bl extern 0xb000;
+            add x0, x19, #0x80; add x1, sp, #0x120; bl extern 0xc000);
+        match case {
+            0 => {
+                arm64!(code; str x19, [sp, #16]; add x0, sp, #16);
+            }
+            1 => {
+                arm64!(code; str x19, [sp, #64]; mov x0, sp);
+            }
+            2 => {
+                arm64!(code; str x19, [sp, #64]; add x8, sp, #64;
+                str x8, [sp, #16]; add x0, sp, #16);
+            }
+            _ => {
+                arm64!(code; str x9, [sp, #64]; mov x0, sp);
+            }
+        }
+        arm64!(code; bl extern 0x11000; ret);
+        let mut input = compound_fixture(code.bytes());
+        input.symbols.push(Symbol {
+            address: 0x11000,
+            name: "helper".into(),
+        });
+        input.functions.push(Function {
+            address: 0x11000,
+            name: "helper".into(),
+            code: arm64!(at 0x11000; ldr x8, [x0]; str xzr, [x8, #0x80]; ret),
+        });
+        let result = derive(input);
+        assert!(result.fields.is_empty(), "case {case}: {:?}", result.fields);
+        assert!(
+            result.paths.iter().any(|path| matches!(&path.outcome,
+            PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")),
+            "case {case}"
+        );
     }
 }

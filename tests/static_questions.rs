@@ -910,7 +910,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn control_grammar_preserves_shared_readers_and_partial_properties() {
+fn control_grammar_preserves_shared_readers_and_covered_properties() {
     use pdx_native::{BlockFamily, GrammarProperty, ReaderKind};
     let native = native();
     assert_eq!(
@@ -940,7 +940,16 @@ fn control_grammar_preserves_shared_readers_and_partial_properties() {
         for name in names {
             let answer = native.command_grammar(kind, name).unwrap();
             assert_eq!(answer.source.method, COMMAND_GRAMMAR_METHOD);
-            assert_eq!(answer.completeness, Completeness::Partial);
+            let covered = kind == DeclarationKind::Trigger
+                || ["hidden_effect", "every_owned_planet"].contains(&name);
+            assert_eq!(
+                answer.completeness,
+                if covered {
+                    Completeness::Complete
+                } else {
+                    Completeness::Partial
+                }
+            );
             assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
             assert_eq!(
                 answer.value.reader.kind,
@@ -957,7 +966,14 @@ fn control_grammar_preserves_shared_readers_and_partial_properties() {
             } else {
                 &answer.value
             };
-            assert_eq!(child.child_families, GrammarProperty::Partial(vec![family]));
+            assert_eq!(
+                child.child_families,
+                if covered {
+                    GrammarProperty::Known(vec![family])
+                } else {
+                    GrammarProperty::Partial(vec![family])
+                }
+            );
             if kind == DeclarationKind::Effect && ["if", "else_if", "else"].contains(&name) {
                 let GrammarProperty::Partial(rules) = &answer.value.ordering else {
                     panic!("conditional reader routing missing");
@@ -1169,4 +1185,10 @@ fn command_forms_keep_m45_acceptance_and_named_stage_gaps() {
             );
         }
     }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn sdk492_fixed_key_grammars_match_the_engine() {
+    assert_sdk492_keys(&native());
 }

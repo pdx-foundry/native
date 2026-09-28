@@ -78,6 +78,10 @@ pub(in crate::binding) fn read(
         })
         .transpose()?;
     Ok(FieldInput {
+        key_readers: persistent_recipe
+            .map(|recipe| key_readers(symbols, recipe))
+            .transpose()?
+            .unwrap_or_default(),
         persistent,
         objects,
         selection,
@@ -385,6 +389,43 @@ fn pointer_member_offset(
     } else {
         digits.parse().ok()
     }
+}
+
+/// Bind the compound reader boundaries used by both field and command dispatch.
+pub(super) fn key_readers(
+    symbols: &[Symbol],
+    recipe: &super::super::targets::PersistentRecipe,
+) -> Result<crate::engine::analysis::fields::KeyReaders, AnalysisError> {
+    use super::declarations::{addresses, unique};
+    let token_copy = addresses(symbols, "CToken::CToken(CToken const&)");
+    let target_construct = addresses(
+        symbols,
+        "CEventTarget::CEventTarget(CToken, EScopeType, CString const&)",
+    );
+    if token_copy.is_empty() || target_construct.is_empty() {
+        return Err(AnalysisError::InvalidRange);
+    }
+    Ok(crate::engine::analysis::fields::KeyReaders {
+        compound_sizes: recipe.compound_sizes,
+        array_data: recipe.string_array[0],
+        array_count: recipe.string_array[1],
+        string_stride: recipe.string_array[2],
+        value_token: recipe.value_token as i64,
+        token_text: recipe.token_text as i64,
+        token_copy: token_copy.into_iter().collect(),
+        target_construct: target_construct.into_iter().collect(),
+        target_move: Some(unique(symbols, "CEventTarget::operator=(CEventTarget&&)")?),
+        string_emplace: Some(unique(
+            symbols,
+            "void CPdxArray<CString, int>::SetSizeAndEmplace<>(int, const&)",
+        )?),
+        optional_string: Some(unique(
+            symbols,
+            "void CPdxOptional<CString>::SetEmplace<char const*>(char const*&&)",
+        )?),
+        string_read: Some(unique(symbols, "CReader::Read(CString&, bool)")?),
+        persistent_read: Some(unique(symbols, "CReader::Read(CPersistent&)")?),
+    })
 }
 
 #[cfg(test)]

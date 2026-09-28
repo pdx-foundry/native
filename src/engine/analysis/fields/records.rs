@@ -28,6 +28,9 @@ pub struct DataSection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FieldInput {
+    /// Bound signatures and layouts for compound key readers.
+    #[serde(default)]
+    pub key_readers: KeyReaders,
     /// The template loader candidate whose fields are asked for.
     pub selection: CandidateRecord,
     /// Executable symbol inventory used to verify selection and resolve calls.
@@ -66,6 +69,8 @@ pub enum Value {
     Offset(Box<Value>, i64),
     /// An address formed by adding a scaled index.
     Indexed(Box<Value>, Box<Value>, u8),
+    /// Base plus an index multiplied by a constant stride.
+    SumProduct(Box<Value>, Box<Value>, i64),
     /// Boolean result of comparing a value with any listed constant.
     EqualsAny(Box<Value>, Vec<i64>),
     /// The original field token plus a constant, as a zero-extended 32-bit word.
@@ -115,6 +120,17 @@ pub enum ReaderJoin {
         arguments: BTreeMap<String, Value>,
         /// The root returns through this call, with no unexamined continuation.
         tail: bool,
+    },
+    /// A compound reader whose input and destination are established on this path.
+    Stored {
+        /// Bound function at the final read or store.
+        callee: String,
+        /// Broad value kind established by the compound idiom.
+        kind: crate::ReaderKind,
+        /// Storage offset in the original owner.
+        destination: i64,
+        /// Storage behavior established by the idiom.
+        repeat: crate::RepeatBehavior,
     },
     /// A root-token path exists but its reader relationship could not be established.
     Missing(Unresolved),
@@ -291,4 +307,24 @@ pub struct PersistentInput {
     pub pointers: BTreeMap<u64, u64>,
     pub never_return: Vec<u64>,
     pub readers: BTreeMap<u64, ConcreteReader>,
+}
+
+/// Signature addresses for shared compound key-reader idioms.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct KeyReaders {
+    /// Destination sizes for target, optional string, and string array.
+    #[serde(default)]
+    pub compound_sizes: [i64; 3],
+    pub array_data: i64,
+    pub array_count: i64,
+    pub string_stride: i64,
+    pub value_token: i64,
+    pub token_text: i64,
+    pub token_copy: Vec<u64>,
+    pub target_construct: Vec<u64>,
+    pub target_move: Option<u64>,
+    pub string_emplace: Option<u64>,
+    pub optional_string: Option<u64>,
+    pub string_read: Option<u64>,
+    pub persistent_read: Option<u64>,
 }

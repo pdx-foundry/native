@@ -11,7 +11,7 @@ pub mod dynamic_name_commands;
 mod dynamic_names;
 mod families;
 mod fields;
-mod grammar;
+pub(crate) mod grammar;
 mod language;
 mod loaded_modifiers;
 mod localization;

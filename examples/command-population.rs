@@ -176,6 +176,15 @@ struct FormsTally {
 impl FormsTally {
     fn add(&mut self, name: &str, run: &Run) {
         use command_grammar_stops::PathClass;
+        if run.answer.completeness == Completeness::Complete
+            && let Ok(result) = &run.result
+            && !result.value_only()
+            && !result.coverage().covered()
+        {
+            self.failures.push(format!(
+                "{name}: complete answer has an uncovered member tree"
+            ));
+        }
         let Some(forms) = run
             .result
             .as_ref()

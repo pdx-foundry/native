@@ -52,7 +52,7 @@ execution, field storage, validation, schema completeness or rule coverage.
 
 ## Field answer migration (SDK-541 / SDK-597)
 
-`registry_fields` still returns `Answer<Vec<Field>>`, with method `registry-fields/v7`.
+`registry_fields` still returns `Answer<Vec<Field>>`, with method `registry-fields/v8`.
 The former `Field.conditional` Boolean is replaced by paired `read` alternatives. Each
 alternative retains its `condition` and `outcome` (`Read`, `Rejected`, or `Unresolved`).
 Never combine the condition from one alternative with another's reader or shape.

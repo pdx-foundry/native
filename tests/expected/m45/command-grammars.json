@@ -86,7 +86,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -143,7 +143,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -192,7 +192,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -225,7 +225,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -301,7 +301,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -362,7 +362,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -418,12 +418,44 @@
           "kind": "answer_item",
           "name": "set_timed_country_flag"
         }
+      },
+      {
+        "detail": "reader-routing",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "days"
+        }
+      },
+      {
+        "detail": "reader-routing",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "flag"
+        }
+      },
+      {
+        "detail": "reader-routing",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "months"
+        }
+      },
+      {
+        "detail": "reader-routing",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "years"
+        }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -572,12 +604,28 @@
           "kind": "answer_item",
           "name": "add_resource"
         }
+      },
+      {
+        "detail": "unknown-key-reader",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "mult"
+        }
+      },
+      {
+        "detail": "unknown-key-reader",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "multiplier"
+        }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -671,16 +719,8 @@
     }
   },
   "trigger/if": {
-    "completeness": "Partial",
+    "completeness": "Complete",
     "gaps": [
-      {
-        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
-        "kind": "ReaderSemantics",
-        "subject": {
-          "kind": "answer_item",
-          "name": "if"
-        }
-      },
       {
         "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
         "kind": "OutsideMethod",
@@ -693,17 +733,17 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": {
-        "Partial": [
+        "Known": [
           "Trigger"
         ]
       },
       "fixed_keys": {
-        "Partial": [
+        "Known": [
           {
             "default": "Unknown",
             "domain": "Unknown",
@@ -781,8 +821,12 @@
           "Block"
         ]
       },
-      "numeric_keys": "Unresolved",
-      "ordering": "Unresolved",
+      "numeric_keys": {
+        "Known": null
+      },
+      "ordering": {
+        "Known": []
+      },
       "reader": {
         "id": "2c0d7eab19fb7c8f",
         "kind": "Block",
@@ -816,12 +860,28 @@
           "kind": "answer_item",
           "name": "if"
         }
+      },
+      {
+        "detail": "conditional-child-family",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "else"
+        }
+      },
+      {
+        "detail": "unknown-key-reader",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "field",
+          "name": "else"
+        }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1034,30 +1094,6 @@
         }
       },
       {
-        "detail": "reader-routing",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "create_starbase"
-        }
-      },
-      {
-        "detail": "Some child dispatch paths or names remain unresolved.",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "create_starbase"
-        }
-      },
-      {
-        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
-        "kind": "ReaderSemantics",
-        "subject": {
-          "kind": "answer_item",
-          "name": "create_starbase"
-        }
-      },
-      {
         "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
         "kind": "OutsideMethod",
         "subject": {
@@ -1069,13 +1105,15 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {
-      "child_families": "Unresolved",
+      "child_families": {
+        "Known": []
+      },
       "fixed_keys": {
-        "Partial": [
+        "Known": [
           {
             "default": "Unknown",
             "domain": "Unknown",
@@ -1149,92 +1187,182 @@
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "building",
             "read": [
               {
                 "condition": "Always",
-                "outcome": "Unresolved"
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "325efaa17499c32d",
+                      "kind": "String",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Accumulate",
+                      "value": "Scalar"
+                    }
+                  }
+                }
               }
             ],
             "reader": {
-              "id": null,
-              "kind": "Unknown",
-              "family": "Unknown"
+              "id": "325efaa17499c32d",
+              "kind": "String",
+              "family": "NotApplicable"
             },
             "reference": "NotEstablished",
             "shape": {
-              "repeat": "Unknown",
-              "value": "Unknown"
+              "repeat": "Accumulate",
+              "value": "Scalar"
             },
             "uses": []
           },
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "design",
             "read": [
               {
                 "condition": "Always",
-                "outcome": "Unresolved"
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "9852897cc48d100d",
+                      "kind": "String",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
               }
             ],
             "reader": {
-              "id": null,
-              "kind": "Unknown",
-              "family": "Unknown"
+              "id": "9852897cc48d100d",
+              "kind": "String",
+              "family": "NotApplicable"
             },
             "reference": "NotEstablished",
             "shape": {
               "repeat": "Unknown",
-              "value": "Unknown"
+              "value": "Scalar"
             },
             "uses": []
           },
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "owner",
             "read": [
               {
-                "condition": "Always",
-                "outcome": "Unresolved"
+                "condition": {
+                  "All": [
+                    "Unresolved",
+                    "Unresolved"
+                  ]
+                },
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "1b6f3b12faaef087",
+                      "kind": "Target",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": {
+                  "All": [
+                    "Unresolved",
+                    "Unresolved"
+                  ]
+                },
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "1b6f3b12faaef087",
+                      "kind": "Target",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": "Unresolved",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "1b6f3b12faaef087",
+                      "kind": "Target",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
               }
             ],
             "reader": {
-              "id": null,
-              "kind": "Unknown",
-              "family": "Unknown"
+              "id": "1b6f3b12faaef087",
+              "kind": "Target",
+              "family": "NotApplicable"
             },
             "reference": "NotEstablished",
             "shape": {
               "repeat": "Unknown",
-              "value": "Unknown"
+              "value": "Scalar"
             },
             "uses": []
           },
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "module",
             "read": [
               {
                 "condition": "Always",
-                "outcome": "Unresolved"
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "325efaa17499c32d",
+                      "kind": "String",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Accumulate",
+                      "value": "Scalar"
+                    }
+                  }
+                }
               }
             ],
             "reader": {
-              "id": null,
-              "kind": "Unknown",
-              "family": "Unknown"
+              "id": "325efaa17499c32d",
+              "kind": "String",
+              "family": "NotApplicable"
             },
             "reference": "NotEstablished",
             "shape": {
-              "repeat": "Unknown",
-              "value": "Unknown"
+              "repeat": "Accumulate",
+              "value": "Scalar"
             },
             "uses": []
           }
@@ -1245,8 +1373,12 @@
           "Block"
         ]
       },
-      "numeric_keys": "Unresolved",
-      "ordering": "Unresolved",
+      "numeric_keys": {
+        "Known": null
+      },
+      "ordering": {
+        "Known": []
+      },
       "reader": {
         "id": "940ced26c41af5b8",
         "kind": "Block",
@@ -1293,7 +1425,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v6",
+      "method": "command-grammar/v7",
       "native_version": "0.1.0"
     },
     "value": {

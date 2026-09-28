@@ -21,6 +21,7 @@ const MAX_TABLE_ENTRIES: usize = 1024;
 /// Executable inputs shared by registry fields and command member dispatch.
 pub(crate) struct DispatchInput<'a> {
     functions: Vec<FunctionView<'a>>,
+    key_readers: &'a super::KeyReaders,
     pub symbols: &'a [Symbol],
     pub read_only_data: &'a [DataSection],
     pub reader_token_offset: Option<u64>,
@@ -32,8 +33,10 @@ impl<'a> DispatchInput<'a> {
         symbols: &'a [Symbol],
         read_only_data: &'a [DataSection],
         reader_token_offset: u64,
+        key_readers: &'a super::KeyReaders,
     ) -> Self {
         Self {
+            key_readers,
             functions: symbols
                 .iter()
                 .filter_map(|symbol| {
@@ -77,6 +80,13 @@ enum Flags {
 
 #[derive(Clone)]
 struct State {
+    stack: BTreeMap<i64, Value>,
+    copied_tokens: BTreeSet<i64>,
+    targets: BTreeSet<i64>,
+    emplaced: BTreeSet<i64>,
+    stored: Option<(ReaderJoin, i64, i64)>,
+    saved_addresses: BTreeMap<i64, Value>,
+    unknown_stack_store: bool,
     pc: usize,
     registers: BTreeMap<String, Value>,
     flags: Option<Flags>,
@@ -87,6 +97,73 @@ struct State {
     table_case: Option<TableCase>,
 }
 impl State {
+    fn save_address(&mut self, at: i64, width: i64, value: Option<Value>) {
+        self.unknown_stack_store |= self.stored.is_some() && value.is_none();
+        self.saved_addresses
+            .retain(|slot, _| *slot + 8 <= at || *slot >= at + width);
+        if width == 8
+            && let Some(value) = value
+            && (Self::owner_derived(&value) || Self::stack_derived(&value))
+        {
+            self.saved_addresses.insert(at, value);
+        }
+    }
+
+    fn clobber_call(&mut self) {
+        for register in 0..=18 {
+            self.registers.remove(&format!("x{register}"));
+        }
+        self.flags = None;
+    }
+
+    fn overlaps_stored(&self, location: &Value, width: i64) -> bool {
+        let Some((_, start, size)) = &self.stored else {
+            return false;
+        };
+        matches!(location, Value::Owner(at) if *at < start + size && at + width > *start)
+    }
+
+    fn owner_derived(value: &Value) -> bool {
+        match value {
+            Value::Owner(_) => true,
+            Value::Load(base, _) | Value::Offset(base, _) => Self::owner_derived(base),
+            Value::SumProduct(base, index, _) | Value::Indexed(base, index, _) => {
+                Self::owner_derived(base) || Self::owner_derived(index)
+            }
+            _ => false,
+        }
+    }
+
+    fn stack_derived(value: &Value) -> bool {
+        match value {
+            Value::Stack(_) => true,
+            Value::Load(base, _) | Value::Offset(base, _) => Self::stack_derived(base),
+            Value::SumProduct(base, index, _) | Value::Indexed(base, index, _) => {
+                Self::stack_derived(base) || Self::stack_derived(index)
+            }
+            _ => false,
+        }
+    }
+
+    fn call_can_overwrite(&self, value: &Value) -> bool {
+        Self::owner_derived(value)
+            || (Self::stack_derived(value)
+                && (self.unknown_stack_store
+                    || self
+                        .saved_addresses
+                        .values()
+                        .chain(self.stack.values())
+                        .any(Self::owner_derived)))
+    }
+
+    fn stack_store_value(&self, operand: &str) -> Option<Value> {
+        if matches!(operand.trim(), "xzr" | "wzr") {
+            Some(Value::Constant(0))
+        } else {
+            self.value(operand)
+        }
+    }
+
     fn value(&self, operand: &str) -> Option<Value> {
         if operand.starts_with('#') {
             return number(operand).map(Value::Constant);
@@ -98,6 +175,9 @@ impl State {
                 Value::Token => Some(Value::Token),
                 Value::TokenWord(offset) => Some(Value::TokenWord(offset)),
                 Value::Load(base, width) => Some(Value::Load(base, width.min(4))),
+                value @ Value::Offset(..) if matches!(&value, Value::Offset(base, _) if matches!(base.as_ref(), Value::Load(_, 4))) => {
+                    Some(value)
+                }
                 _ => None,
             }
         } else {
@@ -127,6 +207,9 @@ impl State {
                 // A W-register write zero-extends, so a copy of the token is a token word.
                 Some(Value::Token) => Some(Value::TokenWord(0)),
                 Some(Value::TokenWord(offset)) => Some(Value::TokenWord(offset)),
+                Some(value @ Value::Offset(..)) if matches!(&value, Value::Offset(base, _) if matches!(base.as_ref(), Value::Load(_, 4))) => {
+                    Some(value)
+                }
                 _ => None,
             }
         } else {
@@ -146,7 +229,9 @@ fn offset(value: Value, amount: i64) -> Option<Value> {
         Value::Offset(base, previous) => previous
             .checked_add(amount)
             .map(|offset| Value::Offset(base, offset)),
-        Value::Load(..) | Value::Indexed(..) => Some(Value::Offset(Box::new(value), amount)),
+        Value::Load(..) | Value::Indexed(..) | Value::SumProduct(..) => {
+            Some(Value::Offset(Box::new(value), amount))
+        }
         _ => None,
     }
 }
@@ -455,6 +540,15 @@ fn apply(
                 _ => None,
             };
         }
+        ("madd", [destination, index, scale, base]) => {
+            let value = match (state.value(index), state.value(scale), state.value(base)) {
+                (Some(index), Some(Value::Constant(scale)), Some(base)) => {
+                    Some(Value::SumProduct(Box::new(base), Box::new(index), scale))
+                }
+                _ => None,
+            };
+            state.assign(destination, value);
+        }
         ("mov", [destination, source]) => state.assign(destination, state.value(source)),
         ("add" | "sub", [destination, left, right]) => {
             let word = destination.starts_with('w');
@@ -511,6 +605,22 @@ fn apply(
                 return Err(unsupported("addressing"));
             };
             let location = state.value(base).and_then(|v| offset(v, amount));
+            let width = if row.operation == "strb" {
+                1
+            } else if operand.starts_with('q') {
+                16
+            } else if operand.starts_with(['x', 'd']) {
+                8
+            } else {
+                4
+            };
+            if row.operation.starts_with("str")
+                && location
+                    .as_ref()
+                    .is_some_and(|at| state.overlaps_stored(at, width))
+            {
+                return Err(unsupported("compound-reader-overwrite"));
+            }
             if row.operation.starts_with("ld") {
                 let width = if row.operation == "ldrb" {
                     1
@@ -523,6 +633,12 @@ fn apply(
                 };
                 // A load retains origin as a load, never as the original receiver or pointer.
                 let value = location.map(|v| {
+                    if state.stored.is_some() && width == 8
+                        && let Value::Stack(at) = &v
+                        && let Some(saved) = state.saved_addresses.get(at)
+                    {
+                        return saved.clone();
+                    }
                     if width == 4 && matches!(v, Value::Reader(offset) if Some(offset as u64) == reader_token_offset) {
                         Value::Token
                     } else {
@@ -534,7 +650,20 @@ fn apply(
                 if let Some(value) = value {
                     state.registers.insert(key, value);
                 }
-            } else if !matches!(location, Some(Value::Owner(_) | Value::Stack(_))) {
+            } else if let Some(Value::Stack(at)) = location {
+                state.save_address(at, width, state.stack_store_value(operand));
+                state.copied_tokens.clear();
+                state.targets.clear();
+                state.stack.clear();
+                if row.operation == "str"
+                    && operand.starts_with('x')
+                    && let Some(value) = state.value(operand)
+                {
+                    state.stack.insert(at, value);
+                }
+            } else if matches!(location, Some(Value::Owner(_))) {
+                state.emplaced.clear();
+            } else {
                 return Err(stop("store-destination", unestablished(state, base)));
             }
         }
@@ -548,18 +677,47 @@ fn apply(
             let (base, amount, update) =
                 pair_memory(address).ok_or_else(|| unsupported("addressing"))?;
             let location = state.value(base).and_then(|v| offset(v, amount));
+            if row.operation == "stp"
+                && location.as_ref().is_some_and(|at| {
+                    state.overlaps_stored(at, if first.starts_with('x') { 16 } else { 8 })
+                })
+            {
+                return Err(unsupported("compound-reader-overwrite"));
+            }
             if !matches!(location, Some(Value::Stack(_))) {
                 return Err(stop("pair-address", unestablished(state, base)));
             }
             let updated =
                 update.and_then(|amount| state.value(base).and_then(|v| offset(v, amount)));
+            if row.operation == "stp" {
+                if let Some(Value::Stack(at)) = location {
+                    let width = if first.starts_with('x') { 8 } else { 4 };
+                    state.save_address(at, width, state.stack_store_value(first));
+                    state.save_address(at + width, width, state.stack_store_value(second));
+                }
+                state.stack.clear();
+                state.copied_tokens.clear();
+                state.targets.clear();
+            }
             if row.operation == "ldp" {
                 if update.is_some() && [register(first), register(second)].contains(&register(base))
                 {
                     return Err(unsupported("pair-writeback-alias"));
                 }
-                state.assign(first, None);
-                state.assign(second, None);
+                let restored = if state.stored.is_some() && first.starts_with('x') {
+                    if let Some(Value::Stack(at)) = location {
+                        (
+                            state.saved_addresses.get(&at).cloned(),
+                            state.saved_addresses.get(&(at + 8)).cloned(),
+                        )
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+                state.assign(first, restored.0);
+                state.assign(second, restored.1);
             }
             if update.is_some() {
                 state.assign(base, updated);
@@ -593,6 +751,7 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
     let root = format!("{owner}::ReadMember(CReader&, int)");
     explore_member(
         &DispatchInput {
+            key_readers: &input.key_readers,
             functions: input.functions.iter().map(FunctionView::from).collect(),
             symbols: &input.symbols,
             read_only_data: &input.read_only_data,
@@ -609,6 +768,13 @@ pub(crate) fn explore_member(
     root: &str,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
     let initial = State {
+        stack: BTreeMap::new(),
+        copied_tokens: BTreeSet::new(),
+        targets: BTreeSet::new(),
+        emplaced: BTreeSet::new(),
+        stored: None,
+        saved_addresses: BTreeMap::new(),
+        unknown_stack_store: false,
         pc: 0,
         registers: BTreeMap::from([
             ("x0".into(), Value::Owner(0)),
@@ -677,6 +843,16 @@ pub(crate) fn explore_member(
             state.pc += 1;
             state.path.push(row.address);
             let args: Vec<_> = row.operands.split(',').collect();
+            if row.operation == "ret"
+                && matches!(row.operands.as_str(), "" | "x30")
+                && let Some((join, _, _)) = &state.stored
+            {
+                if let Some(case) = state.table_case {
+                    table_readers.push((leaves.len(), case));
+                }
+                leaves.push(state.finish(row.address, PathOutcome::Reader(join.clone())));
+                break;
+            }
             if matches!(row.operation.as_str(), "b" | "bl") {
                 let target = number(&row.operands).map(|a| a as u64);
                 if row.operation == "b"
@@ -685,8 +861,80 @@ pub(crate) fn explore_member(
                     state.pc = *index;
                     continue;
                 }
+                if state.stored.is_some() {
+                    let touches = (0..=8)
+                        .filter_map(|index| state.value(&format!("x{index}")))
+                        .any(|value| state.call_can_overwrite(&value));
+                    if touches || row.operation == "b" {
+                        let reason = if touches {
+                            "compound-reader-overwrite"
+                        } else {
+                            "compound-reader-return"
+                        };
+                        leaves.push(
+                            state.finish(
+                                row.address,
+                                PathOutcome::Gap(stop(reason, Obstacle::Call)),
+                            ),
+                        );
+                        break;
+                    }
+                    state.clobber_call();
+                    continue;
+                }
+                if let Some(target) = target {
+                    match compound_call(input.key_readers, target, &mut state) {
+                        CompoundCall::Continue => continue,
+                        CompoundCall::Stored {
+                            kind,
+                            destination,
+                            repeat,
+                        } => {
+                            let callee = names
+                                .get(&target)
+                                .copied()
+                                .flatten()
+                                .unwrap_or_default()
+                                .to_owned();
+                            let join = ReaderJoin::Stored {
+                                callee,
+                                kind,
+                                destination,
+                                repeat,
+                            };
+                            if row.operation == "b" {
+                                leaves.push(state.finish(row.address, PathOutcome::Reader(join)));
+                                break;
+                            }
+                            let size = input.key_readers.compound_sizes[if kind
+                                == crate::ReaderKind::Target
+                            {
+                                0
+                            } else {
+                                1
+                            }];
+                            if size <= 0 {
+                                leaves.push(state.finish(
+                                    row.address,
+                                    PathOutcome::Gap(stop(
+                                        "compound-reader-size",
+                                        Obstacle::Unsupported,
+                                    )),
+                                ));
+                                break;
+                            }
+                            state.stored = Some((join, destination, size));
+                            state.clobber_call();
+                            if kind == crate::ReaderKind::Target {
+                                state.assign("x0", Some(Value::Owner(destination)));
+                            }
+                            continue;
+                        }
+                        CompoundCall::Unclassified => {}
+                    }
+                }
                 let name = target.and_then(|a| names.get(&a).copied().flatten());
-                let outcome = call_outcome(
+                let mut outcome = call_outcome(
                     name,
                     &state,
                     rejects,
@@ -695,6 +943,33 @@ pub(crate) fn explore_member(
                     row.operation == "b",
                     input.member_delegates,
                 );
+                if target == input.key_readers.string_read
+                    && state.value("x0") == Some(Value::Reader(0))
+                    && let Some(destination) = emplaced_destination(input.key_readers, &state)
+                {
+                    outcome = PathOutcome::Reader(ReaderJoin::Stored {
+                        callee: name.unwrap_or_default().into(),
+                        kind: crate::ReaderKind::String,
+                        destination,
+                        repeat: crate::RepeatBehavior::Accumulate,
+                    });
+                }
+                if row.operation == "bl"
+                    && let PathOutcome::Reader(join @ ReaderJoin::Stored { destination, .. }) =
+                        &outcome
+                {
+                    let size = input.key_readers.compound_sizes[2];
+                    if size <= 0 {
+                        leaves.push(state.finish(
+                            row.address,
+                            PathOutcome::Gap(stop("compound-reader-size", Obstacle::Unsupported)),
+                        ));
+                        break;
+                    }
+                    state.stored = Some((join.clone(), *destination, size));
+                    state.clobber_call();
+                    continue;
+                }
                 if let (PathOutcome::Reader(_), Some(case)) = (&outcome, state.table_case) {
                     table_readers.push((leaves.len(), case));
                 }
@@ -831,6 +1106,29 @@ fn condition_branch(
         "cc" => "lo",
         condition => condition,
     };
+    if state.stored.is_some()
+        && state.flags.is_none()
+        && opposite(condition).is_some()
+        && let Some(&target) = target
+    {
+        let mut taken = state.clone();
+        taken.pc = target;
+        taken.conditions.push(Condition {
+            at: row.address,
+            value: None,
+            zero: false,
+        });
+        let mut other = state.clone();
+        other.conditions.push(Condition {
+            at: row.address,
+            value: None,
+            zero: true,
+        });
+        return Branching {
+            continued: vec![taken, other],
+            ..Branching::default()
+        };
+    }
     if let Some(Flags::Values { tested, pivots }) = &state.flags {
         return values_branch(
             condition,
@@ -1122,12 +1420,112 @@ fn reject_default_cases(
     }
 }
 
+enum CompoundCall {
+    Continue,
+    Stored {
+        kind: crate::ReaderKind,
+        destination: i64,
+        repeat: crate::RepeatBehavior,
+    },
+    Unclassified,
+}
+
+fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -> CompoundCall {
+    let receiver = state.value("x0");
+    let source = state.value("x1");
+    if bindings.token_copy.contains(&target)
+        && source == Some(Value::Reader(bindings.value_token))
+        && let Some(Value::Stack(at)) = receiver
+    {
+        state.copied_tokens.clear();
+        state.targets.clear();
+        state.stack.clear();
+        state.copied_tokens.insert(at);
+    } else if bindings.target_construct.contains(&target)
+        && let (Some(Value::Stack(at)), Some(Value::Stack(token))) = (&receiver, &source)
+        && state.copied_tokens.contains(token)
+    {
+        state.copied_tokens.clear();
+        state.targets.clear();
+        state.stack.clear();
+        state.targets.insert(*at);
+    } else if bindings.target_move == Some(target)
+        && let (Some(Value::Owner(destination)), Some(Value::Stack(at))) = (&receiver, &source)
+        && state.targets.contains(at)
+    {
+        return CompoundCall::Stored {
+            kind: crate::ReaderKind::Target,
+            destination: *destination,
+            repeat: crate::RepeatBehavior::Unknown,
+        };
+    } else if bindings.optional_string == Some(target)
+        && let (Some(Value::Owner(destination)), Some(Value::Stack(at))) = (&receiver, &source)
+        && state.stack.get(at)
+            == Some(&Value::Load(
+                Box::new(Value::Reader(bindings.value_token + bindings.token_text)),
+                8,
+            ))
+    {
+        return CompoundCall::Stored {
+            kind: crate::ReaderKind::String,
+            destination: *destination,
+            repeat: crate::RepeatBehavior::Unknown,
+        };
+    } else if bindings.string_emplace == Some(target)
+        && let Some(Value::Owner(at)) = receiver
+        && source
+            == Some(Value::Offset(
+                Box::new(Value::Load(
+                    Box::new(Value::Owner(at + bindings.array_count)),
+                    4,
+                )),
+                1,
+            ))
+    {
+        state.emplaced.insert(at);
+    } else {
+        return CompoundCall::Unclassified;
+    }
+    for register in 0..=18 {
+        state.registers.remove(&format!("x{register}"));
+    }
+    state.flags = None;
+    CompoundCall::Continue
+}
+
+fn emplaced_destination(bindings: &super::KeyReaders, state: &State) -> Option<i64> {
+    state.emplaced.iter().copied().find(|&at| {
+        state.value("x1")
+            == Some(Value::Offset(
+                Box::new(Value::SumProduct(
+                    Box::new(Value::Load(
+                        Box::new(Value::Owner(at + bindings.array_data)),
+                        8,
+                    )),
+                    Box::new(Value::Load(
+                        Box::new(Value::Owner(at + bindings.array_count)),
+                        4,
+                    )),
+                    bindings.string_stride,
+                )),
+                -bindings.string_stride,
+            ))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn register_widths_preserve_only_valid_provenance() {
         let mut state = State {
+            stack: BTreeMap::new(),
+            copied_tokens: BTreeSet::new(),
+            targets: BTreeSet::new(),
+            emplaced: BTreeSet::new(),
+            stored: None,
+            saved_addresses: BTreeMap::new(),
+            unknown_stack_store: false,
             pc: 0,
             registers: BTreeMap::new(),
             flags: None,

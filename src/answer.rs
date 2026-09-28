@@ -61,6 +61,12 @@ pub enum GapSubject {
         /// Field name.
         name: String,
     },
+    /// A child key below the top level of a command grammar.
+    KeyPath {
+        /// Key names from outermost to innermost; at least two entries.
+        #[serde(deserialize_with = "deserialize_key_path")]
+        path: Vec<String>,
+    },
     /// A named item of the question's answer.
     AnswerItem {
         /// Item name in this answer.
@@ -92,10 +98,24 @@ pub enum GapSubject {
     },
 }
 
+fn deserialize_key_path<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    let path = Vec::<String>::deserialize(deserializer)?;
+    if path.len() < 2 {
+        return Err(serde::de::Error::custom(
+            "a key path needs at least two names",
+        ));
+    }
+    Ok(path)
+}
+
 impl GapSubject {
-    /// Human-readable name of the subject.
+    /// Human-readable name of the subject; the innermost key for a key path.
+    /// Returns an empty string for a directly constructed empty key path.
     pub fn name(&self) -> &str {
         match self {
+            Self::KeyPath { path } => path.last().map_or("", String::as_str),
             Self::Registry { name }
             | Self::Field { name }
             | Self::AnswerItem { name }
@@ -108,6 +128,11 @@ impl GapSubject {
 
     pub(crate) fn registry(name: impl Into<String>) -> Self {
         Self::Registry { name: name.into() }
+    }
+
+    pub(crate) fn key_path(path: Vec<String>) -> Self {
+        assert!(path.len() >= 2, "key paths need at least two entries");
+        Self::KeyPath { path }
     }
 
     pub(crate) fn field(name: impl Into<String>) -> Self {
@@ -126,6 +151,31 @@ impl GapSubject {
 #[cfg(test)]
 mod gap_subject_tests {
     use super::*;
+
+    #[test]
+    fn empty_key_path_has_empty_name() {
+        assert_eq!(GapSubject::KeyPath { path: vec![] }.name(), "");
+    }
+
+    #[test]
+    fn nested_key_subject_round_trips() {
+        let subject = GapSubject::key_path(vec!["parent".into(), "child".into()]);
+        let json = serde_json::to_value(&subject).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"kind": "key_path", "path": ["parent", "child"]})
+        );
+        assert_eq!(serde_json::from_value::<GapSubject>(json).unwrap(), subject);
+        assert_eq!(subject.name(), "child");
+        for path in [vec![], vec!["parent"]] {
+            assert!(
+                serde_json::from_value::<GapSubject>(
+                    serde_json::json!({"kind": "key_path", "path": path})
+                )
+                .is_err()
+            );
+        }
+    }
 
     #[test]
     fn recorded_gap_requires_a_subject_kind() {

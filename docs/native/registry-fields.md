@@ -1,10 +1,49 @@
 # Registry fields
 
-`Native::registry_fields(registry)` (`registry-fields/v7`) gives root fields, reader and storage shapes,
+`Native::registry_fields(registry)` (`registry-fields/v8`) gives root fields, reader and storage shapes,
 loader alternatives, nested object fields and local stored-value selections. `Native::registries()` gives the registries. The module
 comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` describe the methods.
 This page holds the current sweep, the engine facts, the gaps and the prototype findings. The
 [discovery index](discovery.md) lists the other method pages.
+
+## Current M45 sweep
+
+The v8 sweep covers **164 registries: 11 complete, 153 partial, 0 failed**, with
+**1,564 root fields and 41 nested fields**. Root kinds are Block 409, Boolean 132,
+FixedPoint 88, Integer 93, Reference 28, String 245 and Unknown 569. Six root fields
+accumulate entries. The sweep takes about 200 seconds on the development host.
+
+The shared dispatch walker follows three compound shapes: a copied value token constructed
+as an event target and moved to an owner destination; a CString array emplace followed by
+a shared string reader at the new element; and an optional CString set from token text.
+They give `Target`, `String/Accumulate`, and `String`, respectively. A different token source,
+a stack move destination, or an element from an unknown call cannot establish the shape.
+`CVariableValue::Read` remains unknown.
+
+Three fields use the new array proof: `common/asteroid_belts.mesh`,
+`common/leader_classes.replaces_old_class`, and `common/starbase_buildings.equipped_component`.
+Each is String with Accumulate. The asteroid-belt answer is complete. No field name is added
+or removed. The four field parity inventories are unchanged by these shapes.
+
+The tracked sweep also includes reader-analysis results already present at the SDK-548
+chunk-4 base. A probe of that fixed base confirms these are independent of the new key readers:
+
+| Registry | Reader result retained in the sweep |
+| --- | --- |
+| ai_espionage/spynetworks | Additional unresolved-reader gap |
+| armies | `army_modifier` joins its concrete modifier reader |
+| buildings | Five limit/weight fields join their concrete readers |
+| country_types | `fleet_manager` and `ai` join concrete readers |
+| federation_laws | Additional unresolved-reader gap |
+| federation_perks | Additional unresolved-reader gap |
+| galactic_focuses | `weight` keeps Block but its concrete reader is unresolved |
+| resolutions | `ai_weight` and `modifier` keep Block but concrete readers are unresolved |
+| sector_types | Additional unresolved-reader gap |
+| specialist_subject_perks | Three modifier fields keep Block but concrete readers are unresolved; unresolved-reader gap retained |
+| gfx/projectiles/planet_destruction | `fade` keeps Block but its concrete reader is unresolved; unresolved-reader gap retained |
+
+All registry paths in the table except the last are under `common/`. Unresolved concrete
+readers do not remove established field names or broad Block kinds.
 
 ## SDK-541 sweep on M45-release
 

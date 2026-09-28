@@ -87,6 +87,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
         }
         "references.json" => references(native, expected),
         "command-grammars.json" => {
+            assert_sdk492_keys(native);
             let mut answers = BTreeMap::new();
             for subject in expected
                 .as_object()
@@ -336,6 +337,56 @@ fn dynamic_names(answer: &Answer<Vec<DynamicNamespace>>, expected: &Value) -> Va
         })
         .collect();
     json!({ "count": answer.value.len(), "gaps": gap_counts(answer), "namespaces": namespaces })
+}
+
+/// SDK-492's fixed-key vocabulary, independent of the completeness of value forms.
+pub fn assert_sdk492_keys(native: &Native) {
+    use pdx_native::{GrammarProperty, ReaderKind, RepeatBehavior};
+    for (name, expected) in [
+        (
+            "create_starbase",
+            vec![
+                ("size", ReaderKind::String),
+                ("effect", ReaderKind::Block),
+                ("owner", ReaderKind::Target),
+                ("design", ReaderKind::String),
+                ("module", ReaderKind::String),
+                ("building", ReaderKind::String),
+            ],
+        ),
+        (
+            "add_district",
+            vec![
+                ("district_type", ReaderKind::String),
+                ("ignore_cap", ReaderKind::Boolean),
+                ("type_conversion", ReaderKind::Boolean),
+            ],
+        ),
+    ] {
+        let answer = native
+            .command_grammar(DeclarationKind::Effect, name)
+            .unwrap();
+        let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) =
+            &answer.value.fixed_keys
+        else {
+            panic!("{name}: fixed keys unresolved");
+        };
+        assert_eq!(keys.len(), expected.len(), "{name}");
+        for (key, kind) in expected {
+            let field = keys.iter().find(|field| field.name == key).unwrap();
+            assert_eq!(field.reader.kind, kind, "{name}/{key}");
+            if ["module", "building"].contains(&key) {
+                assert_eq!(
+                    field.shape.repeat,
+                    RepeatBehavior::Accumulate,
+                    "{name}/{key}"
+                );
+            }
+        }
+        assert!(
+            answer.completeness == pdx_native::Completeness::Complete || !answer.gaps.is_empty()
+        );
+    }
 }
 
 #[cfg(test)]
