@@ -89,7 +89,8 @@ target field:
   reads the target getter was found; the search did not cover every indirect call through the
   slot.
 
-Which scope types an argument accepts belongs to the argument readers (SDK-548). Which scope a
+Which scope types an argument accepts is the `targets` property of `command_grammar`, with the
+stage that checks it; see [target arguments](command-grammar.md#target-arguments-and-their-checks). Which scope a
 child block runs in, including a block that keeps its parent's scope (`if`, `else`, `and`),
 belongs to SDK-549.
 

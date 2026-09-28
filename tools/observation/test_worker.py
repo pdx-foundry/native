@@ -52,6 +52,7 @@ raise AssertionError('timed out attach returned')
             record = protocol.decode('record', (Path(root) / 'raw-trace.jsonl').read_bytes())
             self.assertEqual(record['kind'], 'capability-unavailable')
             self.assertIn('debugger attach timed out', record['reason'])
+            self.assertIn('approve one debugger attach', record['reason'])
 
 
 class PauseTests(unittest.TestCase):

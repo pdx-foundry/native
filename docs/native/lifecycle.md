@@ -44,10 +44,15 @@ Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibil
   last record.
   A plain `lldb` attach to a freshly compiled program hangs the same way, which separates this
   from a Native fault. Approve one attach in a terminal of the same login session before a live
-  run. SDK-633 adds a non-interactive Security framework request for this right in supervisor
-  admission, before starting the game or worker. A refusal tells the developer to approve one
-  attach in the same login session and retry. The request extends rights without allowing a
-  dialog; it neither destroys cached rights nor changes the host's authorization policy.
+  run. The attach needs a program that is not an Apple system binary: macOS always refuses an
+  attach to `/bin/sleep`, whatever the approval. Compile a small looping program and attach to it.
+- **Pitfall: a saved credential is not attach permission.** Native does not check the
+  `system.privilege.taskport` right before it starts a game. A non-interactive
+  `AuthorizationCreate` request for that right tests only for a saved credential, which expires
+  (the right's timeout is 10 hours). With Developer mode on and the user in `_developer`, the
+  request returned `NO (-60007)` while a real `lldb` attach from the same shell succeeded with
+  no prompt. A check before the start refused games that would have attached. The bounded
+  attach below is the authority: its timeout reason tells the developer to approve one attach.
 - **Bounded attach and debugger cleanup.** A watchdog gives `target.Attach` 15 seconds. The
   attach stays on LLDB's script thread, which owns its API locks. On expiry the watchdog
   flushes `capability-unavailable` with the attach reason, then exits without waiting for LLDB
@@ -60,16 +65,12 @@ Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibil
   used. Pause ownership, hooks and answers are unchanged.
 - **Process inventory.** The one-second process inventory deadline expired one time after activation. Twenty later runs of the same command took 0.03 seconds each. The cause is not known; the deadline was not relaxed.
 
-SDK-633 checks on 2026-09-26: the non-interactive `security authorize
-system.privilege.taskport` returned `YES (0)` in the current approved login session. A real LLDB
-attach against a deliberately blocked stub reached its test deadline, recorded the
-attach failure, and left the stub for supervisor cleanup; cleanup removed it. This also checks
-that the installed LLDB releases Python's interpreter lock during attach. Tests cover the
-approval refusal message and Security error statuses. The unapproved state has not yet been
-observed with the new admission check.
+A real LLDB attach against a deliberately blocked stub reaches its deadline, records the attach
+failure, and leaves the stub for supervisor cleanup; cleanup removes it. This also checks that the
+installed LLDB releases Python's interpreter lock during attach.
 
-After the user logged out of macOS and back in, the non-interactive authorization check still
-returned `YES (0)`. Both `normal` and `fixture_normal` passed in 24 seconds each. A process
+After the user logged out of macOS and back in, both `normal` and `fixture_normal` passed in
+24 seconds each. A process
 inventory after the run contained no game, LLDB worker or `debugserver`. This verifies the
 approved path after a fresh login, not the refusal path. Logging out is not a demonstrated way
 to clear this approval on this host; its actual lifetime remains unestablished.

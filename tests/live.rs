@@ -181,6 +181,13 @@ enum Case {
         field: &'static str,
         samples: Vec<ValidationSample>,
     },
+    /// Validation samples of commands whose answers must be `Complete`. The samples come from
+    /// the grammar that the method established; a failed sample contradicts the grammar.
+    FixtureArgument {
+        field: &'static str,
+        commands: Vec<&'static str>,
+        samples: Vec<ValidationSample>,
+    },
     StartupTimeout,
     Cancel,
     DropWithoutClose,
@@ -203,15 +210,15 @@ enum Case {
 /// source-located diagnostic rejects it, or `None` when the engine accepts it.
 struct ValidationSample {
     name: String,
-    child: &'static str,
+    child: String,
     stage: Option<&'static str>,
 }
 
 impl ValidationSample {
-    fn new(name: impl Into<String>, child: &'static str, stage: Option<&'static str>) -> Self {
+    fn new(name: impl Into<String>, child: impl Into<String>, stage: Option<&'static str>) -> Self {
         Self {
             name: name.into(),
-            child,
+            child: child.into(),
             stage,
         }
     }
@@ -537,6 +544,7 @@ fn cases() -> Vec<(String, Case)> {
             },
         ));
     }
+    cases.extend(argument_cases());
     cases.push((
         "fixture_field_reads_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
@@ -591,6 +599,11 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureValidation { field, ref samples } => {
             fixture_validation(native, field, samples).await
         }
+        Case::FixtureArgument {
+            field,
+            ref commands,
+            ref samples,
+        } => fixture_argument(native, field, commands, samples).await,
         Case::Normal => normal(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
@@ -630,6 +643,145 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         } => fault(native, registry, other, control, expect).await,
         Case::WorkerLoss { registry, control } => worker_loss(native, registry, control).await,
     }
+}
+
+/// The SDK-548 fixture sample, `tests/population/m45-release/command-fixture-sample.json`.
+/// Accepted samples cover each form, value alternative and fixed key of a command. Rejected
+/// samples use only a rejection that the method established on every path. A rejected key gives
+/// a reader report that can upset the definitions after it, so it keeps its own session.
+fn argument_cases() -> Vec<(String, Case)> {
+    let parser_log = Some("engine-parser-log");
+    let unexpected = Some("reader-unexpected-report");
+    let mut cases = Vec::new();
+
+    let blocks = [
+        (
+            "potential",
+            "get_councilor_level",
+            "type = councilor_curator_archivist",
+        ),
+        (
+            "potential",
+            "is_ai_ship_role",
+            "ship_size = corvette role = explosive",
+        ),
+        (
+            "potential",
+            "has_completed_event_chain_counter",
+            "event_chain = nomad_star_journal_chain counter = star_journal_progress",
+        ),
+        (
+            "on_enabled",
+            "activate_saved_leader",
+            "key = native_fixture_leader add_to_owned = yes effect = { }",
+        ),
+        (
+            "on_enabled",
+            "store_country_backup_data",
+            "name = yes flag = yes government = yes room = yes ethics = yes",
+        ),
+        (
+            "on_enabled",
+            "leave_alliance",
+            "override_requirements = yes apply_opinion_penalty = no",
+        ),
+        (
+            "on_enabled",
+            "reset_event_chain_counter",
+            "event_chain = nomad_star_journal_chain counter = star_journal_progress",
+        ),
+        (
+            "on_enabled",
+            "create_ship_design",
+            "random_existing_design = corvette design = \"NAME_Sky_Dragon_Baby\"",
+        ),
+    ];
+    let booleans = [
+        "stop_crisis_sound",
+        "set_advisor_active",
+        "remove_from_galactic_community",
+        "set_galactic_defense_force",
+        "set_council_emergency_measures",
+        "clear_ai_starbase_shields_ratio",
+        "downgrade_all_buildings",
+        "open_shroud_tab",
+        "run_ai_strategic_war_data",
+        "unlock_council_selection",
+        "reset_policy_cooldowns",
+        "add_to_galactic_community_no_message",
+    ];
+
+    for field in ["potential", "on_enabled"] {
+        let mut commands = Vec::new();
+        let mut samples = Vec::new();
+        for &(_, command, keys) in blocks.iter().filter(|block| block.0 == field) {
+            commands.push(command);
+            samples.push(ValidationSample::new(
+                format!("{command}_keys"),
+                format!("{command} = {{ {keys} }}"),
+                None,
+            ));
+        }
+        if field == "on_enabled" {
+            for command in booleans {
+                commands.push(command);
+                samples.push(ValidationSample::new(
+                    format!("{command}_yes"),
+                    format!("{command} = yes"),
+                    None,
+                ));
+                samples.push(ValidationSample::new(
+                    format!("{command}_not_boolean"),
+                    format!("{command} = native_not_boolean"),
+                    parser_log,
+                ));
+            }
+        }
+        cases.push((
+            format!("fixture_argument_{field}"),
+            Case::FixtureArgument {
+                field,
+                commands,
+                samples,
+            },
+        ));
+    }
+    for (field, command, _) in blocks {
+        cases.push((
+            format!("fixture_argument_{command}_unknown_key"),
+            Case::FixtureArgument {
+                field,
+                commands: vec![command],
+                samples: vec![ValidationSample::new(
+                    "unknown_key",
+                    format!("{command} = {{ native_unknown_key = yes }}"),
+                    unexpected,
+                )],
+            },
+        ));
+    }
+    cases
+}
+
+/// Each command's grammar must be `Complete` before its samples can test it.
+async fn fixture_argument(
+    native: &Native,
+    field: &str,
+    commands: &[&str],
+    samples: &[ValidationSample],
+) -> Outcome {
+    let kind = if field == "potential" {
+        pdx_native::DeclarationKind::Trigger
+    } else {
+        pdx_native::DeclarationKind::Effect
+    };
+    for command in commands {
+        let answer = native.command_grammar(kind, command)?;
+        if answer.completeness != Completeness::Complete {
+            return Err(format!("{command} is not complete: {:?}", answer.gaps).into());
+        }
+    }
+    fixture_validation(native, field, samples).await
 }
 
 async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {

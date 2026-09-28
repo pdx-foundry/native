@@ -8,9 +8,6 @@ fn unavailable<T>() -> Result<T, SupervisorError> {
 pub(crate) fn available() -> Result<(), SupervisorError> {
     unavailable()
 }
-pub(crate) fn debugger_authorized() -> Result<(), SupervisorError> {
-    unavailable()
-}
 use crate::binding::ProcessIdentity;
 pub(crate) struct HostReservation;
 pub(crate) fn acquire_reservation() -> Result<HostReservation, SupervisorError> {
