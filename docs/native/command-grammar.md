@@ -798,9 +798,18 @@ resolves it through `GetFleet` during execution. Evidence is in
 `targets` is known only when forms, fixed keys and numeric keys are known, the reachable member
 tree is covered, and every target check is established. Unknown readers or unfinished members
 prevent even a known empty list and give `target-arguments`. Nested targets use their named key
-path; numeric-child targets belong to that child's grammar. Target probes stop at otherwise
-unclassified calls; no absence is inferred through an opaque helper. This also covers owner pointers saved in a stack frame. Scope-result loads and calls must
+path; numeric-child targets belong to that child's grammar. Only accepted value alternatives
+contribute targets. Unresolved alternatives keep forms partial and prevent a known target list.
+A bound getter or resolver at the exact start of another collected, disjoint target is unrelated
+to the current probe. Its scope result is tracked separately. Interior pointers, overlapping
+targets and other owner-derived addresses do not qualify. Target probes stop at otherwise
+unclassified calls; no absence is inferred through an opaque helper. This also covers owner
+pointers saved in a stack frame. Scope-result loads and calls must
 be classified too; resolving a target alone cannot hide an additional scope check.
+
+`would_join_war` has three target keys: `side`, `attacker` and `defender`. Each probe reaches
+its own getter; all three remain unresolved at an unclassified getter call. Separate target
+getters do not establish the input set of the currently probed argument.
 
 Reproduce the getter and stage facts:
 
@@ -808,6 +817,7 @@ Reproduce the getter and stage facts:
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventTarget::AccessTargetCountryWithErrorLogging(CEventScope&, CString const&, char const*) const'
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventScope::AccessTargetCountryWithErrorLogging(char const*, CString const&, char const*)'
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CEventScope::GetTargetCountry() const'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar would_join_war
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CAutoFollowFleetEffect::PostValidate() const'
 cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CAutoFollowFleetEffect::ExecuteActual(CEventScope&) const'
 ```
@@ -822,11 +832,11 @@ result for every input bit. Its exact per-bit table is retained in
 
 | Kind | Complete / partial / failed | Target lists known / partial / unresolved | Arguments with unresolved stage |
 | --- | --- | --- | ---: |
-| Effects | 256 / 808 / 10 | 259 / 185 / 630 | 217 |
-| Triggers | 120 / 974 / 2 | 123 / 368 / 605 | 376 |
+| Effects | 256 / 808 / 10 | 259 / 174 / 641 | 199 |
+| Triggers | 120 / 974 / 2 | 123 / 69 / 904 | 76 |
 
-Unresolved getter tables stop 50 effect arguments and 75 trigger arguments at execution.
-Other execution stops are 154/266 unclassified calls and 12/8 unresolved indirect calls
+Unresolved getter tables stop 49 effect arguments and 11 trigger arguments at execution.
+Other execution stops are 132/57 unclassified calls and 17/0 unresolved indirect calls
 (effects/triggers). No argument has an established public stage on this build. There are no arguments with more
 than one established stage, either reported at the earliest stage or rejected for differing
 sets. These limits do not weaken the authored controls: those establish execution, validation
@@ -835,13 +845,15 @@ and 11 triggers that cease to be complete retain their prior forms and child pro
 new target constraints are unresolved. Numeric children of `random_list` and
 `locked_random_list` have unresolved target lists with no identified target arguments.
 
-The SDK-568 slot comparison has these disagreements. Each union is unresolved, so a disagreement
-does not establish a different accepted set. Conversion routes can explain a difference between
+The SDK-568 slot comparison has these disagreements. Thirteen unions are unresolved. The other three
+(`is_background_planet`, `is_being_integrated_by`, `is_default_species`) are empty because no
+accepted target alternative was established; their target lists remain unresolved. Thus a
+disagreement does not establish a different accepted set. Conversion routes can explain a difference between
 a getter's result type and input scopes, but no such route is assumed here.
 
 | Kind | Command | Slot mask | Unfinished target check |
 | --- | --- | ---: | --- |
-| Effect | `steal_planet_output` | 12 | Indirect call and unclassified execution call |
+| Effect | `steal_planet_output` | 12 | Getter and execution indirect calls |
 | Effect | `transfer_galactic_defense_force_fleets` | 4 | Unclassified getter call |
 | Effect | `transfer_resource_stockpile` | 12 | Unclassified execution call |
 | Effect | `transfer_resources_to_empire` | 4 | Unclassified execution call |
@@ -853,7 +865,7 @@ a getter's result type and input scopes, but no such route is assumed here.
 | Trigger | `has_intel_report` | 4 | Unclassified execution call |
 | Trigger | `has_stale_intel` | 4 | Unclassified execution call |
 | Trigger | `intel` | 4 | Unclassified execution call |
-| Trigger | `is_background_planet` | 1099511627778 | Unfinished read/validation chain |
-| Trigger | `is_being_integrated_by` | 4 | Unfinished read/validation chain |
-| Trigger | `is_default_species` | 2048 | Unfinished read/validation chain |
+| Trigger | `is_background_planet` | 1099511627778 | No accepted target alternative; forms unresolved |
+| Trigger | `is_being_integrated_by` | 4 | No accepted target alternative; forms unresolved |
+| Trigger | `is_default_species` | 2048 | No accepted target alternative; forms unresolved |
 | Trigger | `is_offer_terms_actual` | 4 | Unclassified execution call |

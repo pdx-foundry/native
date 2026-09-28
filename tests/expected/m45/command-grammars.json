@@ -89,14 +89,6 @@
           "kind": "answer_item",
           "name": "always"
         }
-      },
-      {
-        "detail": "target-scope-check: target chain unfinished",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "always"
-        }
       }
     ],
     "source": {
@@ -118,15 +110,7 @@
         "kind": "Unknown",
         "family": "Unknown"
       },
-      "targets": {
-        "Partial": [
-          {
-            "argument": "Value",
-            "scopes": "Unresolved",
-            "stage": "Unresolved"
-          }
-        ]
-      }
+      "targets": "Unresolved"
     }
   },
   "trigger/has_country_flag": {

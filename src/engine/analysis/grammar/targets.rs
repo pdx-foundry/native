@@ -255,12 +255,14 @@ fn combine(checks: &[Check; 3]) -> Result<(u64, crate::TargetCheckStage), &'stat
 
 const CHECKED: u64 = 40;
 const RESOLVED: u64 = 41;
+const OTHER_RESOLVED: u64 = 42;
 
 fn execution(
     input: &GrammarInput,
     reader: crate::engine::analysis::declarations::CommandReader,
     state: &BTreeMap<u64, u8>,
     offset: u64,
+    targets: &BTreeSet<u64>,
 ) -> Check {
     use crate::engine::analysis::commands::{OBJECT_SPAN, stand_in_command};
     let Some(&function) = input
@@ -293,6 +295,32 @@ fn execution(
     let table = getter_table(input);
     let paths = machine.run_paths_joining(function, &mut |callee, machine| {
         let receiver = machine.register(0);
+        let other_target = receiver.is_some_and(|address| {
+            targets.iter().any(|&other| {
+                address == owner + other
+                    && (other + input.forms.target_size <= offset
+                        || offset + input.forms.target_size <= other)
+            })
+        });
+        let typed_getter =
+            callee.is_some_and(|at| input.command_bindings.target_getters.contains(&at));
+        let accessor =
+            callee.is_some_and(|at| input.command_bindings.scope_accessors.contains_key(&at));
+        if other_target && callee == Some(input.command_bindings.target_resolver) {
+            let destination = machine.known_register(8, "resolver destination")?;
+            if machine.labelled(destination) == Some(RESOLVED) {
+                return Err(Unresolved::new("overlapping resolved scopes"));
+            }
+            machine.label(destination, OTHER_RESOLVED);
+            return Ok(Call::Return(Some(machine.reserve(OBJECT_SPAN))));
+        }
+        if (other_target && typed_getter)
+            || (accessor
+                && receiver
+                    .is_some_and(|address| machine.labelled(address) == Some(OTHER_RESOLVED)))
+        {
+            return Ok(Call::Return(Some(machine.reserve(OBJECT_SPAN))));
+        }
         if callee == Some(input.command_bindings.target_resolver) && receiver == Some(target_start)
         {
             let destination = machine.known_register(8, "resolver destination")?;
@@ -390,7 +418,7 @@ pub fn analyze(
     let mut found = Vec::new();
     if let Some(forms) = &grammar.forms {
         for value in &forms.alternatives {
-            if value.value.kind == ReaderKind::Target {
+            if value.accepted && value.value.kind == ReaderKind::Target {
                 found.push((ArgumentPath::Value, value.value.destination, None));
             }
         }
@@ -398,7 +426,7 @@ pub fn analyze(
     if !grammar.value_only() {
         collect_keys(grammar, &[], Some(0), &mut found);
     }
-    let mut arguments = Vec::new();
+    let mut collected = Vec::new();
     for (path, mut offset, member) in found.iter().cloned() {
         if found
             .iter()
@@ -408,10 +436,7 @@ pub fn analyze(
         {
             offset = None;
         }
-        if arguments
-            .iter()
-            .any(|argument: &Argument| argument.path == path)
-        {
+        if collected.iter().any(|(prior, _, _)| prior == &path) {
             continue;
         }
         let offset = offset.filter(|offset| {
@@ -419,12 +444,20 @@ pub fn analyze(
                 .checked_add(input.forms.target_size)
                 .is_some_and(|end| end <= crate::engine::analysis::commands::OBJECT_SPAN)
         });
+        collected.push((path, offset, member));
+    }
+    let targets = collected
+        .iter()
+        .filter_map(|(_, offset, _)| *offset)
+        .collect();
+    let mut arguments = Vec::new();
+    for (path, offset, member) in collected {
         let checks = if let Some(offset) = offset {
             let earlier = super::forms::target_checks(input, grammar.reader, state, offset, member);
             [
                 earlier[0].clone(),
                 earlier[1].clone(),
-                execution(input, grammar.reader, state, offset),
+                execution(input, grammar.reader, state, offset, &targets),
             ]
         } else {
             [

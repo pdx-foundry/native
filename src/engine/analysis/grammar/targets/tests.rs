@@ -131,7 +131,13 @@ fn checks(input: &GrammarInput) -> [Check; 3] {
     [
         read,
         validate,
-        execution(input, reader(), &BTreeMap::new(), 0x40),
+        execution(
+            input,
+            reader(),
+            &BTreeMap::new(),
+            0x40,
+            &BTreeSet::from([0x40]),
+        ),
     ]
 }
 
@@ -377,7 +383,13 @@ fn execution_facts_require_only_influential_receiver_state() {
             }
         );
         assert_eq!(
-            execution(&input, reader(), &BTreeMap::from([(0x30, 1)]), 0x40),
+            execution(
+                &input,
+                reader(),
+                &BTreeMap::from([(0x30, 1)]),
+                0x40,
+                &BTreeSet::from([0x40])
+            ),
             Check::Established(4)
         );
     }
@@ -458,4 +470,149 @@ fn reader_helper_with_a_saved_owner_cannot_prove_target_absence() {
         checks(&input)[0],
         Check::Unresolved("target chain unfinished")
     );
+}
+
+fn two_getters(role: Arm64) -> GrammarInput {
+    let mut input = scenario(validation(), role);
+    let mut accessor = Arm64::at(0x9000);
+    arm64!(accessor; ldr x8, [x0, #8]; cmp x8, #8; b.ne >no;
+        ldr x0, [x0, #24]; ret; no:);
+    accessor.address(8, 0x20000);
+    arm64!(accessor; ldr x0, [x8]; ret);
+    let mut getter = Arm64::at(0x9100);
+    arm64!(getter; sub sp, sp, #64; mov x8, sp; bl extern 0x8200;
+        mov x0, sp; bl extern 0x9000; add sp, sp, #64; ret);
+    for body in [accessor, getter] {
+        put(&mut input, body);
+    }
+    input.targets.nulls.extend([
+        (0x9000, AccessorNullObject::Global(0x20000)),
+        (0x9100, AccessorNullObject::Global(0x20000)),
+    ]);
+    input
+        .command_bindings
+        .scope_accessors
+        .insert(0x9000, AccessorNullObject::Global(0x20000));
+    input.command_bindings.target_getters.insert(0x9100);
+    input
+}
+
+#[test]
+fn distinct_target_getters_establish_each_arguments_own_set() {
+    let mut role = Arm64::at(0x6400);
+    arm64!(role; mov x19, x0; add x0, x19, #0x40; bl extern 0x8100;
+        add x0, x19, #0x60; bl extern 0x9100; ret);
+    let input = two_getters(role);
+    for (offset, mask) in [(0x40, 4), (0x60, 8)] {
+        let check = execution(
+            &input,
+            reader(),
+            &BTreeMap::new(),
+            offset,
+            &BTreeSet::from([0x40, 0x60]),
+        );
+        assert_eq!(
+            combine(&[Check::Absent, Check::Absent, check]),
+            Ok((mask, crate::TargetCheckStage::Execution))
+        );
+    }
+}
+
+#[test]
+fn a_second_getter_on_the_current_target_is_still_a_constraint() {
+    let mut role = Arm64::at(0x6400);
+    arm64!(role; mov x19, x0; add x0, x19, #0x40; bl extern 0x8100;
+        add x0, x19, #0x40; bl extern 0x9100; ret);
+    let input = two_getters(role);
+    assert_eq!(
+        execution(
+            &input,
+            reader(),
+            &BTreeMap::new(),
+            0x40,
+            &BTreeSet::from([0x40, 0x60])
+        ),
+        Check::Unresolved("different type sets")
+    );
+}
+
+#[test]
+fn only_exact_disjoint_collected_targets_are_unrelated() {
+    for (address, collected, callee) in [
+        (0, 0x60, 0x9100),
+        (0x61, 0x60, 0x9100),
+        (0x48, 0x48, 0x9100),
+        (0x60, 0x60, 0x8500),
+    ] {
+        let mut role = Arm64::at(0x6400);
+        arm64!(role; mov x19, x0; add x0, x19, #0x40; bl extern 0x8100);
+        arm64!(role; add x0, x19, #address);
+        role.call(callee);
+        arm64!(role; ret);
+        let input = two_getters(role);
+        assert_eq!(
+            execution(
+                &input,
+                reader(),
+                &BTreeMap::new(),
+                0x40,
+                &BTreeSet::from([0x40, collected])
+            ),
+            Check::Unresolved("unclassified execution call")
+        );
+    }
+}
+
+#[test]
+fn another_resolvers_accessors_do_not_check_this_target() {
+    let mut role = Arm64::at(0x6400);
+    arm64!(role; mov x19, x0; sub sp, sp, #64;
+        add x0, x19, #0x60; mov x8, sp; bl extern 0x8200;
+        mov x0, sp; bl extern 0x9000;
+        add x0, x19, #0x40; bl extern 0x8100; add sp, sp, #64; ret);
+    let input = two_getters(role);
+    assert_eq!(
+        execution(
+            &input,
+            reader(),
+            &BTreeMap::new(),
+            0x40,
+            &BTreeSet::from([0x40, 0x60])
+        ),
+        Check::Established(4)
+    );
+}
+
+#[test]
+fn rejected_and_unresolved_value_targets_are_not_collected() {
+    use crate::GrammarProperty;
+    for diagnosed in [true, false] {
+        let mut validation = Arm64::at(0x6300);
+        if diagnosed {
+            arm64!(validation; bl extern 0x8400);
+        }
+        arm64!(validation; mov w0, #0; ret);
+        let input = scenario(validation, role());
+        let result = super::super::analyze(&input, 0x10000).unwrap();
+        assert!(result.targets.is_empty());
+        let answer = crate::session::grammar::normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("authored".into()),
+            &Default::default(),
+        );
+        if diagnosed {
+            assert_eq!(answer.value.forms, GrammarProperty::Known(vec![]));
+            assert_eq!(answer.value.targets, GrammarProperty::Known(vec![]));
+        } else {
+            assert!(matches!(answer.value.forms, GrammarProperty::Partial(_)));
+            assert!(!matches!(answer.value.targets, GrammarProperty::Known(_)));
+            assert!(
+                answer
+                    .gaps
+                    .iter()
+                    .any(|gap| gap.detail == "target-arguments")
+            );
+        }
+    }
 }
