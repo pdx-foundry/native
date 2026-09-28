@@ -815,6 +815,10 @@ class InlineFixtureObserver(FixtureObserver):
             for selector in selectors:
                 self.root_unavailable[selector] = 'Nested parent source or reader does not match the file reader'
             return False
+        if self.control == protocol.CONTROL['worker_loss']:
+            emit('worker-loss-ready')
+            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+            return True
         self.invocations += 1
         if self.invocations > 4096:
             raise RuntimeError('nested fixture invocation bound exceeded')

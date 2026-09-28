@@ -573,3 +573,20 @@ class NestedFixtureTests(unittest.TestCase):
         self.assertFalse(worker.decide_pause(state).stop)
         state.fixture_pending = False
         self.assertTrue(worker.decide_pause(state).stop)
+
+    def test_worker_loss_waits_for_a_joined_parent_in_the_selected_file(self):
+        self.observer.control = protocol.CONTROL['worker_loss']
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)), patch.object(worker, 'emit') as emit:
+            marker = Path(root) / 'worker-loss-ready'
+            self.registers['x0'] = 999
+            self.assertFalse(self.observer.callback(self.frame, protocol.HOOK['fixture_member']))
+            self.assertFalse(marker.exists())
+            self.registers['x0'] = 1000
+            self.observer.location.return_value = ('common/other/source.txt', 2)
+            self.assertFalse(self.observer.callback(self.frame, protocol.HOOK['fixture_member']))
+            self.assertFalse(marker.exists())
+            self.observer.location.return_value = ('common/example/nested.txt', 2)
+            self.assertTrue(self.observer.callback(self.frame, protocol.HOOK['fixture_member']))
+            self.assertTrue(marker.exists())
+            emit.assert_called_once_with('worker-loss-ready')
+            self.observer.return_hook.assert_not_called()

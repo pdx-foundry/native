@@ -182,7 +182,7 @@ enum Case {
         fixed: &'static str,
         fractional_final: i64,
     },
-    FixtureNestedNumeric,
+    FixtureNestedNumeric(Fault),
     /// Validation samples of one block field, each in its own definition of one fixture file.
     FixtureValidation {
         field: &'static str,
@@ -387,7 +387,11 @@ fn cases() -> Vec<(String, Case)> {
     ));
     cases.push((
         "fixture_numeric_nested_projects".into(),
-        Case::FixtureNestedNumeric,
+        Case::FixtureNestedNumeric(Fault::Normal),
+    ));
+    cases.push((
+        "fixture_numeric_nested_worker_loss".into(),
+        Case::FixtureNestedNumeric(Fault::WorkerLoss),
     ));
     let parser_log = Some("engine-parser-log");
     let validation_log = Some("engine-validation-log");
@@ -631,7 +635,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             fixed,
             fractional_final,
         } => fixture_numeric(registry, integer, fixed, fractional_final).await,
-        Case::FixtureNestedNumeric => fixture_nested_numeric().await,
+        Case::FixtureNestedNumeric(control) => fixture_nested_numeric(control).await,
         Case::FixtureValidation { field, ref samples } => {
             fixture_validation(native, field, samples).await
         }
@@ -2922,7 +2926,7 @@ fn child_processes() -> Vec<u32> {
         .collect()
 }
 
-async fn fixture_nested_numeric() -> Outcome {
+async fn fixture_nested_numeric(control: Fault) -> Outcome {
     use pdx_native::{
         FixtureFieldQuestion, FixtureParsing, FixtureRequest, FixtureStorage, FixtureValue,
         StoredFieldOccurrence,
@@ -2972,9 +2976,25 @@ async fn fixture_nested_numeric() -> Outcome {
     let recorded = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recorded.path());
-    let mut game = native
-        .start_game(options().fixture(request.clone()))
-        .await?;
+    let mut prepared = options().registries([TRADITIONS]).fixture(request.clone());
+    if control != Fault::Normal {
+        prepared = prepared.fault(ObservationTarget::Fixture, control);
+    }
+    let started = native.start_game(prepared).await;
+    if control == Fault::WorkerLoss {
+        return match started {
+            Err(Error::Startup {
+                disposal: Disposal::Confirmed,
+                reason,
+            }) if reason.contains("WorkerLost") => Ok(()),
+            Ok(mut game) => {
+                let _ = game.close().await;
+                Err("nested fixture worker loss unexpectedly started a session".into())
+            }
+            Err(error) => Err(format!("nested fixture worker loss: {error:?}").into()),
+        };
+    }
+    let mut game = started?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
         if answer.completeness != Completeness::Complete || !answer.gaps.is_empty() {

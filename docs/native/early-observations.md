@@ -272,4 +272,6 @@ proven direct destination or decoder. The failure shapes and per-reader counts i
 table are unchanged. The new inline nested fixture is outside that inventory and passed its
 separate binding and live checks. The report is `.local/sdk-648/numeric-population.txt`; the
 complete template live answer is `.local/sdk-648/template-live.txt`. The full default Rust suite,
-Clippy, documentation checks, 51 Python worker/codec tests, and all three numeric live cases pass.
+Clippy, documentation checks, 52 Python worker/codec tests, and all three numeric live cases pass.
+The nested worker-loss live control also passes with confirmed process disposal. Both nested
+cases explicitly select the traditions registry while the inline fixture loads independently.
