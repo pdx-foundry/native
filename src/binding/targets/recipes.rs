@@ -39,6 +39,7 @@ pub(in crate::binding) struct PersistentRecipe {
 
 /// Layout facts that the declaration methods need on this exact build.
 pub(in crate::binding) struct DeclarationRecipe {
+    pub inline_fixtures: &'static [InlineFixtureRecipe],
     /// Virtual slots used by the two command families.
     pub create_slot: u64,
     /// Local object pointer of a scope reference.
@@ -99,6 +100,7 @@ pub(super) const M45_RELEASE: Recipe = Recipe {
 };
 
 const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
+    inline_fixtures: M45_INLINE_FIXTURES,
     scope_object_offset: 0x1c,
     create_slot: 0x10,
     trigger_scope_slot: 0x78,
@@ -190,3 +192,24 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
 
 const M45_VALUE_TOKEN: u64 = 0x278;
 const M45_TOKEN_TEXT: u64 = 0x10;
+
+/// An initial loader with inline file and definition reads, verified on this exact build.
+pub(in crate::binding) struct InlineFixtureRecipe {
+    pub directory: &'static str,
+    pub owner: &'static str,
+    pub key_field: &'static str,
+    pub loader: &'static str,
+    pub reader_call: u64,
+    pub root_call: u64,
+    pub file_end: u64,
+}
+
+pub(in crate::binding) const M45_INLINE_FIXTURES: &[InlineFixtureRecipe] = &[InlineFixtureRecipe {
+    directory: "common/special_projects",
+    owner: "CSpecialProjectType",
+    key_field: "key",
+    loader: "CSpecialProjectDatabase::Init()",
+    reader_call: 0x160,
+    root_call: 0x1d0,
+    file_end: 0xa8,
+}];

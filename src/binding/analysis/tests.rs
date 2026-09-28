@@ -992,3 +992,40 @@ fn numeric_fixture_storage_population() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let analysis = native.bound().analysis.as_ref().unwrap();
+    let request = crate::FixtureRequest::field_outcomes(
+        "common/special_projects/native.txt",
+        "special_project = { key = test }",
+        vec![
+            crate::FixtureFieldQuestion::new("common/special_projects", "test", "fleet_power")
+                .with_parent_field("requirements"),
+        ],
+    );
+    let base =
+        super::super::groups::fixture(&[super::super::targets::BindingGroupId::M45CategoryFixture])
+            .unwrap()
+            .outcome_registries
+            .remove(0);
+    let (binding, questions) = analysis.inline_fixture(&request, &base).unwrap().unwrap();
+    assert_eq!(binding.inline.unwrap().key_storage.offset, 8);
+    assert_eq!(binding.load_entry, 0x100b9cf30);
+    assert_eq!(binding.reader_entry, 0x100b9cfa0);
+    assert_eq!(binding.reader_return, 0x100b9ce78);
+    let question = &questions[0];
+    assert_eq!(question.storage_unavailable, None);
+    assert_eq!(question.token, Some(18424));
+    let nested = question.nested.as_ref().unwrap();
+    assert_eq!(nested.owner_offset, 0x5a0);
+    assert_eq!(nested.member_entry, 0x100b9558c);
+    let storage = question.storage.unwrap();
+    assert_eq!(storage.offset, 0x5d8);
+    assert_eq!(
+        storage.decoder,
+        crate::protocol::observation::FixtureStorageDecoder::FixedPoint { scale: 32768 }
+    );
+}

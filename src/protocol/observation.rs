@@ -235,6 +235,24 @@ pub(crate) struct FixtureOutcomeRegistryBinding {
     pub malformed_entry: u64,
     pub unexpected_entry: u64,
     pub fields: Vec<FixtureOutcomeFieldBinding>,
+    pub inline: Option<FixtureInlineLoader>,
+}
+
+/// File and object boundaries within one exact-build inline loader.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureInlineLoader {
+    pub root_return: u64,
+    pub key_storage: FixtureStorageBinding,
+}
+
+/// Proven embedded receiver and the member routine installed by its constructor.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FixtureNestedField {
+    pub parent_token: u64,
+    pub owner_offset: u64,
+    pub member_entry: u64,
 }
 
 /// A decoder whose representation is established by the selected build binding.
@@ -291,6 +309,8 @@ pub(crate) struct FixtureQuestionSetup {
     pub index: u64,
     pub definition: String,
     pub field: String,
+    pub nested: Option<FixtureNestedField>,
+    pub parent_field: Option<String>,
     pub parsing: bool,
     pub diagnostics: bool,
     pub runtime: bool,

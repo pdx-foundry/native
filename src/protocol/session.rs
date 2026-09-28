@@ -102,16 +102,8 @@ impl SessionRequest {
                 "Expected unique modifier family registries".into(),
             ));
         }
-        if let Some(fixture) = &self.fixture
-            && !self
-                .registries
-                .iter()
-                .any(|name| name == fixture.registry())
-        {
-            return Err(SupervisorError(
-                "The fixture registry must be selected for observation".into(),
-            ));
-        }
+        // Fixture directories can have inline loaders outside the template registry inventory.
+        // The supervisor binds their loader and owner against the opened executable.
         if let Some(fault) = &self.fault {
             let valid = fault.control != ObservationControl::Normal
                 && match &fault.target {
@@ -241,12 +233,6 @@ mod tests {
             idle.idle_seconds = seconds;
             assert!(idle.validate().is_err());
         }
-        let mut fixture_outside_selection = SessionRequest::test();
-        fixture_outside_selection.fixture = Some(crate::FixtureRequest::new(
-            "common/tradition_categories/atlas.txt",
-            "atlas = {}",
-        ));
-        assert!(fixture_outside_selection.validate().is_err());
         for names in [
             vec!["common/traditions", "common/traditions"],
             vec!["common/../traditions"],
@@ -256,6 +242,23 @@ mod tests {
             invalid.registries = names.into_iter().map(String::from).collect();
             assert!(invalid.validate().is_err());
         }
+    }
+
+    #[test]
+    fn fixture_directory_binding_is_separate_from_registry_selection() {
+        let mut request = SessionRequest::test();
+        request.fixture =
+            Some(crate::FixtureRequest::field_outcomes(
+                "common/special_projects/sample.txt",
+                "special_project = { key = sample requirements = { fleet_power = 1 } }",
+                [crate::FixtureFieldQuestion::new(
+                    "common/special_projects",
+                    "sample",
+                    "fleet_power",
+                )
+                .with_parent_field("requirements")],
+            ));
+        assert!(request.validate().is_ok());
     }
 
     #[test]

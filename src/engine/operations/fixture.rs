@@ -84,6 +84,8 @@ pub(crate) enum FixtureEvent {
         definition: Option<String>,
         field: Option<String>,
         occurrence: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_field: Option<String>,
     },
     FieldTerminal {
         question: u64,
@@ -246,6 +248,7 @@ struct RawDiagnostic {
     definition: Option<String>,
     field: Option<String>,
     occurrence: Option<u64>,
+    parent_field: Option<String>,
 }
 
 /// How the definition, field and occurrence of a parser diagnostic join a field question.
@@ -833,6 +836,7 @@ impl<'a> Window<'a> {
             definition,
             field,
             occurrence,
+            parent_field,
         } = event
         else {
             unreachable!("diagnostic handler received another event")
@@ -868,6 +872,7 @@ impl<'a> Window<'a> {
             definition: definition.clone(),
             field: field.clone(),
             occurrence: *occurrence,
+            parent_field: parent_field.clone(),
         });
     }
 
@@ -1043,6 +1048,7 @@ impl<'a> Window<'a> {
             .find(|(index, question)| {
                 question.definition == *definition
                     && question.field == *field
+                    && question.parent_field == raw.parent_field
                     && (self
                         .parse_occurrences
                         .get(&(*index as u64))
@@ -1183,6 +1189,7 @@ impl<'a> Window<'a> {
         let question = &self.request.field_questions[index as usize];
         raw.definition = Some(question.definition.clone());
         raw.field = Some(question.field.clone());
+        raw.parent_field = question.parent_field.clone();
         raw.occurrence = Some(occurrence);
     }
 
@@ -1342,7 +1349,7 @@ impl<'a> Window<'a> {
             },
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v3", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v4", Basis::LiveObservation),
         }
     }
 }
@@ -2731,6 +2738,39 @@ mod tests {
             DiagnosticCoverage::Complete { .. }
         ));
     }
+    #[test]
+    fn nested_diagnostics_require_the_matching_parent_selector() {
+        let mut request = field_request(false);
+        request.field_questions[0].parent_field = Some("requirements".into());
+        let run = |events| {
+            reduce(
+                &request,
+                &category_fields(),
+                &records(events),
+                &owner(),
+                BuildId("b".into()),
+            )
+            .unwrap()
+        };
+        let mut events = field_events();
+        for row in &mut events {
+            if row["event"]["kind"] == "diagnostic" {
+                row["event"]["parent_field"] = json!("requirements");
+            }
+        }
+        let answer = run(events.clone());
+        assert_eq!(answer.completeness, Completeness::Complete);
+        assert_eq!(answer.value.field_outcomes[0].diagnostics, vec![0]);
+        for row in &mut events {
+            if row["event"]["kind"] == "diagnostic" {
+                row["event"]["parent_field"] = json!("other");
+            }
+        }
+        let answer = run(events);
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(answer.value.field_outcomes[0].diagnostics.is_empty());
+    }
+
     #[test]
     fn numeric_storage_keeps_exact_values_and_rejects_wrong_types_and_scales() {
         for (kind, decoder, first, last) in [

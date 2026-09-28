@@ -13,6 +13,7 @@ use crate::engine::analysis::families::DatabaseLayout;
 use crate::engine::analysis::references::{self, ReferenceFacts};
 use crate::engine::analysis::{declarations::DeclarationResult, grammar::GrammarInput};
 use crate::{AnalysisError, UnavailableReason};
+mod fixtures;
 
 pub(crate) struct BoundAnalysis {
     declarations: Option<&'static super::targets::DeclarationRecipe>,
@@ -542,7 +543,7 @@ fn fixture_storage_binding(
     paths: &[crate::engine::analysis::fields::TokenPath],
 ) -> Option<crate::protocol::observation::FixtureStorageBinding> {
     use crate::engine::analysis::fields::{ReaderJoin, Value};
-    use crate::protocol::observation::{FixtureStorageBinding, FixtureStorageDecoder};
+    use crate::protocol::observation::FixtureStorageBinding;
 
     let [
         ReaderJoin::Joined {
@@ -567,7 +568,16 @@ fn fixture_storage_binding(
     };
     // These representations were checked in the exact M45-release reader and token bodies.
     // This binding is used only after the installation's catalogue identity is verified.
-    let decoder = match callee.as_str() {
+    let decoder = fixture_decoder(callee)?;
+    Some(FixtureStorageBinding {
+        offset: u64::try_from(*offset).ok()?,
+        decoder,
+    })
+}
+
+fn fixture_decoder(callee: &str) -> Option<crate::protocol::observation::FixtureStorageDecoder> {
+    use crate::protocol::observation::FixtureStorageDecoder;
+    Some(match callee {
         "CReader::Read(CString&, bool)" => FixtureStorageDecoder::String,
         "CReader::Read(int&)" => FixtureStorageDecoder::Integer,
         "CReader::Read(CFixedPoint&)" => FixtureStorageDecoder::FixedPoint { scale: 100_000 },
@@ -575,10 +585,6 @@ fn fixture_storage_binding(
             FixtureStorageDecoder::FixedPoint { scale: 32_768 }
         }
         _ => return None,
-    };
-    Some(FixtureStorageBinding {
-        offset: u64::try_from(*offset).ok()?,
-        decoder,
     })
 }
 
