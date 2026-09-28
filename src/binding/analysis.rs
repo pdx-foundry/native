@@ -224,7 +224,7 @@ impl VerifiedAnalysis<'_> {
         let declarations = self.declaration_input(kind, recipe)?;
         let inventory = crate::engine::analysis::declarations::analyze(&declarations)
             .map_err(AnalysisError::Input)?;
-        let input = binary::grammar::read(
+        let mut input = binary::grammar::read(
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.strings,
@@ -233,6 +233,21 @@ impl VerifiedAnalysis<'_> {
             &inventory,
             recipe,
             kind,
+        )?;
+        let reference_input = binary::references::read(
+            &binary::references::Image {
+                bytes: &self.executable,
+                symbols: &self.catalog.symbols,
+                strings: &self.catalog.strings,
+                pointers: &self.catalog.pointers,
+                imports: &self.catalog.imports,
+            },
+            &self.catalog.candidates,
+        )?;
+        input.forms.initializers = binary::grammar::initializers(
+            &reference_input,
+            &self.catalog.symbols,
+            &mut input.forms.qualified_references,
         )?;
         Ok((input, inventory))
     }

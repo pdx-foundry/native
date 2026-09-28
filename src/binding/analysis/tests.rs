@@ -558,6 +558,11 @@ fn m45_command_grammar_foundations_resolve_and_reuse_inputs() {
     {
         let cached = analysis.grammar_input(kind).unwrap();
         assert!(std::ptr::eq(cached, analysis.grammar_input(kind).unwrap()));
+        assert_eq!(cached.0.forms.token_text_offset, 0x10);
+        assert_eq!(cached.0.forms.target_size, 0x190);
+        assert!(!cached.0.forms.strings_from_text.is_empty());
+        assert!(!cached.0.forms.string_copies.is_empty());
+        assert!(!cached.0.forms.qualified_references.is_empty());
         let bindings = &cached.0.command_bindings;
         assert_eq!(bindings.reader_value_token_offset, 0x278);
         assert_eq!(bindings.assign_slot, assign);

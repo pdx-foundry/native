@@ -1,5 +1,5 @@
 //! Structured facts about a registered command's block reader.
-use crate::{BlockFamily, Field, Reader};
+use crate::{BlockFamily, Field, FieldReference, Reader};
 use serde::{Deserialize, Serialize};
 
 /// An extracted property, with missing evidence kept distinct from an empty result.
@@ -19,6 +19,9 @@ pub enum GrammarProperty<T> {
 pub struct CommandGrammar {
     /// Concrete shared parser identity, including its member reader.
     pub reader: Reader,
+    /// Each way to write the command's value. `Known` lists every accepted form.
+    #[serde(default)]
+    pub forms: GrammarProperty<Vec<CommandForm>>,
     /// Command families that the block can dispatch to.
     pub child_families: GrammarProperty<Vec<BlockFamily>>,
     /// Named child keys and their conditional read alternatives.
@@ -27,6 +30,25 @@ pub struct CommandGrammar {
     pub numeric_keys: GrammarProperty<Option<Box<CommandGrammar>>>,
     /// Established reader selections that depend on preceding children.
     pub ordering: GrammarProperty<Vec<ChildOrderRule>>,
+}
+
+/// An accepted value alternative or a block whose children have their own properties.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum CommandForm {
+    /// `command = value`, with one entry for each accepted value alternative.
+    Value(CommandValue),
+    /// `command = { … }`. The child properties describe the block.
+    Block,
+}
+
+/// The reader and reference lookup of an accepted command value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandValue {
+    /// Shared reader identity and the broad kind of its value.
+    pub reader: Reader,
+    /// Lookup performed for a reference value; acceptance assumes a found key.
+    pub reference: FieldReference,
 }
 
 /// A reader selection that depends on the sequence of already parsed children.

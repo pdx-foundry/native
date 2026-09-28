@@ -233,6 +233,26 @@ struct Method<'a> {
     input: &'a ReferenceInput,
 }
 
+/// The null-object global of an already-qualified deferred single-item lookup.
+pub(crate) fn deferred_null(input: &ReferenceInput, callee: &str) -> Option<String> {
+    let method = Method { input };
+    let reader = reader(callee)?;
+    method.deferred(callee, reader.database).ok()?;
+    let registration = DEFERRED.matches(&method.lines(callee)?)?;
+    let operator = lambda_operator(&registration["lambda"])?;
+    let lambda = method.lines(&operator)?;
+    if let Some(bindings) = LAMBDA_MAP.matches(&lambda) {
+        return Some(bindings["null"].clone());
+    }
+    if let Some(bindings) = LAMBDA_FORWARD.matches(&lambda) {
+        let scan = FORWARDED_SCAN.matches(&method.lines(&bindings["forwarded"])?)?;
+        return Some(scan["null"].clone());
+    }
+    let bindings = LAMBDA_GETTER.matches(&lambda)?;
+    let scan = GETTER_SCAN.matches(&method.lines(&bindings["getter"])?)?;
+    Some(scan["null"].clone())
+}
+
 impl Method<'_> {
     fn lookup(&self, callee: &str, reader: ReferenceReader<'_>) -> Result<Lookup, Unresolved> {
         match reader.form {

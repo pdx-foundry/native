@@ -12,6 +12,7 @@ use super::{
 };
 use crate::BlockFamily;
 
+pub mod forms;
 mod numeric;
 mod ordering;
 
@@ -24,7 +25,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v5";
+pub const METHOD: &str = "command-grammar/v6";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -79,6 +80,7 @@ pub enum AccessorNullObject {
 
 /// Inputs collected from one verified executable buffer.
 pub struct GrammarInput {
+    pub forms: forms::Input,
     pub declarations: DeclarationInput,
     /// Functions and layout for the subsequent forms and target analyses.
     #[allow(dead_code)] // Used by the subsequent SDK-548 forms and target stages.
@@ -101,6 +103,10 @@ pub enum OrderOutcome {
 
 /// The child grammar of one command reader, as far as the method follows it.
 pub struct GrammarResult {
+    /// Read forms and the whole-path acceptance of each value alternative.
+    pub forms: Option<std::sync::Arc<forms::Result>>,
+    /// Cache key computed by this command before any result is shared.
+    pub forms_key: Option<forms::CacheKey>,
     /// The command reader whose grammar this is.
     pub reader: CommandReader,
     /// The symbol of the reader's virtual `Read`.
@@ -140,8 +146,13 @@ pub struct ChildFields {
 
 /// Follow only member delegates that receive the original token, reader and owner.
 pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unresolved> {
-    let reader = declarations::command_reader(&input.declarations, factory)?;
-    analyze_reader(input, reader, 0)
+    let state = declarations::factory_state(&input.declarations, factory)?;
+    let reader = declarations::reader_at_vtable(&input.declarations, state.vtable)?;
+    let mut result = analyze_reader(input, reader, 0)?;
+    let (forms, key) = forms::analyze(input, reader, &state.bytes);
+    result.forms = Some(forms);
+    result.forms_key = Some(key);
+    Ok(result)
 }
 
 /// Analyze an already joined concrete reader. Start outer analysis at depth zero;
@@ -308,6 +319,8 @@ pub(crate) fn analyze_reader(
     let (reader_kind, reader_family) = super::readers::entry(&reader_name);
     super::stop::sort_and_dedup(&mut stops);
     Ok(GrammarResult {
+        forms: None,
+        forms_key: None,
         reader,
         delegates,
         reader_kind,
@@ -401,7 +414,7 @@ mod tests {
         body
     }
 
-    fn input(root: Arm64, delegate: Arm64) -> GrammarInput {
+    pub(super) fn input(root: Arm64, delegate: Arm64) -> GrammarInput {
         let mut create = Arm64::at(CREATE);
         arm64!(create; mov w0, #128; bl extern NEW as usize; mov x19, x0);
         create.address(8, VTABLE);
@@ -476,6 +489,7 @@ mod tests {
             },
         };
         GrammarInput {
+            forms: Default::default(),
             command_bindings: CommandBindings::default(),
             child_layout: ChildLayout {
                 data: 0x10,

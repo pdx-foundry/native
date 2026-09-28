@@ -1108,3 +1108,65 @@ fn every_tracked_candidate_matches_the_reviewed_tree() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn command_forms_keep_m45_acceptance_and_named_stage_gaps() {
+    use pdx_native::{CommandForm, GrammarProperty, ReaderKind};
+    let native = native();
+    let owner = native
+        .command_grammar(DeclarationKind::Effect, "set_owner")
+        .unwrap();
+    let GrammarProperty::Known(forms) = &owner.value.forms else {
+        panic!("{owner:?}")
+    };
+    assert!(
+        matches!(forms.as_slice(), [CommandForm::Value(value)] if value.reader.kind == ReaderKind::Target)
+    );
+    assert_eq!(owner.value.fixed_keys, GrammarProperty::Known(vec![]));
+    for (kind, name, gap) in [
+        (
+            DeclarationKind::Trigger,
+            "always",
+            "value-acceptance: Assign: false without diagnostic",
+        ),
+        (
+            DeclarationKind::Effect,
+            "add_district",
+            "value-acceptance: Assign: form-reader-call",
+        ),
+        (
+            DeclarationKind::Trigger,
+            "has_tradition",
+            "value-acceptance: PostValidate: branch-value",
+        ),
+        (
+            DeclarationKind::Effect,
+            "set_country_flag",
+            "value-acceptance: PostValidate: path limit",
+        ),
+    ] {
+        let answer = native.command_grammar(kind, name).unwrap();
+        assert_eq!(answer.completeness, Completeness::Partial, "{name}");
+        assert!(
+            matches!(answer.value.forms, GrammarProperty::Partial(_)),
+            "{name}"
+        );
+        assert!(
+            answer.gaps.iter().any(|found| found.detail == gap),
+            "{name}: {answer:?}"
+        );
+        if name == "add_district" {
+            assert_eq!(
+                answer.value.forms,
+                GrammarProperty::Partial(vec![CommandForm::Block])
+            );
+        } else {
+            assert_eq!(
+                answer.value.forms,
+                GrammarProperty::Partial(vec![]),
+                "{name}"
+            );
+        }
+    }
+}

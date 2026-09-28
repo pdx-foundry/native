@@ -1,17 +1,125 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v5`; field families use
-`registry-fields/v7`, and parser observations use `observe-fixture/v2`. Versions 2 and 7 add
-[reference lookups](references.md), version 3 adds the receiver initializer's lookup of a
-child key, and version 4 follows out-of-line trigger factories; the counts on this page were
-measured with versions 1 and 6.
+[targets](targets.md). The method is `command-grammar/v6`; field families use
+`registry-fields/v7`, and parser observations use `observe-fixture/v2`. The method includes
+[reference lookups](references.md), receiver initializer lookups and out-of-line factories.
+The current forms counts are below; the retained child-reader measurements appear in their
+original sections.
+
+## Forms and the stage chain
+
+`forms` describes two separate facts. A `Block` entry establishes that the outer reader
+reaches the block or member reader. A `Value` entry establishes an alternative only when
+its whole read, assignment, initialization and validation chain accepts it. It does not
+establish runtime meaning. A known list is exhaustive within the method; a partial list
+contains only established alternatives. In particular, handing a scalar to a base block
+reader is not an established rejection.
+
+Each value path keeps the command memory from `Read` through `Assign`, deferred references,
+`PostInit` and `PostValidate`. Deferred references hold a found-item stand-in for acceptance.
+The missing-key run instead supplies the lookup's bound null object and is reported separately.
+A diagnostic on any stage makes the path rejecting. Without a diagnostic, every result-bearing
+stage must return true in bit zero for acceptance. False, unknown, unfinished and bounded paths
+are unresolved. An alternative is listed only if all its paths accept; mixed paths, unknown
+reader kinds and more than 64 paths keep `forms` partial with a `value-acceptance` gap.
+The diagnostic test is essential: the dispatch and database drivers ignore stage results.
+
+A read watch records loads from command bytes that the same chain has not written. Script
+writes, including the operator reader, do not become construction state. The factory walk
+keeps only bytes agreed by every returning path, under the existing constructor and unknown-store
+rules. It never enters constructor bodies to obtain more state. An unknown receiver branch
+whose outcomes differ under the same script-input decisions gives `receiver-state`; only the
+facts that differ are withheld. Equal facts, including independent block and value alternatives,
+remain established. The Boolean probe pairs the two token runs under the same operator decision,
+so inversion does not obscure the distinct stored values. An unmatched path leaves it unresolved.
+
+Each run retains receiver-byte origins and the sides of unknown-input forks, including across
+stages and stored values. Loop joins cannot discard distinct decision histories; the existing
+loop and path bounds still apply. Cached results require the same selected slots, every entered
+or classified callee (including virtual helpers and tail calls), and the same watched initial
+bytes from every probe. Each command computes its own full key before sharing an `Arc`; the
+population audit compares those independent keys. The stand-in holds the real receiver vtable.
+
+The initializer summary is deliberately narrow. `CAddDistrictEffect::PostInit()` performs an
+inline scan and stores the selected item at command `+0xd0`. A proved inline initializer is
+summarized only when the reference shape covers its entire body and its condition is `Always`.
+An extra store, call or log prevents that summary. A conditional or unestablished lookup gives
+`value-acceptance: PostInit: initializer not summarized`. For a called lookup, the method runs
+the body and intercepts only the bound getter on the matched database and stored key.
+These internal bindings do not change public reference lookup answers.
+
+```sh
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --function 'CAddDistrictEffect::PostInit()'
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --trigger-grammar always
+cargo run --release --example inspect -- --image "$STELLARIS_PATH" --effect-grammar add_district
+```
+
+Known forms without `Block` give empty known child families, keys and ordering, and a known
+absent numeric child. An inherited member reader contributes no children in that case.
+Unknown or partial forms cannot promote child properties. `ReaderSemantics` marks incomplete
+extraction only while a property is not known. Target scope checks and recursive block coverage
+remain separate work.
+
+### Current value-form results
+
+The M45 population contains 1,074 effects and 1,096 triggers. A failed answer has every
+property unresolved; a partial answer retains some established facts. The population audit
+checks cache-key agreement, accepting paths for listed alternatives, and diagnostics for
+omitted alternatives in a known list. No audit condition fails.
+
+| Kind | Complete | Partial | Failed | `receiver-state` commands | `value-acceptance` commands |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Effect | 192 | 872 | 10 | 3 | 272 |
+| Trigger | 1 | 1093 | 2 | 1 | 713 |
+
+Counts below are commands per stage and cause; a command can have several causes.
+
+| Stage and cause | Effects | Triggers |
+| --- | ---: | ---: |
+| `Assign: false without diagnostic` | 1 | 179 |
+| `Assign: form-reader-call` | 58 | 38 |
+| `Assign: loop-limit` | 1 | 280 |
+| `Assign: outside-code` | 0 | 6 |
+| `Assign: path limit` | 5 | 189 |
+| `Assign: path-limit` | 8 | 280 |
+| `Assign: unknown result` | 1 | 74 |
+| `PostInit: initializer not summarized` | 0 | 10 |
+| `PostValidate: branch-value` | 53 | 109 |
+| `PostValidate: form-stage-call` | 13 | 10 |
+| `PostValidate: loop-limit` | 14 | 28 |
+| `PostValidate: path limit` | 81 | 239 |
+| `PostValidate: path-limit` | 14 | 28 |
+| `PostValidate: unknown result` | 6 | 3 |
+| `Read: mixed paths or unknown reader kind` | 70 | 241 |
+
+False-result paths with no diagnostic anywhere in the chain: effects have 6 at `Assign` and
+827 at `PostValidate`; triggers have 4,076 at `PostValidate`. `Read` and `PostInit` are void,
+so they have no false-result count. Counts include each named command's paths, even when its
+receiver shares a cached analysis. The full run takes about 75 seconds on the development host.
+
+| Sample | Established result or named obstruction |
+| --- | --- |
+| `set_owner` | One known `Target` value; empty known children; complete within this chunk's method. Target scopes are not part of this answer yet. |
+| `always` | Partial, no listed value: `Assign` has false-without-diagnostic, loop-limit and path-limit paths. There is no receiver-state gap. No target alternative is listed. |
+| `add_district` | Partial with `Block`; the value branch stops at `Assign: form-reader-call`. The token text is copied through `strlen` and `__assign_external`, which is not the established tail-copy shape. |
+| `has_tradition` | Its deferred `Reference` read joins the lookup, but `PostValidate: branch-value` prevents listing it. The missing-key chain remains unresolved too. |
+| `set_country_flag` | The dynamic-name read is recognized as `String`; the combined paths exceed the bound at `PostValidate`. There is no receiver-state gap. Forms and inherited children remain partial. |
+
+`tests/expected/m45/command-grammars.json` retains the first-release sample answers and their
+named gaps. The complete unclassified `Read` and `Assign` function census, with per-shape
+command counts, is retained in `.local/sdk-548/forms-stage-chain/revision-1/form-reader-shapes.md`;
+`revision-1/population-summary.json` retains the stage/cause counts. The census has 120
+function/stage groups: unclassified outer reads affect 23 effects and 39 triggers, and
+unclassified assignments affect 58 effects and 38 triggers. Raw-string assignment, initializer
+execution and receiver-state proof remain shared-method limits, not exceptions keyed by
+command name. The property gate never removes children from these partial value answers.
 
 ## Engine facts on M45-release
 
 Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
 ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-These are current engine facts for `command-grammar/v5`, with `dynamic-names/v2` and
+These are current engine facts for `command-grammar/v6`, with `dynamic-names/v2` and
 `registry-fields/v7`. They do not establish complete value grammars or target-scope answers.
 
 ### F1. The family dispatch always calls `Read`

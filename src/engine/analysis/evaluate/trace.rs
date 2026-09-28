@@ -10,9 +10,10 @@
 //!
 //! An instruction's unknown register reads collect in the machine's inputs, and an unknown value
 //! that the instruction computes takes them. A memory instruction divides its inputs, so that a
-//! stored value, a loaded value and a written-back base each take only their own.
+//! stored value, a loaded value and a written-back base each take only their own. This input
+//! bookkeeping also carries receiver-byte origins independently of diagnostic tracing.
 use std::cell::Cell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 
 use super::{HeadState, Machine};
@@ -120,6 +121,13 @@ pub(super) struct Arrival {
     traces: Box<Traces>,
 }
 
+/// Instruction inputs keep diagnostic causes separate from semantic receiver origins.
+#[derive(Clone)]
+pub(super) struct Inputs {
+    trace: Trace,
+    pub(super) receiver: BTreeSet<u64>,
+}
+
 impl Machine<'_> {
     /// Why general register `index` is unknown on this path. `None` when it is known or when
     /// this machine does not trace causes.
@@ -171,6 +179,12 @@ impl Machine<'_> {
     }
 
     pub(super) fn read_unknown_register(&self, index: usize) {
+        if let Some(provenance) = &self.provenance {
+            provenance
+                .inputs
+                .borrow_mut()
+                .extend(&provenance.registers[index]);
+        }
         if let Some(traces) = &self.traces {
             traces.read(&traces.registers[index]);
         }
@@ -185,29 +199,42 @@ impl Machine<'_> {
     }
 
     /// The inputs that the present instruction has read so far, which it no longer holds.
-    pub(super) fn take_inputs(&self) -> Trace {
-        self.traces
-            .as_ref()
-            .map_or_else(Trace::default, |traces| traces.inputs.take())
-    }
-
-    pub(super) fn restore_inputs(&self, inputs: Trace) {
-        if let Some(traces) = &self.traces {
-            traces.inputs.set(inputs);
+    pub(super) fn take_inputs(&self) -> Inputs {
+        Inputs {
+            trace: self
+                .traces
+                .as_ref()
+                .map_or_else(Trace::default, |traces| traces.inputs.take()),
+            receiver: self
+                .provenance
+                .as_ref()
+                .map(|provenance| provenance.inputs.take())
+                .unwrap_or_default(),
         }
     }
 
-    /// The inputs of a value loaded from `width` bytes at `address`, when `address_inputs` gave
-    /// the address. An unknown address is the whole cause; otherwise the unknown bytes are.
+    pub(super) fn restore_inputs(&self, inputs: Inputs) {
+        if let Some(traces) = &self.traces {
+            traces.inputs.set(inputs.trace);
+        }
+        if let Some(provenance) = &self.provenance {
+            provenance.inputs.replace(inputs.receiver);
+        }
+    }
+
+    /// An unknown address supplies the origins; a known address supplies its unknown bytes.
     pub(super) fn loaded_inputs(
         &self,
-        address_inputs: Trace,
+        address_inputs: Inputs,
         address: Option<u64>,
         width: u64,
-    ) -> Trace {
+    ) -> Inputs {
         match address {
             None => address_inputs,
-            Some(address) => self.memory_trace(address, width).unwrap_or_default(),
+            Some(address) => Inputs {
+                trace: self.memory_trace(address, width).unwrap_or_default(),
+                receiver: self.receiver_sources(address, width),
+            },
         }
     }
 
@@ -226,7 +253,17 @@ impl Machine<'_> {
     }
 
     /// `width` bytes at `address` were stored through the present instruction.
-    pub(super) fn trace_stored(&mut self, address: u64, width: u64, known: bool) {
+    pub(super) fn record_stored_inputs(&mut self, address: u64, width: u64, known: bool) {
+        if let Some(provenance) = &mut self.provenance {
+            let sources = provenance.inputs.borrow().clone();
+            for at in address..address + width {
+                if known {
+                    provenance.memory.remove(&at);
+                } else {
+                    provenance.memory.insert(at, sources.clone());
+                }
+            }
+        }
         let Some(traces) = &mut self.traces else {
             return;
         };

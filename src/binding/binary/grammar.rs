@@ -69,7 +69,52 @@ pub(in crate::binding) fn read(
         .collect();
     let numeric_decoder = super::declarations::unique(symbols, recipe.numeric_key_reader)?;
     let command_bindings = command_bindings(symbols, &tokens, recipe, kind)?;
+    let mut form_input = crate::engine::analysis::grammar::forms::Input {
+        token_text_offset: recipe.token_text_offset,
+        target_size: recipe.event_target_size,
+        string_size: recipe.string_object_size,
+        role_slot: match kind {
+            crate::DeclarationKind::Effect => recipe.effect_names.role,
+            crate::DeclarationKind::Trigger => recipe.trigger_names.role,
+        },
+        ..Default::default()
+    };
+    let flags = super::dynamic_names::flag_functions(symbols)?;
+    form_input.dynamic_name = flags.name_reader;
+    form_input.interner = flags.interner;
+    for symbol in symbols {
+        if crate::engine::analysis::readers::call_arguments(&symbol.name).is_some() {
+            form_input
+                .shared
+                .insert(symbol.address, symbol.name.clone());
+        }
+        if symbol.name.ends_with("::Assign(CToken const&, EScopeType)") {
+            form_input.assignments.insert(symbol.address);
+        }
+        if matches!(
+            symbol.name.as_str(),
+            "CString::operator=(CString const&)" | "CString::CString(CString const&)"
+        ) {
+            form_input.string_copies.insert(symbol.address);
+        }
+        if symbol.name == "CString::CString(char const*)" {
+            form_input.strings_from_text.insert(symbol.address);
+        }
+        if matches!(
+            symbol.name.as_str(),
+            "CEventTarget::~CEventTarget()"
+                | "CString::~CString()"
+                | "operator delete[](void*)"
+                | "operator delete(void*)"
+        ) {
+            form_input.harmless.insert(symbol.address);
+        }
+        if text.starts.contains(&symbol.address) && text.function_length(symbol.address) > 4096 {
+            form_input.cut_bodies.insert(symbol.address);
+        }
+    }
     Ok(GrammarInput {
+        forms: form_input,
         command_bindings,
         child_layout: recipe.command_children,
         numeric_decoder,
@@ -228,4 +273,74 @@ fn required_matching(
         return Err(InputError(format!("no symbol for {description}")).into());
     }
     Ok(addresses)
+}
+
+/// Preserve the matched initializer operations without changing reference answers.
+pub(in crate::binding) fn initializers(
+    input: &crate::engine::analysis::references::ReferenceInput,
+    symbols: &[Symbol],
+    qualified_references: &mut BTreeMap<u64, u64>,
+) -> Result<BTreeMap<u64, crate::engine::analysis::grammar::forms::Initializer>, AnalysisError> {
+    use crate::engine::analysis::{
+        grammar::forms::{Initializer, LookupExecution},
+        references::{
+            self,
+            initialization::{self, Execution, Initialization},
+        },
+    };
+    let facts = references::analyze(input);
+    for (name, fact) in &facts.readers {
+        if fact.lookup.is_ok()
+            && references::reader(name)
+                .is_some_and(|reader| reader.form == references::ReaderForm::Deferred)
+        {
+            let null = references::deferred_null(input, name)
+                .ok_or_else(|| InputError(format!("deferred null object missing for {name}")))?;
+            let null = super::declarations::unique(symbols, &null)?;
+            qualified_references.extend(
+                symbols
+                    .iter()
+                    .filter(|symbol| &symbol.name == name)
+                    .map(|symbol| (symbol.address, null)),
+            );
+        }
+    }
+    let mut bound = BTreeMap::new();
+    for (name, fact) in facts.initializers {
+        let addresses: Vec<_> = symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.address)
+            .collect();
+        let initializer = match fact {
+            Initialization::NoLookup => Initializer::NoLookup,
+            Initialization::Lookup(lookup) => match initialization::execution(input, &name) {
+                Some(Execution::Inline { always, null }) => Initializer::Lookup {
+                    lookup,
+                    execution: LookupExecution::Inline {
+                        always,
+                        null: super::declarations::unique(symbols, &null)?,
+                    },
+                },
+                Some(Execution::Getter {
+                    database,
+                    getter,
+                    null,
+                }) => Initializer::Lookup {
+                    lookup,
+                    execution: LookupExecution::Getter {
+                        database: super::declarations::unique(symbols, &database)?,
+                        getter: super::declarations::unique(symbols, &getter)?,
+                        null: super::declarations::unique(symbols, &null)?,
+                    },
+                },
+                None => Initializer::Unresolved,
+            },
+            Initialization::Unresolved(_) => Initializer::Unresolved,
+        };
+        for address in addresses {
+            bound.insert(address, initializer.clone());
+        }
+    }
+    Ok(bound)
 }

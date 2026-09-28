@@ -13,6 +13,19 @@ use std::collections::{BTreeMap, BTreeSet};
 const ALLOCATION: u64 = 0x10000;
 
 pub(crate) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, Unresolved> {
+    factory_state(input, factory).map(|state| state.vtable)
+}
+
+/// The primary vtable and the allocation bytes agreed by every factory return.
+pub(crate) struct FactoryState {
+    pub vtable: u64,
+    pub bytes: BTreeMap<u64, u8>,
+}
+
+pub(crate) fn factory_state(
+    input: &DeclarationInput,
+    factory: u64,
+) -> Result<FactoryState, Unresolved> {
     let entry = *input
         .pointers
         .get(&(factory + input.slots.create))
@@ -92,6 +105,7 @@ pub(crate) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u
         Ok(Call::Return(None))
     });
     let mut vtables = BTreeSet::new();
+    let mut bytes: Option<BTreeMap<u64, u8>> = None;
     for path in paths {
         match path.end? {
             Exit::Returned => {}
@@ -107,11 +121,21 @@ pub(crate) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u
             Unresolved::new("command-vtable").traced(path.machine.memory_trace(object, 8))
         })?;
         vtables.insert(vtable);
+        let size = path.machine.labelled(object).unwrap();
+        let returned = path.machine.known_bytes(object, size);
+        if let Some(agreed) = &mut bytes {
+            agreed.retain(|offset, byte| returned.get(offset) == Some(byte));
+        } else {
+            bytes = Some(returned);
+        }
     }
     if vtables.len() != 1 {
         return Err(Unresolved::new("ambiguous-command-vtable"));
     }
-    Ok(*vtables.first().unwrap())
+    Ok(FactoryState {
+        vtable: *vtables.first().unwrap(),
+        bytes: bytes.unwrap_or_default(),
+    })
 }
 
 /// The known functions that `body` tail-calls: an unconditional branch to a function start

@@ -1,0 +1,1439 @@
+{
+  "trigger/always": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "value-acceptance: Assign: false without diagnostic",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "value-acceptance: Assign: loop-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "value-acceptance: Assign: path limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "value-acceptance: Assign: path-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "value-acceptance: PostValidate: path limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "form-path-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "loop-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "path-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "always"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": "Unresolved",
+      "fixed_keys": "Unresolved",
+      "forms": {
+        "Partial": []
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "7378e4e05563db32",
+        "kind": "Unknown",
+        "family": "Unknown"
+      }
+    }
+  },
+  "trigger/has_country_flag": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "value-acceptance: PostValidate: path limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_country_flag"
+        }
+      },
+      {
+        "detail": "form-path-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_country_flag"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_country_flag"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_country_flag"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": "Unresolved",
+      "fixed_keys": "Unresolved",
+      "forms": {
+        "Partial": []
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "7378e4e05563db32",
+        "kind": "Unknown",
+        "family": "Unknown"
+      }
+    }
+  },
+  "trigger/has_tradition": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "value-acceptance: PostValidate: branch-value",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_tradition"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_tradition"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "has_tradition"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": "Unresolved",
+      "fixed_keys": "Unresolved",
+      "forms": {
+        "Partial": []
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "f47e1d863a65b008",
+        "kind": "Unknown",
+        "family": "Unknown"
+      }
+    }
+  },
+  "effect/set_owner": {
+    "completeness": "Complete",
+    "gaps": [
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_owner"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": {
+        "Known": []
+      },
+      "fixed_keys": {
+        "Known": []
+      },
+      "forms": {
+        "Known": [
+          {
+            "Value": {
+              "reader": {
+                "id": null,
+                "kind": "Target",
+                "family": "NotApplicable"
+              },
+              "reference": "NotEstablished"
+            }
+          }
+        ]
+      },
+      "numeric_keys": {
+        "Known": null
+      },
+      "ordering": {
+        "Known": []
+      },
+      "reader": {
+        "id": "46d0af6650219336",
+        "kind": "Target",
+        "family": "Unknown"
+      }
+    }
+  },
+  "effect/set_country_flag": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "value-acceptance: PostValidate: path limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_country_flag"
+        }
+      },
+      {
+        "detail": "form-path-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_country_flag"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_country_flag"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_country_flag"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": {
+        "Partial": [
+          "Effect"
+        ]
+      },
+      "fixed_keys": "Unresolved",
+      "forms": {
+        "Partial": []
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "662ea5268e37aea2",
+        "kind": "Unknown",
+        "family": "Unknown"
+      }
+    }
+  },
+  "effect/remove_country_flag": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "value-acceptance: PostValidate: path limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "remove_country_flag"
+        }
+      },
+      {
+        "detail": "form-path-limit",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "remove_country_flag"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "remove_country_flag"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "remove_country_flag"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": {
+        "Partial": [
+          "Effect"
+        ]
+      },
+      "fixed_keys": "Unresolved",
+      "forms": {
+        "Partial": []
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "662ea5268e37aea2",
+        "kind": "Unknown",
+        "family": "Unknown"
+      }
+    }
+  },
+  "effect/set_timed_country_flag": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "reader-routing",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_timed_country_flag"
+        }
+      },
+      {
+        "detail": "Some child dispatch paths or names remain unresolved.",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_timed_country_flag"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_timed_country_flag"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_timed_country_flag"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": "Unresolved",
+      "fixed_keys": {
+        "Partial": [
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "flag",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "days",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "months",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "years",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          }
+        ]
+      },
+      "forms": {
+        "Known": [
+          "Block"
+        ]
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "5717e48b9a8ed2be",
+        "kind": "Block",
+        "family": "Unknown"
+      }
+    }
+  },
+  "effect/add_resource": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "reader-routing",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_resource"
+        }
+      },
+      {
+        "detail": "Some child dispatch paths or names remain unresolved.",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_resource"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_resource"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_resource"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": "Unresolved",
+      "fixed_keys": {
+        "Partial": [
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "multiplier",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "c61abc171edc30aa",
+                      "kind": "Unknown",
+                      "family": "Unknown"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Unknown"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "c61abc171edc30aa",
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "mult",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "c61abc171edc30aa",
+                      "kind": "Unknown",
+                      "family": "Unknown"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Unknown"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "c61abc171edc30aa",
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          }
+        ]
+      },
+      "forms": {
+        "Known": [
+          "Block"
+        ]
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "46f33fca79ddd2af",
+        "kind": "Block",
+        "family": "Effect"
+      }
+    }
+  },
+  "trigger/if": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "if"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "if"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": {
+        "Partial": [
+          "Trigger"
+        ]
+      },
+      "fixed_keys": {
+        "Partial": [
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "None",
+            "name": "id",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "325efaa17499c32d",
+                      "kind": "String",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "325efaa17499c32d",
+              "kind": "String",
+              "family": "NotApplicable"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Scalar"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "limit",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "85bd4238680bd5b9",
+                      "kind": "Block",
+                      "family": "Trigger"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Block"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "85bd4238680bd5b9",
+              "kind": "Block",
+              "family": "Trigger"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Block"
+            },
+            "uses": []
+          }
+        ]
+      },
+      "forms": {
+        "Known": [
+          "Block"
+        ]
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "2c0d7eab19fb7c8f",
+        "kind": "Block",
+        "family": "Trigger"
+      }
+    }
+  },
+  "effect/if": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "conditional-child-family",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "if"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "if"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "if"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": {
+        "Partial": [
+          "Effect"
+        ]
+      },
+      "fixed_keys": {
+        "Partial": [
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "limit",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "85bd4238680bd5b9",
+                      "kind": "Block",
+                      "family": "Trigger"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Block"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "85bd4238680bd5b9",
+              "kind": "Block",
+              "family": "Trigger"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Block"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "else",
+            "read": [
+              {
+                "condition": "Unresolved",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "074177ea8f47c362",
+                      "kind": "Block",
+                      "family": "Effect"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Block"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": {
+                  "All": [
+                    "Unresolved",
+                    "Unresolved"
+                  ]
+                },
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "074177ea8f47c362",
+                      "kind": "Block",
+                      "family": "Effect"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Block"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": {
+                  "All": [
+                    "Unresolved",
+                    "Unresolved"
+                  ]
+                },
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "92536582bc473e17",
+                      "kind": "Unknown",
+                      "family": "Unknown"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Unknown"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          }
+        ]
+      },
+      "forms": {
+        "Known": [
+          "Block"
+        ]
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": {
+        "Partial": [
+          {
+            "child": "else",
+            "conditions": [
+              {
+                "First": true
+              }
+            ],
+            "outcome": {
+              "Read": {
+                "id": "074177ea8f47c362",
+                "kind": "Block",
+                "family": "Effect"
+              }
+            }
+          },
+          {
+            "child": "else",
+            "conditions": [
+              {
+                "First": false
+              },
+              {
+                "Previous": {
+                  "keys": [
+                    "if",
+                    "else_if"
+                  ],
+                  "matches": false
+                }
+              }
+            ],
+            "outcome": {
+              "Read": {
+                "id": "074177ea8f47c362",
+                "kind": "Block",
+                "family": "Effect"
+              }
+            }
+          },
+          {
+            "child": "else",
+            "conditions": [
+              {
+                "First": false
+              },
+              {
+                "Previous": {
+                  "keys": [
+                    "if",
+                    "else_if"
+                  ],
+                  "matches": true
+                }
+              }
+            ],
+            "outcome": {
+              "Dispatch": "Effect"
+            }
+          }
+        ]
+      },
+      "reader": {
+        "id": "0062450650e51570",
+        "kind": "Block",
+        "family": "Effect"
+      }
+    }
+  },
+  "effect/create_starbase": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "The receiver's initializer reads a global instance, but no lookup of it is established: the initializer holds several lookups.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "create_starbase"
+        }
+      },
+      {
+        "detail": "reader-routing",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "create_starbase"
+        }
+      },
+      {
+        "detail": "Some child dispatch paths or names remain unresolved.",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "create_starbase"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "create_starbase"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "create_starbase"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": "Unresolved",
+      "fixed_keys": {
+        "Partial": [
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "None",
+            "name": "size",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "325efaa17499c32d",
+                      "kind": "String",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Replace",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "325efaa17499c32d",
+              "kind": "String",
+              "family": "NotApplicable"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Replace",
+              "value": "Scalar"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "effect",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "a430a4b92eb2c8f6",
+                      "kind": "Block",
+                      "family": "Effect"
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Block"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "a430a4b92eb2c8f6",
+              "kind": "Block",
+              "family": "Effect"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Block"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "building",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "design",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "owner",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "Unresolved",
+            "name": "module",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": "Unresolved"
+              }
+            ],
+            "reader": {
+              "id": null,
+              "kind": "Unknown",
+              "family": "Unknown"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Unknown",
+              "value": "Unknown"
+            },
+            "uses": []
+          }
+        ]
+      },
+      "forms": {
+        "Known": [
+          "Block"
+        ]
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "940ced26c41af5b8",
+        "kind": "Block",
+        "family": "Effect"
+      }
+    }
+  },
+  "effect/add_district": {
+    "completeness": "Partial",
+    "gaps": [
+      {
+        "detail": "value-acceptance: Assign: form-reader-call",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_district"
+        }
+      },
+      {
+        "detail": "form-reader-call",
+        "kind": "UnresolvedPath",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_district"
+        }
+      },
+      {
+        "detail": "Child grammar extraction is incomplete; unresolved properties and conditional paths remain.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_district"
+        }
+      },
+      {
+        "detail": "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "add_district"
+        }
+      }
+    ],
+    "source": {
+      "basis": "StaticAnalysis",
+      "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+      "method": "command-grammar/v6",
+      "native_version": "0.1.0"
+    },
+    "value": {
+      "child_families": "Unresolved",
+      "fixed_keys": {
+        "Partial": [
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "None",
+            "name": "district_type",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "325efaa17499c32d",
+                      "kind": "String",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Replace",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "325efaa17499c32d",
+              "kind": "String",
+              "family": "NotApplicable"
+            },
+            "reference": {
+              "Lookups": [
+                {
+                  "condition": "Always",
+                  "empty_key": "LookedUp",
+                  "key_match": "FirstEqual",
+                  "on_missing": "NullObject",
+                  "stage": "OwnerInitialization",
+                  "target": {
+                    "Registry": {
+                      "name": "common/districts"
+                    }
+                  }
+                }
+              ]
+            },
+            "shape": {
+              "repeat": "Replace",
+              "value": "Scalar"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "None",
+            "name": "ignore_cap",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "b894933b2b2853a5",
+                      "kind": "Boolean",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Replace",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "b894933b2b2853a5",
+              "kind": "Boolean",
+              "family": "NotApplicable"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Replace",
+              "value": "Scalar"
+            },
+            "uses": []
+          },
+          {
+            "default": "Unknown",
+            "domain": "Unknown",
+            "members": "None",
+            "name": "type_conversion",
+            "read": [
+              {
+                "condition": "Always",
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "b894933b2b2853a5",
+                      "kind": "Boolean",
+                      "family": "NotApplicable"
+                    },
+                    "shape": {
+                      "repeat": "Replace",
+                      "value": "Scalar"
+                    }
+                  }
+                }
+              }
+            ],
+            "reader": {
+              "id": "b894933b2b2853a5",
+              "kind": "Boolean",
+              "family": "NotApplicable"
+            },
+            "reference": "NotEstablished",
+            "shape": {
+              "repeat": "Replace",
+              "value": "Scalar"
+            },
+            "uses": []
+          }
+        ]
+      },
+      "forms": {
+        "Partial": [
+          "Block"
+        ]
+      },
+      "numeric_keys": "Unresolved",
+      "ordering": "Unresolved",
+      "reader": {
+        "id": "de5847789bbc3a9f",
+        "kind": "Unknown",
+        "family": "Unknown"
+      }
+    }
+  }
+}

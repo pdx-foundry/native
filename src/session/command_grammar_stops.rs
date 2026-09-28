@@ -23,6 +23,7 @@ use std::collections::BTreeSet;
 use super::{Native, grammar::normalize};
 use crate::{Answer, CommandGrammar, DeclarationKind, Error, Operation};
 
+pub use crate::engine::analysis::grammar::forms::{PathClass, Stage};
 pub use crate::engine::analysis::grammar::{ChildFields, GrammarResult};
 pub use crate::engine::analysis::stop::{Cause, CauseKind, Trace, Unresolved};
 
@@ -219,9 +220,9 @@ fn inspect_command(
             .get(&(receiver + input.declarations.parser_slots.member))
             .copied();
         chain.stopped_at = Some("reader slots and bodies");
-        let reader = declarations::reader_at_vtable(&input.declarations, receiver)?;
+        declarations::reader_at_vtable(&input.declarations, receiver)?;
         chain.stopped_at = Some("grammar");
-        let result = grammar::analyze_reader(input, reader, 0)?;
+        let result = grammar::analyze(input, factory)?;
         chain.stopped_at = None;
         Ok(result)
     })();

@@ -1076,6 +1076,8 @@ pub enum ReaderKind {
     String,
     /// A deferred reference key.
     Reference,
+    /// An event target, resolved against a scope when the command uses it.
+    Target,
     /// A nested trigger, effect, persistent object, or other script block.
     Block,
     /// The value form is not established.

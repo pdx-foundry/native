@@ -299,6 +299,9 @@ impl<'a> Text<'a> {
 
     /// The whole function that starts at `start`.
     pub fn function(&self, start: u64) -> Result<(u64, &'a [u8]), AnalysisError> {
+        if !(self.address..self.end()).contains(&start) {
+            return Err(AnalysisError::InvalidRange);
+        }
         Ok((start, self.bytes(start, self.function_length(start))?))
     }
 
@@ -440,4 +443,21 @@ pub(super) fn read_only_data(bytes: &[u8]) -> Result<ReadOnlyData, AnalysisError
         sections.push((section.address(), data.to_vec()));
     }
     Ok(ReadOnlyData::new(sections))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_symbols_are_not_function_bodies() {
+        let text = Text {
+            address: 0x1000,
+            code: &[0; 16],
+            starts: BTreeSet::from([0x1000]),
+        };
+        assert!(text.function(0x2000).is_err());
+        assert!(text.function(0xff0).is_err());
+        assert_eq!(text.function(0x1000).unwrap().1.len(), 16);
+    }
 }

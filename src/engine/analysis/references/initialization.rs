@@ -40,6 +40,51 @@ pub struct InitializationLookup {
     pub lookup: Lookup,
 }
 
+/// Matched executable names retained for the binding of an initializer stage.
+pub(crate) enum Execution {
+    /// A complete inline lookup with no effects outside the matched lookup.
+    Inline { always: bool, null: String },
+    /// A complete initializer that calls this established getter.
+    Getter {
+        database: String,
+        getter: String,
+        null: String,
+    },
+}
+
+/// Retain execution details only after the ordinary reference method establishes the lookup.
+pub(crate) fn execution(input: &super::ReferenceInput, name: &str) -> Option<Execution> {
+    let method = Method { input };
+    let Initialization::Lookup(lookup) = method.initialization(name) else {
+        return None;
+    };
+    let lines = method.lines(name)?;
+    if let Some(bindings) = INITIALIZER_GETTER.matches(&lines) {
+        let getter = bindings["getter"].clone();
+        let body = method.lines(&getter)?;
+        let search = super::GETTER_SCAN
+            .matches(&body)
+            .or_else(|| NULL_GETTER.matches(&body))?;
+        return Some(Execution::Getter {
+            database: bindings["database"].clone(),
+            getter,
+            null: search["null"].clone(),
+        });
+    }
+    let matched = [
+        &*INITIALIZER_SCAN,
+        &*INITIALIZER_SCAN_NONEMPTY,
+        &*INITIALIZER_MAP,
+        &*INITIALIZER_MAP_NONEMPTY,
+    ]
+    .into_iter()
+    .find_map(|shape| shape.matches(&lines))?;
+    Some(Execution::Inline {
+        always: lookup.lookup.empty_key_looked_up == Some(true),
+        null: matched["null"].clone(),
+    })
+}
+
 /// The database that a global names: `D` in `TGameDatabase<D>::_pInstance` or in `D::_pInstance`.
 /// A typed null object is not a database.
 pub fn database(global: &str) -> Option<&str> {
