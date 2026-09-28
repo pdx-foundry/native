@@ -106,7 +106,8 @@ pub(super) fn grammar(
         {
             value.numeric_keys = GrammarProperty::Partial(child);
         }
-        for child_gap in child_gaps {
+        for mut child_gap in child_gaps {
+            child_gap.subject = Some(GapSubject::answer_item(name));
             if !gaps.contains(&child_gap) {
                 gaps.push(child_gap);
             }
@@ -267,5 +268,61 @@ mod tests {
         };
         assert!(!attach_reader_facts(&mut block, &facts));
         assert_eq!(block.numeric, GrammarProperty::Known(None));
+    }
+
+    #[test]
+    fn dynamic_numeric_child_gaps_use_the_parent_subject_without_hiding_parent_fields() {
+        let number = Reader {
+            id: Some(ReaderId::from_callee("number")),
+            kind: ReaderKind::Integer,
+            family: crate::BlockFamily::NotApplicable,
+            numeric: GrammarProperty::Unresolved,
+        };
+        let block = Reader {
+            id: None,
+            kind: ReaderKind::Block,
+            family: crate::BlockFamily::Effect,
+            numeric: GrammarProperty::Unresolved,
+        };
+        let parent = CommandGrammar {
+            reader: block,
+            forms: GrammarProperty::Known(vec![CommandForm::Block]),
+            targets: GrammarProperty::Known(vec![]),
+            child_families: GrammarProperty::Known(vec![]),
+            fixed_keys: GrammarProperty::Known(vec![numeric_field(number.clone())]),
+            numeric_keys: GrammarProperty::Known(None),
+            ordering: GrammarProperty::Known(vec![]),
+        };
+        let mut nested_field = numeric_field(number.clone());
+        nested_field.name = "nested".into();
+        nested_field.members = FieldMembers::Fields(vec![numeric_field(number.clone())]);
+        let mut child = parent.clone();
+        child.fixed_keys =
+            GrammarProperty::Known(vec![numeric_field(number.clone()), nested_field]);
+        child.ordering = GrammarProperty::Known(vec![crate::ChildOrderRule {
+            child: "ordered".into(),
+            conditions: vec![crate::ChildOrderCondition::First(true)],
+            outcome: crate::ChildOrderOutcome::Read(number),
+        }]);
+        for numeric_keys in [
+            GrammarProperty::Known(Some(Box::new(child.clone()))),
+            GrammarProperty::Partial(Some(Box::new(child))),
+        ] {
+            let mut value = parent.clone();
+            value.numeric_keys = numeric_keys;
+            let mut gaps = Vec::new();
+            grammar(&mut value, "parent", &NumericFacts::default(), &mut gaps);
+            assert_eq!(gaps.len(), 2);
+            assert!(
+                gaps.iter()
+                    .all(|gap| gap.kind == GapKind::NumericConversion)
+            );
+            assert_eq!(gaps[0].subject, Some(GapSubject::field("amount")));
+            assert_eq!(gaps[1].subject, Some(GapSubject::answer_item("parent")));
+            assert!(matches!(
+                value.numeric_keys,
+                GrammarProperty::Partial(Some(_))
+            ));
+        }
     }
 }
