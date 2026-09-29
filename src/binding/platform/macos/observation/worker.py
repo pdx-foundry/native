@@ -1151,6 +1151,12 @@ def probe_log(record):
         f.write(json.dumps(record) + '\n')
 
 
+def pause_registers(process, thread_id):
+    # LLDB can keep a stale frame PC after an expression; register values remain current.
+    frame = process.GetThreadByID(thread_id).GetFrameAtIndex(0)
+    return {name: register(frame, name) for name in ('pc', 'sp', 'fp', 'lr')}
+
+
 def run_probe(process, path, number):
     """Spike only: run a dropped-in script against the paused game, then record its output."""
     import lldb
@@ -1295,8 +1301,8 @@ def run(debugger):
         time.sleep(.02)
     if decision.cause and process.GetState() == lldb.eStateStopped:
         emit('session-paused', returned=progress.returned_registries, cause=decision.cause, thread=entry_thread)
-        paused_thread = process.GetThreadByID(entry_thread)
-        paused_pc = paused_thread.GetFrameAtIndex(0).GetPC()
+        held_registers = pause_registers(process, entry_thread)
+        probe_log(dict(event='held-registers', registers=held_registers))
         witness = dict(attempt=request['attempt'], game=request['game'], worker=os.getpid(),
             thread=entry_thread, returned=progress.returned_registries, generation=0)
         atomic('pause', 'session-paused.json', witness)
@@ -1311,16 +1317,14 @@ def run(debugger):
                 probe_thread.start()
                 probing = True
             # A running probe moves the paused thread's PC inside its expression.
-            if probes and not probing:
-                # Spike: an expression can leave the cached thread object with a stale frame.
-                paused_thread = process.GetThreadByID(entry_thread)
-            if not probing and (not process.IsValid() or process.GetState() != lldb.eStateStopped or paused_thread.GetFrameAtIndex(0).GetPC() != paused_pc):
-                probe_log(dict(event='held-check-failed', valid=process.IsValid(), state=process.GetState(),
-                    pc=paused_thread.GetFrameAtIndex(0).GetPC(), paused_pc=paused_pc,
-                    frames=[paused_thread.GetFrameAtIndex(i).GetFunctionName() for i in range(4)]))
-                if not probes:
-                    raise RuntimeError('session no longer held at the witnessed paused frame')
-                paused_pc = paused_thread.GetFrameAtIndex(0).GetPC()  # Spike: keep probing.
+            if not probing:
+                if not process.IsValid() or process.GetState() != lldb.eStateStopped:
+                    raise RuntimeError('session no longer stopped at the witnessed pause')
+                current_registers = pause_registers(process, entry_thread)
+                if current_registers != held_registers:
+                    probe_log(dict(event='held-check-failed', registers=current_registers,
+                        expected=held_registers))
+                    raise RuntimeError('session registers changed from the witnessed pause')
             check_path = ROOT / 'pause-check.json'
             if check_path.exists():
                 check = protocol.decode('pause_check', check_path.read_bytes())

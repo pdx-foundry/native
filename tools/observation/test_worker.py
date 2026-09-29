@@ -17,6 +17,19 @@ worker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(worker)
 
 
+class ProbePauseTests(unittest.TestCase):
+    def test_pause_reads_current_registers_without_cached_frame_pc(self):
+        process = Mock()
+        frame = process.GetThreadByID.return_value.GetFrameAtIndex.return_value
+        frame.GetPC.side_effect = AssertionError('cached frame PC must not be used')
+        values = {'pc': 100, 'sp': 200, 'fp': 300, 'lr': 400}
+        with patch.object(worker, 'register', side_effect=lambda current, name: values[name]):
+            self.assertEqual(worker.pause_registers(process, 7), values)
+            values['sp'] = 500
+            self.assertEqual(worker.pause_registers(process, 7)['sp'], 500)
+        self.assertEqual(process.GetThreadByID.call_count, 2)
+
+
 class AttachTests(unittest.TestCase):
     def test_completed_attach_returns_process_and_preserves_error(self):
         target, info, error = Mock(), Mock(), Mock()

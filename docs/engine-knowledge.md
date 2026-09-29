@@ -16,6 +16,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | ARM64 loader-entry attachment, registration and field reads, where to read registry items |
 | The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
 | Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |
+| Parse and validation diagnostics | [Diagnostic survey](native/diagnostic-survey.md) | Controlled scope, Boolean, key, target and reference messages; config-test route limits |
 | Discovery method index | [Discovery methods](native/discovery.md) | Operations, source stamps, owning modules and knowledge sections; define read helpers |
 | Write a method | [Method authoring](native/method-authoring.md) | Inspector, stop diagnostics, authored tests, parity and whole-inventory runs |
 | Registry fields and scheduling | [Registry fields](native/registry-fields.md) | The current field sweep and its stops, compiler jump tables and bit fields, token paths, members and shared readers, scheduler table, owner joins |

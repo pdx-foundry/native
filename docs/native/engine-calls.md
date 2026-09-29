@@ -72,8 +72,9 @@ unknown key in `get_councilor_level` gives `Unexpected token: <key>`, and the ne
 each snippet has its own reader, so a destructive parser error does not reach the next probe.
 A missing `has_technology` key gives both `Invalid technology being referenced` and the deferred
 read failure, joined by the probe itself. A text value for `always` gives the Boolean trigger
-message. The `is_planet_class` scope matrix accepted planet, ship and dlc_recommendation and
-rejected the other 29 named bits; its message also lists colony, which is not a separate bit.
+message. The original `is_planet_class` matrix accepted planet, ship and dlc_recommendation and
+rejected the other 29 tested bits. It did not test the whole scope universe: the helper used a
+32-bit parameter. The later config-test spike corrected this mistake; colony is bit 40.
 
 **Pitfalls.**
 
@@ -84,3 +85,60 @@ rejected the other 29 named bits; its message also lists colony, which is not a 
 - After an expression, a cached `SBThread` can report a stale frame 0. The registers did not
   change (`pc`, `sp`, `fp` and `lr` were equal before and after), but the worker's paused-frame
   check compared frame 0 and ended the session. Read the thread again, and compare registers.
+
+### Config-test spike: pause and token controls
+
+The E0 repeat used the same M45-release build and two launches, both with confirmed disposal.
+A strict check of freshly read `pc`, `sp`, `fp`, and `lr` replaced the spike's frame-PC reset.
+Nine scope, key, Boolean and reference controls passed, followed by 305 seconds of idle time
+and 31 successful loaded-modifier refreshes. The first launch failed its Boolean positive
+control and remains in the experiment's cost and failure counts.
+
+**Terminate memory text with whitespace.** In the first run, `always = yes` without a trailing
+newline produced the Boolean invalid-value message. A controlled token read returned token 19
+(end-of-file) while retaining the text `yes`; `no` behaved the same. Adding a newline returned
+16367 (`yes`) and 11436 (`no`), the IDs compared by `CBoolTrigger::Assign`, and removed the error.
+The in-process reader helper now appends a newline to every snippet. Without this boundary,
+quiet string-based readers and failing token-based readers cannot establish value domains.
+
+Evidence: Atlas `docs/prototypes/config-test-spike/sessions/e0-{1,2}/`, including probe inputs,
+results, refresh loop, ordinary logs and disposal summaries. The worker patch remains on
+`spike/in-process-probe`; this is not a public Native operation.
+
+### Config-test spike: documentation, effects and full scope width
+
+All following addresses and layouts apply only to M45-release, executable SHA-256
+`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`, ARM64 slice
+`a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+
+**Documentation call.** `OnExecute_PrintTriggerDocumentation` at `0x101337204` builds a console
+result and reads the argument count; it does not call a documentation writer. The E1 control
+called it with an empty `CPdxArray<CString>` and the inspected x8 structure-return convention.
+Four log files remained empty. The inspected `CGameApplication::PrintScriptingDocumentation`
+at `0x1005ef2e0` does not read its receiver or a world. Calling it at the loaded-modifier pause
+fills effects, triggers, scopes and localizations logs. Modifiers were already written at startup.
+The disassembly and before/after sizes are retained in Atlas `static/` and `sessions/e1-3/`.
+
+**Effect validation.** Repeat `ReadAndExecuteEffect` only through validation: construct `CEffect`,
+set its top-level byte at `+0x78` to 1, and call `Read(reader, scope)`, then the effect database's
+`PostInit` and `PostValidate`, followed by the trigger database equivalents. The helper records
+the child count at `+0x1c`. E3 passed 12 scope, Boolean, target-type and key controls with clean
+corrections. It never calls effect execution. Exact call signatures/addresses are in the retained
+helper and `static/read-effect.txt`; they are experimental build facts, not a new public ABI.
+
+**Scope width.** `GetScopeName` must receive the 64-bit `EScopeType`. Passing `int` truncated bits
+above 31 in the earlier trial. E3 queried all 64 individual bits with `unsigned long`: bits 0–41
+have names, including colony at bit 40 and mission at bit 41. Country and observer-country are
+different bits (2 and 19) with the same displayed name. The final matrices preserve that distinction.
+The raw `scope_bits` response and Atlas `scope-universe.json` retain the exact mapping.
+
+**Sustained use and limits.** E4 completed 3,409 probes in one session and 1,771 more in a fresh
+session. Each of the 31 refuted claims then occupied its own request; 528 added positive contrasts
+were quiet with parsed children. No refutation disappeared and no register/refresh fault occurred.
+This shows bounded request isolation, not fresh-process isolation for every claim. Engine memory
+allocated for readers and deferred references is retained until process disposal. Six launches,
+including the initial failed Boolean control, used 1,717.542 seconds; all confirmed disposal.
+
+The findings and rule limits are separate: Native records the route here, while Atlas owns
+`docs/prototypes/config-test-spike/REPORT.md`, its calibration and config conclusions. A checked
+copy is under Native `.local/evidence/config-test-spike-2026-09-28/`; see [preservation](preservation.md).
