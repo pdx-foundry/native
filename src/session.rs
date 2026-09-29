@@ -181,6 +181,13 @@ impl Native {
                 reason: format!("{reasons:?}"),
             });
         }
+        if options.loaded_modifiers
+            && binding.has_script_check_method()
+            && let Some(analysis) = &binding.analysis
+        {
+            // A failure leaves every check's duration table empty, so its answer is partial.
+            let _ = analysis.prepare_script_durations();
+        }
         let registries = options
             .registries
             .clone()

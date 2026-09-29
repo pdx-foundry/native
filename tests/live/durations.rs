@@ -80,8 +80,11 @@ pub(super) async fn stored(native: &Native) -> Outcome {
                 })
                 .await?;
             let observation = &answer.value;
-            let GrammarProperty::Known(stored) = &observation.stored_durations else {
-                return Err(format!("{name}: unclassified child: {answer:?}").into());
+            // A receiver whose static inventory is partial gives a partial list with its reads.
+            let (GrammarProperty::Known(stored) | GrammarProperty::Partial(stored)) =
+                &observation.stored_durations
+            else {
+                return Err(format!("{name}: no stored durations: {answer:?}").into());
             };
             let [only] = stored.as_slice() else {
                 return Err(format!("{name}: expected one stored count: {answer:?}").into());

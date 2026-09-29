@@ -103,6 +103,31 @@ impl Coverage {
 }
 
 impl GrammarResult {
+    /// Whether the duration groups are all the groups this reader has: the child keys are known as
+    /// the fixed keys are, every key is joined, no candidate is left unclassified, and no nested
+    /// block may hold a group.
+    pub fn durations_complete(&self) -> bool {
+        let forms_complete = self.forms.as_ref().is_some_and(|forms| forms.complete);
+        let covered = self.value_only() || (self.coverage().covered() && forms_complete);
+        let joined = self
+            .fields
+            .fields
+            .iter()
+            .flat_map(|field| &field.readers)
+            .all(|join| !matches!(join, fields::ReaderJoin::Missing(_)));
+
+        covered && joined && self.durations.unresolved.is_empty() && !self.nested_durations()
+    }
+
+    /// Whether a nested block at any depth has a duration group or an unclassified candidate.
+    pub fn nested_durations(&self) -> bool {
+        self.nested.values().any(|nested| {
+            !nested.durations.groups.is_empty()
+                || !nested.durations.unresolved.is_empty()
+                || nested.nested_durations()
+        })
+    }
+
     /// Whether the outer reader proves that the inherited member tree is unreachable.
     pub fn value_only(&self) -> bool {
         self.forms

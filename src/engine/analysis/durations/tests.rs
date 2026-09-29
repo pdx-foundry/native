@@ -79,6 +79,7 @@ impl Member {
             execute,
             &Ok(Countdown { counts: 0x40 }),
         )
+        .groups
     }
 }
 
@@ -366,6 +367,7 @@ fn a_missing_initial_factor_leaves_the_shared_combination_unresolved() {
         execute_bindings("0xa8", "0x2b0"),
         &Ok(Countdown { counts: 0x40 }),
     )
+    .groups
     .try_into()
     .unwrap();
 
@@ -394,6 +396,7 @@ fn a_missing_countdown_proof_keeps_the_combination_but_not_the_consumption() {
         execute_bindings("0xa8", "0x2b0"),
         &Err(Unresolved::new("duration-flag-update")),
     )
+    .groups
     .try_into()
     .unwrap();
 
@@ -402,6 +405,60 @@ fn a_missing_countdown_proof_keeps_the_combination_but_not_the_consumption() {
         group.consumption,
         Err(Unresolved::new("duration-flag-update"))
     );
+}
+
+#[test]
+fn a_candidate_whose_code_cannot_be_followed_is_kept_as_unresolved() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        add x1, x19, #0xa8;
+        bl extern 0x9000;
+        bl extern 0x9100;
+        ret
+    );
+    let member = Member::new(code).key("months", 0x1004, 0x1008, READ_INT, false);
+    let inventory = groups(
+        &member.fields,
+        &member.paths,
+        &|address: u64| {
+            (START..START + member.code.len() as u64)
+                .contains(&address)
+                .then_some((START, member.code.as_slice()))
+        },
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+    );
+
+    assert!(inventory.groups.is_empty());
+    assert_eq!(
+        inventory.unresolved,
+        [Unresolved::new("duration-post-read")]
+    );
+}
+
+#[test]
+fn register_only_instructions_do_not_hide_a_factor() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        add x0, x19, #0xa8;
+        bl extern 0x9000;
+        udiv w10, w11, w12;
+        ldr x9, [x20], #8;
+        mov w8, #30;
+        str w8, [x19, #0x2b0];
+        str x9, [sp, #0x10];
+        ret
+    );
+    let member = Member::new(code).key("months", 0x1004, 0x1008, ASSIGN, false);
+    let [group] = member
+        .groups(execute_bindings("0xa8", "0x2b0"))
+        .try_into()
+        .unwrap();
+
+    assert_eq!(factors(&group), [("months", Ok(Some(30)))]);
 }
 
 /// The exact-build bodies, each mutated so that its proof must fail.

@@ -1,7 +1,6 @@
 //! Attach a command's duration groups, their omitted counts, and gaps for what is not established.
 use crate::engine::analysis::{
     durations::{self, Combination, Consumption, Group},
-    fields::ReaderJoin,
     grammar::GrammarResult,
     scoped_numeric::{Facts, Subtype},
     stop::Unresolved,
@@ -31,6 +30,7 @@ pub(super) fn grammar(
     };
     let groups: Vec<Duration> = result
         .durations
+        .groups
         .iter()
         .map(|group| {
             let duration = public(group, result, scoped);
@@ -48,30 +48,30 @@ pub(super) fn grammar(
             duration
         })
         .collect();
-    let every_key_joined = result
-        .fields
-        .fields
-        .iter()
-        .flat_map(|field| &field.readers)
-        .all(|join| !matches!(join, ReaderJoin::Missing(_)));
-    let nested_groups = result
-        .nested
-        .values()
-        .any(|nested| !nested.durations.is_empty());
-
-    if nested_groups {
+    if result.nested_durations() {
         gap(
             GapKind::ReaderSemantics,
             "Duration keys in nested blocks are not reported.".into(),
         );
     }
 
-    value.durations = match &value.fixed_keys {
-        GrammarProperty::Known(_) if every_key_joined && !nested_groups => {
-            GrammarProperty::Known(groups)
-        }
-        GrammarProperty::Unresolved if groups.is_empty() => GrammarProperty::Unresolved,
-        _ => GrammarProperty::Partial(groups),
+    if let Some(stop) = result.durations.unresolved.first() {
+        gap(
+            GapKind::ReaderSemantics,
+            format!(
+                "The code after a key's reader could not be followed ({}), so a duration group \
+                 may be missing.",
+                stop.reason
+            ),
+        );
+    }
+
+    value.durations = if result.durations_complete() {
+        GrammarProperty::Known(groups)
+    } else if groups.is_empty() && value.fixed_keys == GrammarProperty::Unresolved {
+        GrammarProperty::Unresolved
+    } else {
+        GrammarProperty::Partial(groups)
     };
 }
 
@@ -141,9 +141,16 @@ fn group_gaps(group: &Group, duration: &Duration) -> Vec<(GapKind, String)> {
             GapKind::ReaderSemantics,
             format!("the combination is not established ({}).", reason(stop)),
         )),
-        (Ok(_), Err(_)) => gaps.push((
+        (Ok(Combination::ScaledAtRead), Err(_)) => gaps.push((
             GapKind::OutsideMethod,
             "what consumes the count is outside this method.".into(),
+        )),
+        (Ok(Combination::SharedFactor { .. }), Err(stop)) => gaps.push((
+            GapKind::ReaderSemantics,
+            format!(
+                "the flag-store countdown is not established ({}).",
+                reason(stop)
+            ),
         )),
         (Ok(_), Ok(Consumption::FlagCountdown)) => gaps.push((
             GapKind::OutsideMethod,

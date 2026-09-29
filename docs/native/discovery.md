@@ -141,6 +141,7 @@ commands: **0 complete, 31 partial, 0 failed**. The failure shapes are:
 - 2 groups: execute body not matched.
 
 26 commands have unit-named keys that no group covers: 21 read into a stack temporary, and 5
-have only `days`. Registries have no group. The [duration keys](durations.md) page has the facts
+have only `days`. Two commands and two registries have candidates whose reader code is not
+followed, so their lists stay partial. Registries have no group. The [duration keys](durations.md) page has the facts
 and the live parser observations. Run `cargo run --release --example duration-population` with
 `STELLARIS_PATH` to reproduce; `.local/sdk-646/duration-population.json` lists every group and gap.

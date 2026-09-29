@@ -150,8 +150,8 @@ pub struct GrammarResult {
     pub families: Vec<BlockFamily>,
     /// Every obstruction on a child path, once each.
     pub stops: Vec<Unresolved>,
-    /// Sibling keys that set one duration count.
-    pub durations: Vec<super::durations::Group>,
+    /// Sibling keys that set one duration count, and candidates that could not be classified.
+    pub durations: super::durations::Inventory,
 }
 
 /// The child keys of a command reader, in the registry field method's records.
@@ -587,7 +587,7 @@ fn durations(
     bytes: &BTreeMap<u64, u8>,
     fields: &[RootField],
     paths: &[TokenPath],
-) -> Vec<super::durations::Group> {
+) -> super::durations::Inventory {
     let functions = &input.declarations.functions;
     let code = |address: u64| {
         functions

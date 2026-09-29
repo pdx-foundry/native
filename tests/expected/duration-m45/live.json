@@ -197,10 +197,10 @@
       "text": "add_modifier = { modifier = gave_up_pop years = 2 }"
     },
     "set_timed_country_flag/days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -227,10 +227,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_days days = 7 }"
     },
     "set_timed_country_flag/fractional_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -257,10 +257,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_fractional_days days = 2.75 }"
     },
     "set_timed_country_flag/largest_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -287,10 +287,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_largest_days days = 2147483647 }"
     },
     "set_timed_country_flag/malformed_after_literal": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -317,7 +317,7 @@
       "text": "set_timed_country_flag = { flag = native_duration_malformed_after_literal days = 7 days = x }"
     },
     "set_timed_country_flag/missing_value_then_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [
         {
           "line": 1,
@@ -326,7 +326,7 @@
         }
       ],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -353,10 +353,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_missing_value_then_days months = value:native_missing_value days = 3 }"
     },
     "set_timed_country_flag/months": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -383,10 +383,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_months months = 2 }"
     },
     "set_timed_country_flag/months_then_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -413,10 +413,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_months_then_days months = 2 days = 3 }"
     },
     "set_timed_country_flag/negative_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -443,10 +443,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_negative_days days = -1 }"
     },
     "set_timed_country_flag/omitted": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -473,10 +473,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_omitted  }"
     },
     "set_timed_country_flag/variable_then_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -503,10 +503,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_variable_then_days days = native_variable days = 4 }"
     },
     "set_timed_country_flag/years": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -533,10 +533,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_years years = 2 }"
     },
     "set_timed_country_flag/years_overflow": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -563,10 +563,10 @@
       "text": "set_timed_country_flag = { flag = native_duration_years_overflow years = 5965233 }"
     },
     "set_timed_country_flag/zero_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {

@@ -12,6 +12,8 @@ const UNIT_NAMES: [&str; 3] = ["days", "months", "years"];
 #[derive(Default)]
 struct Population {
     counts: BTreeMap<&'static str, usize>,
+    inventories: BTreeMap<&'static str, usize>,
+    unclassified: BTreeMap<String, usize>,
     failure_shapes: BTreeMap<String, usize>,
     groups: Vec<Value>,
     unidentified: Vec<Value>,
@@ -104,6 +106,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             commands += 1;
 
+            let inventory = match &answer.value.durations {
+                GrammarProperty::Known(_) => "known",
+                GrammarProperty::Partial(_) => "partial",
+                GrammarProperty::Unresolved => "unresolved",
+            };
+            *population.inventories.entry(inventory).or_default() += 1;
+
+            for gap in answer
+                .gaps
+                .iter()
+                .filter(|gap| gap.detail.starts_with("The code after a key's reader"))
+            {
+                *population
+                    .unclassified
+                    .entry(gap.detail.clone())
+                    .or_default() += 1;
+            }
+
             for group in &groups {
                 population.group(&name, group, &answer.gaps);
             }
@@ -118,19 +138,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let registries = native.registries()?;
     let mut registry_groups = Vec::new();
+    let mut registry_unresolved = Vec::new();
 
     for registry in &registries.value {
         match duration_groups::registry(&native, &registry.name) {
-            Ok(groups) => registry_groups.extend(groups.into_iter().map(|group| {
-                json!({
-                    "registry": registry.name,
-                    "path": group.path,
-                    "units": group.group.units.iter().map(|unit| json!({
-                        "key": unit.key, "factor": format!("{:?}", unit.factor),
-                    })).collect::<Vec<_>>(),
-                    "combination": format!("{:?}", group.group.combination),
-                })
-            })),
+            Ok(owners) => {
+                for owner in owners {
+                    for stop in &owner.inventory.unresolved {
+                        registry_unresolved.push(json!({
+                            "registry": registry.name, "path": owner.path, "reason": stop.reason,
+                        }));
+                    }
+
+                    registry_groups.extend(owner.inventory.groups.iter().map(|group| {
+                        json!({
+                            "registry": registry.name,
+                            "path": owner.path,
+                            "units": group.units.iter().map(|unit| json!({
+                                "key": unit.key, "factor": format!("{:?}", unit.factor),
+                            })).collect::<Vec<_>>(),
+                            "combination": format!("{:?}", group.combination),
+                        })
+                    }));
+                }
+            }
             Err(error) => {
                 failed_questions.push(json!({"registry": registry.name, "error": error}));
             }
@@ -144,10 +175,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "commands": commands,
             "registries": registries.value.len(),
             "counts": population.counts,
+            "duration_lists": population.inventories,
+            "unclassified_candidates": population.unclassified,
             "failure_shapes": population.failure_shapes,
             "groups": population.groups,
             "unidentified_unit_keys": population.unidentified,
             "registry_groups": registry_groups,
+            "registry_unresolved_candidates": registry_unresolved,
             "failed_questions": failed_questions,
         }))?
     );

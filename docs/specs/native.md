@@ -407,10 +407,10 @@ and deferred command objects remain until the session ends. Checks are not isola
 the stored count after reading and before validation. A scaled-at-read group gives its `Integer`
 count; a shared-factor group gives its `ScopedNumeric` operand and the signed 32-bit factor.
 Children are classified by receiver; command names in the text only nominate receivers, at most
-64 per check. `Known` means every child was classified and every static group of its receiver was
-read; otherwise the property is `Partial` with an `IncompleteObservation` gap. Recordings made
-before `check-script/v2` read as `Unresolved`. Stored values are parser storage, not evaluated or
-executed durations.
+64 per check. `Known` means every child was classified, its receiver's static duration list is
+`Known`, and every group was read; otherwise the property is `Partial` with an
+`IncompleteObservation` gap. Recordings made before `check-script/v2` read as `Unresolved`.
+Stored values are parser storage, not evaluated or executed durations.
 
 Atlas owns conclusions drawn from these observations. Checks do not alter static answers,
 resolve silent properties, check registry fields, evaluate triggers or execute effects. Windows

@@ -1,9 +1,10 @@
 //! Duration keys: sibling keys that set one count, the factor each key applies, and the flag-store
 //! countdown that consumes a shared-factor count.
 //!
-//! A key is a duration unit only by mechanism. After its reader returns, the key either scales the
-//! value it read in place (`ScaledAtRead`) or stores a constant to one other owner slot, which the
-//! command's execute body multiplies by the operand (`SharedFactor`). Keys whose joins share one
+//! A key is a duration unit only by mechanism. Its reader stores an integer or a scoped numeric
+//! operand. After the reader returns, the key either scales the value it read in place
+//! (`ScaledAtRead`) or stores a constant to one other owner slot, which the command's execute body
+//! multiplies by the operand (`SharedFactor`). Keys whose joins share one
 //! reader and destination form a group when at least one of them applies a factor. A key name, a
 //! token or a command never selects a result.
 //!
@@ -120,6 +121,16 @@ enum Term {
 /// The function that holds an address: its start and code.
 pub type CodeAt<'a> = dyn Fn(u64) -> Option<(u64, &'a [u8])> + 'a;
 
+/// The duration groups among one reader's keys, and why other keys could not be classified.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Inventory {
+    /// Each group, with its unresolved parts.
+    pub groups: Vec<Group>,
+    /// One stop for each candidate without an established factor whose key code could not be
+    /// followed: such a candidate may still be a duration group.
+    pub unresolved: Vec<Unresolved>,
+}
+
 /// Every duration group among one reader's keys.
 ///
 /// `execute` is the owner's execute body, when the owner is a command; nested readers have none.
@@ -130,8 +141,9 @@ pub fn groups(
     initial: &BTreeMap<u64, u8>,
     execute: Option<Result<Bindings, Unresolved>>,
     countdown: &Result<Countdown, Unresolved>,
-) -> Vec<Group> {
+) -> Inventory {
     let mut candidates: BTreeMap<(String, i64), Vec<KeyResult>> = BTreeMap::new();
+    let mut inventory = Inventory::default();
 
     for field in fields {
         let Some((callee, destination, effect)) = key(field, paths, code) else {
@@ -144,13 +156,30 @@ pub fn groups(
             .push((field.name.clone(), effect));
     }
 
-    candidates
-        .into_iter()
-        .filter(|(_, keys)| keys.iter().any(|(_, effect)| applies_factor(effect)))
-        .map(|((_, destination), keys)| {
-            group(destination, keys, initial, execute.as_ref(), countdown)
-        })
-        .collect()
+    for ((_, destination), keys) in candidates {
+        if keys.iter().any(|(_, effect)| applies_factor(effect)) {
+            inventory.groups.push(group(
+                destination,
+                keys,
+                initial,
+                execute.as_ref(),
+                countdown,
+            ));
+        } else if let Some(stop) = keys.iter().find_map(|(_, effect)| effect.clone().err()) {
+            inventory.unresolved.push(stop);
+        }
+    }
+
+    inventory
+}
+
+/// Whether a reader can store a duration count: an integer or a scoped numeric operand. A key of
+/// any other reader is never a duration unit, whatever its code does after reading.
+fn counts(callee: &str) -> bool {
+    matches!(
+        super::readers::classify_callee(callee),
+        crate::ReaderKind::Integer | crate::ReaderKind::ScopedNumeric
+    )
 }
 
 /// Whether a key's effect establishes a factor.
@@ -177,6 +206,10 @@ fn key(
             return None;
         };
         let destination = super::readers::destination(join)?;
+
+        if !counts(callee) {
+            return None;
+        }
 
         match &joined {
             None => joined = Some((callee.clone(), destination)),
@@ -324,8 +357,10 @@ fn continuation(
             ("add", [to, from, amount]) if is_stack(to) && is_stack(from) => {
                 number(amount).ok_or(stop("duration-post-read"))?;
             }
+            (operation, _) if operation.starts_with("st") && stores_to_frame(&operands) => {}
             ("str" | "stur", [from, memory]) => {
-                let slot = owner_slot(&registers, memory).ok_or(stop("duration-post-read"))?;
+                let slot =
+                    owner_slot(&registers, memory).ok_or(stop("duration-post-read-store"))?;
                 let value = from
                     .starts_with('w')
                     .then(|| operand(&registers, from))
@@ -340,11 +375,49 @@ fn continuation(
                 registers.remove(&index(first));
                 registers.remove(&index(second));
             }
+            (operation, [to, ..]) if writes_register_only(operation, to) => {
+                set(&mut registers, to, None);
+
+                if let Some(base) = written_back_base(&operands) {
+                    set(&mut registers, base, None);
+                }
+            }
             _ => return Err(stop("duration-post-read")),
         }
     }
 
     Err(Unresolved::new("duration-post-read-limit"))
+}
+
+/// Whether a store addresses the stack or frame, which holds no owner storage.
+fn stores_to_frame(operands: &[&str]) -> bool {
+    operands
+        .iter()
+        .find(|operand| operand.starts_with('['))
+        .and_then(|memory| memory_base(memory))
+        .is_some_and(|base| is_stack(base) || base == "x29")
+}
+
+/// An instruction that only writes its first register operand: not a store, a branch, a call or
+/// a return, which could change owner storage or leave the straight-line code.
+fn writes_register_only(operation: &str, destination: &str) -> bool {
+    let control = matches!(operation, "b" | "bl" | "blr" | "br" | "ret")
+        || ["b.", "bl", "br", "cb", "tb", "ret"]
+            .iter()
+            .any(|prefix| operation.starts_with(prefix));
+    let register = destination
+        .strip_prefix(['w', 'x'])
+        .is_some_and(|number| number.parse::<u8>().is_ok());
+
+    !control && !operation.starts_with("st") && register
+}
+
+/// The base register of a pre- or post-indexed access, which the access also writes.
+fn written_back_base<'a>(operands: &[&'a str]) -> Option<&'a str> {
+    let memory = operands.iter().find(|operand| operand.starts_with('['))?;
+    let written_back = memory.ends_with('!') || operands.last() != Some(memory);
+
+    written_back.then(|| memory_base(memory)).flatten()
 }
 
 /// The owner-derived callee-saved registers at the call; a call clobbers the others.

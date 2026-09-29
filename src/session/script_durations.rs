@@ -1,7 +1,7 @@
 //! The private duration table that travels with one script check.
 use super::grammar::registered_grammar;
 use crate::DeclarationKind;
-use crate::binding::{BoundAnalysis, scoped_operand_decoder};
+use crate::binding::{BoundAnalysis, PreparedDurations, scoped_operand_decoder};
 use crate::engine::analysis::{
     declarations::Site,
     durations::{Combination, Group},
@@ -14,7 +14,8 @@ use crate::protocol::script_check::{DurationReceiver, DurationSlots, MAX_DURATIO
 use std::collections::BTreeSet;
 
 /// The receivers of the `kind` commands whose names occur as whole words in `text`, at most
-/// `MAX_DURATION_RECEIVERS`.
+/// `MAX_DURATION_RECEIVERS`. It reads the facts that the session prepared at its start, so it
+/// never rereads the executable; without them it returns no receivers.
 ///
 /// A name only nominates a receiver; the worker classifies each child by its vtable. A command
 /// without an established grammar, or beyond the bound, has no receiver, so its children stay
@@ -24,11 +25,13 @@ pub(crate) fn duration_receivers(
     kind: DeclarationKind,
     text: &str,
 ) -> Vec<DurationReceiver> {
-    let (Ok((input, declarations)), Ok(numeric), Ok(scoped)) = (
-        analysis.grammar_input(kind),
-        analysis.numeric_facts(),
-        analysis.scoped_numeric_facts(),
-    ) else {
+    let Some(PreparedDurations {
+        input,
+        declarations,
+        numeric,
+        scoped,
+    }) = analysis.prepared_script_durations(kind)
+    else {
         return Vec::new();
     };
     let declared: BTreeSet<&str> = declarations
@@ -55,8 +58,8 @@ pub(crate) fn duration_receivers(
         .collect()
 }
 
-/// A receiver's observable top-level groups. A group without slots, or a group in a nested block,
-/// leaves its groups incomplete.
+/// A receiver's observable top-level groups. An incomplete static inventory, or a group without
+/// slots, leaves its groups incomplete.
 fn receiver(
     result: &GrammarResult,
     scoped: &scoped_numeric::Facts,
@@ -64,17 +67,14 @@ fn receiver(
 ) -> DurationReceiver {
     let slots: Vec<Option<DurationSlots>> = result
         .durations
+        .groups
         .iter()
         .map(|group| group_slots(group, result, scoped, numeric))
         .collect();
-    let nested_groups = result
-        .nested
-        .values()
-        .any(|nested| !nested.durations.is_empty());
 
     DurationReceiver {
         vtable: result.reader.vtable,
-        groups_complete: !nested_groups && slots.iter().all(Option::is_some),
+        groups_complete: result.durations_complete() && slots.iter().all(Option::is_some),
         groups: slots.into_iter().flatten().collect(),
     }
 }
@@ -114,6 +114,10 @@ mod tests {
     fn m45_checks_carry_the_named_receivers_and_their_count_slots() {
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         let analysis = native.bound().analysis.as_ref().unwrap();
+        assert!(
+            duration_receivers(analysis, DeclarationKind::Effect, "add_modifier = {}").is_empty()
+        );
+        analysis.prepare_script_durations().unwrap();
         let text = "set_timed_country_flag = { flag = x days = 7 }\n\
                     add_modifier = { modifier = y months = 2 }\n\
                     no_such_command = yes";
@@ -146,7 +150,7 @@ mod tests {
             summary,
             [
                 (true, units.clone(), 0xb0, false, None),
-                (true, units, 0xa8, true, Some(0x2b0)),
+                (false, units, 0xa8, true, Some(0x2b0)),
             ]
         );
     }

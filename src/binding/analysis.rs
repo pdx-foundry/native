@@ -52,6 +52,14 @@ pub(crate) struct FixtureLoader {
 }
 
 /// One fresh integrity check and the immutable analysis derived from this installation.
+/// Verified static facts that a live session reads for its script-check duration tables.
+pub(crate) struct PreparedDurations<'a> {
+    pub input: &'a GrammarInput,
+    pub declarations: &'a DeclarationResult,
+    pub numeric: &'a crate::engine::analysis::numeric::NumericFacts,
+    pub scoped: &'a crate::engine::analysis::scoped_numeric::Facts,
+}
+
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Vec<u8>,
     catalog: &'a Catalog,
@@ -907,6 +915,45 @@ impl BoundAnalysis {
             .get_or_init(|| verified.grammar_input(kind, recipe))
             .as_ref()
             .map_err(Clone::clone)
+    }
+
+    /// Verify the executable once and compute every fact that a script check's duration table
+    /// reads. A live session calls this before launch, so no check rereads the executable inside
+    /// its idle window.
+    pub(crate) fn prepare_script_durations(&self) -> Result<(), AnalysisError> {
+        let verified = self.verified()?;
+
+        for kind in [
+            crate::DeclarationKind::Effect,
+            crate::DeclarationKind::Trigger,
+        ] {
+            self.cached_grammar_input(kind, &verified)?;
+        }
+
+        self.numeric_facts()?;
+        self.scoped_numeric_facts()?;
+
+        Ok(())
+    }
+
+    /// The facts that [`Self::prepare_script_durations`] computed, without verifying again; `None`
+    /// before it succeeded. Only a session that verified them at its start may use these.
+    pub(crate) fn prepared_script_durations(
+        &self,
+        kind: crate::DeclarationKind,
+    ) -> Option<PreparedDurations<'_>> {
+        let index = match kind {
+            crate::DeclarationKind::Effect => 0,
+            crate::DeclarationKind::Trigger => 1,
+        };
+        let (input, declarations) = self.grammar[index].get()?.as_ref().ok()?;
+
+        Some(PreparedDurations {
+            input,
+            declarations,
+            numeric: self.numeric.get()?.as_ref().ok()?,
+            scoped: self.scoped_numeric.get()?.as_ref().ok()?,
+        })
     }
 
     /// Both command families with their receivers' code, and the flag functions.

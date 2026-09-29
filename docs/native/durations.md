@@ -8,9 +8,15 @@ ones, the count when no key is written, and what consumes the count. The source 
 answers do not report durations; `pdx_native::internals::duration_groups` runs the same grouping
 over registry fields for the population run.
 
-A key is a duration unit only by mechanism. Keys whose reader joins share one callee and owner
-destination form a group when at least one key applies a factor after its reader returns. No key
-name, token or command selects a result.
+A key is a duration unit only by mechanism. Only keys read by an integer or scoped numeric reader
+are candidates. Candidates whose reader joins share one callee and owner destination form a group
+when at least one key applies a factor after its reader returns. No key name, token or command
+selects a result.
+
+The list of groups is `Known` only when the fixed keys are known, every key is joined, no candidate
+is left unclassified, and no nested block, at any depth, may hold a group. A candidate is
+unclassified when the code around its reader call cannot be followed. The live table of
+`check_script` uses the same rule.
 
 ## Engine facts on M45-release
 
@@ -99,9 +105,18 @@ the grouping over all 164 discovered registries. No question failed.
   - 27: the flag update frequency, and so the expiry date, is outside the method.
   - 2: consumption is outside the method (the modifier effects).
   - 2: the execute body is not matched.
+- **Unclassified candidates**, 2 commands: after the reader call, `transfer_resources_to_empire`
+  (`percentage`) and `while` (`count`) run code that the method does not follow. Their lists are
+  partial.
+- **Duration lists**, all commands: 626 known, 515 partial and 1,029 unresolved. A list is never
+  more certain than the command's fixed keys, so most partial and unresolved lists follow them.
 - **Unit-named keys that no group covers**, 26 commands:
   - the 20 `*_event` effects and `has_passed_resolution`: a stack-temporary destination;
   - five `days`-only commands: no factor sibling.
+
+The registry run found no group. Two registries, `common/council_agendas` and the
+`advanced_authority_swap` collection of `common/governments/authorities`, have candidates with an
+owner store before the reader call, so a group there is not ruled out.
 
 A group is complete only when its combination, every factor, its omitted count and its
 consumption are established. No group meets that on this build.
@@ -113,8 +128,10 @@ The run takes about three minutes. The report is `.local/sdk-646/duration-popula
 
 `Game::check_script` reports `stored_durations` for each top-level child after reading, before
 validation. Nothing is executed. `tests/live/durations.rs` runs one effect session in country
-scope, and `tests/expected/duration-m45/live.json` holds the reviewed results. Every case gave a
-complete answer with one classified child, and every stored value agrees with the static groups.
+scope, and `tests/expected/duration-m45/live.json` holds the reviewed results. Every case classified
+its one child, and every stored value agrees with the static groups. The `add_modifier` answers are
+complete. The `set_timed_country_flag` lists are partial, because the static list is partial: its
+`flag` key has no reader join, so the method cannot rule out another group.
 
 | `set_timed_country_flag` input | Operand literal | Factor | Other storage | Diagnostics |
 | --- | ---: | ---: | --- | --- |
@@ -154,7 +171,7 @@ The observations separate storage from acceptance:
   expiry cases: `months = 2 days = 3`, 1, 0, -1, and a product that overflows. SDK-646 stays open
   until those run.
 - Consumption of scaled-at-read counts, including `time_multiplier`, and event delays.
-- The stack-temporary readers and `days`-only keys.
+- The stack-temporary readers, `days`-only keys and the unclassified candidates.
 - Omitted counts where factory state lacks the initial bytes.
 
 ## Pitfalls
