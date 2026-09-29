@@ -58,7 +58,7 @@ Current constraints matter:
   to another build.
 
 These are existing capabilities, not results of this spike. The
-[consumer contract](atlas-caller-migration.md#block-and-command-grammar-migration-sdk-542--sdk-597--sdk-625)
+[consumer contract](../design/atlas-caller-migration.md#block-and-command-grammar-migration-sdk-542--sdk-597--sdk-625)
 and [specification](../specs/native.md) govern how observations may support conclusions.
 
 ## First experiment: what do engine errors reveal?

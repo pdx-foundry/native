@@ -38,6 +38,12 @@ inspections (such as warnings and errors).
 - [Development improvements](docs/design/native-dx.md) Proposed improvements for writing and adapting methods.
 - [Atlas caller migration](docs/design/atlas-caller-migration.md) Migration from the prototype to the simplified API.
 
+### Spikes and proposals
+
+These are not accepted designs. Do not implement from them without an accepted decision.
+
+- [Spikes and proposals](docs/spike/README.md) Experiments, their proposals and where their results live.
+
 ### Methods and engine knowledge
 
 - [Engine knowledge index](docs/engine-knowledge.md) Where to find engine facts and experiments.

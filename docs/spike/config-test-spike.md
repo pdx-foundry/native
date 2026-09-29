@@ -245,7 +245,7 @@ Stop scheduling when the rest of the budget cannot cover another session.
 
 Atlas owns the claims, the selections, the probe runner, the results and the rule conclusions.
 Native owns the in-process observation route and its build-specific addresses. Read the
-[simplification decision](simplification.md) before any of this becomes a Native operation: it
+[simplification decision](../design/simplification.md) before any of this becomes a Native operation: it
 must be a normal answer with gaps, with no evidence descriptors, replay paths or artifact hashes.
 The worker patch stays on the spike branch until then.
 
