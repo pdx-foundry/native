@@ -18,6 +18,13 @@ spec.loader.exec_module(worker)
 
 
 class ProbePauseTests(unittest.TestCase):
+    def test_paused_session_disables_all_remaining_observation_hooks(self):
+        hooks = {'fixture:failed': Mock(), 'registry:return': Mock(), 'modifiers': Mock()}
+        with patch.object(worker, 'breakpoints', hooks):
+            worker.disable_observation_hooks()
+        for hook in hooks.values():
+            hook.SetEnabled.assert_called_once_with(False)
+
     def test_pause_reads_current_registers_without_cached_frame_pc(self):
         process = Mock()
         frame = process.GetThreadByID.return_value.GetFrameAtIndex.return_value

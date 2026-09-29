@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/19";
+pub(crate) const VERSION: &str = "native-observation/20";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 /// Bound of the loaded modifier table file.

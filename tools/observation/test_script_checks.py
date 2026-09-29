@@ -2,10 +2,16 @@
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'))
 from script_checks import DiagnosticCapture, attribute_message
+
+
+def log_frame(level=2):
+    frame = Mock()
+    frame.FindRegister.return_value.GetValueAsUnsigned.return_value = level
+    return frame
 
 
 class AttributionTests(unittest.TestCase):
@@ -37,7 +43,7 @@ class CaptureTests(unittest.TestCase):
         hook.IsEnabled.return_value = True
         hook.GetID.return_value = 8
         capture = DiagnosticCapture(target, Mock(), dict(logger_entry=1,
-            logger_text_register='x4', string_tag_offset=23), {'first.txt': 1, 'second.txt': 2}, check, 32, 4096)
+            logger_text_register='x4', logger_level_register='w1', string_tag_offset=23), {'first.txt': 1, 'second.txt': 2}, check, 32, 4096)
         location = Mock()
         location.GetBreakpoint.return_value = hook
         return capture, hook, location
@@ -50,13 +56,20 @@ class CaptureTests(unittest.TestCase):
                             ('validation', 'Invalid technology being referenced: "missing"')]:
             capture.stage = stage
             with patch('script_checks.read_string', return_value=(text, False)):
-                capture.capture(Mock(), location)
+                capture.capture(log_frame(), location)
         result = capture.finish(1)
         self.assertEqual(len(result['diagnostics']), 2)
         self.assertEqual(result['diagnostics'][0], result['diagnostics'][1])
         self.assertEqual(result['foreign'][0]['check'], 1)
         self.assertEqual(result['foreign'][0]['diagnostic']['stage'], 'validation')
         self.assertEqual(len(result['unjoined']), 1)
+
+    def test_raw_log_levels_are_preserved_without_filtering(self):
+        capture, _, location = self.capture()
+        for level in [0, 2, 0xffffffff]:
+            with patch('script_checks.read_string', return_value=('message', False)):
+                capture.capture(log_frame(level), location)
+        self.assertEqual([message['level'] for message in capture.finish(0)['unjoined']], [0, 2, -1])
 
     def test_missing_or_lost_hook_never_claims_coverage(self):
         for before in [False, True]:
@@ -71,7 +84,7 @@ class CaptureTests(unittest.TestCase):
         capture, _, location = self.capture()
         with patch('script_checks.read_string', return_value=('bad value', False)):
             for _ in range(100):
-                capture.capture(Mock(), location)
+                capture.capture(log_frame(), location)
         result = capture.finish(1)
         self.assertEqual(len(result['unjoined']), 32)
         self.assertTrue(result['bound_reached'])
@@ -79,11 +92,23 @@ class CaptureTests(unittest.TestCase):
     def test_unreadable_message_loses_coverage(self):
         capture, _, location = self.capture()
         with patch('script_checks.read_string', side_effect=RuntimeError('unreadable')):
-            capture.capture(Mock(), location)
+            capture.capture(log_frame(), location)
         self.assertFalse(capture.finish(1)['hooks_active'])
 
 
 class RegisterTests(unittest.TestCase):
+    def test_calls_use_the_thread_stack_below_its_red_zone_without_allocating(self):
+        from script_checks import EngineCalls
+        process = MagicMock()
+        process.__iter__.return_value = iter([])
+        frame = process.GetThreadByID.return_value.GetFrameAtIndex.return_value
+        frame.FindRegister.return_value.GetValueAsUnsigned.return_value = 0x100000
+        frame.FindRegister.return_value.GetData.return_value.GetByteSize.return_value = 8
+        with patch.dict(sys.modules, lldb=Mock()):
+            calls = EngineCalls(process, 7, 10)
+        self.assertEqual(calls.stack, 0x100000 - 256)
+        process.AllocateMemory.assert_not_called()
+
     def test_changed_pause_registers_cannot_return_to_held(self):
         from script_checks import EngineCalls
         for name in ['pc', 'sp', 'fp', 'lr', 'v0']:

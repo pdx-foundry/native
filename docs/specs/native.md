@@ -376,9 +376,12 @@ Start with `GameOptions::loaded_modifiers`, then call `Game::check_script` seria
 messages, takes at most five seconds, and a session permits at most 3,000 checks. Each message
 is bounded to 4 KiB. Native adds trailing whitespace so the final token can be read.
 
+Results are observations against the session's loaded content and retained command databases.
+Each message retains the raw signed engine log level; Native neither filters levels nor assigns
+severity. Foreign messages without line numbers do not reduce the current check's completeness.
 Each request has a unique source identity. Validation can report errors from earlier checks;
 these are separate `foreign` diagnostics. Source-free or ambiguous messages stay `unjoined`.
-Missing hooks, unreadable messages, missing source lines, unjoined messages or reached bounds
+Missing hooks, unreadable messages, missing current-source lines, unjoined messages or reached bounds
 make the answer partial. Repeated messages remain separate occurrences. A complete quiet
 answer records capture coverage; it does not establish script acceptance.
 

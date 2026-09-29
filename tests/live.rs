@@ -165,6 +165,7 @@ fn main() {
 enum Case {
     ScriptArguments,
     ScriptAttribution,
+    ScriptDeepNesting,
     Normal,
     InvalidSelection,
     OutsideCommon,
@@ -288,6 +289,7 @@ fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
         ("script_arguments".to_owned(), Case::ScriptArguments),
         ("script_attribution".to_owned(), Case::ScriptAttribution),
+        ("script_deep_nesting".to_owned(), Case::ScriptDeepNesting),
         ("normal".to_owned(), Case::Normal),
         ("loaded_modifiers".to_owned(), Case::LoadedModifiers),
         (
@@ -683,6 +685,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         } => fixture_argument(native, field, commands, samples).await,
         Case::ScriptArguments => script_checks::arguments(native).await,
         Case::ScriptAttribution => script_checks::attribution(native).await,
+        Case::ScriptDeepNesting => script_checks::deep_nesting(native).await,
         Case::Normal => normal(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,

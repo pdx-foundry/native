@@ -64,6 +64,7 @@ pub(crate) struct ScriptCheckBinding {
     pub string_tag_offset: u64,
     pub logger_entry: u64,
     pub logger_text_register: String,
+    pub logger_level_register: String,
     pub trigger: CommandBinding,
     pub effect: CommandBinding,
     pub scopes: BTreeMap<String, u64>,

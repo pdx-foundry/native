@@ -187,7 +187,9 @@ was 2,712,880 KiB after check 1 and 968,048 KiB after check 3,000; paging makes 
 unsuitable as an allocation-growth estimate. The final eleven checks grew by about 96 KiB per
 check. Allocations stay bounded by the session count and are released with the process.
 Per-check measurements and full default-suite results are retained in
-`/Users/jackson/.codex/run-and-queue/output-7DowBZLZ` and the runner in `.local/sdk-649/runner`.
+`.local/sdk-649/sustained-3000-before-stack-fix.log`. That run used the original per-check
+64 KiB scratch stack; it predates the guarded thread-stack repair. The sustained runner is a
+retained one-off experiment in `.local/sdk-649/runner`, not part of the live suite.
 
 
 **SDK-649 parity and attribution.** The live suite passed the full command-argument matrix
@@ -199,3 +201,22 @@ fresh session for its memory checks. Four isolated controls and bad/good, duplic
 and reference orderings preserved current diagnostics and completeness; prior-source messages
 remained separate. Colony's bit-40 scope also passed. The seven redundant unknown-key file launches
 were removed only after the matrix and paired controls passed.
+
+**SDK-649 guarded stack repair.** The initial direct-call method allocated an unguarded
+64 KiB stack per check. Recursive readers can exceed that size well within the text bound and
+write into other debugger allocations. Calls now use the paused main thread's OS-guarded stack,
+with an aligned stack pointer 256 bytes below the witnessed pointer to preserve the ARM64
+128-byte red zone. There is no per-check stack allocation. Full register restoration remains
+mandatory. A guard fault ends the session rather than allowing a return to held.
+
+The committed `script_deep_nesting` live case passed 681 nested trigger blocks in 4,096 bytes
+and 254 nested effect blocks in 4,085 bytes. Each was followed by a clean check and a repeat of
+an earlier invalid Boolean check; current diagnostics and completeness stayed unchanged, and
+disposal was confirmed. The command matrix passed again. Full output is preserved at
+`.local/sdk-649/guarded-stack-deep-nesting.log`. These controls verify deep inputs and reuse;
+the earlier 3,000-check measurements have not been rerun with the repaired stack.
+
+Capture also retains the raw signed logger level. Source lines missing only from foreign
+messages do not reduce current completeness. All file-load observation hooks are disabled at
+the admitted pause, including hooks left active by a failed fixture callback, so they cannot
+intercept later command checks.

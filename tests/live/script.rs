@@ -262,3 +262,77 @@ pub(super) async fn attribution(native: &Native) -> Outcome {
     and_close(&mut result, &mut game).await;
     result
 }
+
+pub(super) async fn deep_nesting(native: &Native) -> Outcome {
+    let country = native
+        .scopes()?
+        .value
+        .types
+        .into_iter()
+        .find(|scope| scope.name == "country")
+        .ok_or("country missing")?
+        .id;
+    let mut game = native.start_game(options().loaded_modifiers()).await?;
+    let mut result = async {
+        let earlier = ScriptCheck {
+            kind: DeclarationKind::Trigger,
+            scope: country.clone(),
+            text: "always = banana".into(),
+        };
+        let baseline = game.check_script(&earlier).await?;
+        if baseline.value.diagnostics.is_empty() {
+            return Err("missing baseline diagnostic".into());
+        }
+        for (kind, opener, leaf) in [
+            (DeclarationKind::Trigger, "and={", "always=yes"),
+            (
+                DeclarationKind::Effect,
+                "hidden_effect={",
+                "stop_crisis_sound=yes",
+            ),
+        ] {
+            let depth = (4096 - leaf.len()) / (opener.len() + 1);
+            let text = opener.repeat(depth) + leaf + &"}".repeat(depth);
+            println!("{kind:?}: depth={depth}, bytes={}", text.len());
+            let nested = game
+                .check_script(&ScriptCheck {
+                    kind,
+                    scope: country.clone(),
+                    text,
+                })
+                .await?;
+            if nested.completeness != Completeness::Complete
+                || nested.value.children != 1
+                || !nested.value.diagnostics.is_empty()
+                || !nested.value.unjoined.is_empty()
+            {
+                return Err(format!("deep nesting observation: {nested:?}").into());
+            }
+            let clean = game
+                .check_script(&ScriptCheck {
+                    kind,
+                    scope: country.clone(),
+                    text: leaf.into(),
+                })
+                .await?;
+            if clean.completeness != Completeness::Complete
+                || clean.value.children != 1
+                || !clean.value.diagnostics.is_empty()
+            {
+                return Err(format!("clean check after deep nesting: {clean:?}").into());
+            }
+            let repeated = game.check_script(&earlier).await?;
+            if repeated.value.diagnostics != baseline.value.diagnostics
+                || repeated.completeness != baseline.completeness
+            {
+                return Err(
+                    format!("earlier check changed after deep nesting: {repeated:?}").into(),
+                );
+            }
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}

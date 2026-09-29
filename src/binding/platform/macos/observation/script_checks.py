@@ -66,7 +66,10 @@ class DiagnosticCapture:
             address = frame.FindRegister(self.binding['logger_text_register']).GetValueAsUnsigned()
             text, truncated = read_string(self.process, address, self.binding['string_tag_offset'], self.text_limit)
             self.bound_reached |= truncated
-            self.messages.append((self.stage, text))
+            level = frame.FindRegister(self.binding['logger_level_register']).GetValueAsUnsigned() & 0xffffffff
+            if level >= 1 << 31:
+                level -= 1 << 32
+            self.messages.append((self.stage, level, text))
             self.bound_reached |= len(self.messages) == self.limit
         except Exception:
             self.hooks_active = False
@@ -77,9 +80,9 @@ class DiagnosticCapture:
         result = dict(check=self.check, read_returned=True, children=children,
                       diagnostics=[], foreign=[], unjoined=[], hooks_active=self.hooks_active,
                       bound_reached=self.bound_reached)
-        for stage, text in self.messages:
+        for stage, level, text in self.messages:
             check, line, normalized = attribute_message(text, self.sources)
-            message = dict(text=normalized, stage=stage, line=line)
+            message = dict(text=normalized, stage=stage, line=line, level=level)
             if check == self.check:
                 result['diagnostics'].append(message)
             elif check is not None:
@@ -127,7 +130,9 @@ class EngineCalls:
         if any(not data.GetByteSize() for data in self.registers.values()):
             raise RuntimeError('script check cannot save registers')
         self.return_address = frame.FindRegister('pc').GetValueAsUnsigned()
-        self.stack = self.allocate(65536) + 65536 - 256
+        # Keep the paused frame's 128-byte ARM64 red zone untouched. The native thread
+        # stack has its OS guard; a small debugger allocation does not.
+        self.stack = (frame.FindRegister('sp').GetValueAsUnsigned() - 256) & ~15
         self.suspended = []
         for thread in process:
             if thread.GetThreadID() != thread_id and not thread.IsSuspended():

@@ -1144,6 +1144,12 @@ def callback(frame, loc, _):
     return decide_pause(progress).stop
 
 
+def disable_observation_hooks():
+    """File-load hooks have no work after admission and must not stop later engine calls."""
+    for hook in breakpoints.values():
+        hook.SetEnabled(False)
+
+
 def pause_registers(process, thread_id):
     # Re-read registers: LLDB can retain a stale frame PC after an engine call.
     frame = process.GetThreadByID(thread_id).GetFrameAtIndex(0)
@@ -1281,6 +1287,7 @@ def run(debugger):
         time.sleep(.02)
     if decision.cause and process.GetState() == lldb.eStateStopped:
         emit('session-paused', returned=progress.returned_registries, cause=decision.cause, thread=entry_thread)
+        disable_observation_hooks()
         held_registers = pause_registers(process, entry_thread)
         witness = dict(attempt=request['attempt'], game=request['game'], worker=os.getpid(),
             thread=entry_thread, returned=progress.returned_registries, generation=0, state='held')

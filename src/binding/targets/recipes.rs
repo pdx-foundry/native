@@ -140,6 +140,7 @@ fn m45_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
         string_tag_offset: 23,
         logger_entry: 0x1025048a0,
         logger_text_register: "x4".into(),
+        logger_level_register: "w1".into(),
         trigger: CommandBinding {
             size: 0x200,
             constructor: call(0x100d06974, &[64]),

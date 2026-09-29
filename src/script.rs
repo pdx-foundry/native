@@ -52,6 +52,8 @@ pub enum ScriptStage {
 /// One occurrence of a fully formatted engine message. Repeated messages remain repeated.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ScriptDiagnostic {
+    /// Raw signed engine log level. All levels are retained; Native does not classify severity.
+    pub level: i32,
     /// Message text, with the generated source name removed when attribution succeeds.
     pub text: String,
     /// The phase of the current check during which the message was observed.
@@ -107,7 +109,6 @@ impl ScriptObservation {
             (
                 self.diagnostics
                     .iter()
-                    .chain(self.foreign.iter().map(|message| &message.diagnostic))
                     .any(|message| message.line.is_none()),
                 "An attributed message has no established source line.",
             ),
@@ -149,20 +150,17 @@ mod tests {
     #[test]
     fn capture_gaps_never_become_complete_answers() {
         let diagnostic = ScriptDiagnostic {
+            level: 1,
             text: "error".into(),
             stage: ScriptStage::Validation,
             line: None,
         };
-        let mut cases = vec![observation(); 6];
+        let mut cases = vec![observation(); 5];
         cases[0].read_returned = false;
         cases[1].hooks_active = false;
         cases[2].bound_reached = true;
         cases[3].unjoined.push(diagnostic.clone());
         cases[4].diagnostics.push(diagnostic.clone());
-        cases[5].foreign.push(ForeignScriptDiagnostic {
-            check: 1,
-            diagnostic,
-        });
         for case in cases {
             let answer = case.answer(BuildId("test".into()));
             assert_eq!(answer.completeness, Completeness::Partial);
@@ -170,6 +168,25 @@ mod tests {
         }
         assert_eq!(
             observation().answer(BuildId("test".into())).completeness,
+            Completeness::Complete
+        );
+    }
+
+    #[test]
+    fn foreign_missing_lines_do_not_degrade_current_capture() {
+        let mut current = observation();
+        current.check = 2;
+        current.foreign.push(ForeignScriptDiagnostic {
+            check: 1,
+            diagnostic: ScriptDiagnostic {
+                level: 1,
+                text: "earlier error".into(),
+                stage: ScriptStage::Validation,
+                line: None,
+            },
+        });
+        assert_eq!(
+            current.answer(BuildId("test".into())).completeness,
             Completeness::Complete
         );
     }
