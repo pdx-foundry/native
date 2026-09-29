@@ -112,6 +112,45 @@ pub(crate) struct Binding {
 }
 
 impl Binding {
+    pub(crate) fn has_script_check_method(&self) -> bool {
+        self.operation
+            .as_ref()
+            .is_some_and(|operation| operation.script_checks.is_some())
+    }
+
+    fn script_check_binding(
+        &self,
+    ) -> Result<
+        Option<crate::protocol::script_check::ScriptCheckBinding>,
+        crate::supervisor::SupervisorError,
+    > {
+        let Some(mut binding) = self
+            .operation
+            .as_ref()
+            .and_then(|operation| operation.script_checks.clone())
+        else {
+            return Ok(None);
+        };
+        let input = self
+            .analysis
+            .as_ref()
+            .ok_or_else(|| crate::supervisor::SupervisorError("scope analysis unavailable".into()))?
+            .scope_input()
+            .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
+        let scopes = crate::engine::analysis::scopes::scopes(&input)
+            .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
+        binding.scopes = scopes
+            .scopes
+            .iter()
+            .map(|(scope, _)| {
+                (
+                    crate::session::questions::scope_id(scope).0,
+                    1u64 << scope.bit,
+                )
+            })
+            .collect();
+        Ok(Some(binding))
+    }
     pub(crate) fn open(installation: &std::path::Path) -> Result<Self, OpenError> {
         let (installation, bytes) = installation::Installation::open(installation)?;
         let image = binary::identify(&bytes, installation.executable_hash())?;
@@ -636,6 +675,11 @@ impl ExecutionPlan {
             startup_seconds: request.startup_seconds,
             machine: &operation.machine,
             package: &operation.strategy.package,
+            script_checks: if request.loaded_modifiers.is_some() {
+                self.binding.script_check_binding()?
+            } else {
+                None
+            },
         })
     }
     pub(crate) fn spawn_observed(

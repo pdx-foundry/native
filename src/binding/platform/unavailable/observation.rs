@@ -34,4 +34,32 @@ impl Observer {
     pub(crate) fn stop(&mut self) -> Result<(), SupervisorError> {
         unavailable()
     }
+    pub(crate) fn pause_witness_before(
+        &mut self,
+        _: std::time::Instant,
+    ) -> Result<Option<crate::protocol::observation::PauseWitness>, SupervisorError> {
+        unavailable()
+    }
+    pub(crate) fn prepare_check(
+        &self,
+        _: u64,
+        _: &crate::ScriptCheck,
+    ) -> Result<crate::protocol::script_check::CheckRequest, crate::Error> {
+        Err(crate::Error::Unsupported {
+            operation: crate::Operation::CheckScript,
+            reason: "host unavailable".into(),
+        })
+    }
+    pub(crate) fn start_check(
+        &self,
+        _: &crate::protocol::script_check::CheckRequest,
+    ) -> Result<(), SupervisorError> {
+        unavailable()
+    }
+    pub(crate) fn check_reply(
+        &self,
+        _: u64,
+    ) -> Result<Option<crate::ScriptObservation>, SupervisorError> {
+        unavailable()
+    }
 }

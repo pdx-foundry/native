@@ -90,6 +90,9 @@ impl Native {
     }
 
     fn live_support(&self, binding: &Binding, operation: Operation) -> Support {
+        if operation == Operation::CheckScript && !binding.has_script_check_method() {
+            return Support::Unsupported("this build has no script-check recipe".into());
+        }
         if operation == Operation::ObserveFixture && !binding.has_fixture_method() {
             return Support::Unsupported("this build has no fixture observation recipe".into());
         }
@@ -120,12 +123,13 @@ impl Native {
             Operation::LoadedModifiers if !binding.has_modifier_table_method() => {
                 Support::Unsupported("this build has no loaded modifier table recipe".into())
             }
-            Operation::RegistryItems | Operation::ObserveFixture | Operation::LoadedModifiers => {
-                match self.selected_blocking_reasons(binding) {
-                    reasons if reasons.is_empty() => Support::Supported,
-                    reasons => Support::Unsupported(format!("{reasons:?}")),
-                }
-            }
+            Operation::RegistryItems
+            | Operation::ObserveFixture
+            | Operation::LoadedModifiers
+            | Operation::CheckScript => match self.selected_blocking_reasons(binding) {
+                reasons if reasons.is_empty() => Support::Supported,
+                reasons => Support::Unsupported(format!("{reasons:?}")),
+            },
         }
     }
 
@@ -398,7 +402,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
 }
 
 /// The public identity of a scope type. It hides the engine's bit number.
-pub(super) fn scope_id(scope: &ScopeType) -> ScopeId {
+pub(crate) fn scope_id(scope: &ScopeType) -> ScopeId {
     let digest = Sha256::digest(format!("scope-type/{}", scope.bit).as_bytes());
     ScopeId(format!("{digest:x}")[..16].to_owned())
 }

@@ -127,6 +127,11 @@ impl SessionRequest {
 /// What the caller sends after the request.
 #[derive(Serialize, Deserialize)]
 pub(crate) enum Control {
+    /// Read and validate a snippet at the loaded-content pause.
+    CheckScript {
+        input: crate::ScriptCheck,
+        request: u64,
+    },
     /// End the session because the caller cancelled.
     Cancel,
     /// End the session in order.

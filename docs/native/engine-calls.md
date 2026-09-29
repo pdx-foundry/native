@@ -45,6 +45,36 @@ Prerequisites for fresh runs are the exact historical executable, compatible sav
 
 ## In-process parse probes (M45-release)
 
+### SDK-649 capture and source controls
+
+The 2026-09-28 implementation controls used the exact M45-release identities below.
+`CFilterLogger::Log(int, CString const&, int, CString const&)` receives the final message
+in `x4`, before ordinary-log duplicate suppression. A breakpoint at its entry captured
+the offending unknown key, two identical consecutive Boolean errors, and both occurrences
+of the source-free missing-technology error. The callback uses the current read or validation
+window. Disabling the hook made capture incomplete. These are finite capture controls, not
+proof that silent validation paths accept input.
+
+`CMemoryFile` starts with an empty `CFile` name. Assigning the name through
+`CString::operator=(char const*)` at the bound file-name offset before constructing the lexer
+propagated a unique name to both reader and deferred validation messages. Later validations
+reported the earlier names unchanged. Source-free messages stay unjoined. No empty-line
+padding is needed. The addresses, signatures and construction layout belong to the target
+recipe; source attribution belongs to the worker.
+
+The expression evaluator stopped at the logging breakpoint instead of continuing its callback.
+The direct-call control worked with synchronous continuation and a return breakpoint. An early
+asynchronous version sometimes wrote stale call registers: a recorded pre-call PC still named
+the original pause, and the game resumed ordinary startup. Therefore each call writes its PC
+last, verifies every argument and control register before resuming, and waits for synchronous
+return before restoring registers. Vector registers require raw `SBData`, not `GetValue()`.
+Fresh `pc`, `sp`, `fp`, and `lr` checks remain required before reporting a held pause.
+
+The retained controls and results are in `.local/sdk-649/`. The ten-check capture/source run
+`capture-1790649059928203000` took 2.46 seconds and confirmed disposal. Earlier failed runs
+also confirmed disposal. The production request path and sustained-session acceptance are
+separate checks and are not established by these measurements.
+
 A spike on 2026-09-28 parsed trigger text inside the paused game, with no new launch per probe.
 It applies only to the M45-release executable in [targets](targets.md). The worker patch, probe
 scripts and results are in `.local/evidence/in-process-probe-2026-09-28/`; the patch is on branch
@@ -142,3 +172,51 @@ including the initial failed Boolean control, used 1,717.542 seconds; all confir
 The findings and rule limits are separate: Native records the route here, while Atlas owns
 `docs/prototypes/config-test-spike/REPORT.md`, its calibration and config conclusions. A checked
 copy is under Native `.local/evidence/config-test-spike-2026-09-28/`; see [preservation](preservation.md).
+
+**SDK-649 register restoration control.** The installed LLDB reports success from
+`SBValue.SetData` for ARM64 vector registers without changing their bytes. A small native
+control in `.local/sdk-649/register_control.py` reproduces this independently of the game.
+`SetValueFromCString` with a brace-enclosed byte list writes all 16 bytes. The direct-call
+method uses that form for vectors and checks every saved register after restoration.
+
+
+**SDK-649 sustained public API control.** On 2026-09-28, 3,000 sequential trigger checks
+used 4,096-byte multiline snippets. Mean wall time was 0.347280 seconds; maximum was 0.475936
+seconds. Check 3,001 was rejected before a call, and disposal was confirmed. Resident memory
+was 2,712,880 KiB after check 1 and 968,048 KiB after check 3,000; paging makes the endpoints
+unsuitable as an allocation-growth estimate. The final eleven checks grew by about 96 KiB per
+check. Allocations stay bounded by the session count and are released with the process.
+Per-check measurements and full default-suite results are retained in
+`.local/sdk-649/sustained-3000-before-stack-fix.log`. That run used the original per-check
+64 KiB scratch stack; it predates the guarded thread-stack repair. The sustained runner is a
+retained one-off experiment in `.local/sdk-649/runner`, not part of the live suite.
+
+
+**SDK-649 parity and attribution.** The live suite passed the full command-argument matrix
+with a corrected contrast after every rejection. The retained file controls cover `potential`,
+`on_enabled`, one unknown key and missing/installed `has_technology` references. File and memory
+routes matched message identities after source/line normalization. A file-loaded invalid councilor
+object can change later validation in the same process; the paired regression therefore uses a
+fresh session for its memory checks. Four isolated controls and bad/good, duplicate, unknown-key
+and reference orderings preserved current diagnostics and completeness; prior-source messages
+remained separate. Colony's bit-40 scope also passed. The seven redundant unknown-key file launches
+were removed only after the matrix and paired controls passed.
+
+**SDK-649 guarded stack repair.** The initial direct-call method allocated an unguarded
+64 KiB stack per check. Recursive readers can exceed that size well within the text bound and
+write into other debugger allocations. Calls now use the paused main thread's OS-guarded stack,
+with an aligned stack pointer 256 bytes below the witnessed pointer to preserve the ARM64
+128-byte red zone. There is no per-check stack allocation. Full register restoration remains
+mandatory. A guard fault ends the session rather than allowing a return to held.
+
+The committed `script_deep_nesting` live case passed 681 nested trigger blocks in 4,096 bytes
+and 254 nested effect blocks in 4,085 bytes. Each was followed by a clean check and a repeat of
+an earlier invalid Boolean check; current diagnostics and completeness stayed unchanged, and
+disposal was confirmed. The command matrix passed again. Full output is preserved at
+`.local/sdk-649/guarded-stack-deep-nesting.log`. These controls verify deep inputs and reuse;
+the earlier 3,000-check measurements have not been rerun with the repaired stack.
+
+Capture also retains the raw signed logger level. Source lines missing only from foreign
+messages do not reduce current completeness. All file-load observation hooks are disabled at
+the admitted pause, including hooks left active by a failed fixture callback, so they cannot
+intercept later command checks.

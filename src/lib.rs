@@ -19,6 +19,7 @@ mod grammar;
 mod numeric;
 mod protocol;
 mod recorded;
+mod script;
 mod session;
 mod work_directory;
 
@@ -61,6 +62,9 @@ pub use grammar::{
 pub use numeric::{
     NumericBound, NumericConversion, NumericLiteralSyntax, NumericRange, NumericRepresentation,
     NumericSignedness,
+};
+pub use script::{
+    ForeignScriptDiagnostic, ScriptCheck, ScriptDiagnostic, ScriptObservation, ScriptStage,
 };
 pub use session::Native;
 

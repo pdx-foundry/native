@@ -112,6 +112,7 @@ the state after the simplification effort:
 | `game_rules` | Implemented | — | Game rules from the engine's rule declarations, scripted and weighted, with each distinct context that the rule set's call sites supply. A declared rule with no followed call site is a gap. |
 | `dynamic_names` | Implemented for M45-release integer flags | — | One namespace for each flag store that commands reach: its owner (a scope type, or one global store), the effects and triggers that define, remove and read names in it, and whether they accept `name@target`. Two commands share a namespace only when both reach the same store. Saved event targets and variables are outside it; commands and stores that the method cannot follow are gaps. |
 | `defines` | Implemented for M45-release | — | Define namespace, name and engine read type from compiled read helpers; unresolved helpers are gaps. No shipped define or config file is read. |
+| `Game::check_script` | M45-release at the loaded-modifier pause | Trigger or effect text and a scope ID from `Native::scopes` | Whether reading returned, top-level child count, current diagnostics with stage and optional line, prior-check diagnostics, unjoined messages and capture bounds. No trigger evaluation or effect execution. |
 | `Game::observe_fixture`: registration entries | M45-release only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
 | `Game::observe_fixture`: category reads | M45-release only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
 | `Game::observe_fixture`: field outcomes | M45-release only; initial file load, optionally through bounded deferred validation, for a registry with verified boundaries | At most 32 named definition and field questions in one bounded relative text file | Separate parser entry/return occurrences, source-correlated diagnostics and typed string, integer or fixed-point storage where bound; other dimensions report unavailable. Lost observations cannot establish acceptance. |
@@ -367,3 +368,29 @@ and source revisions recorded; recorded answers support reproduction.
   Atlas decisions and open extraction questions. SDK-475 (module boundary), SDK-476 (supported
   builds) and SDK-472 (first coverage) still apply. SDK-473 is amended as stated in section 8.
 - [Engine knowledge index](../engine-knowledge.md): where prototype knowledge is kept.
+
+## Paused script checks
+
+Start with `GameOptions::loaded_modifiers`, then call `Game::check_script` serially with a
+`ScriptCheck`. Text is limited to 4,096 UTF-8 bytes with no NUL; one check captures at most 32
+messages, takes at most five seconds, and a session permits at most 3,000 checks. Each message
+is bounded to 4 KiB. Native adds trailing whitespace so the final token can be read.
+
+Results are observations against the session's loaded content and retained command databases.
+Each message retains the raw signed engine log level; Native neither filters levels nor assigns
+severity. Foreign messages without line numbers do not reduce the current check's completeness.
+Each request has a unique source identity. Validation can report errors from earlier checks;
+these are separate `foreign` diagnostics. Source-free or ambiguous messages stay `unjoined`.
+Missing hooks, unreadable messages, missing current-source lines, unjoined messages or reached bounds
+make the answer partial. Repeated messages remain separate occurrences. A complete quiet
+answer records capture coverage; it does not establish script acceptance.
+
+A check temporarily replaces the idle deadline. The idle period starts again after a verified
+return to the original stopped registers. A failed call, timeout, worker loss, register mismatch
+or cancellation ends the session; call `close` to observe disposal after cancelling a future.
+Invalid text, scope or a spent check count is rejected before an engine call. Engine allocations
+and deferred command objects remain until the session ends. Checks are not isolated fresh games.
+
+Atlas owns conclusions drawn from these observations. Checks do not alter static answers,
+resolve silent properties, check registry fields, evaluate triggers or execute effects. Windows
+and the proposed Atlas corpus comparison are outside this operation.

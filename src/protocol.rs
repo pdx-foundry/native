@@ -7,6 +7,7 @@ use std::io::{Read, Write};
 
 pub(crate) mod hooks;
 pub(crate) mod observation;
+pub(crate) mod script_check;
 pub(crate) mod session;
 
 const VERSION: u32 = 9;
@@ -86,6 +87,11 @@ pub(crate) enum Reply {
     },
     /// Acknowledges a registry, fixture or modifier read.
     ObservationRead { request: u64 },
+    /// One script check completed, or was refused before engine calls started.
+    ScriptChecked {
+        request: u64,
+        result: Result<crate::Answer<crate::ScriptObservation>, crate::Error>,
+    },
     /// The session is over. Always the last message.
     Finished(Box<session::SessionReport>),
 }
