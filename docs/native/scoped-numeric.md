@@ -27,9 +27,9 @@ rules for stored representations, not evaluated results or guarantees of valid n
 The concrete literal uses the ordinary token conversion. Integer storage is signed 32-bit,
 scale 1; fixed storage is signed 64-bit, scale 100000. Numeric lexical boundaries, trailing
 text, accepted range, overflow, and library conversion remain unresolved as in SDK-644.
-Duration units, script-value arithmetic, parameters, and evaluated values are outside this
-method. A destination with incomplete constructor agreement reports `UnresolvedStorage`
-instead of guessing from its field name.
+Script-value arithmetic, parameters, and evaluated values are outside this method. Duration
+units are in [duration keys](durations.md). A destination with incomplete constructor agreement
+reports `UnresolvedStorage` instead of guessing from its field name.
 
 The retained SDK-493 binding controls map to the authored routing and subtype controls and
 the M45 exact-build parity test. The case map and reviewed live output are tracked under

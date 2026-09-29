@@ -28,7 +28,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v11";
+pub const METHOD: &str = "command-grammar/v12";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -99,6 +99,8 @@ pub struct GrammarInput {
     pub tokens: BTreeMap<i64, Token>,
     /// Shared family dispatch boundaries inspected for this exact build.
     pub families: BTreeMap<String, BlockFamily>,
+    /// Execute bodies and the flag-store proof for duration keys.
+    pub durations: super::durations::Input,
 }
 
 #[derive(Debug)]
@@ -148,6 +150,8 @@ pub struct GrammarResult {
     pub families: Vec<BlockFamily>,
     /// Every obstruction on a child path, once each.
     pub stops: Vec<Unresolved>,
+    /// Sibling keys that set one duration count, and candidates that could not be classified.
+    pub durations: super::durations::Inventory,
 }
 
 /// The child keys of a command reader, in the registry field method's records.
@@ -546,7 +550,9 @@ fn analyze_reader_with_state(
         })
         .collect();
     super::stop::sort_and_dedup(&mut stops);
+    let durations = durations(input, reader, depth, bytes, &fields, &leaves);
     Ok(GrammarResult {
+        durations,
         scoped_destinations,
         targets: vec![],
         nodes,
@@ -571,6 +577,46 @@ fn analyze_reader_with_state(
             gaps,
         },
     })
+}
+
+/// Duration groups among one reader's keys. Only the command itself has an execute body.
+fn durations(
+    input: &GrammarInput,
+    reader: CommandReader,
+    depth: usize,
+    bytes: &BTreeMap<u64, u8>,
+    fields: &[RootField],
+    paths: &[TokenPath],
+) -> super::durations::Inventory {
+    let functions = &input.declarations.functions;
+    let code = |address: u64| {
+        functions
+            .range(..=address)
+            .next_back()
+            .map(|(&start, function)| (start, function.code.as_slice()))
+            .filter(|(start, code)| address < start + code.len() as u64)
+    };
+    let execute = (depth == 0).then(|| {
+        let body = input
+            .declarations
+            .pointers
+            .get(&(reader.vtable + input.durations.execute_slot))
+            .and_then(|address| functions.get(address))
+            .ok_or(Unresolved::new("duration-execute-body"))?;
+        let rows = super::decode::decode_arm64(&body.code, body.address)
+            .map_err(|_| Unresolved::new("duration-execute-body"))?;
+
+        super::durations::execute(&rows, &input.durations.names)
+    });
+
+    super::durations::groups(
+        fields,
+        paths,
+        &code,
+        bytes,
+        execute,
+        &input.durations.countdown,
+    )
 }
 
 fn scoped_point(bytes: &BTreeMap<u64, u8>, offset: i64) -> Option<u64> {
@@ -780,6 +826,7 @@ mod tests {
             },
         };
         GrammarInput {
+            durations: Default::default(),
             targets: Default::default(),
             key_readers: Default::default(),
             persistent_slots: [0x20, 0x28],

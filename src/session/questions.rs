@@ -317,6 +317,15 @@ impl Native {
         &self,
         registry: &str,
     ) -> Result<RegistryFieldResult, Error> {
+        self.registry_field_input_and_result(registry)
+            .map(|(_, result)| result)
+    }
+
+    /// The registry field method's input and its result.
+    pub(crate) fn registry_field_input_and_result(
+        &self,
+        registry: &str,
+    ) -> Result<(fields::FieldInput, RegistryFieldResult), Error> {
         let operation = Operation::RegistryFields;
         let name = registry.trim_end_matches('/');
         let verified = self.verified_analysis(operation)?;
@@ -328,7 +337,9 @@ impl Native {
         let input = verified
             .field_input(candidate.record.clone())
             .map_err(|e| error(operation, e))?;
-        fields::analyze(&input).map_err(|e| error(operation, e.into()))
+        let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
+
+        Ok((input, result))
     }
 }
 

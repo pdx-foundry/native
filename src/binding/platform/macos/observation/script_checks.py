@@ -6,6 +6,8 @@ continue path so that the returned stop has settled before registers are changed
 import re
 import time
 
+import stored_values
+
 
 _active_capture = None
 
@@ -114,6 +116,61 @@ def read_string(process, address, tag_offset, limit):
     if error.Fail() or text is None:
         raise RuntimeError('script check string read failed: ' + str(error))
     return text, len(text.encode('utf-8')) >= limit
+
+
+def stored_text(process, address, tag_offset):
+    text, truncated = read_string(process, address, tag_offset, 4096)
+    if truncated:
+        raise RuntimeError('script check stored text exceeds its bound')
+    return text
+
+
+def loaded_receivers(calls, durations):
+    """Receivers by loaded vtable address point. One that does not resolve classifies no child."""
+    loaded = {}
+    for receiver in durations:
+        try:
+            loaded[calls.address(receiver['vtable'])] = receiver
+        except RuntimeError:
+            pass
+    return loaded
+
+
+def group_duration(read_unsigned, read_text, child_address, child, group):
+    count = group['count']
+    factor = group['factor_offset']
+    return dict(
+        child=child,
+        units=group['units'],
+        count=stored_values.decode(read_unsigned, read_text, child_address + count['offset'], count['decoder']),
+        factor=None if factor is None else stored_values.signed_integer(read_unsigned(child_address + factor, 4), 32))
+
+
+def stored_durations(read_unsigned, read_text, owner, command, children, receivers):
+    """Each top-level child's duration counts, and whether every child was classified and read.
+
+    A child whose vtable matches no receiver, or whose slots cannot be read, adds no entry and
+    leaves the result incomplete. A receiver with incomplete groups does the same for its child.
+    """
+    stored = []
+    complete = True
+    try:
+        array = read_unsigned(owner + command['children_array_offset'], 8) if children else 0
+    except RuntimeError:
+        return dict(complete=False, stored=stored)
+    for child in range(children):
+        try:
+            address = read_unsigned(array + 8 * child, 8)
+            receiver = receivers.get(read_unsigned(address, 8))
+            if receiver is None:
+                complete = False
+                continue
+            stored.extend([group_duration(read_unsigned, read_text, address, child, group)
+                           for group in receiver['groups']])
+            complete &= receiver['groups_complete']
+        except RuntimeError:
+            complete = False
+    return dict(complete=complete, stored=stored)
 
 
 class EngineCalls:
@@ -275,6 +332,8 @@ class ScriptChecks:
             raise RuntimeError('script check text bound exceeded')
         if request['check'] > self.limits['checks'] or request['scope'] not in self.binding['scopes'].values():
             raise RuntimeError('script check count or scope is invalid')
+        if len(request['durations']) > self.limits['durations']:
+            raise RuntimeError('script check duration receiver bound exceeded')
         command = self.binding[request['kind']]
         source = f"native_{self.attempt}_{request['check']}.txt"
         self.sources[source] = request['check']
@@ -291,6 +350,12 @@ class ScriptChecks:
                 calls.write(owner + write['offset'], value.to_bytes(write['width'], 'little'))
             calls.call(command['read'], owner, reader, request['scope'])
             children = read_unsigned(self.process, owner + command['children_offset'], 4)
+            if children > self.limits['text']:
+                raise RuntimeError('script check child count exceeds its text bound')
+            durations = stored_durations(
+                lambda address, size: read_unsigned(self.process, address, size),
+                lambda address: stored_text(self.process, address, self.binding['string_tag_offset']),
+                owner, command, children, loaded_receivers(calls, request['durations']))
             capture.stage = 'validation'
             for database in command['validation']:
                 instance = read_unsigned(self.process, calls.address(database['instance']))
@@ -299,7 +364,7 @@ class ScriptChecks:
                 calls.call(database['post_init'], instance)
                 calls.call(database['post_validate'], instance)
             calls.finish()
-            return capture.finish(children)
+            return dict(observation=capture.finish(children), durations=durations)
         finally:
             _active_capture = None
             calls.target.BreakpointDelete(capture.hook.GetID())

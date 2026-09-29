@@ -18,11 +18,12 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v10` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v10`, `command-grammar/v11` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v10`, `command-grammar/v11` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v10`, `command-grammar/v11` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v10`, `command-grammar/v12` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v10`, `command-grammar/v12` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v10`, `command-grammar/v12` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `CommandGrammar.durations` | `command-grammar/v12` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v11` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v12` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -127,3 +128,20 @@ plus 14 boundary and transition controls. All 76 have complete parser/storage jo
 isolated inline-block inputs have incomplete diagnostic source coverage, retained as typed gaps.
 There were no conflicts between the established static width/scale and the observed storage.
 See [scoped numeric operands](scoped-numeric.md) for the adaptation and selection boundaries.
+
+## Duration keys (SDK-646)
+
+The M45-release run asked `command_grammar` for all 2,170 effects and triggers and grouped the
+fields of all 164 registries, with no failed question. It found 31 duration groups, all in
+commands: **0 complete, 31 partial, 0 failed**. The failure shapes are:
+
+- 29 groups: omitted count not established;
+- 27 groups: flag update frequency outside the method;
+- 2 groups: consumption outside the method;
+- 2 groups: execute body not matched.
+
+26 commands have unit-named keys that no group covers: 21 read into a stack temporary, and 5
+have only `days`. Two commands and two registries have candidates whose reader code is not
+followed, so their lists stay partial. Registries have no group. The [duration keys](durations.md) page has the facts
+and the live parser observations. Run `cargo run --release --example duration-population` with
+`STELLARIS_PATH` to reproduce; `.local/sdk-646/duration-population.json` lists every group and gap.

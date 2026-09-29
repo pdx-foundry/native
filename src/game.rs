@@ -120,6 +120,8 @@ pub(crate) struct Session {
     pub fixture: Option<crate::FixtureRequest>,
     /// The static side of the loaded modifier join, when the session reads the table.
     pub modifiers: Option<crate::session::ModifierJoin>,
+    /// The installation whose static analysis names the duration receivers of each script check.
+    pub binding: Arc<crate::binding::Binding>,
 }
 
 /// What the supervisor established when the game paused.
@@ -156,6 +158,7 @@ enum ReadQuestion {
 enum DriverCommand {
     CheckScript {
         input: crate::ScriptCheck,
+        durations: Vec<crate::protocol::script_check::DurationReceiver>,
         reply: oneshot::Sender<Result<crate::Answer<crate::ScriptObservation>, Error>>,
     },
     /// The caller answered a question about this registry; the idle time starts again.
@@ -176,7 +179,11 @@ impl Drop for CheckCancellation {
 
 #[derive(Debug)]
 enum GameBackend {
-    Live { recorder: Option<Arc<PathBuf>> },
+    Live {
+        recorder: Option<Arc<PathBuf>>,
+        /// Names the duration receivers of each script check.
+        binding: Option<Arc<crate::binding::Binding>>,
+    },
     Recorded(Arc<crate::recorded::Answers>),
 }
 
@@ -256,12 +263,14 @@ impl Game {
                         reason: "script checks require a confirmed content-loaded pause".into(),
                     });
                 }
+                let durations = game.duration_receivers(input);
                 let (reply, receive) = oneshot::channel();
                 game.commands
                     .as_ref()
                     .ok_or(Error::Closed)?
                     .try_send(DriverCommand::CheckScript {
                         input: input.clone(),
+                        durations,
                         reply,
                     })
                     .map_err(|_| Error::Supervisor("script check could not be queued".into()))?;
@@ -291,6 +300,25 @@ impl Game {
         }
         self.keep_on_error(result)
     }
+    /// The duration receivers that a live check carries; none without a static analysis.
+    fn duration_receivers(
+        &self,
+        input: &crate::ScriptCheck,
+    ) -> Vec<crate::protocol::script_check::DurationReceiver> {
+        let GameBackend::Live {
+            binding: Some(binding),
+            ..
+        } = &self.backend
+        else {
+            return Vec::new();
+        };
+        let Some(analysis) = &binding.analysis else {
+            return Vec::new();
+        };
+
+        crate::session::script_durations::duration_receivers(analysis, input.kind, &input.text)
+    }
+
     /// Return the modifiers that the engine holds after all content has loaded, with their
     /// loaded category tags.
     ///
@@ -440,7 +468,7 @@ impl Game {
     ) -> Result<crate::Answer<T>, Error> {
         let recorder = match &self.backend {
             GameBackend::Recorded(answers) => return answers.read(question, subject),
-            GameBackend::Live { recorder } => recorder.clone(),
+            GameBackend::Live { recorder, .. } => recorder.clone(),
         };
         let answer = live(self).await;
         if let Some(directory) = &recorder {
@@ -746,6 +774,7 @@ async fn start_until_paused(
                 build: session.build,
                 backend: GameBackend::Live {
                     recorder: session.recorder,
+                    binding: Some(session.binding),
                 },
                 work: Some(session.work),
                 read_failed: false,
@@ -785,6 +814,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         game.backend = GameBackend::Live {
             recorder: Some(Arc::new(root.path().into())),
+            binding: None,
         };
         let lost_acknowledgement = std::thread::spawn(move || {
             let DriverCommand::Read { reply, .. } = commands.recv().unwrap() else {
@@ -822,6 +852,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         game.backend = GameBackend::Live {
             recorder: Some(Arc::new(root.path().into())),
+            binding: None,
         };
         let acknowledgements = std::thread::spawn(move || {
             for _ in 0..2 {
@@ -899,6 +930,7 @@ mod tests {
         std::fs::write(&recording, "block directory creation").unwrap();
         game.backend = GameBackend::Live {
             recorder: Some(Arc::new(recording.clone())),
+            binding: None,
         };
         let input = crate::ScriptCheck {
             kind: crate::DeclarationKind::Trigger,
@@ -921,6 +953,7 @@ mod tests {
                     unjoined: vec![],
                     hooks_active: true,
                     bound_reached: false,
+                    stored_durations: crate::GrammarProperty::Known(Vec::new()),
                 };
                 reply
                     .send(Ok(observation.answer(crate::BuildId("test".into()))))
@@ -983,7 +1016,10 @@ mod tests {
                 closing: false,
                 observed: std::collections::BTreeSet::from(["common/traditions".into()]),
                 build: crate::BuildId("test".into()),
-                backend: GameBackend::Live { recorder: None },
+                backend: GameBackend::Live {
+                    recorder: None,
+                    binding: None,
+                },
                 work: None,
                 read_failed: false,
                 keep_work: false,
@@ -1102,6 +1138,7 @@ mod tests {
         let recording = root.path().join("recorded");
         game.backend = GameBackend::Live {
             recorder: Some(Arc::new(recording.clone())),
+            binding: None,
         };
         game.paused.registries.insert(
             "common/traditions".into(),
@@ -1211,6 +1248,7 @@ mod tests {
         .unwrap();
         game.backend = GameBackend::Live {
             recorder: Some(Arc::new(root.path().into())),
+            binding: None,
         };
         game.closing = true;
         assert!(matches!(

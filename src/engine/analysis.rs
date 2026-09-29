@@ -6,6 +6,7 @@ pub mod decode;
 pub mod defines;
 pub mod directories;
 pub mod discovery;
+pub mod durations;
 pub mod dynamic_names;
 pub mod evaluate;
 pub mod families;

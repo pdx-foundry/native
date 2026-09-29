@@ -509,7 +509,11 @@ fn observe_session(
             }
         }
         match input.recv_timeout(Duration::from_millis(50)) {
-            Ok(Input::Control(Control::CheckScript { input, request })) => {
+            Ok(Input::Control(Control::CheckScript {
+                input,
+                request,
+                durations,
+            })) => {
                 if answers.is_none() || checking.is_some() {
                     return Err(SupervisorError(
                         "script check requested outside an idle pause".into(),
@@ -525,7 +529,7 @@ fn observe_session(
                     continue;
                 }
                 let check = checks_started + 1;
-                match observer.prepare_check(check, &input) {
+                match observer.prepare_check(check, &input, durations) {
                     Ok(prepared) => {
                         deadline =
                             Instant::now() + Duration::from_secs(crate::script::CHECK_SECONDS);
@@ -913,6 +917,7 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
                             controls
                                 .send(Input::Control(Control::CheckScript {
                                     request: sent,
+                                    durations: Vec::new(),
                                     input: crate::ScriptCheck {
                                         kind: crate::DeclarationKind::Trigger,
                                         scope: crate::ScopeId("test-scope".into()),

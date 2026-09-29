@@ -622,6 +622,7 @@ mod tests {
                 },
                 child_families: GrammarProperty::Unresolved,
                 fixed_keys: GrammarProperty::Unresolved,
+                durations: GrammarProperty::Unresolved,
                 numeric_keys: GrammarProperty::Unresolved,
                 ordering: GrammarProperty::Unresolved,
             },

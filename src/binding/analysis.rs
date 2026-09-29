@@ -52,6 +52,14 @@ pub(crate) struct FixtureLoader {
 }
 
 /// One fresh integrity check and the immutable analysis derived from this installation.
+/// Verified static facts that a live session reads for its script-check duration tables.
+pub(crate) struct PreparedDurations<'a> {
+    pub input: &'a GrammarInput,
+    pub declarations: &'a DeclarationResult,
+    pub numeric: &'a crate::engine::analysis::numeric::NumericFacts,
+    pub scoped: &'a crate::engine::analysis::scoped_numeric::Facts,
+}
+
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Vec<u8>,
     catalog: &'a Catalog,
@@ -254,6 +262,12 @@ impl VerifiedAnalysis<'_> {
             &inventory,
             recipe,
             kind,
+            binary::references::names(
+                &self.catalog.symbols,
+                &self.catalog.pointers,
+                &self.catalog.imports,
+                &self.catalog.strings,
+            ),
         )?;
         let reference_input = binary::references::read(
             &binary::references::Image {
@@ -607,14 +621,8 @@ fn scoped_fixture_storage(
     facts: &crate::engine::analysis::scoped_numeric::Facts,
     numeric: &crate::engine::analysis::numeric::NumericFacts,
 ) -> Option<crate::protocol::observation::FixtureStorageBinding> {
-    use crate::engine::analysis::{
-        fields::{ReaderJoin, Value},
-        scoped_numeric::Subtype,
-    };
-    use crate::protocol::observation::{
-        FixtureStorageBinding, FixtureStorageDecoder, ScopedLiteralDecoder, ScopedStorageLayout,
-    };
-    use crate::{GrammarProperty, NumericRepresentation, NumericSignedness};
+    use crate::engine::analysis::fields::{ReaderJoin, Value};
+    use crate::protocol::observation::FixtureStorageBinding;
     let [
         ReaderJoin::Joined {
             callee, arguments, ..
@@ -637,10 +645,28 @@ fn scoped_fixture_storage(
         return None;
     };
     let point = result.scoped_destinations.get(destination)?;
+    Some(FixtureStorageBinding {
+        offset: u64::try_from(*destination).ok()?,
+        decoder: scoped_operand_decoder(*point, facts, numeric)?,
+    })
+}
+
+/// The storage decoder of the scoped operand at a factory-agreed vtable point, when its literal
+/// is a proven signed 32-bit integer or a signed 64-bit fixed point in the selection layout.
+pub(crate) fn scoped_operand_decoder(
+    point: u64,
+    facts: &crate::engine::analysis::scoped_numeric::Facts,
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+) -> Option<crate::protocol::observation::FixtureStorageDecoder> {
+    use crate::engine::analysis::scoped_numeric::Subtype;
+    use crate::protocol::observation::{
+        FixtureStorageDecoder, ScopedLiteralDecoder, ScopedStorageLayout,
+    };
+    use crate::{GrammarProperty, NumericRepresentation, NumericSignedness};
     let Subtype::Numeric {
         token_reader,
         literal,
-    } = facts.subtypes.get(point)?.as_ref().ok()?
+    } = facts.subtypes.get(&point)?.as_ref().ok()?
     else {
         return None;
     };
@@ -667,19 +693,16 @@ fn scoped_fixture_storage(
         }
         _ => return None,
     };
-    Some(FixtureStorageBinding {
-        offset: u64::try_from(*destination).ok()?,
-        decoder: FixtureStorageDecoder::ScopedNumeric {
-            literal,
-            layout: ScopedStorageLayout {
-                literal: layout.literal,
-                location: layout.location,
-                trigger: layout.trigger,
-                script_value: layout.script_value,
-                modifier: layout.modifier,
-                modifier_unset: layout.modifier_unset,
-                variable: layout.variable,
-            },
+    Some(FixtureStorageDecoder::ScopedNumeric {
+        literal,
+        layout: ScopedStorageLayout {
+            literal: layout.literal,
+            location: layout.location,
+            trigger: layout.trigger,
+            script_value: layout.script_value,
+            modifier: layout.modifier,
+            modifier_unset: layout.modifier_unset,
+            variable: layout.variable,
         },
     })
 }
@@ -839,6 +862,16 @@ impl BoundAnalysis {
         verified.scoped_numeric_input(recipe)
     }
 
+    /// The flag setter, the flag update and the timed-flag execute body, decoded.
+    #[cfg(test)]
+    pub(crate) fn duration_bodies_for_test(
+        &self,
+    ) -> Result<binary::durations::Bodies, AnalysisError> {
+        let verified = self.verified()?;
+        binary::durations::bodies(&verified.executable, &verified.catalog.symbols)
+            .ok_or(AnalysisError::InvalidRange)
+    }
+
     /// The lookup of every reference reader in the executable.
     pub(crate) fn reference_facts(&self) -> Result<&ReferenceFacts, AnalysisError> {
         let verified = self.verified()?;
@@ -882,6 +915,45 @@ impl BoundAnalysis {
             .get_or_init(|| verified.grammar_input(kind, recipe))
             .as_ref()
             .map_err(Clone::clone)
+    }
+
+    /// Verify the executable once and compute every fact that a script check's duration table
+    /// reads. A live session calls this before launch, so no check rereads the executable inside
+    /// its idle window.
+    pub(crate) fn prepare_script_durations(&self) -> Result<(), AnalysisError> {
+        let verified = self.verified()?;
+
+        for kind in [
+            crate::DeclarationKind::Effect,
+            crate::DeclarationKind::Trigger,
+        ] {
+            self.cached_grammar_input(kind, &verified)?;
+        }
+
+        self.numeric_facts()?;
+        self.scoped_numeric_facts()?;
+
+        Ok(())
+    }
+
+    /// The facts that [`Self::prepare_script_durations`] computed, without verifying again; `None`
+    /// before it succeeded. Only a session that verified them at its start may use these.
+    pub(crate) fn prepared_script_durations(
+        &self,
+        kind: crate::DeclarationKind,
+    ) -> Option<PreparedDurations<'_>> {
+        let index = match kind {
+            crate::DeclarationKind::Effect => 0,
+            crate::DeclarationKind::Trigger => 1,
+        };
+        let (input, declarations) = self.grammar[index].get()?.as_ref().ok()?;
+
+        Some(PreparedDurations {
+            input,
+            declarations,
+            numeric: self.numeric.get()?.as_ref().ok()?,
+            scoped: self.scoped_numeric.get()?.as_ref().ok()?,
+        })
     }
 
     /// Both command families with their receivers' code, and the flag functions.

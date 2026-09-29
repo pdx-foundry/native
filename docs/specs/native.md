@@ -103,7 +103,7 @@ the state after the simplification effort:
 | `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations` | Implemented for effects and triggers | A declaration kind | Engine name, description, usage, and declared scopes from every registration call and tail call in executable text, including registry helper constructors and names composed at run time through up to two callers; each chain of callers is one declaration. Registrations that cannot be followed, unreadable documentation, and scope getters that cannot be followed make the answer partial. Target arguments and their accepted scopes are in `command_grammar`. |
-| `command_grammar` | Implemented for M45-release effects and triggers | A declaration kind and registered command name | The accepted forms (value alternatives with their reader kind, a block, or both); target arguments with the scope types they accept and the stage that checks them; concrete shared reader identity, child families, fixed keys with their reference lookups (including the receiver initializer's lookup of a stored key), nested members, numeric child grammar and conditional reader ordering. The answer is `Complete` only when every property is established at every depth. Every property keeps unresolved evidence explicit; this is not runtime meaning. A missing registered command gives `UnknownCommand`. |
+| `command_grammar` | Implemented for M45-release effects and triggers | A declaration kind and registered command name | The accepted forms (value alternatives with their reader kind, a block, or both); target arguments with the scope types they accept and the stage that checks them; concrete shared reader identity, child families, fixed keys with their reference lookups (including the receiver initializer's lookup of a stored key), nested members, numeric child grammar, conditional reader ordering and duration key groups. The answer is `Complete` only when every property is established at every depth. Every property keeps unresolved evidence explicit; this is not runtime meaning. A missing registered command gives `UnknownCommand`. |
 | `modifiers`, `modifier_categories` | Implemented | — | Built-in modifiers with their declared category tags, from every direct definition call; category names from the engine's category switch. Generated modifier families are gaps. Tags are intended-use tags, not application contexts. |
 | `modifier_families` | Implemented for database generators, post-read code and shared helpers | A registry name | Name templates that the registry's code registers for each item, with the item-key position, category tags, whether every item generates the family, and a name-length limit. Code that generates modifiers and is not joined to a registry is a gap, with its reason. |
 | `scopes`, `scope_links` | Implemented | — | Scope types with the keywords that the engine maps to each, and keywords that match several types (`carrier`); documented links and the link prefixes that take data, each with declared input and output scopes |
@@ -112,7 +112,7 @@ the state after the simplification effort:
 | `game_rules` | Implemented | — | Game rules from the engine's rule declarations, scripted and weighted, with each distinct context that the rule set's call sites supply. A declared rule with no followed call site is a gap. |
 | `dynamic_names` | Implemented for M45-release integer flags | — | One namespace for each flag store that commands reach: its owner (a scope type, or one global store), the effects and triggers that define, remove and read names in it, and whether they accept `name@target`. Two commands share a namespace only when both reach the same store. Saved event targets and variables are outside it; commands and stores that the method cannot follow are gaps. |
 | `defines` | Implemented for M45-release | — | Define namespace, name and engine read type from compiled read helpers; unresolved helpers are gaps. No shipped define or config file is read. |
-| `Game::check_script` | M45-release at the loaded-modifier pause | Trigger or effect text and a scope ID from `Native::scopes` | Whether reading returned, top-level child count, current diagnostics with stage and optional line, prior-check diagnostics, unjoined messages and capture bounds. No trigger evaluation or effect execution. |
+| `Game::check_script` | M45-release at the loaded-modifier pause | Trigger or effect text and a scope ID from `Native::scopes` | Whether reading returned, top-level child count, current diagnostics with stage and optional line, prior-check diagnostics, unjoined messages, capture bounds, and stored duration counts of top-level children. No trigger evaluation or effect execution. |
 | `Game::observe_fixture`: registration entries | M45-release only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
 | `Game::observe_fixture`: category reads | M45-release only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
 | `Game::observe_fixture`: field outcomes | M45-release only; initial file load, optionally through bounded deferred validation, for a registry with verified boundaries | At most 32 named definition and field questions in one bounded relative text file | Separate parser entry/return occurrences, source-correlated diagnostics and typed string, integer or fixed-point storage where bound; other dimensions report unavailable. Lost observations cannot establish acceptance. |
@@ -170,6 +170,12 @@ for contexts and scope types.
   of prior reference state, and representation selection conditional on an empty source location.
   These properties do not claim a successful lookup or an evaluated number. Older recordings
   default the scoped operand property to unresolved.
+- `CommandGrammar.durations` groups child keys that set one duration count, by the code that
+  reads them and not by name. Each group gives each key's factor, the combination rule
+  (`ScaledAtRead`, or `SharedFactor` only when the execute body multiplies the operand by the
+  factor), the omitted count, and a proven consumer (`FlagCountdown`). It does not give an expiry
+  date or update frequency. A partial list proves no absence. Older recordings default the
+  property to unresolved.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
@@ -396,6 +402,15 @@ return to the original stopped registers. A failed call, timeout, worker loss, r
 or cancellation ends the session; call `close` to observe disposal after cancelling a future.
 Invalid text, scope or a spent check count is rejected before an engine call. Engine allocations
 and deferred command objects remain until the session ends. Checks are not isolated fresh games.
+
+`stored_durations` lists, for each top-level child whose receiver has a static `Duration` group,
+the stored count after reading and before validation. A scaled-at-read group gives its `Integer`
+count; a shared-factor group gives its `ScopedNumeric` operand and the signed 32-bit factor.
+Children are classified by receiver; command names in the text only nominate receivers, at most
+64 per check. `Known` means every child was classified, its receiver's static duration list is
+`Known`, and every group was read; otherwise the property is `Partial` with an
+`IncompleteObservation` gap. Recordings made before `check-script/v2` read as `Unresolved`.
+Stored values are parser storage, not evaluated or executed durations.
 
 Atlas owns conclusions drawn from these observations. Checks do not alter static answers,
 resolve silent properties, check registry fields, evaluate triggers or execute effects. Windows

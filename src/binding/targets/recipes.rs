@@ -166,6 +166,7 @@ fn m45_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
                 },
             ],
             children_offset: 0x7c,
+            children_array_offset: 0x70,
             validation: vec![trigger_database.clone()],
         },
         effect: CommandBinding {
@@ -179,6 +180,7 @@ fn m45_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
                 relocate: false,
             }],
             children_offset: 0x1c,
+            children_array_offset: 0x10,
             validation: vec![
                 DatabaseBinding {
                     instance: 0x1032e8370,

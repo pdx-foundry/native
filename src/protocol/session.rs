@@ -131,6 +131,8 @@ pub(crate) enum Control {
     CheckScript {
         input: crate::ScriptCheck,
         request: u64,
+        /// The receivers of the commands that the text names.
+        durations: Vec<crate::protocol::script_check::DurationReceiver>,
     },
     /// End the session because the caller cancelled.
     Cancel,

@@ -150,6 +150,7 @@ pub(in crate::binding) mod inventory;
 pub(super) mod callbacks;
 pub(super) mod declarations;
 pub(super) mod defines;
+pub(super) mod durations;
 pub(super) mod dynamic_names;
 pub(super) mod families;
 pub(super) mod fields;

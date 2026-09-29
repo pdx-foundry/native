@@ -32,7 +32,9 @@ while True:
     if active and time.monotonic() - started >= delay and mode == 'normal':
         observation = dict(check=active['check'], read_returned=True, children=1,
                            diagnostics=[], foreign=[], unjoined=[], hooks_active=True, bound_reached=False)
-        publish('script-check-reply.json', dict(attempt='unit', check=active['check'], result={'Ok': observation}))
+        durations = dict(complete=True, stored=[])
+        publish('script-check-reply.json', dict(attempt='unit', check=active['check'],
+                                                result={'Ok': dict(observation=observation, durations=durations)}))
         witness['state'] = 'held'
         active = None
     if active and mode == 'register-mismatch':

@@ -207,6 +207,7 @@ mod tests {
                 conditions: vec![crate::ChildOrderCondition::First(true)],
                 outcome: crate::ChildOrderOutcome::Read(registry[0].reader.clone()),
             }]),
+            durations: GrammarProperty::Unresolved,
         };
         let mut nested = command.clone();
         nested.numeric_keys = GrammarProperty::Known(Some(Box::new(command.clone())));
@@ -317,6 +318,7 @@ mod tests {
             fixed_keys: GrammarProperty::Known(vec![numeric_field(number.clone())]),
             numeric_keys: GrammarProperty::Known(None),
             ordering: GrammarProperty::Known(vec![]),
+            durations: GrammarProperty::Unresolved,
         };
         let mut nested_field = numeric_field(number.clone());
         nested_field.name = "nested".into();

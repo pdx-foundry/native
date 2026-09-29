@@ -55,14 +55,23 @@ impl Native {
             .declaration_analysis(operation)?
             .grammar_input(kind)
             .map_err(|failure| error(operation, failure))?;
-        match registered_factory(declarations, name) {
-            Ok(Some(factory)) => Ok(grammar::analyze(input, factory)),
-            Ok(None) => Err(Error::UnknownCommand {
-                kind,
-                name: name.into(),
-            }),
-            Err(stop) => Ok(Err(stop)),
-        }
+        registered_grammar(input, declarations, name).ok_or_else(|| Error::UnknownCommand {
+            kind,
+            name: name.into(),
+        })
+    }
+}
+
+/// The grammar of a registered command, or `None` when no declaration names it.
+pub(super) fn registered_grammar(
+    input: &grammar::GrammarInput,
+    declarations: &declarations::DeclarationResult,
+    name: &str,
+) -> Option<Result<grammar::GrammarResult, Unresolved>> {
+    match registered_factory(declarations, name) {
+        Ok(Some(factory)) => Some(grammar::analyze(input, factory)),
+        Ok(None) => None,
+        Err(stop) => Some(Err(stop)),
     }
 }
 
@@ -135,6 +144,7 @@ pub(crate) fn normalize_with_numeric(
             name,
             &mut answer.gaps,
         );
+        super::durations::grammar(&mut answer.value, result, scoped, name, &mut answer.gaps);
     }
     answer.completeness = crate::Completeness::from_gaps(&answer.gaps);
     answer
@@ -160,6 +170,7 @@ pub(crate) fn normalize(
         fixed_keys: GrammarProperty::Unresolved,
         numeric_keys: GrammarProperty::Unresolved,
         ordering: GrammarProperty::Unresolved,
+        durations: GrammarProperty::Unresolved,
     };
     let mut gaps = Vec::new();
     let mut key_gaps = Vec::new();
@@ -673,6 +684,7 @@ mod tests {
             tail: true,
         };
         grammar::GrammarResult {
+            durations: Default::default(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
@@ -1058,6 +1070,7 @@ mod tests {
     #[test]
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
+            durations: Default::default(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![grammar::ReaderNode {
@@ -1176,6 +1189,7 @@ mod tests {
             }],
         };
         let result = grammar::GrammarResult {
+            durations: Default::default(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
@@ -1223,6 +1237,7 @@ mod tests {
     #[test]
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
+            durations: Default::default(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
@@ -1281,6 +1296,113 @@ mod tests {
         assert_eq!(answer.value.fixed_keys, GrammarProperty::Unresolved);
         assert_eq!(answer.value.numeric_keys, GrammarProperty::Unresolved);
         assert_eq!(answer.value.ordering, GrammarProperty::Unresolved);
+    }
+
+    /// The durations of `result` after normalization, with the duration gaps.
+    fn durations(
+        result: &grammar::GrammarResult,
+    ) -> (GrammarProperty<Vec<crate::Duration>>, Vec<Gap>) {
+        use crate::engine::analysis::scoped_numeric::{Facts, Shared};
+
+        let scoped = Facts {
+            shared: Shared {
+                forms: Err(Unresolved::new("scoped-body")),
+                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+                selection: Err(Unresolved::new("scoped-body")),
+            },
+            subtypes: Default::default(),
+        };
+        let mut answer = normalize(
+            Ok(result),
+            "timed",
+            crate::BuildId("test".into()),
+            &facts(scan_at(0xa8)),
+        );
+        let mut gaps = Vec::new();
+
+        super::super::durations::grammar(&mut answer.value, result, &scoped, "timed", &mut gaps);
+
+        (answer.value.durations, gaps)
+    }
+
+    fn group(combination: Combination, consumption: Result<Consumption, Unresolved>) -> Group {
+        Group {
+            units: vec![Unit {
+                key: "months".into(),
+                factor: Ok(Some(30)),
+            }],
+            destination: 0xa8,
+            combination: Ok(combination),
+            consumption,
+            initial: Default::default(),
+        }
+    }
+
+    use crate::engine::analysis::durations::{Combination, Consumption, Group, Unit};
+
+    #[test]
+    fn a_failed_countdown_proof_is_an_in_method_gap() {
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result.durations.groups = vec![group(
+            Combination::SharedFactor {
+                factor_slot: 0x2b0,
+                initial_factor: 1,
+            },
+            Err(Unresolved::new("duration-flag-update")),
+        )];
+        let (_, gaps) = durations(&result);
+
+        assert!(gaps.iter().any(|gap| {
+            gap.kind == GapKind::ReaderSemantics
+                && gap
+                    .detail
+                    .contains("countdown is not established (duration-flag-update)")
+        }));
+
+        result.durations.groups = vec![group(
+            Combination::ScaledAtRead,
+            Err(Unresolved::new("duration-consumption")),
+        )];
+        let (_, gaps) = durations(&result);
+
+        assert!(
+            gaps.iter().any(|gap| gap.kind == GapKind::OutsideMethod
+                && gap.detail.contains("outside this method"))
+        );
+    }
+
+    #[test]
+    fn an_unclassified_candidate_or_a_deep_nested_group_keeps_the_list_partial() {
+        let complete = keyed(Ok(INITIALIZER.into()));
+
+        let mut unclassified = keyed(Ok(INITIALIZER.into()));
+        unclassified
+            .durations
+            .unresolved
+            .push(Unresolved::new("duration-post-read"));
+        let (property, gaps) = durations(&unclassified);
+
+        assert!(!matches!(property, GrammarProperty::Known(_)));
+        assert!(
+            gaps.iter()
+                .any(|gap| gap.detail.contains("could not be followed"))
+        );
+
+        let mut deepest = keyed(Ok(INITIALIZER.into()));
+        deepest.durations.groups = vec![group(
+            Combination::ScaledAtRead,
+            Err(Unresolved::new("duration-consumption")),
+        )];
+        let mut middle = keyed(Ok(INITIALIZER.into()));
+        middle.nested.insert("inner".into(), Box::new(deepest));
+        let mut outer = keyed(Ok(INITIALIZER.into()));
+        outer.nested.insert("outer".into(), Box::new(middle));
+        let (property, gaps) = durations(&outer);
+
+        assert!(outer.nested_durations());
+        assert!(!matches!(property, GrammarProperty::Known(_)));
+        assert!(gaps.iter().any(|gap| gap.detail.contains("nested blocks")));
+        assert!(!complete.nested_durations());
     }
 }
 

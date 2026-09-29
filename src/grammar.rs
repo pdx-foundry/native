@@ -34,6 +34,9 @@ pub struct CommandGrammar {
     pub numeric_keys: GrammarProperty<Option<Box<CommandGrammar>>>,
     /// Established reader selections that depend on preceding children.
     pub ordering: GrammarProperty<Vec<ChildOrderRule>>,
+    /// Groups of child keys that set one duration count. A partial list proves no absence.
+    #[serde(default)]
+    pub durations: GrammarProperty<Vec<crate::Duration>>,
 }
 
 /// An accepted value alternative or a block whose children have their own properties.

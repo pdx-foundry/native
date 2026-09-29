@@ -17,8 +17,8 @@ population run: the ordering rule, the eligible commands of each kind, and the 2
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
 | Registry fields | 164 registries | 11 | 153 | 0 |
-| Effect grammars | 1,074 named commands | 256 | 808 | 10 |
-| Trigger grammars | 1,096 named commands | 120 | 974 | 2 |
+| Effect grammars | 1,074 named commands | 248 | 816 | 10 |
+| Trigger grammars | 1,096 named commands | 119 | 975 | 2 |
 
 ## Historical comparison control
 

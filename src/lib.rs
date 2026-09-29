@@ -9,6 +9,7 @@
 mod answer;
 mod api;
 mod binding;
+mod duration;
 mod dynamic_name;
 mod engine;
 mod execution;
@@ -38,6 +39,7 @@ pub use answer::{
     Support,
 };
 pub use api::OpenError;
+pub use duration::{Duration, DurationCombination, DurationConsumption, DurationUnit};
 pub use dynamic_name::{
     CommandReference, DynamicNameForm, DynamicNameKind, DynamicNamespace, DynamicNamespaceId,
     NamespaceOwner,
@@ -70,6 +72,7 @@ pub use scoped_numeric::{
 };
 pub use script::{
     ForeignScriptDiagnostic, ScriptCheck, ScriptDiagnostic, ScriptObservation, ScriptStage,
+    StoredDuration,
 };
 pub use session::Native;
 
@@ -88,7 +91,7 @@ pub mod internals {
     pub use crate::engine::analysis::grammar::METHOD as COMMAND_GRAMMAR_METHOD;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::{
-        command_grammar_stops, dynamic_name_commands, numeric_readers, reference_readers,
-        registry_field_stops, target_getters,
+        command_grammar_stops, duration_groups, dynamic_name_commands, numeric_readers,
+        reference_readers, registry_field_stops, target_getters,
     };
 }

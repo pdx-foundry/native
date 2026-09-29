@@ -242,7 +242,7 @@ impl Registers {
 }
 
 /// Split operands at commas outside brackets.
-fn split_operands(operands: &str) -> Vec<&str> {
+pub(crate) fn split_operands(operands: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0;
     let mut start = 0;

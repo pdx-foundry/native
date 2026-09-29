@@ -118,9 +118,11 @@ fn connect(
             deadline = Instant::now() + Duration::from_secs(CLEANUP_SECONDS);
         }
         match commands.try_recv() {
-            Ok(DriverCommand::CheckScript { input, reply })
-                if !ending && pending_script.is_none() =>
-            {
+            Ok(DriverCommand::CheckScript {
+                input,
+                durations,
+                reply,
+            }) if !ending && pending_script.is_none() => {
                 sequence += 1;
                 protocol::write(
                     output_pipe
@@ -129,6 +131,7 @@ fn connect(
                     &Control::CheckScript {
                         input,
                         request: sequence,
+                        durations,
                     },
                 )?;
                 pending_script = Some((sequence, reply));

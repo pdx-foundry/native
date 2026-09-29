@@ -94,11 +94,12 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": "Unresolved",
+      "durations": "Unresolved",
       "fixed_keys": "Unresolved",
       "forms": {
         "Partial": []
@@ -162,11 +163,12 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": "Unresolved",
+      "durations": "Unresolved",
       "fixed_keys": "Unresolved",
       "forms": {
         "Partial": []
@@ -222,11 +224,12 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": "Unresolved",
+      "durations": "Unresolved",
       "fixed_keys": "Unresolved",
       "forms": {
         "Partial": []
@@ -282,11 +285,14 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": {
+        "Known": []
+      },
+      "durations": {
         "Known": []
       },
       "fixed_keys": {
@@ -387,7 +393,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
@@ -396,6 +402,7 @@
           "Effect"
         ]
       },
+      "durations": "Unresolved",
       "fixed_keys": "Unresolved",
       "forms": {
         "Partial": []
@@ -459,7 +466,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
@@ -468,6 +475,7 @@
           "Effect"
         ]
       },
+      "durations": "Unresolved",
       "fixed_keys": "Unresolved",
       "forms": {
         "Partial": []
@@ -582,16 +590,69 @@
           "kind": "field",
           "name": "years"
         }
+      },
+      {
+        "detail": "Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_timed_country_flag"
+        }
+      },
+      {
+        "detail": "Duration keys days, months, years: the omitted count is not established.",
+        "kind": "ReaderSemantics",
+        "subject": {
+          "kind": "answer_item",
+          "name": "set_timed_country_flag"
+        }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": "Unresolved",
+      "durations": {
+        "Partial": [
+          {
+            "combination": {
+              "Known": {
+                "SharedFactor": {
+                  "initial_factor": 1
+                }
+              }
+            },
+            "consumption": {
+              "Known": "FlagCountdown"
+            },
+            "omitted_count": "Unresolved",
+            "units": [
+              {
+                "factor": {
+                  "Known": null
+                },
+                "key": "days"
+              },
+              {
+                "factor": {
+                  "Known": 30
+                },
+                "key": "months"
+              },
+              {
+                "factor": {
+                  "Known": 360
+                },
+                "key": "years"
+              }
+            ]
+          }
+        ]
+      },
       "fixed_keys": {
         "Partial": [
           {
@@ -1234,11 +1295,14 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": "Unresolved",
+      "durations": {
+        "Partial": []
+      },
       "fixed_keys": {
         "Partial": [
           {
@@ -1625,7 +1689,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1633,6 +1697,9 @@
         "Known": [
           "Trigger"
         ]
+      },
+      "durations": {
+        "Known": []
       },
       "fixed_keys": {
         "Known": [
@@ -1814,7 +1881,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1822,6 +1889,9 @@
         "Partial": [
           "Effect"
         ]
+      },
+      "durations": {
+        "Partial": []
       },
       "fixed_keys": {
         "Partial": [
@@ -2109,11 +2179,14 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": {
+        "Known": []
+      },
+      "durations": {
         "Known": []
       },
       "fixed_keys": {
@@ -2540,11 +2613,14 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v11",
+      "method": "command-grammar/v12",
       "native_version": "0.1.0"
     },
     "value": {
       "child_families": "Unresolved",
+      "durations": {
+        "Partial": []
+      },
       "fixed_keys": {
         "Partial": [
           {

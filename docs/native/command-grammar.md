@@ -442,7 +442,7 @@ first is not entered. Unknown stores retain the evaluator's existing invalidatio
 | --- | --- | --- | --- | --- |
 | `create_starbase` | `CEffect::Read` | its own | `size`, `design`, `module`, `building` String; `effect` Block; `owner` Target | `target-scope-check` |
 | `add_district` | both forms | its own | `district_type` String; `ignore_cap`, `type_conversion` Boolean | value branch at `Assign: form-reader-call` |
-| `set_timed_country_flag` | `CComplexIntEffect::Read` | its own | `flag`, `days`, `months`, `years` Unknown | `reader-routing` |
+| `set_timed_country_flag` | `CComplexIntEffect::Read` | its own | `days`, `months`, `years` ScopedNumeric ([SDK-645](scoped-numeric.md)), grouped as one [duration](durations.md); `flag` Unknown | `reader-routing` (`flag`) |
 | `set_country_flag`, `remove_country_flag`, `add_tradition` | simple assign | family dispatch (inherited, not reported) | none | `value-acceptance` |
 | `always`, `has_country_flag` | simple assign | `CTrigger::ReadMember` | none | `value-acceptance` |
 | `has_tradition` | database object | `CTrigger::ReadMember` | none | `value-acceptance: PostValidate` |

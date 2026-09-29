@@ -1,0 +1,596 @@
+{
+  "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+  "cases": {
+    "add_modifier/days": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 7
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop days = 7 }"
+    },
+    "add_modifier/fractional_days": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 2
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop days = 2.75 }"
+    },
+    "add_modifier/malformed_after_literal": {
+      "completeness": "Complete",
+      "diagnostics": [
+        {
+          "line": 1,
+          "stage": "read",
+          "text": "Error: \"Malformed token: x, near line: 1\n\" in file: \"<script>\" near line: 1\n"
+        }
+      ],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 7
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop days = 7 days = x }"
+    },
+    "add_modifier/months": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 60
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop months = 2 }"
+    },
+    "add_modifier/months_overflow": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": -2147483626
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop months = 71582789 }"
+    },
+    "add_modifier/months_then_days": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 3
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop months = 2 days = 3 }"
+    },
+    "add_modifier/negative_days": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": -1
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop days = -1 }"
+    },
+    "add_modifier/omitted": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": -1
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop  }"
+    },
+    "add_modifier/years": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 720
+            },
+            "factor": null,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_modifier = { modifier = gave_up_pop years = 2 }"
+    },
+    "set_timed_country_flag/days": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 7
+                },
+                "variable": ""
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_days days = 7 }"
+    },
+    "set_timed_country_flag/fractional_days": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 2
+                },
+                "variable": ""
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_fractional_days days = 2.75 }"
+    },
+    "set_timed_country_flag/largest_days": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 2147483647
+                },
+                "variable": ""
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_largest_days days = 2147483647 }"
+    },
+    "set_timed_country_flag/malformed_after_literal": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": true,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 7
+                },
+                "variable": "x"
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_malformed_after_literal days = 7 days = x }"
+    },
+    "set_timed_country_flag/missing_value_then_days": {
+      "completeness": "Partial",
+      "diagnostics": [
+        {
+          "line": 1,
+          "stage": "validation",
+          "text": "Script Error: Invalid script value: native_missing_value at  file: <script> line: 1\n"
+        }
+      ],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": true,
+                "has_source_location": true,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 3
+                },
+                "variable": ""
+              }
+            },
+            "factor": 30,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_missing_value_then_days months = value:native_missing_value days = 3 }"
+    },
+    "set_timed_country_flag/months": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 2
+                },
+                "variable": ""
+              }
+            },
+            "factor": 30,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_months months = 2 }"
+    },
+    "set_timed_country_flag/months_then_days": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 3
+                },
+                "variable": ""
+              }
+            },
+            "factor": 30,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_months_then_days months = 2 days = 3 }"
+    },
+    "set_timed_country_flag/negative_days": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": -1
+                },
+                "variable": ""
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_negative_days days = -1 }"
+    },
+    "set_timed_country_flag/omitted": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 0
+                },
+                "variable": ""
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_omitted  }"
+    },
+    "set_timed_country_flag/variable_then_days": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": true,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 4
+                },
+                "variable": "native_variable"
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_variable_then_days days = native_variable days = 4 }"
+    },
+    "set_timed_country_flag/years": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 2
+                },
+                "variable": ""
+              }
+            },
+            "factor": 360,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_years years = 2 }"
+    },
+    "set_timed_country_flag/years_overflow": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 5965233
+                },
+                "variable": ""
+              }
+            },
+            "factor": 360,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_years_overflow years = 5965233 }"
+    },
+    "set_timed_country_flag/zero_days": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 0
+                },
+                "variable": ""
+              }
+            },
+            "factor": 1,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "set_timed_country_flag = { flag = native_duration_zero_days days = 0 }"
+    }
+  }
+}

@@ -111,7 +111,7 @@ fn family_of_callee(callee: &str) -> BlockFamily {
     }
 }
 
-fn classify_callee(callee: &str) -> ReaderKind {
+pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
         "CVariableValue::Read(CReader&, EScopeType)"
         | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" => {
