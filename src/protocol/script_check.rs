@@ -138,6 +138,10 @@ pub(crate) struct StoredDurations {
 
 impl CheckedScript {
     /// The public observation, with the stored durations as a known or partial property.
+    #[cfg_attr(
+        not(all(target_os = "macos", target_arch = "aarch64")),
+        allow(dead_code)
+    )]
     pub(crate) fn into_observation(self) -> crate::ScriptObservation {
         let stored = self.durations.stored;
         let stored_durations = if self.durations.complete {
