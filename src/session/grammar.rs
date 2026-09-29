@@ -31,12 +31,14 @@ impl Native {
             let result = self.command_grammar_result(kind, name)?;
             let references = self.reference_facts(Operation::CommandGrammar)?;
             let numeric = self.numeric_facts(Operation::CommandGrammar)?;
+            let scoped = self.scoped_numeric_facts(Operation::CommandGrammar)?;
             Ok(normalize_with_numeric(
                 result.as_ref(),
                 name,
                 self.build(),
                 references,
                 numeric,
+                scoped,
             ))
         })
     }
@@ -120,9 +122,20 @@ pub(crate) fn normalize_with_numeric(
     build: crate::BuildId,
     references: &ReferenceFacts,
     numeric: &crate::engine::analysis::numeric::NumericFacts,
+    scoped: &crate::engine::analysis::scoped_numeric::Facts,
 ) -> Answer<CommandGrammar> {
     let mut answer = normalize(result, name, build, references);
     super::numeric::grammar(&mut answer.value, name, numeric, &mut answer.gaps);
+    if let Ok(result) = result {
+        super::scoped_numeric::grammar(
+            &mut answer.value,
+            result,
+            scoped,
+            numeric,
+            name,
+            &mut answer.gaps,
+        );
+    }
     answer.completeness = crate::Completeness::from_gaps(&answer.gaps);
     answer
 }
@@ -138,6 +151,7 @@ pub(crate) fn normalize(
         targets: GrammarProperty::Unresolved,
         reader: Reader {
             numeric: crate::GrammarProperty::Unresolved,
+            scoped_operand: crate::GrammarProperty::Unresolved,
             id: None,
             kind: ReaderKind::Unknown,
             family: BlockFamily::Unknown,
@@ -166,6 +180,7 @@ pub(crate) fn normalize(
                 super::fields::concrete_reader_id(&result.reader_name, &result.member_name);
             value.reader = Reader {
                 numeric: crate::GrammarProperty::Unresolved,
+                scoped_operand: crate::GrammarProperty::Unresolved,
                 id: Some(identity),
                 kind: result.reader_kind,
                 family: result.reader_family,
@@ -504,6 +519,7 @@ fn form_value(
         .map(|join| super::fields::reader(std::slice::from_ref(join)))
         .unwrap_or(Reader {
             numeric: crate::GrammarProperty::Unresolved,
+            scoped_operand: crate::GrammarProperty::Unresolved,
             id: None,
             kind: value.kind,
             family: BlockFamily::NotApplicable,
@@ -657,6 +673,7 @@ mod tests {
             tail: true,
         };
         grammar::GrammarResult {
+            scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
             nested: Default::default(),
@@ -1041,6 +1058,7 @@ mod tests {
     #[test]
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
+            scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![grammar::ReaderNode {
                 domain: [i32::MIN as i64, i32::MAX as i64],
@@ -1158,6 +1176,7 @@ mod tests {
             }],
         };
         let result = grammar::GrammarResult {
+            scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
             nested: Default::default(),
@@ -1204,6 +1223,7 @@ mod tests {
     #[test]
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
+            scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
             nested: Default::default(),

@@ -59,6 +59,7 @@ pub fn run(native: &Native, kind: DeclarationKind, name: &str) -> Result<Run, Er
         }
         let references = native.reference_facts(Operation::CommandGrammar)?;
         let numeric = native.numeric_facts(Operation::CommandGrammar)?;
+        let scoped = native.scoped_numeric_facts(Operation::CommandGrammar)?;
         Ok(inspect_command(
             input,
             inventory,
@@ -66,6 +67,7 @@ pub fn run(native: &Native, kind: DeclarationKind, name: &str) -> Result<Run, Er
             native.build(),
             references,
             numeric,
+            scoped,
         ))
     })
 }
@@ -132,10 +134,19 @@ pub fn population(
         let (names, unknown_registrations) = inventory_names(inventory);
         let references = native.reference_facts(Operation::CommandGrammar)?;
         let numeric = native.numeric_facts(Operation::CommandGrammar)?;
+        let scoped = native.scoped_numeric_facts(Operation::CommandGrammar)?;
         for name in names {
             visit(
                 &name,
-                inspect_command(input, inventory, &name, native.build(), references, numeric),
+                inspect_command(
+                    input,
+                    inventory,
+                    &name,
+                    native.build(),
+                    references,
+                    numeric,
+                    scoped,
+                ),
             );
         }
         Ok(Population {
@@ -178,6 +189,7 @@ fn inspect_command(
     build: crate::BuildId,
     references: &ReferenceFacts,
     numeric: &crate::engine::analysis::numeric::NumericFacts,
+    scoped: &crate::engine::analysis::scoped_numeric::Facts,
 ) -> Run {
     let mut chain = Chain {
         stopped_at: Some("registration"),
@@ -238,6 +250,7 @@ fn inspect_command(
             build,
             references,
             numeric,
+            scoped,
         ),
         result,
         chain,

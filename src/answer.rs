@@ -1073,6 +1073,9 @@ pub struct Reader {
     /// Numeric conversion facts; absent older recordings remain unresolved.
     #[serde(default)]
     pub numeric: crate::GrammarProperty<Option<crate::NumericConversion>>,
+    /// Scoped operand rules for this destination; absent older recordings remain unresolved.
+    #[serde(default)]
+    pub scoped_operand: crate::GrammarProperty<Option<crate::ScopedOperand>>,
     /// Opaque reader identity within one build, or `None` when no reader is established.
     pub id: Option<ReaderId>,
     /// Value form that the reader accepts.
@@ -1146,6 +1149,8 @@ pub enum ReaderKind {
     Integer,
     /// A fixed-point numeric value.
     FixedPoint,
+    /// A numeric literal or a reference resolved in an event scope.
+    ScopedNumeric,
     /// A binary floating-point numeric value.
     Float,
     /// A string value.

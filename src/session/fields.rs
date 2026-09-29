@@ -19,6 +19,7 @@ pub(super) fn reader(joins: &[ReaderJoin]) -> Reader {
     let classification = readers::classify(joins);
     Reader {
         numeric: crate::GrammarProperty::Unresolved,
+        scoped_operand: crate::GrammarProperty::Unresolved,
         id: classification.callee.map(ReaderId::from_callee),
         kind: classification.kind,
         family: classification.family,
@@ -310,7 +311,10 @@ fn ordinary_field(
 
 /// The token paths that read `field`, as condition and outcome pairs with equivalent branches
 /// collapsed.
-fn read_alternatives(field: &RootField, paths: &[TokenPath]) -> Vec<(Vec<Condition>, PathOutcome)> {
+pub(super) fn read_alternatives(
+    field: &RootField,
+    paths: &[TokenPath],
+) -> Vec<(Vec<Condition>, PathOutcome)> {
     let mut alternatives: Vec<_> = paths
         .iter()
         .filter(|path| path.domain[0] <= field.token && field.token <= path.domain[1])
@@ -450,6 +454,7 @@ fn collection_field(
 ) -> Field {
     let reader = Reader {
         numeric: crate::GrammarProperty::Unresolved,
+        scoped_operand: crate::GrammarProperty::Unresolved,
         id: Some(concrete_reader_id(
             "CPersistent::Read(CReader&)",
             &format!("{}::ReadMember(CReader&, int)", collection.class),

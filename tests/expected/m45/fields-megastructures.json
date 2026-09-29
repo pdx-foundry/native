@@ -15,6 +15,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -30,6 +33,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -56,6 +62,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -71,6 +80,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -121,6 +133,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -161,6 +176,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -186,6 +204,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -201,6 +222,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -227,6 +251,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -242,6 +269,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -267,7 +297,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -291,7 +322,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -316,6 +348,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -331,6 +366,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -380,6 +418,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -419,6 +460,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -444,6 +488,9 @@
        "family": "Modifier",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -459,6 +506,9 @@
    "kind": "Block",
    "family": "Modifier",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -485,6 +535,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -500,6 +553,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -525,7 +581,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -549,7 +606,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -574,6 +632,9 @@
        "family": "Modifier",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -589,6 +650,9 @@
    "kind": "Block",
    "family": "Modifier",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -614,7 +678,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -639,6 +704,9 @@
        "family": "Modifier",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -654,6 +722,9 @@
    "kind": "Block",
    "family": "Modifier",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -680,6 +751,9 @@
        "family": "Modifier",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -695,6 +769,9 @@
    "kind": "Block",
    "family": "Modifier",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -745,6 +822,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -785,6 +865,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -834,6 +917,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -874,6 +960,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -898,7 +987,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -923,6 +1013,9 @@
        "family": "Unknown",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -938,6 +1031,9 @@
    "kind": "Block",
    "family": "Unknown",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -962,7 +1058,8 @@
        "id": "784ec4ab3c469836",
        "kind": "Unknown",
        "family": "Unknown",
-       "numeric": "Unresolved"
+       "numeric": "Unresolved",
+       "scoped_operand": "Unresolved"
       },
       "shape": {
        "repeat": "Unknown",
@@ -976,7 +1073,8 @@
    "id": "784ec4ab3c469836",
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1025,6 +1123,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1065,6 +1166,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -1114,6 +1218,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1154,6 +1261,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -1179,6 +1289,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1194,6 +1307,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1220,6 +1336,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1235,6 +1354,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1261,6 +1383,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1276,6 +1401,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1302,6 +1430,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1317,6 +1448,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1343,6 +1477,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1358,6 +1495,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1384,6 +1524,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1399,6 +1542,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1425,6 +1571,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1440,6 +1589,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1466,6 +1618,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1481,6 +1636,9 @@
    "kind": "Block",
    "family": "Effect",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1507,6 +1665,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1522,6 +1683,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1548,6 +1712,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1563,6 +1730,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1589,6 +1759,9 @@
        "family": "Unknown",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1604,6 +1777,9 @@
    "kind": "Block",
    "family": "Unknown",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1653,6 +1829,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1692,6 +1871,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -1740,6 +1922,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1779,6 +1964,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -1804,6 +1992,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1819,6 +2010,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1845,6 +2039,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1860,6 +2057,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1885,7 +2085,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1909,7 +2110,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -1934,6 +2136,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1949,6 +2154,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -1975,6 +2183,9 @@
        "family": "Unknown",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -1990,6 +2201,9 @@
    "kind": "Block",
    "family": "Unknown",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2015,7 +2229,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2039,7 +2254,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2064,6 +2280,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2079,6 +2298,9 @@
    "kind": "Reference",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2137,7 +2359,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2162,6 +2385,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2177,6 +2403,9 @@
    "kind": "Reference",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2218,6 +2447,9 @@
        "family": "Modifier",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2233,6 +2465,9 @@
    "kind": "Block",
    "family": "Modifier",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2258,7 +2493,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2282,7 +2518,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2307,6 +2544,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2322,6 +2562,9 @@
    "kind": "Reference",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2362,7 +2605,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2386,7 +2630,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2411,6 +2656,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2426,6 +2674,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2475,6 +2726,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2514,6 +2768,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -2563,6 +2820,9 @@
           "Known": null
          }
         }
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2603,6 +2863,9 @@
       "Known": null
      }
     }
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -2627,7 +2890,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2652,6 +2916,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2667,6 +2934,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2692,7 +2962,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2716,7 +2987,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2741,6 +3013,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2756,6 +3031,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2781,7 +3059,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2805,7 +3084,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2829,7 +3109,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2853,7 +3134,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2877,7 +3159,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -2902,6 +3185,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2917,6 +3203,9 @@
    "kind": "Reference",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -2958,6 +3247,9 @@
        "family": "Effect",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -2974,6 +3266,9 @@
    "family": "Effect",
    "numeric": {
     "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -2986,7 +3281,7 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": "None",
   "name": "cycle_length_in_days",
   "read": [
    {
@@ -2995,13 +3290,81 @@
      "Read": {
       "reader": {
        "id": "c61abc171edc30aa",
-       "kind": "Unknown",
-       "family": "Unknown",
-       "numeric": "Unresolved"
+       "kind": "ScopedNumeric",
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 64
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 100000
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "DecimalFraction",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       },
+       "scoped_operand": {
+        "Known": {
+         "forms": {
+          "Partial": [
+           "Literal",
+           {
+            "Prefixed": {
+             "kind": "Trigger",
+             "prefix": "trigger:"
+            }
+           },
+           {
+            "Prefixed": {
+             "kind": "Modifier",
+             "prefix": "modifier:"
+            }
+           },
+           {
+            "Prefixed": {
+             "kind": "ScriptValue",
+             "prefix": "value:"
+            }
+           },
+           "Variable"
+          ]
+         },
+         "literal_assignment_preserves_reference_state": {
+          "Known": true
+         },
+         "selection": {
+          "Known": {
+           "literal_condition": "EmptySourceLocation",
+           "reference_priority": [
+            "Trigger",
+            "ScriptValue",
+            "Modifier",
+            "Variable"
+           ]
+          }
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Unknown",
-       "value": "Unknown"
+       "value": "Scalar"
       }
      }
     }
@@ -3009,14 +3372,82 @@
   ],
   "reader": {
    "id": "c61abc171edc30aa",
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved"
+   "kind": "ScopedNumeric",
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 64
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 100000
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "DecimalFraction",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   },
+   "scoped_operand": {
+    "Known": {
+     "forms": {
+      "Partial": [
+       "Literal",
+       {
+        "Prefixed": {
+         "kind": "Trigger",
+         "prefix": "trigger:"
+        }
+       },
+       {
+        "Prefixed": {
+         "kind": "Modifier",
+         "prefix": "modifier:"
+        }
+       },
+       {
+        "Prefixed": {
+         "kind": "ScriptValue",
+         "prefix": "value:"
+        }
+       },
+       "Variable"
+      ]
+     },
+     "literal_assignment_preserves_reference_state": {
+      "Known": true
+     },
+     "selection": {
+      "Known": {
+       "literal_condition": "EmptySourceLocation",
+       "reference_priority": [
+        "Trigger",
+        "ScriptValue",
+        "Modifier",
+        "Variable"
+       ]
+      }
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -3036,6 +3467,9 @@
        "family": "Unknown",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3051,6 +3485,9 @@
    "kind": "Block",
    "family": "Unknown",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3077,6 +3514,9 @@
        "family": "Unknown",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3092,6 +3532,9 @@
    "kind": "Block",
    "family": "Unknown",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3118,6 +3561,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3133,6 +3579,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3159,6 +3608,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3174,6 +3626,9 @@
    "kind": "String",
    "family": "NotApplicable",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3199,7 +3654,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -3224,6 +3680,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3239,6 +3698,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3265,6 +3727,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3280,6 +3745,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3305,7 +3773,8 @@
    "id": null,
    "kind": "Unknown",
    "family": "Unknown",
-   "numeric": "Unresolved"
+   "numeric": "Unresolved",
+   "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
   "shape": {
@@ -3330,6 +3799,9 @@
        "family": "NotApplicable",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3346,6 +3818,9 @@
    "family": "NotApplicable",
    "numeric": {
     "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
    }
   },
   "reference": "NotEstablished",
@@ -3358,7 +3833,7 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": "None",
   "name": "overclock_cooldown",
   "read": [
    {
@@ -3367,13 +3842,80 @@
      "Read": {
       "reader": {
        "id": "c61abc171edc30aa",
-       "kind": "Unknown",
-       "family": "Unknown",
-       "numeric": "Unresolved"
+       "kind": "ScopedNumeric",
+       "family": "NotApplicable",
+       "numeric": {
+        "Partial": {
+         "representation": {
+          "Known": "Integer"
+         },
+         "width_bits": {
+          "Known": 32
+         },
+         "signedness": {
+          "Known": "Signed"
+         },
+         "scale": {
+          "Known": 1
+         },
+         "literal_syntax": {
+          "Partial": [
+           "DecimalInteger",
+           "RadixPrefixedInteger"
+          ]
+         },
+         "accepted_range": "Unresolved",
+         "clamp": {
+          "Known": null
+         }
+        }
+       },
+       "scoped_operand": {
+        "Known": {
+         "forms": {
+          "Partial": [
+           "Literal",
+           {
+            "Prefixed": {
+             "kind": "Trigger",
+             "prefix": "trigger:"
+            }
+           },
+           {
+            "Prefixed": {
+             "kind": "Modifier",
+             "prefix": "modifier:"
+            }
+           },
+           {
+            "Prefixed": {
+             "kind": "ScriptValue",
+             "prefix": "value:"
+            }
+           },
+           "Variable"
+          ]
+         },
+         "literal_assignment_preserves_reference_state": {
+          "Known": true
+         },
+         "selection": {
+          "Known": {
+           "literal_condition": "EmptySourceLocation",
+           "reference_priority": [
+            "Trigger",
+            "ScriptValue",
+            "Modifier",
+            "Variable"
+           ]
+          }
+         }
+        }
+       }
       },
       "shape": {
        "repeat": "Unknown",
-       "value": "Unknown"
+       "value": "Scalar"
       }
      }
     }
@@ -3381,14 +3923,81 @@
   ],
   "reader": {
    "id": "c61abc171edc30aa",
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved"
+   "kind": "ScopedNumeric",
+   "family": "NotApplicable",
+   "numeric": {
+    "Partial": {
+     "representation": {
+      "Known": "Integer"
+     },
+     "width_bits": {
+      "Known": 32
+     },
+     "signedness": {
+      "Known": "Signed"
+     },
+     "scale": {
+      "Known": 1
+     },
+     "literal_syntax": {
+      "Partial": [
+       "DecimalInteger",
+       "RadixPrefixedInteger"
+      ]
+     },
+     "accepted_range": "Unresolved",
+     "clamp": {
+      "Known": null
+     }
+    }
+   },
+   "scoped_operand": {
+    "Known": {
+     "forms": {
+      "Partial": [
+       "Literal",
+       {
+        "Prefixed": {
+         "kind": "Trigger",
+         "prefix": "trigger:"
+        }
+       },
+       {
+        "Prefixed": {
+         "kind": "Modifier",
+         "prefix": "modifier:"
+        }
+       },
+       {
+        "Prefixed": {
+         "kind": "ScriptValue",
+         "prefix": "value:"
+        }
+       },
+       "Variable"
+      ]
+     },
+     "literal_assignment_preserves_reference_state": {
+      "Known": true
+     },
+     "selection": {
+      "Known": {
+       "literal_condition": "EmptySourceLocation",
+       "reference_priority": [
+        "Trigger",
+        "ScriptValue",
+        "Modifier",
+        "Variable"
+       ]
+      }
+     }
+    }
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -3408,6 +4017,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3423,6 +4035,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3449,6 +4064,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3464,6 +4082,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },
@@ -3490,6 +4111,9 @@
        "family": "Trigger",
        "numeric": {
         "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
        }
       },
       "shape": {
@@ -3505,6 +4129,9 @@
    "kind": "Block",
    "family": "Trigger",
    "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
     "Known": null
    }
   },

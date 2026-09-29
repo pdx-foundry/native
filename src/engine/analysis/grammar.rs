@@ -28,7 +28,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v10";
+pub const METHOD: &str = "command-grammar/v11";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -109,6 +109,8 @@ pub enum OrderOutcome {
 
 /// The child grammar of one command reader, as far as the method follows it.
 pub struct GrammarResult {
+    /// Factory-agreed vtable address points at scoped numeric destinations.
+    pub scoped_destinations: BTreeMap<i64, u64>,
     /// Scope checks for the arguments stored by this command.
     pub targets: Vec<targets::Argument>,
     /// Member nodes with their local disposition ledgers and delegated edges.
@@ -165,6 +167,10 @@ pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unre
     let mut result = analyze_reader_with_state(input, reader, 0, &state.bytes)?;
     let (forms, key) = forms::analyze(input, reader, &state.bytes);
     result.forms = Some(forms);
+    result.scoped_destinations.extend(scoped_form_points(
+        result.forms.as_ref().unwrap(),
+        &state.bytes,
+    ));
     result.forms_key = Some(key);
     result.targets = targets::analyze(input, &result, &state.bytes);
     Ok(result)
@@ -449,6 +455,10 @@ fn analyze_reader_with_state(
             Ok(mut grammar) => {
                 let (forms, key) = forms::analyze(input, child.reader, &child.bytes);
                 grammar.forms = Some(forms);
+                grammar.scoped_destinations.extend(scoped_form_points(
+                    grammar.forms.as_ref().unwrap(),
+                    &child.bytes,
+                ));
                 grammar.forms_key = Some(key);
                 grammar.targets = targets::analyze(input, &grammar, &child.bytes);
                 Some(Box::new(grammar))
@@ -517,8 +527,27 @@ fn analyze_reader_with_state(
         }
     }
     let (reader_kind, reader_family) = super::readers::entry(&reader_name);
+    let scoped_destinations = fields
+        .iter()
+        .flat_map(|field| &field.readers)
+        .filter_map(|join| {
+            let ReaderJoin::Joined { callee, .. } = join else {
+                return None;
+            };
+            if !matches!(
+                callee.as_str(),
+                "CVariableValue::Read(CReader&, EScopeType)"
+                    | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+            ) {
+                return None;
+            }
+            let offset = super::readers::destination(join)?;
+            Some((offset, scoped_point(bytes, offset)?))
+        })
+        .collect();
     super::stop::sort_and_dedup(&mut stops);
     Ok(GrammarResult {
+        scoped_destinations,
         targets: vec![],
         nodes,
         nested,
@@ -542,6 +571,33 @@ fn analyze_reader_with_state(
             gaps,
         },
     })
+}
+
+fn scoped_point(bytes: &BTreeMap<u64, u8>, offset: i64) -> Option<u64> {
+    let offset = u64::try_from(offset).ok()?;
+    let mut word = [0; 8];
+    for (index, byte) in word.iter_mut().enumerate() {
+        *byte = *bytes.get(&(offset + index as u64))?;
+    }
+    Some(u64::from_le_bytes(word))
+}
+
+fn scoped_form_points(forms: &forms::Result, bytes: &BTreeMap<u64, u8>) -> BTreeMap<i64, u64> {
+    forms
+        .alternatives
+        .iter()
+        .filter_map(|alternative| {
+            let join = alternative.value.reader.as_ref()?;
+            let ReaderJoin::Joined { callee, .. } = join else {
+                return None;
+            };
+            if callee != "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
+                return None;
+            }
+            let offset = alternative.value.destination? as i64;
+            Some((offset, scoped_point(bytes, offset)?))
+        })
+        .collect()
 }
 
 fn nested_reader(

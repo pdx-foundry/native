@@ -12,7 +12,11 @@ const SPAN: u64 = 0x10000;
 pub(super) fn discover(
     input: &FieldInput,
     fields: &[RootField],
-) -> (BTreeMap<i64, ConcreteReader>, Vec<FieldGap>) {
+) -> (
+    BTreeMap<i64, ConcreteReader>,
+    BTreeMap<i64, u64>,
+    Vec<FieldGap>,
+) {
     let offsets: BTreeSet<_> = fields
         .iter()
         .flat_map(|field| &field.readers)
@@ -20,17 +24,22 @@ pub(super) fn discover(
             let ReaderJoin::Joined { callee, .. } = join else {
                 return None;
             };
-            (callee == "CReader::Read(CPersistent&)")
-                .then(|| readers::destination(join))
-                .flatten()
+            matches!(
+                callee.as_str(),
+                "CReader::Read(CPersistent&)"
+                    | "CVariableValue::Read(CReader&, EScopeType)"
+                    | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+            )
+            .then(|| readers::destination(join))
+            .flatten()
         })
         .filter(|offset| (0..SPAN as i64 - 8).contains(offset))
         .collect();
     if offsets.is_empty() {
-        return (BTreeMap::new(), vec![]);
+        return (BTreeMap::new(), BTreeMap::new(), vec![]);
     }
     let Some(binding) = &input.persistent else {
-        return (BTreeMap::new(), vec![]);
+        return (BTreeMap::new(), BTreeMap::new(), vec![]);
     };
     let data = ReadOnlyData::new(
         input
@@ -115,8 +124,9 @@ pub(super) fn discover(
             }
         }
     }
-    let readers = agreement
-        .unwrap_or_default()
+    let points = agreement.unwrap_or_default();
+    let readers = points
+        .clone()
         .into_iter()
         .filter_map(|(offset, point)| {
             binding
@@ -126,7 +136,19 @@ pub(super) fn discover(
                 .map(|reader| (offset, reader))
         })
         .collect();
-    (readers, gaps)
+    let scoped = points
+        .into_iter()
+        .filter(|(offset, _)| {
+            fields.iter().flat_map(|field| &field.readers).any(|join| {
+                matches!(join, ReaderJoin::Joined { callee, .. }
+                    if matches!(callee.as_str(),
+                        "CVariableValue::Read(CReader&, EScopeType)"
+                            | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+                    ) && readers::destination(join) == Some(*offset))
+            })
+        })
+        .collect();
+    (readers, scoped, gaps)
 }
 
 fn intersect(agreement: &mut Option<BTreeMap<i64, u64>>, points: BTreeMap<i64, u64>) {

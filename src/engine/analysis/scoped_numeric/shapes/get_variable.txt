@@ -1,0 +1,138 @@
+sub sp,sp,#0xc0
+stp xr0,xr1,[sp,#0x80]
+stp xr2,xr3,[sp,#0x90]
+stp xr4,xr5,[sp,#0xa0]
+stp x29,x30,[sp,#0xb0]
+add x29,sp,#0xb0
+mov xr3,x1
+mov xr5,x0
+add xr4,x0,#{variable}
+mov x0,x1
+mov x1,xr4
+bl CALL = GetVariablePointer(CEventScope const&, CString const&)
+cbz x0,@+13
+mov xr2,x0
+mov x1,xr4
+bl CALL = CVariables::VariableIsSet(CString const&) const
+tbz w0,#0,@+34
+mov x0,xr2
+mov x1,xr4
+ldp x29,x30,[sp,#0xb0]
+ldp xr4,xr5,[sp,#0xa0]
+ldp xr2,xr3,[sp,#0x90]
+ldp xr0,xr1,[sp,#0x80]
+add sp,sp,#0xc0
+b CALL = CVariables::GetVariable(CString const&) const
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x0,sp,#0x20
+mov w2,#0xf5
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldr x0,[xr3,#0x8]
+add xr4,sp,#0x48
+add xr6,sp,#0x48
+mov w1,#0x0
+bl CALL = NEventScope::GetScopeName(EScopeType, bool)
+ldrsb wr6,[sp,#0x5f]
+ldr xr7,[sp,#0x48]
+cmp wr6,#0x0
+csel xr6,xr7,xr4,lt
+add xr7,xr5,#0x1d8
+ldrsb wr8,[xr5,#0x1ef]
+tbz wr8,#0x1f,@+2
+ldr xr7,[xr7]
+stp xr6,xr7,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Unable to access modifiers for %s scope at %s"
+add x0,sp,#0x20
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+b @+39
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+sub x0,x29,#0x40
+mov w2,#0xec
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldrsb wr6,[xr5,#0x1c7]
+tbz wr6,#0x1f,@+2
+ldr xr4,[xr4]
+ldr x0,[xr3,#0x8]
+add xr2,sp,#0x48
+add xr6,sp,#0x48
+mov w1,#0x0
+bl CALL = NEventScope::GetScopeName(EScopeType, bool)
+ldrsb wr6,[sp,#0x5f]
+ldr xr7,[sp,#0x48]
+cmp wr6,#0x0
+csel xr2,xr7,xr2,lt
+add xr1,sp,#0x20
+add xr6,sp,#0x20
+mov x0,xr3
+bl CALL = CEventScope::GetObjectName() const
+ldrsb wr6,[sp,#0x37]
+ldr xr7,[sp,#0x20]
+cmp wr6,#0x0
+csel xr6,xr7,xr1,lt
+add xr7,xr5,#0x1d8
+ldrsb wr8,[xr5,#0x1ef]
+tbz wr8,#0x1f,@+2
+ldr xr7,[xr7]
+stp xr6,xr7,[sp,#0x10]
+stp xr4,xr2,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Variable %s is not set for scoped %s '%s' at %s"
+sub x0,x29,#0x40
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr6,[sp,#0x37]
+tbnz wr6,#0x1f,@+18
+ldrsb wr6,[sp,#0x5f]
+tbz wr6,#0x1f,@+7
+add xr6,sp,#0x48
+add x0,xr6,#0x18
+ldr x1,[sp,#0x48]
+ldr xr6,[sp,#0x58]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+adrp xr6,PAGE
+add xr6,xr6,G = _VZERO
+ldr x0,[xr6]
+ldp x29,x30,[sp,#0xb0]
+ldp xr4,xr5,[sp,#0xa0]
+ldp xr2,xr3,[sp,#0x90]
+ldp xr0,xr1,[sp,#0x80]
+add sp,sp,#0xc0
+ret
+add xr6,sp,#0x20
+add x0,xr6,#0x18
+ldr x1,[sp,#0x20]
+ldr xr6,[sp,#0x30]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr6,[sp,#0x5f]
+tbz wr6,#0x1f,@-16
+b @-23
+mov xr5,x0
+ldrsb wr6,[sp,#0x37]
+tbz wr6,#0x1f,@+5
+add x0,sp,#0x20
+bl CALL = CVariableValue::GetVariableValue(CEventScope&) const [clone .cold.2]
+b @+2
+mov xr5,x0
+ldrsb wr6,[sp,#0x5f]
+tbz wr6,#0x1f,@+14
+add xr6,sp,#0x48
+add x0,xr6,#0x18
+ldr x1,[sp,#0x48]
+ldr xr6,[sp,#0x58]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr5
+bl CALL = __Unwind_Resume
+mov xr5,x0
+ldrsb wr6,[sp,#0x5f]
+tbz wr6,#0x1f,@+3
+add x0,sp,#0x48
+bl CALL = CVariableValue::GetVariableValue(CEventScope&) const [clone .cold.1]
+mov x0,xr5
+bl CALL = __Unwind_Resume

@@ -1231,6 +1231,55 @@ fn persistent_fixture() -> FieldInput {
 }
 
 #[test]
+fn scoped_destination_requires_ctor_agreement_and_owner_reader_join() {
+    let mut input = persistent_fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CVariableValue::Read(CReader&, EScopeType)".into();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        add x8, x0, #0x40; // scoped member
+        mov x0, x8;
+        mov w2, #4; // scope 4
+        b extern 0x4000
+    );
+    let result = derive(input.clone());
+    assert_eq!(result.scoped_destinations.get(&0x40), Some(&0xb000));
+
+    let mut conflict = input.clone();
+    conflict
+        .persistent
+        .as_mut()
+        .unwrap()
+        .constructors
+        .push(Function {
+            name: "CExample::CExample(other)".into(),
+            address: 0xc000,
+            code: arm64!(at 0xc000; str xzr, [x0, #0x40]; ret),
+        });
+    assert!(derive(conflict).scoped_destinations.is_empty());
+
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        add x8, x0, #0x40;
+        mov x0, x8;
+        mov x1, xzr; // wrong reader
+        mov w2, #4;
+        b extern 0x4000
+    );
+    assert!(derive(input).scoped_destinations.is_empty());
+}
+
+#[test]
 fn persistent_family_and_identity_follow_the_constructed_destination() {
     let first = crate::session::questions::normalized_fields(
         &derive(persistent_fixture()),
@@ -1783,5 +1832,63 @@ fn compound_reader_rejects_owner_pointers_reachable_through_the_stack() {
             PathOutcome::Gap(stop) if stop.reason == "compound-reader-overwrite")),
             "case {case}"
         );
+    }
+}
+
+#[test]
+fn scoped_retained_owner_routing_controls() {
+    // The retained root Read, timed Assign, and held-out Assign owner shapes.
+    for shape in 0..3 {
+        for fault in 0..4 {
+            let mut input = fixture();
+            let callee = if shape == 0 {
+                "CVariableValue::Read(CReader&, EScopeType)"
+            } else {
+                "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+            };
+            input
+                .symbols
+                .iter_mut()
+                .find(|symbol| symbol.address == 0x4000)
+                .unwrap()
+                .name = callee.into();
+            input.key_readers.value_token = 0x278;
+            let mut code = Arm64::at(0x1000);
+            arm64!(code; cmp w2, #7; b.eq extern 0x1010; mov x0, x1; b extern 0x6000);
+            if fault == 3 {
+                arm64!(code; mov x1, x9);
+            }
+            if shape > 0 {
+                arm64!(code; add x3, x0, #0x28; add x1, x1, #0x278);
+            }
+            arm64!(code; add x0, x0, #0x80; mov x2, #4);
+            if shape == 2 {
+                arm64!(code; bl extern 0x4000; ret);
+            } else {
+                arm64!(code; b extern 0x4000);
+            }
+            input.functions[0].code = code.bytes();
+            match fault {
+                1 => {
+                    input.functions.remove(0);
+                }
+                2 => {
+                    input.symbols.retain(|symbol| symbol.address != 0x4000);
+                }
+                _ => {}
+            }
+            let result = fields::analyze(&input);
+            let joined = result.as_ref().is_ok_and(|result| {
+                result.fields.iter().any(|field| {
+                    crate::engine::analysis::readers::classify(&field.readers).kind
+                        == crate::ReaderKind::ScopedNumeric
+                })
+            });
+            assert_eq!(
+                joined,
+                fault == 0,
+                "shape {shape}, fault {fault}: {result:?}"
+            );
+        }
     }
 }

@@ -71,6 +71,9 @@ fn m45_command_grammar_population() {
                 native.build(),
                 &references,
                 native.numeric_facts(Operation::CommandGrammar).unwrap(),
+                native
+                    .scoped_numeric_facts(Operation::CommandGrammar)
+                    .unwrap(),
             );
             let group = if controls.contains(&name.as_str()) {
                 "target_controls"

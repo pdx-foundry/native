@@ -363,6 +363,8 @@ pub struct FieldRead {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub enum FixtureValue {
+    /// Parsed scoped operand state, independently of evaluation.
+    ScopedNumeric(ScopedNumericStorage),
     /// Text stored by the string reader.
     String(String),
     /// A signed 32-bit integer stored by the direct integer reader.
@@ -374,6 +376,39 @@ pub enum FixtureValue {
         /// Positive number of stored units per whole unit.
         scale: u64,
     },
+}
+
+/// Literal slot of a scoped numeric operand, even when a reference is selected.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub enum ScopedNumericLiteral {
+    /// Signed whole-number storage.
+    Integer(i32),
+    /// Exact signed storage with positive units per whole value.
+    FixedPoint {
+        /// Stored numerator.
+        raw: i64,
+        /// Units per whole value.
+        scale: u64,
+    },
+}
+
+/// Parser storage of a scoped operand; reference presence does not prove lookup success.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ScopedNumericStorage {
+    /// Numeric slot, which can coexist with older references.
+    pub literal: ScopedNumericLiteral,
+    /// Whether the source-location string is nonempty. This is a selection condition, not a value.
+    pub has_source_location: bool,
+    /// Whether a trigger object is stored.
+    pub has_trigger: bool,
+    /// Whether a script-value lookup object is stored.
+    pub has_script_value: bool,
+    /// Whether the modifier slot differs from its unset marker.
+    pub has_modifier: bool,
+    /// Stored variable text, including an empty string when no name was stored.
+    pub variable: String,
 }
 
 /// One stored value read after a source occurrence returned.

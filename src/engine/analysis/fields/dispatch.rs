@@ -458,12 +458,17 @@ fn reader_join(
     entry: u64,
     tail: bool,
     member_delegates: bool,
+    reader_value_token_offset: Option<i64>,
 ) -> ReaderJoin {
     let Some(name) = name else {
         return ReaderJoin::Missing(Unresolved::at("callee", at, entry, Obstacle::Call));
     };
-    let joined =
-        crate::engine::analysis::readers::arguments_join(name, &state.registers, member_delegates);
+    let joined = crate::engine::analysis::readers::arguments_join(
+        name,
+        &state.registers,
+        member_delegates,
+        reader_value_token_offset,
+    );
     if joined {
         ReaderJoin::Joined {
             callee: name.into(),
@@ -949,7 +954,7 @@ pub(crate) fn explore_member(
                     row.address,
                     entry,
                     row.operation == "b",
-                    input.member_delegates,
+                    input,
                 );
                 if target == input.key_readers.string_read
                     && state.value("x0") == Some(Value::Reader(0))
@@ -1069,7 +1074,7 @@ fn call_outcome(
     at: u64,
     entry: u64,
     tail: bool,
-    member_delegates: bool,
+    input: &DispatchInput<'_>,
 ) -> PathOutcome {
     if name == Some("CReader::ReportUnexpected()")
         && state.registers.get("x0") == Some(&Value::Reader(0))
@@ -1094,7 +1099,15 @@ fn call_outcome(
             Obstacle::Call,
         )))
     } else {
-        PathOutcome::Reader(reader_join(name, state, at, entry, tail, member_delegates))
+        PathOutcome::Reader(reader_join(
+            name,
+            state,
+            at,
+            entry,
+            tail,
+            input.member_delegates,
+            Some(input.key_readers.value_token),
+        ))
     }
 }
 

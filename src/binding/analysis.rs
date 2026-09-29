@@ -28,6 +28,7 @@ pub(crate) struct BoundAnalysis {
     /// Derived from the catalog's executable; every read checks the executable first.
     references: OnceLock<Result<ReferenceFacts, AnalysisError>>,
     numeric: OnceLock<Result<crate::engine::analysis::numeric::NumericFacts, AnalysisError>>,
+    scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
 }
@@ -58,6 +59,24 @@ pub(crate) struct VerifiedAnalysis<'a> {
 }
 
 impl VerifiedAnalysis<'_> {
+    fn scoped_numeric_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
+        let image = binary::references::Image {
+            bytes: &self.executable,
+            symbols: &self.catalog.symbols,
+            strings: &self.catalog.strings,
+            pointers: &self.catalog.pointers,
+            imports: &self.catalog.imports,
+        };
+        binary::scoped_numeric::read(
+            &image,
+            &self.catalog.bound_slots,
+            recipe.reader_value_token_offset,
+        )
+    }
+
     /// The address of the one symbol with this demangled name.
     pub(in crate::binding) fn symbol(&self, name: &str) -> Result<u64, String> {
         let addresses: std::collections::BTreeSet<_> = self
@@ -469,6 +488,8 @@ impl BoundAnalysis {
         let result = crate::engine::analysis::fields::analyze(&input)
             .map_err(|_| AnalysisError::InvalidRange)?;
 
+        let scoped = self.scoped_numeric_facts()?;
+        let numeric = self.numeric_facts()?;
         Ok(result
             .fields
             .iter()
@@ -476,7 +497,8 @@ impl BoundAnalysis {
                 Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
                     token: u64::try_from(field.token).ok()?,
                     name: field.name.clone(),
-                    storage: fixture_storage_binding(field, &result.paths),
+                    storage: fixture_storage_binding(field, &result.paths)
+                        .or_else(|| scoped_fixture_storage(field, &result, scoped, numeric)),
                 })
             })
             .collect())
@@ -496,6 +518,7 @@ impl BoundAnalysis {
             families: OnceLock::new(),
             references: OnceLock::new(),
             numeric: OnceLock::new(),
+            scoped_numeric: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
         }
     }
@@ -574,6 +597,90 @@ fn fixture_storage_binding(
     Some(FixtureStorageBinding {
         offset: u64::try_from(*offset).ok()?,
         decoder,
+    })
+}
+
+/// Use the same constructor, subtype and code-layout proofs as the static reader answer.
+fn scoped_fixture_storage(
+    field: &crate::engine::analysis::fields::RootField,
+    result: &crate::engine::analysis::fields::RegistryFieldResult,
+    facts: &crate::engine::analysis::scoped_numeric::Facts,
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+) -> Option<crate::protocol::observation::FixtureStorageBinding> {
+    use crate::engine::analysis::{
+        fields::{ReaderJoin, Value},
+        scoped_numeric::Subtype,
+    };
+    use crate::protocol::observation::{
+        FixtureStorageBinding, FixtureStorageDecoder, ScopedLiteralDecoder, ScopedStorageLayout,
+    };
+    use crate::{GrammarProperty, NumericRepresentation, NumericSignedness};
+    let [
+        ReaderJoin::Joined {
+            callee, arguments, ..
+        },
+    ] = field.readers.as_slice()
+    else {
+        return None;
+    };
+    if callee != "CVariableValue::Read(CReader&, EScopeType)"
+        || arguments.get("x1") != Some(&Value::Reader(0))
+        || field.paths.is_empty()
+        || !field.paths.iter().all(|&path| {
+            result.paths[path].conditions.is_empty()
+                && result.paths[path].domain == [field.token, field.token]
+        })
+    {
+        return None;
+    }
+    let Some(Value::Owner(destination)) = arguments.get("x0") else {
+        return None;
+    };
+    let point = result.scoped_destinations.get(destination)?;
+    let Subtype::Numeric {
+        token_reader,
+        literal,
+    } = facts.subtypes.get(point)?.as_ref().ok()?
+    else {
+        return None;
+    };
+    let layout = facts.shared.selection.as_ref().ok()?;
+    if *literal != layout.literal {
+        return None;
+    }
+    let (GrammarProperty::Known(Some(conversion)) | GrammarProperty::Partial(Some(conversion))) =
+        &numeric.token_readers.get(token_reader)?.conversion
+    else {
+        return None;
+    };
+    if conversion.representation != GrammarProperty::Known(NumericRepresentation::Integer)
+        || conversion.signedness != GrammarProperty::Known(NumericSignedness::Signed)
+    {
+        return None;
+    }
+    let literal = match (&conversion.width_bits, &conversion.scale) {
+        (GrammarProperty::Known(32), GrammarProperty::Known(Some(1))) => {
+            ScopedLiteralDecoder::Integer
+        }
+        (GrammarProperty::Known(64), GrammarProperty::Known(Some(scale))) if *scale > 0 => {
+            ScopedLiteralDecoder::FixedPoint { scale: *scale }
+        }
+        _ => return None,
+    };
+    Some(FixtureStorageBinding {
+        offset: u64::try_from(*destination).ok()?,
+        decoder: FixtureStorageDecoder::ScopedNumeric {
+            literal,
+            layout: ScopedStorageLayout {
+                literal: layout.literal,
+                location: layout.location,
+                trigger: layout.trigger,
+                script_value: layout.script_value,
+                modifier: layout.modifier,
+                modifier_unset: layout.modifier_unset,
+                variable: layout.variable,
+            },
+        },
     })
 }
 
@@ -706,6 +813,30 @@ impl BoundAnalysis {
             })
             .as_ref()
             .map_err(Clone::clone)
+    }
+
+    /// Scoped numeric facts derived once from the verified executable.
+    pub(crate) fn scoped_numeric_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::scoped_numeric::Facts, AnalysisError> {
+        let verified = self.verified()?;
+        self.scoped_numeric
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                let input = verified.scoped_numeric_input(recipe)?;
+                Ok(crate::engine::analysis::scoped_numeric::analyze(&input))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn scoped_numeric_input_for_test(
+        &self,
+    ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
+        let verified = self.verified()?;
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        verified.scoped_numeric_input(recipe)
     }
 
     /// The lookup of every reference reader in the executable.

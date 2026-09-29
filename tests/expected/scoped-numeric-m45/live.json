@@ -1,0 +1,2855 @@
+{
+  "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+  "cases": {
+    "at": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 7
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 7
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "bad_prefix": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "bogus:abc"
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "bogus:abc"
+          }
+        }
+      ]
+    },
+    "constant": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cooldown_at": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "sensor_range",
+      "final": {
+        "Integer": 7
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "Integer": 7
+        }
+      ]
+    },
+    "cooldown_decimal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "sensor_range",
+      "final": {
+        "Integer": 2
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "Integer": 2
+        }
+      ]
+    },
+    "cooldown_integer": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "sensor_range",
+      "final": {
+        "Integer": 7
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "Integer": 7
+        }
+      ]
+    },
+    "cooldown_overflow": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "sensor_range",
+      "final": {
+        "Integer": -2147483648
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "Integer": -2147483648
+        }
+      ]
+    },
+    "cooldown_value": {
+      "coverage": "Complete",
+      "diagnostics": [
+        {
+          "stage": "reader-malformed-report",
+          "text": "Malformed token"
+        }
+      ],
+      "field": "sensor_range",
+      "final": {
+        "Integer": 0
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "Integer": 0
+        }
+      ]
+    },
+    "cycle_length_in_days_boundary": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 9223372036854775807,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 9223372036854775807,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_fractional": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": -123456,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": -123456,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_literal_value_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 900000,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 200000,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 200000,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 900000,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_malformed": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 700000,
+              "scale": 100000
+            }
+          },
+          "variable": "not_a_number"
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 700000,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 700000,
+                "scale": 100000
+              }
+            },
+            "variable": "not_a_number"
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_trigger_value": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": true,
+          "literal": {
+            "FixedPoint": {
+              "raw": 0,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": true,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": true,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_value_variable": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 0,
+              "scale": 100000
+            }
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_variable_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 900000,
+              "scale": 100000
+            }
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 900000,
+                "scale": 100000
+              }
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "decimal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "deep": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "empty_string": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "heldout_at": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 700000,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 700000,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "heldout_inline": {
+      "coverage": "Partial",
+      "diagnostics": [
+        {
+          "stage": "reader-unexpected-report",
+          "text": "Unexpected token"
+        },
+        {
+          "stage": "reader-unexpected-report",
+          "text": "Unexpected token"
+        }
+      ],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 0,
+              "scale": 100000
+            }
+          },
+          "variable": "{"
+        }
+      },
+      "gaps": [
+        {
+          "detail": "A parser diagnostic has no valid fixture source join",
+          "kind": "IncompleteObservation",
+          "subject": {
+            "kind": "fixture_file",
+            "name": "common/megastructures/native_scoped.txt"
+          }
+        },
+        {
+          "detail": "The parser diagnostic window did not complete intact",
+          "kind": "IncompleteObservation",
+          "subject": {
+            "kind": "fixture_file",
+            "name": "common/megastructures/native_scoped.txt"
+          }
+        }
+      ],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": "{"
+          }
+        }
+      ]
+    },
+    "heldout_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 275000,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 275000,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "heldout_missing": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 0,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "heldout_nested": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 0,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "heldout_reference": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 0,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "heldout_repeat": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 900000,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 900000,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "heldout_scope": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 0,
+              "scale": 100000
+            }
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 0,
+                "scale": 100000
+              }
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "hex": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 16
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 16
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "inline_arithmetic": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "inline_block": {
+      "coverage": "Partial",
+      "diagnostics": [
+        {
+          "stage": "reader-unexpected-report",
+          "text": "Unexpected token"
+        },
+        {
+          "stage": "reader-unexpected-report",
+          "text": "Unexpected token"
+        }
+      ],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "{"
+        }
+      },
+      "gaps": [
+        {
+          "detail": "A parser diagnostic has no valid fixture source join",
+          "kind": "IncompleteObservation",
+          "subject": {
+            "kind": "fixture_file",
+            "name": "common/council_agendas/native_scoped.txt"
+          }
+        },
+        {
+          "detail": "The parser diagnostic window did not complete intact",
+          "kind": "IncompleteObservation",
+          "subject": {
+            "kind": "fixture_file",
+            "name": "common/council_agendas/native_scoped.txt"
+          }
+        }
+      ],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "{"
+          }
+        }
+      ]
+    },
+    "integer": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 7
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 7
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "missing_at": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "@atlas_missing"
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "@atlas_missing"
+          }
+        }
+      ]
+    },
+    "missing_value": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "modifier": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": true,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": true,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "negative": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -7
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -7
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "negative_constant": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "negative_decimal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -2
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -2
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "nested": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "nested_reference": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "octal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 8
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 8
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "omitted": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": []
+    },
+    "overclock_cooldown_boundary": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2147483647
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2147483647
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_fractional": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -1
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -1
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_literal_value_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 9
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 9
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_malformed": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 7
+          },
+          "variable": "not_a_number"
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 7
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 7
+            },
+            "variable": "not_a_number"
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_trigger_value": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": true,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": true,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": true,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_value_variable": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_variable_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 9
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 9
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "overflow": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -2147483648
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -2147483648
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "quoted_space": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "two"
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "two"
+          }
+        }
+      ]
+    },
+    "repeat_literal_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 9
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 9
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "repeat_literal_value": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "repeat_math": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "repeat_value_bad": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "repeat_value_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 9
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 9
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "repeat_value_value": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "repeat_variable_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 9
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 9
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "reverse": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "scoped_value": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "scoped_variable": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "timed_at": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 7
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 7
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_days": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 7
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 7
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_decimal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_inline": {
+      "coverage": "Partial",
+      "diagnostics": [
+        {
+          "stage": "reader-unexpected-report",
+          "text": "Unexpected token"
+        },
+        {
+          "stage": "reader-unexpected-report",
+          "text": "Unexpected token"
+        }
+      ],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "{"
+        }
+      },
+      "gaps": [
+        {
+          "detail": "A parser diagnostic has no valid fixture source join",
+          "kind": "IncompleteObservation",
+          "subject": {
+            "kind": "fixture_file",
+            "name": "common/council_agendas/native_scoped.txt"
+          }
+        },
+        {
+          "detail": "The parser diagnostic window did not complete intact",
+          "kind": "IncompleteObservation",
+          "subject": {
+            "kind": "fixture_file",
+            "name": "common/council_agendas/native_scoped.txt"
+          }
+        }
+      ],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "{"
+          }
+        }
+      ]
+    },
+    "timed_missing": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_mixed_units": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 3
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 3
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_months": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_nested": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_omitted": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": []
+    },
+    "timed_repeat": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 9
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 9
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_scope": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "timed_value": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_value_literal": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": true,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 9
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        },
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": true,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 9
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "timed_years": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "trigger": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": true,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": true,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "variable": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": true,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 0
+          },
+          "variable": "atlas_numeric_variable"
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": true,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 0
+            },
+            "variable": "atlas_numeric_variable"
+          }
+        }
+      ]
+    },
+    "very_large": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "agenda_cost",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -1
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/council_agendas",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -1
+            },
+            "variable": ""
+          }
+        }
+      ]
+    }
+  }
+}

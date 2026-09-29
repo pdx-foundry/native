@@ -691,13 +691,13 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
     let value = json!({
         "forms": "Unresolved",
         "targets": "Unresolved",
-        "reader": {"id": "shared-control-reader", "kind": "Block", "family": "Effect", "numeric": "Unresolved"},
+        "reader": {"id": "shared-control-reader", "kind": "Block", "family": "Effect", "numeric": "Unresolved", "scoped_operand": "Unresolved"},
         "child_families": {"Known": ["Effect"]},
         "fixed_keys": {"Partial": []},
         "numeric_keys": {"Partial": {
             "forms": "Unresolved",
         "targets": "Unresolved",
-            "reader": {"id": "weighted-entry", "kind": "Block", "family": "Effect", "numeric": "Unresolved"},
+            "reader": {"id": "weighted-entry", "kind": "Block", "family": "Effect", "numeric": "Unresolved", "scoped_operand": "Unresolved"},
             "child_families": {"Partial": ["Effect"]},
             "fixed_keys": "Unresolved",
             "numeric_keys": "Unresolved",

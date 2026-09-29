@@ -1,0 +1,103 @@
+sub sp,sp,#0x80
+stp xr0,xr1,[sp,#0x50]
+stp xr2,xr3,[sp,#0x60]
+stp x29,x30,[sp,#0x70]
+add x29,sp,#0x70
+mov xr3,x1
+mov xr2,x0
+ldr x0,[x0,#{trigger}]
+cbz x0,@+15
+ldr x1,[xr3,#0x8]
+ldr xr4,[x0]
+ldr xr4,[xr4,#0x88]
+blr xr4
+tbz w0,#0,@+15
+ldr x0,[xr2,#0x1a0]
+ldr xr4,[x0]
+ldr x2,[xr4,#0xe0]
+mov x1,xr3
+ldp x29,x30,[sp,#0x70]
+ldp xr2,xr3,[sp,#0x60]
+ldp xr0,xr1,[sp,#0x50]
+add sp,sp,#0x80
+br x2
+ldr x0,[xr2,#{script_value}]
+cbz x0,@+50
+mov x1,xr3
+bl CALL = CScriptableLookupValue::GetValue(CEventScope&) const
+b @+56
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+sub x0,x29,#0x30
+mov w2,#0x199
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldr xr4,[xr2,#0x1a0]
+ldr w0,[xr4,#0x30]
+bl CALL = CStaticLexer::GetString(int)
+ldrsb wr4,[x0,#0x17]
+ldr xr5,[x0]
+cmp wr4,#0x0
+csel xr1,xr5,x0,lt
+add xr0,xr2,#0x1d8
+ldrsb wr4,[xr2,#0x1ef]
+tbz wr4,#0x1f,@+2
+ldr xr0,[xr0]
+ldr x0,[xr3,#0x8]
+add xr3,sp,#0x18
+add xr4,sp,#0x18
+mov w1,#0x0
+bl CALL = NEventScope::GetScopeName(EScopeType, bool)
+ldrsb wr4,[sp,#0x2f]
+ldr xr5,[sp,#0x18]
+cmp wr4,#0x0
+csel xr4,xr5,xr3,lt
+stp xr0,xr4,[sp,#0x8]
+str xr1,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Invalid Scope type for trigger %s used as a variable at %s, got %s"
+sub x0,x29,#0x30
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr4,[sp,#0x2f]
+tbz wr4,#0x1f,@+7
+add xr4,sp,#0x18
+add x0,xr4,#0x18
+ldr x1,[sp,#0x18]
+ldr xr4,[sp,#0x28]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov w0,#0x0
+ldp x29,x30,[sp,#0x70]
+ldp xr2,xr3,[sp,#0x60]
+ldp xr0,xr1,[sp,#0x50]
+add sp,sp,#0x80
+ret
+ldr wr4,[xr2,#{modifier}]
+mov wr5,#{modifier_unset}
+mov x0,xr2
+mov x1,xr3
+cmp wr4,wr5
+b.ne @+3
+bl CALL = CVariableValue::GetVariableValue(CEventScope&) const
+b @+2
+bl CALL = CVariableValue::GetModifierValue(CEventScope&) const
+mov xr4,#0xe109
+movk xr4,#0xc6d1,lsl#16
+movk xr4,#0x6b11,lsl#32
+movk xr4,#0x29f1,lsl#48
+smulh xr4,x0,xr4
+lsr xr5,xr4,#0x3f
+lsr xr4,xr4,#0xe
+add w0,wr4,wr5
+ldp x29,x30,[sp,#0x70]
+ldp xr2,xr3,[sp,#0x60]
+ldp xr0,xr1,[sp,#0x50]
+add sp,sp,#0x80
+ret
+mov xr3,x0
+ldrsb wr4,[sp,#0x2f]
+tbz wr4,#0x1f,@+3
+add x0,sp,#0x18
+bl CALL = CIntVariableValue::GetValueInternal(CEventScope&) const [clone .cold.1]
+mov x0,xr3
+bl CALL = __Unwind_Resume

@@ -18,6 +18,7 @@ pub(crate) mod numeric;
 pub mod readers;
 mod receivers;
 pub mod references;
+pub(crate) mod scoped_numeric;
 pub mod scopes;
 pub mod stop;
 

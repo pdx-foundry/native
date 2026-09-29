@@ -232,6 +232,8 @@ pub struct RegistryFieldResult {
     pub uses: Vec<StorageSelection>,
     /// Concrete methods established at owner-relative persistent destinations.
     pub persistent: BTreeMap<i64, ConcreteReader>,
+    /// Constructor-agreed vtable address points at scoped numeric destinations.
+    pub scoped_destinations: BTreeMap<i64, u64>,
     /// Established nested object collections.
     pub collections: Vec<CollectionField>,
     /// Named root fields, with explicit reader alternatives.

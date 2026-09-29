@@ -383,6 +383,22 @@ class FixtureObserver:
             raw = uint(process, address, 8)
             signed = signed_integer(raw, 64)
             return {'FixedPoint': dict(raw=signed, scale=decoder['FixedPoint']['scale'])}
+        if isinstance(decoder, dict) and 'ScopedNumeric' in decoder:
+            scoped = decoder['ScopedNumeric']
+            layout = scoped['layout']
+            literal_address = address + layout['literal']
+            if scoped['literal'] == 'Integer':
+                literal = {'Integer': signed_integer(uint(process, literal_address, 4), 32)}
+            else:
+                scale = scoped['literal']['FixedPoint']['scale']
+                literal = {'FixedPoint': dict(raw=signed_integer(uint(process, literal_address, 8), 64), scale=scale)}
+            return {'ScopedNumeric': dict(
+                literal=literal,
+                has_source_location=bool(self.stored_string(process, address + layout['location'])),
+                has_trigger=bool(uint(process, address + layout['trigger'])),
+                has_script_value=bool(uint(process, address + layout['script_value'])),
+                has_modifier=uint(process, address + layout['modifier'], 4) != layout['modifier_unset'],
+                variable=self.stored_string(process, address + layout['variable']))}
         raise RuntimeError('fixture storage decoder is unavailable')
 
     def return_hook(self, frame, name):
@@ -534,6 +550,10 @@ class FixtureObserver:
             self.emit('field-parse', frame.GetThread().GetThreadID(), question=index,
                 file=file, line=line, definition=definition, field=question['field'],
                 owner=hex(owner), occurrence=self.occurrences[index], returned=False)
+        if self.control == protocol.CONTROL['worker_loss']:
+            emit('worker-loss-ready')
+            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+            return True
         self.return_hook(frame, dynamic)
         return False
 

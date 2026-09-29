@@ -1,0 +1,63 @@
+sub sp,sp,#0x60
+stp xr0,xr1,[sp,#0x30]
+stp xr2,xr3,[sp,#0x40]
+stp x29,x30,[sp,#0x50]
+add x29,sp,#0x50
+mov xr1,x3
+mov xr2,x1
+mov xr3,x0
+str x2,[sp,#0x28]
+ldr xr4,[x0]
+ldr xr4,[xr4,#{simple_slot}]
+blr xr4
+tbnz w0,#0,@+28
+ldrsb wr4,[xr1,#0x17]
+ldr xr5,[xr1]
+cmp wr4,#0x0
+csel xr1,xr5,xr1,lt
+mov x0,xr1
+bl CALL = _strlen
+mov x2,x0
+add x0,xr3,#{location}
+mov x1,xr1
+bl CALL = std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)
+ldr x1,[xr2,#0x10]
+mov x0,sp
+bl CALL = CString::CString(char const*)
+mov x1,sp
+add x2,sp,#0x28
+mov x0,xr3
+bl CALL = CVariableValue::ReadEventTarget(CString&, EScopeType&)
+ldr x2,[sp,#0x28]
+mov x1,sp
+mov x0,xr3
+bl CALL = CVariableValue::ReadTriggerModifierOrScriptValue(CString&, EScopeType)
+tbnz w0,#0,@+4
+mov x1,sp
+mov x0,xr3
+bl CALL = CVariableValue::ReadVariable(CString&)
+ldrsb wr4,[sp,#0x17]
+tbnz wr4,#0x1f,@+6
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+mov xr4,sp
+add x0,xr4,#0x18
+ldr x1,[sp]
+ldr xr4,[sp,#0x10]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+mov xr3,x0
+ldrsb wr4,[sp,#0x17]
+tbz wr4,#0x1f,@+3
+mov x0,sp
+bl CALL = CVariableValue::Assign(CToken const&, EScopeType, CString const&) [clone .cold.1]
+mov x0,xr3
+bl CALL = __Unwind_Resume

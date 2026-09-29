@@ -5,7 +5,7 @@ use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
     decode::{Instruction, decode_arm64},
     discovery::Symbol,
-    numeric::{ModifierInput, NumericInput, ReaderInput},
+    numeric::{ModifierInput, NumericInput, ReaderInput, TokenInput},
     references::shapes::canonical,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,13 +17,34 @@ pub(in crate::binding) fn read(
     let text = Text::read(image.bytes, image.symbols)?;
     let names =
         super::references::names(image.symbols, image.pointers, image.imports, image.strings);
-    let readers = recipe
+    let readers: BTreeMap<String, ReaderInput> = recipe
         .numeric_types
         .iter()
         .map(|value_type| reader_input(&text, image.symbols, &names, value_type, recipe))
         .collect::<Result<_, _>>()?;
     let modifier = modifier_input(&text, image.symbols, &names, recipe)?;
-    Ok(NumericInput { readers, modifier })
+    let token_readers = recipe
+        .numeric_types
+        .iter()
+        .filter_map(|value_type| {
+            let wrapper = format!("CReader::Read({value_type}&)");
+            let input = readers.get(&wrapper)?;
+            let name = format!("CToken::ReadValue({value_type}&) const");
+            Some((
+                name,
+                TokenInput {
+                    body: input.token.clone(),
+                    names: input.names.clone(),
+                    token_text_offset: input.token_text_offset,
+                },
+            ))
+        })
+        .collect();
+    Ok(NumericInput {
+        readers,
+        modifier,
+        token_readers,
+    })
 }
 
 fn reader_input(

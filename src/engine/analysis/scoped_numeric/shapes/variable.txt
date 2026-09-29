@@ -1,0 +1,115 @@
+sub sp,sp,#0x60
+stp xr0,xr1,[sp,#0x30]
+stp xr2,xr3,[sp,#0x40]
+stp x29,x30,[sp,#0x50]
+add x29,sp,#0x50
+mov xr3,x0
+ldrb wr4,[x1,#0x17]
+sxtb wr5,wr4
+ldr xr6,[x1,#0x8]
+cmp wr5,#0x0
+csel xr4,xr6,xr4,lt
+cbz xr4,@+16
+mov xr2,x1
+adrp x1,PAGE
+add x1,x1,G = " "
+add x0,sp,#0x8
+bl CALL = CString::CString(char const*)
+add x1,sp,#0x8
+mov x0,xr2
+mov w2,#0x0
+bl CALL = CString::Find(CString const&, int) const
+mov xr1,x0
+ldrsb wr4,[sp,#0x1f]
+tbnz wr4,#0x1f,@+24
+cmp wr1,#0x1
+b.ge @+30
+b @+60
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x0,sp,#0x8
+mov w2,#0x2e
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+add xr4,xr3,#0x1d8
+ldrsb wr5,[xr3,#0x1ef]
+tbz wr5,#0x1f,@+2
+ldr xr4,[xr4]
+str xr4,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Variable string is empty at %s"
+add x0,sp,#0x8
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+add xr4,sp,#0x8
+add x0,xr4,#0x18
+ldr x1,[sp,#0x8]
+ldr xr4,[sp,#0x18]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+cmp wr1,#0x1
+b.lt @+32
+add xr4,sp,#0x8
+mov x0,xr2
+mov w1,#0x0
+mov x2,xr1
+bl CALL = CString::GetSubstring(int, int) const
+add x1,sp,#0x8
+mov x0,xr2
+bl CALL = std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__move_assign(std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>&, std::__1::integral_constant<bool, false>)
+ldrsb wr4,[sp,#0x1f]
+tbz wr4,#0x1f,@+7
+add xr4,sp,#0x8
+add x0,xr4,#0x18
+ldr x1,[sp,#0x8]
+ldr xr4,[sp,#0x18]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x0,sp,#0x8
+mov w2,#0x35
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+add xr4,xr3,#0x1d8
+ldrsb wr5,[xr3,#0x1ef]
+tbz wr5,#0x1f,@+2
+ldr xr4,[xr4]
+str xr4,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Not Allowed To Have Spaces in Variable Names! %s"
+add x0,sp,#0x8
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr4,[xr2,#0x17]
+ldr xr5,[xr2]
+cmp wr4,#0x0
+csel xr2,xr5,xr2,lt
+mov x0,xr2
+bl CALL = _strlen
+mov x2,x0
+add x0,xr3,#{variable}
+mov x1,xr2
+bl CALL = std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+mov xr3,x0
+ldrsb wr4,[sp,#0x1f]
+tbz wr4,#0x1f,@+3
+add x0,sp,#0x8
+bl CALL = CVariableValue::ReadVariable(CString&) [clone .cold.1]
+mov x0,xr3
+bl CALL = __Unwind_Resume
+mov xr3,x0
+ldrsb wr4,[sp,#0x1f]
+tbz wr4,#0x1f,@-4
+add x0,sp,#0x8
+bl CALL = CVariableValue::ReadVariable(CString&) [clone .cold.2]
+mov x0,xr3
+bl CALL = __Unwind_Resume

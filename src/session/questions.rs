@@ -242,7 +242,8 @@ impl Native {
         let result = self.registry_field_result(registry)?;
         let references = self.reference_facts(Operation::RegistryFields)?;
         let numeric = self.numeric_facts(Operation::RegistryFields)?;
-        Ok(self.registry_field_answer(registry, &result, references, numeric))
+        let scoped = self.scoped_numeric_facts(Operation::RegistryFields)?;
+        Ok(self.registry_field_answer(registry, &result, references, numeric, scoped))
     }
 
     pub(crate) fn numeric_facts(
@@ -257,6 +258,21 @@ impl Native {
                 reason: "this build has no static analysis recipe".into(),
             })?
             .numeric_facts()
+            .map_err(|failure| error(operation, failure))
+    }
+
+    pub(crate) fn scoped_numeric_facts(
+        &self,
+        operation: Operation,
+    ) -> Result<&crate::engine::analysis::scoped_numeric::Facts, Error> {
+        self.bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation,
+                reason: "this build has no static analysis recipe".into(),
+            })?
+            .scoped_numeric_facts()
             .map_err(|failure| error(operation, failure))
     }
 
@@ -282,10 +298,12 @@ impl Native {
         result: &RegistryFieldResult,
         references: &ReferenceFacts,
         numeric: &crate::engine::analysis::numeric::NumericFacts,
+        scoped: &crate::engine::analysis::scoped_numeric::Facts,
     ) -> Answer<Vec<Field>> {
         let mut gaps = normalized_gaps(result, registry.trim_end_matches('/'), references);
         let mut value = normalized_fields(result, references);
         super::numeric::fields(&mut value, numeric, &[], &mut gaps);
+        super::scoped_numeric::fields(&mut value, result, scoped, numeric, &mut gaps);
         Answer {
             value,
             completeness: Completeness::from_gaps(&gaps),
@@ -694,6 +712,7 @@ mod field_gap_tests {
         };
         RegistryFieldResult {
             persistent: Default::default(),
+            scoped_destinations: Default::default(),
             uses: vec![],
             collections: vec![],
             fields: vec![RootField {

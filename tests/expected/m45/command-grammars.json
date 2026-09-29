@@ -94,7 +94,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -109,7 +109,8 @@
         "id": "7378e4e05563db32",
         "kind": "Unknown",
         "family": "Unknown",
-        "numeric": "Unresolved"
+        "numeric": "Unresolved",
+        "scoped_operand": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -161,7 +162,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -176,7 +177,8 @@
         "id": "7378e4e05563db32",
         "kind": "Unknown",
         "family": "Unknown",
-        "numeric": "Unresolved"
+        "numeric": "Unresolved",
+        "scoped_operand": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -220,7 +222,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -235,7 +237,8 @@
         "id": "f47e1d863a65b008",
         "kind": "Unknown",
         "family": "Unknown",
-        "numeric": "Unresolved"
+        "numeric": "Unresolved",
+        "scoped_operand": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -279,7 +282,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -299,6 +302,9 @@
                 "family": "NotApplicable",
                 "numeric": {
                   "Known": null
+                },
+                "scoped_operand": {
+                  "Known": null
                 }
               },
               "reference": "NotEstablished"
@@ -317,6 +323,9 @@
         "kind": "Target",
         "family": "Unknown",
         "numeric": {
+          "Known": null
+        },
+        "scoped_operand": {
           "Known": null
         }
       },
@@ -378,7 +387,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -397,7 +406,8 @@
         "id": "662ea5268e37aea2",
         "kind": "Unknown",
         "family": "Unknown",
-        "numeric": "Unresolved"
+        "numeric": "Unresolved",
+        "scoped_operand": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -449,7 +459,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -468,7 +478,8 @@
         "id": "662ea5268e37aea2",
         "kind": "Unknown",
         "family": "Unknown",
-        "numeric": "Unresolved"
+        "numeric": "Unresolved",
+        "scoped_operand": "Unresolved"
       },
       "targets": "Unresolved"
     }
@@ -521,28 +532,52 @@
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "field",
-          "name": "days"
-        }
-      },
-      {
-        "detail": "reader-routing",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "field",
           "name": "flag"
         }
       },
       {
-        "detail": "reader-routing",
-        "kind": "UnresolvedPath",
+        "detail": "Scoped literal conversion boundaries and overflow are incomplete.",
+        "kind": "NumericConversion",
+        "subject": {
+          "kind": "field",
+          "name": "days"
+        }
+      },
+      {
+        "detail": "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "field",
+          "name": "days"
+        }
+      },
+      {
+        "detail": "Scoped literal conversion boundaries and overflow are incomplete.",
+        "kind": "NumericConversion",
         "subject": {
           "kind": "field",
           "name": "months"
         }
       },
       {
-        "detail": "reader-routing",
-        "kind": "UnresolvedPath",
+        "detail": "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "field",
+          "name": "months"
+        }
+      },
+      {
+        "detail": "Scoped literal conversion boundaries and overflow are incomplete.",
+        "kind": "NumericConversion",
+        "subject": {
+          "kind": "field",
+          "name": "years"
+        }
+      },
+      {
+        "detail": "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method.",
+        "kind": "OutsideMethod",
         "subject": {
           "kind": "field",
           "name": "years"
@@ -552,7 +587,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -574,7 +609,8 @@
               "id": null,
               "kind": "Unknown",
               "family": "Unknown",
-              "numeric": "Unresolved"
+              "numeric": "Unresolved",
+              "scoped_operand": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -586,72 +622,513 @@
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "days",
             "read": [
               {
                 "condition": "Always",
-                "outcome": "Unresolved"
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "c6b8b529543ae7ff",
+                      "kind": "ScopedNumeric",
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Partial": {
+                          "accepted_range": "Unresolved",
+                          "clamp": {
+                            "Known": null
+                          },
+                          "literal_syntax": {
+                            "Partial": [
+                              "DecimalInteger",
+                              "RadixPrefixedInteger"
+                            ]
+                          },
+                          "representation": {
+                            "Known": "Integer"
+                          },
+                          "scale": {
+                            "Known": 1
+                          },
+                          "signedness": {
+                            "Known": "Signed"
+                          },
+                          "width_bits": {
+                            "Known": 32
+                          }
+                        }
+                      },
+                      "scoped_operand": {
+                        "Known": {
+                          "forms": {
+                            "Partial": [
+                              "Literal",
+                              {
+                                "Prefixed": {
+                                  "kind": "Trigger",
+                                  "prefix": "trigger:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "Modifier",
+                                  "prefix": "modifier:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "ScriptValue",
+                                  "prefix": "value:"
+                                }
+                              },
+                              "Variable"
+                            ]
+                          },
+                          "literal_assignment_preserves_reference_state": {
+                            "Known": true
+                          },
+                          "selection": {
+                            "Known": {
+                              "literal_condition": "EmptySourceLocation",
+                              "reference_priority": [
+                                "Trigger",
+                                "ScriptValue",
+                                "Modifier",
+                                "Variable"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
               }
             ],
             "reader": {
-              "id": null,
-              "kind": "Unknown",
-              "family": "Unknown",
-              "numeric": "Unresolved"
+              "id": "c6b8b529543ae7ff",
+              "kind": "ScopedNumeric",
+              "family": "NotApplicable",
+              "numeric": {
+                "Partial": {
+                  "accepted_range": "Unresolved",
+                  "clamp": {
+                    "Known": null
+                  },
+                  "literal_syntax": {
+                    "Partial": [
+                      "DecimalInteger",
+                      "RadixPrefixedInteger"
+                    ]
+                  },
+                  "representation": {
+                    "Known": "Integer"
+                  },
+                  "scale": {
+                    "Known": 1
+                  },
+                  "signedness": {
+                    "Known": "Signed"
+                  },
+                  "width_bits": {
+                    "Known": 32
+                  }
+                }
+              },
+              "scoped_operand": {
+                "Known": {
+                  "forms": {
+                    "Partial": [
+                      "Literal",
+                      {
+                        "Prefixed": {
+                          "kind": "Trigger",
+                          "prefix": "trigger:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "Modifier",
+                          "prefix": "modifier:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "ScriptValue",
+                          "prefix": "value:"
+                        }
+                      },
+                      "Variable"
+                    ]
+                  },
+                  "literal_assignment_preserves_reference_state": {
+                    "Known": true
+                  },
+                  "selection": {
+                    "Known": {
+                      "literal_condition": "EmptySourceLocation",
+                      "reference_priority": [
+                        "Trigger",
+                        "ScriptValue",
+                        "Modifier",
+                        "Variable"
+                      ]
+                    }
+                  }
+                }
+              }
             },
             "reference": "NotEstablished",
             "shape": {
               "repeat": "Unknown",
-              "value": "Unknown"
+              "value": "Scalar"
             },
             "uses": []
           },
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "months",
             "read": [
               {
                 "condition": "Always",
-                "outcome": "Unresolved"
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "c6b8b529543ae7ff",
+                      "kind": "ScopedNumeric",
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Partial": {
+                          "accepted_range": "Unresolved",
+                          "clamp": {
+                            "Known": null
+                          },
+                          "literal_syntax": {
+                            "Partial": [
+                              "DecimalInteger",
+                              "RadixPrefixedInteger"
+                            ]
+                          },
+                          "representation": {
+                            "Known": "Integer"
+                          },
+                          "scale": {
+                            "Known": 1
+                          },
+                          "signedness": {
+                            "Known": "Signed"
+                          },
+                          "width_bits": {
+                            "Known": 32
+                          }
+                        }
+                      },
+                      "scoped_operand": {
+                        "Known": {
+                          "forms": {
+                            "Partial": [
+                              "Literal",
+                              {
+                                "Prefixed": {
+                                  "kind": "Trigger",
+                                  "prefix": "trigger:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "Modifier",
+                                  "prefix": "modifier:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "ScriptValue",
+                                  "prefix": "value:"
+                                }
+                              },
+                              "Variable"
+                            ]
+                          },
+                          "literal_assignment_preserves_reference_state": {
+                            "Known": true
+                          },
+                          "selection": {
+                            "Known": {
+                              "literal_condition": "EmptySourceLocation",
+                              "reference_priority": [
+                                "Trigger",
+                                "ScriptValue",
+                                "Modifier",
+                                "Variable"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
               }
             ],
             "reader": {
-              "id": null,
-              "kind": "Unknown",
-              "family": "Unknown",
-              "numeric": "Unresolved"
+              "id": "c6b8b529543ae7ff",
+              "kind": "ScopedNumeric",
+              "family": "NotApplicable",
+              "numeric": {
+                "Partial": {
+                  "accepted_range": "Unresolved",
+                  "clamp": {
+                    "Known": null
+                  },
+                  "literal_syntax": {
+                    "Partial": [
+                      "DecimalInteger",
+                      "RadixPrefixedInteger"
+                    ]
+                  },
+                  "representation": {
+                    "Known": "Integer"
+                  },
+                  "scale": {
+                    "Known": 1
+                  },
+                  "signedness": {
+                    "Known": "Signed"
+                  },
+                  "width_bits": {
+                    "Known": 32
+                  }
+                }
+              },
+              "scoped_operand": {
+                "Known": {
+                  "forms": {
+                    "Partial": [
+                      "Literal",
+                      {
+                        "Prefixed": {
+                          "kind": "Trigger",
+                          "prefix": "trigger:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "Modifier",
+                          "prefix": "modifier:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "ScriptValue",
+                          "prefix": "value:"
+                        }
+                      },
+                      "Variable"
+                    ]
+                  },
+                  "literal_assignment_preserves_reference_state": {
+                    "Known": true
+                  },
+                  "selection": {
+                    "Known": {
+                      "literal_condition": "EmptySourceLocation",
+                      "reference_priority": [
+                        "Trigger",
+                        "ScriptValue",
+                        "Modifier",
+                        "Variable"
+                      ]
+                    }
+                  }
+                }
+              }
             },
             "reference": "NotEstablished",
             "shape": {
               "repeat": "Unknown",
-              "value": "Unknown"
+              "value": "Scalar"
             },
             "uses": []
           },
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "years",
             "read": [
               {
                 "condition": "Always",
-                "outcome": "Unresolved"
+                "outcome": {
+                  "Read": {
+                    "reader": {
+                      "id": "c6b8b529543ae7ff",
+                      "kind": "ScopedNumeric",
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Partial": {
+                          "accepted_range": "Unresolved",
+                          "clamp": {
+                            "Known": null
+                          },
+                          "literal_syntax": {
+                            "Partial": [
+                              "DecimalInteger",
+                              "RadixPrefixedInteger"
+                            ]
+                          },
+                          "representation": {
+                            "Known": "Integer"
+                          },
+                          "scale": {
+                            "Known": 1
+                          },
+                          "signedness": {
+                            "Known": "Signed"
+                          },
+                          "width_bits": {
+                            "Known": 32
+                          }
+                        }
+                      },
+                      "scoped_operand": {
+                        "Known": {
+                          "forms": {
+                            "Partial": [
+                              "Literal",
+                              {
+                                "Prefixed": {
+                                  "kind": "Trigger",
+                                  "prefix": "trigger:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "Modifier",
+                                  "prefix": "modifier:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "ScriptValue",
+                                  "prefix": "value:"
+                                }
+                              },
+                              "Variable"
+                            ]
+                          },
+                          "literal_assignment_preserves_reference_state": {
+                            "Known": true
+                          },
+                          "selection": {
+                            "Known": {
+                              "literal_condition": "EmptySourceLocation",
+                              "reference_priority": [
+                                "Trigger",
+                                "ScriptValue",
+                                "Modifier",
+                                "Variable"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "shape": {
+                      "repeat": "Unknown",
+                      "value": "Scalar"
+                    }
+                  }
+                }
               }
             ],
             "reader": {
-              "id": null,
-              "kind": "Unknown",
-              "family": "Unknown",
-              "numeric": "Unresolved"
+              "id": "c6b8b529543ae7ff",
+              "kind": "ScopedNumeric",
+              "family": "NotApplicable",
+              "numeric": {
+                "Partial": {
+                  "accepted_range": "Unresolved",
+                  "clamp": {
+                    "Known": null
+                  },
+                  "literal_syntax": {
+                    "Partial": [
+                      "DecimalInteger",
+                      "RadixPrefixedInteger"
+                    ]
+                  },
+                  "representation": {
+                    "Known": "Integer"
+                  },
+                  "scale": {
+                    "Known": 1
+                  },
+                  "signedness": {
+                    "Known": "Signed"
+                  },
+                  "width_bits": {
+                    "Known": 32
+                  }
+                }
+              },
+              "scoped_operand": {
+                "Known": {
+                  "forms": {
+                    "Partial": [
+                      "Literal",
+                      {
+                        "Prefixed": {
+                          "kind": "Trigger",
+                          "prefix": "trigger:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "Modifier",
+                          "prefix": "modifier:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "ScriptValue",
+                          "prefix": "value:"
+                        }
+                      },
+                      "Variable"
+                    ]
+                  },
+                  "literal_assignment_preserves_reference_state": {
+                    "Known": true
+                  },
+                  "selection": {
+                    "Known": {
+                      "literal_condition": "EmptySourceLocation",
+                      "reference_priority": [
+                        "Trigger",
+                        "ScriptValue",
+                        "Modifier",
+                        "Variable"
+                      ]
+                    }
+                  }
+                }
+              }
             },
             "reference": "NotEstablished",
             "shape": {
               "repeat": "Unknown",
-              "value": "Unknown"
+              "value": "Scalar"
             },
             "uses": []
           }
@@ -669,6 +1146,9 @@
         "kind": "Block",
         "family": "Unknown",
         "numeric": {
+          "Known": null
+        },
+        "scoped_operand": {
           "Known": null
         }
       },
@@ -719,26 +1199,42 @@
         }
       },
       {
-        "detail": "unknown-key-reader",
-        "kind": "UnresolvedPath",
+        "detail": "Scoped literal conversion boundaries and overflow are incomplete.",
+        "kind": "NumericConversion",
+        "subject": {
+          "kind": "field",
+          "name": "multiplier"
+        }
+      },
+      {
+        "detail": "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method.",
+        "kind": "OutsideMethod",
+        "subject": {
+          "kind": "field",
+          "name": "multiplier"
+        }
+      },
+      {
+        "detail": "Scoped literal conversion boundaries and overflow are incomplete.",
+        "kind": "NumericConversion",
         "subject": {
           "kind": "field",
           "name": "mult"
         }
       },
       {
-        "detail": "unknown-key-reader",
-        "kind": "UnresolvedPath",
+        "detail": "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method.",
+        "kind": "OutsideMethod",
         "subject": {
           "kind": "field",
-          "name": "multiplier"
+          "name": "mult"
         }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -748,7 +1244,7 @@
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "multiplier",
             "read": [
               {
@@ -757,13 +1253,81 @@
                   "Read": {
                     "reader": {
                       "id": "c61abc171edc30aa",
-                      "kind": "Unknown",
-                      "family": "Unknown",
-                      "numeric": "Unresolved"
+                      "kind": "ScopedNumeric",
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Partial": {
+                          "accepted_range": "Unresolved",
+                          "clamp": {
+                            "Known": null
+                          },
+                          "literal_syntax": {
+                            "Partial": [
+                              "DecimalInteger",
+                              "DecimalFraction",
+                              "RadixPrefixedInteger"
+                            ]
+                          },
+                          "representation": {
+                            "Known": "Integer"
+                          },
+                          "scale": {
+                            "Known": 100000
+                          },
+                          "signedness": {
+                            "Known": "Signed"
+                          },
+                          "width_bits": {
+                            "Known": 64
+                          }
+                        }
+                      },
+                      "scoped_operand": {
+                        "Known": {
+                          "forms": {
+                            "Partial": [
+                              "Literal",
+                              {
+                                "Prefixed": {
+                                  "kind": "Trigger",
+                                  "prefix": "trigger:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "Modifier",
+                                  "prefix": "modifier:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "ScriptValue",
+                                  "prefix": "value:"
+                                }
+                              },
+                              "Variable"
+                            ]
+                          },
+                          "literal_assignment_preserves_reference_state": {
+                            "Known": true
+                          },
+                          "selection": {
+                            "Known": {
+                              "literal_condition": "EmptySourceLocation",
+                              "reference_priority": [
+                                "Trigger",
+                                "ScriptValue",
+                                "Modifier",
+                                "Variable"
+                              ]
+                            }
+                          }
+                        }
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
-                      "value": "Unknown"
+                      "value": "Scalar"
                     }
                   }
                 }
@@ -771,21 +1335,89 @@
             ],
             "reader": {
               "id": "c61abc171edc30aa",
-              "kind": "Unknown",
-              "family": "Unknown",
-              "numeric": "Unresolved"
+              "kind": "ScopedNumeric",
+              "family": "NotApplicable",
+              "numeric": {
+                "Partial": {
+                  "accepted_range": "Unresolved",
+                  "clamp": {
+                    "Known": null
+                  },
+                  "literal_syntax": {
+                    "Partial": [
+                      "DecimalInteger",
+                      "DecimalFraction",
+                      "RadixPrefixedInteger"
+                    ]
+                  },
+                  "representation": {
+                    "Known": "Integer"
+                  },
+                  "scale": {
+                    "Known": 100000
+                  },
+                  "signedness": {
+                    "Known": "Signed"
+                  },
+                  "width_bits": {
+                    "Known": 64
+                  }
+                }
+              },
+              "scoped_operand": {
+                "Known": {
+                  "forms": {
+                    "Partial": [
+                      "Literal",
+                      {
+                        "Prefixed": {
+                          "kind": "Trigger",
+                          "prefix": "trigger:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "Modifier",
+                          "prefix": "modifier:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "ScriptValue",
+                          "prefix": "value:"
+                        }
+                      },
+                      "Variable"
+                    ]
+                  },
+                  "literal_assignment_preserves_reference_state": {
+                    "Known": true
+                  },
+                  "selection": {
+                    "Known": {
+                      "literal_condition": "EmptySourceLocation",
+                      "reference_priority": [
+                        "Trigger",
+                        "ScriptValue",
+                        "Modifier",
+                        "Variable"
+                      ]
+                    }
+                  }
+                }
+              }
             },
             "reference": "NotEstablished",
             "shape": {
               "repeat": "Unknown",
-              "value": "Unknown"
+              "value": "Scalar"
             },
             "uses": []
           },
           {
             "default": "Unknown",
             "domain": "Unknown",
-            "members": "Unresolved",
+            "members": "None",
             "name": "mult",
             "read": [
               {
@@ -794,13 +1426,81 @@
                   "Read": {
                     "reader": {
                       "id": "c61abc171edc30aa",
-                      "kind": "Unknown",
-                      "family": "Unknown",
-                      "numeric": "Unresolved"
+                      "kind": "ScopedNumeric",
+                      "family": "NotApplicable",
+                      "numeric": {
+                        "Partial": {
+                          "accepted_range": "Unresolved",
+                          "clamp": {
+                            "Known": null
+                          },
+                          "literal_syntax": {
+                            "Partial": [
+                              "DecimalInteger",
+                              "DecimalFraction",
+                              "RadixPrefixedInteger"
+                            ]
+                          },
+                          "representation": {
+                            "Known": "Integer"
+                          },
+                          "scale": {
+                            "Known": 100000
+                          },
+                          "signedness": {
+                            "Known": "Signed"
+                          },
+                          "width_bits": {
+                            "Known": 64
+                          }
+                        }
+                      },
+                      "scoped_operand": {
+                        "Known": {
+                          "forms": {
+                            "Partial": [
+                              "Literal",
+                              {
+                                "Prefixed": {
+                                  "kind": "Trigger",
+                                  "prefix": "trigger:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "Modifier",
+                                  "prefix": "modifier:"
+                                }
+                              },
+                              {
+                                "Prefixed": {
+                                  "kind": "ScriptValue",
+                                  "prefix": "value:"
+                                }
+                              },
+                              "Variable"
+                            ]
+                          },
+                          "literal_assignment_preserves_reference_state": {
+                            "Known": true
+                          },
+                          "selection": {
+                            "Known": {
+                              "literal_condition": "EmptySourceLocation",
+                              "reference_priority": [
+                                "Trigger",
+                                "ScriptValue",
+                                "Modifier",
+                                "Variable"
+                              ]
+                            }
+                          }
+                        }
+                      }
                     },
                     "shape": {
                       "repeat": "Unknown",
-                      "value": "Unknown"
+                      "value": "Scalar"
                     }
                   }
                 }
@@ -808,14 +1508,82 @@
             ],
             "reader": {
               "id": "c61abc171edc30aa",
-              "kind": "Unknown",
-              "family": "Unknown",
-              "numeric": "Unresolved"
+              "kind": "ScopedNumeric",
+              "family": "NotApplicable",
+              "numeric": {
+                "Partial": {
+                  "accepted_range": "Unresolved",
+                  "clamp": {
+                    "Known": null
+                  },
+                  "literal_syntax": {
+                    "Partial": [
+                      "DecimalInteger",
+                      "DecimalFraction",
+                      "RadixPrefixedInteger"
+                    ]
+                  },
+                  "representation": {
+                    "Known": "Integer"
+                  },
+                  "scale": {
+                    "Known": 100000
+                  },
+                  "signedness": {
+                    "Known": "Signed"
+                  },
+                  "width_bits": {
+                    "Known": 64
+                  }
+                }
+              },
+              "scoped_operand": {
+                "Known": {
+                  "forms": {
+                    "Partial": [
+                      "Literal",
+                      {
+                        "Prefixed": {
+                          "kind": "Trigger",
+                          "prefix": "trigger:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "Modifier",
+                          "prefix": "modifier:"
+                        }
+                      },
+                      {
+                        "Prefixed": {
+                          "kind": "ScriptValue",
+                          "prefix": "value:"
+                        }
+                      },
+                      "Variable"
+                    ]
+                  },
+                  "literal_assignment_preserves_reference_state": {
+                    "Known": true
+                  },
+                  "selection": {
+                    "Known": {
+                      "literal_condition": "EmptySourceLocation",
+                      "reference_priority": [
+                        "Trigger",
+                        "ScriptValue",
+                        "Modifier",
+                        "Variable"
+                      ]
+                    }
+                  }
+                }
+              }
             },
             "reference": "NotEstablished",
             "shape": {
               "repeat": "Unknown",
-              "value": "Unknown"
+              "value": "Scalar"
             },
             "uses": []
           }
@@ -833,6 +1601,9 @@
         "kind": "Block",
         "family": "Effect",
         "numeric": {
+          "Known": null
+        },
+        "scoped_operand": {
           "Known": null
         }
       },
@@ -854,7 +1625,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -881,6 +1652,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -896,6 +1670,9 @@
               "kind": "String",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -922,6 +1699,9 @@
                       "family": "Trigger",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -937,6 +1717,9 @@
               "kind": "Block",
               "family": "Trigger",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -965,6 +1748,9 @@
         "kind": "Block",
         "family": "Trigger",
         "numeric": {
+          "Known": null
+        },
+        "scoped_operand": {
           "Known": null
         }
       },
@@ -1028,7 +1814,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1055,6 +1841,9 @@
                       "family": "Trigger",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1070,6 +1859,9 @@
               "kind": "Block",
               "family": "Trigger",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1096,6 +1888,9 @@
                       "family": "Effect",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1120,6 +1915,9 @@
                       "family": "Effect",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1142,7 +1940,8 @@
                       "id": "92536582bc473e17",
                       "kind": "Unknown",
                       "family": "Unknown",
-                      "numeric": "Unresolved"
+                      "numeric": "Unresolved",
+                      "scoped_operand": "Unresolved"
                     },
                     "shape": {
                       "repeat": "Unknown",
@@ -1156,7 +1955,8 @@
               "id": null,
               "kind": "Unknown",
               "family": "Unknown",
-              "numeric": "Unresolved"
+              "numeric": "Unresolved",
+              "scoped_operand": "Unresolved"
             },
             "reference": "NotEstablished",
             "shape": {
@@ -1189,6 +1989,9 @@
                 "family": "Effect",
                 "numeric": {
                   "Known": null
+                },
+                "scoped_operand": {
+                  "Known": null
                 }
               }
             }
@@ -1215,6 +2018,9 @@
                 "kind": "Block",
                 "family": "Effect",
                 "numeric": {
+                  "Known": null
+                },
+                "scoped_operand": {
                   "Known": null
                 }
               }
@@ -1247,6 +2053,9 @@
         "kind": "Block",
         "family": "Effect",
         "numeric": {
+          "Known": null
+        },
+        "scoped_operand": {
           "Known": null
         }
       },
@@ -1300,7 +2109,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1325,6 +2134,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1340,6 +2152,9 @@
               "kind": "String",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1366,6 +2181,9 @@
                       "family": "Effect",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1381,6 +2199,9 @@
               "kind": "Block",
               "family": "Effect",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1407,6 +2228,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1422,6 +2246,9 @@
               "kind": "String",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1448,6 +2275,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1463,6 +2293,9 @@
               "kind": "String",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1494,6 +2327,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1518,6 +2354,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1537,6 +2376,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1552,6 +2394,9 @@
               "kind": "Target",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1578,6 +2423,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1593,6 +2441,9 @@
               "kind": "String",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1621,6 +2472,9 @@
         "kind": "Block",
         "family": "Effect",
         "numeric": {
+          "Known": null
+        },
+        "scoped_operand": {
           "Known": null
         }
       },
@@ -1686,7 +2540,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-      "method": "command-grammar/v10",
+      "method": "command-grammar/v11",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1709,6 +2563,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1724,6 +2581,9 @@
               "kind": "String",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1765,6 +2625,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1780,6 +2643,9 @@
               "kind": "Boolean",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1806,6 +2672,9 @@
                       "family": "NotApplicable",
                       "numeric": {
                         "Known": null
+                      },
+                      "scoped_operand": {
+                        "Known": null
                       }
                     },
                     "shape": {
@@ -1821,6 +2690,9 @@
               "kind": "Boolean",
               "family": "NotApplicable",
               "numeric": {
+                "Known": null
+              },
+              "scoped_operand": {
                 "Known": null
               }
             },
@@ -1844,7 +2716,8 @@
         "id": "de5847789bbc3a9f",
         "kind": "Unknown",
         "family": "Unknown",
-        "numeric": "Unresolved"
+        "numeric": "Unresolved",
+        "scoped_operand": "Unresolved"
       },
       "targets": "Unresolved"
     }

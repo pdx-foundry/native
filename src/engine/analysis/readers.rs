@@ -113,6 +113,10 @@ fn family_of_callee(callee: &str) -> BlockFamily {
 
 fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
+        "CVariableValue::Read(CReader&, EScopeType)"
+        | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" => {
+            ReaderKind::ScopedNumeric
+        }
         "CReader::Read(bool&)" => ReaderKind::Boolean,
         "CReader::Read(float&)" => ReaderKind::Float,
         "CReader::Read(signed char&)"
@@ -164,7 +168,10 @@ fn is_simple_template_argument(argument: &str) -> bool {
 
 /// Registers that affect a supported reader call, excluding caller scratch state.
 pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
-    if callee == "CReader::Read(CString&, bool)"
+    if callee == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
+        Some(&["x0", "x1", "x2", "x3"])
+    } else if callee == "CVariableValue::Read(CReader&, EScopeType)"
+        || callee == "CReader::Read(CString&, bool)"
         || matches!(
             family_of_callee(callee),
             BlockFamily::Trigger | BlockFamily::Effect
@@ -201,6 +208,7 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     } else if matches!(
         callee.as_str(),
         "CVariableValue::Read(CReader&, EScopeType)"
+            | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
             | "CTrigger::Read(CReader&, EScopeType)"
             | "CEffect::Read(CReader&, EScopeType)"
     ) {
@@ -221,11 +229,16 @@ pub(crate) fn arguments_join(
     name: &str,
     arguments: &std::collections::BTreeMap<String, crate::engine::analysis::fields::Value>,
     member_delegates: bool,
+    reader_value_token_offset: Option<i64>,
 ) -> bool {
     use crate::engine::analysis::fields::Value;
     let get = |key: &str| arguments.get(key);
     let owner = |value: Option<&Value>| matches!(value, Some(Value::Owner(_)));
-    if is_member(name) {
+    if name == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
+        owner(get("x0"))
+            && reader_value_token_offset
+                .is_some_and(|offset| get("x1") == Some(&Value::Reader(offset)))
+    } else if is_member(name) {
         member_delegates
             && owner(get("x0"))
             && get("x1") == Some(&Value::Reader(0))
@@ -270,6 +283,33 @@ mod tests {
     }
 
     #[test]
+    fn scoped_assign_requires_owner_and_value_token_provenance() {
+        let callee = "CVariableValue::Assign(CToken const&, EScopeType, CString const&)";
+        let mut arguments = BTreeMap::from([
+            ("x0".into(), super::super::fields::Value::Owner(0xa8)),
+            ("x1".into(), super::super::fields::Value::Reader(0x278)),
+            ("x3".into(), super::super::fields::Value::Owner(0x28)),
+        ]);
+        assert!(arguments_join(callee, &arguments, true, Some(0x278)));
+        assert_eq!(
+            destination(&ReaderJoin::Joined {
+                callee: callee.into(),
+                arguments: arguments.clone(),
+                tail: true,
+            }),
+            Some(0xa8)
+        );
+
+        arguments.insert("x1".into(), super::super::fields::Value::Reader(0));
+        assert!(!arguments_join(callee, &arguments, true, Some(0x278)));
+        arguments.insert("x1".into(), super::super::fields::Value::Reader(0x278));
+        arguments.insert("x0".into(), super::super::fields::Value::Constant(0xa8));
+        assert!(!arguments_join(callee, &arguments, true, Some(0x278)));
+        arguments.insert("x0".into(), super::super::fields::Value::Owner(0xa8));
+        assert!(!arguments_join(callee, &arguments, true, None));
+    }
+
+    #[test]
     fn scalar_width_follows_the_parameter_type() {
         for (callee, width) in [
             ("CReader::Read(bool&)", Some(1)),
@@ -311,12 +351,15 @@ mod tests {
             ReaderKind::Float
         );
         for callee in [
-            "CVariableValue::Read(CReader&, EScopeType)",
             "CReader::Read(CUTF8String&)",
             "void NParserUtil::ReadTrigger<A>(CReader&, B&, EScopeType)",
         ] {
             assert_eq!(classify(&[joined(callee)]).kind, ReaderKind::Unknown);
         }
+        assert_eq!(
+            classify(&[joined("CVariableValue::Read(CReader&, EScopeType)")]).kind,
+            ReaderKind::ScopedNumeric
+        );
         let missing = ReaderJoin::Missing(Unresolved::new("reader-routing"));
         assert_eq!(
             classify(&[joined("CReader::Read(bool&)"), missing]).callee,

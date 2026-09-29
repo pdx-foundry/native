@@ -1,0 +1,610 @@
+[
+  {
+    "id": "omitted",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "",
+    "original_body": ""
+  },
+  {
+    "id": "integer",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 7",
+    "original_body": "agenda_cost = 7"
+  },
+  {
+    "id": "negative",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = -7",
+    "original_body": "agenda_cost = -7"
+  },
+  {
+    "id": "decimal",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2.75",
+    "original_body": "agenda_cost = 2.75"
+  },
+  {
+    "id": "negative_decimal",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = -2.75",
+    "original_body": "agenda_cost = -2.75"
+  },
+  {
+    "id": "hex",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 0x10",
+    "original_body": "agenda_cost = 0x10"
+  },
+  {
+    "id": "octal",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 010",
+    "original_body": "agenda_cost = 010"
+  },
+  {
+    "id": "overflow",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2147483648",
+    "original_body": "agenda_cost = 2147483648"
+  },
+  {
+    "id": "very_large",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 999999999999999999999999",
+    "original_body": "agenda_cost = 999999999999999999999999"
+  },
+  {
+    "id": "at",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = @atlas_number",
+    "original_body": "agenda_cost = @atlas_number"
+  },
+  {
+    "id": "missing_at",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = @atlas_missing",
+    "original_body": "agenda_cost = @atlas_missing"
+  },
+  {
+    "id": "constant",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_constant",
+    "original_body": "agenda_cost = value:atlas_numeric_constant"
+  },
+  {
+    "id": "negative_constant",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_negative",
+    "original_body": "agenda_cost = value:atlas_numeric_negative"
+  },
+  {
+    "id": "nested",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_nested",
+    "original_body": "agenda_cost = value:atlas_numeric_nested"
+  },
+  {
+    "id": "nested_reference",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_reference",
+    "original_body": "agenda_cost = value:atlas_numeric_reference"
+  },
+  {
+    "id": "missing_value",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_missing",
+    "original_body": "agenda_cost = value:atlas_numeric_missing"
+  },
+  {
+    "id": "scoped_value",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = root.value:atlas_numeric_constant",
+    "original_body": "agenda_cost = root.value:atlas_numeric_constant"
+  },
+  {
+    "id": "variable",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = atlas_numeric_variable",
+    "original_body": "agenda_cost = atlas_numeric_variable"
+  },
+  {
+    "id": "scoped_variable",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = root.atlas_numeric_variable",
+    "original_body": "agenda_cost = root.atlas_numeric_variable"
+  },
+  {
+    "id": "trigger",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = trigger:num_owned_colonies",
+    "original_body": "agenda_cost = trigger:num_owned_colonies"
+  },
+  {
+    "id": "modifier",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = modifier:country_unity_produces_mult",
+    "original_body": "agenda_cost = modifier:country_unity_produces_mult"
+  },
+  {
+    "id": "bad_prefix",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = bogus:abc",
+    "original_body": "agenda_cost = bogus:abc"
+  },
+  {
+    "id": "quoted_space",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = \"two words\"",
+    "original_body": "agenda_cost = \"two words\""
+  },
+  {
+    "id": "empty_string",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = \"\"",
+    "original_body": "agenda_cost = \"\""
+  },
+  {
+    "id": "inline_block",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = { base = 2 add = 3 }",
+    "original_body": "agenda_cost = { base = 2 add = 3 }"
+  },
+  {
+    "id": "repeat_literal_literal",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2\nagenda_cost = 9",
+    "original_body": "agenda_cost = 2\nagenda_cost = 9"
+  },
+  {
+    "id": "repeat_literal_value",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2\nagenda_cost = value:atlas_numeric_constant",
+    "original_body": "agenda_cost = 2\nagenda_cost = value:atlas_numeric_constant"
+  },
+  {
+    "id": "repeat_value_literal",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_constant\nagenda_cost = 9",
+    "original_body": "agenda_cost = value:atlas_numeric_constant\nagenda_cost = 9"
+  },
+  {
+    "id": "repeat_value_value",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_constant\nagenda_cost = value:atlas_numeric_negative",
+    "original_body": "agenda_cost = value:atlas_numeric_constant\nagenda_cost = value:atlas_numeric_negative"
+  },
+  {
+    "id": "repeat_variable_literal",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = atlas_numeric_variable\nagenda_cost = 9",
+    "original_body": "agenda_cost = atlas_numeric_variable\nagenda_cost = 9"
+  },
+  {
+    "id": "repeat_value_bad",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_constant\nagenda_cost = \"\"",
+    "original_body": "agenda_cost = value:atlas_numeric_constant\nagenda_cost = \"\""
+  },
+  {
+    "id": "cooldown_integer",
+    "original_kind": "plain",
+    "registry": "common/megastructures",
+    "field": "sensor_range",
+    "body": "sensor_range = 7",
+    "original_body": "agenda_cooldown = 7"
+  },
+  {
+    "id": "cooldown_decimal",
+    "original_kind": "plain",
+    "registry": "common/megastructures",
+    "field": "sensor_range",
+    "body": "sensor_range = 2.75",
+    "original_body": "agenda_cooldown = 2.75"
+  },
+  {
+    "id": "cooldown_value",
+    "original_kind": "plain",
+    "registry": "common/megastructures",
+    "field": "sensor_range",
+    "body": "sensor_range = value:atlas_numeric_constant",
+    "original_body": "agenda_cooldown = value:atlas_numeric_constant"
+  },
+  {
+    "id": "cooldown_at",
+    "original_kind": "plain",
+    "registry": "common/megastructures",
+    "field": "sensor_range",
+    "body": "sensor_range = @atlas_number",
+    "original_body": "agenda_cooldown = @atlas_number"
+  },
+  {
+    "id": "cooldown_overflow",
+    "original_kind": "plain",
+    "registry": "common/megastructures",
+    "field": "sensor_range",
+    "body": "sensor_range = 2147483648",
+    "original_body": "agenda_cooldown = 2147483648"
+  },
+  {
+    "id": "timed_omitted",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe  } }"
+  },
+  {
+    "id": "timed_days",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 7",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = 7 } }"
+  },
+  {
+    "id": "timed_months",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe months = 2 } }"
+  },
+  {
+    "id": "timed_years",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe years = 2 } }"
+  },
+  {
+    "id": "timed_decimal",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2.75",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = 2.75 } }"
+  },
+  {
+    "id": "timed_at",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = @atlas_number",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = @atlas_number } }"
+  },
+  {
+    "id": "timed_value",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_constant",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = value:atlas_numeric_constant } }"
+  },
+  {
+    "id": "timed_nested",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_nested",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = value:atlas_numeric_nested } }"
+  },
+  {
+    "id": "timed_scope",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = root.atlas_numeric_variable",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = root.atlas_numeric_variable } }"
+  },
+  {
+    "id": "timed_missing",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_missing",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = value:atlas_numeric_missing } }"
+  },
+  {
+    "id": "timed_repeat",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2 agenda_cost = 9",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = 2 days = 9 } }"
+  },
+  {
+    "id": "timed_value_literal",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_constant agenda_cost = 9",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = value:atlas_numeric_constant days = 9 } }"
+  },
+  {
+    "id": "timed_mixed_units",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = 2 agenda_cost = 3",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe months = 2 days = 3 } }"
+  },
+  {
+    "id": "timed_inline",
+    "original_kind": "timed",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = { base = 2 add = 3 }",
+    "original_body": "effect = { set_timed_country_flag = { flag = atlas_numeric_probe days = { base = 2 add = 3 } } }"
+  },
+  {
+    "id": "deep",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_deep",
+    "original_body": "agenda_cost = value:atlas_numeric_deep"
+  },
+  {
+    "id": "reverse",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_reverse",
+    "original_body": "agenda_cost = value:atlas_numeric_reverse"
+  },
+  {
+    "id": "repeat_math",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_repeat_math",
+    "original_body": "agenda_cost = value:atlas_numeric_repeat_math"
+  },
+  {
+    "id": "inline_arithmetic",
+    "original_kind": "agenda",
+    "registry": "common/council_agendas",
+    "field": "agenda_cost",
+    "body": "agenda_cost = value:atlas_numeric_inline_arithmetic",
+    "original_body": "agenda_cost = value:atlas_numeric_inline_arithmetic"
+  },
+  {
+    "id": "heldout_literal",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = 2.75",
+    "original_body": "effect = { add_trust = { who = root amount = 2.75 } }"
+  },
+  {
+    "id": "heldout_at",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = @atlas_number",
+    "original_body": "effect = { add_trust = { who = root amount = @atlas_number } }"
+  },
+  {
+    "id": "heldout_reference",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = value:atlas_numeric_constant",
+    "original_body": "effect = { add_trust = { who = root amount = value:atlas_numeric_constant } }"
+  },
+  {
+    "id": "heldout_nested",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = value:atlas_numeric_deep",
+    "original_body": "effect = { add_trust = { who = root amount = value:atlas_numeric_deep } }"
+  },
+  {
+    "id": "heldout_missing",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = value:atlas_numeric_missing",
+    "original_body": "effect = { add_trust = { who = root amount = value:atlas_numeric_missing } }"
+  },
+  {
+    "id": "heldout_scope",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = root.atlas_numeric_variable",
+    "original_body": "effect = { add_trust = { who = root amount = root.atlas_numeric_variable } }"
+  },
+  {
+    "id": "heldout_repeat",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = value:atlas_numeric_constant cycle_length_in_days = 9",
+    "original_body": "effect = { add_trust = { who = root amount = value:atlas_numeric_constant amount = 9 } }"
+  },
+  {
+    "id": "heldout_inline",
+    "original_kind": "heldout",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = { base = 2 add = 3 }",
+    "original_body": "effect = { add_trust = { who = root amount = { base = 2 add = 3 } } }"
+  },
+  {
+    "id": "cycle_length_in_days_boundary",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = 92233720368547.75807",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_fractional",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = -1.234567",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_malformed",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = 7\ncycle_length_in_days = not_a_number",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_trigger_value",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = trigger:num_owned_colonies\ncycle_length_in_days = value:atlas_numeric_constant",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_value_variable",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = value:atlas_numeric_constant\ncycle_length_in_days = atlas_numeric_variable",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_variable_literal",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = atlas_numeric_variable\ncycle_length_in_days = 9",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_literal_value_literal",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = 2\ncycle_length_in_days = value:atlas_numeric_constant\ncycle_length_in_days = 9",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_boundary",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = 2147483647",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_fractional",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = -1.234567",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_malformed",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = 7\noverclock_cooldown = not_a_number",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_trigger_value",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = trigger:num_owned_colonies\noverclock_cooldown = value:atlas_numeric_constant",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_value_variable",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = value:atlas_numeric_constant\noverclock_cooldown = atlas_numeric_variable",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_variable_literal",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = atlas_numeric_variable\noverclock_cooldown = 9",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_literal_value_literal",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = 2\noverclock_cooldown = value:atlas_numeric_constant\noverclock_cooldown = 9",
+    "original_body": ""
+  }
+]

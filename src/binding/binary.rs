@@ -159,3 +159,4 @@ pub(super) mod modifier_table;
 pub(crate) mod numeric;
 pub(super) mod receivers;
 pub(super) mod references;
+pub(crate) mod scoped_numeric;

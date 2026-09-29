@@ -1,0 +1,112 @@
+sub sp,sp,#0x80
+stp xr0,xr1,[sp,#0x50]
+stp xr2,xr3,[sp,#0x60]
+stp x29,x30,[sp,#0x70]
+add x29,sp,#0x70
+mov xr1,x1
+mov xr3,x0
+mov x0,x1
+bl CALL = CEventScope::GetModifier() const
+mov xr2,x0
+ldr xr4,[x0]
+ldr xr4,[xr4,#0x98]
+blr xr4
+cbz w0,@+19
+ldr wr5,[xr2,#0x1c]
+cmp wr5,#0x1
+b.lt @+56
+mov xr6,#0x0
+ldrsw xr4,[xr3,#{modifier}]
+ldr xr7,[xr2,#0x10]
+ldr wr8,[xr7,xr6,lsl#2]
+cmp wr8,wr4
+b.eq @+56
+add xr6,xr6,#0x1
+cmp xr5,xr6
+b.ne @-5
+mov x0,#0x0
+ldp x29,x30,[sp,#0x70]
+ldp xr2,xr3,[sp,#0x60]
+ldp xr0,xr1,[sp,#0x50]
+add sp,sp,#0x80
+ret
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+sub x0,x29,#0x30
+mov w2,#0xdf
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldr x0,[xr1,#0x8]
+add xr2,sp,#0x18
+add xr4,sp,#0x18
+mov w1,#0x0
+bl CALL = NEventScope::GetScopeName(EScopeType, bool)
+ldrsb wr4,[sp,#0x2f]
+ldr xr5,[sp,#0x18]
+cmp wr4,#0x0
+csel xr4,xr5,xr2,lt
+add xr5,xr3,#0x1d8
+ldrsb wr6,[xr3,#0x1ef]
+tbz wr6,#0x1f,@+2
+ldr xr5,[xr5]
+stp xr4,xr5,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Trying to access variables for %s scope, which cannot have variables, at %s"
+sub x0,x29,#0x30
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr4,[sp,#0x2f]
+tbz wr4,#0x1f,@+7
+add xr4,sp,#0x18
+add x0,xr4,#0x18
+ldr x1,[sp,#0x18]
+ldr xr4,[sp,#0x28]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+adrp xr4,PAGE
+add xr4,xr4,G = _VZERO
+ldr x0,[xr4]
+ldp x29,x30,[sp,#0x70]
+ldp xr2,xr3,[sp,#0x60]
+ldp xr0,xr1,[sp,#0x50]
+add sp,sp,#0x80
+ret
+mov x0,#0x0
+ldp x29,x30,[sp,#0x70]
+ldp xr2,xr3,[sp,#0x60]
+ldp xr0,xr1,[sp,#0x50]
+add sp,sp,#0x80
+ret
+and xr5,xr6,#0xffffffff
+adrp xr6,PAGE
+ldr xr6,[xr6,G] = CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions
+ldr xr6,[xr6,#0x8]
+mov wr7,#0x98
+madd xr6,xr4,xr7,xr6
+ldr xr4,[xr2,#0x38]
+lsl xr5,xr5,#0x4
+ldr xr4,[xr4,xr5]
+ldrb wr5,[xr6,#0x90]
+mov x0,xr4
+tbz wr5,#5,@-62
+adrp xr5,PAGE
+add xr5,xr5,G = _VZERO
+ldr x0,[xr5]
+cmp xr4,x0
+b.lt @-67
+adrp xr5,PAGE
+add xr5,xr5,G = _VONE
+ldr xr5,[xr5]
+cmp xr4,xr5
+csel x0,xr4,xr5,lt
+ldp x29,x30,[sp,#0x70]
+ldp xr2,xr3,[sp,#0x60]
+ldp xr0,xr1,[sp,#0x50]
+add sp,sp,#0x80
+ret
+mov xr3,x0
+ldrsb wr4,[sp,#0x2f]
+tbz wr4,#0x1f,@+3
+add x0,sp,#0x18
+bl CALL = CVariableValue::GetModifierValue(CEventScope&) const [clone .cold.1]
+mov x0,xr3
+bl CALL = __Unwind_Resume
