@@ -150,6 +150,7 @@ impl Observer {
             startup_seconds,
             machine,
             package,
+            script_checks,
         } = setup;
         let tool = discover()?;
         let source = work_directory.join("source");
@@ -181,6 +182,7 @@ impl Observer {
             fault: fault.cloned(),
             fixture,
             modifiers,
+            script_checks,
             deadline_seconds: worker_deadline_seconds(startup_seconds),
         };
         Ok(Self {
@@ -312,6 +314,13 @@ impl Observer {
     pub(crate) fn pause_witness(
         &mut self,
     ) -> Result<Option<observation::PauseWitness>, SupervisorError> {
+        self.pause_witness_before(Instant::now() + Duration::from_secs(2))
+    }
+
+    pub(crate) fn pause_witness_before(
+        &mut self,
+        until: Instant,
+    ) -> Result<Option<observation::PauseWitness>, SupervisorError> {
         let path = self.output.join("session-paused.json");
         if !path.try_exists()? {
             return Ok(None);
@@ -325,7 +334,7 @@ impl Observer {
         let pending = self.output.join("pause-check.pending");
         files::write_json(&pending, &check)?;
         fs::rename(&pending, self.output.join("pause-check.json"))?;
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let deadline = until.min(Instant::now() + Duration::from_secs(2));
         loop {
             let witness: observation::PauseWitness =
                 serde_json::from_slice(&files::read_bounded(&path, observation::MAX_RECORD)?)?;
@@ -352,6 +361,79 @@ impl Observer {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    pub(crate) fn prepare_check(
+        &self,
+        check: u64,
+        input: &crate::ScriptCheck,
+    ) -> Result<crate::protocol::script_check::CheckRequest, crate::Error> {
+        input.validate()?;
+        let binding =
+            self.request
+                .script_checks
+                .as_ref()
+                .ok_or_else(|| crate::Error::ScriptRequest {
+                    reason: "script checks require the supported loaded-modifier pause".into(),
+                })?;
+        let scope =
+            binding
+                .scopes
+                .get(&input.scope.0)
+                .ok_or_else(|| crate::Error::ScriptRequest {
+                    reason: "scope identity is not declared by this build".into(),
+                })?;
+        if check > crate::script::MAX_CHECKS {
+            return Err(crate::Error::ScriptRequest {
+                reason: "session script-check limit reached".into(),
+            });
+        }
+        Ok(crate::protocol::script_check::CheckRequest {
+            attempt: self.request.attempt.clone(),
+            check,
+            scope: *scope,
+            text: input.text.clone(),
+            kind: match input.kind {
+                crate::DeclarationKind::Trigger => "trigger",
+                crate::DeclarationKind::Effect => "effect",
+            }
+            .into(),
+        })
+    }
+
+    pub(crate) fn start_check(
+        &self,
+        request: &crate::protocol::script_check::CheckRequest,
+    ) -> Result<(), SupervisorError> {
+        files::publish_json(&self.output.join("script-check.json"), request)
+    }
+
+    pub(crate) fn check_reply(
+        &self,
+        check: u64,
+    ) -> Result<Option<crate::ScriptObservation>, SupervisorError> {
+        let path = self.output.join("script-check-reply.json");
+        if !path.try_exists()? {
+            return Ok(None);
+        }
+        let reply: crate::protocol::script_check::CheckReply =
+            serde_json::from_slice(&files::read_bounded(&path, 256 * 1024)?)?;
+        if reply.attempt != self.request.attempt || reply.check != check {
+            return Err(SupervisorError("foreign script-check reply".into()));
+        }
+        let answer = reply.result.map_err(SupervisorError)?;
+        if answer.check != check
+            || answer.diagnostics.len() + answer.foreign.len() + answer.unjoined.len()
+                > crate::script::MAX_DIAGNOSTICS
+            || answer
+                .foreign
+                .iter()
+                .any(|diagnostic| diagnostic.check == 0 || diagnostic.check >= check)
+        {
+            return Err(SupervisorError("invalid script-check reply".into()));
+        }
+        fs::remove_file(path)?;
+        Ok(Some(answer))
     }
 
     fn validate_hello(&self, hello: &WorkerHello, pid: u32) -> Result<(), SupervisorError> {
@@ -506,6 +588,10 @@ pub(crate) fn test_observer(
             fault: None,
             fixture: None,
             modifiers: None,
+            script_checks: Some(crate::protocol::script_check::ScriptCheckBinding {
+                scopes: BTreeMap::from([("test-scope".into(), 1 << 40)]),
+                ..Default::default()
+            }),
             deadline_seconds: 1,
         },
         tool: Tool {
@@ -570,6 +656,10 @@ pub(in crate::binding) fn package() -> BTreeMap<String, Vec<u8>> {
         (
             "worker.py",
             include_bytes!("observation/worker.py").as_slice(),
+        ),
+        (
+            "script_checks.py",
+            include_bytes!("observation/script_checks.py").as_slice(),
         ),
         (
             "guard.dylib",
@@ -750,6 +840,7 @@ mod tests {
                 thread: 7,
                 returned: vec!["traditions".into()],
                 generation: 0,
+                state: observation::PauseState::Held,
             },
         )
         .unwrap();

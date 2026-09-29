@@ -16,7 +16,7 @@ def validate(value, schema, root=None):
         return
     known = {'$schema', '$defs', '$ref', 'title', 'description', 'type', 'properties',
              'required', 'additionalProperties', 'items', 'anyOf', 'oneOf', 'allOf',
-             'const', 'enum', 'minimum', 'maximum', 'format', 'default'}
+             'const', 'enum', 'minimum', 'maximum', 'minItems', 'maxItems', 'format', 'default'}
     if set(schema) - known:
         raise ValueError('unsupported schema constraint')
     if '$ref' in schema:
@@ -51,9 +51,12 @@ def validate(value, schema, root=None):
         properties = schema.get('properties', {})
         for key, field in value.items():
             validate(field, properties.get(key, schema.get('additionalProperties', True)), root)
-    if isinstance(value, list) and 'items' in schema:
-        for item in value:
-            validate(item, schema['items'], root)
+    if isinstance(value, list):
+        if not schema.get('minItems', 0) <= len(value) <= schema.get('maxItems', len(value)):
+            raise ValueError('array length outside bounds')
+        if 'items' in schema:
+            for item in value:
+                validate(item, schema['items'], root)
     if type(value) is int:
         if value < schema.get('minimum', value) or value > schema.get('maximum', value):
             raise ValueError('integer outside bounds')

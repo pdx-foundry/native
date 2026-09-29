@@ -1,9 +1,8 @@
-# Proposal: script checks in a paused game, and a vanilla corpus check
+# Script checks in a paused game, and a proposed vanilla corpus check
 
-Status: proposed on 2026-09-28, revision 4 after three plan reviews; the last found no P1. It
-adds two things to the current plan and removes nothing from it. The [roadmap](../roadmap.md),
-the [specification](../specs/native.md) and the [simplification decision](../design/simplification.md) stay
-the authority until this is accepted.
+Status: Addition 1 accepted for SDK-649 on 2026-09-28. Addition 2 remains a proposal
+owned by Atlas and is outside SDK-649. The [specification](../specs/native.md) describes the
+implemented operation and its bounds.
 
 ## Summary
 
@@ -22,7 +21,7 @@ establishes acceptance by silence.
 ## Background
 
 Two spikes on 2026-09-28 measured the route. The first ran probes in the paused game; the second
-([config-test spike](config-test-spike.md)) used it for 5,180 probes in two sessions:
+([config-test spike](../spike/config-test-spike.md)) used it for 5,180 probes in two sessions:
 
 - The console's `trigger_file` and `effect` routes read text from memory with the same command
   readers as file loading. Repeated up to validation, and without evaluation or execution, they

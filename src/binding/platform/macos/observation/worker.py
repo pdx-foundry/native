@@ -1144,37 +1144,17 @@ def callback(frame, loc, _):
     return decide_pause(progress).stop
 
 
-def probe_log(record):
-    record['time'] = time.time()
-    (ROOT / 'probe').mkdir(exist_ok=True)
-    with open(ROOT / 'probe' / 'loop.jsonl', 'a') as f:
-        f.write(json.dumps(record) + '\n')
-
-
 def pause_registers(process, thread_id):
-    # LLDB can keep a stale frame PC after an expression; register values remain current.
+    # Re-read registers: LLDB can retain a stale frame PC after an engine call.
     frame = process.GetThreadByID(thread_id).GetFrameAtIndex(0)
     return {name: register(frame, name) for name in ('pc', 'sp', 'fp', 'lr')}
 
 
-def run_probe(process, path, number):
-    """Spike only: run a dropped-in script against the paused game, then record its output."""
-    import lldb
-    directory = path.parent
-    code = path.read_text()
-    path.rename(directory / f'request-{number}.py')
-    (directory / f'running-{number}').touch()
-    output = {}
-    namespace = dict(lldb=lldb, process=process, target=process.GetTarget(), output=output,
-        directory=directory, request=request)
-    started = time.monotonic()
+def run_script_check(checks, check, completion):
     try:
-        exec(compile(code, f'request-{number}.py', 'exec'), namespace)
-        output['error'] = None
+        completion['result'] = {'Ok': checks.check(check)}
     except Exception:
-        output['error'] = traceback.format_exc()
-    output['seconds'] = time.monotonic() - started
-    (directory / f'result-{number}.json').write_text(json.dumps(output, indent=2, default=str))
+        completion['result'] = {'Err': traceback.format_exc()}
 
 
 def attach(target, info, error, timeout=15):
@@ -1302,29 +1282,46 @@ def run(debugger):
     if decision.cause and process.GetState() == lldb.eStateStopped:
         emit('session-paused', returned=progress.returned_registries, cause=decision.cause, thread=entry_thread)
         held_registers = pause_registers(process, entry_thread)
-        probe_log(dict(event='held-registers', registers=held_registers))
         witness = dict(attempt=request['attempt'], game=request['game'], worker=os.getpid(),
-            thread=entry_thread, returned=progress.returned_registries, generation=0)
+            thread=entry_thread, returned=progress.returned_registries, generation=0, state='held')
         atomic('pause', 'session-paused.json', witness)
-        probes = 0
-        probe_thread = None
+        checks = None
+        if request.get('script_checks'):
+            import script_checks
+            checks = script_checks.ScriptChecks(process, entry_thread, request['script_checks'],
+                                                request['attempt'], protocol.SCRIPT_LIMITS)
+        check_thread = None
+        current_check = None
+        completion = {}
         while not (ROOT / 'session-release').exists():
-            probe = ROOT / 'probe' / 'request.py'
-            probing = probe_thread is not None and probe_thread.is_alive()
-            if probe.exists() and not probing:
-                probes += 1
-                probe_thread = Thread(target=run_probe, args=(process, probe, probes), daemon=True)
-                probe_thread.start()
-                probing = True
-            # A running probe moves the paused thread's PC inside its expression.
-            if not probing:
-                if not process.IsValid() or process.GetState() != lldb.eStateStopped:
-                    raise RuntimeError('session no longer stopped at the witnessed pause')
-                current_registers = pause_registers(process, entry_thread)
-                if current_registers != held_registers:
-                    probe_log(dict(event='held-check-failed', registers=current_registers,
-                        expected=held_registers))
-                    raise RuntimeError('session registers changed from the witnessed pause')
+            checking = check_thread is not None and check_thread.is_alive()
+            if not checking and 'failed' not in witness['state']:
+                try:
+                    if current_check is not None and 'Err' in completion['result']:
+                        raise RuntimeError(completion['result']['Err'])
+                    if not process.IsValid() or process.GetState() != lldb.eStateStopped:
+                        raise RuntimeError('session no longer stopped at the witnessed pause')
+                    if pause_registers(process, entry_thread) != held_registers:
+                        raise RuntimeError('session registers changed from the witnessed pause')
+                    if current_check is not None:
+                        atomic('script_reply', 'script-check-reply.json', dict(attempt=request['attempt'],
+                            check=current_check['check'], result=completion['result']), 256 * 1024)
+                        current_check = None
+                    witness['state'] = 'held'
+                    check_path = ROOT / 'script-check.json'
+                    if check_path.exists():
+                        if checks is None:
+                            raise RuntimeError('script check requested without a binding')
+                        current_check = protocol.decode('script_check', check_path.read_bytes())
+                        check_path.unlink()
+                        completion = {}
+                        witness['state'] = {'checking': current_check['check']}
+                        check_thread = Thread(target=run_script_check,
+                            args=(checks, current_check, completion), daemon=True)
+                        check_thread.start()
+                except Exception:
+                    witness['state'] = {'failed': traceback.format_exc()}
+                    emit('capability-unavailable', reason=witness['state']['failed'])
             check_path = ROOT / 'pause-check.json'
             if check_path.exists():
                 check = protocol.decode('pause_check', check_path.read_bytes())
@@ -1333,7 +1330,6 @@ def run(debugger):
                 if check['generation'] > witness['generation']:
                     witness['generation'] = check['generation']
                     atomic('pause', 'session-paused.json', witness)
-                    probe_log(dict(event='pause-confirmed', generation=check['generation'], probing=probing))
             time.sleep(.02)
         # Complete pending exit handling before the debugger goes away. The independent
         # owner still must waitpid its original child; this response proves no disposal.

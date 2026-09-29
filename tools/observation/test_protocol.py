@@ -10,6 +10,14 @@ spec.loader.exec_module(wire)
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_fixed_size_call_arguments_enforce_length_and_integer_width(self):
+        root = wire.SCHEMAS['request']
+        schema = root['$defs']['ScriptCheckBinding']['properties']['file_arguments']
+        wire.validate([1, 0, 0], schema, root)
+        for value in [[], [1, 0], [1, 0, 0, 0], [1, 0, -1], [1, 0, 2**64]]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                wire.validate(value, schema, root)
+
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
         outcome = dict(registry='common/traditions', load_entry=16384, reader_entry=16400,
                        reader_return=16416, constructor_entry=16432, member_entry=16448,
@@ -25,7 +33,7 @@ class ProtocolTests(unittest.TestCase):
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
                        registries={}, fault=None, deadline_seconds=180,
-                       fixture=fixture, modifiers=None)
+                       fixture=fixture, modifiers=None, script_checks=None)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
         fixture['bindings']['fields'][0]['token'] = 'not an integer'
         with self.assertRaises(ValueError):
@@ -62,7 +70,7 @@ class ProtocolTests(unittest.TestCase):
     def test_fault_wire_has_one_target_and_kind(self):
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
-                       registries={}, fault=None, deadline_seconds=180, fixture=None, modifiers=None)
+                       registries={}, fault=None, deadline_seconds=180, fixture=None, modifiers=None, script_checks=None)
         for target in [{'registry': 'common/traditions'}, 'fixture', 'modifiers']:
             for control in wire.CONTROL.values():
                 with self.subTest(target=target, control=control):

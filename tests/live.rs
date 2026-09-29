@@ -64,6 +64,8 @@ type Outcome = Result<(), Box<dyn std::error::Error>>;
 
 #[path = "live/numeric.rs"]
 mod numeric_conversion;
+#[path = "live/script.rs"]
+mod script_checks;
 
 /// What the registry that receives a fault must give.
 #[derive(Clone, Copy)]
@@ -161,6 +163,8 @@ fn main() {
 }
 
 enum Case {
+    ScriptArguments,
+    ScriptAttribution,
     Normal,
     InvalidSelection,
     OutsideCommon,
@@ -282,6 +286,8 @@ enum FixtureOutcomeCase {
 
 fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
+        ("script_arguments".to_owned(), Case::ScriptArguments),
+        ("script_attribution".to_owned(), Case::ScriptAttribution),
         ("normal".to_owned(), Case::Normal),
         ("loaded_modifiers".to_owned(), Case::LoadedModifiers),
         (
@@ -585,7 +591,29 @@ fn cases() -> Vec<(String, Case)> {
             },
         ));
     }
-    cases.extend(argument_cases());
+    cases.extend(argument_cases().into_iter().filter(|(name, _)| {
+        !name.ends_with("_unknown_key")
+            || name == "fixture_argument_get_councilor_level_unknown_key"
+    }));
+    cases.push((
+        "fixture_argument_technology_reference".into(),
+        Case::FixtureArgument {
+            field: "potential",
+            commands: vec![],
+            samples: vec![
+                ValidationSample::new(
+                    "missing_technology",
+                    "has_technology = native_missing_technology",
+                    Some("engine-validation-log"),
+                ),
+                ValidationSample::new(
+                    "installed_technology",
+                    "has_technology = tech_lasers_1",
+                    None,
+                ),
+            ],
+        },
+    ));
     cases.push((
         "fixture_field_reads_only".into(),
         Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
@@ -653,6 +681,8 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             ref commands,
             ref samples,
         } => fixture_argument(native, field, commands, samples).await,
+        Case::ScriptArguments => script_checks::arguments(native).await,
+        Case::ScriptAttribution => script_checks::attribution(native).await,
         Case::Normal => normal(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
@@ -830,7 +860,7 @@ async fn fixture_argument(
             return Err(format!("{command} is not complete: {:?}", answer.gaps).into());
         }
     }
-    fixture_validation(native, field, samples).await
+    script_checks::paired_file(native, field, samples).await
 }
 
 async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {

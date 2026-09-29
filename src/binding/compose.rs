@@ -10,6 +10,7 @@ use crate::{OpenError, UnavailableReason};
 pub(super) struct ResolvedObservation {
     pub machine: super::Machine,
     pub fixture: Option<crate::protocol::observation::FixtureBinding>,
+    pub script_checks: Option<crate::protocol::script_check::ScriptCheckBinding>,
     pub strategy: platform::StrategyResolution,
     pub registry_layout: Option<groups::RegistryLayout>,
     pub default_registries: &'static [&'static str],
@@ -36,6 +37,7 @@ fn assemble(
         registry_layout: groups::registry_layout(recipe.groups),
         default_registries: recipe.default_registries,
         fixture: groups::fixture(recipe.groups),
+        script_checks: recipe.script_checks.map(|bind| bind()),
     })
 }
 

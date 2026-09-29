@@ -379,6 +379,8 @@ fn observe_session(
 ) -> Result<SessionOutcome, SupervisorError> {
     let mut deadline = Instant::now() + session.startup;
     let mut answers = None;
+    let mut checking = None;
+    let mut checks_started = 0;
     loop {
         if Instant::now() >= deadline {
             return Ok(SessionOutcome::TimedOut);
@@ -399,6 +401,11 @@ fn observe_session(
         }
         if answers.is_none() {
             if let Some(witness) = observer.pause_witness()? {
+                if witness.state != protocol::observation::PauseState::Held {
+                    return Err(SupervisorError(
+                        "worker is checking before admission".into(),
+                    ));
+                }
                 child.identity()?;
                 events.record(OwnerEvent::GamePauseConfirmed {
                     pid: u64::from(child.pid()),
@@ -473,12 +480,58 @@ fn observe_session(
             }
         } else {
             child.identity()?;
-            if observer.pause_witness()?.is_none() {
-                return Err(SupervisorError("Session pause witness lost".into()));
+            let witness = observer
+                .pause_witness_before(deadline)?
+                .ok_or_else(|| SupervisorError("Session pause witness lost".into()))?;
+            match (checking, witness.state) {
+                (_, protocol::observation::PauseState::Failed(reason)) => {
+                    return Err(SupervisorError(reason));
+                }
+                (None, protocol::observation::PauseState::Held) => {}
+                (Some((_, check)), protocol::observation::PauseState::Checking(active))
+                    if check == active => {}
+                (Some((request, check)), protocol::observation::PauseState::Held) => {
+                    if let Some(result) = observer.check_reply(check)? {
+                        if Instant::now() >= deadline {
+                            return Ok(SessionOutcome::TimedOut);
+                        }
+                        output.send(Reply::ScriptChecked {
+                            request,
+                            result: Ok(result.answer(session.build.clone())),
+                        })?;
+                        checking = None;
+                        deadline = Instant::now() + session.idle;
+                    }
+                }
+                _ => return Err(SupervisorError("unexpected worker check state".into())),
             }
         }
         match input.recv_timeout(Duration::from_millis(50)) {
+            Ok(Input::Control(Control::CheckScript { input, request })) => {
+                if answers.is_none() || checking.is_some() {
+                    return Err(SupervisorError(
+                        "script check requested outside an idle pause".into(),
+                    ));
+                }
+                let check = checks_started + 1;
+                match observer.prepare_check(check, &input) {
+                    Ok(prepared) => {
+                        deadline =
+                            Instant::now() + Duration::from_secs(crate::script::CHECK_SECONDS);
+                        observer.start_check(&prepared)?;
+                        checks_started = check;
+                        checking = Some((request, check));
+                    }
+                    Err(error) => output.send(Reply::ScriptChecked {
+                        request,
+                        result: Err(error),
+                    })?,
+                }
+            }
             Ok(Input::Control(Control::ReadRegistry { name, request })) => {
+                if checking.is_some() {
+                    return Err(SupervisorError("read during script check".into()));
+                }
                 // Only an answer that the caller can give restarts the idle time.
                 let answered = answers
                     .as_ref()
@@ -493,6 +546,9 @@ fn observe_session(
                 deadline = Instant::now() + session.idle;
             }
             Ok(Input::Control(Control::ReadFixture { request })) => {
+                if checking.is_some() {
+                    return Err(SupervisorError("read during script check".into()));
+                }
                 if answers.is_none() || session.fixture.is_none() {
                     return Err(SupervisorError(
                         "Fixture read without a prepared fixture at the pause".into(),
@@ -502,6 +558,9 @@ fn observe_session(
                 deadline = Instant::now() + session.idle;
             }
             Ok(Input::Control(Control::ReadModifiers { request })) => {
+                if checking.is_some() {
+                    return Err(SupervisorError("read during script check".into()));
+                }
                 if answers.is_none() || session.loaded_modifiers.is_none() {
                     return Err(SupervisorError(
                         "Modifier read without a requested modifier table at the pause".into(),
@@ -618,6 +677,17 @@ mod tests {
 
     impl FakeSession {
         fn run(rows: &[serde_json::Value], worker: &str) -> Self {
+            Self::controlled(rows, worker, close_at_pause, Duration::from_secs(3))
+        }
+
+        fn controlled(
+            rows: &[serde_json::Value],
+            worker: &str,
+            controller: impl FnOnce(std::os::unix::net::UnixStream, SyncSender<Input>) -> Vec<Reply>
+            + Send
+            + 'static,
+            idle: Duration,
+        ) -> Self {
             use std::os::unix::net::UnixStream;
 
             let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
@@ -648,7 +718,7 @@ mod tests {
             let (writer, reader) = UnixStream::pair().unwrap();
             let reporter = Reporter::new(writer);
             let (send, receive) = mpsc::sync_channel(1);
-            let controller = thread::spawn(move || close_at_pause(reader, send));
+            let controller = thread::spawn(move || controller(reader, send));
             let session = Session {
                 work_directory: output.path(),
                 attempt: "unit",
@@ -658,7 +728,7 @@ mod tests {
                 loaded_modifiers: None,
                 build: crate::BuildId("unit".into()),
                 startup: Duration::from_secs(3),
-                idle: Duration::from_secs(3),
+                idle,
             };
             let outcome = observe_session(
                 &receive,
@@ -783,6 +853,98 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
         }
     }
 
+    #[test]
+    fn script_checks_use_their_own_deadline_and_dispose_every_failed_session() {
+        for (mode, count, delay, cancel) in [
+            ("normal", 30, 0.0, false),
+            ("normal", 2, 4.2, false),
+            ("stuck", 1, 0.0, false),
+            ("register-mismatch", 1, 0.0, false),
+            ("worker-loss", 1, 0.0, false),
+            ("stuck", 1, 0.0, true),
+        ] {
+            let mut rows = requested_hook_rows();
+            rows.extend([
+                serde_json::json!({"kind":"registry-load-returned","name":"common/traditions","owner":"0x1000"}),
+                serde_json::json!({"kind":"registry-snapshot","name":"common/traditions","directory":"common/traditions","owner":"0x1000","count":0}),
+                serde_json::json!({"kind":"registry-end","name":"common/traditions","owner":"0x1000","count":0,"producerLastSequence":8}),
+                serde_json::json!({"kind":"session-paused","returned":["common/traditions"],"cause":"loaders-returned"}),
+            ]);
+            let worker = format!(
+                "SDK_CHECK_MODE={mode} SDK_CHECK_DELAY={delay} exec python3 - <<'PY'\n{}\nPY",
+                include_str!("test_script_worker.py")
+            );
+            let session = FakeSession::controlled(
+                &rows,
+                &worker,
+                move |mut reader, controls| {
+                    let mut replies = Vec::new();
+                    let mut sent = 0;
+                    loop {
+                        let reply: Reply = protocol::read(&mut reader).unwrap();
+                        let next =
+                            matches!(reply, Reply::Paused { .. } | Reply::ScriptChecked { .. });
+                        if let Reply::ScriptChecked { result, .. } = &reply {
+                            assert!(result.is_ok(), "{mode}: {result:?}");
+                        }
+                        if next && sent < count {
+                            sent += 1;
+                            controls
+                                .send(Input::Control(Control::CheckScript {
+                                    request: sent,
+                                    input: crate::ScriptCheck {
+                                        kind: crate::DeclarationKind::Trigger,
+                                        scope: crate::ScopeId("test-scope".into()),
+                                        text: "always = yes".into(),
+                                    },
+                                }))
+                                .unwrap();
+                            if cancel {
+                                thread::sleep(Duration::from_millis(200));
+                                controls.send(Input::Control(Control::Cancel)).unwrap();
+                            }
+                        } else if next {
+                            controls.send(Input::Control(Control::Close)).unwrap();
+                        }
+                        let finished = matches!(reply, Reply::Finished(_));
+                        replies.push(reply);
+                        if finished {
+                            break;
+                        }
+                    }
+                    replies
+                },
+                Duration::from_secs(1),
+            );
+            assert_eq!(session.report.disposal, Disposal::Confirmed, "{mode}");
+            assert!(session.report.reservation_resolved, "{mode}");
+            assert!(
+                binding::process_identity(session.game_pid).is_err(),
+                "{mode}"
+            );
+            if mode == "normal" {
+                assert_eq!(session.report.outcome, SessionOutcome::Completed);
+                assert_eq!(
+                    session
+                        .replies
+                        .iter()
+                        .filter(|reply| matches!(reply, Reply::ScriptChecked { .. }))
+                        .count(),
+                    count as usize
+                );
+            } else {
+                assert_ne!(session.report.outcome, SessionOutcome::Completed, "{mode}");
+                assert!(
+                    !session
+                        .replies
+                        .iter()
+                        .any(|reply| matches!(reply, Reply::ScriptChecked { .. })),
+                    "{mode}"
+                );
+            }
+        }
+    }
+
     fn requested_hook_rows() -> Vec<serde_json::Value> {
         vec![
             serde_json::json!({"kind":"hooks-requested","hooks":["registry:common/traditions"]}),
@@ -807,10 +969,10 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
         let session = FakeSession::run(
             &rows,
             r#"
-printf '{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":["common/traditions"],"generation":0}' "$GAME_PID" "$$" > session-paused.json.pending
+printf '{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":["common/traditions"],"generation":0,"state":"held"}' "$GAME_PID" "$$" > session-paused.json.pending
 mv session-paused.json.pending session-paused.json
 while [ ! -f pause-check.json ]; do sleep 0.01; done
-printf '{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":["common/traditions"],"generation":1}' "$GAME_PID" "$$" > session-paused.json.pending
+printf '{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":["common/traditions"],"generation":1,"state":"held"}' "$GAME_PID" "$$" > session-paused.json.pending
 mv session-paused.json.pending session-paused.json
 exec sleep 30
 "#,

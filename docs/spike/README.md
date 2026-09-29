@@ -13,4 +13,4 @@ with Atlas, in `docs/prototypes/`.
 | --- | --- | --- |
 | [Generated-fixture spike](generated-fixture-spike.md) | Spike | Completed 2026-09-28; results in Atlas `docs/prototypes/generated-fixture-spike/REPORT.md` |
 | [Config-test spike](config-test-spike.md) | Spike | Completed 2026-09-28 (E0–E4); results in Atlas `docs/prototypes/config-test-spike/REPORT.md` |
-| [Script checks](script-checks.md) | Proposal | Revision 4 after three plan reviews; not accepted |
+| [Script checks and corpus check](../design/script-checks.md) | Partly accepted | SDK-649 accepts paused script checks; the Atlas corpus check remains proposed |

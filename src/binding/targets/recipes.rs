@@ -24,6 +24,7 @@ pub(in crate::binding) struct Recipe {
     pub default_registries: &'static [&'static str],
     pub strategy: StrategyId,
     pub declarations: Option<&'static DeclarationRecipe>,
+    pub script_checks: Option<fn() -> crate::protocol::script_check::ScriptCheckBinding>,
 }
 
 /// Virtual reader slots and shared family methods on the selected build.
@@ -102,7 +103,93 @@ pub(super) const M45_RELEASE: Recipe = Recipe {
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     declarations: Some(&M45_DECLARATIONS),
+    script_checks: Some(m45_script_checks),
 };
+
+/// Console memory readers and pre-filter logger on the exact M45-release ARM64 slice.
+/// Verified by SDK-649 controls; the call argument widths follow the compiled signatures.
+fn m45_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
+    use crate::protocol::script_check::{
+        CallBinding, CommandBinding, DatabaseBinding, ObjectWrite, ScriptCheckBinding,
+    };
+    let call = |address, widths: &[u8]| CallBinding {
+        address,
+        widths: widths.to_vec(),
+    };
+    let trigger_database = DatabaseBinding {
+        instance: 0x1032e9758,
+        post_init: call(0x100d05b08, &[64]),
+        post_validate: call(0x100d05aa0, &[64]),
+    };
+    ScriptCheckBinding {
+        string_constructor: call(0x102522174, &[64, 64]),
+        string_assign: call(0x10022a680, &[64, 64]),
+        blob_constructor: call(0x1024f2860, &[64]),
+        blob_append: call(0x1024f2cfc, &[64, 64]),
+        file_constructor: call(0x10250b73c, &[64, 64, 32, 32, 8]),
+        lexer_constructor: call(0x1025ae170, &[64, 64, 8]),
+        reader_constructor: call(0x1025b2014, &[64, 64]),
+        string_size: 0x40,
+        blob_size: 0x80,
+        file_size: 0x400,
+        lexer_size: 0x400,
+        reader_size: 0x800,
+        file_arguments: [1, 0, 0],
+        lexer_argument: 0,
+        file_name_offset: 0x20,
+        string_tag_offset: 23,
+        logger_entry: 0x1025048a0,
+        logger_text_register: "x4".into(),
+        trigger: CommandBinding {
+            size: 0x200,
+            constructor: call(0x100d06974, &[64]),
+            read: call(0x100d06f08, &[64, 64, 64]),
+            writes: vec![
+                ObjectWrite {
+                    offset: 0,
+                    width: 8,
+                    value: 0x103095ee8,
+                    relocate: true,
+                },
+                ObjectWrite {
+                    offset: 0x68,
+                    width: 8,
+                    value: 0x103000458,
+                    relocate: true,
+                },
+                ObjectWrite {
+                    offset: 0x60,
+                    width: 1,
+                    value: 1,
+                    relocate: false,
+                },
+            ],
+            children_offset: 0x7c,
+            validation: vec![trigger_database.clone()],
+        },
+        effect: CommandBinding {
+            size: 0x200,
+            constructor: call(0x1004571b0, &[64]),
+            read: call(0x1004576d4, &[64, 64, 64]),
+            writes: vec![ObjectWrite {
+                offset: 0x78,
+                width: 1,
+                value: 1,
+                relocate: false,
+            }],
+            children_offset: 0x1c,
+            validation: vec![
+                DatabaseBinding {
+                    instance: 0x1032e8370,
+                    post_init: call(0x1004568b4, &[64]),
+                    post_validate: call(0x100456a94, &[64]),
+                },
+                trigger_database,
+            ],
+        },
+        scopes: Default::default(),
+    }
+}
 
 const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     numeric_modifier_member: "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::TryReadMember(CReader&, int)",

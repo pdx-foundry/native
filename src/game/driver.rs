@@ -103,6 +103,7 @@ fn connect(
     let mut deadline =
         Instant::now() + Duration::from_secs(timing.startup_seconds + CLEANUP_SECONDS);
     let mut pending = BTreeMap::new();
+    let mut pending_script = None;
     let mut sequence = 0_u64;
     let mut ending = false;
     loop {
@@ -117,6 +118,26 @@ fn connect(
             deadline = Instant::now() + Duration::from_secs(CLEANUP_SECONDS);
         }
         match commands.try_recv() {
+            Ok(DriverCommand::CheckScript { input, reply })
+                if !ending && pending_script.is_none() =>
+            {
+                sequence += 1;
+                protocol::write(
+                    output_pipe
+                        .as_mut()
+                        .ok_or_else(|| SupervisorError("Control closed".into()))?,
+                    &Control::CheckScript {
+                        input,
+                        request: sequence,
+                    },
+                )?;
+                pending_script = Some((sequence, reply));
+                deadline = Instant::now()
+                    + Duration::from_secs(crate::script::CHECK_SECONDS + CLEANUP_SECONDS);
+            }
+            Ok(DriverCommand::CheckScript { reply, .. }) => {
+                let _ = reply.send(Err(Error::Closed));
+            }
             Ok(DriverCommand::Read { question, reply }) if !ending && pending.len() < 16 => {
                 sequence += 1;
                 pending.insert(sequence, reply);
@@ -164,6 +185,19 @@ fn connect(
             }
         };
         match reply {
+            Reply::ScriptChecked { request, result } => {
+                let Some((expected, reply)) = pending_script.take() else {
+                    return Err(SupervisorError("unexpected script-check reply".into()));
+                };
+                if expected != request {
+                    return Err(SupervisorError("foreign script-check reply".into()));
+                }
+                let _ = reply.send(result);
+                if !ending {
+                    deadline =
+                        Instant::now() + Duration::from_secs(timing.idle_seconds + CLEANUP_SECONDS);
+                }
+            }
             Reply::Paused {
                 readiness,
                 registries,

@@ -154,11 +154,24 @@ enum ReadQuestion {
     Modifiers,
 }
 enum DriverCommand {
+    CheckScript {
+        input: crate::ScriptCheck,
+        reply: oneshot::Sender<Result<crate::Answer<crate::ScriptObservation>, Error>>,
+    },
     /// The caller answered a question about this registry; the idle time starts again.
     Read {
         question: ReadQuestion,
         reply: oneshot::Sender<Result<(), Error>>,
     },
+}
+
+struct CheckCancellation(Option<Arc<AtomicU8>>);
+impl Drop for CheckCancellation {
+    fn drop(&mut self) {
+        if let Some(stop) = &self.0 {
+            let _ = stop.compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -172,6 +185,7 @@ enum GameBackend {
 /// Drop requests cleanup. Await close for independently confirmed disposal.
 #[derive(Debug)]
 pub struct Game {
+    script_history: String,
     commands: Option<mpsc::SyncSender<DriverCommand>>,
     stop: Arc<AtomicU8>,
     state: watch::Receiver<State>,
@@ -194,6 +208,79 @@ pub struct Game {
     modifiers: Option<Result<crate::Answer<crate::LoadedModifiers>, Error>>,
 }
 impl Game {
+    /// Read and validate one trigger or effect snippet at the loaded-content pause.
+    ///
+    /// Start with `GameOptions::loaded_modifiers` and use a scope from `Native::scopes`.
+    /// Text is limited to 4 KiB, diagnostics to 32 occurrences, a check to five seconds, and
+    /// a session to 3,000 checks. Nothing is evaluated or executed. A complete quiet answer
+    /// is only an observation, never acceptance. Dropping this future after admission requests
+    /// session cancellation; await `close` for disposal. A failed engine call ends the session
+    /// and this method waits for its cleanup report before returning an error.
+    ///
+    /// ```no_run
+    /// # use pdx_native::{Native, GameOptions, ScriptCheck, DeclarationKind};
+    /// # async fn example(native: &Native, supervisor: std::process::Command)
+    /// # -> Result<(), Box<dyn std::error::Error>> {
+    /// let scopes = native.scopes()?;
+    /// let country = scopes.value.types.iter().find(|scope| scope.name == "country")
+    ///     .ok_or("country scope is unavailable")?;
+    /// let mut game = native.start_game(GameOptions::new(supervisor).loaded_modifiers()).await?;
+    /// let result = game.check_script(&ScriptCheck {
+    ///     kind: DeclarationKind::Trigger,
+    ///     scope: country.id.clone(),
+    ///     text: "always = yes".into(),
+    /// }).await;
+    /// game.close().await?;
+    /// let answer = result?;
+    /// // Inspect coverage and all message groups; silence alone does not prove acceptance.
+    /// println!("{:?}", answer);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn check_script(
+        &mut self,
+        input: &crate::ScriptCheck,
+    ) -> Result<crate::Answer<crate::ScriptObservation>, Error> {
+        if self.closing
+            || self.stop.load(Ordering::SeqCst) != 0
+            || self.state.borrow().finished.is_some()
+        {
+            return Err(Error::Closed);
+        }
+        input.validate()?;
+        let subject = input.recorded_subject(&self.script_history);
+        let result = self
+            .answer("check_script", Some(&subject), async |game| {
+                let (reply, receive) = oneshot::channel();
+                game.commands
+                    .as_ref()
+                    .ok_or(Error::Closed)?
+                    .try_send(DriverCommand::CheckScript {
+                        input: input.clone(),
+                        reply,
+                    })
+                    .map_err(|_| Error::Supervisor("script check could not be queued".into()))?;
+                let mut cancellation = CheckCancellation(Some(game.stop.clone()));
+                let result = receive.await;
+                cancellation.0 = None;
+                match result {
+                    Ok(answer) => answer,
+                    Err(_) => {
+                        game.read_failed = true;
+                        game.close().await?;
+                        Err(Error::Observation {
+                            operation: crate::Operation::CheckScript,
+                            reason: "script check ended with session disposal".into(),
+                        })
+                    }
+                }
+            })
+            .await;
+        if result.is_ok() {
+            self.script_history = subject;
+        }
+        self.keep_on_error(result)
+    }
     /// Return the modifiers that the engine holds after all content has loaded, with their
     /// loaded category tags.
     ///
@@ -289,6 +376,7 @@ impl Game {
         let (_, state) = watch::channel(State::default());
         Self {
             commands: None,
+            script_history: String::new(),
             stop: Arc::new(AtomicU8::new(0)),
             state,
             paused,
@@ -564,6 +652,7 @@ fn name_kept_work(mut error: Error, work: &Path) -> Error {
     match &mut error {
         Error::Unsupported { reason, .. }
         | Error::FixtureRequest { reason }
+        | Error::ScriptRequest { reason }
         | Error::Method(reason)
         | Error::Observation { reason, .. }
         | Error::Startup { reason, .. }
@@ -637,6 +726,7 @@ async fn start_until_paused(
                 }),
             });
             return Ok(Game {
+                script_history: String::new(),
                 commands: Some(commands),
                 stop,
                 state: changes,
@@ -687,7 +777,9 @@ mod tests {
             recorder: Some(Arc::new(root.path().into())),
         };
         let lost_acknowledgement = std::thread::spawn(move || {
-            let DriverCommand::Read { reply, .. } = commands.recv().unwrap();
+            let DriverCommand::Read { reply, .. } = commands.recv().unwrap() else {
+                panic!("expected read command")
+            };
             drop(reply);
         });
         let error = game.observe_fixture().await.unwrap_err();
@@ -723,7 +815,9 @@ mod tests {
         };
         let acknowledgements = std::thread::spawn(move || {
             for _ in 0..2 {
-                let DriverCommand::Read { question, reply } = commands.recv().unwrap();
+                let DriverCommand::Read { question, reply } = commands.recv().unwrap() else {
+                    panic!("expected read command")
+                };
                 assert!(matches!(question, ReadQuestion::Fixture));
                 reply.send(Ok(())).unwrap();
             }
@@ -740,6 +834,35 @@ mod tests {
         state.send_modify(|state| state.finished = Some(Ok(finished())));
         assert_eq!(game.observe_fixture().await, Err(Error::Closed));
     }
+    #[tokio::test]
+    async fn cancelling_a_check_future_ends_the_session_before_reuse() {
+        let (mut game, commands, state) = game();
+        let input = crate::ScriptCheck {
+            kind: crate::DeclarationKind::Trigger,
+            scope: crate::ScopeId("scope".into()),
+            text: "always = yes".into(),
+        };
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(10),
+                game.check_script(&input)
+            )
+            .await
+            .is_err()
+        );
+        assert!(matches!(
+            commands.try_recv().unwrap(),
+            DriverCommand::CheckScript { .. }
+        ));
+        assert_eq!(game.stop.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            game.check_script(&input).await,
+            Err(Error::Closed)
+        ));
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
+        assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
+    }
+
     fn finished() -> Finished {
         Finished {
             outcome: SessionOutcome::Completed,
@@ -762,6 +885,7 @@ mod tests {
         });
         (
             Game {
+                script_history: String::new(),
                 commands: Some(commands),
                 stop: Arc::new(AtomicU8::new(0)),
                 state: changes,
@@ -805,7 +929,9 @@ mod tests {
         };
         game.modifiers = Some(Ok(answer.clone()));
         let acknowledgement = std::thread::spawn(move || {
-            let DriverCommand::Read { question, reply } = commands.recv().unwrap();
+            let DriverCommand::Read { question, reply } = commands.recv().unwrap() else {
+                panic!("expected read command")
+            };
             assert!(matches!(question, ReadQuestion::Modifiers));
             reply.send(Ok(())).unwrap();
         });

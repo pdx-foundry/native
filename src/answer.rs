@@ -272,6 +272,8 @@ impl Source {
 /// [`Operation::ALL`] lists every operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Operation {
+    /// Reading and validating trigger or effect text in a paused game.
+    CheckScript,
     /// Whether this build can return define names and engine read types.
     Defines,
     /// `Native::registries`
@@ -346,6 +348,7 @@ pub enum DefineValueType {
 impl Operation {
     /// Every operation once, in declaration order.
     pub const ALL: &'static [Operation] = &[
+        Self::CheckScript,
         Self::Defines,
         Self::Registries,
         Self::RegistryFields,
@@ -368,6 +371,7 @@ impl Operation {
     /// The operation's stable snake_case name, such as `registry_fields`.
     pub fn name(self) -> &'static str {
         match self {
+            Self::CheckScript => "check_script",
             Self::Defines => "defines",
             Self::Registries => "registries",
             Self::RegistryFields => "registry_fields",
@@ -438,7 +442,8 @@ mod operation_tests {
             | Operation::RegistryItems
             | Operation::ObserveFixture
             | Operation::LoadedModifiers
-            | Operation::DynamicNames => 17,
+            | Operation::DynamicNames
+            | Operation::CheckScript => 18,
         }
     }
 
@@ -499,6 +504,11 @@ pub enum Error {
         /// The unsupported input or missing setup.
         reason: String,
     },
+    /// A script check has invalid text, scope, setup, or exceeds the session count.
+    ScriptRequest {
+        /// Why the check was refused before calling the engine.
+        reason: String,
+    },
     /// No registry with this name was found. `registries` lists the known names.
     UnknownRegistry {
         /// The name asked for.
@@ -554,6 +564,7 @@ impl std::fmt::Display for Error {
                 write!(f, "{operation:?} is not supported: {reason}")
             }
             Self::FixtureRequest { reason } => write!(f, "Invalid fixture request: {reason}"),
+            Self::ScriptRequest { reason } => write!(f, "Invalid script check: {reason}"),
             Self::BuildChanged => f.write_str("the executable changed after it was opened"),
             Self::UnknownRegistry { name } => write!(f, "no registry is named {name}"),
             Self::UnknownCommand { kind, name } => write!(f, "no {kind:?} command is named {name}"),
