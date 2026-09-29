@@ -367,8 +367,14 @@ impl Observer {
         &self,
         check: u64,
         input: &crate::ScriptCheck,
+        durations: Vec<crate::protocol::script_check::DurationReceiver>,
     ) -> Result<crate::protocol::script_check::CheckRequest, crate::Error> {
         input.validate()?;
+        if durations.len() > crate::protocol::script_check::MAX_DURATION_RECEIVERS {
+            return Err(crate::Error::ScriptRequest {
+                reason: "too many duration receivers for one script check".into(),
+            });
+        }
         let binding =
             self.request
                 .script_checks
@@ -393,6 +399,7 @@ impl Observer {
             check,
             scope: *scope,
             text: input.text.clone(),
+            durations,
             kind: match input.kind {
                 crate::DeclarationKind::Trigger => "trigger",
                 crate::DeclarationKind::Effect => "effect",
@@ -421,7 +428,8 @@ impl Observer {
         if reply.attempt != self.request.attempt || reply.check != check {
             return Err(SupervisorError("foreign script-check reply".into()));
         }
-        let answer = reply.result.map_err(SupervisorError)?;
+        let checked = reply.result.map_err(SupervisorError)?;
+        let answer = &checked.observation;
         if answer.check != check
             || answer.diagnostics.len() + answer.foreign.len() + answer.unjoined.len()
                 > crate::script::MAX_DIAGNOSTICS
@@ -429,11 +437,16 @@ impl Observer {
                 .foreign
                 .iter()
                 .any(|diagnostic| diagnostic.check == 0 || diagnostic.check >= check)
+            || checked
+                .durations
+                .stored
+                .iter()
+                .any(|stored| stored.child >= answer.children)
         {
             return Err(SupervisorError("invalid script-check reply".into()));
         }
         fs::remove_file(path)?;
-        Ok(Some(answer))
+        Ok(Some(checked.into_observation()))
     }
 
     fn validate_hello(&self, hello: &WorkerHello, pid: u32) -> Result<(), SupervisorError> {
@@ -660,6 +673,10 @@ pub(in crate::binding) fn package() -> BTreeMap<String, Vec<u8>> {
         (
             "script_checks.py",
             include_bytes!("observation/script_checks.py").as_slice(),
+        ),
+        (
+            "stored_values.py",
+            include_bytes!("observation/stored_values.py").as_slice(),
         ),
         (
             "guard.dylib",

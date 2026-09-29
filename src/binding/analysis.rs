@@ -254,6 +254,12 @@ impl VerifiedAnalysis<'_> {
             &inventory,
             recipe,
             kind,
+            binary::references::names(
+                &self.catalog.symbols,
+                &self.catalog.pointers,
+                &self.catalog.imports,
+                &self.catalog.strings,
+            ),
         )?;
         let reference_input = binary::references::read(
             &binary::references::Image {
@@ -607,14 +613,8 @@ fn scoped_fixture_storage(
     facts: &crate::engine::analysis::scoped_numeric::Facts,
     numeric: &crate::engine::analysis::numeric::NumericFacts,
 ) -> Option<crate::protocol::observation::FixtureStorageBinding> {
-    use crate::engine::analysis::{
-        fields::{ReaderJoin, Value},
-        scoped_numeric::Subtype,
-    };
-    use crate::protocol::observation::{
-        FixtureStorageBinding, FixtureStorageDecoder, ScopedLiteralDecoder, ScopedStorageLayout,
-    };
-    use crate::{GrammarProperty, NumericRepresentation, NumericSignedness};
+    use crate::engine::analysis::fields::{ReaderJoin, Value};
+    use crate::protocol::observation::FixtureStorageBinding;
     let [
         ReaderJoin::Joined {
             callee, arguments, ..
@@ -637,10 +637,28 @@ fn scoped_fixture_storage(
         return None;
     };
     let point = result.scoped_destinations.get(destination)?;
+    Some(FixtureStorageBinding {
+        offset: u64::try_from(*destination).ok()?,
+        decoder: scoped_operand_decoder(*point, facts, numeric)?,
+    })
+}
+
+/// The storage decoder of the scoped operand at a factory-agreed vtable point, when its literal
+/// is a proven signed 32-bit integer or a signed 64-bit fixed point in the selection layout.
+pub(crate) fn scoped_operand_decoder(
+    point: u64,
+    facts: &crate::engine::analysis::scoped_numeric::Facts,
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+) -> Option<crate::protocol::observation::FixtureStorageDecoder> {
+    use crate::engine::analysis::scoped_numeric::Subtype;
+    use crate::protocol::observation::{
+        FixtureStorageDecoder, ScopedLiteralDecoder, ScopedStorageLayout,
+    };
+    use crate::{GrammarProperty, NumericRepresentation, NumericSignedness};
     let Subtype::Numeric {
         token_reader,
         literal,
-    } = facts.subtypes.get(point)?.as_ref().ok()?
+    } = facts.subtypes.get(&point)?.as_ref().ok()?
     else {
         return None;
     };
@@ -667,19 +685,16 @@ fn scoped_fixture_storage(
         }
         _ => return None,
     };
-    Some(FixtureStorageBinding {
-        offset: u64::try_from(*destination).ok()?,
-        decoder: FixtureStorageDecoder::ScopedNumeric {
-            literal,
-            layout: ScopedStorageLayout {
-                literal: layout.literal,
-                location: layout.location,
-                trigger: layout.trigger,
-                script_value: layout.script_value,
-                modifier: layout.modifier,
-                modifier_unset: layout.modifier_unset,
-                variable: layout.variable,
-            },
+    Some(FixtureStorageDecoder::ScopedNumeric {
+        literal,
+        layout: ScopedStorageLayout {
+            literal: layout.literal,
+            location: layout.location,
+            trigger: layout.trigger,
+            script_value: layout.script_value,
+            modifier: layout.modifier,
+            modifier_unset: layout.modifier_unset,
+            variable: layout.variable,
         },
     })
 }
@@ -837,6 +852,16 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         verified.scoped_numeric_input(recipe)
+    }
+
+    /// The flag setter, the flag update and the timed-flag execute body, decoded.
+    #[cfg(test)]
+    pub(crate) fn duration_bodies_for_test(
+        &self,
+    ) -> Result<binary::durations::Bodies, AnalysisError> {
+        let verified = self.verified()?;
+        binary::durations::bodies(&verified.executable, &verified.catalog.symbols)
+            .ok_or(AnalysisError::InvalidRange)
     }
 
     /// The lookup of every reference reader in the executable.

@@ -20,6 +20,7 @@ pub(in crate::binding) fn read(
     inventory: &DeclarationResult,
     recipe: &DeclarationRecipe,
     kind: crate::DeclarationKind,
+    names: BTreeMap<u64, String>,
 ) -> Result<GrammarInput, AnalysisError> {
     let text = super::declarations::Text::read(bytes, symbols)?;
     for (&address, body) in &mut declarations.functions {
@@ -121,7 +122,9 @@ pub(in crate::binding) fn read(
         }
     }
     let targets = target_input(symbols, recipe, &command_bindings)?;
+    let durations = super::durations::input(&text, symbols, names, form_input.role_slot);
     Ok(GrammarInput {
+        durations,
         targets,
         key_readers: super::fields::key_readers(symbols, &recipe.persistent)?,
         persistent_slots: [recipe.persistent.read_slot, recipe.persistent.member_slot],

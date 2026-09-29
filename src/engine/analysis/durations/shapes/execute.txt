@@ -1,0 +1,45 @@
+stp xr0,xr1,[sp,#-0x40]!
+stp xr2,xr3,[sp,#0x10]
+stp xr4,xr5,[sp,#0x20]
+stp x29,x30,[sp,#0x30]
+add x29,sp,#0x30
+mov xr4,x1
+mov xr5,x0
+ldrsb wr6,[x0,#0x2cf]
+tbnz wr6,#0x1f,@+10
+and xr6,xr6,#0xff
+cbz xr6,@+10
+add x2,xr5,#0x2b8
+add x1,xr5,#0x2e0
+add x3,xr5,#0x28
+mov x0,xr4
+bl CALL = CreateDynamicFlag(CEventScope&, CEventTarget const&, CString const&, CString const&)
+mov xr3,x0
+b @+4
+ldr xr6,[xr5,#0x2c0]
+cbnz xr6,@-8
+ldrh wr3,[xr5,#0x2b4]
+ldr xr6,[xr5]
+ldr xr6,[xr6,#0xe8]
+mov x0,xr5
+mov x1,xr4
+blr xr6
+mov xr2,x0
+adrp xr6,PAGE
+add xr6,xr6,G = _g_CurrentGameState
+ldr xr6,[xr6]
+add xr1,xr6,#0xb8
+add x0,xr5,#{operand}
+mov x1,xr4
+bl CALL = CIntVariableValue::GetValue(CEventScope&) const
+ldr wr6,[xr5,#{factor}]
+mul w3,wr6,w0
+and x1,xr3,#0xffff
+mov x0,xr2
+mov x2,xr1
+mov w4,#0x0
+ldp x29,x30,[sp,#0x30]
+ldp xr4,xr5,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x40
+b CALL = CPdxIntegerFlags::SetFlag(CPdxIntegerFlags::CIntFlag<unsigned short>, CDate const&, int, CPdxIntegerFlags::ESetFlagMode)

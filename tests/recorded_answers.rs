@@ -701,12 +701,22 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
             "child_families": {"Partial": ["Effect"]},
             "fixed_keys": "Unresolved",
             "numeric_keys": "Unresolved",
-            "ordering": "Unresolved"
+            "ordering": "Unresolved",
+            "durations": "Unresolved"
         }},
         "ordering": {"Partial": [{
             "child": "else",
             "conditions": [{"First": false}, {"Previous": {"keys": ["if", "else_if"], "matches": true}}],
             "outcome": {"Dispatch": "Effect"}
+        }]},
+        "durations": {"Known": [{
+            "units": [
+                {"key": "days", "factor": {"Known": null}},
+                {"key": "months", "factor": {"Known": 30}}
+            ],
+            "combination": {"Known": {"SharedFactor": {"initial_factor": 1}}},
+            "omitted_count": {"Known": 0},
+            "consumption": {"Known": "FlagCountdown"}
         }]}
     });
     let grammar: CommandGrammar = serde_json::from_value(value.clone()).unwrap();
@@ -749,7 +759,7 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
 }
 
 #[test]
-fn old_command_grammar_without_forms_and_targets_keeps_them_unresolved() {
+fn old_command_grammar_without_forms_targets_and_durations_keeps_them_unresolved() {
     let grammar: pdx_native::CommandGrammar = serde_json::from_value(json!({
         "reader": {"id": null, "kind": "Unknown", "family": "Unknown"},
         "child_families": "Unresolved", "fixed_keys": "Unresolved",
@@ -758,6 +768,7 @@ fn old_command_grammar_without_forms_and_targets_keeps_them_unresolved() {
     .unwrap();
     assert_eq!(grammar.forms, pdx_native::GrammarProperty::Unresolved);
     assert_eq!(grammar.targets, pdx_native::GrammarProperty::Unresolved);
+    assert_eq!(grammar.durations, pdx_native::GrammarProperty::Unresolved);
 }
 
 #[test]

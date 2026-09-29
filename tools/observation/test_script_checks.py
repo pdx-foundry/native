@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'))
-from script_checks import DiagnosticCapture, attribute_message
+from script_checks import DiagnosticCapture, attribute_message, stored_durations
 
 
 def log_frame(level=2):
@@ -94,6 +94,72 @@ class CaptureTests(unittest.TestCase):
         with patch('script_checks.read_string', side_effect=RuntimeError('unreadable')):
             capture.capture(log_frame(), location)
         self.assertFalse(capture.finish(1)['hooks_active'])
+
+
+class DurationTests(unittest.TestCase):
+    """An effect owner with two children: a timed flag at 0x5000 and an unknown command at 0x6000."""
+    FLAG_VTABLE = 0x9010
+    LAYOUT = dict(literal=8, location=16, trigger=48, script_value=56, modifier=64,
+                  modifier_unset=0xffffffff, variable=72)
+    COMMAND = dict(children_array_offset=0x10)
+
+    def memory(self):
+        return {(0x1010, 8): 0x2000, (0x2000, 8): 0x5000, (0x2008, 8): 0x6000,
+                (0x5000, 8): self.FLAG_VTABLE, (0x6000, 8): 0x9990,
+                (0x50a8 + 8, 4): 2, (0x50a8 + 48, 8): 0, (0x50a8 + 56, 8): 0,
+                (0x50a8 + 64, 4): 0xffffffff, (0x52b0, 4): 30}
+
+    def strings(self):
+        return {0x50a8 + 16: 'native_1.txt:1', 0x50a8 + 72: ''}
+
+    def receiver(self, groups_complete=True):
+        group = dict(units=['days', 'months', 'years'], factor_offset=0x2b0,
+                     count=dict(offset=0xa8, decoder={'ScopedNumeric': dict(literal='Integer', layout=self.LAYOUT)}))
+        return dict(vtable=0x1000, groups=[group], groups_complete=groups_complete)
+
+    def observe(self, memory, receivers, children=2):
+        def read_unsigned(address, size):
+            if (address, size) not in memory:
+                raise RuntimeError('unreadable')
+            return memory[(address, size)]
+        strings = self.strings()
+
+        def read_string(address):
+            if address not in strings:
+                raise RuntimeError('unreadable')
+            return strings[address]
+        return stored_durations(read_unsigned, read_string, 0x1000, self.COMMAND, children, receivers)
+
+    def flag_entry(self):
+        return dict(child=0, units=['days', 'months', 'years'], factor=30,
+                    count={'ScopedNumeric': dict(literal={'Integer': 2}, has_source_location=True,
+                           has_trigger=False, has_script_value=False, has_modifier=False, variable='')})
+
+    def test_matched_children_report_count_and_factor(self):
+        receivers = {self.FLAG_VTABLE: self.receiver(), 0x9990: dict(vtable=2, groups=[], groups_complete=True)}
+        self.assertEqual(self.observe(self.memory(), receivers),
+                         dict(complete=True, stored=[self.flag_entry()]))
+
+    def test_an_unmatched_child_leaves_the_answer_partial(self):
+        self.assertEqual(self.observe(self.memory(), {self.FLAG_VTABLE: self.receiver()}),
+                         dict(complete=False, stored=[self.flag_entry()]))
+
+    def test_unreadable_storage_adds_no_entry_and_leaves_the_answer_partial(self):
+        memory = self.memory()
+        del memory[(0x52b0, 4)]
+        receivers = {self.FLAG_VTABLE: self.receiver(), 0x9990: dict(vtable=2, groups=[], groups_complete=True)}
+        self.assertEqual(self.observe(memory, receivers), dict(complete=False, stored=[]))
+
+    def test_unreadable_children_or_incomplete_groups_are_partial(self):
+        memory = self.memory()
+        del memory[(0x1010, 8)]
+        self.assertEqual(self.observe(memory, {}), dict(complete=False, stored=[]))
+        receivers = {self.FLAG_VTABLE: self.receiver(groups_complete=False)}
+        self.assertEqual(self.observe(self.memory(), receivers, children=1),
+                         dict(complete=False, stored=[self.flag_entry()]))
+
+    def test_no_children_need_no_child_array(self):
+        self.assertEqual(self.observe({}, {}, children=0), dict(complete=True, stored=[]))
 
 
 class RegisterTests(unittest.TestCase):

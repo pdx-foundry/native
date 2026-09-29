@@ -55,14 +55,23 @@ impl Native {
             .declaration_analysis(operation)?
             .grammar_input(kind)
             .map_err(|failure| error(operation, failure))?;
-        match registered_factory(declarations, name) {
-            Ok(Some(factory)) => Ok(grammar::analyze(input, factory)),
-            Ok(None) => Err(Error::UnknownCommand {
-                kind,
-                name: name.into(),
-            }),
-            Err(stop) => Ok(Err(stop)),
-        }
+        registered_grammar(input, declarations, name).ok_or_else(|| Error::UnknownCommand {
+            kind,
+            name: name.into(),
+        })
+    }
+}
+
+/// The grammar of a registered command, or `None` when no declaration names it.
+pub(super) fn registered_grammar(
+    input: &grammar::GrammarInput,
+    declarations: &declarations::DeclarationResult,
+    name: &str,
+) -> Option<Result<grammar::GrammarResult, Unresolved>> {
+    match registered_factory(declarations, name) {
+        Ok(Some(factory)) => Some(grammar::analyze(input, factory)),
+        Ok(None) => None,
+        Err(stop) => Some(Err(stop)),
     }
 }
 
@@ -135,6 +144,7 @@ pub(crate) fn normalize_with_numeric(
             name,
             &mut answer.gaps,
         );
+        super::durations::grammar(&mut answer.value, result, scoped, name, &mut answer.gaps);
     }
     answer.completeness = crate::Completeness::from_gaps(&answer.gaps);
     answer
@@ -160,6 +170,7 @@ pub(crate) fn normalize(
         fixed_keys: GrammarProperty::Unresolved,
         numeric_keys: GrammarProperty::Unresolved,
         ordering: GrammarProperty::Unresolved,
+        durations: GrammarProperty::Unresolved,
     };
     let mut gaps = Vec::new();
     let mut key_gaps = Vec::new();
@@ -673,6 +684,7 @@ mod tests {
             tail: true,
         };
         grammar::GrammarResult {
+            durations: Vec::new(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
@@ -1058,6 +1070,7 @@ mod tests {
     #[test]
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
+            durations: Vec::new(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![grammar::ReaderNode {
@@ -1176,6 +1189,7 @@ mod tests {
             }],
         };
         let result = grammar::GrammarResult {
+            durations: Vec::new(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],
@@ -1223,6 +1237,7 @@ mod tests {
     #[test]
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
+            durations: Vec::new(),
             scoped_destinations: Default::default(),
             targets: vec![],
             nodes: vec![],

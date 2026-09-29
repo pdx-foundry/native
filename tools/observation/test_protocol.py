@@ -18,6 +18,22 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 wire.validate(value, schema, root)
 
+    def test_script_checks_carry_duration_receivers_and_raw_duration_reads(self):
+        receiver = dict(vtable=0x103000000, groups_complete=True, groups=[dict(
+            units=['days', 'months', 'years'], factor_offset=None, count=dict(offset=0xb0, decoder='Integer'))])
+        request = dict(attempt='a', check=1, kind='effect', scope=5, text='x = y', durations=[receiver])
+        self.assertEqual(wire.decode('script_check', wire.encode('script_check', request)), request)
+        observation = dict(check=1, read_returned=True, children=1, diagnostics=[], foreign=[],
+                           unjoined=[], hooks_active=True, bound_reached=False)
+        stored = dict(child=0, units=['days', 'months', 'years'], count={'Integer': 60}, factor=None)
+        reply = dict(attempt='a', check=1, result={'Ok': dict(
+            observation=observation, durations=dict(complete=True, stored=[stored]))})
+        wire.encode('script_reply', reply)
+        for field, value in [('factor', 2**31), ('count', {'Integer': 2**31})]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                wire.encode('script_reply', dict(reply, result={'Ok': dict(observation=observation,
+                    durations=dict(complete=True, stored=[dict(stored, **{field: value})]))}))
+
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
         outcome = dict(registry='common/traditions', load_entry=16384, reader_entry=16400,
                        reader_return=16416, constructor_entry=16432, member_entry=16448,

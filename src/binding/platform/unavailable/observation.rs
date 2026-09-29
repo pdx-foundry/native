@@ -44,6 +44,7 @@ impl Observer {
         &self,
         _: u64,
         _: &crate::ScriptCheck,
+        _: Vec<crate::protocol::script_check::DurationReceiver>,
     ) -> Result<crate::protocol::script_check::CheckRequest, crate::Error> {
         Err(crate::Error::Unsupported {
             operation: crate::Operation::CheckScript,

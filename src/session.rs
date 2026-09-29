@@ -7,6 +7,8 @@ pub(crate) use loaded_modifiers::ModifierJoin;
 mod callbacks;
 pub mod command_grammar_stops;
 mod defines;
+pub mod duration_groups;
+mod durations;
 pub mod dynamic_name_commands;
 mod dynamic_names;
 mod families;
@@ -21,6 +23,7 @@ pub(crate) mod questions;
 pub mod reference_readers;
 pub mod registry_field_stops;
 mod scoped_numeric;
+pub(crate) mod script_durations;
 pub mod target_getters;
 
 #[derive(Debug)]
@@ -241,6 +244,7 @@ impl Native {
             keep_work: options.keep_work_directory,
             fixture: options.fixture,
             modifiers,
+            binding: binding.clone(),
         };
         crate::game::start(options.supervisor, request, session).await
     }

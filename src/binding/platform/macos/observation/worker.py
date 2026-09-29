@@ -16,6 +16,7 @@ import time
 import traceback
 from threading import Event, Thread
 import protocol
+import stored_values
 
 ROOT = Path(__file__).resolve().parent.parent
 request = None
@@ -283,10 +284,6 @@ def registry_callback(frame, name):
     return False
 
 
-def signed_integer(raw, bits):
-    return raw - (1 << bits) if raw >= (1 << (bits - 1)) else raw
-
-
 def interpret_fixture_log(text, file, file_prefix, line_prefix, returned):
     """Keep a matching file's diagnostic, with a line only when its source is unambiguous."""
     if file not in text:
@@ -371,35 +368,10 @@ class FixtureObserver:
     def stored_string(self, process, storage):
         return cstring(process, storage, self.bindings['string_tag_offset'])
 
-    def stored_value(self, process, owner, storage):
-        address = owner + storage['offset']
-        decoder = storage['decoder']
-        if decoder == 'String':
-            return {'String': self.stored_string(process, address)}
-        if decoder == 'Integer':
-            raw = uint(process, address, 4)
-            return {'Integer': signed_integer(raw, 32)}
-        if isinstance(decoder, dict) and 'FixedPoint' in decoder:
-            raw = uint(process, address, 8)
-            signed = signed_integer(raw, 64)
-            return {'FixedPoint': dict(raw=signed, scale=decoder['FixedPoint']['scale'])}
-        if isinstance(decoder, dict) and 'ScopedNumeric' in decoder:
-            scoped = decoder['ScopedNumeric']
-            layout = scoped['layout']
-            literal_address = address + layout['literal']
-            if scoped['literal'] == 'Integer':
-                literal = {'Integer': signed_integer(uint(process, literal_address, 4), 32)}
-            else:
-                scale = scoped['literal']['FixedPoint']['scale']
-                literal = {'FixedPoint': dict(raw=signed_integer(uint(process, literal_address, 8), 64), scale=scale)}
-            return {'ScopedNumeric': dict(
-                literal=literal,
-                has_source_location=bool(self.stored_string(process, address + layout['location'])),
-                has_trigger=bool(uint(process, address + layout['trigger'])),
-                has_script_value=bool(uint(process, address + layout['script_value'])),
-                has_modifier=uint(process, address + layout['modifier'], 4) != layout['modifier_unset'],
-                variable=self.stored_string(process, address + layout['variable']))}
-        raise RuntimeError('fixture storage decoder is unavailable')
+    def stored_value(self, process, owner, binding):
+        return stored_values.decode(lambda address, size: uint(process, address, size),
+                                    lambda address: self.stored_string(process, address),
+                                    owner + binding['offset'], binding['decoder'])
 
     def return_hook(self, frame, name):
         process = frame.GetThread().GetProcess()

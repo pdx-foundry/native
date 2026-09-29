@@ -69,6 +69,8 @@ mod scoped_numeric;
 mod numeric_conversion;
 #[path = "live/script.rs"]
 mod script_checks;
+#[path = "live/durations.rs"]
+mod stored_durations;
 
 /// What the registry that receives a fault must give.
 #[derive(Clone, Copy)]
@@ -166,6 +168,7 @@ fn main() {
 }
 
 enum Case {
+    StoredDurations,
     ScriptArguments,
     ScriptAttribution,
     ScriptDeepNesting,
@@ -292,6 +295,7 @@ enum FixtureOutcomeCase {
 
 fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
+        ("stored_durations".to_owned(), Case::StoredDurations),
         ("script_arguments".to_owned(), Case::ScriptArguments),
         ("script_attribution".to_owned(), Case::ScriptAttribution),
         ("script_deep_nesting".to_owned(), Case::ScriptDeepNesting),
@@ -698,6 +702,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             ref commands,
             ref samples,
         } => fixture_argument(native, field, commands, samples).await,
+        Case::StoredDurations => stored_durations::stored(native).await,
         Case::ScriptArguments => script_checks::arguments(native).await,
         Case::ScriptAttribution => script_checks::attribution(native).await,
         Case::ScriptDeepNesting => script_checks::deep_nesting(native).await,
