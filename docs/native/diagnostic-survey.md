@@ -137,3 +137,42 @@ clean active-labor comparison. The Atlas report separates live costs from this m
 Further work should be a bounded trial of the proven message families, not a runtime harness or
 new observation API. Full messages, every specimen, both capture surfaces and all unavailable
 results remain in the Atlas matrix.
+
+## Config-test calibration follow-up
+
+The separate config-test spike used the same exact M45-release build, ordinary logs and the
+in-process parse/validate route described in [engine calls](engine-calls.md). No world was loaded.
+Its six launches include a failed control and five successful sessions, all with confirmed
+disposal. Atlas owns the frozen 89-claim matrix and decisions in
+`docs/prototypes/config-test-spike/REPORT.md`. Preserve its raw logs and scripts; the checked
+second copy is `.local/evidence/config-test-spike-2026-09-28/`.
+
+Three route details affect diagnostic interpretation:
+
+- Memory text without trailing whitespace can leave `yes`/`no` text at EOF token 19. Appending
+  a newline restores their Boolean token IDs. A positive control must exercise tokenization,
+  not just a string reader that happened to accept the last text.
+- A wrong-scope message and quiet control can cover all 42 engine bits when scope arguments
+  are 64-bit. The old `pop` bit is still accepted by `has_citizenship_rights`, `member_of_faction`
+  and `is_on_galaxy_map`. Their static declarations agree. Acceptance of a bit does not establish
+  that a current authoring context can supply that scope.
+- Validation can reject a surrounding object before a field property is controlled.
+  `create_ambient_object` without an object type reports an invalid ambient object even when
+  the candidate key is accepted. Those key rows remain No comment. A CWT `bool` declaration
+  also does not prove a Boolean route: `has_building_construction` reports nonexistent buildings
+  for malformed scalar inputs, and `set_disable_at_health = yes` rejects the value in its valid
+  scopes. `add_tradition` did not supply the required unknown-item rejection. No silence was
+  credited on these routes.
+
+The frozen scorer found 31 refutations among 3,409 probes. One fresh session repeated those
+claims in separate requests, including 528 extra corrected controls: every refutation survived
+and every added correction was quiet with a parsed child. This bounds request interference;
+it does not prove arbitrary long-lived database isolation. Line-distinct snippets still provide
+the ordinary-log join and avoid identical-message suppression. Repeated cardinality probes
+remain No comment: parse/validation says nothing about overwrite, requiredness or execution.
+
+Documentation dumps also have boundaries. The actual scripting-documentation routine fills
+all five files at the pause; the named console handler does not. Effect/trigger names, available
+scopes, and all 45,578 loaded modifier names/tags agree with Native. The dumps omit Native-known
+scope links and localization entries; `scopes.log` is not the scope-type inventory. See the Atlas
+both-direction comparison before treating any missing dump entry as engine absence.

@@ -73,3 +73,23 @@ at `.local/executables/stellaris-m45-observe-arm64`; its SHA-256 is the slice id
 The Atlas caller before migration, including its old freeze and synthetic files, is preserved in
 `native-2026-09-18/atlas-native-consumer-before-simplification.tar.gz`. The migrated caller stays
 local in Atlas's ignored `prototypes/native-registry` directory.
+
+## Config-test spike, 2026-09-28
+
+Atlas owns the experiment at
+`/Users/jackson/Developer/pdx-foundry/atlas/docs/prototypes/config-test-spike/`. It includes six
+retained sessions, all five engine dumps, frozen claims and probe plans, raw observations,
+scoring scripts/results, disassembly, Native inventories, and the private Rust caller. The
+report records 89 calibrated claims and the limits on each rule conclusion.
+
+A second checked copy is kept under the primary Native checkout's
+`.local/evidence/config-test-spike-2026-09-28/`: `atlas-experiment.tar.gz`, its per-file inventory
+and verification, config/overlay source inputs, and `native-source.bundle`. The archive excludes
+only rebuildable runner binaries and Python caches. Its symlinks are retained as links, not
+followed; the full installed game and platform tools remain external dependencies. Absolute
+source paths in the private runner need adjustment after relocation. These are local copies,
+not a remote backup. Atlas `preservation.json` records their paths and hashes.
+
+Native's strict paused-register patch and engine notes stay on `spike/in-process-probe`; the
+public API is unchanged. The bundle preserves that branch's history. Verify the retained copy
+before cleaning either source tree. No experiment source or session was deleted by this spike.
