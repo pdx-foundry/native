@@ -873,6 +873,7 @@ mod tests {
             definition_line: None,
             reader: Reader {
                 numeric: crate::GrammarProperty::Unresolved,
+                scoped_operand: crate::GrammarProperty::Unresolved,
                 id: None,
                 kind: ReaderKind::Unknown,
                 family: crate::BlockFamily::Unknown,

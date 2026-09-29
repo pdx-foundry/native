@@ -634,6 +634,7 @@ impl<'a> Window<'a> {
         }
         let reader = Reader {
             numeric: crate::GrammarProperty::Unresolved,
+            scoped_operand: crate::GrammarProperty::Unresolved,
             id: reader_id.clone().map(ReaderId),
             kind: *reader_kind,
             family: *reader_family,
@@ -1204,6 +1205,7 @@ impl<'a> Window<'a> {
             let reader = authority.as_ref().map_or(
                 Reader {
                     numeric: crate::GrammarProperty::Unresolved,
+                    scoped_operand: crate::GrammarProperty::Unresolved,
                     id: None,
                     kind: ReaderKind::Unknown,
                     family: crate::BlockFamily::Unknown,
@@ -1351,7 +1353,7 @@ impl<'a> Window<'a> {
             },
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v4", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v5", Basis::LiveObservation),
         }
     }
 }
@@ -2853,6 +2855,79 @@ mod tests {
             let answer = run(missing);
             assert!(matches!(&answer.value.field_outcomes[0].storage,
                 FixtureStorage::Observed { occurrences, final_value: None, completeness: Completeness::Partial } if occurrences.len() == 2));
+        }
+    }
+    #[test]
+    fn scoped_storage_preserves_independent_state_and_rejects_lost_evidence() {
+        use crate::protocol::observation::{ScopedLiteralDecoder, ScopedStorageLayout};
+        for literal in [
+            ScopedLiteralDecoder::Integer,
+            ScopedLiteralDecoder::FixedPoint { scale: 100_000 },
+        ] {
+            let decoder = FixtureStorageDecoder::ScopedNumeric {
+                literal,
+                layout: ScopedStorageLayout {
+                    literal: 0x200,
+                    location: 0x1d8,
+                    trigger: 0x1a0,
+                    script_value: 0x1a8,
+                    modifier: 0x198,
+                    modifier_unset: 0x7fffffff,
+                    variable: 0x1b0,
+                },
+            };
+            let value = |number| {
+                json!({"ScopedNumeric":{
+                    "literal":match literal {
+                        ScopedLiteralDecoder::Integer => json!({"Integer":number}),
+                        ScopedLiteralDecoder::FixedPoint { scale } => json!({"FixedPoint":{"raw":number,"scale":scale}}),
+                    },
+                    "has_source_location":true,"has_trigger":false,"has_script_value":true,
+                    "has_modifier":false,"variable":""
+                }})
+            };
+            let mut events = field_events();
+            events[4]["event"]["reader_kind"] = json!("ScopedNumeric");
+            events[4]["event"]["storage_decoder"] = serde_json::to_value(decoder).unwrap();
+            events[6]["event"]["value"] = value(0);
+            events[8]["event"]["value"] = value(9);
+            events[9]["event"]["reader_kind"] = json!("ScopedNumeric");
+            events[9]["event"]["final_value"] = value(9);
+            let run = |events| {
+                reduce(
+                    &field_request(false),
+                    &category_fields(),
+                    &records(events),
+                    &owner(),
+                    BuildId("b".into()),
+                )
+                .unwrap()
+            };
+            let answer = run(events.clone());
+            assert_eq!(answer.completeness, Completeness::Complete);
+            let FixtureStorage::Observed {
+                occurrences,
+                final_value,
+                ..
+            } = &answer.value.field_outcomes[0].storage
+            else {
+                panic!("{answer:?}");
+            };
+            assert_eq!(
+                serde_json::to_value(&occurrences[1].value).unwrap(),
+                value(9)
+            );
+            assert_eq!(serde_json::to_value(final_value).unwrap(), value(9));
+            let mut lost = events.clone();
+            lost.remove(6);
+            assert_eq!(run(lost).completeness, Completeness::Partial);
+            let mut no_authority = events.clone();
+            no_authority.remove(4);
+            renumber(&mut no_authority);
+            assert_eq!(run(no_authority).completeness, Completeness::Partial);
+            let mut wrong = events;
+            wrong[8]["event"]["value"] = json!({"Integer":9});
+            assert_eq!(run(wrong).completeness, Completeness::Partial);
         }
     }
 }

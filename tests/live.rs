@@ -62,6 +62,9 @@ const ITEM_COUNTS: [(&str, usize); 3] =
 
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
+#[path = "live/scoped_numeric.rs"]
+mod scoped_numeric;
+
 #[path = "live/numeric.rs"]
 mod numeric_conversion;
 #[path = "live/script.rs"]
@@ -192,6 +195,8 @@ enum Case {
     },
     FixtureNestedNumeric(Fault),
     NumericConversionMatrix,
+    ScopedNumericMatrix,
+    ScopedNumericWorkerLoss,
     /// Validation samples of one block field, each in its own definition of one fixture file.
     FixtureValidation {
         field: &'static str,
@@ -408,6 +413,14 @@ fn cases() -> Vec<(String, Case)> {
     cases.push((
         "fixture_numeric_conversion_matrix".into(),
         Case::NumericConversionMatrix,
+    ));
+    cases.push((
+        "fixture_scoped_numeric_matrix".into(),
+        Case::ScopedNumericMatrix,
+    ));
+    cases.push((
+        "fixture_scoped_numeric_worker_loss".into(),
+        Case::ScopedNumericWorkerLoss,
     ));
     let parser_log = Some("engine-parser-log");
     let validation_log = Some("engine-validation-log");
@@ -675,6 +688,8 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         } => fixture_numeric(registry, integer, fixed, fractional_final).await,
         Case::FixtureNestedNumeric(control) => fixture_nested_numeric(control).await,
         Case::NumericConversionMatrix => numeric_conversion::matrix().await,
+        Case::ScopedNumericMatrix => scoped_numeric::matrix().await,
+        Case::ScopedNumericWorkerLoss => scoped_numeric::worker_loss().await,
         Case::FixtureValidation { field, ref samples } => {
             fixture_validation(native, field, samples).await
         }

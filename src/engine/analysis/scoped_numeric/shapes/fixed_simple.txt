@@ -1,0 +1,4 @@
+mov xr0,x1
+add x1,x0,#{literal}
+mov x0,xr0
+b CALL = CToken::ReadValue(CFixedPoint&) const

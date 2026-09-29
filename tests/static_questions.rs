@@ -1278,6 +1278,28 @@ fn numeric_reader_api_parity() {
 }
 
 #[test]
+#[ignore = "requires STELLARIS_PATH; review refreshed field and grammar recordings"]
+fn scoped_numeric_api_parity() {
+    let native = native();
+    let mut differences = Vec::new();
+    for name in FIELD_FILES
+        .iter()
+        .map(|(_, file)| *file)
+        .chain(["command-grammars.json"])
+    {
+        let candidate = parity::candidate(&native, name).unwrap();
+        let expected = std::fs::read(parity::expected_directory().join(name)).unwrap();
+        if candidate != expected {
+            differences.push(name);
+        }
+    }
+    assert!(
+        differences.is_empty(),
+        "refresh scoped numeric parity: {differences:?}"
+    );
+}
+
+#[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn numeric_command_arguments_share_registry_conversion_facts() {
     use pdx_native::GrammarProperty;

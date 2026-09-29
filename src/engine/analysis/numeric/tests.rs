@@ -78,6 +78,24 @@ fn direct_scan_proves_storage_and_partial_syntax_without_universal_acceptance() 
 }
 
 #[test]
+fn scoped_token_reader_keeps_conversion_limits_and_fails_closed() {
+    let fact = analyze_token(&TokenInput {
+        body: scan_rows(),
+        names: names("%i"),
+        token_text_offset: 0x10,
+    });
+    assert!(matches!(fact.conversion, GrammarProperty::Partial(Some(_))));
+    assert!(fact.gaps.iter().any(|gap| gap.reason == "numeric-overflow"));
+
+    let missing = analyze_token(&TokenInput {
+        body: scan_rows(),
+        names: BTreeMap::new(),
+        token_text_offset: 0x10,
+    });
+    assert_eq!(missing.conversion, GrammarProperty::Unresolved);
+}
+
+#[test]
 fn wrong_destination_unknown_calls_and_incomplete_checks_do_not_prove_storage() {
     for (index, operation, operands) in [
         (4, "str", "x2,[sp]"),
@@ -139,6 +157,18 @@ fn old_reader_answers_default_to_unknown_and_exact_bounds_round_trip() {
 fn m45_numeric_reader_static_parity() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let facts = crate::internals::numeric_readers::run(&native).unwrap();
+    for (name, width, scale) in [
+        ("CToken::ReadValue(int&) const", 32, 1),
+        ("CToken::ReadValue(CFixedPoint&) const", 64, 100_000),
+    ] {
+        let reader = &facts.token_readers[name];
+        let GrammarProperty::Partial(Some(conversion)) = &reader.conversion else {
+            panic!("{name}: {:?}", reader.conversion);
+        };
+        assert_eq!(conversion.width_bits, Known(width), "{name}");
+        assert_eq!(conversion.scale, Known(Some(scale)), "{name}");
+        assert_eq!(conversion.accepted_range, Unresolved, "{name}");
+    }
     let actual = serde_json::to_string_pretty(&facts).unwrap();
     if let Some(path) = std::env::var_os("NATIVE_NUMERIC_REPORT") {
         std::fs::write(path, &actual).unwrap();

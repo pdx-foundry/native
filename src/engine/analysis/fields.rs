@@ -84,7 +84,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v9";
+pub const METHOD: &str = "registry-fields/v10";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
@@ -136,10 +136,11 @@ pub(crate) fn analyze_owner(input: &FieldInput) -> Result<RegistryFieldResult, I
         gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,
             "Local Boolean selections only: enclosing reachability, loop winner, callees, indirect callers, unsupported transfers and method bounds remain unresolved."));
     }
-    let (persistent, persistent_gaps) = persistent::discover(input, &fields);
+    let (persistent, scoped_destinations, persistent_gaps) = persistent::discover(input, &fields);
     gaps.extend(persistent_gaps);
     Ok(RegistryFieldResult {
         persistent,
+        scoped_destinations,
         uses,
         collections,
         fields,

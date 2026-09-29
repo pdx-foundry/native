@@ -51,6 +51,7 @@ These are not accepted designs. Do not implement from them without an accepted d
 - [Method authoring](docs/native/method-authoring.md) Inspection, implementation, tests, parity and population runs.
 - [Registry fields](docs/native/registry-fields.md) Field discovery, stops, compiler shapes and owner joins.
 - [Reader kinds](docs/native/reader-kinds.md) Shared reader identities and broad value kinds.
+- [Scoped numeric](docs/native/scoped-numeric.md) Operand proofs, concrete storage and selection limits.
 - [Registry items](docs/native/registry-items.md) Loaded collections and observation completeness.
 - [Engine commands](docs/native/engine-commands.md) Commands, scopes, localization, on_actions and game rules.
 - [References and dynamic names](docs/native/references.md) Reference lookups, flag namespaces, their shapes and the SDK-482 history.

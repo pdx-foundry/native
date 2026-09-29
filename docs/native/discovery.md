@@ -17,11 +17,12 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v9` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v9`, `command-grammar/v10` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v9`, `command-grammar/v10` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
+| `Native::registry_fields` | `registry-fields/v10` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v10`, `command-grammar/v11` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v10`, `command-grammar/v11` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v10`, `command-grammar/v11` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v10` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v11` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -104,3 +105,25 @@ matrix covers direct int, direct fixed point (including transfer to armies), and
 fixed point: 80 cases, 84 stored occurrences. See [numeric conversion](numeric-conversion.md)
 for the observed boundary behavior and limits. The report is `.local/sdk-644/numeric-population.json`;
 reproduce it with `cargo run --release --example numeric-population` and `STELLARIS_PATH` set.
+
+## Scoped numeric operands (SDK-645)
+
+The M45-release run queried all **164** discovered registries with no failed registry queries.
+Seven fields bind to scoped numeric readers: **0 complete, 6 partial, 1 failed**. The six partial
+answers establish concrete storage and shared operand routes: agenda cost, three ship-of-size
+limit fields, and the two megastructure cycle/overclock fields. The failed destination is
+`pop_decline_rate`: the shared entry is joined but its constructor-installed subtype is not
+established. No field name selects a subtype.
+
+Failure shapes: six numeric-conversion gaps (lexical boundaries, range and overflow), seven
+unresolved repeat/nested-shape gaps, and one unresolved constructor vtable. Six answers also
+retain an outside-method limit for qualified scopes, parameters, lookup outcomes and evaluation.
+These counts describe the public answer, not just successful storage derivation. Run
+`cargo run --release --example scoped-numeric-population` with `STELLARIS_PATH` to reproduce;
+`.local/sdk-645/scoped-population.json` lists every field and gap.
+
+The live matrix covers the 62 retained parser cases through documented root-field substitutions,
+plus 14 boundary and transition controls. All 76 have complete parser/storage joins. The three
+isolated inline-block inputs have incomplete diagnostic source coverage, retained as typed gaps.
+There were no conflicts between the established static width/scale and the observed storage.
+See [scoped numeric operands](scoped-numeric.md) for the adaptation and selection boundaries.

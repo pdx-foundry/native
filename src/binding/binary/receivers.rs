@@ -100,6 +100,24 @@ pub(super) fn persistent(
             code: code.to_vec(),
         });
     }
+    let full_entries: BTreeSet<_> = bodies
+        .iter()
+        .filter(|body| {
+            decode_arm64(&body.code, body.address)
+                .is_ok_and(|rows| rows.len() != 1 || rows[0].operation != "b")
+        })
+        .map(|body| body.address)
+        .collect();
+    bodies.retain(|body| {
+        let Ok(rows) = decode_arm64(&body.code, body.address) else {
+            return true;
+        };
+        // A one-instruction tail branch delegates every input unchanged to a proved full ctor.
+        !(rows.len() == 1
+            && rows[0].operation == "b"
+            && crate::engine::analysis::declarations::number(&rows[0].operands)
+                .is_some_and(|target| full_entries.contains(&target)))
+    });
     let roots: Vec<_> = bodies.iter().collect();
     let summaries = constructors(bytes, symbols, pointers, bound_slots, &roots)?;
     let name = |address| {

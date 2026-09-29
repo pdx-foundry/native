@@ -30,6 +30,7 @@ const MISSING: u64 = FOUND + 0x10000;
 /// Executable-bound details needed only by the forms chain.
 #[derive(Default)]
 pub struct Input {
+    pub reader_value_token_offset: Option<u64>,
     pub token_text_offset: u64,
     pub target_size: u64,
     pub string_size: u64,
@@ -1070,20 +1071,41 @@ impl Calls<'_> {
             return Ok(Call::Return(receiver));
         }
         if let Some(name) = target.and_then(|at| self.input.forms.shared.get(&at)) {
-            let arguments = (0..3)
-                .filter_map(|register| {
-                    let value = match machine.register(register) {
-                        Some(value) if value == self.source => Value::Reader(0),
-                        address if self.owner_offset(address).is_some() => {
-                            Value::Owner(self.owner_offset(address).unwrap() as i64)
-                        }
-                        Some(value) => Value::Constant(value as i64),
-                        None => return None,
-                    };
-                    Some((format!("x{register}"), value))
-                })
-                .collect();
-            if readers::arguments_join(name, &arguments, true) {
+            let arguments =
+                (0..4)
+                    .filter_map(|register| {
+                        let value = match machine.register(register) {
+                            Some(value) if value == self.source => Value::Reader(0),
+                            Some(value)
+                                if self
+                                    .input
+                                    .forms
+                                    .reader_value_token_offset
+                                    .and_then(|offset| self.source.checked_add(offset))
+                                    == Some(value) =>
+                            {
+                                Value::Reader(
+                                    self.input.forms.reader_value_token_offset.unwrap() as i64
+                                )
+                            }
+                            address if self.owner_offset(address).is_some() => {
+                                Value::Owner(self.owner_offset(address).unwrap() as i64)
+                            }
+                            Some(value) => Value::Constant(value as i64),
+                            None => return None,
+                        };
+                        Some((format!("x{register}"), value))
+                    })
+                    .collect();
+            if readers::arguments_join(
+                name,
+                &arguments,
+                true,
+                self.input
+                    .forms
+                    .reader_value_token_offset
+                    .map(|offset| offset as i64),
+            ) {
                 let join = ReaderJoin::Joined {
                     callee: name.clone(),
                     arguments,

@@ -302,6 +302,18 @@ class ParserObservationTests(unittest.TestCase):
         self.frame = Mock()
         self.frame.GetThread().GetThreadID.return_value = 7
 
+    def test_root_member_worker_loss_stops_after_the_joined_parser_entry(self):
+        self.observer.control = protocol.CONTROL['worker_loss']
+        registers = dict(owner='x0', reader='x1', **{'field-token': 'x2'})
+        values = dict(x0=0x2000, x1=0x3000, x2=1)
+        with patch.object(worker, 'register', side_effect=lambda frame, name: values[name]), \
+             patch.object(worker, 'ROOT') as root, patch.object(worker, 'emit') as emit:
+            self.assertTrue(self.observer.on_member(self.frame, Mock(), registers))
+            emit.assert_called_once_with('worker-loss-ready')
+            root.__truediv__.return_value.touch.assert_called_once_with(exist_ok=False)
+        self.observer.return_hook.assert_not_called()
+        self.assertEqual(self.observer.emit.call_args.args[0], 'field-parse')
+
     def test_block_reader_returns_without_a_storage_decoder(self):
         registers = dict(owner='x0', reader='x1', **{'field-token': 'x2'})
         values = dict(x0=0x2000, x1=0x3000, x2=1)
@@ -436,6 +448,22 @@ class NumericStorageTests(unittest.TestCase):
     def setUp(self):
         patch.object(worker, 'request', dict(fault=None)).start()
         self.addCleanup(patch.stopall)
+
+    def test_scoped_storage_keeps_literal_and_reference_slots_independent(self):
+        observer = worker.FixtureObserver(dict(validation=False, file='common/synthetic/test.txt',
+            bindings=dict(fields=[], outcome_registries=[]), questions=[]))
+        layout = dict(literal=80, location=16, trigger=48, script_value=56,
+                      modifier=64, modifier_unset=999, variable=96)
+        address = 0x2030
+        values = {(address + 80, 4): 0xffffffff, (address + 48, 8): 0,
+                  (address + 56, 8): 0x5000, (address + 64, 4): 999}
+        observer.stored_string = Mock(side_effect=lambda process, at: {address + 16: 'file:2', address + 96: 'older_variable'}[at])
+        with patch.object(worker, 'uint', side_effect=lambda process, at, width=8: values[(at, width)]):
+            value = observer.stored_value(Mock(), 0x2000, dict(offset=48,
+                decoder={'ScopedNumeric': dict(literal='Integer', layout=layout)}))
+        self.assertEqual(value, {'ScopedNumeric': dict(literal={'Integer': -1},
+            has_source_location=True, has_trigger=False, has_script_value=True,
+            has_modifier=False, variable='older_variable')})
 
     def test_signed_storage_uses_the_bound_width_and_owner_offset(self):
         observer = worker.FixtureObserver(dict(validation=False, file='common/synthetic/test.txt',

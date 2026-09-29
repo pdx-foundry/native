@@ -19,6 +19,7 @@ mod grammar;
 mod numeric;
 mod protocol;
 mod recorded;
+mod scoped_numeric;
 mod script;
 mod session;
 mod work_directory;
@@ -51,8 +52,8 @@ pub use fixture::{
     DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,
     FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureObservationKind,
     FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime, FixtureStorage, FixtureValue,
-    FixtureWindow, ParsedFieldOccurrence, ProcessingStage, RegistrationEntry,
-    StoredFieldOccurrence,
+    FixtureWindow, ParsedFieldOccurrence, ProcessingStage, RegistrationEntry, ScopedNumericLiteral,
+    ScopedNumericStorage, StoredFieldOccurrence,
 };
 pub use game::{Game, GameOptions};
 pub use grammar::{
@@ -62,6 +63,10 @@ pub use grammar::{
 pub use numeric::{
     NumericBound, NumericConversion, NumericLiteralSyntax, NumericRange, NumericRepresentation,
     NumericSignedness,
+};
+pub use scoped_numeric::{
+    ScopedLiteralCondition, ScopedOperand, ScopedOperandForm, ScopedOperandSelection,
+    ScopedReferenceKind,
 };
 pub use script::{
     ForeignScriptDiagnostic, ScriptCheck, ScriptDiagnostic, ScriptObservation, ScriptStage,

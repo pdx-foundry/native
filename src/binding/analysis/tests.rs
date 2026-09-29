@@ -1029,3 +1029,34 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
         crate::protocol::observation::FixtureStorageDecoder::FixedPoint { scale: 32768 }
     );
 }
+
+#[test]
+#[ignore = "requires exact M45 through STELLARIS_PATH"]
+fn scoped_fixture_destinations() {
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let analysis = native.bound().analysis.as_ref().unwrap();
+    let verified = analysis.verified().unwrap();
+    for registry in ["common/council_agendas", "common/megastructures"] {
+        let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
+        let input = verified.field_input(candidate.record.clone()).unwrap();
+        let result = crate::engine::analysis::fields::analyze(&input).unwrap();
+        let bindings = analysis.fixture_fields(registry).unwrap();
+        for field in &result.fields {
+            if matches!(
+                field.name.as_str(),
+                "agenda_cost" | "cycle_length_in_days" | "overclock_cooldown"
+            ) {
+                assert!(
+                    bindings
+                        .iter()
+                        .find(|bound| bound.name == field.name)
+                        .unwrap()
+                        .storage
+                        .is_some(),
+                    "{} has no scoped decoder",
+                    field.name
+                );
+            }
+        }
+    }
+}

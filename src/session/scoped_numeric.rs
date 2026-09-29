@@ -1,0 +1,524 @@
+//! Attach one shared proof and a constructor-selected subtype to each public reader occurrence.
+use crate::engine::analysis::{
+    fields::{PathOutcome, ReaderJoin, RegistryFieldResult, RootField, TokenPath},
+    grammar::GrammarResult,
+    numeric::NumericFacts,
+    readers,
+    scoped_numeric::{Facts, Subtype},
+};
+use crate::{
+    CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
+    GrammarProperty, Reader, ReaderKind, ScopedLiteralCondition, ScopedOperand, ScopedOperandForm,
+    ScopedOperandSelection, ScopedReferenceKind,
+};
+use std::collections::BTreeMap;
+
+struct FieldEvidence<'a> {
+    paths: &'a [TokenPath],
+    points: &'a BTreeMap<i64, u64>,
+    facts: &'a Facts,
+    numeric: &'a NumericFacts,
+}
+
+pub(super) fn fields(
+    values: &mut [Field],
+    result: &RegistryFieldResult,
+    facts: &Facts,
+    numeric: &NumericFacts,
+    gaps: &mut Vec<Gap>,
+) {
+    fields_at_path(values, result, facts, numeric, &[], gaps);
+}
+
+fn fields_at_path(
+    values: &mut [Field],
+    result: &RegistryFieldResult,
+    facts: &Facts,
+    numeric: &NumericFacts,
+    parent: &[String],
+    gaps: &mut Vec<Gap>,
+) {
+    for (value, root) in values.iter_mut().zip(&result.fields) {
+        let mut path = parent.to_vec();
+        path.push(value.name.clone());
+        let subject = field_subject(&path);
+        attach_field(
+            value,
+            root,
+            FieldEvidence {
+                paths: &result.paths,
+                points: &result.scoped_destinations,
+                facts,
+                numeric,
+            },
+            &subject,
+            gaps,
+        );
+        if let FieldMembers::Fields(children) = &mut value.members
+            && let Some(collection) = result
+                .collections
+                .iter()
+                .find(|collection| collection.token == root.token)
+        {
+            fields_at_path(children, &collection.fields, facts, numeric, &path, gaps);
+        }
+    }
+}
+
+fn field_subject(path: &[String]) -> GapSubject {
+    if path.len() == 1 {
+        GapSubject::field(&path[0])
+    } else {
+        GapSubject::key_path(path.to_vec())
+    }
+}
+
+fn attach_field(
+    value: &mut Field,
+    root: &RootField,
+    evidence: FieldEvidence<'_>,
+    subject: &GapSubject,
+    gaps: &mut Vec<Gap>,
+) {
+    for join in &root.readers {
+        if let ReaderJoin::Joined {
+            callee, arguments, ..
+        } = join
+            && callee == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+            && !matches!(
+                arguments.get("x3"),
+                Some(crate::engine::analysis::fields::Value::Owner(_))
+            )
+        {
+            gap(
+                gaps,
+                GapKind::UnresolvedStorage,
+                subject,
+                "Assignment source-location provenance is not established.",
+            );
+        }
+    }
+    let point = joined_point(&root.readers, evidence.points);
+    attach(
+        &mut value.reader,
+        point,
+        evidence.facts,
+        evidence.numeric,
+        subject,
+        gaps,
+    );
+    for (alternative, (_, outcome)) in value
+        .read
+        .iter_mut()
+        .zip(super::fields::read_alternatives(root, evidence.paths))
+    {
+        if let (FieldReadOutcome::Read { reader, .. }, PathOutcome::Reader(join)) =
+            (&mut alternative.outcome, outcome)
+        {
+            attach(
+                reader,
+                readers::destination(&join)
+                    .and_then(|offset| evidence.points.get(&offset).copied()),
+                evidence.facts,
+                evidence.numeric,
+                subject,
+                gaps,
+            );
+        }
+    }
+}
+
+fn joined_point(joins: &[ReaderJoin], points: &BTreeMap<i64, u64>) -> Option<u64> {
+    let mut selected = None;
+    for join in joins {
+        let point = readers::destination(join).and_then(|offset| points.get(&offset).copied())?;
+        if selected.is_some_and(|previous| previous != point) {
+            return None;
+        }
+        selected = Some(point);
+    }
+    selected
+}
+
+pub(super) fn grammar(
+    value: &mut CommandGrammar,
+    result: &GrammarResult,
+    facts: &Facts,
+    numeric: &NumericFacts,
+    name: &str,
+    gaps: &mut Vec<Gap>,
+) {
+    let subject = GapSubject::answer_item(name);
+    if value.reader.kind == ReaderKind::ScopedNumeric {
+        attach(
+            &mut value.reader,
+            result.scoped_destinations.get(&0).copied(),
+            facts,
+            numeric,
+            &subject,
+            gaps,
+        );
+    }
+    if let GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) = &mut value.fixed_keys {
+        grammar_fields(keys, result, facts, numeric, &[], gaps);
+    }
+    if let (GrammarProperty::Known(forms) | GrammarProperty::Partial(forms), Some(internal)) =
+        (&mut value.forms, &result.forms)
+    {
+        for (form, alternative) in forms
+            .iter_mut()
+            .filter_map(|form| match form {
+                CommandForm::Value(value) => Some(value),
+                _ => None,
+            })
+            .zip(
+                internal
+                    .alternatives
+                    .iter()
+                    .filter(|alternative| alternative.accepted),
+            )
+        {
+            let point = alternative
+                .value
+                .destination
+                .and_then(|offset| result.scoped_destinations.get(&(offset as i64)).copied());
+            attach(&mut form.reader, point, facts, numeric, &subject, gaps);
+        }
+    }
+    if let (
+        GrammarProperty::Known(Some(child)) | GrammarProperty::Partial(Some(child)),
+        Some(internal),
+    ) = (&mut value.numeric_keys, &result.numeric)
+    {
+        grammar(child, internal, facts, numeric, name, gaps);
+    }
+}
+
+fn grammar_fields(
+    values: &mut [Field],
+    result: &GrammarResult,
+    facts: &Facts,
+    numeric: &NumericFacts,
+    parent: &[String],
+    gaps: &mut Vec<Gap>,
+) {
+    for (value, root) in values.iter_mut().zip(&result.fields.fields) {
+        let mut path = parent.to_vec();
+        path.push(value.name.clone());
+        let subject = field_subject(&path);
+        attach_field(
+            value,
+            root,
+            FieldEvidence {
+                paths: &result.fields.paths,
+                points: &result.scoped_destinations,
+                facts,
+                numeric,
+            },
+            &subject,
+            gaps,
+        );
+        if let FieldMembers::Fields(children) = &mut value.members
+            && let Some(child) = result.nested.get(&value.name)
+        {
+            grammar_fields(children, child, facts, numeric, &path, gaps);
+        }
+    }
+}
+
+fn attach(
+    reader: &mut Reader,
+    point: Option<u64>,
+    facts: &Facts,
+    numeric: &NumericFacts,
+    subject: &GapSubject,
+    gaps: &mut Vec<Gap>,
+) {
+    if reader.kind != ReaderKind::ScopedNumeric {
+        return;
+    }
+    let Some(point) = point else {
+        gap(
+            gaps,
+            GapKind::UnresolvedStorage,
+            subject,
+            "Scoped destination vtable is not established.",
+        );
+        return;
+    };
+    let Some(Ok(subtype)) = facts.subtypes.get(&point) else {
+        gap(
+            gaps,
+            GapKind::UnresolvedStorage,
+            subject,
+            "Scoped destination subtype is not established.",
+        );
+        return;
+    };
+    let literal = match subtype {
+        Subtype::Base => false,
+        Subtype::Numeric {
+            token_reader,
+            literal,
+        } => {
+            let Some(conversion) = numeric.token_readers.get(token_reader) else {
+                gap(
+                    gaps,
+                    GapKind::NumericConversion,
+                    subject,
+                    "Scoped literal token conversion is not established.",
+                );
+                return;
+            };
+            reader.numeric = conversion.conversion.clone();
+            if !conversion.gaps.is_empty() {
+                gap(
+                    gaps,
+                    GapKind::NumericConversion,
+                    subject,
+                    "Scoped literal conversion boundaries and overflow are incomplete.",
+                );
+            }
+            if facts
+                .shared
+                .selection
+                .as_ref()
+                .is_ok_and(|layout| *literal != layout.literal)
+            {
+                gap(
+                    gaps,
+                    GapKind::UnresolvedStorage,
+                    subject,
+                    "Scoped literal offset disagrees with GetValue.",
+                );
+                return;
+            }
+            true
+        }
+    };
+    if !literal {
+        reader.numeric = GrammarProperty::Known(None);
+    }
+    let forms = match &facts.shared.forms {
+        Ok(forms) => {
+            let mut values = Vec::new();
+            if literal {
+                values.push(ScopedOperandForm::Literal);
+            }
+            for (prefix, kind) in forms.prefixes.iter().zip([
+                ScopedReferenceKind::Trigger,
+                ScopedReferenceKind::Modifier,
+                ScopedReferenceKind::ScriptValue,
+            ]) {
+                values.push(ScopedOperandForm::Prefixed {
+                    kind,
+                    prefix: format!("{prefix}{}", forms.separator),
+                });
+            }
+            values.push(ScopedOperandForm::Variable);
+            GrammarProperty::Partial(values)
+        }
+        Err(_) => {
+            gap(
+                gaps,
+                GapKind::ReaderSemantics,
+                subject,
+                "Scoped operand forms are not established.",
+            );
+            GrammarProperty::Unresolved
+        }
+    };
+    let preservation = match facts.shared.literal_preserves_references {
+        Ok(value) if literal => GrammarProperty::Known(value),
+        Ok(_) => GrammarProperty::Known(false),
+        Err(_) => {
+            gap(
+                gaps,
+                GapKind::ReaderSemantics,
+                subject,
+                "Scoped literal assignment behavior is not established.",
+            );
+            GrammarProperty::Unresolved
+        }
+    };
+    let selection = match &facts.shared.selection {
+        Ok(_) if literal => GrammarProperty::Known(ScopedOperandSelection {
+            literal_condition: ScopedLiteralCondition::EmptySourceLocation,
+            reference_priority: vec![
+                ScopedReferenceKind::Trigger,
+                ScopedReferenceKind::ScriptValue,
+                ScopedReferenceKind::Modifier,
+                ScopedReferenceKind::Variable,
+            ],
+        }),
+        _ => {
+            gap(
+                gaps,
+                GapKind::ReaderSemantics,
+                subject,
+                "Scoped representation selection is not established.",
+            );
+            GrammarProperty::Unresolved
+        }
+    };
+    reader.scoped_operand = GrammarProperty::Known(Some(ScopedOperand {
+        forms,
+        literal_assignment_preserves_reference_state: preservation,
+        selection,
+    }));
+    gap(
+        gaps,
+        GapKind::OutsideMethod,
+        subject,
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method.",
+    );
+}
+
+fn gap(gaps: &mut Vec<Gap>, kind: GapKind, subject: &GapSubject, detail: &str) {
+    let gap = Gap {
+        kind,
+        subject: Some(subject.clone()),
+        detail: detail.into(),
+    };
+    if !gaps.contains(&gap) {
+        gaps.push(gap);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::NumericConversion;
+    use crate::engine::analysis::{
+        numeric::NumericReader,
+        scoped_numeric::{Forms, Layout, Shared},
+        stop::Unresolved,
+    };
+
+    fn reader() -> Reader {
+        Reader {
+            numeric: GrammarProperty::Unresolved,
+            scoped_operand: GrammarProperty::Unresolved,
+            id: Some(crate::ReaderId::from_callee(
+                "CVariableValue::Read(CReader&, EScopeType)",
+            )),
+            kind: ReaderKind::ScopedNumeric,
+            family: crate::BlockFamily::NotApplicable,
+        }
+    }
+
+    fn facts(subtype: Subtype) -> Facts {
+        Facts {
+            shared: Shared {
+                forms: Ok(Forms {
+                    prefixes: ["trigger".into(), "modifier".into(), "value".into()],
+                    separator: ":".into(),
+                }),
+                literal_preserves_references: Ok(true),
+                selection: Ok(Layout {
+                    literal: 0x200,
+                    location: 0x1d8,
+                    trigger: 0x1a0,
+                    script_value: 0x1a8,
+                    modifier: 0x198,
+                    modifier_unset: 0x7fffffff,
+                    variable: 0x1b0,
+                }),
+            },
+            subtypes: [(0x8000, Ok(subtype))].into(),
+        }
+    }
+
+    #[test]
+    fn attached_literal_is_conditional_and_preserves_its_shared_identity() {
+        let mut reader = reader();
+        let numeric = NumericFacts {
+            token_readers: [(
+                "CToken::ReadValue(int&) const".into(),
+                NumericReader {
+                    conversion: GrammarProperty::Partial(Some(NumericConversion::default())),
+                    gaps: vec![Unresolved::new("numeric-overflow")],
+                },
+            )]
+            .into(),
+            ..NumericFacts::default()
+        };
+        let facts = facts(Subtype::Numeric {
+            token_reader: "CToken::ReadValue(int&) const".into(),
+            literal: 0x200,
+        });
+        let identity = reader.id.clone();
+        let mut gaps = Vec::new();
+        attach(
+            &mut reader,
+            Some(0x8000),
+            &facts,
+            &numeric,
+            &GapSubject::field("cost"),
+            &mut gaps,
+        );
+        assert_eq!(reader.id, identity);
+        let GrammarProperty::Known(Some(operand)) = reader.scoped_operand else {
+            panic!("missing operand");
+        };
+        assert_eq!(
+            operand.literal_assignment_preserves_reference_state,
+            GrammarProperty::Known(true)
+        );
+        assert!(
+            matches!(operand.forms, GrammarProperty::Partial(ref forms) if forms.contains(&ScopedOperandForm::Literal))
+        );
+        assert!(matches!(
+            operand.selection,
+            GrammarProperty::Known(ScopedOperandSelection {
+                literal_condition: ScopedLiteralCondition::EmptySourceLocation,
+                ..
+            })
+        ));
+        assert!(
+            gaps.iter()
+                .any(|gap| gap.kind == GapKind::NumericConversion)
+        );
+        assert!(!gaps.iter().any(|gap| gap.kind == GapKind::ReaderSemantics));
+    }
+
+    #[test]
+    fn missing_subtype_and_base_subtype_do_not_claim_literal_storage() {
+        let facts = facts(Subtype::Base);
+        let mut missing = reader();
+        let mut gaps = Vec::new();
+        attach(
+            &mut missing,
+            None,
+            &facts,
+            &NumericFacts::default(),
+            &GapSubject::field("cost"),
+            &mut gaps,
+        );
+        assert_eq!(missing.scoped_operand, GrammarProperty::Unresolved);
+        assert!(
+            gaps.iter()
+                .any(|gap| gap.kind == GapKind::UnresolvedStorage)
+        );
+
+        let mut base = reader();
+        let mut gaps = Vec::new();
+        attach(
+            &mut base,
+            Some(0x8000),
+            &facts,
+            &NumericFacts::default(),
+            &GapSubject::field("cost"),
+            &mut gaps,
+        );
+        assert_eq!(base.numeric, GrammarProperty::Known(None));
+        let GrammarProperty::Known(Some(operand)) = base.scoped_operand else {
+            panic!("missing base operand");
+        };
+        assert_eq!(operand.selection, GrammarProperty::Unresolved);
+        assert!(gaps.iter().any(|gap| gap.kind == GapKind::ReaderSemantics));
+        assert!(
+            matches!(operand.forms, GrammarProperty::Partial(ref forms) if !forms.contains(&ScopedOperandForm::Literal))
+        );
+    }
+}

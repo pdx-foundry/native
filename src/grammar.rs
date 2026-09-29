@@ -37,6 +37,8 @@ pub struct CommandGrammar {
 }
 
 /// An accepted value alternative or a block whose children have their own properties.
+// Keep the public command value inline with the existing normalized answer structure.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum CommandForm {
@@ -117,6 +119,8 @@ pub enum ChildOrderCondition {
 }
 
 /// A proven destination of a conditional child-routing path.
+// Keep the public Reader inline with other normalized grammar fields.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ChildOrderOutcome {
     /// The key is handled by this field reader.

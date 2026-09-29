@@ -30,10 +30,11 @@ The original reader-kind baseline on the exact M45 executable in [targets](targe
 | `common/tradition_categories` | 0 | 0 | 0 | 1 | 0 | 2 | 4 | 7 | 4 |
 | `common/council_agendas` | 0 | 2 | 0 | 0 | 1 | 6 | 1 | 10 | 0 |
 
-The agenda cost uses `CVariableValue` and intentionally remains unknown: its scoped-expression
-grammar is not a plain integer or fixed-point read. Unknown and missing readers have field-specific
-typed gaps. Every answer remains partial because nested grammar and runtime semantics are outside
-this bounded method.
+This table is the baseline before SDK-645. `agenda_cost` now reports `ScopedNumeric` with an
+integer literal representation and partial operand forms. The reader remains shared across
+integer and fixed-point destinations; the constructor vtable point selects concrete storage.
+See [scoped numeric](scoped-numeric.md). Other unknown and missing readers retain field-specific
+typed gaps.
 
 ## Numeric properties
 

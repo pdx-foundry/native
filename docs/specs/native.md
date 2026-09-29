@@ -164,6 +164,12 @@ for contexts and scope types.
   nonnumeric reader; unresolved or partial properties must not be completed from storage limits
   or finite fixture observations. Caller post-processing is outside the shared conversion.
   Older recorded readers default this property to unresolved.
+- `ReaderKind::ScopedNumeric` identifies a shared reader whose destination can store an integer
+  or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
+  storage. `Reader.scoped_operand` reports partial routing forms, successful literal preservation
+  of prior reference state, and representation selection conditional on an empty source location.
+  These properties do not claim a successful lookup or an evaluated number. Older recordings
+  default the scoped operand property to unresolved.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.

@@ -21,6 +21,8 @@ pub struct NumericFacts {
     pub modifier_entry: Result<ModifierNumericEntry, Unresolved>,
     /// Every bound numeric reader, including unsuccessful analyses.
     pub readers: BTreeMap<String, NumericReader>,
+    /// Token conversions used directly by constructed scoped numeric subtypes.
+    pub token_readers: BTreeMap<String, NumericReader>,
 }
 
 /// Independent facts and the remaining analysis obstructions for one shared reader.
@@ -36,6 +38,13 @@ pub struct NumericReader {
 pub(crate) struct NumericInput {
     pub modifier: ModifierInput,
     pub readers: BTreeMap<String, ReaderInput>,
+    pub token_readers: BTreeMap<String, TokenInput>,
+}
+
+pub(crate) struct TokenInput {
+    pub body: Vec<Instruction>,
+    pub names: BTreeMap<u64, String>,
+    pub token_text_offset: u64,
 }
 
 pub(crate) struct ReaderInput {
@@ -56,6 +65,11 @@ pub(crate) fn analyze(input: &NumericInput) -> NumericFacts {
     NumericFacts {
         modifier_entry: modifier::analyze(&input.modifier, &readers),
         readers,
+        token_readers: input
+            .token_readers
+            .iter()
+            .map(|(name, token)| (name.clone(), analyze_token(token)))
+            .collect(),
     }
 }
 
@@ -63,8 +77,26 @@ impl Default for NumericFacts {
     fn default() -> Self {
         Self {
             readers: BTreeMap::new(),
+            token_readers: BTreeMap::new(),
             modifier_entry: Err(Unresolved::new("modifier-numeric-not-analyzed")),
         }
+    }
+}
+
+fn analyze_token(input: &TokenInput) -> NumericReader {
+    let Some(conversion) = token_conversion(&input.body, &input.names, input.token_text_offset)
+    else {
+        return unresolved("numeric-token-shape");
+    };
+
+    NumericReader {
+        conversion: GrammarProperty::Partial(Some(conversion)),
+        gaps: vec![
+            Unresolved::new("numeric-overflow"),
+            Unresolved::new("numeric-lexical-boundary"),
+            Unresolved::new("numeric-trailing-text"),
+            Unresolved::new("numeric-external-library-conversion"),
+        ],
     }
 }
 

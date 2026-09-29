@@ -266,7 +266,32 @@ pub(crate) struct FixtureNestedField {
 pub(crate) enum FixtureStorageDecoder {
     String,
     Integer,
+    FixedPoint {
+        scale: u64,
+    },
+    ScopedNumeric {
+        literal: ScopedLiteralDecoder,
+        layout: ScopedStorageLayout,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) enum ScopedLiteralDecoder {
+    Integer,
     FixedPoint { scale: u64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ScopedStorageLayout {
+    pub literal: u64,
+    pub location: u64,
+    pub trigger: u64,
+    pub script_value: u64,
+    pub modifier: u64,
+    pub modifier_unset: u64,
+    pub variable: u64,
 }
 
 impl FixtureStorageDecoder {
@@ -275,6 +300,7 @@ impl FixtureStorageDecoder {
             Self::String => crate::ReaderKind::String,
             Self::Integer => crate::ReaderKind::Integer,
             Self::FixedPoint { .. } => crate::ReaderKind::FixedPoint,
+            Self::ScopedNumeric { .. } => crate::ReaderKind::ScopedNumeric,
         }
     }
 
@@ -284,6 +310,18 @@ impl FixtureStorageDecoder {
             | (Self::Integer, crate::FixtureValue::Integer(_)) => true,
             (Self::FixedPoint { scale }, crate::FixtureValue::FixedPoint { scale: actual, .. }) => {
                 scale > 0 && scale == *actual
+            }
+            (Self::ScopedNumeric { literal, .. }, crate::FixtureValue::ScopedNumeric(value)) => {
+                match (literal, &value.literal) {
+                    (ScopedLiteralDecoder::Integer, crate::ScopedNumericLiteral::Integer(_)) => {
+                        true
+                    }
+                    (
+                        ScopedLiteralDecoder::FixedPoint { scale },
+                        crate::ScopedNumericLiteral::FixedPoint { scale: actual, .. },
+                    ) => scale > 0 && scale == *actual,
+                    _ => false,
+                }
             }
             _ => false,
         }

@@ -7,6 +7,12 @@ use crate::{
 
 /// Attach conversion facts and return whether numeric behavior remains incomplete.
 pub(super) fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> bool {
+    reader.scoped_operand =
+        if matches!(reader.kind, ReaderKind::Unknown | ReaderKind::ScopedNumeric) {
+            GrammarProperty::Unresolved
+        } else {
+            GrammarProperty::Known(None)
+        };
     if let Some(fact) = facts.readers.iter().find_map(|(callee, fact)| {
         (reader.id.as_ref() == Some(&ReaderId::from_callee(callee))).then_some(fact)
     }) {
@@ -165,12 +171,14 @@ mod tests {
             kind: ReaderKind::Integer,
             family: crate::BlockFamily::NotApplicable,
             numeric: GrammarProperty::Unresolved,
+            scoped_operand: crate::GrammarProperty::Unresolved,
         };
         let conversion = GrammarProperty::Partial(Some(NumericConversion {
             width_bits: GrammarProperty::Known(32),
             ..NumericConversion::default()
         }));
         let facts = NumericFacts {
+            token_readers: Default::default(),
             modifier_entry: Err(Unresolved::new("modifier-numeric-not-analyzed")),
             readers: [(
                 callee.into(),
@@ -243,15 +251,30 @@ mod tests {
         );
     }
     #[test]
+    fn unknown_reader_keeps_scoped_operand_unresolved() {
+        let mut reader = Reader {
+            id: None,
+            kind: ReaderKind::Unknown,
+            family: crate::BlockFamily::Unknown,
+            numeric: GrammarProperty::Unresolved,
+            scoped_operand: GrammarProperty::Unresolved,
+        };
+        attach_reader_facts(&mut reader, &NumericFacts::default());
+        assert_eq!(reader.scoped_operand, GrammarProperty::Unresolved);
+    }
+
+    #[test]
     fn a_modifier_block_does_not_inherit_the_numeric_entry_conversion() {
         let mut block = Reader {
             id: Some(ReaderId::from_callee("modifier-block")),
             kind: ReaderKind::Block,
             family: crate::BlockFamily::Modifier,
             numeric: GrammarProperty::Unresolved,
+            scoped_operand: crate::GrammarProperty::Unresolved,
         };
         let callee = "CReader::Read(CFixedPoint&)";
         let facts = NumericFacts {
+            token_readers: Default::default(),
             readers: [(
                 callee.into(),
                 NumericReader {
@@ -277,12 +300,14 @@ mod tests {
             kind: ReaderKind::Integer,
             family: crate::BlockFamily::NotApplicable,
             numeric: GrammarProperty::Unresolved,
+            scoped_operand: crate::GrammarProperty::Unresolved,
         };
         let block = Reader {
             id: None,
             kind: ReaderKind::Block,
             family: crate::BlockFamily::Effect,
             numeric: GrammarProperty::Unresolved,
+            scoped_operand: crate::GrammarProperty::Unresolved,
         };
         let parent = CommandGrammar {
             reader: block,

@@ -76,6 +76,7 @@ pub(in crate::binding) fn read(
     let numeric_decoder = super::declarations::unique(symbols, recipe.numeric_key_reader)?;
     let command_bindings = command_bindings(symbols, &tokens, recipe, kind)?;
     let mut form_input = crate::engine::analysis::grammar::forms::Input {
+        reader_value_token_offset: Some(recipe.reader_value_token_offset),
         token_text_offset: recipe.token_text_offset,
         target_size: recipe.event_target_size,
         string_size: recipe.string_object_size,

@@ -1,0 +1,685 @@
+sub sp,sp,#0x1e0
+stp xr0,xr1,[sp,#0x180]
+stp xr2,xr3,[sp,#0x190]
+stp xr4,xr5,[sp,#0x1a0]
+stp xr6,xr7,[sp,#0x1b0]
+stp xr8,xr9,[sp,#0x1c0]
+stp x29,x30,[sp,#0x1d0]
+add x29,sp,#0x1d0
+mov xr8,x2
+mov xr7,x1
+mov xr9,x0
+adrp x1,PAGE
+add x1,x1,G = ":"
+add x0,sp,#0x20
+bl CALL = CString::CString(char const*)
+add x1,sp,#0x20
+mov x0,xr7
+mov w2,#0x0
+bl CALL = CString::Find(CString const&, int) const
+mov xr6,x0
+ldrsb wr10,[sp,#0x37]
+tbnz wr10,#0x1f,@+34
+tbnz wr6,#0x1f,@+40
+sub xr10,x29,#0x80
+mov x0,xr7
+mov w1,#0x0
+mov x2,xr6
+bl CALL = CString::GetSubstring(int, int) const
+mov x0,xr7
+bl CALL = CString::GetSize() const
+mov x2,x0
+add w1,wr6,#0x1
+sub xr10,x29,#0xa8
+mov x0,xr7
+bl CALL = CString::GetSubstring(int, int) const
+ldursb wr10,[x29,#-0x69]
+tbnz wr10,#0x1f,@+28
+ldur xr10,[x29,#-0x80]
+mov xr11,#0x7274
+movk xr11,#0x6769,lsl#16
+movk xr11,#0x6567,lsl#32
+movk xr11,#0x72,lsl#48
+cmp xr10,xr11
+b.eq @+55
+ldur xr10,[x29,#-0x80]
+mov xr11,#0x6f6d
+movk xr11,#0x6964,lsl#16
+movk xr11,#0x6966,lsl#32
+movk xr11,#0x7265,lsl#48
+eor xr10,xr10,xr11
+ldurb wr11,[x29,#-0x78]
+orr xr10,xr10,xr11
+cbz xr10,@+139
+sub xr7,x29,#0x80
+b @+21
+add xr10,sp,#0x20
+add x0,xr10,#0x18
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+tbz wr6,#0x1f,@-38
+mov wr9,#0x0
+b @+471
+ldur xr7,[x29,#-0x80]
+adrp x1,PAGE
+add x1,x1,G = "trigger"
+mov x0,xr7
+bl CALL = _strcmp
+cbz w0,@+29
+adrp x1,PAGE
+add x1,x1,G = "modifier"
+mov x0,xr7
+bl CALL = _strcmp
+cbz w0,@+117
+adrp x1,PAGE
+add x1,x1,G = "value"
+mov x0,xr7
+bl CALL = _strcmp
+cbz w0,@+147
+mov wr9,#0x0
+ldursb wr10,[x29,#-0x91]
+tbz wr10,#0x1f,@+450
+sub xr10,x29,#0xa8
+add x0,xr10,#0x18
+ldur x1,[x29,#-0xa8]
+ldur xr10,[x29,#-0x98]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldursb wr10,[x29,#-0x69]
+tbz wr10,#0x1f,@+444
+sub xr10,x29,#0x80
+add x0,xr10,#0x18
+ldur x1,[x29,#-0x80]
+ldur xr10,[x29,#-0x70]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @+437
+ldursb wr10,[x29,#-0x91]
+ldur xr11,[x29,#-0xa8]
+cmp wr10,#0x0
+sub xr10,x29,#0xa8
+csel x0,xr11,xr10,lt
+bl CALL = CStaticLexer::FindTok(char const*)
+mov x1,x0
+adrp xr10,PAGE
+add xr10,xr10,G = CTriggerDatabase::_pTriggerDatabase
+ldr x0,[xr10]
+add xr7,xr9,#0x1d8
+sub x2,x29,#0xa8
+mov x3,xr7
+bl CALL = CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(int, CString const&, CString const&) const
+str x0,[xr9,#{trigger}]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0xa0]
+blr xr10
+cbz w0,@+11
+ldr x0,[xr9,#0x1a0]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0xb0]
+blr xr10
+tbnz w0,#0,@+26
+ldr x0,[xr9,#0x1a0]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0xa8]
+blr xr10
+tbnz w0,#0,@+21
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x0,sp,#0x20
+mov w2,#0x78
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldursb wr10,[x29,#-0x91]
+ldur xr11,[x29,#-0xa8]
+cmp wr10,#0x0
+sub xr10,x29,#0xa8
+csel xr10,xr11,xr10,lt
+ldrsb wr12,[xr9,#0x1ef]
+mov xr11,xr7
+tbz wr12,#0x1f,@+2
+ldr xr11,[xr7]
+stp xr10,xr11,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Trigger %s cannot be used in this context at %s"
+add x0,sp,#0x20
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldr x0,[xr9,#0x1a0]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0x88]
+mov x1,xr8
+blr xr10
+tbnz w0,#0,@+377
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x0,sp,#0xe8
+mov w2,#0x7e
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldursb wr10,[x29,#-0x91]
+ldur xr11,[x29,#-0xa8]
+cmp wr10,#0x0
+sub xr10,x29,#0xa8
+csel xr6,xr11,xr10,lt
+ldrsb wr10,[xr9,#0x1ef]
+tbz wr10,#0x1f,@+2
+ldr xr7,[xr7]
+add xr9,sp,#0x20
+add xr10,sp,#0x20
+mov x0,xr8
+mov w1,#0x0
+bl CALL = NEventScope::GetScopeName(EScopeType, bool)
+ldrsb wr10,[sp,#0x37]
+ldr xr11,[sp,#0x20]
+cmp wr10,#0x0
+csel xr10,xr11,xr9,lt
+stp xr7,xr10,[sp,#0x8]
+str xr6,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Trigger %s used in wrong scope at %s, got %s"
+add x0,sp,#0xe8
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+346
+add xr10,sp,#0x20
+add x0,xr10,#0x18
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @+339
+ldursb wr10,[x29,#-0x91]
+ldur xr11,[x29,#-0xa8]
+cmp wr10,#0x0
+sub xr10,x29,#0xa8
+csel x0,xr11,xr10,lt
+bl CALL = CStaticLexer::FindTok(char const*)
+bl CALL = CModifier::GetTypeFromToken(int)
+str w0,[xr9,#{modifier}]
+mov wr10,#{modifier_unset}
+cmp w0,wr10
+b.ne @+328
+adrp xr7,PAGE
+ldr xr10,[xr7,G] = CPostInitVariableValueDatabase::_pInstance
+cbnz xr10,@+9
+mov w0,#0x18
+bl CALL = operator new(unsigned long)
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxArray<CPostInitVariableValue*, int>
+add xr10,xr10,#0x10
+stp xzr,xzr,[x0,#0x8]
+str xr10,[x0]
+str x0,[xr7,#0x760]
+mov w0,#0x58
+bl CALL = operator new(unsigned long)
+mov xr8,x0
+add x2,xr9,#0x1d8
+sub x1,x29,#0xa8
+mov x3,xr9
+bl CALL = CPostInitVariableValue::CPostInitVariableValue(CString const&, CString const&, CVariableValue*)
+str xr8,[sp,#0x20]
+ldr x0,[xr7,G] = CPostInitVariableValueDatabase::_pInstance
+ldr w1,[x0,#0x14]
+add x2,sp,#0x20
+bl CALL = CPostInitVariableValue*& CPdxArray<CPostInitVariableValue*, int>::InsertAtEmplace<CPostInitVariableValue*&>(int, CPostInitVariableValue*&)
+b @+304
+adrp x1,PAGE
+add x1,x1,G = "|"
+add x0,sp,#0x20
+bl CALL = CString::CString(char const*)
+sub x0,x29,#0xa8
+add x1,sp,#0x20
+mov w2,#0x0
+bl CALL = CString::Find(CString const&, int) const
+mov xr7,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0x20
+add x0,xr10,#0x18
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+cmp wr7,#0x1
+b.lt @+267
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxArray<std::__1::pair<CString, CString>, int>
+add xr10,xr10,#0x10
+stp xzr,xzr,[x29,#-0xb8]
+stur xr10,[x29,#-0xc0]
+add xr10,sp,#0xe8
+sub x0,x29,#0xa8
+mov w1,#0x0
+mov x2,xr7
+bl CALL = CString::GetSubstring(int, int) const
+sub x0,x29,#0xa8
+bl CALL = CString::GetSize() const
+mov x2,x0
+add w1,wr7,#0x1
+add xr10,sp,#0xc0
+sub x0,x29,#0xa8
+bl CALL = CString::GetSubstring(int, int) const
+adrp x1,PAGE
+add x1,x1,G = "|"
+add x0,sp,#0x20
+bl CALL = CString::CString(char const*)
+add x0,sp,#0xc0
+add x1,sp,#0x20
+mov w2,#0x0
+bl CALL = CString::Find(CString const&, int) const
+mov xr0,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0x20
+add x0,xr10,#0x18
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+cmp wr0,#0x1
+b.lt @+164
+add xr10,sp,#0x20
+add xr5,xr10,#0x18
+add xr4,xr10,#0x40
+add xr10,sp,#0x70
+add xr6,xr10,#0x18
+add xr2,xr9,#0x1d8
+add xr10,sp,#0x98
+adrp xr3,PAGE
+add xr3,xr3,G = "|"
+add xr7,xr10,#0x18
+adrp xr1,PAGE
+add xr1,xr1,G = "Uneven number of parameters input into script value %s at %s"
+b @+9
+stp xr10,xr11,[sp]
+add x0,sp,#0x20
+mov x1,xr1
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr10,[sp,#0xaf]
+tbnz wr10,#0x1f,@+111
+cmp wr0,#0x0
+b.le @+143
+add x0,sp,#0xc0
+bl CALL = CString::GetSize() const
+cmp wr0,w0
+b.ge @+139
+add xr10,sp,#0x98
+add x0,sp,#0xc0
+mov w1,#0x0
+mov x2,xr0
+bl CALL = CString::GetSubstring(int, int) const
+add x0,sp,#0xc0
+bl CALL = CString::GetSize() const
+mov x2,x0
+add w1,wr0,#0x1
+add xr10,sp,#0x20
+add x0,sp,#0xc0
+bl CALL = CString::GetSubstring(int, int) const
+add x0,sp,#0xc0
+add x1,sp,#0x20
+bl CALL = std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__move_assign(std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>&, std::__1::integral_constant<bool, false>)
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+6
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr5
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+add x0,sp,#0x20
+mov x1,xr3
+bl CALL = CString::CString(char const*)
+add x0,sp,#0xc0
+add x1,sp,#0x20
+mov w2,#0x0
+bl CALL = CString::Find(CString const&, int) const
+mov xr0,x0
+ldrsb wr10,[sp,#0x37]
+tbnz wr10,#0x1f,@+50
+cmp wr0,#0x0
+b.le @+55
+add xr10,sp,#0x70
+add x0,sp,#0xc0
+mov w1,#0x0
+mov x2,xr0
+bl CALL = CString::GetSubstring(int, int) const
+add x0,sp,#0x20
+add x1,sp,#0x98
+add x2,sp,#0x70
+bl CALL = std::__1::pair<CString, CString>::pair[abi:v160006]<CString&, CString&, (void*)0>(CString&)
+ldur w1,[x29,#-0xac]
+sub x0,x29,#0xc0
+add x2,sp,#0x20
+bl CALL = std::__1::pair<CString, CString>& CPdxArray<std::__1::pair<CString, CString>, int>::InsertAtEmplace<std::__1::pair<CString, CString> >(int, std::__1::pair<CString, CString>&&)
+ldrsb wr10,[sp,#0x5f]
+tbnz wr10,#0x1f,@+64
+ldrsb wr10,[sp,#0x37]
+tbnz wr10,#0x1f,@+69
+add x0,sp,#0xc0
+bl CALL = CString::GetSize() const
+mov x2,x0
+add w1,wr0,#0x1
+add xr10,sp,#0x20
+add x0,sp,#0xc0
+bl CALL = CString::GetSubstring(int, int) const
+add x0,sp,#0xc0
+add x1,sp,#0x20
+bl CALL = std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__move_assign(std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>&, std::__1::integral_constant<bool, false>)
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+6
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr5
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+add x0,sp,#0x20
+mov x1,xr3
+bl CALL = CString::CString(char const*)
+add x0,sp,#0xc0
+add x1,sp,#0x20
+mov w2,#0x0
+bl CALL = CString::Find(CString const&, int) const
+mov xr0,x0
+ldrsb wr10,[sp,#0x37]
+tbnz wr10,#0x1f,@+48
+ldrsb wr10,[sp,#0x87]
+tbz wr10,#0x1f,@-87
+b @+52
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr5
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+cmp wr0,#0x0
+b.gt @-53
+add x0,sp,#0x20
+adrp x1,PAGE
+add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+mov w2,#0xa5
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldrsb wr10,[sp,#0xff]
+ldr xr11,[sp,#0xe8]
+cmp wr10,#0x0
+add xr10,sp,#0xe8
+csel xr10,xr11,xr10,lt
+ldrsb wr12,[xr9,#0x1ef]
+mov xr11,xr2
+tbz wr12,#0x1f,@-113
+ldr xr11,[xr2]
+b @-115
+ldr x1,[sp,#0x98]
+ldr xr10,[sp,#0xa8]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr7
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+cmp wr0,#0x0
+b.gt @-114
+b @+27
+ldr x1,[sp,#0x48]
+ldr xr10,[sp,#0x58]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr4
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@-67
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr5
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @-73
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr5
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0x87]
+tbz wr10,#0x1f,@-139
+ldr x1,[sp,#0x70]
+ldr xr10,[sp,#0x80]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr6
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @-145
+mov w0,#0xa8
+bl CALL = operator new(unsigned long)
+mov xr7,x0
+add x1,sp,#0xe8
+sub x2,x29,#0xc0
+mov x3,xr8
+bl CALL = CScriptableLookupValue::CScriptableLookupValue(CString const&, CPdxArray<std::__1::pair<CString, CString>, int> const&, EScopeType)
+str xr7,[xr9,#{script_value}]
+ldrsb wr10,[sp,#0xd7]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0xc0
+add x0,xr10,#0x18
+ldr x1,[sp,#0xc0]
+ldr xr10,[sp,#0xd0]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0xff]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0xe8
+add x0,xr10,#0x18
+ldr x1,[sp,#0xe8]
+ldr xr10,[sp,#0xf8]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxArray<std::__1::pair<CString, CString>, int>
+add xr10,xr10,#0x10
+stur xr10,[x29,#-0xc0]
+ldur wr11,[x29,#-0xac]
+cmp wr11,#0x1
+b.lt @+31
+mov xr8,#0x0
+add xr10,xr11,xr11,lsl#2
+lsl xr7,xr10,#0x4
+b @+11
+add x0,xr5,#0x40
+ldr x1,[xr5,#0x28]
+ldr xr10,[xr5,#0x38]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[xr5,#0x17]
+tbnz wr10,#0x1f,@+10
+add xr8,xr8,#0x50
+cmp xr7,xr8
+b.eq @+16
+ldur xr6,[x29,#-0xb8]
+add xr5,xr6,xr8
+ldrsb wr10,[xr5,#0x3f]
+tbnz wr10,#0x1f,@-13
+ldrsb wr10,[xr5,#0x17]
+tbz wr10,#0x1f,@-8
+add xr10,xr6,xr8
+add x0,xr10,#0x18
+ldr x1,[xr10]
+ldr xr10,[xr10,#0x10]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+add xr8,xr8,#0x50
+cmp xr7,xr8
+b.ne @-14
+ldur xr10,[x29,#-0xc0]
+stur wzr,[x29,#-0xac]
+ldr xr10,[xr10,#0x20]
+sub x0,x29,#0xc0
+blr xr10
+ldr xr7,[xr9,#0x1a8]
+b @+8
+mov w0,#0xa8
+bl CALL = operator new(unsigned long)
+mov xr7,x0
+sub x1,x29,#0xa8
+mov x2,xr8
+bl CALL = CScriptableLookupValue::CScriptableLookupValue(CString const&, EScopeType)
+str xr7,[xr9,#{script_value}]
+add xr10,xr9,#0x1d8
+ldrsb wr11,[xr9,#0x1ef]
+ldr xr12,[xr9,#0x1d8]
+cmp wr11,#0x0
+csel xr9,xr12,xr10,lt
+mov x0,xr9
+bl CALL = _strlen
+mov x2,x0
+add x0,xr7,#0x78
+mov x1,xr9
+bl CALL = std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)
+mov wr9,#0x1
+ldursb wr10,[x29,#-0x91]
+tbnz wr10,#0x1f,@-448
+ldursb wr10,[x29,#-0x69]
+tbnz wr10,#0x1f,@-442
+mov x0,xr9
+ldp x29,x30,[sp,#0x1d0]
+ldp xr8,xr9,[sp,#0x1c0]
+ldp xr6,xr7,[sp,#0x1b0]
+ldp xr4,xr5,[sp,#0x1a0]
+ldp xr2,xr3,[sp,#0x190]
+ldp xr0,xr1,[sp,#0x180]
+add sp,sp,#0x1e0
+ret
+mov xr9,x0
+mov x0,xr7
+bl CALL = operator delete(void*)
+b @+121
+bl CALL = ___clang_call_terminate
+mov xr9,x0
+mov x0,xr7
+bl CALL = operator delete(void*)
+b @+87
+mov xr9,x0
+b @+85
+mov xr9,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+82
+add x0,sp,#0x20
+bl CALL = CVariableValue::ReadTriggerModifierOrScriptValue(CString&, EScopeType) [clone .cold.2]
+b @+79
+mov xr9,x0
+b @+77
+mov xr9,x0
+b @+91
+mov xr9,x0
+mov x0,xr8
+bl CALL = operator delete(void*)
+b @+100
+mov xr9,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+97
+add x0,sp,#0x20
+bl CALL = CVariableValue::ReadTriggerModifierOrScriptValue(CString&, EScopeType) [clone .cold.3]
+b @+94
+b @+92
+mov xr9,x0
+b @+70
+b @+89
+mov xr9,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+87
+add x0,sp,#0x20
+bl CALL = CVariableValue::ReadTriggerModifierOrScriptValue(CString&, EScopeType) [clone .cold.1]
+b @+84
+b @+82
+b @+81
+b @+2
+b @+34
+mov xr9,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+32
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr5
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @+26
+mov xr9,x0
+add x0,sp,#0x20
+bl CALL = std::__1::pair<CString, CString>::~pair()
+b @+22
+b @+20
+b @+28
+b @+63
+b @+26
+b @+61
+b @+2
+b @+23
+mov xr9,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+21
+ldr x1,[sp,#0x20]
+ldr xr10,[sp,#0x30]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr5
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @+15
+mov xr9,x0
+b @+20
+mov xr9,x0
+b @+18
+mov xr9,x0
+ldrsb wr10,[sp,#0x87]
+tbz wr10,#0x1f,@+8
+ldr x1,[sp,#0x70]
+ldr xr10,[sp,#0x80]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr6
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @+2
+mov xr9,x0
+ldrsb wr10,[sp,#0xaf]
+tbz wr10,#0x1f,@+6
+ldr x1,[sp,#0x98]
+ldr xr10,[sp,#0xa8]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr7
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0xd7]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0xc0
+add x0,xr10,#0x18
+ldr x1,[sp,#0xc0]
+ldr xr10,[sp,#0xd0]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0xff]
+tbz wr10,#0x1f,@+7
+add xr10,sp,#0xe8
+add x0,xr10,#0x18
+ldr x1,[sp,#0xe8]
+ldr xr10,[sp,#0xf8]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+sub x0,x29,#0xc0
+bl CALL = CPdxArray<std::__1::pair<CString, CString>, int>::~CPdxArray()
+b @+11
+mov xr9,x0
+ldrsb wr10,[sp,#0x37]
+tbz wr10,#0x1f,@+24
+add x0,sp,#0x20
+bl CALL = CVariableValue::ReadTriggerModifierOrScriptValue(CString&, EScopeType) [clone .cold.4]
+mov x0,xr9
+bl CALL = __Unwind_Resume
+mov xr9,x0
+b @+10
+mov xr9,x0
+ldursb wr10,[x29,#-0x91]
+tbz wr10,#0x1f,@+7
+sub xr10,x29,#0xa8
+add x0,xr10,#0x18
+ldur x1,[x29,#-0xa8]
+ldur xr10,[x29,#-0x98]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldursb wr10,[x29,#-0x69]
+tbz wr10,#0x1f,@+7
+sub xr10,x29,#0x80
+add x0,xr10,#0x18
+ldur x1,[x29,#-0x80]
+ldur xr10,[x29,#-0x70]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr9
+bl CALL = __Unwind_Resume

@@ -64,6 +64,8 @@ pub enum FieldCondition {
 }
 
 /// A loader outcome; an unresolved path is never a successful unconditional read.
+// Keep the public Reader inline so recorded answers and field alternatives share its shape.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum FieldReadOutcome {

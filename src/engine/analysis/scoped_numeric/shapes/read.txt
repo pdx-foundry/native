@@ -1,0 +1,41 @@
+sub sp,sp,#0x60
+stp xr0,xr1,[sp,#0x30]
+stp xr2,xr3,[sp,#0x40]
+stp x29,x30,[sp,#0x50]
+add x29,sp,#0x50
+mov xr3,x2
+mov xr2,x0
+add xr1,x1,#{value_token}
+add xr4,sp,#0x8
+mov x0,x1
+bl CALL = CReader::GetFileLocationDescription() const
+add x3,sp,#0x8
+mov x0,xr2
+mov x1,xr1
+mov x2,xr3
+bl CALL = CVariableValue::Assign(CToken const&, EScopeType, CString const&)
+ldrsb wr4,[sp,#0x1f]
+tbnz wr4,#0x1f,@+6
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+add xr4,sp,#0x8
+add x0,xr4,#0x18
+ldr x1,[sp,#0x8]
+ldr xr4,[sp,#0x18]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+mov xr3,x0
+ldrsb wr4,[sp,#0x1f]
+tbz wr4,#0x1f,@+3
+add x0,sp,#0x8
+bl CALL = CVariableValue::Read(CReader&, EScopeType) [clone .cold.1]
+mov x0,xr3
+bl CALL = __Unwind_Resume

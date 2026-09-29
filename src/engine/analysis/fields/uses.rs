@@ -760,6 +760,7 @@ mod tests {
             class: "CChild".into(),
             fields: Box::new(RegistryFieldResult {
                 persistent: Default::default(),
+                scoped_destinations: Default::default(),
                 fields: vec![
                     member("inherit", 8, 0x10, "CReader::Read(bool&)"),
                     member("text", 9, 0x18, "CReader::Read(CString&, bool)"),
