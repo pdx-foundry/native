@@ -251,6 +251,11 @@ impl Game {
         let subject = input.recorded_subject(&self.script_history);
         let result = self
             .answer("check_script", Some(&subject), async |game| {
+                if game.paused.readiness != GameReadiness::PausedAfterContentLoad {
+                    return Err(Error::ScriptRequest {
+                        reason: "script checks require a confirmed content-loaded pause".into(),
+                    });
+                }
                 let (reply, receive) = oneshot::channel();
                 game.commands
                     .as_ref()
@@ -264,7 +269,12 @@ impl Game {
                 let result = receive.await;
                 cancellation.0 = None;
                 match result {
-                    Ok(answer) => answer,
+                    Ok(answer) => {
+                        if answer.is_ok() {
+                            game.script_history = subject.clone();
+                        }
+                        answer
+                    }
                     Err(_) => {
                         game.read_failed = true;
                         game.close().await?;
@@ -837,6 +847,7 @@ mod tests {
     #[tokio::test]
     async fn cancelling_a_check_future_ends_the_session_before_reuse() {
         let (mut game, commands, state) = game();
+        game.paused.readiness = GameReadiness::PausedAfterContentLoad;
         let input = crate::ScriptCheck {
             kind: crate::DeclarationKind::Trigger,
             scope: crate::ScopeId("scope".into()),
@@ -861,6 +872,85 @@ mod tests {
         ));
         state.send_modify(|state| state.finished = Some(Ok(finished())));
         assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
+    }
+
+    #[tokio::test]
+    async fn early_pauses_reject_checks_without_queuing_engine_work() {
+        let (mut game, commands, _) = game();
+        let input = crate::ScriptCheck {
+            kind: crate::DeclarationKind::Trigger,
+            scope: crate::ScopeId("scope".into()),
+            text: "always = yes".into(),
+        };
+        assert!(matches!(
+            game.check_script(&input).await,
+            Err(Error::ScriptRequest { .. })
+        ));
+        assert!(commands.try_recv().is_err());
+        assert!(game.script_history.is_empty());
+    }
+
+    #[tokio::test]
+    async fn recording_failure_preserves_completed_check_history() {
+        let (mut game, commands, state) = game();
+        game.paused.readiness = GameReadiness::PausedAfterContentLoad;
+        let root = tempfile::tempdir().unwrap();
+        let recording = root.path().join("recording");
+        std::fs::write(&recording, "block directory creation").unwrap();
+        game.backend = GameBackend::Live {
+            recorder: Some(Arc::new(recording.clone())),
+        };
+        let input = crate::ScriptCheck {
+            kind: crate::DeclarationKind::Trigger,
+            scope: crate::ScopeId("scope".into()),
+            text: "always = banana".into(),
+        };
+        let first = input.recorded_subject("");
+        let second = input.recorded_subject(&first);
+        let responder = std::thread::spawn(move || {
+            for check in 1..=2 {
+                let DriverCommand::CheckScript { reply, .. } = commands.recv().unwrap() else {
+                    panic!("expected check");
+                };
+                let observation = crate::ScriptObservation {
+                    check,
+                    read_returned: true,
+                    children: 1,
+                    diagnostics: vec![],
+                    foreign: vec![],
+                    unjoined: vec![],
+                    hooks_active: true,
+                    bound_reached: false,
+                };
+                reply
+                    .send(Ok(observation.answer(crate::BuildId("test".into()))))
+                    .unwrap();
+            }
+        });
+        assert!(matches!(
+            game.check_script(&input).await,
+            Err(Error::Recorded(_))
+        ));
+        assert_eq!(game.script_history, first);
+        std::fs::remove_file(&recording).unwrap();
+        assert_eq!(game.check_script(&input).await.unwrap().value.check, 2);
+        assert_eq!(game.script_history, second);
+        let recorded = crate::recorded::Answers::open(recording).unwrap();
+        assert!(matches!(
+            recorded.read::<crate::ScriptObservation>("check_script", Some(&first)),
+            Err(Error::NotRecorded { .. })
+        ));
+        assert_eq!(
+            recorded
+                .read::<crate::ScriptObservation>("check_script", Some(&second))
+                .unwrap()
+                .value
+                .check,
+            2
+        );
+        responder.join().unwrap();
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
+        game.close().await.unwrap();
     }
 
     fn finished() -> Finished {

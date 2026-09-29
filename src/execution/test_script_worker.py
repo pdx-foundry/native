@@ -23,6 +23,7 @@ while True:
     if request_path.exists() and active is None:
         active = json.loads(request_path.read_text())
         request_path.unlink()
+        Path('check-started').touch()
         assert active['scope'] == 1 << 40
         if mode == 'worker-loss':
             os._exit(1)

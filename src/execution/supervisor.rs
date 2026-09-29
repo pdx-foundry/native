@@ -379,6 +379,7 @@ fn observe_session(
 ) -> Result<SessionOutcome, SupervisorError> {
     let mut deadline = Instant::now() + session.startup;
     let mut answers = None;
+    let mut content_loaded = false;
     let mut checking = None;
     let mut checks_started = 0;
     loop {
@@ -468,6 +469,7 @@ fn observe_session(
                     fixture.as_ref(),
                     modifiers.as_ref(),
                 ));
+                content_loaded = readiness == crate::GameReadiness::PausedAfterContentLoad;
                 output.send(Reply::Paused {
                     readiness,
                     fixture: Box::new(fixture),
@@ -512,6 +514,15 @@ fn observe_session(
                     return Err(SupervisorError(
                         "script check requested outside an idle pause".into(),
                     ));
+                }
+                if !content_loaded {
+                    output.send(Reply::ScriptChecked {
+                        request,
+                        result: Err(crate::Error::ScriptRequest {
+                            reason: "script checks require a confirmed content-loaded pause".into(),
+                        }),
+                    })?;
+                    continue;
                 }
                 let check = checks_started + 1;
                 match observer.prepare_check(check, &input) {
@@ -725,7 +736,7 @@ mod tests {
                 registries: vec![registry.into()],
                 fixture: None,
                 category_fields: &[],
-                loaded_modifiers: None,
+                loaded_modifiers: worker.contains("SDK_CHECK_MODE").then_some(&[][..]),
                 build: crate::BuildId("unit".into()),
                 startup: Duration::from_secs(3),
                 idle,
@@ -856,6 +867,7 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
     #[test]
     fn script_checks_use_their_own_deadline_and_dispose_every_failed_session() {
         for (mode, count, delay, cancel) in [
+            ("early", 1, 0.0, false),
             ("normal", 30, 0.0, false),
             ("normal", 2, 4.2, false),
             ("stuck", 1, 0.0, false),
@@ -870,6 +882,11 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
                 serde_json::json!({"kind":"registry-end","name":"common/traditions","owner":"0x1000","count":0,"producerLastSequence":8}),
                 serde_json::json!({"kind":"session-paused","returned":["common/traditions"],"cause":"loaders-returned"}),
             ]);
+            if mode != "early" {
+                rows.pop();
+                rows.push(serde_json::json!({"kind":"modifier-documentation-entered"}));
+                rows.push(serde_json::json!({"kind":"session-paused","returned":["common/traditions"],"cause":"content-loaded"}));
+            }
             let worker = format!(
                 "SDK_CHECK_MODE={mode} SDK_CHECK_DELAY={delay} exec python3 - <<'PY'\n{}\nPY",
                 include_str!("test_script_worker.py")
@@ -885,7 +902,11 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
                         let next =
                             matches!(reply, Reply::Paused { .. } | Reply::ScriptChecked { .. });
                         if let Reply::ScriptChecked { result, .. } = &reply {
-                            assert!(result.is_ok(), "{mode}: {result:?}");
+                            if mode == "early" {
+                                assert!(matches!(result, Err(crate::Error::ScriptRequest { .. })));
+                            } else {
+                                assert!(result.is_ok(), "{mode}: {result:?}");
+                            }
                         }
                         if next && sent < count {
                             sent += 1;
@@ -922,7 +943,10 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
                 binding::process_identity(session.game_pid).is_err(),
                 "{mode}"
             );
-            if mode == "normal" {
+            if mode == "early" {
+                assert_eq!(session.report.outcome, SessionOutcome::Completed);
+                assert!(!session.output.path().join("check-started").exists());
+            } else if mode == "normal" {
                 assert_eq!(session.report.outcome, SessionOutcome::Completed);
                 assert_eq!(
                     session
