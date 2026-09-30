@@ -17,6 +17,33 @@ worker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(worker)
 
 
+class WorkerDiagnosticTests(unittest.TestCase):
+    def test_checkpoint_replacement_retains_latest_attempt_before_terminal(self):
+        from script_checks import WorkerDiagnostics
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)):
+            report = WorkerDiagnostics('unit', 9, worker.publish_diagnostics)
+            report.attempt_call('constructor')
+            report.complete_call()
+            report.attempt_call('read')
+            value = protocol.decode('worker_diagnostics', (Path(root) / 'worker-diagnostics.json').read_bytes())
+            self.assertEqual(value['last_attempted_call']['operation'], 'read')
+            self.assertEqual(value['last_completed_call']['operation'], 'constructor')
+            self.assertIsNone(value['failure'])
+            self.assertFalse((Path(root) / 'raw-trace.jsonl').exists())
+            self.assertFalse((Path(root) / 'worker-diagnostics.json.pending').exists())
+
+    def test_a_stale_partial_write_does_not_block_failure_publication(self):
+        from script_checks import WorkerDiagnostics
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)):
+            (Path(root) / 'worker-diagnostics.json.pending').write_bytes(b'{')
+            report = WorkerDiagnostics('unit', 9, worker.publish_diagnostics)
+            report.failure('allocation', 'original cause', debugger_error='actual error')
+            report.failure('cleanup', 'later error')
+            value = protocol.decode('worker_diagnostics', (Path(root) / 'worker-diagnostics.json').read_bytes())
+            self.assertEqual(value['failure']['reason'], 'original cause')
+            self.assertEqual(value['failure']['details']['debugger_error'], 'actual error')
+
+
 class ProbePauseTests(unittest.TestCase):
     def test_paused_session_disables_all_remaining_observation_hooks(self):
         hooks = {'fixture:failed': Mock(), 'registry:return': Mock(), 'modifiers': Mock()}

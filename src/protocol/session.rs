@@ -57,6 +57,8 @@ pub enum ObservationTarget {
     Modifiers,
     /// The requested world observation.
     World,
+    /// A command check at the loaded-content pause.
+    ScriptChecks,
 }
 
 impl SessionRequest {
@@ -131,6 +133,10 @@ impl SessionRequest {
                                     | ObservationControl::MissingHook
                                     | ObservationControl::AccessFailure
                             )
+                    }
+                    ObservationTarget::ScriptChecks => {
+                        self.loaded_modifiers.is_some()
+                            && fault.control == ObservationControl::AccessFailure
                     }
                     ObservationTarget::Modifiers => {
                         self.loaded_modifiers.is_some()
@@ -311,6 +317,7 @@ mod tests {
             ObservationTarget::Registry("common/unselected".into()),
             ObservationTarget::Fixture,
             ObservationTarget::Modifiers,
+            ObservationTarget::ScriptChecks,
         ] {
             for selected in [false, true] {
                 for control in controls {
@@ -337,6 +344,9 @@ mod tests {
                         }
                         ObservationTarget::Fixture => {
                             selected && control != ObservationControl::Normal
+                        }
+                        ObservationTarget::ScriptChecks => {
+                            selected && control == ObservationControl::AccessFailure
                         }
                         ObservationTarget::Modifiers => {
                             selected && control == ObservationControl::WorkerLoss

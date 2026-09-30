@@ -193,6 +193,7 @@ enum Case {
     ScriptArguments,
     ScriptAttribution,
     ScriptDeepNesting,
+    ScriptAccessFailure,
     Normal,
     InvalidSelection,
     OutsideCommon,
@@ -337,6 +338,10 @@ fn cases() -> Vec<(String, Case)> {
         ("script_arguments".to_owned(), Case::ScriptArguments),
         ("script_attribution".to_owned(), Case::ScriptAttribution),
         ("script_deep_nesting".to_owned(), Case::ScriptDeepNesting),
+        (
+            "script_access_failure".to_owned(),
+            Case::ScriptAccessFailure,
+        ),
         ("normal".to_owned(), Case::Normal),
         ("loaded_modifiers".to_owned(), Case::LoadedModifiers),
         (
@@ -750,6 +755,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::ScriptArguments => script_checks::arguments(native).await,
         Case::ScriptAttribution => script_checks::attribution(native).await,
         Case::ScriptDeepNesting => script_checks::deep_nesting(native).await,
+        Case::ScriptAccessFailure => script_checks::access_failure(native).await,
         Case::Normal => normal(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
@@ -2887,6 +2893,20 @@ fn remove_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Outcome {
     Ok(())
 }
 
+/// Read only the summaries created by this case, after its session has closed.
+fn diagnostic_summaries(
+    earlier: &BTreeSet<std::path::PathBuf>,
+) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+    let current = work_directories()?;
+    current
+        .difference(earlier)
+        .map(|work| {
+            let bytes = std::fs::read(work.join("session/run-summary.json"))?;
+            Ok(serde_json::from_slice(&bytes)?)
+        })
+        .collect()
+}
+
 /// Name each work directory that a failed case kept, with its run summary's outcome and last
 /// completed phase, or say that it has none.
 fn kept_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Vec<String> {
@@ -2907,11 +2927,12 @@ fn kept_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Vec<String> 
             };
 
             format!(
-                "kept {}; run summary {}: outcome {}, last completed phase {}",
+                "kept {}; run summary {}: outcome {}, last completed phase {}, reason {}",
                 work.display(),
                 path.display(),
                 summary["outcome"],
                 summary["timing"]["last_completed_phase"],
+                summary["worker_diagnostics"]["reason"],
             )
         })
         .collect()
@@ -2957,7 +2978,7 @@ fn failed_cases_keep_their_work_directories() -> Outcome {
 
     let expected = [
         format!(
-            "kept {}; run summary {}: outcome \"Completed\", last completed phase \"paused\"",
+            "kept {}; run summary {}: outcome \"Completed\", last completed phase \"paused\", reason null",
             summarized.display(),
             summary.display()
         ),

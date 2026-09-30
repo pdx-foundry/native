@@ -131,6 +131,7 @@ pub(super) async fn expiry(native: &Native) -> Outcome {
 }
 
 pub(super) async fn failure(native: &Native, control: Fault) -> Outcome {
+    let earlier = work_directories()?;
     match native
         .start_game(
             options()
@@ -152,6 +153,22 @@ pub(super) async fn failure(native: &Native, control: Fault) -> Outcome {
             if !reason.contains(expected) {
                 return Err(format!("world fault lost its cause: {reason}").into());
             }
+            let summaries = diagnostic_summaries(&earlier)?;
+            let summary = summaries.first().ok_or("world failure summary missing")?;
+            let diagnostics = &summary["worker_diagnostics"];
+            let compact = diagnostics["reason"]
+                .as_str()
+                .ok_or("world failure reason missing")?;
+            if control == Fault::WorkerLoss {
+                if !compact.contains("cause unavailable")
+                    || !diagnostics["context"]["failure"].is_null()
+                {
+                    return Err(format!("worker loss inferred a cause: {diagnostics}").into());
+                }
+            } else if !compact.contains(expected) || diagnostics["context"]["failure"].is_null() {
+                return Err(format!("world failure lost its reported cause: {diagnostics}").into());
+            }
+            println!("world failure: {compact}");
             Ok(())
         }
         Err(error) => Err(format!("world fault did not confirm disposal: {error:?}").into()),
