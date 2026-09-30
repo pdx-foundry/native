@@ -26,6 +26,31 @@ pub(crate) fn factory_state(
     input: &DeclarationInput,
     factory: u64,
 ) -> Result<FactoryState, Unresolved> {
+    let baseline = evaluate_factory(input, factory, false);
+    let entered = evaluate_factory(input, factory, true);
+    match (baseline, entered) {
+        (Ok(baseline), Ok(mut entered))
+            if baseline.vtable == entered.vtable
+                && baseline.bytes.iter().all(|(offset, byte)| {
+                    entered.bytes.get(offset).is_none_or(|value| value == byte)
+                }) =>
+        {
+            entered.bytes.extend(baseline.bytes);
+            Ok(entered)
+        }
+        (Ok(baseline), _) => Ok(baseline),
+        (Err(baseline), Err(_)) => Err(baseline),
+        (Err(_), entered) => entered,
+    }
+}
+
+// The summary-only evaluation is independent of entered bodies. An unconfined or incomplete
+// constructor chain contributes no new bytes, registers or control-flow facts to that baseline.
+fn evaluate_factory(
+    input: &DeclarationInput,
+    factory: u64,
+    enter_constructors: bool,
+) -> Result<FactoryState, Unresolved> {
     let entry = *input
         .pointers
         .get(&(factory + input.slots.create))
@@ -54,8 +79,41 @@ pub(crate) fn factory_state(
             decode(&input.functions[address]).map_err(|_| Unresolved::new("factory-code"))?,
         );
     }
+    let mut constructor_targets: Vec<_> = rows
+        .iter()
+        .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
+        .filter_map(|row| number(&row.operands))
+        .filter(|target| input.constructors.contains_key(target))
+        .collect();
+    let mut decoded = BTreeSet::new();
+    if !enter_constructors {
+        constructor_targets.clear();
+    }
+    while let Some(target) = constructor_targets.pop() {
+        if !decoded.insert(target) {
+            continue;
+        }
+        let Some(body) = input.functions.get(&target) else {
+            continue;
+        };
+        let Ok(body_rows) = decode(body) else {
+            continue;
+        };
+        constructor_targets.extend(
+            body_rows
+                .iter()
+                .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
+                .filter_map(|row| number(&row.operands))
+                .filter(|target| input.constructors.contains_key(target)),
+        );
+        rows.extend(body_rows);
+    }
     let code = Code::from_rows(rows);
-    let machine = Machine::new(&code, input.pointer_data());
+    let mut machine = Machine::new(&code, input.pointer_data());
+    if enter_constructors {
+        machine.intercept_tail_calls(input.constructors.keys().copied().collect());
+    }
+    let mut invalidates_caller_memory = false;
     let paths = machine.run_paths(entry, &mut |target, machine| {
         if target.is_some_and(|target| input.operator_new.contains(&target)) {
             let size = machine.known_register(0, "allocation-size")?;
@@ -68,7 +126,9 @@ pub(crate) fn factory_state(
             }
             return Ok(Call::Return(Some(object)));
         }
-        if let Some(vtables) = target.and_then(|target| input.constructors.get(&target)) {
+        if let Some((target, vtables)) =
+            target.and_then(|target| Some((target, input.constructors.get(&target)?)))
+        {
             let receiver = machine.register(0);
             let allocation = receiver.and_then(|receiver| {
                 machine.labels().iter().find_map(|(&at, &size)| {
@@ -82,8 +142,44 @@ pub(crate) fn factory_state(
                 .is_some_and(|((start, _), receiver)| receiver > start);
             if !vtables.is_empty() || member {
                 let receiver = machine.known_register(0, "constructor-receiver")?;
-                let (_, end) =
+                let (owner, end) =
                     allocation.ok_or(Unresolved::new("constructor-outside-allocation"))?;
+                if enter_constructors && !input.functions.contains_key(&target) {
+                    invalidates_caller_memory = true;
+                }
+                let state = if enter_constructors && input.functions.contains_key(&target) {
+                    let state = crate::engine::analysis::receivers::initial_state(
+                        &code,
+                        input.pointer_data(),
+                        &input.constructors,
+                        target,
+                        machine,
+                        owner,
+                        end,
+                    );
+                    invalidates_caller_memory |= state
+                        .as_ref()
+                        .is_none_or(|state| state.invalidates_caller_memory);
+                    state
+                } else {
+                    None
+                };
+                if let Some(state) = state {
+                    if state.invalidates_caller_memory {
+                        machine.forget_memory();
+                    }
+                    if let Some(bytes) = state.bytes {
+                        crate::engine::analysis::receivers::install_initial_state(
+                            machine, receiver, end, &bytes,
+                        );
+                        return Ok(Call::Return(state.returned));
+                    }
+                    crate::engine::analysis::receivers::install_vtables(
+                        machine, receiver, end, vtables,
+                    )
+                    .ok_or(Unresolved::new("constructor-vtable-bound"))?;
+                    return Ok(Call::Return(state.returned));
+                }
                 crate::engine::analysis::receivers::install_vtables(
                     machine, receiver, end, vtables,
                 )
@@ -104,6 +200,9 @@ pub(crate) fn factory_state(
         }
         Ok(Call::Return(None))
     });
+    if invalidates_caller_memory {
+        return Err(Unresolved::new("constructor-unconfined"));
+    }
     let mut vtables = BTreeSet::new();
     let mut bytes: Option<BTreeMap<u64, u8>> = None;
     for path in paths {

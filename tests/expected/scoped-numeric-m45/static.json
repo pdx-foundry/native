@@ -3,7 +3,7 @@
     "agenda_cost": {"kind":"ScopedNumeric","width":{"Known":32},"scale":{"Known":1},"operand":"proved"},
     "cycle_length_in_days": {"kind":"ScopedNumeric","width":{"Known":64},"scale":{"Known":100000},"operand":"proved"},
     "overclock_cooldown": {"kind":"ScopedNumeric","width":{"Known":32},"scale":{"Known":1},"operand":"proved"},
-    "pop_decline_rate": {"kind":"ScopedNumeric","width":null,"scale":null,"operand":"unresolved"},
+    "pop_decline_rate": {"kind":"ScopedNumeric","width":{"Known":64},"scale":{"Known":100000},"operand":"proved"},
     "add_trust.amount": {"kind":"ScopedNumeric","width":{"Known":64},"scale":{"Known":100000},"operand":"proved"}
   },
   "timed_flag": {

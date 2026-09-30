@@ -613,3 +613,86 @@ mod tests {
         assert_eq!(serde_json::Value::Object(actual), expected()["timed_flag"]);
     }
 }
+
+#[cfg(test)]
+mod constructor_parity {
+    use crate::{DeclarationKind, GrammarProperty, Native};
+
+    #[test]
+    #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
+    fn m45_constructor_initial_storage_parity() {
+        let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+        // These owner constructors call unconfined registration or token/string code.
+        for (command, keys) in [
+            ("country_event", vec!["days", "random"]),
+            ("ordered_active_first_contact", vec!["order_by"]),
+            (
+                "add_modifier",
+                vec!["mult", "multiplier", "time_multiplier"],
+            ),
+        ] {
+            let answer = native
+                .command_grammar(DeclarationKind::Effect, command)
+                .unwrap();
+            let (GrammarProperty::Known(fields) | GrammarProperty::Partial(fields)) =
+                answer.value.fixed_keys
+            else {
+                panic!("{command}: {:?}", answer.gaps);
+            };
+            for key in keys {
+                let field = fields.iter().find(|field| field.name == key).unwrap();
+                assert_eq!(field.reader.kind, crate::ReaderKind::ScopedNumeric);
+                assert_eq!(
+                    field.reader.numeric,
+                    GrammarProperty::Unresolved,
+                    "{command}.{key}"
+                );
+                assert_eq!(
+                    field.reader.scoped_operand,
+                    GrammarProperty::Unresolved,
+                    "{command}.{key}"
+                );
+                assert!(
+                    answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.kind == crate::GapKind::UnresolvedStorage)
+                );
+            }
+        }
+        let purges = native
+            .registry_fields("common/species_rights/purge_types")
+            .unwrap();
+        let field = purges
+            .value
+            .iter()
+            .find(|field| field.name == "pop_decline_rate")
+            .unwrap();
+        let GrammarProperty::Partial(Some(numeric)) = &field.reader.numeric else {
+            panic!("pop_decline_rate: {:?}", field.reader.numeric);
+        };
+        assert_eq!(numeric.width_bits, GrammarProperty::Known(64));
+        assert_eq!(numeric.scale, GrammarProperty::Known(Some(100000)));
+
+        for command in [
+            "set_timed_country_flag",
+            "add_modifier",
+            "add_stage_modifier",
+        ] {
+            let answer = native
+                .command_grammar(DeclarationKind::Effect, command)
+                .unwrap();
+            let (GrammarProperty::Known(groups) | GrammarProperty::Partial(groups)) =
+                answer.value.durations
+            else {
+                panic!("{command}: {:?}", answer.gaps);
+            };
+            assert_eq!(groups.len(), 1, "{command}");
+            assert_eq!(
+                groups[0].omitted_count,
+                GrammarProperty::Unresolved,
+                "{command}"
+            );
+        }
+    }
+}

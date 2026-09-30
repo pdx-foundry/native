@@ -185,3 +185,37 @@ have only `days`. Two commands and two registries have candidates whose reader c
 followed, so their lists stay partial. Registries have no group. The [duration keys](durations.md) page has the facts
 and the live parser observations. Run `cargo run --release --example duration-population` with
 `STELLARIS_PATH` to reproduce; `.local/sdk-646/duration-population.json` lists every group and gap.
+
+## Constructor state (SDK-654)
+
+The M451-hotfix population covers 164 registries and 2,170 commands, with no failed question.
+Reports on main (`2d930e4`) and the branch are in `.local/sdk-654/floor/`: `main-scoped.json`,
+`main-duration.json`, `now-scoped.json` and `now-duration.json`. `floor-comparison.json` checks
+all established reader and duration properties field by field and records **zero regressions**.
+`pre-review-comparison.json` lists every changed answer beside the retained SDK-654 reports.
+
+| Population | Main: complete / partial / failed | SDK-654 before review | Current |
+| --- | --- | --- | --- |
+| Seven scoped registry destinations | 0 / 6 / 1 | 0 / 7 / 0 | 0 / 7 / 0 |
+| 302 scoped command arguments | 0 / 133 / 169 | 0 / 301 / 1 | 0 / 133 / 169 |
+| 31 command duration groups | 0 / 31 / 0 | 27 / 4 / 0 | 0 / 31 / 0 |
+
+All 302 scoped arguments and all seven fields remain enumerated. Command readers are identical
+to main; six field readers are identical, and `pop_decline_rate` gains signed 64-bit storage at
+scale 100000. Registry storage is 2 integer and 5 fixed point; command storage is 98 integer,
+35 fixed point and 169 unresolved. Numeric conversion and outside-method limits affect all
+133 arguments and 7 fields with established storage. Repeat or nested-field limits affect all
+7 fields. The 169 arguments retain `UnresolvedStorage: Scoped destination vtable is not
+established.` The shared confinement and freshness obstacles, plus the atomic/guard shape,
+are recorded on [scoped numeric](scoped-numeric.md).
+
+All 31 omitted counts remain unresolved, as on main; the pre-review SDK-654 report established
+29. Twenty-seven flag groups retain outside-method expiry limits, and two modifier groups retain
+outside-method consumption limits. These 29 groups have omitted-count gaps. The two unmatched
+execute bodies prevent the combination proof and omitted counts independently of constructor
+bytes. The constructor additions do not close the parent criterion.
+
+Duration-list counts are 626 known, 515 partial and 1,029 unresolved, matching main and the
+pre-review report. No registry duration group was found. The independent compiler-summary
+baseline prevents unconfined entered bodies from removing existing facts; constructor additions
+require complete, confined evidence. Freshness and store disjointness remain unproved.

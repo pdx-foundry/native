@@ -306,6 +306,9 @@ pub struct ConcreteReader {
 pub struct PersistentInput {
     pub constructors: Vec<Function>,
     pub summaries: BTreeMap<u64, BTreeMap<u64, u64>>,
+    /// Called constructor bodies for initial embedded storage.
+    #[serde(default)]
+    pub constructor_bodies: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
     pub never_return: Vec<u64>,
     pub readers: BTreeMap<u64, ConcreteReader>,

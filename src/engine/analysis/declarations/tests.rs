@@ -874,3 +874,296 @@ fn an_outside_member_constructor_keeps_the_unknown_call_fallback() {
     input.constructors.insert(CONSTRUCTOR, BTreeMap::new());
     assert_eq!(factory_vtable(&input, FACTORY), Ok(VTABLE));
 }
+
+#[test]
+fn factory_initial_state_follows_nested_constructors_and_call_arguments() {
+    let mut input = initial_state_factory();
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(state.vtable, VTABLE);
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        Some(7)
+    );
+    let point = (0..8).fold(0_u64, |point, index| {
+        point | (u64::from(state.bytes[&(32 + index)]) << (index * 8))
+    });
+    assert_eq!(point, 0x35000);
+
+    // Missing member code establishes neither an embedded point nor a literal.
+    input.functions.remove(&0xd000);
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        None
+    );
+    assert!(!state.bytes.contains_key(&32));
+}
+
+#[test]
+fn factory_initial_state_rejects_changed_constructor_code_and_disagreed_literals() {
+    let mut input = initial_state_factory();
+    input.functions.get_mut(&0xd000).unwrap().code = arm64!(at 0xd000;
+        brk #0
+    );
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(state.vtable, VTABLE);
+    assert!(!state.bytes.contains_key(&64));
+
+    let mut input = initial_state_factory();
+    let mut body = Arm64::at(0xd000);
+    body.address(8, 0x35000);
+    arm64!(body;
+        str x8, [x0];
+        cbz w2, extern 0xd01c;
+        mov w1, #8;
+        str w1, [x0, #32];
+        ret;
+        str w1, [x0, #32];
+        ret
+    );
+    input.functions.insert(0xd000, function(body));
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert!(!state.bytes.contains_key(&64));
+    assert!(state.bytes.contains_key(&32));
+}
+
+fn initial_state_factory() -> DeclarationInput {
+    const OWNER_CONSTRUCTOR: u64 = 0xc000;
+    const OPERAND_CONSTRUCTOR: u64 = 0xd000;
+    let mut create = Arm64::at(CREATE);
+    create.prologue();
+    arm64!(create; mov w0, #128);
+    create.call(NEW);
+    arm64!(create; mov x19, x0);
+    create.call(OWNER_CONSTRUCTOR);
+    arm64!(create; mov x0, x19);
+    create.epilogue();
+    arm64!(create; ret);
+
+    let mut owner = Arm64::at(OWNER_CONSTRUCTOR);
+    owner.prologue();
+    arm64!(owner; mov x19, x0);
+    owner.address(8, VTABLE);
+    arm64!(owner; str x8, [x19]; add x0, x19, #32; mov w1, #7);
+    owner.call(OPERAND_CONSTRUCTOR);
+    arm64!(owner; mov x0, x19);
+    owner.epilogue();
+    arm64!(owner; ret);
+
+    let mut operand = Arm64::at(OPERAND_CONSTRUCTOR);
+    operand.address(8, 0x35000);
+    arm64!(operand; str x8, [x0]; str w1, [x0, #32]; ret);
+    let mut input = input(
+        vec![],
+        vec![function(create), function(owner), function(operand)],
+        composition(vec![], BTreeMap::new()),
+    );
+    input.pointers.insert(FACTORY + 0x10, CREATE);
+    input.constructors = BTreeMap::from([
+        (OWNER_CONSTRUCTOR, BTreeMap::from([(0, VTABLE)])),
+        (OPERAND_CONSTRUCTOR, BTreeMap::from([(0, 0x35000)])),
+    ]);
+    input
+}
+
+#[test]
+fn factory_initial_state_withdraws_earlier_new_operands_after_an_unmodeled_call() {
+    let mut input = initial_state_factory();
+    let mut owner = Arm64::at(0xc000);
+    owner.prologue();
+    arm64!(owner; mov x19, x0);
+    owner.address(8, VTABLE);
+    arm64!(owner; str x8, [x19]; add x0, x19, #32; mov w1, #7);
+    owner.call(0xd000);
+    arm64!(owner; mov w8, #9; str w8, [x19, #80]; add x0, x19, #80);
+    owner.call(0xe000);
+    arm64!(owner; mov x0, x19);
+    owner.epilogue();
+    arm64!(owner; ret);
+    input.functions.insert(0xc000, function(owner));
+    let mut later = Arm64::at(0xe000);
+    later.prologue();
+    arm64!(later; mov x19, x0; mov w0, #1);
+    later.call(0xf000); // unknown string lookup
+    arm64!(later; mov x0, x19);
+    later.epilogue();
+    arm64!(later; ret);
+    input.functions.insert(0xe000, function(later));
+    input.constructors.insert(0xe000, BTreeMap::new());
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        None
+    );
+    assert!(!state.bytes.contains_key(&80));
+
+    input.constructors.remove(&0xd000);
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert!(!state.bytes.contains_key(&32));
+    assert!(!state.bytes.contains_key(&64));
+}
+
+#[test]
+fn factory_tail_constructor_uses_the_same_initial_state_join_as_a_direct_call() {
+    let mut input = initial_state_factory();
+    let mut create = Arm64::at(CREATE);
+    create.prologue();
+    arm64!(create; mov w0, #128);
+    create.call(NEW);
+    create.epilogue();
+    arm64!(create; b extern 0xc000);
+    input.functions.insert(CREATE, function(create));
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(state.vtable, VTABLE);
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        Some(7)
+    );
+}
+
+#[test]
+fn factory_initial_value_requires_constructor_vtable_agreement() {
+    let mut input = initial_state_factory();
+    let mut operand = Arm64::at(0xd000);
+    operand.address(8, 0x35008); // conflicts with the bound constructor's address point
+    arm64!(operand; str x8, [x0]; str w1, [x0, #32]; ret);
+    input.functions.insert(0xd000, function(operand));
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        None
+    );
+}
+
+#[test]
+fn nested_constructor_stores_cannot_preserve_earlier_owner_bytes() {
+    for destination in ["earlier_member", "unknown", "earlier_member_as_stack"] {
+        let mut input = initial_state_factory();
+        let mut owner = Arm64::at(0xc000);
+        owner.prologue();
+        arm64!(owner; mov x19, x0);
+        owner.address(8, VTABLE);
+        arm64!(owner;
+            str x8, [x19];
+            mov w8, #7;
+            str w8, [x19, #64];
+            mov x1, x19;
+            add x0, x19, #80;
+            mov w2, #9
+        );
+        owner.call(0xd000);
+        arm64!(owner; mov x0, x19);
+        owner.epilogue();
+        arm64!(owner; ret);
+        input.functions.insert(0xc000, function(owner));
+        let mut nested = Arm64::at(0xd000);
+        nested.address(8, 0x35000);
+        arm64!(nested; str x8, [x0]);
+        match destination {
+            "unknown" => arm64!(nested; str w2, [x3]), // may reach any owner byte
+            "earlier_member_as_stack" => arm64!(nested; mov sp, x1; str w2, [x1, #64]),
+            _ => arm64!(nested; str w2, [x1, #64]), // preceding member through another argument
+        }
+        arm64!(nested; ret);
+        input.functions.insert(0xd000, function(nested));
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(state.vtable, VTABLE);
+        assert!(!state.bytes.contains_key(&64), "destination: {destination}");
+        assert!(!state.bytes.contains_key(&80));
+
+        let mut wrapper = Arm64::at(0xd000);
+        wrapper.prologue();
+        wrapper.call(0xe000);
+        arm64!(wrapper; brk #0); // loses the wrapper proof after an escaped child write
+        let mut nested = Arm64::at(0xe000);
+        match destination {
+            "unknown" => arm64!(nested; str w2, [x3]),
+            "earlier_member_as_stack" => arm64!(nested; mov sp, x1; str w2, [x1, #64]),
+            _ => arm64!(nested; str w2, [x1, #64]),
+        }
+        arm64!(nested; ret);
+        input.functions.insert(0xd000, function(wrapper));
+        input.functions.insert(0xe000, function(nested));
+        input.constructors.insert(0xe000, BTreeMap::new());
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert!(!state.bytes.contains_key(&64));
+    }
+}
+
+#[test]
+fn unconfined_constructor_evidence_cannot_erase_baseline_or_keep_new_members() {
+    for destination in [
+        "earlier_member",
+        "unknown",
+        "preexisting_pointer",
+        "stored_owner_pointer",
+        "owner_call_return",
+        "unsupported",
+    ] {
+        let mut input = initial_state_factory();
+        let mut create = Arm64::at(CREATE);
+        create.prologue();
+        arm64!(create; mov w0, #128);
+        create.call(NEW);
+        arm64!(create; mov x19, x0);
+        create.call(0xc000);
+        arm64!(create;
+            mov w8, #5;
+            str w8, [x19, #96]; // factory evidence that exists without entering any constructor
+            mov x1, x19;
+            add x0, x19, #112;
+            mov w2, #9
+        );
+        create.call(0xe000);
+        arm64!(create; mov x0, x19);
+        create.epilogue();
+        arm64!(create; ret);
+        input.functions.insert(CREATE, function(create));
+        let mut later = Arm64::at(0xe000);
+        match destination {
+            "earlier_member" => arm64!(later; str w2, [x1, #64]),
+            "unknown" => arm64!(later; str w2, [x3]),
+            "preexisting_pointer" => {
+                later.address(3, 0x80000);
+                arm64!(later; str w2, [x3]);
+            }
+            "stored_owner_pointer" => {
+                later.prologue();
+                arm64!(later; str x1, [sp]; ldr x3, [sp]; str w2, [x3, #64]);
+                later.epilogue();
+            }
+            "owner_call_return" => {
+                later.prologue();
+                arm64!(later; mov x0, x1);
+                later.call(0xf000); // an unmodeled call receives this and may return an alias
+                arm64!(later; mov w2, #9; str w2, [x0, #64]);
+                later.epilogue();
+                input.functions.insert(
+                    0xf000,
+                    Function {
+                        address: 0xf000,
+                        code: arm64!(at 0xf000; ret),
+                    },
+                );
+            }
+            _ => arm64!(later; brk #0),
+        }
+        arm64!(later; ret);
+        input.functions.insert(0xe000, function(later));
+        input
+            .constructors
+            .insert(0xe000, BTreeMap::from([(0, 0x36000)]));
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(state.vtable, VTABLE);
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 96),
+            Some(5)
+        );
+        assert!(!state.bytes.contains_key(&32), "destination: {destination}");
+        assert!(!state.bytes.contains_key(&64), "destination: {destination}");
+        let point = (0..8).fold(0_u64, |value, index| {
+            value | (u64::from(state.bytes[&(112 + index)]) << (index * 8))
+        });
+        assert_eq!(point, 0x36000);
+    }
+}

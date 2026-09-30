@@ -120,10 +120,33 @@ The registry run found no group. Two registries, `common/council_agendas` and th
 owner store before the reader call, so a group there is not ruled out.
 
 A group is complete only when its combination, every factor, its omitted count and its
-consumption are established. No group meets that on this build.
+consumption are established. Before the constructor repair, no group met that criterion in
+the M45-release result above.
 
 Reproduce with `cargo run --release --example duration-population` and `STELLARIS_PATH` set.
 The run takes about three minutes. The report is `.local/sdk-646/duration-population.json`.
+
+## Constructor result on M451-hotfix (SDK-654)
+
+The exact build is the M451-hotfix executable in [targets](targets.md). The constructor repair
+is shared with [scoped operands](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654).
+The constructor walk establishes **no omitted count among the 31 groups**. Compiler-summary
+state remains independent of entered bodies, so rejected constructor evidence does not erase
+established unit factors or combinations. The method withholds all constructor additions for an
+owner when an entered walk is unconfined or incomplete. The evaluator does not establish the
+freshness or owner derivation needed to prove external stores disjoint; the shared constructor
+obstacles are on [scoped numeric](scoped-numeric.md).
+
+The groups are **0 complete, 31 partial, 0 failed**, with no failed question. The 27 timed-flag
+groups retain their combination and flag-countdown proofs, with outside-method expiry limits.
+Two modifier groups retain outside-method consumption limits. Those 29 groups have omitted-count
+gaps. `add_timed_trait` and `set_timed_relation_flag` have no omitted count because their execute
+bodies are unmatched (`duration-execute-body`), independently of constructor bytes.
+
+Duration lists are **626 known, 515 partial and 1,029 unresolved**. Every group and established
+property matches the main population. Reports and the field-by-field comparison are in
+`.local/sdk-654/floor/`. These omitted-count gaps remain unmet parent criteria; only Jackson can
+amend them.
 
 ## Live parser observations
 
@@ -173,7 +196,8 @@ The observations separate storage from acceptance:
   with the static `FlagCountdown` reading was observed.
 - Consumption of scaled-at-read counts, including `time_multiplier`, and event delays.
 - The stack-temporary readers, `days`-only keys and the unclassified candidates.
-- Omitted counts where factory state lacks the initial bytes.
+- The two omitted counts gated by unmatched execute bodies on M451-hotfix, as described above.
+  The M45-release measurement remains historical; no new release-build result is claimed.
 
 ## Pitfalls
 
