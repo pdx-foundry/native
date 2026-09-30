@@ -26,7 +26,7 @@ cmp wr1,#0x1
 b.ge @+30
 b @+60
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 add x0,sp,#0x8
 mov w2,#0x2e
 mov w3,#0x1000
@@ -70,7 +70,7 @@ ldr xr4,[sp,#0x18]
 and x2,xr4,#0x7fffffffffffffff
 bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 add x0,sp,#0x8
 mov w2,#0x35
 mov w3,#0x1000

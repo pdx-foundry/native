@@ -113,6 +113,12 @@ pub(crate) struct Binding {
 }
 
 impl Binding {
+    pub(crate) fn has_world_method(&self) -> bool {
+        self.operation
+            .as_ref()
+            .is_some_and(|operation| operation.world.is_some() && operation.script_checks.is_some())
+    }
+
     pub(crate) fn has_script_check_method(&self) -> bool {
         self.operation
             .as_ref()
@@ -673,10 +679,30 @@ impl ExecutionPlan {
                         .map_err(crate::supervisor::SupervisorError)
                 })
                 .transpose()?,
+            world: request
+                .world
+                .as_ref()
+                .map(|input| -> Result<_, crate::supervisor::SupervisorError> {
+                    let binding = self
+                        .binding
+                        .operation
+                        .as_ref()
+                        .and_then(|operation| operation.world.clone())
+                        .ok_or_else(|| {
+                            crate::supervisor::SupervisorError(
+                                "ready world observation recipe is unavailable".into(),
+                            )
+                        })?;
+                    Ok(crate::protocol::world::WorldSetup {
+                        binding,
+                        input: input.clone(),
+                    })
+                })
+                .transpose()?,
             startup_seconds: request.startup_seconds,
             machine: &operation.machine,
             package: &operation.strategy.package,
-            script_checks: if request.loaded_modifiers.is_some() {
+            script_checks: if request.loaded_modifiers.is_some() || request.world.is_some() {
                 self.binding.script_check_binding()?
             } else {
                 None

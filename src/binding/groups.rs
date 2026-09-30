@@ -7,6 +7,12 @@ use super::targets::BindingGroupId;
 pub(super) fn fixture(
     groups: &[BindingGroupId],
 ) -> Option<crate::protocol::observation::FixtureBinding> {
+    if groups
+        .iter()
+        .any(|group| matches!(group, BindingGroupId::M451CategoryFixture))
+    {
+        return Some(m451_fixture());
+    }
     groups
         .iter()
         .any(|group| matches!(group, BindingGroupId::M45CategoryFixture))
@@ -57,6 +63,57 @@ pub(super) fn fixture(
                 },
             ],
         })
+}
+
+/// Fresh fixture pins for the exact 4.5.1 ARM64 slice.
+fn m451_fixture() -> crate::protocol::observation::FixtureBinding {
+    crate::protocol::observation::FixtureBinding {
+        registration_entry: 0x100456380,
+        load_entry: 0x100cda930,
+        field_entry: 0x100cd8604,
+        reader_lexer_offset: 0x30,
+        lexer_file_offset: 8,
+        file_name_offset: 0x20,
+        string_tag_offset: M45_TEMPLATE_LAYOUT.string_tag_offset,
+        file_line_offset: 8,
+        validation: Some(crate::protocol::observation::FixtureValidationBinding {
+            log_entry: 0x1025087e4,
+            log_text_register: "x4".into(),
+            unformatted_log_entry: 0x1025088b8,
+            stream_log_entry: 0x10212388c,
+            stream_log_text_register: "x1".into(),
+            sourced_log_entry: 0x101d2202c,
+            sourced_log_text_register: "x1".into(),
+            sourced_log_owner_register: "x0".into(),
+            sourced_log_source_offset: 0x28,
+            complete_entry: 0x100971a00,
+            source_file_prefix: "file: ".into(),
+            source_line_prefix: " line: ".into(),
+        }),
+        fields: [(16793, "tree_template"), (14263, "traditions")]
+            .into_iter()
+            .map(
+                |(token, name)| crate::protocol::observation::FixtureFieldBinding {
+                    token,
+                    name: name.into(),
+                },
+            )
+            .collect(),
+        outcome_registries: vec![
+            crate::protocol::observation::FixtureOutcomeRegistryBinding {
+                registry: "common/traditions".into(),
+                load_entry: 0x100ce2fe4,
+                reader_entry: 0x100ce42c4,
+                reader_return: 0x100ce3054,
+                constructor_entry: 0x100cdc0f8,
+                member_entry: 0x100cdc700,
+                malformed_entry: 0x1025b25c4,
+                unexpected_entry: 0x1025b234c,
+                fields: Vec::new(),
+                inline: None,
+            },
+        ],
+    }
 }
 
 // Exact M45 disassembly: each PostReadInit traverses +0x48 pointers / +0x54 count.

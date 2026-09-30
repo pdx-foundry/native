@@ -79,6 +79,14 @@ pub(super) async fn stored(native: &Native) -> Outcome {
                     text: text.clone(),
                 })
                 .await?;
+            if answer.source.build != native.build()
+                || answer.source.basis != Basis::LiveObservation
+            {
+                return Err(format!(
+                    "{name}: stored duration source differs from the opened build"
+                )
+                .into());
+            }
             let observation = &answer.value;
             // A receiver whose static inventory is partial gives a partial list with its reads.
             let (GrammarProperty::Known(stored) | GrammarProperty::Partial(stored)) =
@@ -135,7 +143,9 @@ fn check_report(native: &Native, report: &BTreeMap<String, serde_json::Value>) -
     let expected: serde_json::Value =
         serde_json::from_str(include_str!("../expected/duration-m45/live.json"))?;
 
-    if actual != expected {
+    // This fresh live run compares behavior with the retained 4.5.0 cases; each answer
+    // above was checked against the current build. The historical stamp stays unchanged.
+    if actual["cases"] != expected["cases"] {
         return Err(format!("stored durations differ; inspect {}", path.display()).into());
     }
 

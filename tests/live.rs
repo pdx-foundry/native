@@ -168,6 +168,12 @@ fn main() {
 }
 
 enum Case {
+    WorldExpiry,
+    WorldRejected,
+    WorldWrongCountry,
+    WorldReady,
+    WorldFailure(Fault),
+    WorldCancel,
     StoredDurations,
     ScriptArguments,
     ScriptAttribution,
@@ -295,6 +301,23 @@ enum FixtureOutcomeCase {
 
 fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
+        ("world_ready".to_owned(), Case::WorldReady),
+        ("world_expiry".to_owned(), Case::WorldExpiry),
+        ("world_rejected".to_owned(), Case::WorldRejected),
+        ("world_wrong_country".to_owned(), Case::WorldWrongCountry),
+        (
+            "world_missing_hook".to_owned(),
+            Case::WorldFailure(Fault::MissingHook),
+        ),
+        (
+            "world_worker_loss".to_owned(),
+            Case::WorldFailure(Fault::WorkerLoss),
+        ),
+        (
+            "world_access_failure".to_owned(),
+            Case::WorldFailure(Fault::AccessFailure),
+        ),
+        ("world_cancel".to_owned(), Case::WorldCancel),
         ("stored_durations".to_owned(), Case::StoredDurations),
         ("script_arguments".to_owned(), Case::ScriptArguments),
         ("script_attribution".to_owned(), Case::ScriptAttribution),
@@ -702,6 +725,12 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             ref commands,
             ref samples,
         } => fixture_argument(native, field, commands, samples).await,
+        Case::WorldExpiry => world::expiry(native).await,
+        Case::WorldRejected => world::rejected(native).await,
+        Case::WorldWrongCountry => world::wrong_country(native).await,
+        Case::WorldReady => world::ready(native).await,
+        Case::WorldFailure(control) => world::failure(native, control).await,
+        Case::WorldCancel => world::cancel(native).await,
         Case::StoredDurations => stored_durations::stored(native).await,
         Case::ScriptArguments => script_checks::arguments(native).await,
         Case::ScriptAttribution => script_checks::attribution(native).await,
@@ -3085,3 +3114,6 @@ async fn fixture_nested_numeric(control: Fault) -> Outcome {
     and_close(&mut result, &mut game).await;
     result
 }
+
+#[path = "live/world.rs"]
+mod world;

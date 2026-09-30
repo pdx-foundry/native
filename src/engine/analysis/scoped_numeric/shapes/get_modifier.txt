@@ -31,7 +31,7 @@ ldp xr0,xr1,[sp,#0x50]
 add sp,sp,#0x80
 ret
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 sub x0,x29,#0x30
 mov w2,#0xdf
 mov w3,#0x1000

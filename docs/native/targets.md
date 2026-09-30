@@ -7,6 +7,7 @@
 | M45-old | `408a5700a202837f16041bf14b5da34ff4a9d939b98e62a8240dc68dd602ddf7` | Native ARM64 macOS 26.6.2 / 25G83, Apple Silicon; older Cygnus 4.5 beta ready-world experiments |
 | M45-observe | `3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216` | ARM64 macOS, Cygnus 4.5.0 (1434); reference, early observation, Atlas discovery/grammar experiments |
 | M45-release | `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd` | ARM64 macOS, Cygnus v4.5.0 (8697), the full 4.5 release from Steam; the catalogued target since 2026-09-22 |
+| M451-hotfix | `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38` | ARM64 macOS, Cygnus v4.5.1; exact hotfix target added 2026-09-29 |
 | W45 | `bd86b8c8187bd23b793b6680cc979945e696f97c0a6aa89b5ca4199a5739535f` | Windows 11 Home 10.0.26200 x64, Cygnus 4.5.0 (9e73), Steam build 25085736 |
 | W446 | `bc451c72d9654c8901f1bb0bee1dd78d76f415465c2fbf746e9f98ade333173a` | Same Windows host, Pegasus 4.4.6 (fdde), public build 24109497; 46,418,552-byte AMD64 PE |
 
@@ -27,8 +28,8 @@ W45 uses a game-produced fixture hash `919df894628dcd1e21f636eb97eb8f20d9bb40b59
 ## Support and remaining gates
 
 Current support follows the target catalogue and Cargo tests, as specified by the
-[simplification decision](../design/simplification.md). Only M45-release is catalogued; it replaced
-M45-observe on 2026-09-22. Steam does not offer old open betas for download, so Native keeps
+[simplification decision](../design/simplification.md). M45-release and M451-hotfix are catalogued. M45-release replaced
+M45-observe on 2026-09-22; the hotfix was added on 2026-09-29. Steam does not offer old open betas for download, so Native keeps
 full-release targets only. Windows
 work is deferred under the [roadmap](../roadmap.md); the decisions below describe the historical
 experiments and do not admit another build or platform.
@@ -41,7 +42,8 @@ Mac remain outside the initial scope. A patch is not admitted automatically.
 SDK-445 is marked Done in Linear, but its text and result documents retain an open overall
 maintenance comparison. Do not derive economical maintenance from its status. SDK-557 is the
 deferred update rehearsal on a second distinct Apple Silicon executable. It replaces SDK-485, which
-was closed on 2026-09-24; the earlier Mac/Windows criterion is superseded. A second ARM64 target was not established in the retained records.
+was closed on 2026-09-24; the earlier Mac/Windows criterion is superseded. The retained SDK-476 records did not establish a second ARM64 target; the 4.5.1 port below
+is a separate current adaptation, not that frozen rehearsal.
 Partial wall intervals and run counts are not active human/agent labor measurements.
 
 Source: `sdk-testing` bundle, `sdk-testing/prototype/compatibility-harness/{apple-silicon,windows,windows-446}/`; Mac raw archive in `apple-silicon-baseline`; Windows raw archives in `linear-records/assets/3abce4f4-ee3d-4a66-bb4f-5ef058a2fb66` and `c7ff3152-650d-4148-bb86-a2b7ac72e306`. Local exported issue/comment records include SDK-476, SDK-485, SDK-445 and SDK-447–449. [Retrieval instructions](retrieval.md) explain nested archives.
@@ -61,3 +63,59 @@ release build.
 The live run also found a supervisor race that is not specific to the build. When the worker-loss
 fault kills the LLDB worker, Darwin can give `EPERM` for `kill` on the worker's process group while
 its only member is still exiting. Cleanup now waits for that exit within its one-second budget.
+
+## Port from M45-release to M451-hotfix (2026-09-29)
+
+The installed Stellaris 4.5.1 universal image is
+`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`; its ARM64 slice is
+`2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
+The catalogue keeps the 4.5.0 release and adds this exact hotfix identity. World bindings apply
+only to the hotfix: the 4.5.0 route had disassembly inspection but no successful live world check.
+Mixed image/slice
+identities remain unsupported. No version fallback or uniform address slide is used.
+
+Fresh symbol and disassembly inspection establishes separate fixture, script-check and world
+pins. The shared declaration layouts remain the M45 layouts. The special-project inline loader
+still calls the reader at `Init()+0x160`, reads its root at `+0x1d0`, and ends the file at `+0xa8`.
+The logger's formatted and unformatted virtual calls are now `0x1025087e4` and `0x1025088b8`;
+the scripted-trigger stream call is `0x10212388c`. The tradition reader return is
+`0x100ce3054`, immediately after its reader call. Trigger writes retain the `CAndTrigger`
+address point `0x103095ee8` and the child-array address point `0x103000458`.
+
+For SDK-650 world preparation, `CInGameIdler::UpdateInternal(bool)` is `0x10086de60`.
+The pause is at `+4`, after its first `sub sp, sp, #0xe0`. A pause at the entry carried
+a branch-type status bit that the debugger could not restore; one ordinary instruction
+clears that transient state. The full register check stays in force.
+The expected caller chain remains `CGameIdler::Idle(bool)`, then
+`CApplication::UpdateOneFrame(bool)`. `GetGameDateIfPossible()` is `0x100707da4` and reads
+`g_CurrentGameState` at `0x1032e9450`, readiness at `+0x98`, and date at `+0xb8`.
+The in-game idler global remains `0x1032e9438`; `JumpToNextDay` reads its pause byte at `+0x584`.
+`CHuman::AccessSelectedCountry` reads the selected country ID at `+0x54` and checks country IDs
+at `+0x20`. `SetCountry` writes scope type 4 at `+8`, ID at `+0x10`, and clears the cached
+object at `+0x1c`. The scope constructor still fits the allocated `0x180` bytes.
+Flag lookup uses 16-bit IDs at array `+0x10`, count `+0x1c`; signed counts use array `+0x40`
+and count `+0x4c`. These are static layout checks, not a live world result.
+
+Raw symbol tables, every pinned function's disassembly, vtable slots, the old-to-new address map,
+and the capture scripts are retained under `.local/sdk-650/hotfix/`. No game process was launched
+for this adaptation. The coordinator owns the live checks.
+
+Default `cargo test` passed: 702 library tests and all default integration and example checks.
+The current target-selection tests also pass after restricting world bindings to the hotfix.
+Static `cargo parity` passed 27 cases and failed four. The SDK-533 storage comparison rejects
+the old recorded build hash. Three recording comparisons report changed
+`fields-council_agendas.json`, `fields-megastructures.json`, and `command-grammars.json`.
+The actual method regression is unresolved scoped-number forms and selection for `agenda_cost`,
+`cycle_length_in_days`, `overclock_cooldown`, and related command operands. The command recording
+also carries the new build hash and additional gaps. Candidate recordings and structural diffs
+are retained under `.local/sdk-650/hotfix/`; tracked expectations were not changed.
+The shared scoped-number analysis needs further adaptation. This port does not establish full
+static parity or successful live world behavior.
+
+The shared scoped-body matcher was repaired for changed compiler source paths and relocated
+local ADR bases; its complete instruction checks remain. See [scoped numeric](scoped-numeric.md).
+Static parity compares full dynamic-namespace rows without assuming order from relocated store
+IDs, and checks current source stamps separately from the reviewed build's provenance.
+Historical SDK-533 storage remains applicable only to its exact 4.5.0 build. Fresh 4.5.1 live
+checks matched all 22 stored-duration cases and the script argument matrix. The
+[ready-world baseline, expiry matrix and failure controls](ready-world.md) passed on 4.5.1.

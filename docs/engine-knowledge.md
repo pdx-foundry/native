@@ -13,6 +13,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Subject | Page | What it holds |
 | --- | --- | --- |
 | Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, background launch, process disposal on macOS and Windows, debugger shutdown |
+| Load a world and observe prepared effects | [Ready-world observations](native/ready-world.md) | Private save loading, main-thread world pause, bounded daily updates and country flag expiry |
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | ARM64 loader-entry attachment, registration and field reads, where to read registry items |
 | The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
 | Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |

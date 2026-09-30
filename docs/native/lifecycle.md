@@ -1,5 +1,8 @@
 # Launch, isolation, process lifetime, and cleanup
 
+The current 4.5.1 route is in [ready-world observations](ready-world.md). The experiments below
+retain their original build limits.
+
 ## macOS ready-world operations
 
 On M45-old, final bridge-only isolation records 18 fresh profiles: ten normal runs, four interruptions and one recovery after each. Independent checks recorded 13,761 samples with zero visible game windows, active samples or foreground samples. Nine AppKit lookups were unavailable; independent window/focus samplers still supplied evidence. Sampling establishes these runs, not a continuous non-interference guarantee.

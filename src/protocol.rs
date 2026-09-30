@@ -9,6 +9,7 @@ pub(crate) mod hooks;
 pub(crate) mod observation;
 pub(crate) mod script_check;
 pub(crate) mod session;
+pub(crate) mod world;
 
 const VERSION: u32 = 9;
 /// A `Paused` reply holds the items of every observed registry, which the worker's stream
@@ -71,6 +72,7 @@ pub(crate) enum Reply {
     /// The game is held at its pause, with what the session established about each registry.
     Paused {
         readiness: crate::GameReadiness,
+        world: Box<Option<crate::Answer<crate::WorldObservation>>>,
         fixture: Box<Option<Result<crate::Answer<crate::FixtureObservation>, crate::Error>>>,
         modifiers: Box<
             Option<

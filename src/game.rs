@@ -35,6 +35,7 @@ pub struct GameOptions {
     pub(crate) fixture: Option<crate::FixtureRequest>,
     pub(crate) registries: Option<Vec<String>>,
     pub(crate) loaded_modifiers: bool,
+    pub(crate) world: Option<crate::WorldRequest>,
     pub(crate) keep_work_directory: bool,
 }
 impl GameOptions {
@@ -49,6 +50,7 @@ impl GameOptions {
             fixture: None,
             registries: None,
             loaded_modifiers: false,
+            world: None,
             keep_work_directory: false,
         }
     }
@@ -58,6 +60,14 @@ impl GameOptions {
     /// observed; one whose initial loader does not run before that point is not loaded.
     pub fn loaded_modifiers(mut self) -> Self {
         self.loaded_modifiers = true;
+        self
+    }
+    /// Load a copied save, execute the prepared country effect, and sample flags through
+    /// bounded engine days. The world is held on its normal main-thread update stack.
+    /// This selects a world pause and cannot share a fixture or loaded-modifier pause.
+    /// Read the result with `Game::observe_world`; calls return the same prepared observation.
+    pub fn world(mut self, request: crate::WorldRequest) -> Self {
+        self.world = Some(request);
         self
     }
     /// Prepare one fixed fixture before launch. Registry queries observe this mounted content.
@@ -128,6 +138,7 @@ pub(crate) struct Session {
 #[derive(Debug, Clone)]
 struct Paused {
     readiness: GameReadiness,
+    world: Option<crate::Answer<crate::WorldObservation>>,
     /// By internal registry name.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
@@ -151,6 +162,7 @@ struct State {
     finished: Option<Result<Finished, Error>>,
 }
 enum ReadQuestion {
+    World,
     Registry(String),
     Fixture,
     Modifiers,
@@ -188,7 +200,7 @@ enum GameBackend {
 }
 
 /// An owned process paused at registry initialization, or after content loads with
-/// `GameOptions::loaded_modifiers`; never a loaded world.
+/// `GameOptions::loaded_modifiers`, or in a loaded world with `GameOptions::world`.
 /// Drop requests cleanup. Await close for independently confirmed disposal.
 #[derive(Debug)]
 pub struct Game {
@@ -215,6 +227,29 @@ pub struct Game {
     modifiers: Option<Result<crate::Answer<crate::LoadedModifiers>, Error>>,
 }
 impl Game {
+    /// Return the fixed world observation prepared by `GameOptions::world`. This reads the
+    /// stored result and restarts the idle timeout; it executes nothing again.
+    pub async fn observe_world(&mut self) -> Result<crate::Answer<crate::WorldObservation>, Error> {
+        if self.closing || self.state.borrow().finished.is_some() {
+            return Err(Error::Closed);
+        }
+        let result = self
+            .answer("observe_world", None, async |game| {
+                let observation = game
+                    .paused
+                    .world
+                    .clone()
+                    .ok_or_else(|| Error::Unsupported {
+                        operation: crate::Operation::ObserveWorld,
+                        reason: "prepare a WorldRequest with GameOptions::world before start_game"
+                            .into(),
+                    })?;
+                game.restart_idle_time(ReadQuestion::World).await?;
+                Ok(observation)
+            })
+            .await;
+        self.keep_on_error(result)
+    }
     /// Read and validate one trigger or effect snippet at the loaded-content pause.
     ///
     /// Start with `GameOptions::loaded_modifiers` and use a scope from `Native::scopes`.
@@ -407,6 +442,7 @@ impl Game {
     ) -> Self {
         let paused = Paused {
             readiness: GameReadiness::PausedAfterRegistryInitialization,
+            world: None,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -539,9 +575,8 @@ impl Game {
             .map_err(|_| Error::Supervisor("Observation read acknowledgement lost".into()))?
     }
 
-    /// Where the game is paused: after its registries load, or after all content loads with
-    /// `GameOptions::loaded_modifiers`. No world is loaded; this does not advertise gameplay
-    /// readiness.
+    /// Where the game is paused: after selected registries, after content loads, or in a
+    /// loaded world after the prepared observation requested with `GameOptions::world`.
     pub fn readiness(&self) -> GameReadiness {
         self.paused.readiness
     }
@@ -997,6 +1032,7 @@ mod tests {
     fn game() -> (Game, mpsc::Receiver<DriverCommand>, watch::Sender<State>) {
         let paused = Paused {
             readiness: GameReadiness::PausedDuringRegistryInitialization,
+            world: None,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,

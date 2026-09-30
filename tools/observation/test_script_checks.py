@@ -175,6 +175,18 @@ class RegisterTests(unittest.TestCase):
         self.assertEqual(calls.stack, 0x100000 - 256)
         process.AllocateMemory.assert_not_called()
 
+    def test_invalid_allocation_address_cannot_be_written_despite_success_status(self):
+        from script_checks import EngineCalls
+        calls = EngineCalls.__new__(EngineCalls)
+        calls.process = Mock()
+        calls.process.AllocateMemory.return_value = (1 << 64) - 1
+        lldb = Mock(LLDB_INVALID_ADDRESS=(1 << 64) - 1,
+                    ePermissionsReadable=1, ePermissionsWritable=2)
+        lldb.SBError.return_value.Fail.return_value = False
+        with patch.dict(sys.modules, lldb=lldb), self.assertRaisesRegex(RuntimeError, 'allocation failed'):
+            calls.allocate(4)
+        calls.process.WriteMemory.assert_not_called()
+
     def test_changed_pause_registers_cannot_return_to_held(self):
         from script_checks import EngineCalls
         for name in ['pc', 'sp', 'fp', 'lr', 'v0']:

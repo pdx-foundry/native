@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 
 use super::decode::Instruction;
-use super::references::shapes::{Bindings, Shape, canonical};
+use super::references::shapes::{Bindings, Line, Shape, canonical};
 use super::stop::Unresolved;
 
 #[derive(Clone)]
@@ -143,9 +143,41 @@ fn matched(input: &Input, name: &str, shape: &str) -> Result<Bindings, Unresolve
         .bodies
         .get(name)
         .ok_or(Unresolved::new("scoped-body"))?;
-    Shape::parse(shape)
-        .matches(&canonical(body, &input.names))
-        .ok_or(Unresolved::new("scoped-body-shape"))
+    let lines = canonical_body(body, &input.names)?;
+    let bindings = Shape::parse(shape)
+        .matches(&lines)
+        .ok_or(Unresolved::new("scoped-body-shape"))?;
+    if let Some(source) = bindings.get("diagnostic_source")
+        && !(source.len() > 2 && source.starts_with('"') && source.ends_with('"'))
+    {
+        return Err(Unresolved::new("scoped-diagnostic-source"));
+    }
+    Ok(bindings)
+}
+
+/// Local jump-table bases retain their instruction position when the executable moves.
+fn canonical_body(
+    body: &[Instruction],
+    names: &BTreeMap<u64, String>,
+) -> Result<Vec<Line>, Unresolved> {
+    let mut lines = canonical(body, names);
+    for (index, (row, line)) in body.iter().zip(&mut lines).enumerate() {
+        if row.operation != "adr" {
+            continue;
+        }
+        let target = row
+            .operands
+            .split_once(",#0x")
+            .and_then(|(_, address)| u64::from_str_radix(address, 16).ok())
+            .and_then(|address| body.iter().position(|row| row.address == address))
+            .ok_or(Unresolved::new("scoped-local-address"))?;
+        let (destination, _) = line
+            .text
+            .split_once(',')
+            .ok_or(Unresolved::new("scoped-local-address"))?;
+        line.text = format!("{destination},@{:+}", target as i64 - index as i64);
+    }
+    Ok(lines)
 }
 
 fn offset(bindings: &Bindings, name: &str) -> Result<u64, Unresolved> {
@@ -289,6 +321,66 @@ mod tests {
 
     fn named_field<'a>(fields: &'a [crate::Field], name: &str) -> &'a crate::Field {
         fields.iter().find(|field| field.name == name).unwrap()
+    }
+
+    fn shape_input(body: Vec<Instruction>, names: BTreeMap<u64, String>) -> Input {
+        Input {
+            bodies: [("body".into(), body)].into(),
+            names,
+            points: BTreeMap::new(),
+            pointers: BTreeMap::new(),
+            value_token_offset: 0,
+            integer_value_path: (String::new(), String::new()),
+            fixed_point_value_path: (String::new(), String::new()),
+            reader_name: String::new(),
+            assign_name: String::new(),
+            prefix_name: String::new(),
+            variable_name: String::new(),
+            helper_names: [String::new(), String::new()],
+        }
+    }
+
+    #[test]
+    fn local_jump_bases_follow_relocation_but_require_the_same_instruction() {
+        let shape = "adr xr0,@+1\nret";
+        for address in [0x1000, 0x9000] {
+            let bytes = arm64!(at address;
+                adr x9, extern (address + 4) as usize;
+                ret
+            );
+            let mut input = shape_input(decode_arm64(&bytes, address).unwrap(), BTreeMap::new());
+            assert!(matched(&input, "body", shape).is_ok());
+            input.bodies.get_mut("body").unwrap()[0].operands = format!("x9,#{address:#x}");
+            assert!(matched(&input, "body", shape).is_err());
+            input.bodies.get_mut("body").unwrap()[0].operands = format!("x9,#{:#x}", address + 8);
+            assert!(matched(&input, "body", shape).is_err());
+        }
+    }
+
+    #[test]
+    fn diagnostic_source_is_captured_but_must_be_named_and_consistent() {
+        let bytes = arm64!(at 0x1000;
+            adrp x1, extern 0x8000;
+            add x1, x1, #0x10;
+            adrp x1, extern 0x8000;
+            add x1, x1, #0x20;
+            ret
+        );
+        let body = decode_arm64(&bytes, 0x1000).unwrap();
+        let shape = "adrp x1,PAGE\nadd x1,x1,G = {diagnostic_source}\nadrp x1,PAGE\nadd x1,x1,G = {diagnostic_source}\nret";
+        for source in ["\"/old-build/source.cpp\"", "\"/new-build/source.cpp\""] {
+            let mut input = shape_input(
+                body.clone(),
+                [(0x8010, source.into()), (0x8020, source.into())].into(),
+            );
+            assert!(matched(&input, "body", shape).is_ok());
+            input.names.insert(0x8020, "\"/other/source.cpp\"".into());
+            assert!(matched(&input, "body", shape).is_err());
+            input.names.clear();
+            assert!(matched(&input, "body", shape).is_err());
+            input.names = [(0x8010, "\"\"".into()), (0x8020, "\"\"".into())].into();
+            assert!(matched(&input, "body", shape).is_err());
+        }
     }
 
     #[test]

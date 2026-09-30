@@ -60,7 +60,8 @@ so `set_timed_*_flag` without a duration would set a permanent flag. This is a s
 The expiry date also depends on how often each owner's update runs. `UpdateFlags` is called from
 `CGameState::DailyUpdate` lambdas and from many owner `UpdateFlags` methods, and the method does
 not establish that frequency. [SDK-650](https://linear.app/unnamed-system/issue/SDK-650) owns the
-world route that runs a flag to expiry.
+world route that runs a flag to expiry. Its [4.5.1 country observations](ready-world.md)
+confirmed one countdown update per engine day for the five tested cases.
 
 ### Scaled at read
 
@@ -166,10 +167,10 @@ The observations separate storage from acceptance:
 
 ## Gaps
 
-- The expiry date: the update frequency of each flag owner and the day a flag is removed.
-  [SDK-650](https://linear.app/unnamed-system/issue/SDK-650) owns the world route and the retained
-  expiry cases: `months = 2 days = 3`, 1, 0, -1, and a product that overflows. SDK-646 stays open
-  until those run.
+- Update frequency outside the country flag store. The [SDK-650 live run](ready-world.md)
+  closed the country expiry gap on 4.5.1: mixed units produced 90 daily updates, one day expired
+  after one update, and zero, negative and overflowed counts remained through day 90. No conflict
+  with the static `FlagCountdown` reading was observed.
 - Consumption of scaled-at-read counts, including `time_multiplier`, and event delays.
 - The stack-temporary readers, `days`-only keys and the unclassified candidates.
 - Omitted counts where factory state lacks the initial bytes.

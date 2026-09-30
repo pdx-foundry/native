@@ -24,6 +24,7 @@ mod scoped_numeric;
 mod script;
 mod session;
 mod work_directory;
+mod world;
 
 pub mod supervisor;
 
@@ -75,6 +76,7 @@ pub use script::{
     StoredDuration,
 };
 pub use session::Native;
+pub use world::{WorldFlag, WorldObservation, WorldRequest, WorldSample};
 
 pub(crate) use api::UnavailableReason;
 pub(crate) use engine::analysis::AnalysisError;

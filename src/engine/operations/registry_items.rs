@@ -24,9 +24,11 @@ use super::event_stream::{OwnerEvent, PauseCause, WorkerEvent, WorkerRecord, sin
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-/// Where a game is paused. This is a point in initialization; no world is loaded.
+/// Where the supervised game is held.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameReadiness {
+    /// A loaded world is held on its main-thread update stack after a prepared observation.
+    PausedInWorld,
     /// Every observed registry returned from its initial loader; the game stays paused.
     PausedAfterRegistryInitialization,
     /// Only a part of the observed registries returned before the pause.
@@ -231,6 +233,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
             | WorkerEvent::HooksActiveBeforeResume { .. }
             | WorkerEvent::Resume { .. }
             | WorkerEvent::SessionPaused { .. }
+            | WorkerEvent::WorldObserved
             | WorkerEvent::WorkerFinished
             | WorkerEvent::WorkerLossReady => {}
         }
@@ -292,6 +295,9 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
 /// Why the loader of `name` was not observed, from what ended the session first.
 fn not_loaded_reason(name: &str, cause: PauseCause) -> String {
     match cause {
+        PauseCause::WorldReady => {
+            format!("the initial loader of {name} did not run before the world observation")
+        }
         PauseCause::Deadline => format!(
             "the initial loader of {name} did not run before the session's startup deadline stopped the game; the game had not reached it"
         ),
@@ -419,6 +425,18 @@ pub(crate) fn readiness(
     })
     .is_some_and(|entered| entered.thread == pause.thread && entered.seq < pause.seq);
     match cause {
+        PauseCause::WorldReady => {
+            let (thread, resumed) =
+                super::event_stream::activation(records, owner, &[crate::protocol::hooks::WORLD])?;
+            single(records, |event| matches!(event, WorkerEvent::WorldObserved))
+                .filter(|event| {
+                    event.thread == Some(thread)
+                        && pause.thread == Some(thread)
+                        && resumed < event.seq
+                        && event.seq < pause.seq
+                })
+                .map(|_| GameReadiness::PausedInWorld)
+        }
         PauseCause::ContentLoaded => {
             (loaded_modifiers && documented).then_some(GameReadiness::PausedAfterContentLoad)
         }
@@ -956,6 +974,55 @@ mod tests {
             returned: names.clone(),
         };
         assert_eq!(readiness(&records, &wrong_game, &names, false), None);
+    }
+
+    #[test]
+    fn world_readiness_requires_active_hook_and_one_ordered_observation_on_the_owned_thread() {
+        let (mut records, owner, names) = session(&["first"]);
+        let mut hooks = serde_json::to_value(&records[2]).unwrap()["hooks"].clone();
+        hooks[crate::protocol::hooks::WORLD] =
+            json!({"enabled":true,"locations":1,"resolved":1,"hits":0});
+        change(&mut records, 2, "hooks", hooks);
+        let pause = records.last_mut().unwrap();
+        pause.event = WorkerEvent::SessionPaused {
+            returned: names.clone(),
+            cause: PauseCause::WorldReady,
+        };
+        let observation = WorkerRecord {
+            event: WorkerEvent::WorldObserved,
+            seq: pause.seq,
+            thread: Some(7),
+            run: "unit".into(),
+        };
+        pause.seq += 1;
+        records.insert(records.len() - 1, observation.clone());
+        assert_eq!(
+            readiness(&records, &owner, &names, false),
+            Some(GameReadiness::PausedInWorld)
+        );
+        let observed = records.len() - 2;
+        for (field, value) in [
+            ("thread", json!(8)),
+            ("seq", json!(3)),
+            ("seq", json!(records.last().unwrap().seq)),
+        ] {
+            let mut invalid = records.clone();
+            change(&mut invalid, observed, field, value);
+            assert_eq!(readiness(&invalid, &owner, &names, false), None);
+        }
+        let mut missing_hook = records.clone();
+        let mut hooks = serde_json::to_value(&missing_hook[2]).unwrap()["hooks"].clone();
+        hooks
+            .as_object_mut()
+            .unwrap()
+            .remove(crate::protocol::hooks::WORLD);
+        change(&mut missing_hook, 2, "hooks", hooks);
+        assert_eq!(readiness(&missing_hook, &owner, &names, false), None);
+        let mut duplicate = records.clone();
+        duplicate.insert(observed, observation);
+        assert_eq!(readiness(&duplicate, &owner, &names, false), None);
+        records.remove(observed);
+        assert_eq!(readiness(&records, &owner, &names, false), None);
     }
 
     #[test]

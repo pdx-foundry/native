@@ -90,6 +90,9 @@ impl Native {
     }
 
     fn live_support(&self, binding: &Binding, operation: Operation) -> Support {
+        if operation == Operation::ObserveWorld && !binding.has_world_method() {
+            return Support::Unsupported("this build has no ready world observation recipe".into());
+        }
         if operation == Operation::CheckScript && !binding.has_script_check_method() {
             return Support::Unsupported("this build has no script-check recipe".into());
         }
@@ -126,7 +129,8 @@ impl Native {
             Operation::RegistryItems
             | Operation::ObserveFixture
             | Operation::LoadedModifiers
-            | Operation::CheckScript => match self.selected_blocking_reasons(binding) {
+            | Operation::CheckScript
+            | Operation::ObserveWorld => match self.selected_blocking_reasons(binding) {
                 reasons if reasons.is_empty() => Support::Supported,
                 reasons => Support::Unsupported(format!("{reasons:?}")),
             },
