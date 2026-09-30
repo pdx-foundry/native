@@ -176,13 +176,45 @@ Generate a candidate tree with the same questions and selections as the parity t
 
 ```sh
 cargo run --release --example expected -- --out /tmp/native-expected-candidate
-git diff --no-index -- tests/expected/m45 /tmp/native-expected-candidate
+cargo run --release --example expected -- --compare tests/expected/m45 /tmp/native-expected-candidate --build BUILD_ID
 ```
 
 `STELLARIS_PATH` must be set. The output directory must be new, its parent must exist, and it
 must be outside `tests/expected/`, including through symlinks. The command never overwrites a
 file. If generation fails, the output can be incomplete; use a new directory for the next run.
-`git diff --no-index` exits with status 1 when there are differences.
+The comparison is fully offline: it reads existing files and never opens the installation,
+extracts answers or launches a game. Pass the exact candidate build ID from `Native::build()` or
+the [target catalogue](targets.md), without JSON quotes. This supplied ID checks candidate stamps;
+it does not independently verify an executable. Exit status is 0 for passing parity, 1 for parity
+failures and 2 for invalid arguments, unreadable inputs, malformed JSON or malformed comparison
+shapes. Missing or extra static files fail parity.
+
+Reports identify the file and JSON pointer, with reviewed and candidate values (`<absent>` differs
+from `null`). `Answer` differences fail, including facts, roles, counts, duplicate rows,
+completeness and gaps. `Provenance` differences also fail, except for an explicitly permitted
+build change after the candidate stamp is checked. `Ordering` notices permit only moves of complete
+dynamic-namespace rows; duplicates and order inside each row remain checked. Other static files
+retain byte equality, so `Layout` differences fail even when parsed values match. `Historical`
+notices explicitly skip SDK-533 evidence on a different exact build. A skip establishes nothing
+about that build. Missing or invalid current stamps fail even if the two files are identical.
+
+Terminal output is limited to 80 lines of 240 characters. If any output is clipped or omitted,
+the final line gives the absolute path of a fresh complete report under `.local/parity/`. Open
+that file to inspect every difference and full value. Report-writing failures remain errors.
+The command never accepts candidates or overwrites inputs or tracked expectations. Parity tests
+use the same rules and bounded failure reports.
+
+Stored-duration behavior can be compared against an existing fresh live report without repeating
+the session:
+
+```sh
+cargo run --release --example expected -- --compare-durations tests/expected/duration-m45/live.json .local/durations/live.json --build BUILD_ID
+```
+
+The duration mode checks the candidate build and compares `cases`, including diagnostic and stored
+count order. A permitted build difference describes fresh behavior against retained cases; the
+historical live observations do not apply to the current exact build. The live test also checks
+each observation's current-build and live-basis stamps before selecting its duration cases.
 
 The generator is not verification. Review each changed answer against the method's tests and
 engine evidence. Copy only reviewed files back, then run `cargo parity`, for example:
@@ -194,8 +226,8 @@ cargo parity
 
 The tracked files supply sample keys, not replacement answers. A missing selected item appears
 as `null` in the candidate. Full inventories include new items. The historical live observation
-`field-storage-sdk533.json` is copied unchanged and requires the same build; its independent
-storage checks stay in the parity suite. Generating static answers does not repeat that live
+`field-storage-sdk533.json` is copied unchanged; its independent storage checks apply only to the recorded exact build,
+with an explicit skip on other builds. Generating static answers does not repeat that live
 experiment. Descriptive mechanism labels in declaration samples are also retained for review.
 Tests and the generator share [`tests/parity/`](../../tests/parity/mod.rs); layout tests check
 all tracked files without a game, and the installed-build test also changes one recorded answer

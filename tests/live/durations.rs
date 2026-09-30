@@ -135,18 +135,24 @@ fn record(text: &str, answer: &Answer<pdx_native::ScriptObservation>) -> serde_j
     })
 }
 
-fn check_report(native: &Native, report: &BTreeMap<String, serde_json::Value>) -> Outcome {
-    let actual = serde_json::json!({"build": native.build(), "cases": report});
+fn check_report(native: &Native, cases: &BTreeMap<String, serde_json::Value>) -> Outcome {
+    let actual = serde_json::json!({"build": native.build(), "cases": cases});
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".local/durations/live.json");
     std::fs::create_dir_all(path.parent().unwrap())?;
     std::fs::write(&path, serde_json::to_string_pretty(&actual)?)?;
-    let expected: serde_json::Value =
-        serde_json::from_str(include_str!("../expected/duration-m45/live.json"))?;
-
-    // This fresh live run compares behavior with the retained 4.5.0 cases; each answer
-    // above was checked against the current build. The historical stamp stays unchanged.
-    if actual["cases"] != expected["cases"] {
-        return Err(format!("stored durations differ; inspect {}", path.display()).into());
+    let report = comparison::compare_durations(
+        &native.build(),
+        "duration-m45/live.json",
+        include_bytes!("../expected/duration-m45/live.json"),
+        &serde_json::to_vec(&actual)?,
+    );
+    eprint!("{}", report.render_and_save()?);
+    if !report.passes() {
+        return Err(format!(
+            "stored duration parity failed; candidate: {}",
+            path.display()
+        )
+        .into());
     }
 
     Ok(())
