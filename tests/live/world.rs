@@ -13,8 +13,12 @@ pub(super) fn request() -> pdx_native::WorldRequest {
     }
 }
 
-pub(super) async fn ready(native: &Native) -> Outcome {
-    let mut game = native.start_game(options().world(request())).await?;
+pub(super) async fn ready(_native: &Native) -> Outcome {
+    let recordings = tempfile::tempdir()?;
+    let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
+        .record_answers_to(recordings.path());
+    let prepared = request();
+    let mut game = native.start_game(options().world(prepared.clone())).await?;
     let mut result = async {
         if game.readiness() != GameReadiness::PausedInWorld {
             return Err("startup pause reported as a world".into());
@@ -33,6 +37,24 @@ pub(super) async fn ready(native: &Native) -> Outcome {
         if game.observe_world().await? != answer {
             return Err("reading a prepared world observation changed its result".into());
         }
+        let recorded = Native::from_recorded_answers(recordings.path())?;
+        let mut replay = recorded
+            .start_game(GameOptions::new(Command::new("must-not-start")).world(prepared.clone()))
+            .await?;
+        let mut again = replay.observe_world().await?;
+        again.source.basis = answer.source.basis;
+        if again != answer || replay.close().await? != Disposal::NotApplicable {
+            return Err("recorded world observation differs or started a process".into());
+        }
+        let mut different = prepared;
+        different.days = 1;
+        let mut replay = recorded
+            .start_game(GameOptions::new(Command::new("must-not-start")).world(different))
+            .await?;
+        if !matches!(replay.observe_world().await, Err(Error::NotRecorded { .. })) {
+            return Err("different world request read an earlier observation".into());
+        }
+        replay.close().await?;
         Ok(())
     }
     .await;
@@ -119,8 +141,19 @@ pub(super) async fn failure(native: &Native, control: Fault) -> Outcome {
     {
         Err(Error::Startup {
             disposal: Disposal::Confirmed,
-            ..
-        }) => Ok(()),
+            reason,
+        }) => {
+            let expected = match control {
+                Fault::MissingHook => "required world hook missing before resume",
+                Fault::WorkerLoss => "WorkerLost",
+                Fault::AccessFailure => "world observation access failure control",
+                _ => return Err("unsupported world failure control".into()),
+            };
+            if !reason.contains(expected) {
+                return Err(format!("world fault lost its cause: {reason}").into());
+            }
+            Ok(())
+        }
         Err(error) => Err(format!("world fault did not confirm disposal: {error:?}").into()),
         Ok(mut game) => {
             let _ = game.close().await;

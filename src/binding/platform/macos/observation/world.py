@@ -150,7 +150,7 @@ class WorldObserver:
         calls = EngineCalls(self.process, self.thread_id, self.deadline, suspend_others=False)
         source = f"native_world_{self.attempt}.txt"
         capture = DiagnosticCapture(calls.target, self.process, self.parser, {source: 1}, 1,
-                                    self.limits['diagnostics'], self.limits['text'])
+                                    self.limits['diagnostics'], self.limits['text'], self.thread_id)
         script_checks._active_capture = capture
         try:
             state, country = self.country(calls)

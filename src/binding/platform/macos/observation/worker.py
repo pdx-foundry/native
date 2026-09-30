@@ -1260,7 +1260,8 @@ def run(debugger):
                 pass
         else:
             if name == protocol.HOOK['world']:
-                raise RuntimeError('required world hook missing before resume')
+                emit('capability-unavailable', reason='required world hook missing before resume')
+                return
             elif name.startswith(protocol.HOOK['modifiers']):
                 emit('modifier-unavailable', reason='required modifier hook missing or late before resume')
             elif name.startswith(protocol.HOOK['fixture']):

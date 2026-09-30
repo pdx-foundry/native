@@ -127,6 +127,21 @@ fn main() {
     let mut failed = Vec::new();
     println!("running {} live cases, one at a time", cases.len());
     for (name, case) in cases {
+        if matches!(
+            case,
+            Case::WorldReady
+                | Case::WorldExpiry
+                | Case::WorldRejected
+                | Case::WorldWrongCountry
+                | Case::WorldFailure(_)
+                | Case::WorldCancel
+        ) && !matches!(
+            native.supports(pdx_native::Operation::ObserveWorld),
+            pdx_native::Support::Supported
+        ) {
+            println!("test {name} ... skipped: this build has no world observation support");
+            continue;
+        }
         let before = game_processes();
         if !before.is_empty() {
             // Never start a second game, and never touch a game that is not ours.

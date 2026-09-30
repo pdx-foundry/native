@@ -131,7 +131,7 @@ impl Native {
     /// Start a supervised game and wait until it is paused after its registries load, or after
     /// all content loads with `GameOptions::loaded_modifiers`. `GameOptions::world` loads a
     /// private save and returns after its prepared observation at a normal world update pause.
-    /// With recorded answers, no process starts; the fixture selects its recording.
+    /// With recorded answers, no process starts; the prepared fixture or world selects its recording.
     ///
     /// Dropping this future requests cleanup. No async runtime owns the process: an independent
     /// thread and the supervisor do, so cleanup continues if the caller is lost.
@@ -148,7 +148,11 @@ impl Native {
         }
         let (binding, recorder) = match &self.backend {
             Backend::Recorded(answers) => {
-                return Ok(crate::Game::recorded(answers.clone(), options.fixture));
+                return Ok(crate::Game::recorded(
+                    answers.clone(),
+                    options.fixture,
+                    options.world,
+                ));
             }
             Backend::Live { binding, recorder } => (binding, recorder),
         };
@@ -263,6 +267,7 @@ impl Native {
             work,
             keep_work: options.keep_work_directory,
             fixture: options.fixture,
+            world: options.world,
             modifiers,
             binding: binding.clone(),
         };

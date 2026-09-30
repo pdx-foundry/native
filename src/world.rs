@@ -25,6 +25,13 @@ pub struct WorldRequest {
 }
 
 impl WorldRequest {
+    pub(crate) fn recorded_subject(&self, save: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        let input = serde_json::to_vec(&(&self.country, &self.effect, self.days, &self.flags))
+            .expect("world input serializes");
+        format!("{:x}/{:x}", Sha256::digest(save), Sha256::digest(input))
+    }
+
     pub(crate) fn validate(&self) -> Result<(), crate::Error> {
         let valid = self.save.is_absolute()
             && !self.country.is_empty()
@@ -130,5 +137,23 @@ mod tests {
         let mut oversized = request();
         oversized.effect = " ".repeat(crate::script::MAX_TEXT_BYTES + 1);
         assert!(oversized.validate().is_err());
+    }
+
+    #[test]
+    fn recordings_identify_save_contents_and_every_observation_input() {
+        let original = request();
+        let subject = original.recorded_subject(b"original save");
+        assert_ne!(subject, original.recorded_subject(b"changed save"));
+        let mut relocated = original.clone();
+        relocated.save = "/another/fixture.sav".into();
+        assert_eq!(subject, relocated.recorded_subject(b"original save"));
+        let mut changes = vec![original.clone(); 4];
+        changes[0].country = "Another country".into();
+        changes[1].effect = "set_country_flag = other".into();
+        changes[2].days = 1;
+        changes[3].flags.push("another_flag".into());
+        for changed in changes {
+            assert_ne!(subject, changed.recorded_subject(b"original save"));
+        }
     }
 }

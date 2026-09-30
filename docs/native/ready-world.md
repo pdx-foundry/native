@@ -26,6 +26,9 @@ that result to the session, owned game, activated hook and main thread. `Game::o
 reads this fixed result and refreshes the idle timeout; repeated reads do not execute again.
 The result distinguishes effect execution, diagnostics and the date/flags after each day.
 An invalid effect gives a partial answer with the initial sample and advances no time.
+Recorded answers select the world by save contents, country, effect, day count and ordered flag
+names. A live recording uses the loaded private save, even if the caller replaces the source.
+Reading a different request or save requires its own recorded answer.
 
 ## Calls, dates and flags
 
@@ -44,7 +47,10 @@ executable allocation is used now, and all allocations reject invalid addresses.
 
 The effect uses the established memory parser and validation route, then `CEffect::Execute` in a
 constructed country scope. The finite diagnostic window covers reading, validation and execution.
-Any message before execution prevents the call. The window closes before daily simulation;
+Its logger hook is restricted to the main thread that executes the prepared calls, so concurrent
+engine-job messages cannot reject an effect or consume its capture bound. Any message on that
+thread before execution prevents the call, including engine errors that omit a source name.
+The window closes before daily simulation;
 ordinary queued-command messages are outside that prepared effect's diagnostics.
 
 `FastForward(1, false)` advances one engine day per call. Each sample reads the engine date and

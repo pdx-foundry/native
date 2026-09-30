@@ -35,7 +35,7 @@ class AttributionTests(unittest.TestCase):
 
 
 class CaptureTests(unittest.TestCase):
-    def capture(self, check=2):
+    def capture(self, check=2, thread_id=None):
         target = Mock()
         hook = target.BreakpointCreateByAddress.return_value
         hook.GetNumLocations.return_value = 1
@@ -43,7 +43,7 @@ class CaptureTests(unittest.TestCase):
         hook.IsEnabled.return_value = True
         hook.GetID.return_value = 8
         capture = DiagnosticCapture(target, Mock(), dict(logger_entry=1,
-            logger_text_register='x4', logger_level_register='w1', string_tag_offset=23), {'first.txt': 1, 'second.txt': 2}, check, 32, 4096)
+            logger_text_register='x4', logger_level_register='w1', string_tag_offset=23), {'first.txt': 1, 'second.txt': 2}, check, 32, 4096, thread_id)
         location = Mock()
         location.GetBreakpoint.return_value = hook
         return capture, hook, location
@@ -94,6 +94,21 @@ class CaptureTests(unittest.TestCase):
         with patch('script_checks.read_string', side_effect=RuntimeError('unreadable')):
             capture.capture(log_frame(), location)
         self.assertFalse(capture.finish(1)['hooks_active'])
+
+    def test_world_thread_capture_excludes_concurrent_logs_before_the_bound(self):
+        capture, hook, location = self.capture(thread_id=7)
+        hook.SetThreadID.assert_called_once_with(7)
+        frame = log_frame()
+        frame.GetThread.return_value.GetThreadID.return_value = 8
+        with patch('script_checks.read_string') as read:
+            for _ in range(100):
+                capture.capture(frame, location)
+            read.assert_not_called()
+        self.assertFalse(capture.bound_reached)
+        frame.GetThread.return_value.GetThreadID.return_value = 7
+        with patch('script_checks.read_string', return_value=('unattributed engine error', False)):
+            capture.capture(frame, location)
+        self.assertEqual(capture.finish(1)['unjoined'][0]['text'], 'unattributed engine error')
 
 
 class DurationTests(unittest.TestCase):

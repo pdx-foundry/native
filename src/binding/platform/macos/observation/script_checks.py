@@ -36,7 +36,7 @@ def attribute_message(text, sources):
 
 
 class DiagnosticCapture:
-    def __init__(self, target, process, binding, sources, check, limit, text_limit):
+    def __init__(self, target, process, binding, sources, check, limit, text_limit, thread_id=None):
         self.target = target
         self.process = process
         self.binding = binding
@@ -44,6 +44,7 @@ class DiagnosticCapture:
         self.check = check
         self.limit = limit
         self.text_limit = text_limit
+        self.thread_id = thread_id
         self.stage = 'read'
         self.messages = []
         self.hooks_active = True
@@ -51,6 +52,8 @@ class DiagnosticCapture:
         self.failure = None
         address = target.ResolveFileAddress(binding['logger_entry']).GetLoadAddress(target)
         self.hook = target.BreakpointCreateByAddress(address)
+        if thread_id is not None:
+            self.hook.SetThreadID(thread_id)
         self.hook.SetScriptCallbackBody('import script_checks\nreturn script_checks.capture_callback(frame, bp_loc, internal_dict)')
         self.verify_hook()
 
@@ -60,6 +63,8 @@ class DiagnosticCapture:
 
     def capture(self, frame, location):
         try:
+            if self.thread_id is not None and frame.GetThread().GetThreadID() != self.thread_id:
+                return
             if location.GetBreakpoint().GetID() != self.hook.GetID():
                 self.hooks_active = False
                 return
