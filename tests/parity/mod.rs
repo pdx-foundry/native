@@ -1,9 +1,14 @@
 //! Questions and selections for the tracked static parity files.
 //! Historical live observations are retained, never recreated from static answers.
 mod compact;
+pub mod comparison;
 mod layout;
 
+#[cfg(test)]
+mod comparison_tests;
+
 pub use compact::*;
+pub use comparison::historical_storage_applies;
 use pdx_native::*;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -52,69 +57,17 @@ pub fn expected_directory() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected/m45")
 }
 
-/// Read the tracked selection and ask its question. Formatting uses the tracked key order.
+/// Ask each static selection; copy retained live evidence without claiming current applicability.
+/// Formatting uses the tracked key order.
 pub fn candidate(native: &Native, name: &str) -> Result<Vec<u8>> {
     let template = std::fs::read(expected_directory().join(name))?;
     let expected: Value = serde_json::from_slice(&template)?;
-    let value = question(native, name, &expected)?;
     if name == "field-storage-sdk533.json" {
+        comparison::historical_storage_source(&expected)?;
         return Ok(template);
     }
+    let value = question(native, name, &expected)?;
     layout::render(name, &value, &template)
-}
-
-/// Compare static facts while checking current command stamps separately from reviewed provenance.
-#[cfg(test)]
-pub fn static_facts_match(
-    build: &BuildId,
-    name: &str,
-    candidate: &[u8],
-    reviewed: &[u8],
-) -> Result<bool> {
-    if name == "dynamic-names.json" {
-        let mut candidate: Value = serde_json::from_slice(candidate)?;
-        let mut reviewed: Value = serde_json::from_slice(reviewed)?;
-        // Internal store IDs depend on relocated addresses; full rows retain duplicates and facts.
-        for report in [&mut candidate, &mut reviewed] {
-            report["namespaces"]
-                .as_array_mut()
-                .ok_or("dynamic namespace selection must be an array")?
-                .sort_by_cached_key(Value::to_string);
-        }
-        return Ok(candidate == reviewed);
-    }
-    if name != "command-grammars.json" {
-        return Ok(candidate == reviewed);
-    }
-    let mut candidate: BTreeMap<String, Value> = serde_json::from_slice(candidate)?;
-    let mut reviewed: BTreeMap<String, Value> = serde_json::from_slice(reviewed)?;
-    for (subject, answer) in &mut candidate {
-        let source: Source = serde_json::from_value(answer["source"].clone())?;
-        if &source.build != build {
-            return Err(format!("{subject}: candidate source does not match Native::build").into());
-        }
-        answer["source"]
-            .as_object_mut()
-            .ok_or("command source must be an object")?
-            .remove("build");
-    }
-    for answer in reviewed.values_mut() {
-        let _: Source = serde_json::from_value(answer["source"].clone())?;
-        answer["source"]
-            .as_object_mut()
-            .ok_or("command source must be an object")?
-            .remove("build");
-    }
-    Ok(candidate == reviewed)
-}
-
-/// Historical live storage applies only to its recorded exact build, never to a hotfix by inference.
-pub fn historical_storage_applies(build: &BuildId, observed: &Value) -> Result<bool> {
-    let source: Source = serde_json::from_value(observed["source"].clone())?;
-    if source.basis != Basis::LiveObservation {
-        return Err("SDK-533 storage must retain its live observation provenance".into());
-    }
-    Ok(&source.build == build)
 }
 
 fn current_answer<T>(native: &Native, answer: Answer<T>) -> Result<Answer<T>> {
@@ -466,120 +419,23 @@ pub fn assert_sdk492_keys(native: &Native) {
 mod tests {
     use super::*;
 
-    fn command_record(build: &str) -> Value {
-        json!({
-            "effect/sample": {
-                "source": {
-                    "build": build,
-                    "native_version": "0.1.0",
-                    "method": "command-grammar/v2",
-                    "basis": "StaticAnalysis"
-                },
-                "value": {"forms": ["Literal"]},
-                "completeness": "Complete",
-                "gaps": []
-            }
-        })
+    #[test]
+    fn historical_candidate_is_copied_on_another_build_without_a_current_answer() {
+        let recorded = tempfile::tempdir().unwrap();
+        std::fs::write(recorded.path().join("build.json"), "\"another-build\"").unwrap();
+        let native = Native::from_recorded_answers(recorded.path()).unwrap();
+        let name = "field-storage-sdk533.json";
+        let reviewed = std::fs::read(expected_directory().join(name)).unwrap();
+        let generated = candidate(&native, name).unwrap();
+        assert_eq!(generated, reviewed);
+        let report = comparison::compare_static(&native.build(), name, &reviewed, &generated);
+        assert!(report.passes());
+        assert_eq!(report.differences[0].status, comparison::Status::Skip);
+        assert!(question(&native, name, &serde_json::from_slice(&reviewed).unwrap()).is_err());
     }
 
     fn build(value: &str) -> BuildId {
         serde_json::from_value(json!(value)).unwrap()
-    }
-
-    #[test]
-    fn cross_build_command_parity_checks_current_stamp_and_keeps_fact_differences() {
-        let reviewed = command_record("release");
-        let candidate = command_record("hotfix");
-        let matches = |value: &Value| {
-            static_facts_match(
-                &build("hotfix"),
-                "command-grammars.json",
-                &serde_json::to_vec(value).unwrap(),
-                &serde_json::to_vec(&reviewed).unwrap(),
-            )
-        };
-        assert!(matches(&candidate).unwrap());
-        assert!(matches(&reviewed).is_err());
-        for (pointer, replacement) in [
-            ("/effect~1sample/value/forms", json!("Unresolved")),
-            ("/effect~1sample/completeness", json!("Partial")),
-            ("/effect~1sample/gaps", json!([{"detail": "lost form"}])),
-            (
-                "/effect~1sample/source/method",
-                json!("different-method/v1"),
-            ),
-            ("/effect~1sample/source/native_version", json!("different")),
-        ] {
-            let mut changed = candidate.clone();
-            *changed.pointer_mut(pointer).unwrap() = replacement;
-            assert!(!matches(&changed).unwrap(), "{pointer}");
-        }
-        let mut missing_stamp = candidate.clone();
-        missing_stamp["effect/sample"]["source"]
-            .as_object_mut()
-            .unwrap()
-            .remove("build");
-        assert!(matches(&missing_stamp).is_err());
-        assert_eq!(candidate["effect/sample"]["source"]["build"], "hotfix");
-        assert_eq!(reviewed["effect/sample"]["source"]["build"], "release");
-    }
-
-    #[test]
-    fn same_build_commands_and_other_files_keep_their_existing_comparison() {
-        let recorded = serde_json::to_vec(&command_record("release")).unwrap();
-        assert!(
-            static_facts_match(
-                &build("release"),
-                "command-grammars.json",
-                &recorded,
-                &recorded
-            )
-            .unwrap()
-        );
-        let changed = serde_json::to_vec(&command_record("hotfix")).unwrap();
-        assert!(
-            !static_facts_match(
-                &build("hotfix"),
-                "fields-traditions.json",
-                &changed,
-                &recorded
-            )
-            .unwrap()
-        );
-    }
-
-    #[test]
-    fn namespace_order_can_change_but_roles_counts_gaps_and_duplicates_cannot() {
-        let reviewed = json!({"count":2,"gaps":{"UnresolvedReader":1},"namespaces":[
-            {"owner":"star","read_by":["has_star_flag"]},
-            {"owner":"star","defined_by":["set_star_flag"]}
-        ]});
-        let matches = |value: &Value| {
-            static_facts_match(
-                &build("hotfix"),
-                "dynamic-names.json",
-                &serde_json::to_vec(value).unwrap(),
-                &serde_json::to_vec(&reviewed).unwrap(),
-            )
-            .unwrap()
-        };
-        let mut reordered = reviewed.clone();
-        reordered["namespaces"].as_array_mut().unwrap().reverse();
-        assert!(matches(&reordered));
-        for (pointer, replacement) in [
-            ("/count", json!(3)),
-            ("/gaps/UnresolvedReader", json!(2)),
-            ("/namespaces/0/owner", json!("country")),
-            ("/namespaces/1/read_by", json!(["has_country_flag"])),
-        ] {
-            let mut changed = reordered.clone();
-            *changed.pointer_mut(pointer).unwrap() = replacement;
-            assert!(!matches(&changed), "{pointer}");
-        }
-        let mut duplicate = reordered.clone();
-        let row = duplicate["namespaces"][0].clone();
-        duplicate["namespaces"][1] = row;
-        assert!(!matches(&duplicate));
     }
 
     #[test]

@@ -22,14 +22,9 @@ fn report_historical_storage_skip(
     build: &pdx_native::BuildId,
     observed: &Value,
 ) -> parity::Result<()> {
-    let source: pdx_native::Source = serde_json::from_value(observed["source"].clone())?;
+    let report = comparison::historical_storage_report(build, observed);
     use std::io::Write;
-    writeln!(
-        std::io::stderr(),
-        "SKIP SDK-533 live storage: recorded build {}, current build {}; historical evidence unchanged",
-        serde_json::to_string(&source.build)?,
-        serde_json::to_string(build)?
-    )?;
+    writeln!(std::io::stderr(), "{}", report.render_and_save()?)?;
     Ok(())
 }
 
@@ -1128,10 +1123,8 @@ fn every_tracked_candidate_matches_the_reviewed_tree() {
             }
         }
         let candidate = parity::candidate(&native, name).unwrap();
-        assert!(
-            parity::static_facts_match(&native.build(), name, &candidate, &tracked).unwrap(),
-            "{name}: candidate differs from the reviewed file"
-        );
+        let report = comparison::compare_static(&native.build(), name, &tracked, &candidate);
+        assert!(report.passes(), "{}", report.render_and_save().unwrap());
     }
 
     let path = recordings.path().join("registries.json");
@@ -1157,11 +1150,9 @@ fn every_tracked_candidate_matches_the_reviewed_tree() {
             }
         }
         let candidate = parity::candidate(&changed, name).unwrap();
-        assert!(
-            parity::static_facts_match(&changed.build(), name, &candidate, expected.as_bytes())
-                .unwrap(),
-            "{name}: changing one registry name changes only its entry"
-        );
+        let report =
+            comparison::compare_static(&changed.build(), name, expected.as_bytes(), &candidate);
+        assert!(report.passes(), "{}", report.render_and_save().unwrap());
     }
 }
 
@@ -1295,7 +1286,7 @@ fn known_target_lists_have_covered_arguments() {
 #[ignore = "requires STELLARIS_PATH; NATIVE_NUMERIC_EXPECTED_OUT retains candidates for review"]
 fn numeric_reader_api_parity() {
     let native = native();
-    let mut differences = Vec::new();
+    let mut differences = comparison::Report::default();
     let names = FIELD_FILES
         .iter()
         .map(|(_, file)| *file)
@@ -1307,13 +1298,17 @@ fn numeric_reader_api_parity() {
             std::fs::write(std::path::Path::new(&directory).join(name), &candidate).unwrap();
         }
         let expected = std::fs::read(parity::expected_directory().join(name)).unwrap();
-        if !parity::static_facts_match(&native.build(), name, &candidate, &expected).unwrap() {
-            differences.push(name);
-        }
+        differences.extend(comparison::compare_static(
+            &native.build(),
+            name,
+            &expected,
+            &candidate,
+        ));
     }
     assert!(
-        differences.is_empty(),
-        "review numeric API parity candidates: {differences:?}"
+        differences.passes(),
+        "{}",
+        differences.render_and_save().unwrap()
     );
 }
 
@@ -1321,7 +1316,7 @@ fn numeric_reader_api_parity() {
 #[ignore = "requires STELLARIS_PATH; review refreshed field and grammar recordings"]
 fn scoped_numeric_api_parity() {
     let native = native();
-    let mut differences = Vec::new();
+    let mut differences = comparison::Report::default();
     for name in FIELD_FILES
         .iter()
         .map(|(_, file)| *file)
@@ -1329,13 +1324,17 @@ fn scoped_numeric_api_parity() {
     {
         let candidate = parity::candidate(&native, name).unwrap();
         let expected = std::fs::read(parity::expected_directory().join(name)).unwrap();
-        if !parity::static_facts_match(&native.build(), name, &candidate, &expected).unwrap() {
-            differences.push(name);
-        }
+        differences.extend(comparison::compare_static(
+            &native.build(),
+            name,
+            &expected,
+            &candidate,
+        ));
     }
     assert!(
-        differences.is_empty(),
-        "refresh scoped numeric parity: {differences:?}"
+        differences.passes(),
+        "{}",
+        differences.render_and_save().unwrap()
     );
 }
 

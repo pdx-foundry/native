@@ -72,6 +72,10 @@ mod script_checks;
 #[path = "live/durations.rs"]
 mod stored_durations;
 
+// Public in this test binary so unused static comparison entry points do not trigger dead-code warnings.
+#[path = "parity/comparison.rs"]
+pub mod comparison;
+
 /// What the registry that receives a fault must give.
 #[derive(Clone, Copy)]
 enum Expect {
