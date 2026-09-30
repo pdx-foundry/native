@@ -17,6 +17,71 @@ worker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(worker)
 
 
+class WorkerDiagnosticTests(unittest.TestCase):
+    def test_checkpoint_replacement_retains_latest_attempt_before_terminal(self):
+        from script_checks import WorkerDiagnostics
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)):
+            report = WorkerDiagnostics('unit', 9, worker.publish_diagnostics)
+            report.attempt_call('constructor')
+            report.complete_call()
+            report.attempt_call('read')
+            value = protocol.decode('worker_diagnostics', (Path(root) / 'worker-diagnostics.json').read_bytes())
+            self.assertEqual(value['last_attempted_call']['operation'], 'read')
+            self.assertEqual(value['last_completed_call']['operation'], 'constructor')
+            self.assertIsNone(value['failure'])
+            self.assertFalse((Path(root) / 'raw-trace.jsonl').exists())
+            self.assertFalse((Path(root) / 'worker-diagnostics.json.pending').exists())
+
+    def test_a_stale_partial_write_does_not_block_failure_publication(self):
+        from script_checks import WorkerDiagnostics
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)):
+            (Path(root) / 'worker-diagnostics.json.pending').write_bytes(b'{')
+            report = WorkerDiagnostics('unit', 9, worker.publish_diagnostics)
+            report.failure('allocation', 'original cause', debugger_error='actual error')
+            report.failure('cleanup', 'later error')
+            value = protocol.decode('worker_diagnostics', (Path(root) / 'worker-diagnostics.json').read_bytes())
+            self.assertEqual(value['failure']['reason'], 'original cause')
+            self.assertEqual(value['failure']['details']['debugger_error'], 'actual error')
+
+
+class WorkerFailureReportingTests(unittest.TestCase):
+    def test_a_held_pause_clears_the_previous_observation_deadline(self):
+        from script_checks import WorkerDiagnostics
+        report = WorkerDiagnostics('unit', 9, Mock())
+        report.update(deadline=time.monotonic() + 5, phase='world-observation')
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)), \
+                patch.object(worker, 'request', dict(attempt='unit', fault=None)), \
+                patch.object(worker, 'diagnostics', report):
+            (Path(root) / 'raw-trace.jsonl').touch()
+            worker.emit('session-paused', returned=[], cause='world-ready', thread=7)
+        self.assertIsNone(report.state['deadline_milliseconds'])
+        self.assertEqual(report.state['phase'], 'held')
+
+    def test_successful_script_completion_clears_its_deadline(self):
+        from script_checks import WorkerDiagnostics
+        report = WorkerDiagnostics('unit', 9, Mock())
+        report.update(deadline=time.monotonic() + 5, phase='script-check', context='check 1')
+        checks = Mock()
+        checks.check.return_value = {'observation': 'complete'}
+        completion = {}
+        with patch.object(worker, 'diagnostics', report):
+            worker.run_script_check(checks, {}, completion)
+        self.assertIn('Ok', completion['result'])
+        self.assertIsNone(report.state['deadline_milliseconds'])
+        self.assertEqual(report.state['phase'], 'held')
+        self.assertIsNone(report.state['context'])
+
+    def test_early_activation_failure_reaches_the_checkpoint(self):
+        from script_checks import WorkerDiagnostics
+        report = WorkerDiagnostics('unit', 9, Mock())
+        with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)), \
+                patch.object(worker, 'request', dict(attempt='unit', fault=None)), \
+                patch.object(worker, 'diagnostics', report):
+            (Path(root) / 'raw-trace.jsonl').touch()
+            worker.emit('early-activation-unavailable', reason='ARM64 loader entry not established')
+        self.assertEqual(report.state['failure']['reason'], 'ARM64 loader entry not established')
+
+
 class ProbePauseTests(unittest.TestCase):
     def test_paused_session_disables_all_remaining_observation_hooks(self):
         hooks = {'fixture:failed': Mock(), 'registry:return': Mock(), 'modifiers': Mock()}

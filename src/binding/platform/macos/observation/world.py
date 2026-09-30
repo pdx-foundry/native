@@ -22,7 +22,7 @@ def selected_flags(names, stored):
 
 
 class WorldObserver:
-    def __init__(self, process, thread_id, setup, parser, attempt, deadline, limits):
+    def __init__(self, process, thread_id, setup, parser, attempt, deadline, limits, diagnostics=None):
         self.process = process
         self.thread_id = thread_id
         self.binding = setup['binding']
@@ -31,6 +31,7 @@ class WorldObserver:
         self.attempt = attempt
         self.deadline = deadline
         self.limits = limits
+        self.diagnostics = diagnostics
         self.initial_country = None
         self.flag_names = {}
 
@@ -41,10 +42,10 @@ class WorldObserver:
         if (not state or not idler or read_unsigned(self.process, state + binding['ready_offset'], 1) != 1
                 or read_unsigned(self.process, idler + binding['paused_offset'], 1) != 1):
             raise RuntimeError('loaded world is no longer ready and paused')
-        human = calls.call(binding['local_human'], state)
+        human = calls.call(binding, 'local_human', state)
         if not human:
             raise RuntimeError('world has no local human')
-        country = calls.call(binding['human_country'], human)
+        country = calls.call(binding, 'human_country', human)
         country_id = read_unsigned(self.process, human + binding['human_country_offset'], 4)
         if (not country or country_id == 0xffffffff
                 or read_unsigned(self.process, country + binding['country_id_offset'], 4) != country_id):
@@ -55,9 +56,9 @@ class WorldObserver:
         self.initial_country = identity
         return state, country
 
-    def string_result(self, calls, binding, argument):
+    def string_result(self, calls, operation, argument):
         output = calls.allocate(self.parser['string_size'])
-        calls.call(binding, argument, result_address=output)
+        calls.call(self.binding, operation, argument, result_address=output)
         text, truncated = read_string(self.process, output, self.parser['string_tag_offset'], 256)
         if truncated:
             raise RuntimeError('world string exceeds its bound')
@@ -66,11 +67,11 @@ class WorldObserver:
     def date(self, calls, state):
         address = state + self.binding['date_offset']
         raw = read_unsigned(self.process, address, 4)
-        return raw, self.string_result(calls, self.binding['date_string'], address)
+        return raw, self.string_result(calls, 'date_string', address)
 
     def flags(self, calls, scope):
         binding = self.binding
-        store = calls.call(binding['scope_flags'], scope)
+        store = calls.call(binding, 'scope_flags', scope)
         if not store:
             raise RuntimeError('country flag store is unavailable')
         count = read_unsigned(self.process, store + binding['flags_count_offset'], 4)
@@ -82,7 +83,7 @@ class WorldObserver:
         for index in range(count):
             token = read_unsigned(self.process, flags + index * binding['flag_width'], binding['flag_width'])
             if token not in self.flag_names:
-                name_address = calls.call(binding['flag_name'], token)
+                name_address = calls.call(binding, 'flag_name', token)
                 name, truncated = read_string(self.process, name_address, self.parser['string_tag_offset'], 256)
                 if truncated or not name:
                     raise RuntimeError('country flag name is unavailable')
@@ -97,8 +98,8 @@ class WorldObserver:
     def country_scope(self, calls, country):
         binding = self.binding
         scope = calls.allocate(binding['scope_size'])
-        calls.call(binding['scope_constructor'], scope, 0)
-        calls.call(binding['scope_country'], scope, country)
+        calls.call(binding, 'scope_constructor', scope, 0)
+        calls.call(binding, 'scope_country', scope, country)
         if (read_unsigned(self.process, scope + binding['scope_type_offset']) != binding['scope_type']
                 or read_unsigned(self.process, scope + binding['scope_id_offset'], 4) != self.initial_country[0]):
             raise RuntimeError('constructed scope does not name the local human country')
@@ -112,13 +113,15 @@ class WorldObserver:
         reader = checks.reader(calls, self.input['effect'], source)
         owner, children = checks.read_command(calls, self.parser['effect'], reader,
                                               self.binding['scope_type'])
+        calls.note(phase='world-validation')
         capture.stage = 'validation'
         checks.validate_command(calls, self.parser['effect'])
         capture.verify_hook()
         if not capture.hooks_active or capture.bound_reached or capture.messages or not children:
             return False
+        calls.note(phase='world-execution')
         capture.stage = 'execution'
-        calls.call(self.binding['effect_execute'], owner, scope)
+        calls.call(self.binding, 'effect_execute', owner, scope)
         return True
 
     def sample(self, calls, scope, day, expected_date):
@@ -132,7 +135,8 @@ class WorldObserver:
     def advance_days(self, calls, scope, initial_date):
         samples = []
         for day in range(1, self.input['days'] + 1):
-            calls.call(self.binding['fast_forward'], 1, 0)
+            calls.note(phase='world-update', context=f'world day {day}')
+            calls.call(self.binding, 'fast_forward', 1, 0)
             samples.append(self.sample(calls, scope, day, initial_date + 24 * day))
         return samples
 
@@ -147,14 +151,17 @@ class WorldObserver:
         calls.target.BreakpointDelete(capture.hook.GetID())
 
     def observe(self):
-        calls = EngineCalls(self.process, self.thread_id, self.deadline, suspend_others=False)
+        if self.diagnostics is not None:
+            self.diagnostics.update(phase='world-observation', context='world day 0')
+        calls = EngineCalls(self.process, self.thread_id, self.deadline, suspend_others=False, diagnostics=self.diagnostics)
         source = f"native_world_{self.attempt}.txt"
         capture = DiagnosticCapture(calls.target, self.process, self.parser, {source: 1}, 1,
                                     self.limits['diagnostics'], self.limits['text'], self.thread_id)
+        capture.report_hook(self.diagnostics, 'world-logger')
         script_checks._active_capture = capture
         try:
             state, country = self.country(calls)
-            name = self.string_result(calls, self.binding['country_name'], country)
+            name = self.string_result(calls, 'country_name', country)
             if name != self.input['country']:
                 raise RuntimeError(f"local human country differs: {name!r}")
             initial_raw, initial_date = self.date(calls, state)

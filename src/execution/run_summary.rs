@@ -252,7 +252,13 @@ pub(super) fn write(
 
         (Vec::new(), stream)
     };
-    let summary = summarize(report, run, &records, stream);
+    let summary = summarize(
+        report,
+        run,
+        &records,
+        stream,
+        read_worker_diagnostics(work_directory, &report.attempt),
+    );
 
     files::write_json(&work_directory.join(FILE), &summary)
 }
@@ -262,6 +268,7 @@ fn summarize(
     run: &RunRecord,
     records: &[WorkerRecord],
     stream: StreamState,
+    diagnostics: Result<protocol::observation::WorkerDiagnostics, String>,
 ) -> RunSummary {
     RunSummary {
         attempt: report.attempt.clone(),
@@ -271,6 +278,7 @@ fn summarize(
         worker: WorkerSummary::new(records, stream),
         hooks: HookSummary::new(records),
         observations: run.observations(),
+        worker_diagnostics: WorkerDiagnosticSummary::new(report, records, diagnostics),
     }
 }
 
@@ -283,6 +291,109 @@ struct RunSummary {
     worker: WorkerSummary,
     hooks: HookSummary,
     observations: ObservationSummary,
+    worker_diagnostics: WorkerDiagnosticSummary,
+}
+
+/// A cause comes from a worker failure, never from its disappearance alone.
+#[derive(Debug, Serialize)]
+struct WorkerDiagnosticSummary {
+    reason: String,
+    context: Option<protocol::observation::WorkerDiagnostics>,
+    unavailable: Option<String>,
+}
+
+impl WorkerDiagnosticSummary {
+    fn new(
+        report: &SessionReport,
+        records: &[WorkerRecord],
+        diagnostics: Result<protocol::observation::WorkerDiagnostics, String>,
+    ) -> Self {
+        let (context, unavailable) = match diagnostics {
+            Ok(context) => (Some(context), None),
+            Err(reason) => (None, Some(cut(&reason))),
+        };
+        let cause = context
+            .as_ref()
+            .and_then(|context| context.failure.as_ref());
+        let reason = if let Some(cause) = cause {
+            format!("{}: {}", cause.kind, cause.reason)
+        } else if let Some(reason) = records.iter().find_map(|record| match &record.event {
+            WorkerEvent::CapabilityUnavailable { reason }
+            | WorkerEvent::NativeException { reason }
+            | WorkerEvent::EarlyActivationUnavailable { reason } => Some(reason),
+            WorkerEvent::CallbackError { error } => Some(error),
+            _ => None,
+        }) {
+            cut(reason)
+        } else if matches!(
+            report.outcome,
+            SessionOutcome::WorkerLost | SessionOutcome::TimedOut | SessionOutcome::Failed(_)
+        ) {
+            let operation = context
+                .as_ref()
+                .map(|context| context.operation.clone())
+                .or_else(|| records.last().map(|record| record_kind(&record.event)));
+            match operation {
+                Some(operation) => {
+                    format!("cause unavailable; last witnessed operation: {operation}")
+                }
+                None => "cause unavailable; no worker operation witnessed".into(),
+            }
+        } else {
+            "no worker failure reported".into()
+        };
+
+        Self {
+            reason: cut(&reason),
+            context,
+            unavailable,
+        }
+    }
+}
+
+fn read_worker_diagnostics(
+    directory: &Path,
+    attempt: &str,
+) -> Result<protocol::observation::WorkerDiagnostics, String> {
+    let path = directory.join("worker-diagnostics.json");
+    let bytes = files::read_bounded(&path, protocol::observation::MAX_WORKER_DIAGNOSTICS)
+        .map_err(|error| format!("worker checkpoint unavailable: {error}"))?;
+    let mut context: protocol::observation::WorkerDiagnostics = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("worker checkpoint malformed: {error}"))?;
+    if context.attempt != attempt {
+        return Err("worker checkpoint belongs to another attempt".into());
+    }
+    context.phase = cut(&context.phase);
+    context.context = context.context.map(|context| cut(&context));
+    context.operation = cut(&context.operation);
+    for call in [
+        &mut context.last_attempted_call,
+        &mut context.last_completed_call,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        call.operation = cut(&call.operation);
+    }
+    context.hooks.truncate(SAMPLES);
+    for hook in &mut context.hooks {
+        hook.name = cut(&hook.name);
+    }
+    context.details = bounded_details(context.details);
+    if let Some(failure) = &mut context.failure {
+        failure.kind = cut(&failure.kind);
+        failure.reason = cut(&failure.reason);
+        failure.details = bounded_details(std::mem::take(&mut failure.details));
+    }
+    Ok(context)
+}
+
+fn bounded_details(details: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    details
+        .into_iter()
+        .take(16)
+        .map(|(key, value)| (cut(&key), cut(&value)))
+        .collect()
 }
 
 #[derive(Debug, Serialize)]
@@ -708,6 +819,102 @@ mod tests {
     };
     use serde_json::{Value, json};
     use std::time::Duration;
+
+    fn checkpoint() -> Value {
+        json!({
+            "attempt": "unit", "game": 9, "phase": "world-update", "context": "world day 2",
+            "thread": 7, "operation": "fast_forward", "details": {"expected_pc": "0x1000"},
+            "elapsed_milliseconds": 400, "deadline_milliseconds": 500,
+            "last_attempted_call": {"ordinal": 2, "operation": "fast_forward"},
+            "last_completed_call": {"ordinal": 1, "operation": "fast_forward"},
+            "hooks": [], "failure": null
+        })
+    }
+
+    #[test]
+    fn interrupted_call_reports_unknown_cause_and_distinct_completion() {
+        let directory = tempfile::tempdir().unwrap();
+        files::write_json(
+            &directory.path().join("worker-diagnostics.json"),
+            &checkpoint(),
+        )
+        .unwrap();
+        let context = read_worker_diagnostics(directory.path(), "unit");
+        let report = SessionReport {
+            attempt: "unit".into(),
+            outcome: SessionOutcome::WorkerLost,
+            disposal: Disposal::Confirmed,
+            reservation_resolved: true,
+            diagnostics: vec![],
+        };
+        let summary =
+            serde_json::to_value(WorkerDiagnosticSummary::new(&report, &[], context)).unwrap();
+        assert_eq!(
+            summary["reason"],
+            "cause unavailable; last witnessed operation: fast_forward"
+        );
+        assert_eq!(summary["context"]["last_attempted_call"]["ordinal"], 2);
+        assert_eq!(summary["context"]["last_completed_call"]["ordinal"], 1);
+        assert!(summary["context"]["failure"].is_null());
+    }
+
+    #[test]
+    fn early_activation_failure_has_a_known_cause_without_a_checkpoint() {
+        let report = SessionReport {
+            attempt: "unit".into(),
+            outcome: SessionOutcome::WorkerLost,
+            disposal: Disposal::Confirmed,
+            reservation_resolved: true,
+            diagnostics: vec![],
+        };
+        let records = records(&[(
+            1,
+            json!({"kind": "early-activation-unavailable",
+            "reason": "ARM64 loader entry not established"}),
+        )]);
+        let summary =
+            WorkerDiagnosticSummary::new(&report, &records, Err("checkpoint missing".into()));
+        assert_eq!(summary.reason, "ARM64 loader entry not established");
+        assert!(summary.context.is_none());
+    }
+
+    #[test]
+    fn checkpoint_damage_is_unavailable_and_never_prevents_the_summary() {
+        let directory = tempfile::tempdir().unwrap();
+        assert!(read_worker_diagnostics(directory.path(), "unit").is_err());
+        let path = directory.path().join("worker-diagnostics.json");
+        for bytes in [
+            b"{".to_vec(),
+            vec![b' '; protocol::observation::MAX_WORKER_DIAGNOSTICS + 1],
+        ] {
+            std::fs::write(&path, bytes).unwrap();
+            assert!(read_worker_diagnostics(directory.path(), "unit").is_err());
+        }
+        std::fs::write(&path, serde_json::to_vec(&checkpoint()).unwrap()).unwrap();
+        assert!(
+            read_worker_diagnostics(directory.path(), "foreign")
+                .unwrap_err()
+                .contains("another attempt")
+        );
+    }
+
+    #[test]
+    fn checkpoint_text_and_hook_samples_are_bounded() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut context = checkpoint();
+        context["operation"] = json!("x".repeat(1000));
+        context["hooks"] = json!(
+            (0..20)
+                .map(|index| json!({
+                    "name": index.to_string(), "enabled": false, "locations": 0, "resolved": 0,
+                }))
+                .collect::<Vec<_>>()
+        );
+        files::write_json(&directory.path().join("worker-diagnostics.json"), &context).unwrap();
+        let context = read_worker_diagnostics(directory.path(), "unit").unwrap();
+        assert_eq!(context.hooks.len(), SAMPLES);
+        assert_eq!(context.operation.chars().count(), TEXT + 1);
+    }
 
     /// Worker records with these sequence numbers and events.
     fn records(rows: &[(u64, Value)]) -> Vec<WorkerRecord> {

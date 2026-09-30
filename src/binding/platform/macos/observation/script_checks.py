@@ -61,6 +61,15 @@ class DiagnosticCapture:
         self.hooks_active &= (self.hook.IsEnabled() and self.hook.GetNumLocations() == 1
                               and self.hook.GetNumResolvedLocations() == 1)
 
+    def report_hook(self, diagnostics, name):
+        if diagnostics is None:
+            return
+        try:
+            diagnostics.update(hooks=[dict(name=name, enabled=self.hook.IsEnabled(),
+                locations=self.hook.GetNumLocations(), resolved=self.hook.GetNumResolvedLocations())])
+        except Exception:
+            pass
+
     def capture(self, frame, location):
         try:
             if self.thread_id is not None and frame.GetThread().GetThreadID() != self.thread_id:
@@ -180,9 +189,69 @@ def stored_durations(read_unsigned, read_text, owner, command, children, receive
     return dict(complete=complete, stored=stored)
 
 
+class WorkerDiagnostics:
+    """One bounded checkpoint; failed reporting cannot replace an engine failure."""
+    def __init__(self, attempt, game, publish):
+        from threading import Lock
+        self.started = time.monotonic()
+        self.publish = publish
+        self.lock = Lock()
+        self.ordinal = 0
+        self.deadline = None
+        self.state = dict(attempt=attempt, game=game, phase='startup', context=None, thread=None,
+                          operation='worker-start', details={}, elapsed_milliseconds=0, deadline_milliseconds=None,
+                          last_attempted_call=None, last_completed_call=None, hooks=[], failure=None)
+
+    def update(self, operation=None, **fields):
+        try:
+            with self.lock:
+                if self.state['failure'] is not None:
+                    self.write()
+                    return
+                if operation is not None:
+                    self.state['operation'] = operation[:240]
+                    self.state['details'] = {}
+                if 'deadline' in fields:
+                    self.deadline = fields.pop('deadline')
+                if 'details' in fields:
+                    fields['details'] = {key[:240]: str(value)[:240] for key, value in list(fields['details'].items())[:16]}
+                self.state.update(fields)
+                self.write()
+        except Exception:
+            # Reporting has no authority over calls, deadlines or cleanup.
+            pass
+
+    def attempt_call(self, operation):
+        self.ordinal += 1
+        self.update(operation, last_attempted_call=dict(ordinal=self.ordinal, operation=operation[:240]))
+
+    def complete_call(self):
+        self.update(last_completed_call=self.state['last_attempted_call'])
+
+    def failure(self, kind, reason, **details):
+        try:
+            with self.lock:
+                if self.state['failure'] is not None:
+                    self.write()
+                    return
+                self.state['failure'] = dict(kind=kind[:240], reason=str(reason)[:240],
+                    details={key[:240]: str(value)[:240] for key, value in list(details.items())[:16]})
+                self.write()
+        except Exception:
+            pass
+
+    def write(self):
+        self.state['elapsed_milliseconds'] = max(0, int((time.monotonic() - self.started) * 1000))
+        self.state['deadline_milliseconds'] = (None if self.deadline is None else
+            max(0, int((self.deadline - self.started) * 1000)))
+        self.publish(self.state)
+
+
 class EngineCalls:
-    def __init__(self, process, thread_id, deadline, suspend_others=True):
+    def __init__(self, process, thread_id, deadline, suspend_others=True, diagnostics=None):
         import lldb
+        self.diagnostics = diagnostics
+        self.note('save-registers', thread=thread_id, deadline=deadline)
         self.process = process
         self.target = process.GetTarget()
         self.thread_id = thread_id
@@ -205,6 +274,59 @@ class EngineCalls:
                 self.suspended.append(thread.GetThreadID())
         self.target.GetDebugger().SetAsync(False)
 
+    def note(self, operation=None, **fields):
+        diagnostics = getattr(self, 'diagnostics', None)
+        if diagnostics is not None:
+            diagnostics.update(operation, **fields)
+
+    def fail(self, kind, reason, **details):
+        diagnostics = getattr(self, 'diagnostics', None)
+        if diagnostics is not None:
+            diagnostics.failure(kind, reason, **details)
+        raise RuntimeError(reason)
+
+    def inspect_exception_stop(self):
+        """World calls can stop on any engine job thread; the owned thread stays distinct."""
+        try:
+            import lldb
+            faulting = next((thread for thread in self.process
+                             if thread.GetStopReason() == lldb.eStopReasonException), None)
+            if faulting is None:
+                return False, {}
+            details = dict(exception_thread=faulting.GetThreadID())
+            try:
+                details['exception_stack'] = '; '.join(
+                    f'0x{frame.GetPC():x} {frame.GetFunctionName() or "unknown"}'
+                    for frame in list(faulting)[:8])
+            except Exception as error:
+                details['exception_stack_unavailable'] = str(error)
+            return True, details
+        except Exception as error:
+            return False, dict(exception_details_unavailable=str(error))
+
+    def stop_details(self, returned):
+        """Debugger inspection is best effort and cannot obscure the original failure."""
+        has_exception, exception_details = self.inspect_exception_stop()
+        try:
+            thread = self.process.GetThreadByID(self.thread_id)
+            frame = self.frame()
+            details = dict(process_state=self.process.GetState(), stop_id=self.process.GetStopID(),
+                        stop_reason=thread.GetStopReason(), breakpoint=thread.GetStopReasonDataAtIndex(0),
+                        expected_breakpoint=returned.GetID(), thread=thread.GetThreadID(),
+                        expected_thread=self.thread_id, pc=hex(frame.FindRegister('pc').GetValueAsUnsigned()),
+                        expected_pc=hex(self.return_address), sp=hex(frame.FindRegister('sp').GetValueAsUnsigned()),
+                        expected_sp=hex(self.stack))
+            try:
+                details['stopped_threads'] = '; '.join(
+                    f'{item.GetThreadID()}:{item.GetStopReason()}' for item in list(self.process)[:8]
+                    if item.GetStopReason())
+            except Exception:
+                pass
+        except Exception as error:
+            details = dict(stop_details_unavailable=str(error))
+        details.update(exception_details)
+        return has_exception, details
+
     def frame(self):
         return self.process.GetThreadByID(self.thread_id).GetFrameAtIndex(0)
 
@@ -217,25 +339,32 @@ class EngineCalls:
 
     def allocate(self, size, data=b''):
         import lldb
+        self.note('allocate-memory', details=dict(size=size))
         error = lldb.SBError()
         permissions = lldb.ePermissionsReadable | lldb.ePermissionsWritable
         address = self.process.AllocateMemory(size, permissions, error)
         if error.Fail() or address == lldb.LLDB_INVALID_ADDRESS or len(data) > size:
-            raise RuntimeError('script check allocation failed: ' + str(error))
+            self.fail('allocation', 'script check allocation failed: ' + str(error), size=size, address=hex(address), debugger_error=error, data_size=len(data))
+        self.note(details=dict(size=size, address=hex(address), debugger_error=str(error)))
         self.write(address, data + bytes(size - len(data)))
         return address
 
     def write(self, address, data):
         import lldb
+        self.note('write-memory')
         error = lldb.SBError()
         count = self.process.WriteMemory(address, data, error)
         if error.Fail() or count != len(data):
-            raise RuntimeError('script check memory write failed: ' + str(error))
+            self.fail('memory-write', 'script check memory write failed: ' + str(error), address=hex(address), expected_count=len(data), actual_count=count, debugger_error=error)
 
-    def call(self, binding, *arguments, result_address=None):
+    def call(self, bindings, operation, *arguments, result_address=None):
         import lldb
+        diagnostics = getattr(self, 'diagnostics', None)
+        if diagnostics is not None:
+            diagnostics.attempt_call(operation)
+        binding = bindings[operation]
         if time.monotonic() >= self.deadline:
-            raise RuntimeError('script check deadline elapsed')
+            self.fail('call-timeout', 'script check deadline elapsed')
         if len(arguments) != len(binding['widths']) or len(arguments) > 8:
             raise RuntimeError('script check call signature mismatch')
         if any(value < 0 or value >= 1 << width for value, width in zip(arguments, binding['widths'])):
@@ -246,20 +375,25 @@ class EngineCalls:
         changed.update(sp=self.stack, lr=self.return_address, pc=self.address(binding['address']))
         for name, value in changed.items():
             if not self.frame().FindRegister(name).SetValueFromCString(hex(value)):
-                raise RuntimeError('script check call register write failed')
-        if any(self.frame().FindRegister(name).GetValueAsUnsigned() != value for name, value in changed.items()):
-            raise RuntimeError('script check call registers differ before resume')
+                self.fail('register-write', 'script check call register write failed', register=name, expected=hex(value))
+        for name, value in changed.items():
+            actual = self.frame().FindRegister(name).GetValueAsUnsigned()
+            if actual != value:
+                self.fail('register-mismatch', 'script check call registers differ before resume', register=name, expected=hex(value), actual=hex(actual))
         returned = self.target.BreakpointCreateByAddress(self.return_address)
         returned.SetThreadID(self.thread_id)
         # Nested world updates can reach the paused instruction on a deeper stack.
         returned.SetCondition('$sp == ' + hex(self.stack))
         returned.SetOneShot(True)
         if returned.GetNumResolvedLocations() != 1:
-            raise RuntimeError('script check return hook unresolved')
+            self.fail('missing-return-hook', 'script check return hook unresolved', expected_pc=hex(self.return_address), expected_sp=hex(self.stack), resolved=returned.GetNumResolvedLocations(), breakpoint=returned.GetID())
         previous_stop = self.process.GetStopID()
+        self.note(details=dict(expected_pc=hex(self.return_address), expected_sp=hex(self.stack), expected_thread=self.thread_id, expected_breakpoint=returned.GetID()))
         error = self.process.Continue()
+        _, details = self.stop_details(returned)
+        self.note(details=details)
         if error.Fail():
-            raise RuntimeError('script check could not resume: ' + str(error))
+            self.fail('resume', 'script check could not resume: ' + str(error), debugger_error=error, **details)
         while True:
             thread = self.process.GetThreadByID(self.thread_id)
             if (self.process.GetState() == lldb.eStateStopped
@@ -270,7 +404,9 @@ class EngineCalls:
                     and self.frame().FindRegister('sp').GetValueAsUnsigned() == self.stack):
                 break
             if time.monotonic() >= self.deadline:
-                raise RuntimeError('script check did not stop at its return hook: ' + str(thread))
+                has_exception, details = self.stop_details(returned)
+                kind = 'native-exception' if has_exception else 'return-stop'
+                self.fail(kind, 'script check did not stop at its return hook', deadline_elapsed=True, **details)
             time.sleep(.001)
         result = self.frame().FindRegister("x0").GetValueAsUnsigned()
         self.target.BreakpointDelete(returned.GetID())
@@ -284,22 +420,36 @@ class EngineCalls:
             else:
                 restored = register.SetData(data, error)
             if not restored:
-                raise RuntimeError('script check register restoration failed: ' + str(error))
+                self.fail('register-restoration', 'script check register restoration failed: ' + str(error), register=name, debugger_error=error, **self.register_details(name, data))
         self.verify_registers()
+        if diagnostics is not None:
+            diagnostics.complete_call()
         return result
+
+    def register_details(self, name, saved):
+        try:
+            import lldb
+            error = lldb.SBError()
+            expected = saved.ReadRawData(error, 0, saved.GetByteSize())
+            actual = self.frame().FindRegister(name).GetData().ReadRawData(error, 0, saved.GetByteSize())
+            return dict(expected=expected.hex(), actual=actual.hex())
+        except Exception as error:
+            return dict(register_details_unavailable=str(error))
 
     def verify_registers(self):
         import lldb
         if self.process.GetState() != lldb.eStateStopped:
-            raise RuntimeError('script check did not return to a stopped process')
+            self.fail('register-restoration', 'script check did not return to a stopped process', actual_state=self.process.GetState())
         for name, saved in self.registers.items():
             error = lldb.SBError()
             actual = self.frame().FindRegister(name).GetData().ReadRawData(error, 0, saved.GetByteSize())
             expected = saved.ReadRawData(error, 0, saved.GetByteSize())
             if error.Fail() or actual != expected:
-                raise RuntimeError(f'script check changed a saved register: {name}: {expected!r} != {actual!r}')
+                self.fail('register-mismatch', f'script check changed a saved register: {name}: {expected!r} != {actual!r}', register=name, expected=expected.hex() if isinstance(expected, bytes) else 'unavailable',
+                          actual=actual.hex() if isinstance(actual, bytes) else 'unavailable', debugger_error=error)
 
     def finish(self):
+        self.note('verify-held-pause')
         self.verify_registers()
         for thread_id in self.suspended:
             if not self.process.GetThreadByID(thread_id).Resume():
@@ -308,44 +458,46 @@ class EngineCalls:
 
 
 class ScriptChecks:
-    def __init__(self, process, thread_id, binding, attempt, limits):
+    def __init__(self, process, thread_id, binding, attempt, limits, diagnostics=None, control=None):
         self.process = process
         self.thread_id = thread_id
         self.binding = binding
         self.attempt = attempt
         self.limits = limits
         self.sources = {}
+        self.diagnostics = diagnostics
+        self.control = control
 
     def reader(self, calls, text, source):
         binding = self.binding
         raw = text.encode('utf-8') + b'\n\0'
         raw_address = calls.allocate(len(raw), raw)
         string = calls.allocate(binding['string_size'])
-        calls.call(binding['string_constructor'], string, raw_address)
+        calls.call(binding, 'string_constructor', string, raw_address)
         blob = calls.allocate(binding['blob_size'])
-        calls.call(binding['blob_constructor'], blob)
-        calls.call(binding['blob_append'], blob, string)
+        calls.call(binding, 'blob_constructor', blob)
+        calls.call(binding, 'blob_append', blob, string)
         memory_file = calls.allocate(binding['file_size'])
-        calls.call(binding['file_constructor'], memory_file, blob, *binding['file_arguments'])
+        calls.call(binding, 'file_constructor', memory_file, blob, *binding['file_arguments'])
         source_bytes = source.encode('ascii') + b'\0'
         source_address = calls.allocate(len(source_bytes), source_bytes)
-        calls.call(binding['string_assign'], memory_file + binding['file_name_offset'], source_address)
+        calls.call(binding, 'string_assign', memory_file + binding['file_name_offset'], source_address)
         observed, truncated = read_string(self.process, memory_file + binding['file_name_offset'], binding['string_tag_offset'], 4096)
         if observed != source or truncated:
             raise RuntimeError('script check memory file source differs')
         lexer = calls.allocate(binding['lexer_size'])
-        calls.call(binding['lexer_constructor'], lexer, memory_file, binding['lexer_argument'])
+        calls.call(binding, 'lexer_constructor', lexer, memory_file, binding['lexer_argument'])
         reader = calls.allocate(binding['reader_size'])
-        calls.call(binding['reader_constructor'], reader, lexer)
+        calls.call(binding, 'reader_constructor', reader, lexer)
         return reader
 
     def read_command(self, calls, command, reader, scope):
         owner = calls.allocate(command['size'])
-        calls.call(command['constructor'], owner)
+        calls.call(command, 'constructor', owner)
         for write in command['writes']:
             value = calls.address(write['value']) if write['relocate'] else write['value']
             calls.write(owner + write['offset'], value.to_bytes(write['width'], 'little'))
-        calls.call(command['read'], owner, reader, scope)
+        calls.call(command, 'read', owner, reader, scope)
         children = read_unsigned(self.process, owner + command['children_offset'], 4)
         if children > self.limits['text']:
             raise RuntimeError('script check child count exceeds its text bound')
@@ -356,8 +508,8 @@ class ScriptChecks:
             instance = read_unsigned(self.process, calls.address(database['instance']))
             if not instance:
                 raise RuntimeError('script check database is not initialized')
-            calls.call(database['post_init'], instance)
-            calls.call(database['post_validate'], instance)
+            calls.call(database, 'post_init', instance)
+            calls.call(database, 'post_validate', instance)
 
     def check(self, request):
         global _active_capture
@@ -372,9 +524,15 @@ class ScriptChecks:
         command = self.binding[request['kind']]
         source = f"native_{self.attempt}_{request['check']}.txt"
         self.sources[source] = request['check']
-        calls = EngineCalls(self.process, self.thread_id, time.monotonic() + self.limits['seconds'])
+        if self.diagnostics is not None:
+            self.diagnostics.update(phase='script-check', context=f"check {request['check']}")
+        calls = EngineCalls(self.process, self.thread_id, time.monotonic() + self.limits['seconds'], diagnostics=self.diagnostics)
+        if self.control == 'access-failure':
+            import lldb
+            calls.write(lldb.LLDB_INVALID_ADDRESS, b'\0')
         capture = DiagnosticCapture(calls.target, self.process, self.binding, self.sources,
                                     request['check'], self.limits['diagnostics'], self.limits['text'])
+        capture.report_hook(self.diagnostics, 'script-logger')
         _active_capture = capture
         try:
             reader = self.reader(calls, request['text'], source)
@@ -383,6 +541,7 @@ class ScriptChecks:
                 lambda address, size: read_unsigned(self.process, address, size),
                 lambda address: stored_text(self.process, address, self.binding['string_tag_offset']),
                 owner, command, children, loaded_receivers(calls, request['durations']))
+            calls.note(phase='script-validation')
             capture.stage = 'validation'
             self.validate_command(calls, command)
             calls.finish()

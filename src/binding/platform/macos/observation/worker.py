@@ -26,6 +26,7 @@ breakpoints = {}
 registry_owners = {}
 fixture = None
 modifiers = None
+diagnostics = None
 
 
 class SessionProgress:
@@ -128,6 +129,15 @@ def atomic(kind, name, value, limit=protocol.MAX_RECORD):
     return encoded
 
 
+def publish_diagnostics(value):
+    # Unlike control messages, this developer checkpoint replaces its predecessor. Closing
+    # before rename is enough for worker-loss retention; each call needs no durability flush.
+    encoded = protocol.encode('worker_diagnostics', value, protocol.MAX_WORKER_DIAGNOSTICS)
+    pending = ROOT / 'worker-diagnostics.json.pending'
+    pending.write_bytes(encoded)
+    pending.replace(ROOT / 'worker-diagnostics.json')
+
+
 def dropped_by_fault(kind, fields, session_request):
     """Whether a requested dropped-record fault leaves this record out of the trace. The record
     still takes its sequence number, so the trace shows the gap."""
@@ -142,6 +152,14 @@ def dropped_by_fault(kind, fields, session_request):
 
 def emit(kind, **fields):
     global sequence
+    if diagnostics is not None:
+        if kind in ('capability-unavailable', 'early-activation-unavailable', 'native-exception', 'callback-error'):
+            diagnostics.failure(kind, fields.get('reason', fields.get('error', 'cause unavailable')))
+        elif kind == 'session-paused':
+            diagnostics.update(kind, thread=fields.get('thread', entry_thread),
+                               phase='held', context=None, deadline=None)
+        elif kind in ('hooks-requested', 'launch-stopped', 'resume', 'worker-loss-ready'):
+            diagnostics.update(kind, thread=fields.get('thread', entry_thread))
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
     encoded = protocol.encode('record', record)
@@ -1171,7 +1189,11 @@ def pause_registers(process, thread_id):
 def run_script_check(checks, check, completion):
     try:
         completion['result'] = {'Ok': checks.check(check)}
-    except Exception:
+        if diagnostics is not None:
+            diagnostics.update('script-check-completed', phase='held', context=None, deadline=None)
+    except Exception as error:
+        if diagnostics is not None:
+            diagnostics.failure('script-check', error)
         completion['result'] = {'Err': traceback.format_exc()}
 
 
@@ -1199,10 +1221,13 @@ def attach(target, info, error, timeout=15):
 
 
 def run(debugger):
-    global request, entry_thread, progress, fixture, modifiers
+    global request, entry_thread, progress, fixture, modifiers, diagnostics
     import lldb
     import sys
     request = protocol.decode('request', (ROOT / 'worker-request.json').read_bytes())
+    from script_checks import WorkerDiagnostics
+    diagnostics = WorkerDiagnostics(request['attempt'], request['game'], publish_diagnostics)
+    diagnostics.update()
     progress = SessionProgress()
     fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
     if fixture and fixture.outcome_binding and fixture.outcome_binding.get('inline'):
@@ -1237,12 +1262,17 @@ def run(debugger):
         breakpoints[name] = hook
     emit('hooks-requested', hooks=[name for name, _ in hooks])
     error = lldb.SBError()
+    diagnostics.update('debugger-attach', deadline=time.monotonic() + 15)
     process = attach(target, lldb.SBAttachInfo(request['game']), error)
     threads = list(process)
     frames = [dict(function=t.GetFrameAtIndex(0).GetFunctionName() or '') for t in threads]
     entry_thread = next((t.GetThreadID() for t in threads if t.GetFrameAtIndex(0).GetFunctionName() == '_dyld_start'), None)
     emit('launch-stopped', error=str(error), pid=process.GetProcessID(), triple=target.GetTriple() or '', frames=frames, thread=entry_thread)
     state = hook_state()
+    diagnostic_hooks = [(name, state.get(name, dict(enabled=False, locations=0, resolved=0))) for name, _ in hooks]
+    diagnostic_hooks.sort(key=lambda item: bool(item[1]['enabled'] and item[1]['resolved'] == 1))
+    diagnostics.update(hooks=[dict(name=name[:240], enabled=hook['enabled'], locations=hook['locations'],
+        resolved=hook['resolved']) for name, hook in diagnostic_hooks[:8]])
     if error.Fail():
         emit('capability-unavailable', reason='debugger attach failed: ' + str(error))
         return
@@ -1273,6 +1303,7 @@ def run(debugger):
         return
     emit('hooks-active-before-resume', hooks=state)
     deadline = time.monotonic() + 15
+    diagnostics.update('await-resume-grant', deadline=deadline)
     while not (ROOT / 'resume-granted.json').exists():
         if time.monotonic() >= deadline:
             emit('capability-unavailable', reason='owner resume acknowledgement missing')
@@ -1283,6 +1314,7 @@ def run(debugger):
         raise RuntimeError('foreign resume acknowledgement')
     emit('resume', error=str(process.Continue()))
     deadline = time.monotonic() + request['deadline_seconds']
+    diagnostics.update('observe-load', phase='loading', deadline=deadline)
     while time.monotonic() < deadline and process.IsValid() and not decide_pause(progress).stop:
         if process.GetState() in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
             break
@@ -1290,6 +1322,8 @@ def run(debugger):
             stopped = next(t for t in process if t.GetStopReason() == lldb.eStopReasonException)
             frames = [f'0x{frame.GetPC():x} {frame.GetFunctionName() or "unknown"}'
                       for frame in list(stopped)[:8]]
+            diagnostics.failure('native-exception', 'native exception',
+                **{f'frame_{index}': frame for index, frame in enumerate(frames)})
             emit('native-exception', reason='native exception: ' + '; '.join(frames))
             break
         time.sleep(.02)
@@ -1310,14 +1344,16 @@ def run(debugger):
         time.sleep(.02)
     if decision.cause and process.GetState() == lldb.eStateStopped:
         if decision.cause == 'world-ready':
+            diagnostics.update('world-ready', phase='world-observation', thread=entry_thread, context='world day 0')
             import world
             disable_observation_hooks()
             try:
                 if fault_control(request, 'world') == protocol.CONTROL['access_failure']:
                     raise RuntimeError('world observation access failure control')
                 observation = world.WorldObserver(process, entry_thread, request['world'],
-                    request['script_checks'], request['attempt'], deadline, protocol.SCRIPT_LIMITS).observe()
+                    request['script_checks'], request['attempt'], deadline, protocol.SCRIPT_LIMITS, diagnostics=diagnostics).observe()
             except RuntimeError as error:
+                diagnostics.failure('world-observation', error)
                 emit('capability-unavailable', reason='world observation failed: ' + str(error))
                 return
             atomic('world', 'world.json', dict(attempt=request['attempt'], game=request['game'],
@@ -1333,7 +1369,8 @@ def run(debugger):
         if request.get('script_checks'):
             import script_checks
             checks = script_checks.ScriptChecks(process, entry_thread, request['script_checks'],
-                                                request['attempt'], protocol.SCRIPT_LIMITS)
+                                                request['attempt'], protocol.SCRIPT_LIMITS, diagnostics=diagnostics,
+                                                control=fault_control(request, 'script-checks'))
         check_thread = None
         current_check = None
         completion = {}

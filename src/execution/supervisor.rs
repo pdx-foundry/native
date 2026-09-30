@@ -1193,6 +1193,59 @@ exec sleep 30
     }
 
     #[test]
+    fn engine_failure_context_survives_worker_exit_and_confirmed_disposal() {
+        let checkpoint = serde_json::json!({
+            "attempt": "unit", "game": 9, "phase": "world-observation", "context": "world day 0",
+            "thread": 7, "operation": "allocate-memory", "details": {},
+            "elapsed_milliseconds": 400, "deadline_milliseconds": 500,
+            "last_attempted_call": {"ordinal": 2, "operation": "country_name"},
+            "last_completed_call": {"ordinal": 1, "operation": "local_human"},
+            "hooks": [], "failure": {"kind": "allocation", "reason": "invalid allocation address",
+                "details": {"size": "64", "address": "0xffffffffffffffff", "debugger_error": "success"}}
+        });
+        let worker = format!("cat > worker-diagnostics.json <<'JSON'\n{checkpoint}\nJSON\nexit 1");
+        let session = FakeSession::run(&[], &worker);
+        assert_eq!(session.report.disposal, Disposal::Confirmed);
+        assert_eq!(session.report.outcome, SessionOutcome::WorkerLost);
+        let summary = session.summary();
+        assert_eq!(
+            summary["worker_diagnostics"]["reason"],
+            "allocation: invalid allocation address"
+        );
+        assert_eq!(
+            summary["worker_diagnostics"]["context"]["failure"]["details"]["debugger_error"],
+            "success"
+        );
+        assert!(binding::process_identity(session.game_pid).is_err());
+    }
+
+    #[test]
+    fn worker_loss_during_a_call_retains_progress_without_inventing_a_cause() {
+        let checkpoint = serde_json::json!({
+            "attempt": "unit", "game": 9, "phase": "script-check", "context": "check 1",
+            "thread": 7, "operation": "read", "details": {"expected_pc": "0x1000"},
+            "elapsed_milliseconds": 20, "deadline_milliseconds": 5000,
+            "last_attempted_call": {"ordinal": 2, "operation": "read"},
+            "last_completed_call": {"ordinal": 1, "operation": "constructor"},
+            "hooks": [], "failure": null
+        });
+        let worker = format!("cat > worker-diagnostics.json <<'JSON'\n{checkpoint}\nJSON\nexit 1");
+        let session = FakeSession::run(&[], &worker);
+        assert_eq!(session.report.outcome, SessionOutcome::WorkerLost);
+        assert_eq!(session.report.disposal, Disposal::Confirmed);
+        let summary = session.summary();
+        assert_eq!(
+            summary["worker_diagnostics"]["reason"],
+            "cause unavailable; last witnessed operation: read"
+        );
+        assert!(summary["worker_diagnostics"]["context"]["failure"].is_null());
+        assert_eq!(
+            summary["worker_diagnostics"]["context"]["last_completed_call"]["operation"],
+            "constructor"
+        );
+    }
+
+    #[test]
     fn an_attach_timeout_reaches_the_session_report_and_disposes_the_game() {
         let session = FakeSession::run(
             &[serde_json::json!({

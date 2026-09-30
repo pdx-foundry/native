@@ -264,6 +264,7 @@ pub(super) async fn attribution(native: &Native) -> Outcome {
 }
 
 pub(super) async fn deep_nesting(native: &Native) -> Outcome {
+    let earlier_work = work_directories()?;
     let country = native
         .scopes()?
         .value
@@ -315,7 +316,15 @@ pub(super) async fn deep_nesting(native: &Native) -> Outcome {
                     text: leaf.into(),
                 })
                 .await?;
-            if clean.completeness != Completeness::Complete
+            let duration_gap = usize::from(!matches!(
+                clean.value.stored_durations,
+                pdx_native::GrammarProperty::Known(_)
+            ));
+            if !clean.value.read_returned
+                || !clean.value.hooks_active
+                || clean.value.bound_reached
+                || !clean.value.unjoined.is_empty()
+                || clean.gaps.len() != duration_gap
                 || clean.value.children != 1
                 || !clean.value.diagnostics.is_empty()
             {
@@ -334,5 +343,66 @@ pub(super) async fn deep_nesting(native: &Native) -> Outcome {
     }
     .await;
     and_close(&mut result, &mut game).await;
+    if result.is_ok() {
+        result = check_held_diagnostics(&earlier_work);
+    }
     result
+}
+
+/// A failed debugger memory operation retains its cause after confirmed session cleanup.
+pub(super) async fn access_failure(native: &Native) -> Outcome {
+    let earlier = work_directories()?;
+    let scope = native
+        .scopes()?
+        .value
+        .types
+        .into_iter()
+        .find(|scope| scope.name == "country")
+        .ok_or("country scope missing")?
+        .id;
+    let mut game = native
+        .start_game(
+            options()
+                .loaded_modifiers()
+                .fault(ObservationTarget::ScriptChecks, Fault::AccessFailure),
+        )
+        .await?;
+    let answer = game
+        .check_script(&ScriptCheck {
+            kind: DeclarationKind::Trigger,
+            scope,
+            text: "always = yes".into(),
+        })
+        .await;
+    if answer.is_ok() {
+        let _ = game.close().await;
+        return Err("script access failure returned an answer".into());
+    }
+    match game.close().await {
+        Err(Error::Cleanup {
+            disposal: Disposal::Confirmed,
+            reason,
+        }) if reason.contains("script check memory write failed") => {}
+        other => {
+            return Err(
+                format!("script access failure lost its cause or disposal: {other:?}").into(),
+            );
+        }
+    }
+    let summaries = diagnostic_summaries(&earlier)?;
+    let summary = summaries.first().ok_or("script failure summary missing")?;
+    let context = &summary["worker_diagnostics"]["context"];
+    if context["failure"]["kind"] != "memory-write"
+        || context["phase"] != "script-check"
+        || context["context"] != "check 1"
+        || !context["last_completed_call"].is_null()
+        || context["failure"]["details"]["address"] != "0xffffffffffffffff"
+    {
+        return Err(format!("script failure lost debugger context: {summary}").into());
+    }
+    println!(
+        "script access failure: {}",
+        summary["worker_diagnostics"]["reason"]
+    );
+    Ok(())
 }

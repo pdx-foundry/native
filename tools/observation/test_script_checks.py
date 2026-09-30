@@ -219,3 +219,231 @@ class RegisterTests(unittest.TestCase):
                 lldb.SBError.return_value.Fail.return_value = False
                 with patch.dict(sys.modules, lldb=lldb), self.assertRaisesRegex(RuntimeError, name):
                     calls.finish()
+
+
+class EngineFailureTests(unittest.TestCase):
+    def setUp(self):
+        from script_checks import EngineCalls, WorkerDiagnostics
+        import copy
+        self.snapshots = []
+        self.clock = 0
+        self.clock_patch = patch('script_checks.time.monotonic', side_effect=lambda: self.clock)
+        self.clock_patch.start()
+        self.addCleanup(self.clock_patch.stop)
+        self.report = WorkerDiagnostics('attempt', 9, lambda state: self.snapshots.append(copy.deepcopy(state)))
+        self.lldb = Mock(eStateStopped=1, eStateRunning=2, eStopReasonBreakpoint=3,
+                         eStopReasonException=4, LLDB_INVALID_ADDRESS=(1 << 64) - 1,
+                         ePermissionsReadable=1, ePermissionsWritable=2)
+        self.lldb.SBError.return_value.Fail.return_value = False
+        self.lldb.SBError.return_value.Success.return_value = True
+        self.module_patch = patch.dict(sys.modules, lldb=self.lldb)
+        self.module_patch.start()
+        self.addCleanup(self.module_patch.stop)
+        self.calls = EngineCalls.__new__(EngineCalls)
+        self.calls.diagnostics = self.report
+        self.calls.thread_id = 7
+        self.calls.deadline = 1
+        self.calls.return_address = 0x1000
+        self.calls.stack = 0x2000
+        self.calls.registers = {}
+        self.calls.process = MagicMock()
+        self.calls.target = Mock()
+        self.calls.address = Mock(return_value=0x3000)
+        self.thread = self.calls.process.GetThreadByID.return_value
+        self.calls.process.__iter__.side_effect = lambda: iter([self.thread])
+        self.thread.GetThreadID.return_value = 7
+        self.thread.GetStopReason.return_value = 3
+        self.thread.GetStopReasonDataAtIndex.return_value = 8
+        self.frame = self.thread.GetFrameAtIndex.return_value
+        self.values = {}
+        self.native_registers = {}
+
+        def find(name):
+            if name not in self.native_registers:
+                register = Mock()
+                register.SetValueFromCString.side_effect = lambda value: self.values.update({name: int(value, 16)}) or True
+                register.GetValueAsUnsigned.side_effect = lambda: self.values.get(name, 0)
+                self.native_registers[name] = register
+            return self.native_registers[name]
+
+        self.frame.FindRegister.side_effect = find
+        self.calls.process.GetState.return_value = 1
+        self.stop_id = 1
+        self.calls.process.GetStopID.side_effect = lambda: self.stop_id
+        self.hook = self.calls.target.BreakpointCreateByAddress.return_value
+        self.hook.GetID.return_value = 8
+        self.hook.GetNumResolvedLocations.return_value = 1
+        self.calls.process.Continue.side_effect = self.return_normally
+        self.bindings = {name: dict(address=0x3000, widths=[])
+                         for name in ('read', 'fast_forward', 'effect_execute')}
+
+    def return_normally(self):
+        self.stop_id += 1
+        self.values.update(pc=0x1000, sp=0x2000)
+        error = Mock()
+        error.Fail.return_value = False
+        return error
+
+    def fail_return(self, **change):
+        self.return_normally()
+        self.clock = 2
+        if 'pc' in change or 'sp' in change:
+            self.values.update(change)
+        return self.lldb.SBError()
+
+    def failure(self):
+        return self.snapshots[-1]['failure']
+
+    def test_completed_call_requires_return_and_register_verification(self):
+        self.calls.call(self.bindings, 'fast_forward')
+        self.assertEqual(self.snapshots[-1]['last_attempted_call'], self.snapshots[-1]['last_completed_call'])
+        self.calls.verify_registers = Mock(side_effect=RuntimeError('verification failed'))
+        with self.assertRaisesRegex(RuntimeError, 'verification failed'):
+            self.calls.call(self.bindings, 'fast_forward')
+        self.assertEqual(self.snapshots[-1]['last_attempted_call']['ordinal'], 2)
+        self.assertEqual(self.snapshots[-1]['last_completed_call']['ordinal'], 1)
+
+    def test_missing_return_hook_has_expected_address_and_stack(self):
+        self.hook.GetNumResolvedLocations.return_value = 0
+        with self.assertRaisesRegex(RuntimeError, 'return hook unresolved'):
+            self.calls.call(self.bindings, 'read')
+        self.assertEqual(self.failure()['kind'], 'missing-return-hook')
+        self.assertEqual(self.failure()['details']['expected_pc'], '0x1000')
+        self.calls.process.Continue.assert_not_called()
+
+    def test_wrong_return_evidence_never_completes_a_call(self):
+        for mismatch in ('pc', 'sp', 'breakpoint', 'thread', 'absent'):
+            with self.subTest(mismatch=mismatch):
+                self.clock = 0
+                self.stop_id = 1
+                self.values.clear()
+                self.snapshots.clear()
+                self.report.state['failure'] = None
+                self.calls.process.GetState.return_value = 1
+                self.thread.GetThreadID.return_value = 7
+                self.thread.GetStopReason.return_value = 3
+                self.thread.GetStopReasonDataAtIndex.return_value = 8
+                if mismatch in ('pc', 'sp'):
+                    self.calls.process.Continue.side_effect = lambda: self.fail_return(**{mismatch: 0xdead})
+                else:
+                    self.calls.process.Continue.side_effect = self.fail_return
+                    if mismatch == 'breakpoint':
+                        self.thread.GetStopReasonDataAtIndex.return_value = 99
+                    elif mismatch == 'thread':
+                        self.thread.GetThreadID.return_value = 99
+                        self.thread.GetStopReason.return_value = 0
+                    else:
+                        self.calls.process.GetState.return_value = 2
+                with self.assertRaisesRegex(RuntimeError, 'did not stop'):
+                    self.calls.call(self.bindings, 'fast_forward')
+                failure = self.failure()
+                self.assertEqual(failure['kind'], 'return-stop')
+                self.assertEqual(failure['details']['expected_sp'], '0x2000')
+                self.assertEqual(failure['details']['expected_breakpoint'], '8')
+                self.assertIsNone(self.snapshots[-1]['last_completed_call'])
+
+    def test_native_exception_is_distinct_from_wrong_return(self):
+        self.calls.process.Continue.side_effect = self.fail_return
+        self.thread.GetStopReason.return_value = 4
+        with self.assertRaises(RuntimeError):
+            self.calls.call(self.bindings, 'effect_execute')
+        self.assertEqual(self.failure()['kind'], 'native-exception')
+
+    def test_world_job_exception_reports_the_faulting_thread_and_stack(self):
+        job = MagicMock()
+        job.GetThreadID.return_value = 17
+        job.GetStopReason.return_value = 4
+        frame = Mock()
+        frame.GetPC.return_value = 0xdead
+        frame.GetFunctionName.return_value = 'world_job_fault'
+        job.__iter__.side_effect = lambda: iter([frame])
+        unrelated = [Mock() for _ in range(8)]
+        for thread in unrelated:
+            thread.GetStopReason.return_value = 0
+        self.calls.process.__iter__.side_effect = lambda: iter(unrelated + [self.thread, job])
+        self.thread.GetStopReason.return_value = 0
+        self.calls.process.Continue.side_effect = self.fail_return
+        with self.assertRaisesRegex(RuntimeError, 'did not stop'):
+            self.calls.call(self.bindings, 'fast_forward')
+        failure = self.failure()
+        self.assertEqual(failure['kind'], 'native-exception')
+        self.assertEqual(failure['details']['thread'], '7')
+        self.assertEqual(failure['details']['exception_thread'], '17')
+        self.assertEqual(failure['details']['exception_stack'], '0xdead world_job_fault')
+        self.assertIsNone(self.snapshots[-1]['last_completed_call'])
+
+    def test_elapsed_deadline_reports_attempt_without_resume(self):
+        self.clock = 2
+        with self.assertRaisesRegex(RuntimeError, 'deadline elapsed'):
+            self.calls.call(self.bindings, 'read')
+        self.assertEqual(self.failure()['kind'], 'call-timeout')
+        self.calls.process.Continue.assert_not_called()
+
+    def test_allocation_success_status_with_invalid_address_retains_both(self):
+        self.calls.process.AllocateMemory.return_value = self.lldb.LLDB_INVALID_ADDRESS
+        with self.assertRaisesRegex(RuntimeError, 'allocation failed'):
+            self.calls.allocate(64)
+        self.assertEqual(self.failure()['kind'], 'allocation')
+        self.assertEqual(self.failure()['details']['size'], '64')
+        self.assertEqual(self.failure()['details']['address'], '0xffffffffffffffff')
+        self.assertIn('debugger_error', self.failure()['details'])
+        self.calls.process.WriteMemory.assert_not_called()
+
+    def test_debugger_allocation_error_retains_status_and_address(self):
+        self.lldb.SBError.return_value.Fail.return_value = True
+        self.calls.process.AllocateMemory.return_value = 0
+        with self.assertRaisesRegex(RuntimeError, 'allocation failed'):
+            self.calls.allocate(16)
+        self.assertEqual(self.failure()['details']['address'], '0x0')
+        self.assertIn('debugger_error', self.failure()['details'])
+
+    def test_vector_mismatch_reports_bytes_and_cannot_complete(self):
+        saved = Mock()
+        saved.GetByteSize.return_value = 16
+        saved.ReadRawData.return_value = bytes(16)
+        self.calls.registers = dict(v0=saved)
+        register = self.frame.FindRegister('v0')
+        register.SetValueFromCString.side_effect = None
+        register.SetValueFromCString.return_value = True
+        register.GetData.return_value.ReadRawData.return_value = bytes([1]) * 16
+        with self.assertRaisesRegex(RuntimeError, 'changed a saved register'):
+            self.calls.call(self.bindings, 'read')
+        self.assertEqual(self.failure()['kind'], 'register-mismatch')
+        self.assertEqual(self.failure()['details']['register'], 'v0')
+        self.assertEqual(self.failure()['details']['actual'], (bytes([1]) * 16).hex())
+        self.assertIsNone(self.snapshots[-1]['last_completed_call'])
+
+    def test_register_restoration_failure_names_register_and_values(self):
+        saved = Mock()
+        saved.GetByteSize.return_value = 8
+        saved.ReadRawData.return_value = b'expected'
+        self.calls.registers = dict(cpsr=saved)
+        register = self.frame.FindRegister('cpsr')
+        register.SetData.return_value = False
+        register.GetData.return_value.ReadRawData.return_value = b'observed'
+        with self.assertRaisesRegex(RuntimeError, 'restoration failed'):
+            self.calls.call(self.bindings, 'read')
+        self.assertEqual(self.failure()['details']['register'], 'cpsr')
+        self.assertEqual(self.failure()['details']['expected'], b'expected'.hex())
+        self.assertEqual(self.failure()['details']['actual'], b'observed'.hex())
+        self.assertIsNone(self.snapshots[-1]['last_completed_call'])
+
+    def test_checkpoint_is_bounded_and_first_failure_survives_later_reports(self):
+        self.report.failure('allocation', 'x' * 1000, debugger_error='y' * 1000)
+        self.report.failure('worker-exit', 'later failure')
+        self.report.update('cleanup')
+        self.report.complete_call()
+        self.assertEqual(self.failure()['kind'], 'allocation')
+        self.assertEqual(len(self.failure()['reason']), 240)
+        self.assertEqual(len(self.failure()['details']['debugger_error']), 240)
+
+    def test_checkpoint_write_failure_cannot_replace_call_failure(self):
+        self.report.publish = Mock(side_effect=OSError('disk full'))
+        self.clock = 2
+        with self.assertRaisesRegex(RuntimeError, 'deadline elapsed'):
+            self.calls.call(self.bindings, 'read')
+        self.assertEqual(self.report.state['failure']['kind'], 'call-timeout')
+
+
+if __name__ == '__main__':
+    unittest.main()

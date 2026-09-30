@@ -92,7 +92,7 @@ supervisor after `owner.json` and `report.json`, so it states the final outcome.
 printed on the supervisor's standard error and never changes the outcome or `close`. The live
 harness (`tests/live.rs`) sets the hidden `GameOptions::keep_work_directory`, so `close` keeps
 the directory. A passing case removes it; a failing case keeps it and prints
-`kept <dir>; run summary <dir>/session/run-summary.json: outcome …, last completed phase …`,
+`kept <dir>; run summary <dir>/session/run-summary.json: outcome …, last completed phase …, reason …`,
 also when a check fails after a clean `close`. The same directory holds `raw-trace.jsonl`,
 `owner-events.jsonl`, worker and game output, and the private profile's engine logs.
 
@@ -102,7 +102,35 @@ What the summary says, and what it does not:
   It excludes plan admission, the caller's handshake and the worker's own time. The session
   phases are `setup`, `worker-start`, `awaiting-pause` and `paused`; each is `completed`,
   `interrupted` (running when the session ended) or `not-reached`. Cleanup is timed apart. Worker
-  progress has no clock: `worker.last_record` gives the last record the worker wrote.
+  `worker.last_record` gives the last record the worker wrote.
+- **Engine calls.** `worker_diagnostics` keeps a compact reason, checkpoint context and an
+  explicit unavailability reason when the checkpoint cannot be read. The worker atomically
+  replaces `session/worker-diagnostics.json` before blocking operations and after verified calls.
+  It records phase, world day or script-check number, owned thread, current operation, separate
+  last attempted/completed calls with ordinals, hook samples and debugger details. Completion
+  requires the return stop and exact register restoration. Elapsed time and deadline are
+  milliseconds from worker diagnostic initialization on its monotonic clock; they are not
+  supervisor phase times. The deadline is absent at the held pause and after a successful script
+  check. Native exceptions identify the faulting engine thread and its stack, including job
+  threads other than the owned call thread. Allocation reports include size, actual address and debugger status;
+  return failures include actual/expected breakpoint, thread, PC and SP; register failures name
+  the register and expected/actual bytes. The first reported failure survives later exit handling.
+  A lost worker without a failure report has an unavailable cause and a last witnessed operation,
+  never an inferred debugger failure. Each checkpoint is at most 16 KiB, with eight hook samples,
+  sixteen detail entries and text cut to 240 characters. Failure to write diagnostics cannot
+  change calls, deadlines, answers or cleanup. No call history or replay data is retained.
+  The live `script_access_failure` control uses the hidden script-check fault target and the
+  existing access-failure control to attempt a debugger write at LLDB's invalid address. It
+  records the actual debugger error and count, then requires confirmed disposal and the original
+  failure from `close`; it does not execute a script. Missing-world-hook, worker-loss and world
+  access-failure controls also check the summary after disposal.
+  SDK-652 validation on the exact M451-hotfix image passed all eight world cases (readiness,
+  90-day expiry, rejected effect, wrong country, missing hook, worker loss, access failure and
+  cancellation). World readiness took 33 seconds and expiry 42 seconds. The script argument and
+  attribution cases passed; the deep-nesting case passed at 681 trigger levels and 254 effect
+  levels in 43 seconds. The script access-failure case passed in 40 seconds: its retained summary
+  reported the failed write at `0xffffffffffffffff`, actual count zero, check 1, no completed
+  engine call and confirmed disposal. These are whole-case times, not isolated reporting costs.
 - **Hooks.** `requested` comes from the worker's `hooks-requested` record, the states from
   `hooks-active-before-resume`. A missing hook is `absent`, `disabled` (the late-hook control),
   `unresolved` or `hit-before-resume`. When no requested hook is active, the worker stops before

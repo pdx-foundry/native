@@ -14,6 +14,7 @@ pub(super) fn request() -> pdx_native::WorldRequest {
 }
 
 pub(super) async fn ready(_native: &Native) -> Outcome {
+    let earlier = work_directories()?;
     let recordings = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recordings.path());
@@ -59,6 +60,9 @@ pub(super) async fn ready(_native: &Native) -> Outcome {
     }
     .await;
     and_close(&mut result, &mut game).await;
+    if result.is_ok() {
+        result = check_held_diagnostics(&earlier);
+    }
     result
 }
 
@@ -131,6 +135,7 @@ pub(super) async fn expiry(native: &Native) -> Outcome {
 }
 
 pub(super) async fn failure(native: &Native, control: Fault) -> Outcome {
+    let earlier = work_directories()?;
     match native
         .start_game(
             options()
@@ -152,6 +157,22 @@ pub(super) async fn failure(native: &Native, control: Fault) -> Outcome {
             if !reason.contains(expected) {
                 return Err(format!("world fault lost its cause: {reason}").into());
             }
+            let summaries = diagnostic_summaries(&earlier)?;
+            let summary = summaries.first().ok_or("world failure summary missing")?;
+            let diagnostics = &summary["worker_diagnostics"];
+            let compact = diagnostics["reason"]
+                .as_str()
+                .ok_or("world failure reason missing")?;
+            if control == Fault::WorkerLoss {
+                if !compact.contains("cause unavailable")
+                    || !diagnostics["context"]["failure"].is_null()
+                {
+                    return Err(format!("worker loss inferred a cause: {diagnostics}").into());
+                }
+            } else if !compact.contains(expected) || diagnostics["context"]["failure"].is_null() {
+                return Err(format!("world failure lost its reported cause: {diagnostics}").into());
+            }
+            println!("world failure: {compact}");
             Ok(())
         }
         Err(error) => Err(format!("world fault did not confirm disposal: {error:?}").into()),
