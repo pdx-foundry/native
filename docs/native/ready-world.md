@@ -1,4 +1,4 @@
-# Ready-world observations (SDK-650)
+# Ready-world observations (SDK-650, SDK-647)
 
 ## Verified route
 
@@ -11,9 +11,10 @@ The original save is never written.
 
 `GameOptions::world(WorldRequest)` selects this pause instead of a registry, fixture or modifier
 pause. The request names the displayed local human country, one prepared effect, at most 120
-engine days and at most 32 flag names. Effect text is limited to 4 KiB; the save to 16 MiB.
-Startup's configured deadline covers loading and the whole prepared observation. There is no
-second deadline or open-ended execution loop. General numeric evaluation remains SDK-647 work.
+engine days, at most 32 flag names and at most 32 variable names. Effect text is limited to
+4 KiB; the save to 16 MiB. Startup's configured deadline covers loading and the whole prepared
+observation. There is no second deadline or open-ended execution loop. The numeric operand
+results that this route gives are in [scoped numeric](scoped-numeric.md#world-evaluation-on-m451-hotfix-sdk-647).
 
 The readiness gate checks the actual game-state readiness byte, paused idler, main-thread
 receiver and the normal `UpdateInternal` / `Idle` / `UpdateOneFrame` stack. A startup or loading
@@ -57,6 +58,36 @@ ordinary queued-command messages are outside that prepared effect's diagnostics.
 requires its raw value to advance by exactly 24. Flag IDs and signed counts come from the actual
 country store; matching array lengths and bounded names are required. Interned names are cached
 within the observation. Absence is `None`; zero and negative stored counts remain distinct.
+
+## Variables
+
+Each sample also gives the requested variables, in request order. A set variable gives its raw
+signed 64-bit value and the scale 100000; an unset one gives `None`. The source stamp is
+`observe-world/v2`, and the recording key includes the variable names.
+
+The worker reads a name as the engine reads a variable operand:
+
+- `GetVariablePointer(CEventScope const&, CString const&)` (`0x100d0d704`) selects the store. A
+  name that starts with `local_` uses the scope-local store of the prepared scope
+  (`CEventScope::GetVariables`). Any other name uses the country's own store
+  (`CEventScope::GetSavedVariables`).
+- `CVariables::VariableIsSet` (`0x100d1e7b8`) and `CVariables::GetVariable` (`0x100d1e784`) read
+  the map. `GetVariable` returns the raw `CFixedPoint` in `x0`.
+- The scale is a recipe value. The supervisor refuses a result that carries another scale.
+
+A null store means "not set", not a failure: the scope-local store does not exist until an effect
+creates it. `world_ready` asks for one unset name of each kind and gets `None` for both. A failed
+call or memory read still ends the session. A literal case (`set_variable` with `2.75`, raw
+275000) shows that the read and the scale are correct before any reference case depends on them.
+
+Each name costs two or three engine calls in every sample. The numeric cases use `days = 0`;
+a request with many names and many days uses more of the startup deadline.
+
+A variable is the way to read other engine numbers. An effect such as
+`export_resource_stockpile_to_variable`, `export_modifier_to_variable` or
+`export_trigger_value_to_variable` writes the number to a country variable, and the request names
+that variable. A value of another scope is copied through a qualified operand, such as
+`set_variable = { which = V value = capital_scope.planet_variable }`.
 
 ## Live result, 2026-09-29
 

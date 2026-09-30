@@ -13,7 +13,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Subject | Page | What it holds |
 | --- | --- | --- |
 | Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, background launch, process disposal on macOS and Windows, debugger shutdown |
-| Load a world and observe prepared effects | [Ready-world observations](native/ready-world.md) | Private save loading, main-thread world pause, bounded daily updates and country flag expiry |
+| Load a world and observe prepared effects | [Ready-world observations](native/ready-world.md) | Private save loading, main-thread world pause, bounded daily updates, country flag expiry and variable reads |
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | ARM64 loader-entry attachment, registration and field reads, where to read registry items |
 | The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
 | Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |
@@ -21,7 +21,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope, Boolean, key, target and reference messages; generic reader errors; ordinary-log/source-filter gaps; config-test route limits |
 | Write a method | [Method authoring](native/method-authoring.md) | Inspector, stop diagnostics, authored tests, parity and whole-inventory runs |
 | Registry fields and scheduling | [Registry fields](native/registry-fields.md) | The current field sweep and its stops, compiler jump tables and bit fields, token paths, members and shared readers, scheduler table, owner joins |
-| Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, representation selection and remaining limits |
+| Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, representation selection, world evaluation results and remaining limits |
 | Duration keys | [Duration keys](native/durations.md) | Unit factors, shared-factor and scaled-at-read combination, the flag-store countdown and unidentified keys |
 | Engine commands and scopes | [Engine commands](native/engine-commands.md) | Engine documentation commands, target getters, modifier, category, scope and link declarations, localization tables, on_action and game rule call sites |
 | References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, database directories, owner initializers, identifier grammar, flag stores and namespaces |

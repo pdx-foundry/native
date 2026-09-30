@@ -1,4 +1,4 @@
-# Scoped numeric operands (SDK-645)
+# Scoped numeric operands (SDK-645, SDK-647)
 
 On M45-release, `CVariableValue::Read` and `Assign` share an operand reader. A destination's
 constructor vtable point selects `CIntVariableValue`, `CFixedPointVariableValue`, or the base
@@ -60,8 +60,8 @@ shared-evidence controls (missing prefix token, vtable pointer, prefix-dispatch 
 body), and four observation controls (integer/fixed-point missing record and missing authority).
 The Rust method replaces old replay qualification. Full arithmetic's missing-MTTH-body control
 belongs to SDK-545; here a missing GetValueInternal body must leave selection unresolved. The
-41 old evaluation results are not rerun or presented as parser results; SDK-647 owns evaluated
-values. Hash/capsule checks from the old verification script are preservation checks, not engine
+41 old evaluation results are not parser results; [world evaluation](#world-evaluation-on-m451-hotfix-sdk-647)
+maps each of them. Hash/capsule checks from the old verification script are preservation checks, not engine
 method tests.
 
 M45-release observations retain a script-value lookup after a later literal (integer 9 or fixed
@@ -101,3 +101,157 @@ On the installed hotfix, all three existing `m45_scoped_numeric` static checks p
 proof with negative controls, registry/effect parity, and timed-flag command parity. The six
 default targeted scoped-number tests and `cargo clippy --lib -- -D warnings` also pass. No
 recorded expectation was refreshed for this repair.
+
+## World evaluation on M451-hotfix (SDK-647)
+
+The static method gives storage and selection. It gives no evaluated number. The numbers below
+come from the engine's own effect execution in a loaded world, read through
+[`Game::observe_world`](ready-world.md). Native does not call `GetValue` itself. The build is the
+M451-hotfix executable in [targets](targets.md); the world is the tracked 4.5.1 save, with United
+Nations of Earth as the country scope on 2200.01.01.
+
+### Witness effects
+
+Two effects turn an operand into a value that the world observation reads. Both facts are from the
+hotfix executable.
+
+- **Integer.** `set_timed_country_flag = { flag = F days = X }`. The execute body stores
+  `CIntVariableValue::GetValue(scope)` times the factor as the flag count
+  ([duration keys](durations.md)). With `days` alone the factor is 1, so the day-zero count of
+  flag `F` is the evaluated integer.
+- **Fixed point.** `set_variable = { which = V value = X }`. `CSetVariableEffect::ExecuteActual`
+  (`0x101e0e570`) passes `CFixedPointVariableValue::GetValue(operand +0xd0, scope)` to
+  `CVariables::SetVariable` with no other arithmetic. The raw value of variable `V` is the
+  evaluated fixed-point number, scale 100000.
+
+`export_trigger_value_to_variable`, `export_modifier_to_variable` and
+`export_resource_stockpile_to_variable` give the same numbers by a second engine route.
+
+### Evaluation bodies
+
+The matched `GetValue` and `GetValueInternal` bodies (`0x100d1cdf0`, `0x100d1d3a4` for the integer
+type; `0x100d1bf00`, `0x100d1c4bc` for the fixed-point type) read as follows. The live cases
+agree with each line that they reach.
+
+- An empty source location returns the literal slot. This is the only literal load.
+- Otherwise the body resolves the stored event-target chain, then tries trigger, script value,
+  modifier and variable in that order. The variable route is last and unconditional: it runs
+  even when no variable name is stored.
+- The integer body divides the fixed-point result of the script-value, modifier and variable
+  routes by 100000 and truncates toward zero. A trigger has separate integer and fixed-point
+  getters. A literal converts when it is read, not when it is evaluated.
+- A failed lookup returns zero, never the literal slot.
+  - `CVariableValue::GetVariableValue` (`0x100d1b594`): an unset variable logs
+    `Variable <name> is not set for scoped <type> '<object>' at <location>`.
+  - `CVariableValue::GetModifierValue` (`0x100d1b3d4`): a modifier that the scope does not have
+    returns zero with no message. By the static reading, a definition flag clamps some
+    modifiers to 0..1; no live case reaches that path.
+  - A trigger whose scope type is wrong at evaluation logs
+    `Invalid Scope type for trigger <name> used as a variable at <location>, got <type>`.
+  - An event target that does not resolve logs `Invalid event target scope '<target>' at <location>`.
+
+### Result
+
+`tests/expected/world-numeric-m451/cases.json` holds every case with its operand text, the parser
+storage of its integer operand, and both results. `cargo live world_numeric` runs it: one
+`check_script` session and five world sessions. Each case is evaluated in both destinations.
+
+| Group | Cases | Result |
+| --- | ---: | --- |
+| Literals and a global `@` constant | 10 | The stored literal. `2.75` gives 2 and raw 275000; `2147483648` gives -2147483648 and raw 214748364800000; 24 nines give -1 and raw -100000; an omitted operand gives 0 |
+| Variable | 2 | `7.9` gives 7 and raw 790000; `-2.75` gives -2 and raw -275000 |
+| Numeric trigger | 2 | `num_owned_planets` 1, `empire_size` 50; equal to the export effect, and `num_owned_planets = 1` is true |
+| Modifier | 4 | `country_edict_fund_add` 15 and raw 1500000; `pop_cat_specialist_bonus_workforce_mult` 0 and raw 10000; `ships_upkeep_mult` 0 and raw -2000; an absent modifier 0 with no message. Each equals the export effect |
+| Script value | 1 | Vanilla `tech_weight_likelihood` (1.25) gives 1 and raw 125000 |
+| Two assignments | 11 | Two literals give the later one. A literal with any reference gives the reference, in both orders. Two references of different kinds give the earlier one in the static priority, in both orders. A second script value replaces the first |
+| Qualified scope | 6 | `root.` and `owner.` give the country's variable; `capital_scope.` and a saved event target give the planet's variable, modifier (-3) and trigger (`planet_size` 18) |
+| Logged fallback | 6 | Zero in both destinations, one message for each statement; see below |
+
+Six more cases repeat a single form as the baseline of their session, which gives 48 cases and
+96 evaluations.
+
+There is **no conflict** with the static facts. Each check uses the facts of its own destination
+(`set_timed_country_flag.days`, `set_variable.value`), not a reader ID.
+
+- The variable store's scale (the world recipe) equals the static scale of `set_variable.value`.
+- For each integer operand, the static selection rule applied to its observed parser storage
+  names the form whose value the world shows. This holds for all 48 cases.
+- For the script-value, modifier and variable routes, the integer result equals the fixed-point
+  result divided by 100000 and truncated.
+- The retained reference-then-literal case is confirmed in execution: `days = n647_positive
+  days = 4` stores literal 4 and evaluates to 7.
+
+Comparison with observed parser storage covers the integer destination only. `check_script`
+reports storage for duration groups and for nothing else, so the stored state of the fixed-point
+operands was not observed; they are compared with the static facts alone.
+
+### Fallback and rejection
+
+These forms execute, log and give zero. The answer is partial, and the values stay in the sample.
+
+| Operand | Message |
+| --- | --- |
+| An unset variable | `Variable n647_unset is not set for scoped country …` |
+| `modifier:` with an unknown name | `Variable  is not set …`: no modifier and no name is stored, so the variable route runs with an empty name |
+| An unknown prefix, `bogus:n647` | `Variable bogus:n647 is not set …`: the whole token is variable text |
+| A saved event target that does not exist | `Invalid event target scope 'event_target:n647_absent'` |
+| `capital_scope.` with an unset variable | `Variable n647_unset is not set for scoped colony 'Earth'` |
+| A country trigger through a saved target that is a planet | `Invalid Scope type for trigger num_owned_planets used as a variable …, got colony` |
+
+These forms are rejected while the engine reads or validates them. A world does not execute a
+rejected effect, so their runtime value is **not observed**. The static reading is zero.
+
+| Operand | Stage | Message |
+| --- | --- | --- |
+| `trigger:` with an unknown name | validation | `Scripted Trigger … is invalid`; `Error in scripted trigger, cannot find: …` |
+| `value:` with an unknown name | validation | `Script Error: Invalid script value: …` |
+| A Boolean trigger, `trigger:is_ai` | read, validation | `Trigger is_ai cannot be used in this context`; the Boolean value message |
+| A planet trigger in the country scope | read | `Trigger planet_size used in wrong scope …, got country` |
+| A country trigger after `capital_scope.` | read | `Trigger num_owned_planets used in wrong scope …, got colony` |
+
+### SDK-493 evaluations
+
+The prototype evaluated 41 operands in an empty scope on M45-observe. 26 now run in the world
+scope with the same results where the input is the same.
+
+| SDK-493 evaluations | World case |
+| --- | --- |
+| 1, 24 | `omitted` |
+| 2, 25; 3; 4, 28, 36; 5; 6; 7; 8; 9 | `literal`, `literal_negative`, `literal_fraction`, `literal_negative_fraction`, `literal_hex`, `literal_octal`, `literal_overflow`, `literal_very_large` |
+| 10, 29, 37 | `constant`, with the vanilla global `@ruler_job_weight` |
+| 11, 30, 38 | `script_value`, with the vanilla `tech_weight_likelihood` |
+| 16, 33; 17; 18, 34, 41; 19 | `literal_literal`, `literal_value`, `value_literal`, `value_value` |
+| 26, 27, 35 | Duration factors: the [stored durations](durations.md) and the [expiry run](ready-world.md) |
+| 15, 32, 40 | A missing script value is rejected at validation; not rerun |
+| 12, 13, 14, 20–23, 31, 39 | Custom script values with arithmetic; not rerun |
+
+### Gaps
+
+- **Rejected references at run time.** The world route never executes an effect that has a read
+  or validation message. A forced evaluation would be a different observation contract.
+- **Custom content.** A world session loads installed content and no mod files. Custom script
+  values and file-level `@` constants cannot be prepared. Script-value arithmetic is SDK-545.
+- **Qualified-scope grammar.** The static `forms` list stays partial. The six live cases are
+  observations with no static form to compare. Scope availability and identity are SDK-549.
+- **Fixed-point parser storage in a paused game.** `check_script` does not report the storage of
+  an operand outside a duration group.
+- **The unknown-modifier check.** The engine string `Invalid modifier %s at %s` belongs to the
+  deferred variable-value database. Neither `check_script` nor the world route runs that
+  validation, so neither gives a validation message for `modifier:` with an unknown name. The
+  world still logs the failed variable lookup when the effect executes.
+
+### Pitfalls
+
+- One rejected statement stops the whole prepared effect. Read every statement with
+  `check_script` first; `world_numeric_stored` does this for the table.
+- A quiet read is not a valid reference. An unknown prefix, an unknown modifier and an absent
+  saved target all read quietly and fail only when the effect executes.
+- Equality at zero proves nothing about a modifier: an absent modifier also gives zero on both
+  routes. Use a nonzero value that a content definition also gives.
+- A modifier added by `add_modifier` is not visible to `modifier:` in the next statement. In the
+  observed run it became visible after a `random_country` statement. Application and propagation
+  are SDK-547; do not read a rule from this.
+- `num_pops` is not a trigger on this build. A trigger name from an older build can reject the
+  effect.
+- A plain country flag has count -1. A timed flag whose operand evaluates to zero has count 0 on
+  day zero.

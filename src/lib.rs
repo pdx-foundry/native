@@ -76,7 +76,9 @@ pub use script::{
     StoredDuration,
 };
 pub use session::Native;
-pub use world::{WorldFlag, WorldObservation, WorldRequest, WorldSample};
+pub use world::{
+    WorldFixedPoint, WorldFlag, WorldObservation, WorldRequest, WorldSample, WorldVariable,
+};
 
 pub(crate) use api::UnavailableReason;
 pub(crate) use engine::analysis::AnalysisError;

@@ -249,6 +249,7 @@ fn run(
                 category_fields: plan.category_fields(),
                 loaded_modifiers: request.loaded_modifiers.as_deref(),
                 world: request.world.as_ref(),
+                world_variable_scale: plan.world_variable_scale(),
                 build: crate::BuildId(request.build.clone()),
                 startup: Duration::from_secs(request.startup_seconds),
                 idle: Duration::from_secs(request.idle_seconds),
@@ -346,6 +347,8 @@ struct Session<'a> {
     /// The registries whose item keys the modifier observation reads, when it is requested.
     loaded_modifiers: Option<&'a [String]>,
     world: Option<&'a crate::WorldRequest>,
+    /// The scale that every observed world variable must carry.
+    world_variable_scale: Option<u64>,
     build: crate::BuildId,
     startup: Duration,
     idle: Duration,
@@ -451,6 +454,7 @@ fn observe_session(
                         Some(crate::engine::operations::world::answer(
                             serde_json::from_slice(&raw)?,
                             request,
+                            session.world_variable_scale,
                             session.attempt,
                             child.pid(),
                             paused_thread,
@@ -736,6 +740,7 @@ mod tests {
             effect: String::new(),
             days: 0,
             flags: vec![],
+            variables: vec![],
         };
         prepare_profile(root.path()).unwrap();
         prepare_world_profile(root.path(), &request).unwrap();
@@ -839,6 +844,7 @@ mod tests {
                 category_fields: &[],
                 loaded_modifiers: worker.contains("SDK_CHECK_MODE").then_some(&[][..]),
                 world: None,
+                world_variable_scale: None,
                 build: crate::BuildId("unit".into()),
                 startup: Duration::from_secs(3),
                 idle,

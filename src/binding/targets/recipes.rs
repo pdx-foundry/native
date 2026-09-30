@@ -465,5 +465,9 @@ fn m451_world() -> crate::protocol::world::WorldBinding {
         counts_count_offset: 0x4c,
         flag_width: 2,
         flag_name: call(0x1022a35b8, &[16]),
+        variable_store: call(0x100d0d704, &[64, 64]),
+        variable_is_set: call(0x100d1e7b8, &[64, 64]),
+        variable_value: call(0x100d1e784, &[64, 64]),
+        variable_scale: 100_000,
     }
 }

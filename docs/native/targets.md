@@ -96,6 +96,12 @@ object at `+0x1c`. The scope constructor still fits the allocated `0x180` bytes.
 Flag lookup uses 16-bit IDs at array `+0x10`, count `+0x1c`; signed counts use array `+0x40`
 and count `+0x4c`. These are static layout checks, not a live world result.
 
+For SDK-647 variable reads, `GetVariablePointer(CEventScope const&, CString const&)` is
+`0x100d0d704`, `CVariables::VariableIsSet(CString const&) const` is `0x100d1e7b8` and
+`CVariables::GetVariable(CString const&) const` is `0x100d1e784`. `GetVariable` looks up the map at
+`+8` and loads the 64-bit value at entry `+0x30`, or the engine's zero constant for a missing
+entry. The stored scale is 100000. The [live cases](ready-world.md#variables) verify these reads.
+
 Raw symbol tables, every pinned function's disassembly, vtable slots, the old-to-new address map,
 and the capture scripts are retained under `.local/sdk-650/hotfix/`. No game process was launched
 for this adaptation. The coordinator owns the live checks.

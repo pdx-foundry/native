@@ -33,6 +33,12 @@ pub(crate) struct WorldBinding {
     pub counts_count_offset: u64,
     pub flag_width: usize,
     pub flag_name: CallBinding,
+    /// Scope and name to the variable store that the engine selects for that name.
+    pub variable_store: CallBinding,
+    pub variable_is_set: CallBinding,
+    pub variable_value: CallBinding,
+    /// Raw units in one whole unit of a stored variable.
+    pub variable_scale: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

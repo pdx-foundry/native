@@ -100,7 +100,7 @@ the state after the simplification effort:
 | `start_game` | Implemented | Supervisor command and deadlines | A `Game` paused at a stated readiness boundary |
 | `Game::registry_items` | Implemented | A registry name | Item names from the engine collection |
 | `Game::loaded_modifiers` | Implemented for M45-release | `GameOptions::loaded_modifiers` before launch | The modifier table after all content loads, read where the engine documents its modifiers: each name with its loaded category tags, whether the executable declares it, and each `modifier_families` family and loaded item that gives it; the loaded keys of each family registry; the loaded content. Unexplained names and unjoined generation sites are gaps. No config or log file is read. |
-| `Game::observe_world` | Implemented for M451-hotfix | `GameOptions::world(WorldRequest)` before launch: compatible save, exact displayed local human country, prepared effect, 0–120 days and up to 32 flags | One fixed observation from the normal main-thread world pause: actual country, initial date, effect execution and diagnostics, then engine date and each flag's presence/signed count for day zero and each advanced day. Repeated reads do not execute again. |
+| `Game::observe_world` | Implemented for M451-hotfix | `GameOptions::world(WorldRequest)` before launch: compatible save, exact displayed local human country, prepared effect, 0–120 days, up to 32 flags and up to 32 variables | One fixed observation from the normal main-thread world pause: actual country, initial date, effect execution and diagnostics, then engine date, each flag's presence/signed count and each variable's raw fixed-point value and scale (or unset) for day zero and each advanced day. Repeated reads do not execute again. |
 | `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations` | Implemented for effects and triggers | A declaration kind | Engine name, description, usage, and declared scopes from every registration call and tail call in executable text, including registry helper constructors and names composed at run time through up to two callers; each chain of callers is one declaration. Registrations that cannot be followed, unreadable documentation, and scope getters that cannot be followed make the answer partial. Target arguments and their accepted scopes are in `command_grammar`. |
@@ -169,8 +169,9 @@ for contexts and scope types.
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
   storage. `Reader.scoped_operand` reports partial routing forms, successful literal preservation
   of prior reference state, and representation selection conditional on an empty source location.
-  These properties do not claim a successful lookup or an evaluated number. Older recordings
-  default the scoped operand property to unresolved.
+  These properties do not claim a successful lookup or an evaluated number. Evaluated numbers
+  are live observations through `Game::observe_world`, recorded on the scoped numeric page.
+  Older recordings default the scoped operand property to unresolved.
 - `CommandGrammar.durations` groups child keys that set one duration count, by the code that
   reads them and not by name. Each group gives each key's factor, the combination rule
   (`ScaledAtRead`, or `SharedFactor` only when the execute body multiplies the operand by the
@@ -213,7 +214,10 @@ observation worker.
   mods. It cannot share a startup fixture or loaded-modifier pause. Readiness is `PausedInWorld`
   only after the world gate and complete prepared observation. Startup and prepared calls share
   the configured startup deadline. A rejected effect gives a partial initial observation and no
-  daily updates; runtime failure enters cleanup. General numeric evaluation is outside this route.
+  daily updates; runtime failure enters cleanup. A variable name is read as the engine reads a
+  variable operand in the country scope; a `local_` name belongs to the prepared scope. The route
+  evaluates nothing itself: a numeric operand is evaluated only by the prepared effect, and the
+  caller reads the flag or variable that the effect writes.
 - No blind retry of an operation whose completion is uncertain.
 
 **Agreed G2, 2026-09-24 (implementation: SDK-569):** registry selection is validated against the
