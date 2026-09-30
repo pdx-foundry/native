@@ -264,6 +264,7 @@ pub(super) async fn attribution(native: &Native) -> Outcome {
 }
 
 pub(super) async fn deep_nesting(native: &Native) -> Outcome {
+    let earlier_work = work_directories()?;
     let country = native
         .scopes()?
         .value
@@ -342,6 +343,9 @@ pub(super) async fn deep_nesting(native: &Native) -> Outcome {
     }
     .await;
     and_close(&mut result, &mut game).await;
+    if result.is_ok() {
+        result = check_held_diagnostics(&earlier_work);
+    }
     result
 }
 

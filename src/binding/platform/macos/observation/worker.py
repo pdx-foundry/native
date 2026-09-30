@@ -153,9 +153,12 @@ def dropped_by_fault(kind, fields, session_request):
 def emit(kind, **fields):
     global sequence
     if diagnostics is not None:
-        if kind in ('capability-unavailable', 'native-exception', 'callback-error'):
+        if kind in ('capability-unavailable', 'early-activation-unavailable', 'native-exception', 'callback-error'):
             diagnostics.failure(kind, fields.get('reason', fields.get('error', 'cause unavailable')))
-        elif kind in ('hooks-requested', 'launch-stopped', 'resume', 'session-paused', 'worker-loss-ready'):
+        elif kind == 'session-paused':
+            diagnostics.update(kind, thread=fields.get('thread', entry_thread),
+                               phase='held', context=None, deadline=None)
+        elif kind in ('hooks-requested', 'launch-stopped', 'resume', 'worker-loss-ready'):
             diagnostics.update(kind, thread=fields.get('thread', entry_thread))
     sequence += 1
     record = dict(seq=sequence, run=request['attempt'], kind=kind, **fields)
@@ -1186,6 +1189,8 @@ def pause_registers(process, thread_id):
 def run_script_check(checks, check, completion):
     try:
         completion['result'] = {'Ok': checks.check(check)}
+        if diagnostics is not None:
+            diagnostics.update('script-check-completed', phase='held', context=None, deadline=None)
     except Exception as error:
         if diagnostics is not None:
             diagnostics.failure('script-check', error)

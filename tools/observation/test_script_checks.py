@@ -246,10 +246,11 @@ class EngineFailureTests(unittest.TestCase):
         self.calls.return_address = 0x1000
         self.calls.stack = 0x2000
         self.calls.registers = {}
-        self.calls.process = Mock()
+        self.calls.process = MagicMock()
         self.calls.target = Mock()
         self.calls.address = Mock(return_value=0x3000)
         self.thread = self.calls.process.GetThreadByID.return_value
+        self.calls.process.__iter__.side_effect = lambda: iter([self.thread])
         self.thread.GetThreadID.return_value = 7
         self.thread.GetStopReason.return_value = 3
         self.thread.GetStopReasonDataAtIndex.return_value = 8
@@ -347,6 +348,29 @@ class EngineFailureTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.calls.call(self.bindings, 'effect_execute')
         self.assertEqual(self.failure()['kind'], 'native-exception')
+
+    def test_world_job_exception_reports_the_faulting_thread_and_stack(self):
+        job = MagicMock()
+        job.GetThreadID.return_value = 17
+        job.GetStopReason.return_value = 4
+        frame = Mock()
+        frame.GetPC.return_value = 0xdead
+        frame.GetFunctionName.return_value = 'world_job_fault'
+        job.__iter__.side_effect = lambda: iter([frame])
+        unrelated = [Mock() for _ in range(8)]
+        for thread in unrelated:
+            thread.GetStopReason.return_value = 0
+        self.calls.process.__iter__.side_effect = lambda: iter(unrelated + [self.thread, job])
+        self.thread.GetStopReason.return_value = 0
+        self.calls.process.Continue.side_effect = self.fail_return
+        with self.assertRaisesRegex(RuntimeError, 'did not stop'):
+            self.calls.call(self.bindings, 'fast_forward')
+        failure = self.failure()
+        self.assertEqual(failure['kind'], 'native-exception')
+        self.assertEqual(failure['details']['thread'], '7')
+        self.assertEqual(failure['details']['exception_thread'], '17')
+        self.assertEqual(failure['details']['exception_stack'], '0xdead world_job_fault')
+        self.assertIsNone(self.snapshots[-1]['last_completed_call'])
 
     def test_elapsed_deadline_reports_attempt_without_resume(self):
         self.clock = 2

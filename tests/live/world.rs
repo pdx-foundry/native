@@ -14,6 +14,7 @@ pub(super) fn request() -> pdx_native::WorldRequest {
 }
 
 pub(super) async fn ready(_native: &Native) -> Outcome {
+    let earlier = work_directories()?;
     let recordings = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recordings.path());
@@ -59,6 +60,9 @@ pub(super) async fn ready(_native: &Native) -> Outcome {
     }
     .await;
     and_close(&mut result, &mut game).await;
+    if result.is_ok() {
+        result = check_held_diagnostics(&earlier);
+    }
     result
 }
 

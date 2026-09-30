@@ -110,7 +110,9 @@ What the summary says, and what it does not:
   last attempted/completed calls with ordinals, hook samples and debugger details. Completion
   requires the return stop and exact register restoration. Elapsed time and deadline are
   milliseconds from worker diagnostic initialization on its monotonic clock; they are not
-  supervisor phase times. Allocation reports include size, actual address and debugger status;
+  supervisor phase times. The deadline is absent at the held pause and after a successful script
+  check. Native exceptions identify the faulting engine thread and its stack, including job
+  threads other than the owned call thread. Allocation reports include size, actual address and debugger status;
   return failures include actual/expected breakpoint, thread, PC and SP; register failures name
   the register and expected/actual bytes. The first reported failure survives later exit handling.
   A lost worker without a failure report has an unavailable cause and a last witnessed operation,

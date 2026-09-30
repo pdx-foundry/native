@@ -319,7 +319,8 @@ impl WorkerDiagnosticSummary {
             format!("{}: {}", cause.kind, cause.reason)
         } else if let Some(reason) = records.iter().find_map(|record| match &record.event {
             WorkerEvent::CapabilityUnavailable { reason }
-            | WorkerEvent::NativeException { reason } => Some(reason),
+            | WorkerEvent::NativeException { reason }
+            | WorkerEvent::EarlyActivationUnavailable { reason } => Some(reason),
             WorkerEvent::CallbackError { error } => Some(error),
             _ => None,
         }) {
@@ -855,6 +856,26 @@ mod tests {
         assert_eq!(summary["context"]["last_attempted_call"]["ordinal"], 2);
         assert_eq!(summary["context"]["last_completed_call"]["ordinal"], 1);
         assert!(summary["context"]["failure"].is_null());
+    }
+
+    #[test]
+    fn early_activation_failure_has_a_known_cause_without_a_checkpoint() {
+        let report = SessionReport {
+            attempt: "unit".into(),
+            outcome: SessionOutcome::WorkerLost,
+            disposal: Disposal::Confirmed,
+            reservation_resolved: true,
+            diagnostics: vec![],
+        };
+        let records = records(&[(
+            1,
+            json!({"kind": "early-activation-unavailable",
+            "reason": "ARM64 loader entry not established"}),
+        )]);
+        let summary =
+            WorkerDiagnosticSummary::new(&report, &records, Err("checkpoint missing".into()));
+        assert_eq!(summary.reason, "ARM64 loader entry not established");
+        assert!(summary.context.is_none());
     }
 
     #[test]

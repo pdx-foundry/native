@@ -2907,6 +2907,24 @@ fn diagnostic_summaries(
         .collect()
 }
 
+/// A held worker has no active call deadline, even after successful command checks.
+fn check_held_diagnostics(earlier: &BTreeSet<std::path::PathBuf>) -> Outcome {
+    let summaries = diagnostic_summaries(earlier)?;
+    let [summary] = summaries.as_slice() else {
+        return Err("expected one completed session summary".into());
+    };
+    let context = &summary["worker_diagnostics"]["context"];
+    if context["phase"] != "held"
+        || !context["deadline_milliseconds"].is_null()
+        || !context["failure"].is_null()
+    {
+        return Err(
+            format!("held worker retained an active deadline or failure: {context}").into(),
+        );
+    }
+    Ok(())
+}
+
 /// Name each work directory that a failed case kept, with its run summary's outcome and last
 /// completed phase, or say that it has none.
 fn kept_work_directories(earlier: &BTreeSet<std::path::PathBuf>) -> Vec<String> {

@@ -285,8 +285,28 @@ class EngineCalls:
             diagnostics.failure(kind, reason, **details)
         raise RuntimeError(reason)
 
+    def inspect_exception_stop(self):
+        """World calls can stop on any engine job thread; the owned thread stays distinct."""
+        try:
+            import lldb
+            faulting = next((thread for thread in self.process
+                             if thread.GetStopReason() == lldb.eStopReasonException), None)
+            if faulting is None:
+                return False, {}
+            details = dict(exception_thread=faulting.GetThreadID())
+            try:
+                details['exception_stack'] = '; '.join(
+                    f'0x{frame.GetPC():x} {frame.GetFunctionName() or "unknown"}'
+                    for frame in list(faulting)[:8])
+            except Exception as error:
+                details['exception_stack_unavailable'] = str(error)
+            return True, details
+        except Exception as error:
+            return False, dict(exception_details_unavailable=str(error))
+
     def stop_details(self, returned):
         """Debugger inspection is best effort and cannot obscure the original failure."""
+        has_exception, exception_details = self.inspect_exception_stop()
         try:
             thread = self.process.GetThreadByID(self.thread_id)
             frame = self.frame()
@@ -300,15 +320,12 @@ class EngineCalls:
                 details['stopped_threads'] = '; '.join(
                     f'{item.GetThreadID()}:{item.GetStopReason()}' for item in list(self.process)[:8]
                     if item.GetStopReason())
-                import lldb
-                if thread.GetStopReason() == lldb.eStopReasonException:
-                    details['exception_stack'] = '; '.join(
-                        f'0x{frame.GetPC():x} {frame.GetFunctionName() or "unknown"}' for frame in list(thread)[:8])
             except Exception:
                 pass
-            return details
         except Exception as error:
-            return dict(stop_details_unavailable=str(error))
+            details = dict(stop_details_unavailable=str(error))
+        details.update(exception_details)
+        return has_exception, details
 
     def frame(self):
         return self.process.GetThreadByID(self.thread_id).GetFrameAtIndex(0)
@@ -373,9 +390,10 @@ class EngineCalls:
         previous_stop = self.process.GetStopID()
         self.note(details=dict(expected_pc=hex(self.return_address), expected_sp=hex(self.stack), expected_thread=self.thread_id, expected_breakpoint=returned.GetID()))
         error = self.process.Continue()
-        self.note(details=self.stop_details(returned))
+        _, details = self.stop_details(returned)
+        self.note(details=details)
         if error.Fail():
-            self.fail('resume', 'script check could not resume: ' + str(error), debugger_error=error, **self.stop_details(returned))
+            self.fail('resume', 'script check could not resume: ' + str(error), debugger_error=error, **details)
         while True:
             thread = self.process.GetThreadByID(self.thread_id)
             if (self.process.GetState() == lldb.eStateStopped
@@ -386,8 +404,9 @@ class EngineCalls:
                     and self.frame().FindRegister('sp').GetValueAsUnsigned() == self.stack):
                 break
             if time.monotonic() >= self.deadline:
-                kind = 'native-exception' if thread.GetStopReason() == lldb.eStopReasonException else 'return-stop'
-                self.fail(kind, 'script check did not stop at its return hook', deadline_elapsed=True, **self.stop_details(returned))
+                has_exception, details = self.stop_details(returned)
+                kind = 'native-exception' if has_exception else 'return-stop'
+                self.fail(kind, 'script check did not stop at its return hook', deadline_elapsed=True, **details)
             time.sleep(.001)
         result = self.frame().FindRegister("x0").GetValueAsUnsigned()
         self.target.BreakpointDelete(returned.GetID())
