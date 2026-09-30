@@ -8,8 +8,8 @@ Use the [method-authoring guide](method-authoring.md) to explore, implement and 
 one task. Each row below is one method source stamp; the two callback operations share a method.
 Module paths are relative to `src/engine/analysis/` unless a full `src/` path is shown. The table
 names the method owners, not every shared decoder or evaluator they use. It covers the static
-methods and their live loaded-modifier join; other live observations are in
-[early observations](early-observations.md).
+methods, their live loaded-modifier join and the world observation; other live observations are
+in [early observations](early-observations.md).
 
 The SDK-542 extraction, parser checks, population counts and consumer contract are in
 [nested command grammar](command-grammar.md).
@@ -21,6 +21,7 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v10`, `command-grammar/v12` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
 | `Reader.numeric` in fields and command grammar | `registry-fields/v10`, `command-grammar/v12` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
 | `Reader.scoped_operand` in fields and command grammar | `registry-fields/v10`, `command-grammar/v12` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Game::observe_world` | `observe-world/v2` | `src/engine/operations/world.rs`, `src/world.rs`, the world recipe in `src/binding/targets/recipes.rs` | [Ready-world observations](ready-world.md) |
 | `CommandGrammar.durations` | `command-grammar/v12` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
 | `Native::command_grammar` | `command-grammar/v12` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
@@ -128,6 +129,45 @@ plus 14 boundary and transition controls. All 76 have complete parser/storage jo
 isolated inline-block inputs have incomplete diagnostic source coverage, retained as typed gaps.
 There were no conflicts between the established static width/scale and the observed storage.
 See [scoped numeric operands](scoped-numeric.md) for the adaptation and selection boundaries.
+
+## World evaluation of scoped operands (SDK-647)
+
+No static method changed. The M451-hotfix run of `scoped-numeric-population` covers all **164**
+registries and all **2,170** commands, with no failed question.
+
+| Population | Destinations | Complete | Partial | Failed |
+| --- | ---: | ---: | ---: | ---: |
+| Registry fields | 7 | 0 | 6 | 1 |
+| Command arguments (207 commands) | 302 | 0 | 133 | 169 |
+
+The partial arguments are 98 integer (32-bit, scale 1) and 35 fixed-point (64-bit, scale 100000)
+destinations; the fields are 2 and 4. Failure shapes, by destination:
+
+- 169 arguments and 1 field: the destination's constructor vtable is not established, so the
+  storage and the evaluation body are unknown.
+- 133 arguments and 6 fields: literal conversion boundaries and overflow are incomplete.
+- 133 arguments and 6 fields: qualified scope, parameters and lookup outcomes are outside the
+  static method.
+- 7 fields: repeat behavior or nested fields are unresolved.
+
+The world matrix evaluates 48 operand cases in an integer and a fixed-point destination (96
+evaluations) on the 4.5.1 save, in four world sessions:
+
+- **42 cases** evaluate with no message. Their three sessions give complete answers.
+- **6 cases** execute, log and give zero. Their session is partial. Shapes: an unset variable
+  (four cases, one with an empty name and one with an unknown prefix as its name), an unresolved
+  event target, and a trigger with a wrong scope type at evaluation.
+- **5 operands** are rejected at read or validation and are not executed. Shapes: unknown
+  scripted trigger, unknown script value, Boolean trigger, and a wrong trigger scope (two).
+- **0 conflicts** with the static storage, scale, selection and integer conversion facts.
+
+Nine resource changes and both naval-capacity modifiers are observed in a fifth session, which
+is complete. The results, the gaps and the map of the 41 SDK-493 evaluations are on
+[scoped numeric](scoped-numeric.md#world-evaluation-on-m451-hotfix-sdk-647); the first-release
+accounting is on [numeric conversion](numeric-conversion.md#first-release-numeric-forms-sdk-544).
+Run `cargo run --release --example scoped-numeric-population` and `cargo live world_numeric`
+with `STELLARIS_PATH` to reproduce; `.local/sdk-647/scoped-population.json` lists every
+destination and gap.
 
 ## Duration keys (SDK-646)
 

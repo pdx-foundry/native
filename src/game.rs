@@ -875,6 +875,7 @@ mod tests {
             effect: String::new(),
             days: 0,
             flags: vec![],
+            variables: vec![],
         };
         let mut second = first.clone();
         second.effect = "set_country_flag = other".into();
@@ -892,7 +893,7 @@ mod tests {
                 gaps: vec![],
                 source: crate::Source::new(
                     build.clone(),
-                    "observe-world/v1",
+                    "observe-world/v2",
                     crate::Basis::LiveObservation,
                 ),
             });
@@ -963,6 +964,7 @@ mod tests {
             effect: String::new(),
             days: 0,
             flags: vec![],
+            variables: vec![],
         };
         let (mut game, _, _) = game();
         game.backend = GameBackend::Live {

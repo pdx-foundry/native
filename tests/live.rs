@@ -139,6 +139,7 @@ fn main() {
                 | Case::WorldWrongCountry
                 | Case::WorldFailure(_)
                 | Case::WorldCancel
+                | Case::WorldNumeric(_)
         ) && !matches!(
             native.supports(pdx_native::Operation::ObserveWorld),
             pdx_native::Support::Supported
@@ -193,6 +194,9 @@ enum Case {
     WorldReady,
     WorldFailure(Fault),
     WorldCancel,
+    /// One session of the world numeric table, by its name.
+    WorldNumeric(&'static str),
+    WorldNumericStored,
     StoredDurations,
     ScriptArguments,
     ScriptAttribution,
@@ -338,6 +342,27 @@ fn cases() -> Vec<(String, Case)> {
             Case::WorldFailure(Fault::AccessFailure),
         ),
         ("world_cancel".to_owned(), Case::WorldCancel),
+        (
+            "world_numeric_operands".to_owned(),
+            Case::WorldNumeric("operands"),
+        ),
+        (
+            "world_numeric_selection".to_owned(),
+            Case::WorldNumeric("selection"),
+        ),
+        (
+            "world_numeric_qualified".to_owned(),
+            Case::WorldNumeric("qualified"),
+        ),
+        (
+            "world_numeric_resources".to_owned(),
+            Case::WorldNumeric("resources"),
+        ),
+        (
+            "world_numeric_fallback".to_owned(),
+            Case::WorldNumeric("fallback"),
+        ),
+        ("world_numeric_stored".to_owned(), Case::WorldNumericStored),
         ("stored_durations".to_owned(), Case::StoredDurations),
         ("script_arguments".to_owned(), Case::ScriptArguments),
         ("script_attribution".to_owned(), Case::ScriptAttribution),
@@ -755,6 +780,8 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::WorldReady => world::ready(native).await,
         Case::WorldFailure(control) => world::failure(native, control).await,
         Case::WorldCancel => world::cancel(native).await,
+        Case::WorldNumeric(session) => world_numeric::evaluated(native, session).await,
+        Case::WorldNumericStored => world_numeric::stored(native).await,
         Case::StoredDurations => stored_durations::stored(native).await,
         Case::ScriptArguments => script_checks::arguments(native).await,
         Case::ScriptAttribution => script_checks::attribution(native).await,
@@ -3175,3 +3202,6 @@ async fn fixture_nested_numeric(control: Fault) -> Outcome {
 
 #[path = "live/world.rs"]
 mod world;
+
+#[path = "live/world_numeric.rs"]
+mod world_numeric;

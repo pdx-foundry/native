@@ -81,6 +81,26 @@ population report are retained in `.local/sdk-644/`; the initial live run's four
 remain in its retained temporary directories named in that run's output. Static fixture binding
 still lacks decoders for float and the other integer widths; no live proof is claimed for them.
 
+## First-release numeric forms (SDK-544)
+
+The first Atlas release names three numeric uses: resource changes, additive and multiplicative
+naval capacity, and literal values. Each has a shared reader result and an observation, or a
+named gap. The world observations are on M451-hotfix; see
+[world evaluation](scoped-numeric.md#world-evaluation-on-m451-hotfix-sdk-647).
+
+| Form | Reader result | Observation | Gap and owner |
+| --- | --- | --- | --- |
+| `add_resource` `mult` and `multiplier` | Scoped operand, signed 64-bit, scale 100000, with the partial operand forms and the selection rule ([scoped numeric](scoped-numeric.md)) | World: with `energy = 10`, literal `2.5` adds 25 through either key; a variable of 2.5 adds 25; `trigger:num_owned_planets` (1) adds 10; `value:tech_weight_likelihood` (1.25) adds 12.5; `modifier:country_edict_fund_add` (15) adds 150 | Literal boundaries, as for every scoped operand |
+| `add_resource` resource amounts | None. `CAddResourceEffect::ReadMember` gives every other key to `CFixedResourceTable::CSerializer::ReadMember`, and the command grammar does not route that member (`reader-routing`, `unknown-key-reader`) | World: `energy = 10` adds raw 1000000, `0.5` adds raw 50000, `-3` removes raw 300000 | The static reader of resource-named keys. Owner: the command grammar gaps of SDK-625 and SDK-626 |
+| Additive naval capacity, `country_naval_cap_add` | A modifier entry joins the direct fixed-point reader: signed 64-bit, scale 100000 (`tests/expected/numeric-m45/modifier-entry.json`) | The direct fixed-point cases above. World: after `add_modifier` of `fallen_empire_base` (entry value 1000), `modifier:country_naval_cap_add` gives raw 100000000 and integer 1000, from 0 before | Storage of an entry from authored text is not observed: a world loads no mod content, and the fixture route does not decode modifier entries. Grammar: SDK-607. Application and propagation: SDK-547 |
+| Multiplicative naval capacity, `country_naval_cap_mult` | The same entry reader | World: after `add_modifier` of `community_champion_counselor` (entry value 0.1), `modifier:country_naval_cap_mult` gives raw 10000 and integer 0, from 0 before | The same |
+| Literal values | The table of reader shapes above | The live matrix above; the world literal cases | The five conversion gap shapes in the [discovery index](discovery.md#direct-numeric-conversion-sdk-644) |
+
+Both naval-capacity results equal `export_modifier_to_variable` for the same modifier. The
+integer 0 for 0.1 is the truncation of a fixed-point result in an integer destination.
+The added modifiers were not visible in the statement after `add_modifier`; see the pitfall on
+the scoped numeric page.
+
 ## Verification
 
 ```sh

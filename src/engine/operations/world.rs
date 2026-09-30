@@ -8,6 +8,7 @@ use crate::{
 pub(crate) fn answer(
     result: WorldResult,
     request: &WorldRequest,
+    variable_scale: Option<u64>,
     attempt: &str,
     game: u32,
     thread: u64,
@@ -39,6 +40,16 @@ pub(crate) fn answer(
                     .iter()
                     .map(|flag| &flag.name)
                     .eq(request.flags.iter())
+                && sample
+                    .variables
+                    .iter()
+                    .map(|variable| &variable.name)
+                    .eq(request.variables.iter())
+                && sample
+                    .variables
+                    .iter()
+                    .filter_map(|variable| variable.value)
+                    .all(|value| Some(value.scale) == variable_scale)
         });
     let initial_date_matches = !value.initial_date.is_empty()
         && value.initial_date.len() <= 32
@@ -65,14 +76,16 @@ pub(crate) fn answer(
         completeness: Completeness::from_gaps(&gaps),
         value,
         gaps,
-        source: Source::new(build, "observe-world/v1", Basis::LiveObservation),
+        source: Source::new(build, "observe-world/v2", Basis::LiveObservation),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{WorldFlag, WorldSample};
+    use crate::{WorldFixedPoint, WorldFlag, WorldSample, WorldVariable};
+
+    const SCALE: u64 = 100_000;
 
     fn request() -> WorldRequest {
         WorldRequest {
@@ -81,6 +94,7 @@ mod tests {
             effect: "set_timed_country_flag = { flag = native_flag days = 1 }".into(),
             days: 1,
             flags: vec!["native_flag".into()],
+            variables: vec!["native_variable".into()],
         }
     }
 
@@ -102,6 +116,13 @@ mod tests {
                             name: "native_flag".into(),
                             remaining: Some(1),
                         }],
+                        variables: vec![WorldVariable {
+                            name: "native_variable".into(),
+                            value: Some(WorldFixedPoint {
+                                raw: -275_000,
+                                scale: SCALE,
+                            }),
+                        }],
                     },
                     WorldSample {
                         day: 1,
@@ -110,6 +131,10 @@ mod tests {
                             name: "native_flag".into(),
                             remaining: None,
                         }],
+                        variables: vec![WorldVariable {
+                            name: "native_variable".into(),
+                            value: None,
+                        }],
                     },
                 ],
             },
@@ -117,7 +142,15 @@ mod tests {
     }
 
     fn joined(result: WorldResult) -> Result<Answer<WorldObservation>, SupervisorError> {
-        answer(result, &request(), "attempt", 3, 4, BuildId("build".into()))
+        answer(
+            result,
+            &request(),
+            Some(SCALE),
+            "attempt",
+            3,
+            4,
+            BuildId("build".into()),
+        )
     }
 
     #[test]
@@ -142,6 +175,30 @@ mod tests {
         let mut missing = observed();
         missing.observation.samples.pop();
         assert!(joined(missing).is_err());
+    }
+
+    #[test]
+    fn set_and_unset_variables_are_distinct_world_observations() {
+        let answer = joined(observed()).unwrap();
+        let stored = answer.value.samples[0].variables[0].value.unwrap();
+        assert_eq!((stored.raw, stored.scale), (-275_000, SCALE));
+        assert_eq!(answer.value.samples[1].variables[0].value, None);
+    }
+
+    #[test]
+    fn missing_renamed_and_rescaled_variables_cannot_be_joined() {
+        let mut missing = observed();
+        missing.observation.samples[1].variables.clear();
+        assert!(joined(missing).is_err());
+        let mut renamed = observed();
+        renamed.observation.samples[0].variables[0].name = "another_variable".into();
+        assert!(joined(renamed).is_err());
+        let mut rescaled = observed();
+        rescaled.observation.samples[0].variables[0].value = Some(WorldFixedPoint {
+            raw: -275_000,
+            scale: 32_768,
+        });
+        assert!(joined(rescaled).is_err());
     }
 
     #[test]

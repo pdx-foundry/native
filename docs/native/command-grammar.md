@@ -446,7 +446,7 @@ first is not entered. Unknown stores retain the evaluator's existing invalidatio
 | `set_country_flag`, `remove_country_flag`, `add_tradition` | simple assign | family dispatch (inherited, not reported) | none | `value-acceptance` |
 | `always`, `has_country_flag` | simple assign | `CTrigger::ReadMember` | none | `value-acceptance` |
 | `has_tradition` | database object | `CTrigger::ReadMember` | none | `value-acceptance: PostValidate` |
-| `add_resource` | `CEffect::Read` | its own | `multiplier`, `mult` Unknown | `reader-routing`, `unknown-key-reader` |
+| `add_resource` | `CEffect::Read` | its own | `multiplier`, `mult` ScopedNumeric ([SDK-645](scoped-numeric.md)); resource-named keys not established | `reader-routing`, `unknown-key-reader` |
 | `join_war_on_side` | `CEffect::Read` | its own | `war` Target; `side` Unknown | `instruction`, `target-scope-check` |
 | `exists` | `CExistsTrigger::Read` | `CTrigger::ReadMember` | none | `form-path-limit`; `PostValidate` bounds |
 

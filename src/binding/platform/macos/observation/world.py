@@ -21,6 +21,13 @@ def selected_flags(names, stored):
     return [dict(name=name, remaining=stored.get(name)) for name in names]
 
 
+def stored_variable(present, raw, scale):
+    """An unset variable is absent; zero and negative stored values stay distinct from it."""
+    if not present:
+        return None
+    return dict(raw=raw if raw < 1 << 63 else raw - (1 << 64), scale=scale)
+
+
 class WorldObserver:
     def __init__(self, process, thread_id, setup, parser, attempt, deadline, limits, diagnostics=None):
         self.process = process
@@ -34,6 +41,7 @@ class WorldObserver:
         self.diagnostics = diagnostics
         self.initial_country = None
         self.flag_names = {}
+        self.variable_names = {}
 
     def country(self, calls):
         binding = self.binding
@@ -95,6 +103,26 @@ class WorldObserver:
             stored[name] = value if value < 1 << 31 else value - (1 << 32)
         return selected_flags(self.input['flags'], stored)
 
+    def variable_name(self, calls, name):
+        if name not in self.variable_names:
+            raw = name.encode('ascii') + b'\0'
+            string = calls.allocate(self.parser['string_size'])
+            calls.call(self.parser, 'string_constructor', string, calls.allocate(len(raw), raw))
+            self.variable_names[name] = string
+        return self.variable_names[name]
+
+    def variables(self, calls, scope):
+        binding = self.binding
+        selected = []
+        for name in self.input['variables']:
+            string = self.variable_name(calls, name)
+            # A scope-local name has no store until an effect creates one; that is not a failure.
+            store = calls.call(binding, 'variable_store', scope, string)
+            present = bool(store) and calls.call(binding, 'variable_is_set', store, string) & 1 == 1
+            raw = calls.call(binding, 'variable_value', store, string) if present else 0
+            selected.append(dict(name=name, value=stored_variable(present, raw, binding['variable_scale'])))
+        return selected
+
     def country_scope(self, calls, country):
         binding = self.binding
         scope = calls.allocate(binding['scope_size'])
@@ -130,7 +158,8 @@ class WorldObserver:
         if raw != expected_date:
             raise RuntimeError('prepared effect changed the engine date' if day == 0
                                else 'engine did not advance exactly one day')
-        return dict(day=day, date=date, flags=self.flags(calls, scope))
+        return dict(day=day, date=date, flags=self.flags(calls, scope),
+                    variables=self.variables(calls, scope))
 
     def advance_days(self, calls, scope, initial_date):
         samples = []

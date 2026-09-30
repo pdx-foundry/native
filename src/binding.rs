@@ -398,6 +398,14 @@ impl ExecutionPlan {
             .map_or(&[], |fixture| &fixture.fields)
     }
 
+    /// Raw units in one whole unit of a world variable. `None` when the build has no world recipe.
+    pub fn world_variable_scale(&self) -> Option<u64> {
+        self.operation()
+            .world
+            .as_ref()
+            .map(|world| world.variable_scale)
+    }
+
     pub fn integrity(&self) -> Result<(), crate::supervisor::SupervisorError> {
         match self.binding.target_integrity() {
             None => Ok(()),

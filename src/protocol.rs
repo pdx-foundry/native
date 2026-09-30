@@ -11,7 +11,7 @@ pub(crate) mod script_check;
 pub(crate) mod session;
 pub(crate) mod world;
 
-const VERSION: u32 = 9;
+const VERSION: u32 = 10;
 /// A `Paused` reply holds the items of every observed registry, which the worker's stream
 /// bounds, and the loaded modifier table, which its file bounds; the other messages are small.
 const MAX_MESSAGE: usize = observation::MAX_TRACE + observation::MAX_MODIFIER_TABLE + 64 * 1024;

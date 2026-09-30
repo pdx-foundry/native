@@ -10,6 +10,7 @@ pub(super) fn request() -> pdx_native::WorldRequest {
         effect: String::new(),
         days: 0,
         flags: Vec::new(),
+        variables: Vec::new(),
     }
 }
 
@@ -18,7 +19,9 @@ pub(super) async fn ready(_native: &Native) -> Outcome {
     let recordings = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recordings.path());
-    let prepared = request();
+    let mut prepared = request();
+    // A scope-local name has no store before an effect creates one; neither name is set.
+    prepared.variables = vec!["native_647_unset".into(), "local_native_647_unset".into()];
     let mut game = native.start_game(options().world(prepared.clone())).await?;
     let mut result = async {
         if game.readiness() != GameReadiness::PausedInWorld {
@@ -34,6 +37,12 @@ pub(super) async fn ready(_native: &Native) -> Outcome {
             || answer.value.executed
         {
             return Err("empty world observation changed the prepared save's date".into());
+        }
+        let variables = &answer.value.samples[0].variables;
+        if variables.len() != 2 || variables.iter().any(|variable| variable.value.is_some()) {
+            return Err(
+                format!("unset variables were not reported as unset: {variables:?}").into(),
+            );
         }
         if game.observe_world().await? != answer {
             return Err("reading a prepared world observation changed its result".into());
