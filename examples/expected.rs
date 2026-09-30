@@ -294,6 +294,51 @@ mod tests {
             2
         );
         assert!(compare_tree(&build, &reviewed, &candidate.join("missing")).is_err());
+
+        std::fs::copy(
+            reviewed.join("registries.json"),
+            candidate.join("registries.json"),
+        )
+        .unwrap();
+        std::fs::remove_file(candidate.join("extra.json")).unwrap();
+        for source in [serde_json::json!([]), serde_json::json!({"build": build})] {
+            let mut malformed = commands.clone();
+            malformed
+                .as_object_mut()
+                .unwrap()
+                .values_mut()
+                .next()
+                .unwrap()["source"] = source;
+            std::fs::write(
+                candidate.join("command-grammars.json"),
+                serde_json::to_vec(&malformed).unwrap(),
+            )
+            .unwrap();
+            for (reviewed, candidate) in [
+                (reviewed.as_path(), candidate),
+                (candidate, reviewed.as_path()),
+            ] {
+                let report = compare_tree(&build, reviewed, candidate).unwrap();
+                assert!(!report.passes());
+                assert_eq!(comparison_exit_code(&report), 2);
+            }
+        }
+        let mut wrong_build = commands;
+        wrong_build
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+            .next()
+            .unwrap()["source"]["build"] = serde_json::json!("wrong");
+        std::fs::write(
+            candidate.join("command-grammars.json"),
+            serde_json::to_vec(&wrong_build).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            comparison_exit_code(&compare_tree(&build, &reviewed, candidate).unwrap()),
+            1
+        );
     }
 
     #[test]

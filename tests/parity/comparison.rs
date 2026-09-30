@@ -149,7 +149,7 @@ pub fn compare_static(build: &BuildId, file: &str, reviewed: &[u8], candidate: &
                 report.notice(
                     file,
                     "/source",
-                    Category::Provenance,
+                    source_error_category(error.as_ref()),
                     Status::Fail,
                     reviewed_value.get("source"),
                     candidate_value.get("source"),
@@ -219,7 +219,7 @@ pub fn historical_storage_report(build: &BuildId, observed: &Value) -> Report {
         Err(error) => report.notice(
             file,
             "/source",
-            Category::Provenance,
+            source_error_category(error.as_ref()),
             Status::Fail,
             observed.get("source"),
             observed.get("source"),
@@ -353,7 +353,7 @@ fn validate_source(
             report.notice(
                 file,
                 path,
-                Category::Provenance,
+                source_error_category(&error),
                 Status::Fail,
                 reviewed,
                 candidate,
@@ -361,6 +361,14 @@ fn validate_source(
             );
             None
         }
+    }
+}
+
+fn source_error_category(error: &(dyn std::error::Error + 'static)) -> Category {
+    if error.is::<serde_json::Error>() {
+        Category::Input
+    } else {
+        Category::Provenance
     }
 }
 

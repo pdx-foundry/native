@@ -87,6 +87,28 @@ fn wrong_and_missing_current_stamps_fail_even_when_files_match() {
 }
 
 #[test]
+fn malformed_command_sources_are_input_errors_on_either_side() {
+    let valid = commands("hotfix");
+    for source in [json!([]), json!({"build": "hotfix"}), Value::Null] {
+        let mut malformed = valid.clone();
+        malformed["effect/sample"]["source"] = source;
+        for (reviewed, candidate) in [(&malformed, &valid), (&valid, &malformed)] {
+            let report = compare("command-grammars.json", reviewed, candidate);
+            assert!(!report.passes());
+            assert!(report.has_input_errors());
+            assert!(report.differences.iter().any(|entry| {
+                entry.path == "/effect~1sample/source"
+                    && entry.category == Category::Input
+                    && entry.status == Status::Fail
+            }));
+        }
+    }
+    let report = compare("command-grammars.json", &valid, &commands("wrong"));
+    assert!(!report.passes());
+    assert!(!report.has_input_errors());
+}
+
+#[test]
 fn command_facts_completeness_and_gaps_are_focused_failures() {
     let reviewed = commands("hotfix");
     for (pointer, replacement) in [
@@ -255,7 +277,18 @@ fn historical_storage_skip_is_exact_build_only_and_never_hides_edits() {
     changed["stored"] = json!(8);
     assert!(!compare("field-storage-sdk533.json", &observed, &changed).passes());
     changed["source"]["basis"] = json!("StaticAnalysis");
-    assert!(!compare("field-storage-sdk533.json", &changed, &changed).passes());
+    let report = compare("field-storage-sdk533.json", &changed, &changed);
+    assert!(!report.passes());
+    assert!(!report.has_input_errors());
+    for source in [json!([]), json!({"build": "release"}), Value::Null] {
+        let mut malformed = observed.clone();
+        malformed["source"] = source;
+        for (reviewed, candidate) in [(&malformed, &observed), (&observed, &malformed)] {
+            let report = compare("field-storage-sdk533.json", reviewed, candidate);
+            assert!(!report.passes());
+            assert!(report.has_input_errors());
+        }
+    }
 }
 
 fn duration_report(reviewed: &Value, candidate: &Value) -> Report {
