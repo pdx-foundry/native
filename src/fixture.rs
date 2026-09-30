@@ -369,6 +369,16 @@ pub enum FixtureValue {
     String(String),
     /// A signed 32-bit integer stored by the direct integer reader.
     Integer(i32),
+    /// The IEEE binary32 pattern stored by the float reader; `f32::from_bits` gives its value.
+    Float {
+        /// Exact stored bits, including negative zero and nonfinite patterns.
+        bits: u32,
+    },
+    /// The 16 bits stored by the short reader, without a signed interpretation.
+    Integer16 {
+        /// Exact stored bits; static signedness is independent of this observation.
+        bits: u16,
+    },
     /// A signed fixed-point value. Divide `raw` by `scale` to interpret it exactly.
     FixedPoint {
         /// The signed integer held in storage, without conversion or rounding.

@@ -294,3 +294,77 @@ The original non-duration comparisons are retained as
 `registry-answer-diff.json` and `command-non-duration-diff.json`. They establish zero registry
 answer changes and 21 command answer changes for the shared join on the pre-rebase constructor
 baseline. The current scoped population follows the confined SDK-654 boundary above.
+
+## Float and short fixture storage (SDK-656)
+
+On M451-hotfix (`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`),
+the numeric population covers all 164 discovered registries: 184 partial numeric root fields,
+no complete numeric answers and no failed queries. Float has three root fields in two registries;
+short has seven in two registries. Fixture storage derives its decoder from the joined reader
+callee and its owner-relative destination. Its token proof uses the selected path's singleton
+domain, independently of the compiler's scratch registers. Float storage preserves binary32 bits;
+short storage preserves 16 bits without a signed interpretation.
+
+The registry-field population has 1,564 root fields and 38 exposed nested fields, with 8 complete,
+156 partial and zero failed registry answers. Searching the field reader and every exposed read
+alternative gives this bounded result:
+
+| Shared reader | Root matches / 1,564 | Exposed nested matches / 38 |
+| --- | ---: | ---: |
+| `CReader::Read(signed char&)` | 0 | 0 |
+| `CReader::Read(unsigned char&)` | 0 | 0 |
+| `CReader::Read(unsigned short&)` | 0 | 0 |
+| `CReader::Read(unsigned int&)` | 0 | 0 |
+| `CReader::Read(long long&)` | 0 | 0 |
+| `CReader::Read(unsigned long long&)` | 0 | 0 |
+
+These six readers are unavailable to the initial-load fixture method within this population.
+The search cannot reach 982 unresolved member descriptions; it does not establish universal
+absence. No discovery repair is part of SDK-656. Parent SDK-544 criterion 4 stays open for these
+readers until Jackson amends it. The separate inline project loader supplies template fixed-point
+cases outside this registry population.
+
+Reproduce the population with `STELLARIS_PATH` set:
+
+```sh
+cargo run --release --example numeric-population > .local/sdk-656/numeric-population.json
+cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > .local/sdk-656/registry-field-sweep.json
+cargo test --release --lib -- --ignored numeric_fixture_storage_population --nocapture
+```
+
+Current exact-build reports are retained in `.local/sdk-656/`. Finite stored observations and
+remaining criterion gaps are on [numeric conversion](numeric-conversion.md).
+
+## Shared fixture-binding population on M451-hotfix (SDK-656)
+
+The parent (`f2c6b56`) and current measurements cover 184 numeric root fields in 164 registries.
+Counts are **decoder with loader / decoder without loader / no decoder**; Integer includes short.
+
+| Reader kind | Parent | Current | Total |
+| --- | ---: | ---: | ---: |
+| Integer | 37 / 8 / 48 | 79 / 12 / 2 | 93 |
+| FixedPoint | 28 / 9 / 51 | 79 / 8 / 1 | 88 |
+| Float | 0 / 0 / 3 | 3 / 0 / 0 | 3 |
+
+There are 99 storage gains: 39 int, 50 fixed-point, seven short and three float fields.
+Seven registries gain a loader. Zero bindings or loaders are lost; all 82 previous bindings
+retain their decoder and owner offset.
+
+The token proof comes from the unconditional singleton path. `x8` can hold a jump-table index,
+an owner address or a reused scratch value. The joined callee, original reader and owner-relative
+destination establish the storage binding.
+
+A loader uses its own template specialization, `true` in these seven registries. Its
+`LoadFromReader` reaches the owner constructor through the matching `ReadNewEntry`.
+The loader's reader-return boundary also requires `mov x0, sp` followed by the
+`CReader::~CReader()` cleanup call.
+
+`common/ship_sizes/max_speed` transforms its stored value after the reader; its final value
+is not a shared-reader rule.
+
+The retained comparison is `.local/sdk-656/fixture-binding-diff.json`. Logs in the same directory
+are `fixture-storage-population-parent.log`, `fixture-storage-population-parent-float.log` and
+`fixture-storage-population-review-proof.log`; the merged parent report is
+`fixture-storage-population-parent.json`. The parent float supplement covers the three fields
+excluded by its original integer/fixed-point test filter. Detailed joins and addresses stay in
+these retained reports; fixture-binding pitfalls are on [early observations](early-observations.md).

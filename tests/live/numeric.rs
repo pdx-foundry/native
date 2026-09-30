@@ -28,39 +28,92 @@ const INPUTS: &[(&str, &[&str])] = &[
     ("malformed", &["7", "not_a_number"]),
 ];
 
+const FLOAT_INPUTS: &[(&str, &[&str])] = &[
+    ("float_boundary", &["3.4028234663852886e38"]),
+    ("fractional", &["1.23456789"]),
+    ("malformed", &["7", "not_a_number"]),
+];
+
+const SHORT_INPUTS: &[(&str, &[&str])] = &[
+    ("short_boundary", &["32767"]),
+    ("fractional", &["1.23456789"]),
+    ("malformed", &["7", "not_a_number"]),
+];
+
 type Observations = std::collections::BTreeMap<String, serde_json::Value>;
 
 pub(super) async fn matrix() -> Outcome {
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?;
     let facts = pdx_native::internals::numeric_readers::run(&native)?;
     let mut report = Observations::new();
-    for (registry, field, nested, callee) in [
+    for (registry, fields, nested, callee, inputs) in [
         (
             "common/megastructures",
-            "sensor_range",
+            &["sensor_range"][..],
             false,
             "CReader::Read(int&)",
+            INPUTS,
         ),
         (
             "common/megastructures",
-            "build_time",
+            &["build_time"][..],
             false,
             "CReader::Read(CFixedPoint&)",
+            INPUTS,
         ),
         (
             "common/armies",
-            "war_exhaustion",
+            &["war_exhaustion"][..],
             false,
             "CReader::Read(CFixedPoint&)",
+            INPUTS,
         ),
         (
             "common/special_projects",
-            "fleet_power",
+            &["fleet_power"][..],
             true,
             "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)",
+            INPUTS,
+        ),
+        (
+            "common/star_classes",
+            &["icon_scale"][..],
+            false,
+            "CReader::Read(float&)",
+            FLOAT_INPUTS,
+        ),
+        (
+            "common/storm_types",
+            &[
+                "cosmic_storm_galaxy_lightning_time",
+                "cosmic_storm_galaxy_max_opacity",
+            ][..],
+            false,
+            "CReader::Read(float&)",
+            FLOAT_INPUTS,
+        ),
+        (
+            "common/astral_actions",
+            &["unlock_threshold", "usages"][..],
+            false,
+            "CReader::Read(short&)",
+            SHORT_INPUTS,
+        ),
+        (
+            "common/sector_types",
+            &[
+                "max_systems",
+                "min_systems",
+                "min_colonies",
+                "max_colonies",
+                "max_jumps",
+            ][..],
+            false,
+            "CReader::Read(short&)",
+            SHORT_INPUTS,
         ),
     ] {
-        let request = fixture(registry, field, nested)?;
+        let request = fixture(registry, fields, nested, inputs)?;
         let mut game = native
             .start_game(
                 options()
@@ -70,8 +123,13 @@ pub(super) async fn matrix() -> Outcome {
             .await?;
         let mut result = async {
             let answer = game.observe_fixture().await?;
-            let observations =
-                checked_observations(&answer, registry, &facts.readers[callee].conversion)?;
+            let observations = checked_observations(
+                &answer,
+                registry,
+                fields.len(),
+                inputs,
+                &facts.readers[callee].conversion,
+            )?;
             report.extend(observations);
             Ok(())
         }
@@ -84,7 +142,7 @@ pub(super) async fn matrix() -> Outcome {
         serde_json::from_str(include_str!("../expected/numeric-m45/live.json"))?;
     if actual != expected {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(".local/sdk-644/numeric-conversion-live.json");
+            .join(".local/sdk-656/numeric-conversion-live.json");
         std::fs::create_dir_all(path.parent().unwrap())?;
         std::fs::write(&path, serde_json::to_string_pretty(&actual)?)?;
         return Err(format!(
@@ -96,24 +154,33 @@ pub(super) async fn matrix() -> Outcome {
     Ok(())
 }
 
-fn fixture(registry: &str, field: &str, nested: bool) -> Result<FixtureRequest, std::fmt::Error> {
+fn fixture(
+    registry: &str,
+    fields: &[&str],
+    nested: bool,
+    inputs: &[(&str, &[&str])],
+) -> Result<FixtureRequest, std::fmt::Error> {
     let mut text = String::new();
     let mut questions = Vec::new();
-    for (case, inputs) in INPUTS {
+    for (case, inputs) in inputs {
         if nested {
             writeln!(text, "special_project = {{\n requirements = {{")?;
         } else {
             writeln!(text, "{case} = {{")?;
         }
-        for input in *inputs {
-            writeln!(text, " {field} = {input}")?;
+        for field in fields {
+            for input in *inputs {
+                writeln!(text, " {field} = {input}")?;
+            }
+            let mut question = FixtureFieldQuestion::new(registry, *case, *field).with_parsing();
+            if nested {
+                question = question.with_parent_field("requirements");
+            }
+            questions.push(question);
         }
-        let mut question = FixtureFieldQuestion::new(registry, *case, field).with_parsing();
         if nested {
-            question = question.with_parent_field("requirements");
             writeln!(text, " }}\n key = {case}")?;
         }
-        questions.push(question);
         writeln!(text, "}}")?;
     }
     Ok(FixtureRequest::field_outcomes(
@@ -126,6 +193,8 @@ fn fixture(registry: &str, field: &str, nested: bool) -> Result<FixtureRequest, 
 fn checked_observations(
     answer: &Answer<pdx_native::FixtureObservation>,
     registry: &str,
+    field_count: usize,
+    case_inputs: &[(&str, &[&str])],
     conversion: &GrammarProperty<Option<pdx_native::NumericConversion>>,
 ) -> Result<Observations, Box<dyn std::error::Error>> {
     if answer.completeness != Completeness::Complete
@@ -134,7 +203,7 @@ fn checked_observations(
             != (DiagnosticCoverage::Complete {
                 window: DiagnosticWindow::FixtureFileLoad,
             })
-        || answer.value.field_outcomes.len() != INPUTS.len()
+        || answer.value.field_outcomes.len() != field_count * case_inputs.len()
     {
         return Err(format!("numeric conversion coverage: {answer:?}").into());
     }
@@ -155,7 +224,7 @@ fn checked_observations(
         else {
             return Err(format!("numeric conversion parsing unavailable: {outcome:?}").into());
         };
-        let inputs = INPUTS
+        let inputs = case_inputs
             .iter()
             .find(|(name, _)| *name == outcome.question.definition)
             .unwrap()
@@ -182,8 +251,23 @@ fn checked_observations(
                 serde_json::json!({"stage": diagnostic.stage, "text": diagnostic.text})
             })
             .collect();
-        report.insert(format!("{registry}/{}/{}", outcome.question.field, outcome.question.definition),
-            serde_json::json!({"inputs": inputs, "stored": occurrences.iter().map(|item| &item.value).collect::<Vec<_>>(), "final": final_value, "diagnostics": diagnostics}));
+        let mut row = serde_json::json!({"inputs": inputs, "stored": occurrences.iter().map(|item| &item.value).collect::<Vec<_>>(), "final": final_value, "diagnostics": diagnostics});
+        if let Some(reading) = final_value.as_ref().and_then(review_value) {
+            row["readings"] = serde_json::json!(
+                occurrences
+                    .iter()
+                    .filter_map(|item| review_value(&item.value))
+                    .collect::<Vec<_>>()
+            );
+            row["final_reading"] = reading;
+        }
+        report.insert(
+            format!(
+                "{registry}/{}/{}",
+                outcome.question.field, outcome.question.definition
+            ),
+            row,
+        );
     }
     Ok(report)
 }
@@ -195,17 +279,41 @@ fn check_storage(
     let GrammarProperty::Partial(Some(conversion)) = conversion else {
         return Err(format!("missing static conversion: {conversion:?}").into());
     };
-    let (width, scale) = match stored {
-        FixtureValue::Integer(_) => (32, 1),
-        FixtureValue::FixedPoint { scale, .. } => (64, *scale),
+    let (representation, width, scale, signedness) = match stored {
+        FixtureValue::Integer(_) => (
+            NumericRepresentation::Integer,
+            32,
+            Some(1),
+            Some(pdx_native::NumericSignedness::Signed),
+        ),
+        FixtureValue::FixedPoint { scale, .. } => (
+            NumericRepresentation::Integer,
+            64,
+            Some(*scale),
+            Some(pdx_native::NumericSignedness::Signed),
+        ),
+        FixtureValue::Float { .. } => (NumericRepresentation::BinaryFloat, 32, None, None),
+        FixtureValue::Integer16 { .. } => (NumericRepresentation::Integer, 16, Some(1), None),
         _ => return Err("unexpected numeric storage type".into()),
     };
-    if conversion.representation != GrammarProperty::Known(NumericRepresentation::Integer)
-        || conversion.signedness != GrammarProperty::Known(pdx_native::NumericSignedness::Signed)
+    if conversion.representation != GrammarProperty::Known(representation)
+        || signedness.is_some_and(|sign| conversion.signedness != GrammarProperty::Known(sign))
         || conversion.width_bits != GrammarProperty::Known(width)
-        || conversion.scale != GrammarProperty::Known(Some(scale))
+        || conversion.scale != GrammarProperty::Known(scale)
     {
         return Err(format!("static/live conversion conflict: {conversion:?}; {stored:?}").into());
     }
     Ok(())
+}
+
+fn review_value(value: &FixtureValue) -> Option<serde_json::Value> {
+    match value {
+        FixtureValue::Float { bits } => {
+            Some(serde_json::json!({"decimal": format!("{:?}", f64::from(f32::from_bits(*bits)))}))
+        }
+        FixtureValue::Integer16 { bits } => {
+            Some(serde_json::json!({"signed": *bits as i16, "unsigned": bits}))
+        }
+        _ => None,
+    }
 }

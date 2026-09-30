@@ -275,3 +275,95 @@ complete template live answer is `.local/sdk-648/template-live.txt`. The full de
 Clippy, documentation checks, 52 Python worker/codec tests, and all three numeric live cases pass.
 The nested worker-loss live control also passes with confirmed process disposal. Both nested
 cases explicitly select the traditions registry while the inline fixture loads independently.
+
+## Float and short storage (SDK-656, M451-hotfix)
+
+The exact executable is `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`.
+The fixture binding joins `CReader::Read(float&)` to binary32 storage and
+`CReader::Read(short&)` to 16-bit storage. The worker reads four or two bytes respectively,
+without interpreting the short's signedness. Unknown callees, ambiguous token paths, missing
+reader receivers and non-owner destinations remain unavailable. Authored Rust controls and
+worker memory-read/codec controls cover the two new paths.
+
+### Loader and destination pitfalls
+
+A template loader's boolean specialization is part of its callee identity. Assuming `false`
+misses `TSingleObjectGameDatabase<CStarClassDatabase, CStarClass, true>`. The selected loader
+symbol establishes its corresponding `LoadFromReader` name; the following `mov x0, sp` and
+`CReader::~CReader()` call establish its return boundary. A matching `ReadNewEntry` helper can
+hold the owner constructor. The binding follows at most that one direct helper and rejects
+missing or ambiguous constructor routes. It does not follow unrelated calls.
+
+For `CStarClass`, the loader is at `0x1006539e8`, its file reader at `0x100653d74`, and the
+file-reader return at `0x100653a58`. Its matching `ReadNewEntry` is at `0x100654110` and calls
+the key-bearing constructor at `0x100c0a9f0`. The member reader is at `0x100c0aa50`; the float
+reader is at `0x1025b8304`. `icon_scale` uses the owner-relative destination `0x138`.
+
+The token proof cannot require a scratch-register value at the callee. `x8` can hold a
+jump-table index, an owner address or a reused scratch value. The immediate comparison for
+token `0x25c` leaves `w8` holding the earlier comparison constant `0x2cb4`, although the selected
+path proves the token and the float destination. Require the path's singleton token
+domain and unconditional reader/owner join instead. These compiler shapes also transfer to
+storm, astral-action and sector fields without a registry or field branch.
+
+### Live isolation obstacle
+
+Do not run the default Rust suite alongside a live fixture. Its process-inventory control
+briefly starts a harmless executable named `stellaris`, which the live supervisor correctly
+treats as an external game. The retained `fixture_numeric_conversion_matrix` failure reports
+`External game invalidated isolation` during its nested-project session, before the pause;
+disposal is confirmed. Its case, `raw-trace.jsonl` and `session/run-summary.json` remain under
+`/var/folders/kd/4s9l1qz1055d4cq25nz2xddh0000gn/T/pdx-native-48790-1790796165663864000`.
+The full case output is `.local/sdk-656/live-first.log`. Static analysis can run alongside a
+live session; controls that start processes must run separately.
+
+The reviewed numeric matrix has 110 cases and 124 stored occurrences, including nine float
+cases across three fields and 21 short cases across seven fields. All ten fields have verified
+loader boundaries. Static representation and width agree with all stored values. The malformed
+short sequence stores 7 followed by zero, with `Malformed token`; float retains the binary32
+pattern of 7 with the same diagnostic. Final values agree with the last occurrence in these new
+cases. These are finite observations, not conversion or acceptance rules.
+
+The retained expected-output mismatch contains a historical build stamp and absent new rows,
+with no storage conflict. Its eight sessions complete with all observations joined and its test
+failure is `numeric conversion observations differ`. The current reviewed expectation includes
+the 30 new rows and M451-hotfix stamp. The 80 existing rows have no value or diagnostic changes.
+The candidate, case output and the retained trace directories are indexed by
+`.local/sdk-656/numeric-conversion-live.json` and `.local/sdk-656/live-candidate.log`;
+the final sector session's trace is under
+`/var/folders/kd/4s9l1qz1055d4cq25nz2xddh0000gn/T/pdx-native-52280-1790796504489133000`.
+
+### Current fixture storage population
+
+The M451-hotfix fixture-binding population covers 164 registries and 184 numeric root fields;
+all queries return and none fails. Storage and loader proofs are separate:
+
+| Reader kind | Decoder and verified loader | Decoder, no verified loader | No proven decoder/destination |
+| --- | ---: | ---: | ---: |
+| Integer (including seven short fields) | 79 | 12 | 2 |
+| Fixed-point | 79 | 8 | 1 |
+| Float | 3 | 0 | 0 |
+
+All seven short fields are in the first column. The three unavailable destinations are
+`common/council_agendas` `agenda_cooldown` and `agenda_finish_modifier_duration`, and
+`common/ship_sizes` `hull_scale`: they do not supply the required single unconditional scalar
+reader/owner-destination proof. A proven decoder without a verified loader is still unavailable
+for live fixture observation. Population proof does not claim live observations for those
+unselected fields. The full current report is `.local/sdk-656/fixture-storage-population-final.log`.
+
+### Decimal review must not change bit comparisons
+
+A numeric JSON review value for binary32 `0x7f7fffff` does not round-trip through this repository's
+`serde_json` parser: binary64 `0x47efffffe0000000` serializes as `3.4028234663852886e+38`, but
+parses as `0x47efffffe0000001`. The stored binary32 bits and all other observations agree.
+Keep review decimals as test-only text derived from the bits; compare the public integer bit
+patterns exactly. Do not add a Cargo feature or a floating-point field to the public value.
+The probe and its output are `.local/sdk-656/float-json-roundtrip.rs` and
+`.local/sdk-656/float-json-roundtrip.txt`.
+
+The retained `fixture_numeric_conversion_matrix` expectation failure has 110 fully joined cases
+and 124 stored values identical to the reviewed values. Only the numeric review field comparison
+fails after JSON parsing. Its output is `.local/sdk-656/live-final.log`; its boundary case trace
+is under `/var/folders/kd/4s9l1qz1055d4cq25nz2xddh0000gn/T/pdx-native-54654-1790796863497189000`.
+All eight sessions have confirmed disposal. The current test and expectation use decimal text
+for these review fields, independently of static/live storage checks.

@@ -917,6 +917,8 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
     }];
     for (callee, decoder) in [
         ("CReader::Read(int&)", FixtureStorageDecoder::Integer),
+        ("CReader::Read(float&)", FixtureStorageDecoder::Float),
+        ("CReader::Read(short&)", FixtureStorageDecoder::Integer16),
         (
             "CReader::Read(CFixedPoint&)",
             FixtureStorageDecoder::FixedPoint { scale: 100_000 },
@@ -937,13 +939,36 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
         let bound = fixture_storage_binding(&field, &paths).unwrap();
         assert_eq!(bound.offset, 48);
         assert_eq!(bound.decoder, decoder);
+        let mut scratch_changed = field.clone();
+        let ReaderJoin::Joined { arguments, .. } = &mut scratch_changed.readers[0] else {
+            unreachable!()
+        };
+        arguments.remove("x8");
+        assert_eq!(
+            fixture_storage_binding(&scratch_changed, &paths)
+                .unwrap()
+                .decoder,
+            decoder
+        );
+        let mut ambiguous = paths.clone();
+        ambiguous[0].domain = [7, 8];
+        assert!(fixture_storage_binding(&field, &ambiguous).is_none());
+        ambiguous[0].domain = [8, 8];
+        assert!(fixture_storage_binding(&field, &ambiguous).is_none());
+        for (register, value) in [("x0", Value::Owner(0)), ("x1", Value::Constant(48))] {
+            let mut missing = field.clone();
+            let ReaderJoin::Joined { arguments, .. } = &mut missing.readers[0] else {
+                unreachable!()
+            };
+            arguments.insert(register.into(), value);
+            assert!(fixture_storage_binding(&missing, &paths).is_none());
+        }
     }
     let original = field.clone();
     for (register, value) in [
         ("x0", Value::Owner(0)),
         ("x1", Value::Constant(48)),
         ("x1", Value::Owner(-1)),
-        ("x8", Value::Constant(8)),
     ] {
         field = original.clone();
         let ReaderJoin::Joined { arguments, .. } = &mut field.readers[0] else {
@@ -982,7 +1007,7 @@ fn numeric_fixture_storage_population() {
             .unwrap_or_default();
         let bindings = analysis.fixture_fields(&registry.name).unwrap();
         let numeric: Vec<_> = fields.iter().filter(|field|
-            matches!(field.reader.kind, crate::ReaderKind::Integer | crate::ReaderKind::FixedPoint))
+            matches!(field.reader.kind, crate::ReaderKind::Integer | crate::ReaderKind::FixedPoint | crate::ReaderKind::Float))
             .map(|field| serde_json::json!({"field": field.name, "reader": field.reader,
                 "storage": bindings.iter().find(|bound| bound.name == field.name).and_then(|bound| bound.storage)}))
             .collect();
@@ -1059,5 +1084,171 @@ fn scoped_fixture_destinations() {
                 );
             }
         }
+    }
+}
+
+#[test]
+#[ignore = "requires exact M451-hotfix through STELLARIS_PATH"]
+fn m451_float_and_short_fixture_storage_bindings() {
+    use crate::protocol::observation::FixtureStorageDecoder;
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    assert_eq!(
+        native.build().0,
+        "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38"
+    );
+    let analysis = native.bound().analysis.as_ref().unwrap();
+    for (registry, fields, decoder) in [
+        (
+            "common/star_classes",
+            &["icon_scale"][..],
+            FixtureStorageDecoder::Float,
+        ),
+        (
+            "common/storm_types",
+            &[
+                "cosmic_storm_galaxy_lightning_time",
+                "cosmic_storm_galaxy_max_opacity",
+            ][..],
+            FixtureStorageDecoder::Float,
+        ),
+        (
+            "common/astral_actions",
+            &["unlock_threshold", "usages"][..],
+            FixtureStorageDecoder::Integer16,
+        ),
+        (
+            "common/sector_types",
+            &[
+                "max_systems",
+                "min_systems",
+                "min_colonies",
+                "max_colonies",
+                "max_jumps",
+            ][..],
+            FixtureStorageDecoder::Integer16,
+        ),
+    ] {
+        let bindings = analysis.fixture_fields(registry).unwrap();
+        assert!(
+            analysis.fixture_loader(registry).unwrap().is_some(),
+            "{registry}"
+        );
+        for name in fields {
+            let field = bindings.iter().find(|field| field.name == *name).unwrap();
+            assert_eq!(
+                field
+                    .storage
+                    .unwrap_or_else(|| panic!("{registry}/{name}"))
+                    .decoder,
+                decoder,
+                "{registry}/{name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanup() {
+    use crate::engine::analysis::assembler::arm64;
+    for specialization in ["true", "false"] {
+        let database = format!("TSingleObjectGameDatabase<Database, Owner, {specialization}>");
+        let loader = format!("{database}::LoadFile(char const*, bool)");
+        let symbols = vec![
+            Symbol {
+                address: 0x2000,
+                name: format!("{database}::LoadFromReader(CReader&, bool)"),
+            },
+            Symbol {
+                address: 0x3000,
+                name: "CReader::~CReader()".into(),
+            },
+        ];
+        let code = arm64!(at 0x1000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; ret);
+        assert_eq!(
+            fixture_reader_boundary(&code, 0x1000, &loader, &symbols).unwrap(),
+            Some((0x2000, 0x1004))
+        );
+        assert_eq!(
+            fixture_reader_boundary(&code, 0x1000, &loader, &symbols[..1]).unwrap(),
+            None
+        );
+        for code in [
+            arm64!(at 0x1000; bl extern 0x4000; mov x0, sp; bl extern 0x3000; ret),
+            arm64!(at 0x1000; bl extern 0x2000; mov x0, x19; bl extern 0x3000; ret),
+            arm64!(at 0x1000; bl extern 0x2000; mov x0, sp; bl extern 0x4000; ret),
+            arm64!(at 0x1000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; ret),
+        ] {
+            assert_eq!(
+                fixture_reader_boundary(&code, 0x1000, &loader, &symbols).unwrap(),
+                None
+            );
+        }
+        let opposite = if specialization == "true" {
+            "false"
+        } else {
+            "true"
+        };
+        let wrong_loader = loader.replace(specialization, opposite);
+        assert_eq!(
+            fixture_reader_boundary(&code, 0x1000, &wrong_loader, &symbols).unwrap(),
+            None
+        );
+    }
+}
+
+#[test]
+fn fixture_constructor_joins_only_one_direct_or_matching_new_entry_route() {
+    use crate::engine::analysis::assembler::arm64;
+    let database = "TSingleObjectGameDatabase<Database, Owner, true>";
+    let symbols = vec![
+        Symbol {
+            address: 0x1000,
+            name: format!("{database}::LoadFromReader(CReader&, bool)"),
+        },
+        Symbol {
+            address: 0x2000,
+            name: format!("{database}::ReadNewEntry(CReader&, CString const&)"),
+        },
+        Symbol {
+            address: 0x3000,
+            name: "Owner::Owner(int, CString const&)".into(),
+        },
+        Symbol {
+            address: 0x4000,
+            name: "Owner::Owner(int, CString const&)".into(),
+        },
+    ];
+    let helper = decode_arm64(&arm64!(at 0x1000; bl extern 0x2000; ret), 0x1000).unwrap();
+    assert_eq!(
+        fixture_constructor_route(&helper, 0x1000, "Owner", &symbols),
+        Some(FixtureConstructorRoute::NewEntry(0x2000))
+    );
+    assert_eq!(
+        fixture_constructor_route(&helper, 0x2000, "Owner", &symbols),
+        None
+    );
+    assert_eq!(
+        fixture_constructor_route(&helper, 0x1000, "Owner", &symbols[1..]),
+        None
+    );
+    let direct = decode_arm64(&arm64!(at 0x2000; bl extern 0x3000; ret), 0x2000).unwrap();
+    assert_eq!(
+        fixture_constructor_route(&direct, 0x2000, "Owner", &symbols),
+        Some(FixtureConstructorRoute::Constructor(0x3000))
+    );
+    assert_eq!(
+        fixture_constructor_route(&direct, 0x2000, "Other", &symbols),
+        None
+    );
+    for code in [
+        arm64!(at 0x1000; bl extern 0x3000; bl extern 0x4000; ret),
+        arm64!(at 0x1000; bl extern 0x2000; bl extern 0x3000; ret),
+        arm64!(at 0x1000; blr x8; ret),
+    ] {
+        let rows = decode_arm64(&code, 0x1000).unwrap();
+        assert_eq!(
+            fixture_constructor_route(&rows, 0x1000, "Owner", &symbols),
+            None
+        );
     }
 }
