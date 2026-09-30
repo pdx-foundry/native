@@ -24,7 +24,7 @@ ldp xr0,xr1,[sp,#0x80]
 add sp,sp,#0xc0
 b CALL = CVariables::GetVariable(CString const&) const
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 add x0,sp,#0x20
 mov w2,#0xf5
 mov w3,#0x1000
@@ -49,7 +49,7 @@ add x0,sp,#0x20
 bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
 b @+39
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 sub x0,x29,#0x40
 mov w2,#0xec
 mov w3,#0x1000

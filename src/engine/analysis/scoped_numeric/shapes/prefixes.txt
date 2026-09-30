@@ -126,7 +126,7 @@ ldr xr10,[xr10,#0xa8]
 blr xr10
 tbnz w0,#0,@+21
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 add x0,sp,#0x20
 mov w2,#0x78
 mov w3,#0x1000
@@ -152,7 +152,7 @@ mov x1,xr8
 blr xr10
 tbnz w0,#0,@+377
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 add x0,sp,#0xe8
 mov w2,#0x7e
 mov w3,#0x1000
@@ -394,7 +394,7 @@ cmp wr0,#0x0
 b.gt @-53
 add x0,sp,#0x20
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 mov w2,#0xa5
 mov w3,#0x1000
 bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)

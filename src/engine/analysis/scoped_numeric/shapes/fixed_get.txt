@@ -62,7 +62,7 @@ cmp wr4,#0x44
 b.hi @+137
 adrp xr5,PAGE
 add xr5,xr5,G = ?
-adr xr1,#0x100d1c7f0
+adr xr1,@-18
 ldrh w6,[xr5,xr4,lsl#1]
 add xr1,xr1,x6,lsl#2
 mov wr5,#-0x2e30
@@ -144,7 +144,7 @@ b.le @+127
 add wr4,wr1,w5
 cmp wr4,#0x55
 b.hi @+207
-adr x6,#0x100d1c7f0
+adr x6,@-100
 ldrh wr1,[xr0,xr4,lsl#1]
 add x6,x6,xr1,lsl#2
 br x6
@@ -320,7 +320,7 @@ bl CALL = CFixedPointVariableValue::GetValueInternal(CEventScope&) const
 mov xr9,x0
 b @+21
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 add x0,sp,#0x18
 mov w2,#0x129
 mov w3,#0x1000

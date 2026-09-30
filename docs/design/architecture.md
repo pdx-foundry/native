@@ -46,6 +46,7 @@ src/
     loaded_modifiers.rs            the live loaded modifier table, joined with static answers
   game.rs                          Game: live session or recorded back end
   game/driver.rs                   the thread that talks to the supervisor process
+  world.rs                         prepared world request and normalized daily observations
   fixture.rs                       consumer fixture request and normalized observation types
   grammar.rs                       partial child grammar and conditional routing types
   recorded.rs                      recorded answers: read, write, NotRecorded
@@ -54,6 +55,7 @@ src/
   protocol.rs                      caller/supervisor handshake, replies and framing
   protocol/
     session.rs                     session request, controls, final report, test faults
+    world.rs                       private world recipe and session result
     observation.rs                 supervisor/worker wire; generates the worker's Python schemas
   binding.rs                       narrow bound interfaces; private composition subtree
   binding/
@@ -84,6 +86,7 @@ src/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
       fixture.rs                   fixture observation reducer
       loaded_modifiers.rs          stream and table file to the loaded modifier table
+      world.rs                     prepared result identity, bounds and normalized answer
       registry_items.rs            stream to registry items; readiness of the pause
   execution/
     supervisor.rs                  independent process/resource ownership; reduces at the pause

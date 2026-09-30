@@ -27,7 +27,7 @@ mov x1,xr3
 bl CALL = CScriptableLookupValue::GetValue(CEventScope&) const
 b @+56
 adrp x1,PAGE
-add x1,x1,G = "/Users/pdxadmin/builds/builds/bBp8CM9UI/0/gsg/stellaris/augustus/augustus/source/variable_values.cpp"
+add x1,x1,G = {diagnostic_source}
 sub x0,x29,#0x30
 mov w2,#0x199
 mov w3,#0x1000

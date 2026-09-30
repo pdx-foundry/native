@@ -63,22 +63,84 @@ pub fn candidate(native: &Native, name: &str) -> Result<Vec<u8>> {
     layout::render(name, &value, &template)
 }
 
+/// Compare static facts while checking current command stamps separately from reviewed provenance.
+#[cfg(test)]
+pub fn static_facts_match(
+    build: &BuildId,
+    name: &str,
+    candidate: &[u8],
+    reviewed: &[u8],
+) -> Result<bool> {
+    if name == "dynamic-names.json" {
+        let mut candidate: Value = serde_json::from_slice(candidate)?;
+        let mut reviewed: Value = serde_json::from_slice(reviewed)?;
+        // Internal store IDs depend on relocated addresses; full rows retain duplicates and facts.
+        for report in [&mut candidate, &mut reviewed] {
+            report["namespaces"]
+                .as_array_mut()
+                .ok_or("dynamic namespace selection must be an array")?
+                .sort_by_cached_key(Value::to_string);
+        }
+        return Ok(candidate == reviewed);
+    }
+    if name != "command-grammars.json" {
+        return Ok(candidate == reviewed);
+    }
+    let mut candidate: BTreeMap<String, Value> = serde_json::from_slice(candidate)?;
+    let mut reviewed: BTreeMap<String, Value> = serde_json::from_slice(reviewed)?;
+    for (subject, answer) in &mut candidate {
+        let source: Source = serde_json::from_value(answer["source"].clone())?;
+        if &source.build != build {
+            return Err(format!("{subject}: candidate source does not match Native::build").into());
+        }
+        answer["source"]
+            .as_object_mut()
+            .ok_or("command source must be an object")?
+            .remove("build");
+    }
+    for answer in reviewed.values_mut() {
+        let _: Source = serde_json::from_value(answer["source"].clone())?;
+        answer["source"]
+            .as_object_mut()
+            .ok_or("command source must be an object")?
+            .remove("build");
+    }
+    Ok(candidate == reviewed)
+}
+
+/// Historical live storage applies only to its recorded exact build, never to a hotfix by inference.
+pub fn historical_storage_applies(build: &BuildId, observed: &Value) -> Result<bool> {
+    let source: Source = serde_json::from_value(observed["source"].clone())?;
+    if source.basis != Basis::LiveObservation {
+        return Err("SDK-533 storage must retain its live observation provenance".into());
+    }
+    Ok(&source.build == build)
+}
+
+fn current_answer<T>(native: &Native, answer: Answer<T>) -> Result<Answer<T>> {
+    if answer.source.build != native.build() {
+        return Err("candidate source does not match Native::build".into());
+    }
+    Ok(answer)
+}
+
 /// Produce the current answer's selected view, without accepting it as correct.
 pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> {
     if let Some((registry, _)) = FIELD_FILES.iter().find(|(_, file)| *file == name) {
-        return Ok(json!(native.registry_fields(registry)?.value));
+        return Ok(json!(
+            current_answer(native, native.registry_fields(registry)?)?.value
+        ));
     }
     match name {
         "registries.json" => Ok(json!(
-            native
-                .registries()?
+            current_answer(native, native.registries()?)?
                 .value
                 .iter()
                 .map(|item| &item.name)
                 .collect::<Vec<_>>()
         )),
         "field-storage-sdk533.json" => {
-            if json!(native.build()) != expected["source"]["build"] {
+            if !historical_storage_applies(&native.build(), expected)? {
                 return Err(
                     "the historical SDK-533 storage observation is for a different build".into(),
                 );
@@ -95,7 +157,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
                 .keys()
             {
                 let (kind, name) = command(subject).ok_or("invalid command selection")?;
-                let mut answer = native.command_grammar(kind, name)?;
+                let mut answer = current_answer(native, native.command_grammar(kind, name)?)?;
                 // Recorded answers describe the same static facts with a different Basis.
                 answer.source.basis = Basis::StaticAnalysis;
                 answers.insert(subject, answer);
@@ -103,17 +165,19 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             Ok(json!(answers))
         }
         "dynamic-names.json" => {
-            let answer = native.dynamic_names()?;
+            let answer = current_answer(native, native.dynamic_names()?)?;
             Ok(dynamic_names(&answer, expected))
         }
         "declarations-effect.json" | "declarations-trigger.json" => {
             let kind = declaration_kind(name);
-            Ok(json!(declaration_inventory(&native.declarations(kind)?).0))
+            Ok(json!(
+                declaration_inventory(&current_answer(native, native.declarations(kind)?)?).0
+            ))
         }
         "declaration-gaps.json" => {
             let mut gaps = BTreeMap::new();
             for (subject, kind) in DECLARATIONS {
-                let answer = native.declarations(kind)?;
+                let answer = current_answer(native, native.declarations(kind)?)?;
                 gaps.insert(subject, declaration_inventory(&answer).1);
             }
             Ok(json!(gaps))
@@ -121,29 +185,28 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
         "declaration-recovered.json" => {
             let mut recovered = expected.clone();
             for (subject, kind) in DECLARATIONS {
-                let answer = native.declarations(kind)?;
+                let answer = current_answer(native, native.declarations(kind)?)?;
                 recovered[subject] = recovered_declarations(&answer.value, &expected[subject])?;
             }
             Ok(recovered)
         }
         "declaration-samples-effect.json" | "declaration-samples-trigger.json" => {
-            let answer = native.declarations(declaration_kind(name))?;
+            let answer = current_answer(native, native.declarations(declaration_kind(name))?)?;
             select_samples(&json!(answer.value), expected, &["name"])
         }
         "defines.json" => {
-            let answer = native.defines()?;
+            let answer = current_answer(native, native.defines()?)?;
             compact_defines(&answer, expected)
         }
         "modifier-declarations.json" => {
-            let answer = native.modifiers()?;
+            let answer = current_answer(native, native.modifiers()?)?;
             Ok(json!({
                 "count": answer.value.len(), "gaps": gap_counts(&answer),
                 "samples": select_samples(&json!(answer.value), &expected["samples"], &["name"])?
             }))
         }
         "modifier-categories.json" => Ok(json!(
-            native
-                .modifier_categories()?
+            current_answer(native, native.modifier_categories()?)?
                 .value
                 .iter()
                 .map(|item| &item.name)
@@ -158,19 +221,29 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             {
                 families.insert(
                     registry,
-                    compact_families(&native.modifier_families(registry)?),
+                    compact_families(&current_answer(
+                        native,
+                        native.modifier_families(registry)?,
+                    )?),
                 );
             }
             Ok(json!(families))
         }
-        "on-actions.json" => Ok(compact_on_actions(&native.on_actions()?)),
-        "game-rules.json" => Ok(compact_game_rules(&native.game_rules()?)),
-        "localization-declarations.json" => {
-            Ok(compact_localization(&native.localization_declarations()?))
-        }
-        "scope-inventory.json" => Ok(json!(native.scopes()?.value)),
+        "on-actions.json" => Ok(compact_on_actions(&current_answer(
+            native,
+            native.on_actions()?,
+        )?)),
+        "game-rules.json" => Ok(compact_game_rules(&current_answer(
+            native,
+            native.game_rules()?,
+        )?)),
+        "localization-declarations.json" => Ok(compact_localization(&current_answer(
+            native,
+            native.localization_declarations()?,
+        )?)),
+        "scope-inventory.json" => Ok(json!(current_answer(native, native.scopes()?)?.value)),
         "scope-links.json" => {
-            let answer = native.scope_links()?;
+            let answer = current_answer(native, native.scope_links()?)?;
             Ok(json!({
                 "names": answer.value.iter().map(|item| &item.name).collect::<Vec<_>>(),
                 "samples": select_samples(&json!(answer.value), &expected["samples"], &["name"])?
@@ -262,7 +335,7 @@ fn select_samples(answer: &Value, samples: &Value, keys: &[&str]) -> Result<Valu
 pub fn reference_answer(native: &Native, owner: &str) -> Result<(String, Vec<Gap>, Vec<Field>)> {
     match command(owner) {
         Some((kind, command)) => {
-            let answer = native.command_grammar(kind, command)?;
+            let answer = current_answer(native, native.command_grammar(kind, command)?)?;
             let fields = match &answer.value.fixed_keys {
                 GrammarProperty::Partial(fields) | GrammarProperty::Known(fields) => fields.clone(),
                 _ => Vec::new(),
@@ -270,7 +343,7 @@ pub fn reference_answer(native: &Native, owner: &str) -> Result<(String, Vec<Gap
             Ok((serde_json::to_string(&answer)?, answer.gaps, fields))
         }
         None => {
-            let answer = native.registry_fields(owner)?;
+            let answer = current_answer(native, native.registry_fields(owner)?)?;
             Ok((serde_json::to_string(&answer)?, answer.gaps, answer.value))
         }
     }
@@ -392,6 +465,141 @@ pub fn assert_sdk492_keys(native: &Native) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn command_record(build: &str) -> Value {
+        json!({
+            "effect/sample": {
+                "source": {
+                    "build": build,
+                    "native_version": "0.1.0",
+                    "method": "command-grammar/v2",
+                    "basis": "StaticAnalysis"
+                },
+                "value": {"forms": ["Literal"]},
+                "completeness": "Complete",
+                "gaps": []
+            }
+        })
+    }
+
+    fn build(value: &str) -> BuildId {
+        serde_json::from_value(json!(value)).unwrap()
+    }
+
+    #[test]
+    fn cross_build_command_parity_checks_current_stamp_and_keeps_fact_differences() {
+        let reviewed = command_record("release");
+        let candidate = command_record("hotfix");
+        let matches = |value: &Value| {
+            static_facts_match(
+                &build("hotfix"),
+                "command-grammars.json",
+                &serde_json::to_vec(value).unwrap(),
+                &serde_json::to_vec(&reviewed).unwrap(),
+            )
+        };
+        assert!(matches(&candidate).unwrap());
+        assert!(matches(&reviewed).is_err());
+        for (pointer, replacement) in [
+            ("/effect~1sample/value/forms", json!("Unresolved")),
+            ("/effect~1sample/completeness", json!("Partial")),
+            ("/effect~1sample/gaps", json!([{"detail": "lost form"}])),
+            (
+                "/effect~1sample/source/method",
+                json!("different-method/v1"),
+            ),
+            ("/effect~1sample/source/native_version", json!("different")),
+        ] {
+            let mut changed = candidate.clone();
+            *changed.pointer_mut(pointer).unwrap() = replacement;
+            assert!(!matches(&changed).unwrap(), "{pointer}");
+        }
+        let mut missing_stamp = candidate.clone();
+        missing_stamp["effect/sample"]["source"]
+            .as_object_mut()
+            .unwrap()
+            .remove("build");
+        assert!(matches(&missing_stamp).is_err());
+        assert_eq!(candidate["effect/sample"]["source"]["build"], "hotfix");
+        assert_eq!(reviewed["effect/sample"]["source"]["build"], "release");
+    }
+
+    #[test]
+    fn same_build_commands_and_other_files_keep_their_existing_comparison() {
+        let recorded = serde_json::to_vec(&command_record("release")).unwrap();
+        assert!(
+            static_facts_match(
+                &build("release"),
+                "command-grammars.json",
+                &recorded,
+                &recorded
+            )
+            .unwrap()
+        );
+        let changed = serde_json::to_vec(&command_record("hotfix")).unwrap();
+        assert!(
+            !static_facts_match(
+                &build("hotfix"),
+                "fields-traditions.json",
+                &changed,
+                &recorded
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn namespace_order_can_change_but_roles_counts_gaps_and_duplicates_cannot() {
+        let reviewed = json!({"count":2,"gaps":{"UnresolvedReader":1},"namespaces":[
+            {"owner":"star","read_by":["has_star_flag"]},
+            {"owner":"star","defined_by":["set_star_flag"]}
+        ]});
+        let matches = |value: &Value| {
+            static_facts_match(
+                &build("hotfix"),
+                "dynamic-names.json",
+                &serde_json::to_vec(value).unwrap(),
+                &serde_json::to_vec(&reviewed).unwrap(),
+            )
+            .unwrap()
+        };
+        let mut reordered = reviewed.clone();
+        reordered["namespaces"].as_array_mut().unwrap().reverse();
+        assert!(matches(&reordered));
+        for (pointer, replacement) in [
+            ("/count", json!(3)),
+            ("/gaps/UnresolvedReader", json!(2)),
+            ("/namespaces/0/owner", json!("country")),
+            ("/namespaces/1/read_by", json!(["has_country_flag"])),
+        ] {
+            let mut changed = reordered.clone();
+            *changed.pointer_mut(pointer).unwrap() = replacement;
+            assert!(!matches(&changed), "{pointer}");
+        }
+        let mut duplicate = reordered.clone();
+        let row = duplicate["namespaces"][0].clone();
+        duplicate["namespaces"][1] = row;
+        assert!(!matches(&duplicate));
+    }
+
+    #[test]
+    fn historical_storage_is_applicable_only_to_its_exact_live_build() {
+        let mut observed = json!({
+            "source": {
+                "build": "release",
+                "native_version": "0.1.0",
+                "method": "observe-fixture/v1",
+                "basis": "LiveObservation"
+            },
+            "outcomes": [{"stored": "original observation"}]
+        });
+        let unchanged = observed.clone();
+        assert!(historical_storage_applies(&build("release"), &observed).unwrap());
+        assert!(!historical_storage_applies(&build("hotfix"), &observed).unwrap());
+        assert_eq!(observed, unchanged);
+        observed["source"]["basis"] = json!("StaticAnalysis");
+        assert!(historical_storage_applies(&build("release"), &observed).is_err());
+    }
 
     #[test]
     fn every_tracked_file_has_one_question() {

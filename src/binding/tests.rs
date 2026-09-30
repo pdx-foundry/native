@@ -373,6 +373,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         registries: vec!["common/traditions".into()],
         fixture: None,
         loaded_modifiers: None,
+        world: None,
         fault: Some(Fault {
             target: crate::protocol::session::ObservationTarget::Registry(
                 "common/traditions".into(),

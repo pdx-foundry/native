@@ -30,9 +30,11 @@ modifiers = None
 
 class SessionProgress:
     """Observed boundaries and failures; observers never choose the session's pause."""
-    def __init__(self, active_registries=(), modifier_active=False, fixture_pending=False):
+    def __init__(self, active_registries=(), modifier_active=False, fixture_pending=False, world_active=False):
         self.active_registries = set(active_registries)
-        if modifier_active:
+        if world_active:
+            self.pause_owner = 'world'
+        elif modifier_active:
             self.pause_owner = 'modifiers'
         elif self.active_registries:
             self.pause_owner = 'registries'
@@ -40,6 +42,7 @@ class SessionProgress:
             self.pause_owner = None
         self.returned_registries = []
         self.modifier_returned = False
+        self.world_ready = False
         self.fixture_pending = fixture_pending
         self.callback_active = False
         self.callback_failed = False
@@ -57,6 +60,8 @@ def decide_pause(state):
         return PauseDecision(False, None)
     if state.callback_failed or state.worker_loss_ready:
         return PauseDecision(True, None)
+    if state.pause_owner == 'world' and state.world_ready:
+        return PauseDecision(True, 'world-ready')
     if state.pause_owner == 'modifiers' and state.modifier_returned and not state.fixture_pending:
         return PauseDecision(True, 'content-loaded')
     if state.pause_owner == 'registries' and state.active_registries.issubset(state.returned_registries) and not state.fixture_pending:
@@ -74,6 +79,8 @@ def fault_control(session_request, target):
 def requested_hooks(session_request, modifier_observer, fixture_observer):
     """Every hook the session requires, as (name, address)."""
     hooks = [(protocol.HOOK['registry'] + name, value['load_entry']) for name, value in session_request['registries'].items()]
+    if session_request.get('world'):
+        hooks.append((protocol.HOOK['world'], session_request['world']['binding']['pause_entry']))
     if modifier_observer:
         hooks.extend(modifier_observer.hooks())
     if fixture_observer:
@@ -87,6 +94,8 @@ def controlled_hook(session_request):
     target = fault['target'] if fault else None
     if isinstance(target, dict):
         return protocol.HOOK['registry'] + target['registry']
+    if target == 'world':
+        return protocol.HOOK['world']
     if target != 'fixture':
         return None
     if session_request['fixture']['field_reads']:
@@ -1116,7 +1125,18 @@ def callback(frame, loc, _):
     worker_loss_ready = False
     try:
         name = next(key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID())
-        if name.startswith(protocol.HOOK['fixture']):
+        if name == protocol.HOOK['world']:
+            import world
+            if frame.GetThread().GetThreadID() != entry_thread:
+                return False
+            if world.ready_boundary(frame, request['world']['binding']):
+                breakpoints[name].SetEnabled(False)
+                progress.world_ready = True
+                if fault_control(request, 'world') == protocol.CONTROL['worker_loss']:
+                    emit('worker-loss-ready')
+                    (ROOT / 'worker-loss-ready').touch(exist_ok=False)
+                    worker_loss_ready = True
+        elif name.startswith(protocol.HOOK['fixture']):
             try:
                 worker_loss_ready = fixture.callback(frame, name)
             except Exception:
@@ -1236,14 +1256,19 @@ def run(debugger):
                 active_registries.add(name.removeprefix(protocol.HOOK['registry']))
             elif name.startswith(protocol.HOOK['modifiers']):
                 modifier_active = True
+            elif name == protocol.HOOK['world']:
+                pass
         else:
-            if name.startswith(protocol.HOOK['modifiers']):
+            if name == protocol.HOOK['world']:
+                emit('capability-unavailable', reason='required world hook missing before resume')
+                return
+            elif name.startswith(protocol.HOOK['modifiers']):
                 emit('modifier-unavailable', reason='required modifier hook missing or late before resume')
             elif name.startswith(protocol.HOOK['fixture']):
                 fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
             else:
                 emit('registry-unavailable', name=name.removeprefix(protocol.HOOK['registry']), reason='required registry hook missing or late before resume')
-    progress = SessionProgress(active_registries, modifier_active, bool(fixture and (fixture.validation or isinstance(fixture, InlineFixtureObserver))))
+    progress = SessionProgress(active_registries, modifier_active, bool(fixture and (fixture.validation or isinstance(fixture, InlineFixtureObserver))), bool(request.get("world")))
     if decide_pause(progress).stop:
         return
     emit('hooks-active-before-resume', hooks=state)
@@ -1262,7 +1287,10 @@ def run(debugger):
         if process.GetState() in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
             break
         if process.GetState() == lldb.eStateStopped and any(t.GetStopReason() == lldb.eStopReasonException for t in process):
-            emit('native-exception', reason='native exception stopped the bounded observation')
+            stopped = next(t for t in process if t.GetStopReason() == lldb.eStopReasonException)
+            frames = [f'0x{frame.GetPC():x} {frame.GetFunctionName() or "unknown"}'
+                      for frame in list(stopped)[:8]]
+            emit('native-exception', reason='native exception: ' + '; '.join(frames))
             break
         time.sleep(.02)
     if not decide_pause(progress).stop and process.IsValid() and process.GetState() == lldb.eStateRunning:
@@ -1273,11 +1301,28 @@ def run(debugger):
         # A callback that completed while the game was being stopped owns the pause and its cause.
         if not decide_pause(progress).stop:
             progress.deadline_stopped = stop_error.Success() and process.GetState() == lldb.eStateStopped and not progress.callback_active
+    if (not decide_pause(progress).stop and process.IsValid()
+            and process.GetState() == lldb.eStateStopped and not progress.callback_active):
+        progress.deadline_stopped = True
     decision = decide_pause(progress)
     # The supervisor must kill the worker for this fault; do not let LLDB quit first.
     while progress.worker_loss_ready and time.monotonic() < deadline:
         time.sleep(.02)
     if decision.cause and process.GetState() == lldb.eStateStopped:
+        if decision.cause == 'world-ready':
+            import world
+            disable_observation_hooks()
+            try:
+                if fault_control(request, 'world') == protocol.CONTROL['access_failure']:
+                    raise RuntimeError('world observation access failure control')
+                observation = world.WorldObserver(process, entry_thread, request['world'],
+                    request['script_checks'], request['attempt'], deadline, protocol.SCRIPT_LIMITS).observe()
+            except RuntimeError as error:
+                emit('capability-unavailable', reason='world observation failed: ' + str(error))
+                return
+            atomic('world', 'world.json', dict(attempt=request['attempt'], game=request['game'],
+                thread=entry_thread, observation=observation), 4 * 1024 * 1024)
+            emit('world-observed', thread=entry_thread)
         emit('session-paused', returned=progress.returned_registries, cause=decision.cause, thread=entry_thread)
         disable_observation_hooks()
         held_registers = pause_registers(process, entry_thread)

@@ -151,6 +151,7 @@ impl Observer {
             machine,
             package,
             script_checks,
+            world,
         } = setup;
         let tool = discover()?;
         let source = work_directory.join("source");
@@ -183,6 +184,7 @@ impl Observer {
             fixture,
             modifiers,
             script_checks,
+            world,
             deadline_seconds: worker_deadline_seconds(startup_seconds),
         };
         Ok(Self {
@@ -601,6 +603,7 @@ pub(crate) fn test_observer(
             fault: None,
             fixture: None,
             modifiers: None,
+            world: None,
             script_checks: Some(crate::protocol::script_check::ScriptCheckBinding {
                 scopes: BTreeMap::from([("test-scope".into(), 1 << 40)]),
                 ..Default::default()
@@ -669,6 +672,10 @@ pub(in crate::binding) fn package() -> BTreeMap<String, Vec<u8>> {
         (
             "worker.py",
             include_bytes!("observation/worker.py").as_slice(),
+        ),
+        (
+            "world.py",
+            include_bytes!("observation/world.py").as_slice(),
         ),
         (
             "script_checks.py",

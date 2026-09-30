@@ -120,6 +120,8 @@ pub(crate) enum WorkerEvent {
     },
     /// The worker could not read the modifier table.
     ModifierUnavailable { reason: String },
+    /// The prepared world observation returned on the normal main update stack.
+    WorldObserved,
     /// The game is held at a safe pause, after these registries returned from their loaders.
     /// `cause` says what ended the observation and left the game held.
     SessionPaused {
@@ -153,6 +155,8 @@ pub(crate) enum WorkerEvent {
 pub(crate) enum PauseCause {
     /// Every registry whose hook was active returned from its initial loader.
     LoadersReturned,
+    /// World observation returned at the normal main-thread update boundary.
+    WorldReady,
     /// The engine's modifier documentation returned, after all content loaded.
     ContentLoaded,
     /// The worker's deadline passed first, and the worker stopped the game where it was.

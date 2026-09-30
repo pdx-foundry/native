@@ -100,6 +100,7 @@ the state after the simplification effort:
 | `start_game` | Implemented | Supervisor command and deadlines | A `Game` paused at a stated readiness boundary |
 | `Game::registry_items` | Implemented | A registry name | Item names from the engine collection |
 | `Game::loaded_modifiers` | Implemented for M45-release | `GameOptions::loaded_modifiers` before launch | The modifier table after all content loads, read where the engine documents its modifiers: each name with its loaded category tags, whether the executable declares it, and each `modifier_families` family and loaded item that gives it; the loaded keys of each family registry; the loaded content. Unexplained names and unjoined generation sites are gaps. No config or log file is read. |
+| `Game::observe_world` | Implemented for M451-hotfix | `GameOptions::world(WorldRequest)` before launch: compatible save, exact displayed local human country, prepared effect, 0–120 days and up to 32 flags | One fixed observation from the normal main-thread world pause: actual country, initial date, effect execution and diagnostics, then engine date and each flag's presence/signed count for day zero and each advanced day. Repeated reads do not execute again. |
 | `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations` | Implemented for effects and triggers | A declaration kind | Engine name, description, usage, and declared scopes from every registration call and tail call in executable text, including registry helper constructors and names composed at run time through up to two callers; each chain of callers is one declaration. Registrations that cannot be followed, unreadable documentation, and scope getters that cannot be followed make the answer partial. Target arguments and their accepted scopes are in `command_grammar`. |
@@ -208,6 +209,11 @@ observation worker.
   session that the caller ended with no read error; otherwise it is kept. The error from
   `start_game` or `close` names the kept directory, and `Game::work_directory` gives it after a
   read error.
+- A world request uses a private copy of a save (at most 16 MiB), with installed content and no
+  mods. It cannot share a startup fixture or loaded-modifier pause. Readiness is `PausedInWorld`
+  only after the world gate and complete prepared observation. Startup and prepared calls share
+  the configured startup deadline. A rejected effect gives a partial initial observation and no
+  daily updates; runtime failure enters cleanup. General numeric evaluation is outside this route.
 - No blind retry of an operation whose completion is uncertain.
 
 **Agreed G2, 2026-09-24 (implementation: SDK-569):** registry selection is validated against the
@@ -260,6 +266,10 @@ release at a time.
 beta in the catalogue. Steam does not offer old open betas for download, but it does offer old
 full releases, so a full release is the only target worth keeping. The beta ARM64 executable
 stays in `.local/executables` as a knowledge source.
+
+**Amendment, 2026-09-29:** the user supplied a clean 4.5.1 save after the hotfix. Native adds the
+exact 4.5.1 target and its world recipe, while retaining 4.5.0 startup support. World behavior is
+verified only on the new build; addresses do not transfer by a version label.
 
 **Amendment, 2026-09-19 (Jackson):** Windows x64 is deferred. Atlas publishes platform-independent
 snapshots, so one platform is sufficient for rule coverage. Windows returns with the separate

@@ -129,7 +129,9 @@ impl Native {
         binding.blocking_reasons(self.target_integrity(binding), false)
     }
     /// Start a supervised game and wait until it is paused after its registries load, or after
-    /// all content loads with `GameOptions::loaded_modifiers`. The game never loads a world. With recorded answers, no process starts; the fixture selects its recording and launch options are ignored.
+    /// all content loads with `GameOptions::loaded_modifiers`. `GameOptions::world` loads a
+    /// private save and returns after its prepared observation at a normal world update pause.
+    /// With recorded answers, no process starts; the prepared fixture or world selects its recording.
     ///
     /// Dropping this future requests cleanup. No async runtime owns the process: an independent
     /// thread and the supervisor do, so cleanup continues if the caller is lost.
@@ -141,9 +143,16 @@ impl Native {
         if let Some(fixture) = &options.fixture {
             fixture.validate()?;
         }
+        if let Some(world) = &options.world {
+            world.validate()?;
+        }
         let (binding, recorder) = match &self.backend {
             Backend::Recorded(answers) => {
-                return Ok(crate::Game::recorded(answers.clone(), options.fixture));
+                return Ok(crate::Game::recorded(
+                    answers.clone(),
+                    options.fixture,
+                    options.world,
+                ));
             }
             Backend::Live { binding, recorder } => (binding, recorder),
         };
@@ -161,6 +170,12 @@ impl Native {
                 reason: "this build has no fixture observation recipe".into(),
             });
         }
+        if options.world.is_some() && !binding.has_world_method() {
+            return Err(Error::Unsupported {
+                operation: Operation::ObserveWorld,
+                reason: "this build has no ready world observation recipe".into(),
+            });
+        }
         let reasons = if options.registries.is_some() {
             self.selected_blocking_reasons(binding)
         } else {
@@ -171,7 +186,9 @@ impl Native {
         }
         if !reasons.is_empty() {
             return Err(Error::Unsupported {
-                operation: if options.loaded_modifiers {
+                operation: if options.world.is_some() {
+                    Operation::ObserveWorld
+                } else if options.loaded_modifiers {
                     Operation::LoadedModifiers
                 } else if options.fixture.is_some() {
                     Operation::ObserveFixture
@@ -250,6 +267,7 @@ impl Native {
             work,
             keep_work: options.keep_work_directory,
             fixture: options.fixture,
+            world: options.world,
             modifiers,
             binding: binding.clone(),
         };
@@ -283,5 +301,6 @@ fn session_request(
         fault: options.fault.clone(),
         fixture: options.fixture.clone(),
         loaded_modifiers: modifiers.map(ModifierJoin::registries),
+        world: options.world.clone(),
     }
 }

@@ -274,6 +274,8 @@ impl Source {
 pub enum Operation {
     /// Reading and validating trigger or effect text in a paused game.
     CheckScript,
+    /// Executing a prepared country effect and observing flags through engine days.
+    ObserveWorld,
     /// Whether this build can return define names and engine read types.
     Defines,
     /// `Native::registries`
@@ -349,6 +351,7 @@ impl Operation {
     /// Every operation once, in declaration order.
     pub const ALL: &'static [Operation] = &[
         Self::CheckScript,
+        Self::ObserveWorld,
         Self::Defines,
         Self::Registries,
         Self::RegistryFields,
@@ -372,6 +375,7 @@ impl Operation {
     pub fn name(self) -> &'static str {
         match self {
             Self::CheckScript => "check_script",
+            Self::ObserveWorld => "observe_world",
             Self::Defines => "defines",
             Self::Registries => "registries",
             Self::RegistryFields => "registry_fields",
@@ -443,7 +447,8 @@ mod operation_tests {
             | Operation::ObserveFixture
             | Operation::LoadedModifiers
             | Operation::DynamicNames
-            | Operation::CheckScript => 18,
+            | Operation::CheckScript
+            | Operation::ObserveWorld => 19,
         }
     }
 

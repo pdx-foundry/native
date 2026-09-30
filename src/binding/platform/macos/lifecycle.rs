@@ -371,6 +371,9 @@ pub(crate) fn spawn_guarded(
     if guard.is_some() {
         arguments.push(CString::new("-debug_mode").unwrap());
     }
+    if profile.join("continue_game.json").is_file() {
+        arguments.push(CString::new("--continuelastsave").unwrap());
+    }
     let mut argv: Vec<_> = arguments.iter().map(|v| v.as_ptr() as *mut _).collect();
     argv.push(ptr::null_mut());
     let home = cpath(&profile)?;

@@ -35,6 +35,7 @@ pub struct GameOptions {
     pub(crate) fixture: Option<crate::FixtureRequest>,
     pub(crate) registries: Option<Vec<String>>,
     pub(crate) loaded_modifiers: bool,
+    pub(crate) world: Option<crate::WorldRequest>,
     pub(crate) keep_work_directory: bool,
 }
 impl GameOptions {
@@ -49,6 +50,7 @@ impl GameOptions {
             fixture: None,
             registries: None,
             loaded_modifiers: false,
+            world: None,
             keep_work_directory: false,
         }
     }
@@ -58,6 +60,14 @@ impl GameOptions {
     /// observed; one whose initial loader does not run before that point is not loaded.
     pub fn loaded_modifiers(mut self) -> Self {
         self.loaded_modifiers = true;
+        self
+    }
+    /// Load a copied save, execute the prepared country effect, and sample flags through
+    /// bounded engine days. The world is held on its normal main-thread update stack.
+    /// This selects a world pause and cannot share a fixture or loaded-modifier pause.
+    /// Read the result with `Game::observe_world`; calls return the same prepared observation.
+    pub fn world(mut self, request: crate::WorldRequest) -> Self {
+        self.world = Some(request);
         self
     }
     /// Prepare one fixed fixture before launch. Registry queries observe this mounted content.
@@ -118,6 +128,7 @@ pub(crate) struct Session {
     /// `close` never removes `work`; the caller does.
     pub keep_work: bool,
     pub fixture: Option<crate::FixtureRequest>,
+    pub world: Option<crate::WorldRequest>,
     /// The static side of the loaded modifier join, when the session reads the table.
     pub modifiers: Option<crate::session::ModifierJoin>,
     /// The installation whose static analysis names the duration receivers of each script check.
@@ -128,6 +139,7 @@ pub(crate) struct Session {
 #[derive(Debug, Clone)]
 struct Paused {
     readiness: GameReadiness,
+    world: Option<crate::Answer<crate::WorldObservation>>,
     /// By internal registry name.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
@@ -151,6 +163,7 @@ struct State {
     finished: Option<Result<Finished, Error>>,
 }
 enum ReadQuestion {
+    World,
     Registry(String),
     Fixture,
     Modifiers,
@@ -188,7 +201,7 @@ enum GameBackend {
 }
 
 /// An owned process paused at registry initialization, or after content loads with
-/// `GameOptions::loaded_modifiers`; never a loaded world.
+/// `GameOptions::loaded_modifiers`, or in a loaded world with `GameOptions::world`.
 /// Drop requests cleanup. Await close for independently confirmed disposal.
 #[derive(Debug)]
 pub struct Game {
@@ -211,10 +224,60 @@ pub struct Game {
     /// The caller removes the work directory (`GameOptions::keep_work_directory`).
     keep_work: bool,
     fixture: Option<crate::FixtureRequest>,
+    world: Option<crate::WorldRequest>,
     /// The joined loaded modifier answer, when the session reads the table.
     modifiers: Option<Result<crate::Answer<crate::LoadedModifiers>, Error>>,
 }
 impl Game {
+    /// Return the fixed world observation prepared by `GameOptions::world`. This reads the
+    /// stored result and restarts the idle timeout; it executes nothing again.
+    pub async fn observe_world(&mut self) -> Result<crate::Answer<crate::WorldObservation>, Error> {
+        if self.closing || self.state.borrow().finished.is_some() {
+            return Err(Error::Closed);
+        }
+        let subject = match self.world_recorded_subject() {
+            Ok(subject) => subject,
+            Err(error) => return self.keep_on_error(Err(error)),
+        };
+        let result = self
+            .answer("observe_world", subject.as_deref(), async |game| {
+                let observation = game
+                    .paused
+                    .world
+                    .clone()
+                    .ok_or_else(|| Error::Unsupported {
+                        operation: crate::Operation::ObserveWorld,
+                        reason: "prepare a WorldRequest with GameOptions::world before start_game"
+                            .into(),
+                    })?;
+                game.restart_idle_time(ReadQuestion::World).await?;
+                Ok(observation)
+            })
+            .await;
+        self.keep_on_error(result)
+    }
+
+    fn world_recorded_subject(&self) -> Result<Option<String>, Error> {
+        let request = self.world.as_ref().ok_or_else(|| Error::Unsupported {
+            operation: crate::Operation::ObserveWorld,
+            reason: "prepare a WorldRequest with GameOptions::world before start_game".into(),
+        })?;
+        let save = match &self.backend {
+            GameBackend::Recorded(_) => request.save.clone(),
+            GameBackend::Live { recorder: None, .. } => return Ok(None),
+            GameBackend::Live {
+                recorder: Some(_), ..
+            } => self
+                .work
+                .as_ref()
+                .ok_or_else(|| Error::Recorded("world session has no private save".into()))?
+                .join("session/profile/save games/native_world/fixture.sav"),
+        };
+        // The recording must identify the loaded copy even if the caller later replaces its source.
+        let contents = crate::work_directory::read_bounded(&save, 16 * 1024 * 1024)
+            .map_err(|error| Error::Recorded(format!("world save: {error}")))?;
+        Ok(Some(request.recorded_subject(&contents)))
+    }
     /// Read and validate one trigger or effect snippet at the loaded-content pause.
     ///
     /// Start with `GameOptions::loaded_modifiers` and use a scope from `Native::scopes`.
@@ -404,9 +467,15 @@ impl Game {
     pub(crate) fn recorded(
         directory: Arc<crate::recorded::Answers>,
         fixture: Option<crate::FixtureRequest>,
+        world: Option<crate::WorldRequest>,
     ) -> Self {
         let paused = Paused {
-            readiness: GameReadiness::PausedAfterRegistryInitialization,
+            readiness: if world.is_some() {
+                GameReadiness::PausedInWorld
+            } else {
+                GameReadiness::PausedAfterRegistryInitialization
+            },
+            world: None,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -426,6 +495,7 @@ impl Game {
             read_failed: false,
             keep_work: false,
             fixture,
+            world,
             modifiers: None,
         }
     }
@@ -539,9 +609,8 @@ impl Game {
             .map_err(|_| Error::Supervisor("Observation read acknowledgement lost".into()))?
     }
 
-    /// Where the game is paused: after its registries load, or after all content loads with
-    /// `GameOptions::loaded_modifiers`. No world is loaded; this does not advertise gameplay
-    /// readiness.
+    /// Where the game is paused: after selected registries, after content loads, or in a
+    /// loaded world after the prepared observation requested with `GameOptions::world`.
     pub fn readiness(&self) -> GameReadiness {
         self.paused.readiness
     }
@@ -780,6 +849,7 @@ async fn start_until_paused(
                 read_failed: false,
                 keep_work: session.keep_work,
                 fixture: session.fixture,
+                world: session.world,
                 modifiers,
             });
         }
@@ -793,6 +863,119 @@ async fn start_until_paused(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn recorded_world_answers_require_the_matching_prepared_world() {
+        let root = tempfile::tempdir().unwrap();
+        let save = root.path().join("fixture.sav");
+        std::fs::write(&save, b"original save").unwrap();
+        let first = crate::WorldRequest {
+            save: save.clone(),
+            country: "Earth".into(),
+            effect: String::new(),
+            days: 0,
+            flags: vec![],
+        };
+        let mut second = first.clone();
+        second.effect = "set_country_flag = other".into();
+        let build = crate::BuildId("test".into());
+        for request in [&first, &second] {
+            let answer = Ok(crate::Answer {
+                value: crate::WorldObservation {
+                    country: request.country.clone(),
+                    initial_date: "2200.01.01".into(),
+                    executed: !request.effect.is_empty(),
+                    diagnostics: vec![],
+                    samples: vec![],
+                },
+                completeness: crate::Completeness::Complete,
+                gaps: vec![],
+                source: crate::Source::new(
+                    build.clone(),
+                    "observe-world/v1",
+                    crate::Basis::LiveObservation,
+                ),
+            });
+            crate::recorded::write(
+                root.path(),
+                &build,
+                "observe_world",
+                Some(&request.recorded_subject(b"original save")),
+                &answer,
+            )
+            .unwrap();
+        }
+        let native = crate::Native::from_recorded_answers(root.path()).unwrap();
+        for request in [&first, &second] {
+            let mut game = native
+                .start_game(GameOptions::new(Command::new("must-not-start")).world(request.clone()))
+                .await
+                .unwrap();
+            assert_eq!(game.readiness(), GameReadiness::PausedInWorld);
+            assert_eq!(
+                game.observe_world().await.unwrap().value.executed,
+                !request.effect.is_empty()
+            );
+            assert_eq!(game.close().await.unwrap(), Disposal::NotApplicable);
+        }
+        let mut absent = native
+            .start_game(GameOptions::new(Command::new("must-not-start")))
+            .await
+            .unwrap();
+        assert!(matches!(
+            absent.observe_world().await,
+            Err(Error::Unsupported { .. })
+        ));
+        let mut wrong = first.clone();
+        wrong.flags.push("other".into());
+        let mut game = native
+            .start_game(GameOptions::new(Command::new("must-not-start")).world(wrong))
+            .await
+            .unwrap();
+        assert!(matches!(
+            game.observe_world().await,
+            Err(Error::NotRecorded { .. })
+        ));
+        std::fs::write(save, b"replacement save").unwrap();
+        let mut game = native
+            .start_game(GameOptions::new(Command::new("must-not-start")).world(first))
+            .await
+            .unwrap();
+        assert!(matches!(
+            game.observe_world().await,
+            Err(Error::NotRecorded { .. })
+        ));
+    }
+
+    #[test]
+    fn world_recordings_use_the_loaded_private_save_after_source_replacement() {
+        let root = tempfile::tempdir().unwrap();
+        let private_save = root
+            .path()
+            .join("session/profile/save games/native_world/fixture.sav");
+        std::fs::create_dir_all(private_save.parent().unwrap()).unwrap();
+        std::fs::write(private_save, b"loaded save").unwrap();
+        let source = root.path().join("source.sav");
+        std::fs::write(&source, b"replacement save").unwrap();
+        let request = crate::WorldRequest {
+            save: source,
+            country: "Earth".into(),
+            effect: String::new(),
+            days: 0,
+            flags: vec![],
+        };
+        let (mut game, _, _) = game();
+        game.backend = GameBackend::Live {
+            recorder: Some(Arc::new(root.path().join("recordings"))),
+            binding: None,
+        };
+        game.work = Some(root.path().into());
+        game.world = Some(request.clone());
+        assert_eq!(
+            game.world_recorded_subject().unwrap(),
+            Some(request.recorded_subject(b"loaded save"))
+        );
+    }
 
     #[tokio::test]
     async fn fixture_acknowledgement_loss_is_recorded_as_the_returned_error() {
@@ -997,6 +1180,7 @@ mod tests {
     fn game() -> (Game, mpsc::Receiver<DriverCommand>, watch::Sender<State>) {
         let paused = Paused {
             readiness: GameReadiness::PausedDuringRegistryInitialization,
+            world: None,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -1024,6 +1208,7 @@ mod tests {
                 read_failed: false,
                 keep_work: false,
                 fixture: None,
+                world: None,
                 modifiers: None,
             },
             receive,

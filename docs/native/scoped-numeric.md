@@ -75,3 +75,29 @@ variable text. No finite result establishes universal overflow or accepted range
 Commands: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo parity`,
 `cargo test --release --lib m45_scoped_numeric -- --ignored`, and
 `cargo live fixture_scoped_numeric`. Exact-build and live commands require `STELLARIS_PATH`.
+
+## Transfer to the 4.5.1 hotfix
+
+The exact M451-hotfix identity is recorded in [targets](targets.md). Fresh canonical bodies align
+instruction for instruction with M45-release. Diagnostic strings carry a different compiler
+source directory, and both numeric `GetValue` bodies form relocated local jump-table bases with
+`adr`. Pinning those diagnostic paths and absolute local addresses made forms and selection
+unresolved, although the operand paths were unchanged.
+
+The matcher now captures a nonempty named diagnostic string, requiring repeated uses in a body
+to agree. It matches each local `adr` by its exact relative instruction position; a different
+instruction target, an address outside the body, or any changed instruction still fails the
+complete-body match. Calls, branch targets, reference slots, literal loads and layout joins
+remain checked. This preserves the old compiler shape without a version branch or a relaxed
+substring match. Missing diagnostic names remain unresolved.
+
+Authored controls cover relocated bases, wrong local targets, external targets, changed source
+paths, inconsistent source strings, and missing or empty strings. Fresh shape captures and their
+comparison with the old shapes remain under `.local/sdk-650/hotfix/scoped-*-shape.txt` and
+`scoped-*-diff.txt`. These checks establish static parser forms and stored representation
+selection; they do not establish live world evaluation.
+
+On the installed hotfix, all three existing `m45_scoped_numeric` static checks pass: the shared
+proof with negative controls, registry/effect parity, and timed-flag command parity. The six
+default targeted scoped-number tests and `cargo clippy --lib -- -D warnings` also pass. No
+recorded expectation was refreshed for this repair.

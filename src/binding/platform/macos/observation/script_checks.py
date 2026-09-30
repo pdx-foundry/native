@@ -36,7 +36,7 @@ def attribute_message(text, sources):
 
 
 class DiagnosticCapture:
-    def __init__(self, target, process, binding, sources, check, limit, text_limit):
+    def __init__(self, target, process, binding, sources, check, limit, text_limit, thread_id=None):
         self.target = target
         self.process = process
         self.binding = binding
@@ -44,12 +44,16 @@ class DiagnosticCapture:
         self.check = check
         self.limit = limit
         self.text_limit = text_limit
+        self.thread_id = thread_id
         self.stage = 'read'
         self.messages = []
         self.hooks_active = True
         self.bound_reached = False
+        self.failure = None
         address = target.ResolveFileAddress(binding['logger_entry']).GetLoadAddress(target)
         self.hook = target.BreakpointCreateByAddress(address)
+        if thread_id is not None:
+            self.hook.SetThreadID(thread_id)
         self.hook.SetScriptCallbackBody('import script_checks\nreturn script_checks.capture_callback(frame, bp_loc, internal_dict)')
         self.verify_hook()
 
@@ -59,6 +63,8 @@ class DiagnosticCapture:
 
     def capture(self, frame, location):
         try:
+            if self.thread_id is not None and frame.GetThread().GetThreadID() != self.thread_id:
+                return
             if location.GetBreakpoint().GetID() != self.hook.GetID():
                 self.hooks_active = False
                 return
@@ -73,8 +79,9 @@ class DiagnosticCapture:
                 level -= 1 << 32
             self.messages.append((self.stage, level, text))
             self.bound_reached |= len(self.messages) == self.limit
-        except Exception:
+        except Exception as error:
             self.hooks_active = False
+            self.failure = str(error)[:256]
 
     def finish(self, children):
         self.verify_hook()
@@ -174,7 +181,7 @@ def stored_durations(read_unsigned, read_text, owner, command, children, receive
 
 
 class EngineCalls:
-    def __init__(self, process, thread_id, deadline):
+    def __init__(self, process, thread_id, deadline, suspend_others=True):
         import lldb
         self.process = process
         self.target = process.GetTarget()
@@ -192,7 +199,7 @@ class EngineCalls:
         self.stack = (frame.FindRegister('sp').GetValueAsUnsigned() - 256) & ~15
         self.suspended = []
         for thread in process:
-            if thread.GetThreadID() != thread_id and not thread.IsSuspended():
+            if suspend_others and thread.GetThreadID() != thread_id and not thread.IsSuspended():
                 if not thread.Suspend():
                     raise RuntimeError('script check cannot hold another thread')
                 self.suspended.append(thread.GetThreadID())
@@ -211,8 +218,9 @@ class EngineCalls:
     def allocate(self, size, data=b''):
         import lldb
         error = lldb.SBError()
-        address = self.process.AllocateMemory(size, lldb.ePermissionsReadable | lldb.ePermissionsWritable, error)
-        if error.Fail() or len(data) > size:
+        permissions = lldb.ePermissionsReadable | lldb.ePermissionsWritable
+        address = self.process.AllocateMemory(size, permissions, error)
+        if error.Fail() or address == lldb.LLDB_INVALID_ADDRESS or len(data) > size:
             raise RuntimeError('script check allocation failed: ' + str(error))
         self.write(address, data + bytes(size - len(data)))
         return address
@@ -224,7 +232,7 @@ class EngineCalls:
         if error.Fail() or count != len(data):
             raise RuntimeError('script check memory write failed: ' + str(error))
 
-    def call(self, binding, *arguments):
+    def call(self, binding, *arguments, result_address=None):
         import lldb
         if time.monotonic() >= self.deadline:
             raise RuntimeError('script check deadline elapsed')
@@ -233,6 +241,8 @@ class EngineCalls:
         if any(value < 0 or value >= 1 << width for value, width in zip(arguments, binding['widths'])):
             raise RuntimeError('script check call argument exceeds its bound width')
         changed = {f'x{i}': value for i, value in enumerate(arguments)}
+        if result_address is not None:
+            changed['x8'] = result_address
         changed.update(sp=self.stack, lr=self.return_address, pc=self.address(binding['address']))
         for name, value in changed.items():
             if not self.frame().FindRegister(name).SetValueFromCString(hex(value)):
@@ -241,6 +251,8 @@ class EngineCalls:
             raise RuntimeError('script check call registers differ before resume')
         returned = self.target.BreakpointCreateByAddress(self.return_address)
         returned.SetThreadID(self.thread_id)
+        # Nested world updates can reach the paused instruction on a deeper stack.
+        returned.SetCondition('$sp == ' + hex(self.stack))
         returned.SetOneShot(True)
         if returned.GetNumResolvedLocations() != 1:
             raise RuntimeError('script check return hook unresolved')
@@ -254,11 +266,13 @@ class EngineCalls:
                     and self.process.GetStopID() > previous_stop
                     and thread.GetStopReason() == lldb.eStopReasonBreakpoint
                     and thread.GetStopReasonDataAtIndex(0) == returned.GetID()
-                    and self.frame().FindRegister('pc').GetValueAsUnsigned() == self.return_address):
+                    and self.frame().FindRegister('pc').GetValueAsUnsigned() == self.return_address
+                    and self.frame().FindRegister('sp').GetValueAsUnsigned() == self.stack):
                 break
             if time.monotonic() >= self.deadline:
                 raise RuntimeError('script check did not stop at its return hook: ' + str(thread))
             time.sleep(.001)
+        result = self.frame().FindRegister("x0").GetValueAsUnsigned()
         self.target.BreakpointDelete(returned.GetID())
         for name, data in self.registers.items():
             register = self.frame().FindRegister(name)
@@ -272,6 +286,7 @@ class EngineCalls:
             if not restored:
                 raise RuntimeError('script check register restoration failed: ' + str(error))
         self.verify_registers()
+        return result
 
     def verify_registers(self):
         import lldb
@@ -324,6 +339,26 @@ class ScriptChecks:
         calls.call(binding['reader_constructor'], reader, lexer)
         return reader
 
+    def read_command(self, calls, command, reader, scope):
+        owner = calls.allocate(command['size'])
+        calls.call(command['constructor'], owner)
+        for write in command['writes']:
+            value = calls.address(write['value']) if write['relocate'] else write['value']
+            calls.write(owner + write['offset'], value.to_bytes(write['width'], 'little'))
+        calls.call(command['read'], owner, reader, scope)
+        children = read_unsigned(self.process, owner + command['children_offset'], 4)
+        if children > self.limits['text']:
+            raise RuntimeError('script check child count exceeds its text bound')
+        return owner, children
+
+    def validate_command(self, calls, command):
+        for database in command['validation']:
+            instance = read_unsigned(self.process, calls.address(database['instance']))
+            if not instance:
+                raise RuntimeError('script check database is not initialized')
+            calls.call(database['post_init'], instance)
+            calls.call(database['post_validate'], instance)
+
     def check(self, request):
         global _active_capture
         if request['attempt'] != self.attempt or request['check'] != len(self.sources) + 1:
@@ -343,26 +378,13 @@ class ScriptChecks:
         _active_capture = capture
         try:
             reader = self.reader(calls, request['text'], source)
-            owner = calls.allocate(command['size'])
-            calls.call(command['constructor'], owner)
-            for write in command['writes']:
-                value = calls.address(write['value']) if write['relocate'] else write['value']
-                calls.write(owner + write['offset'], value.to_bytes(write['width'], 'little'))
-            calls.call(command['read'], owner, reader, request['scope'])
-            children = read_unsigned(self.process, owner + command['children_offset'], 4)
-            if children > self.limits['text']:
-                raise RuntimeError('script check child count exceeds its text bound')
+            owner, children = self.read_command(calls, command, reader, request['scope'])
             durations = stored_durations(
                 lambda address, size: read_unsigned(self.process, address, size),
                 lambda address: stored_text(self.process, address, self.binding['string_tag_offset']),
                 owner, command, children, loaded_receivers(calls, request['durations']))
             capture.stage = 'validation'
-            for database in command['validation']:
-                instance = read_unsigned(self.process, calls.address(database['instance']))
-                if not instance:
-                    raise RuntimeError('script check database is not initialized')
-                calls.call(database['post_init'], instance)
-                calls.call(database['post_validate'], instance)
+            self.validate_command(calls, command)
             calls.finish()
             return dict(observation=capture.finish(children), durations=durations)
         finally:

@@ -12,6 +12,7 @@ macro_rules! hooks {
 }
 
 hooks! {
+    WORLD = "world:ready",
     REGISTRY = "registry:",
     REGISTRY_RETURN = "registry-return:",
     FIXTURE = "fixture:",
