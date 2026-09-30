@@ -59,7 +59,7 @@ impl Member {
         self
     }
 
-    fn groups(&self, execute: Option<Result<Bindings, Unresolved>>) -> Vec<Group> {
+    fn groups(&self, execute: Option<Result<Execution, Unresolved>>) -> Vec<Group> {
         let code = |address: u64| {
             let end = START + self.code.len() as u64;
             (START..end)
@@ -78,17 +78,21 @@ impl Member {
             &initial,
             execute,
             &Ok(Countdown { counts: 0x40 }),
+            &BTreeMap::new(),
         )
         .groups
     }
 }
 
-fn execute_bindings(operand: &str, factor: &str) -> Option<Result<Bindings, Unresolved>> {
-    Some(Ok([
-        ("operand".to_string(), operand.to_string()),
-        ("factor".to_string(), factor.to_string()),
-    ]
-    .into()))
+fn execute_bindings(operand: &str, factor: &str) -> Option<Result<Execution, Unresolved>> {
+    Some(Ok(Execution {
+        bindings: [
+            ("operand".to_string(), operand.to_string()),
+            ("factor".to_string(), factor.to_string()),
+        ]
+        .into(),
+        flag_countdown: true,
+    }))
 }
 
 fn factors(group: &Group) -> Vec<(&str, Result<Option<i64>, Unresolved>)> {
@@ -319,23 +323,161 @@ fn an_unknown_continuation_instruction_leaves_the_key_unresolved() {
     assert!(group.combination.is_err());
 }
 
-#[test]
-fn a_stack_temporary_read_forms_no_group() {
+/// Two stack slots transfer scaled counts to the same owner word.
+fn stack_member() -> Member {
     let mut code = Arm64::at(START);
     arm64!(code;
         mov x19, x0;
-        add x1, sp, #0x1c0;
+        add x1, sp, #0xc;
         bl extern 0x9000;
-        ldr w8, [sp, #0x1c0];
+        ldr w8, [sp, #0xc];
         lsl w9, w8, #5;
         sub w8, w9, w8, lsl #1;
-        str w8, [x19, #0x2d8];
+        str w8, [x19, #0x470];
+        ret;
+        add x1, sp, #8;
+        bl extern 0x9000;
+        ldr w8, [sp, #8];
+        mov w9, #360;
+        mul w8, w8, w9;
+        str w8, [x19, #0x470];
         ret
     );
-    let mut member = Member::new(code).key("months", 0x1004, 0x1008, READ_INT, false);
-    member.fields[0].readers[0] = ReaderJoin::Missing(Unresolved::new("reader-routing"));
+    let mut member = Member::new(code)
+        .key("short_unit", 0x1004, 0x1008, READ_INT, false)
+        .key("long_unit", 0x1020, 0x1024, READ_INT, false);
 
+    for (field, offset) in member.fields.iter_mut().zip([0xc, 8]) {
+        let ReaderJoin::Joined { arguments, .. } = &mut field.readers[0] else {
+            unreachable!()
+        };
+        arguments.insert("x1".into(), Value::Stack(offset));
+        arguments.insert("sp".into(), Value::Stack(0));
+    }
+
+    member
+}
+
+#[test]
+fn stack_temporaries_join_at_the_final_owner_store() {
+    let [group] = stack_member().groups(None).try_into().unwrap();
+    assert_eq!(group.destination, 0x470);
+    assert_eq!(group.combination, Ok(Combination::ScaledAtRead));
+    assert_eq!(
+        factors(&group),
+        [("short_unit", Ok(Some(30))), ("long_unit", Ok(Some(360))),]
+    );
+}
+
+#[test]
+fn a_stack_transfer_requires_the_read_slot_and_owner_provenance() {
+    for missing_owner in [false, true] {
+        let mut member = stack_member();
+        let ReaderJoin::Joined { arguments, .. } = &mut member.fields[0].readers[0] else {
+            unreachable!()
+        };
+        let reason = if missing_owner {
+            arguments.remove("x19");
+            "duration-post-read-store"
+        } else {
+            arguments.insert("x1".into(), Value::Stack(0x10));
+            "duration-stack-store"
+        };
+        let code = |_: u64| Some((START, member.code.as_slice()));
+        let inventory = groups(
+            &member.fields[..1],
+            &member.paths,
+            &code,
+            &BTreeMap::new(),
+            None,
+            &Ok(Countdown { counts: 0x40 }),
+            &BTreeMap::new(),
+        );
+        assert!(inventory.groups.is_empty());
+        assert_eq!(inventory.unresolved[0].reason, reason);
+    }
+}
+
+#[test]
+fn a_stack_write_cannot_be_ignored_between_the_reader_and_the_owner_store() {
+    let mut member = stack_member();
+    let overwrite = arm64!(at 0x100c; str wzr, [sp, #0xc]);
+    member.code[12..16].copy_from_slice(&overwrite);
+    let inventory = groups(
+        &member.fields[..1],
+        &member.paths,
+        &|_: u64| Some((START, member.code.as_slice())),
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
+    );
+    assert!(inventory.groups.is_empty());
+    assert_eq!(inventory.unresolved[0].reason, "duration-stack-overwrite");
+}
+
+#[test]
+fn a_byte_presence_store_is_not_a_word_factor() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        add x0, x19, #0xa8;
+        bl extern 0x9000;
+        mov w8, #1;
+        strb w8, [x19, #0x2b0];
+        ret
+    );
+    let member = Member::new(code).key("value", 0x1004, 0x1008, ASSIGN, false);
     assert!(member.groups(None).is_empty());
+}
+
+#[test]
+fn a_byte_write_overlapping_the_count_is_unresolved() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        add x1, x19, #0xa8;
+        bl extern 0x9000;
+        mov w8, #1;
+        strb w8, [x19, #0xa9];
+        ret
+    );
+    let member = Member::new(code).key("value", 0x1004, 0x1008, READ_INT, false);
+    let inventory = groups(
+        &member.fields,
+        &member.paths,
+        &|_: u64| Some((START, member.code.as_slice())),
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
+    );
+    assert_eq!(inventory.unresolved[0].reason, "duration-post-read-store");
+}
+
+#[test]
+fn a_prefix_reset_overwritten_by_the_integer_reader_forms_no_group() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        mov w8, #1;
+        strb w8, [x19, #0xa4];
+        str wzr, [x19, #0xa8];
+        add x1, x19, #0xa8;
+        b extern 0x9000
+    );
+    let member = Member::new(code).key("value", 0x1004, 0x1014, READ_INT, true);
+    let inventory = groups(
+        &member.fields,
+        &member.paths,
+        &|_: u64| Some((START, member.code.as_slice())),
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
+    );
+    assert!(inventory.groups.is_empty());
+    assert!(inventory.unresolved.is_empty());
 }
 
 #[test]
@@ -366,6 +508,7 @@ fn a_missing_initial_factor_leaves_the_shared_combination_unresolved() {
         &BTreeMap::new(),
         execute_bindings("0xa8", "0x2b0"),
         &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
     )
     .groups
     .try_into()
@@ -395,6 +538,7 @@ fn a_missing_countdown_proof_keeps_the_combination_but_not_the_consumption() {
         &initial,
         execute_bindings("0xa8", "0x2b0"),
         &Err(Unresolved::new("duration-flag-update")),
+        &BTreeMap::new(),
     )
     .groups
     .try_into()
@@ -429,6 +573,7 @@ fn a_candidate_whose_code_cannot_be_followed_is_kept_as_unresolved() {
         &BTreeMap::new(),
         None,
         &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
     );
 
     assert!(inventory.groups.is_empty());
@@ -478,8 +623,8 @@ fn m45_duration_consumption_proofs() {
         Ok(Countdown { counts: 0x40 })
     );
     let bindings = execute(&execute_rows, names).unwrap();
-    assert_eq!(bindings["operand"], "0xa8");
-    assert_eq!(bindings["factor"], "0x2b0");
+    assert_eq!(bindings.bindings["operand"], "0xa8");
+    assert_eq!(bindings.bindings["factor"], "0x2b0");
 
     let mutated = |rows: &[Instruction], from: &str, to: &str| {
         let mut rows = rows.to_vec();
@@ -502,7 +647,7 @@ fn m45_duration_consumption_proofs() {
         names,
     )
     .unwrap();
-    assert_eq!(other_slot["factor"], "0x2b8");
+    assert_eq!(other_slot.bindings["factor"], "0x2b8");
 
     for (from, to) in [("mul w3", "add w3,w8,w0"), ("mov w4,#0", "mov w4,#1")] {
         assert!(
@@ -571,4 +716,720 @@ fn m45_duration_static_parity() {
     }
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn the_authored_relation_execute_requires_the_product_and_consumer() {
+    let bytes = arm64!(at START;
+        sub sp,sp,#0x1b0;
+        stp x19,x20,[sp,#0x170];
+        stp x21,x22,[sp,#0x180];
+        stp x23,x24,[sp,#0x190];
+        stp x29,x30,[sp,#0x1a0];
+        add x29,sp,#0x1a0;
+        mov x23,x1;
+        mov x24,x0;
+        add x0,x0,#0xa8;
+        mov x25,sp;
+        mov x2,#0x0;
+        bl extern 0x9000;
+        mov x0,sp;
+        bl extern 0x9100;
+        mov x22,x0;
+        mov x0,sp;
+        bl extern 0x9200;
+        ldr x25,[x22];
+        ldr x25,[x25,#0x58];
+        mov x0,x22;
+        blr x25;
+        tbz w0,#0,extern 0x10f0;
+        ldrsb w25,[x24,#0x257];
+        tbnz w25,#0x1f,extern 0x1084;
+        and x25,x25,#0xff;
+        cbz x25,extern 0x108c;
+        add x2,x24,#0x240;
+        add x1,x24,#0x268;
+        add x3,x24,#0x28;
+        mov x0,x23;
+        bl extern 0x9300;
+        mov x21,x0;
+        b extern 0x1090;
+        ldr x25,[x24,#0x248];
+        cbnz x25,extern 0x1068;
+        ldrh w21,[x24,#0x238];
+        mov x0,x23;
+        bl extern 0x9400;
+        mov x1,x22;
+        bl extern 0x9500;
+        mov x22,x0;
+        ldr x25,[x0];
+        ldr x25,[x25,#0x40];
+        blr x25;
+        cbz w0,extern 0x10f0;
+        add x22,x22,#0x38;
+        adrp x25,extern 0x8000;
+        add x25,x25,#0;
+        ldr x25,[x25];
+        add x20,x25,#0xb8;
+        add x0,x24,#0x3f8;
+        mov x1,x23;
+        bl extern 0x9700;
+        ldr w25,[x24,#0x600];
+        mul w3,w25,w0;
+        and x1,x21,#0xffff;
+        mov x0,x22;
+        mov x2,x20;
+        mov w4,#0x0;
+        bl extern 0x9800;
+        ldp x29,x30,[sp,#0x1a0];
+        ldp x23,x24,[sp,#0x190];
+        ldp x21,x22,[sp,#0x180];
+        ldp x19,x20,[sp,#0x170];
+        add sp,sp,#0x1b0;
+        ret;
+        mov x24,x0;
+        mov x0,sp;
+        bl extern 0x9200;
+        mov x0,x24;
+        bl extern 0x9900
+    );
+    let names = BTreeMap::from([
+        (0x9000, "CEventTarget::GetScope(CEventScope&, char const*) const".into()),
+        (0x9100, "CScopeObjectReference::GetCountry() const".into()),
+        (0x9200, "CEventScope::~CEventScope()".into()),
+        (0x9300, "CreateDynamicFlag(CEventScope&, CEventTarget const&, CString const&, CString const&)".into()),
+        (0x9400, "CScopeObjectReference::AccessCountry()".into()),
+        (0x9500, "CCountry::AccessOrCreateNewRelation(CCountry const*)".into()),
+        (0x8000, "_g_CurrentGameState".into()),
+        (0x9700, "CIntVariableValue::GetValue(CEventScope&) const".into()),
+        (0x9800, "CPdxIntegerFlags::SetFlag(CPdxIntegerFlags::CIntFlag<unsigned short>, CDate const&, int, CPdxIntegerFlags::ESetFlagMode)".into()),
+        (0x9900, "__Unwind_Resume".into())
+    ]);
+    let rows = decode_arm64(&bytes, START).unwrap();
+    let proof = execute(&rows, &names).unwrap();
+    assert_eq!(proof.bindings["operand"], "0x3f8");
+    assert_eq!(proof.bindings["factor"], "0x600");
+    assert!(proof.flag_countdown);
+    for operation in ["mul", "consumer"] {
+        let mut missing = rows.clone();
+        let row = missing
+            .iter_mut()
+            .find(|row| {
+                row.operation == operation
+                    || (operation == "consumer"
+                        && row.operation == "bl"
+                        && number(&row.operands) == Some(0x9800))
+            })
+            .unwrap();
+        row.operation = "nop".into();
+        row.operands.clear();
+        assert!(execute(&missing, &names).is_err());
+    }
+}
+
+#[test]
+fn the_authored_trait_execute_requires_the_product_and_consumer() {
+    let bytes = arm64!(at START;
+        stp x19,x20,[sp,#-0x30]!;
+        stp x21,x22,[sp,#0x10];
+        stp x29,x30,[sp,#0x20];
+        add x29,sp,#0x20;
+        mov x20,x1;
+        mov x22,x0;
+        mov x0,x1;
+        bl extern 0x9000;
+        mov x21,x0;
+        ldr x23,[x0];
+        ldr x23,[x23,#0x40];
+        blr x23;
+        cbz w0,extern 0x1064;
+        ldr x19,[x22,#0x2b0];
+        add x0,x22,#0xa8;
+        mov x1,x20;
+        bl extern 0x9100;
+        ldr w23,[x22,#0x2e0];
+        mul w2,w23,w0;
+        mov x0,x21;
+        mov x1,x19;
+        ldp x29,x30,[sp,#0x20];
+        ldp x21,x22,[sp,#0x10];
+        ldp x19,x20,[sp],#0x30;
+        b extern 0x9200;
+        ldp x29,x30,[sp,#0x20];
+        ldp x21,x22,[sp,#0x10];
+        ldp x19,x20,[sp],#0x30;
+        ret
+    );
+    let names = BTreeMap::from([
+        (0x9000, "CScopeObjectReference::AccessLeader()".into()),
+        (
+            0x9100,
+            "CIntVariableValue::GetValue(CEventScope&) const".into(),
+        ),
+        (0x9200, "CLeader::AddTimedTrait(CTrait const*, int)".into()),
+    ]);
+    let rows = decode_arm64(&bytes, START).unwrap();
+    let proof = execute(&rows, &names).unwrap();
+    assert_eq!(proof.bindings["operand"], "0xa8");
+    assert_eq!(proof.bindings["factor"], "0x2e0");
+    assert!(!proof.flag_countdown);
+    for operation in ["mul", "b"] {
+        let mut missing = rows.clone();
+        let row = missing
+            .iter_mut()
+            .find(|row| row.operation == operation)
+            .unwrap();
+        row.operation = "nop".into();
+        row.operands.clear();
+        assert!(execute(&missing, &names).is_err());
+    }
+}
+
+/// Each installed-build path added for stack transfers, byte presence and overwritten resets.
+#[test]
+#[ignore = "requires the exact supported executable through STELLARIS_PATH"]
+fn m45_duration_stack_and_presence_parity() {
+    use crate::{DeclarationKind, DurationCombination, GrammarProperty};
+    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let scoped = native
+        .scoped_numeric_facts(crate::Operation::CommandGrammar)
+        .unwrap();
+    let numeric = native
+        .numeric_facts(crate::Operation::CommandGrammar)
+        .unwrap();
+    let spans = scoped_storage(scoped, numeric);
+    let mut checked = 0;
+    for (&point, subtype) in &scoped.subtypes {
+        let Ok(crate::engine::analysis::scoped_numeric::Subtype::Numeric { token_reader, .. }) =
+            subtype
+        else {
+            continue;
+        };
+        let span = match token_reader.as_str() {
+            "CToken::ReadValue(int&) const" => 0x204,
+            "CToken::ReadValue(CFixedPoint&) const" => 0x208,
+            _ => panic!("unreviewed numeric subtype: {token_reader}"),
+        };
+        assert_eq!(spans[&point], Ok(span));
+        checked += 1;
+    }
+    assert_eq!(checked, 2);
+    let events = [
+        "agreement_event",
+        "astral_rift_event",
+        "bypass_event",
+        "carrier_event",
+        "colony_event",
+        "cosmic_storm_event",
+        "cosmic_storm_influence_field_event",
+        "country_event",
+        "espionage_operation_event",
+        "first_contact_event",
+        "fleet_event",
+        "leader_event",
+        "observer_event",
+        "planet_event",
+        "pop_faction_event",
+        "pop_group_event",
+        "ship_event",
+        "situation_event",
+        "starbase_event",
+        "system_event",
+    ];
+    for (kind, name) in events
+        .into_iter()
+        .map(|name| (DeclarationKind::Effect, name))
+        .chain([(DeclarationKind::Trigger, "has_passed_resolution")])
+    {
+        let answer = native.command_grammar(kind, name).unwrap();
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == crate::GapKind::ReaderSemantics
+                    && gap.detail.contains("duration-scoped-literal")),
+            "{name}"
+        );
+        let GrammarProperty::Partial(groups) = answer.value.durations else {
+            panic!("{name}: duration list unresolved")
+        };
+        let [group] = groups.as_slice() else {
+            panic!("{name}: {groups:?}")
+        };
+        assert_eq!(
+            group.combination,
+            GrammarProperty::Known(DurationCombination::ScaledAtRead),
+            "{name}"
+        );
+        assert_eq!(
+            group
+                .units
+                .iter()
+                .map(|unit| (unit.key.as_str(), unit.factor.clone()))
+                .collect::<Vec<_>>(),
+            [
+                ("months", GrammarProperty::Known(Some(30))),
+                ("years", GrammarProperty::Known(Some(360))),
+            ],
+            "{name}"
+        );
+        assert_eq!(group.omitted_count, GrammarProperty::Unresolved, "{name}");
+    }
+    for name in ["transfer_resources_to_empire", "while"] {
+        let answer = native
+            .command_grammar(DeclarationKind::Effect, name)
+            .unwrap();
+        let (GrammarProperty::Known(groups) | GrammarProperty::Partial(groups)) =
+            answer.value.durations
+        else {
+            panic!("{name}: duration list unresolved")
+        };
+        assert!(groups.is_empty(), "{name}: {groups:?}");
+        assert!(
+            !answer
+                .gaps
+                .iter()
+                .any(|gap| gap.detail.starts_with("The code after a key's reader")),
+            "{name}"
+        );
+    }
+    for registry in ["common/council_agendas", "common/governments/authorities"] {
+        let owners = crate::internals::duration_groups::registry(&native, registry).unwrap();
+        assert!(!owners.is_empty());
+        for owner in owners {
+            assert!(owner.inventory.groups.is_empty(), "{registry}: {owner:?}");
+            assert!(
+                owner.inventory.unresolved.is_empty(),
+                "{registry}: {owner:?}"
+            );
+        }
+    }
+    for (name, combination, consumption) in [
+        (
+            "set_timed_relation_flag",
+            GrammarProperty::Unresolved,
+            GrammarProperty::Known(crate::DurationConsumption::FlagCountdown),
+        ),
+        (
+            "add_timed_trait",
+            GrammarProperty::Known(DurationCombination::SharedFactor { initial_factor: 1 }),
+            GrammarProperty::Unresolved,
+        ),
+    ] {
+        let answer = native
+            .command_grammar(DeclarationKind::Effect, name)
+            .unwrap();
+        let (GrammarProperty::Known(groups) | GrammarProperty::Partial(groups)) =
+            answer.value.durations
+        else {
+            panic!("{name}: duration list unresolved")
+        };
+        assert_eq!(groups[0].combination, combination);
+        assert_eq!(groups[0].omitted_count, GrammarProperty::Unresolved);
+        assert_eq!(groups[0].consumption, consumption);
+    }
+}
+
+#[test]
+fn a_byte_reset_of_a_siblings_factor_cannot_mean_preservation() {
+    for prefix in [true, false] {
+        let mut member = shared_factor_member();
+        let reset = arm64!(at START;
+            mov x19, x0;
+            mov w8, #1;
+            strb w8, [x19, #0x2b0];
+            add x0, x19, #0xa8;
+            b extern 0x9000
+        );
+        if prefix {
+            member.code.splice(0..0, reset);
+            // Keep only the new prefix path and one factor path shifted by the prefix body.
+            member.fields.clear();
+            member.paths.clear();
+            member = member
+                .key("plain", 0x1004, 0x1010, ASSIGN, true)
+                .key("scaled", 0x1020, 0x1024, ASSIGN, false);
+        } else {
+            let bytes = arm64!(at 0x1000;
+                mov x19, x0;
+                add x0, x19, #0xa8;
+                bl extern 0x9000;
+                mov w8, #1;
+                strb w8, [x19, #0x2b0];
+                ret;
+                add x0, x19, #0xa8;
+                bl extern 0x9000;
+                mov w8, #30;
+                str w8, [x19, #0x2b0];
+                ret
+            );
+            member.code = bytes;
+            member.fields.clear();
+            member.paths.clear();
+            member = member
+                .key("plain", 0x1004, 0x1008, ASSIGN, false)
+                .key("scaled", 0x1018, 0x101c, ASSIGN, false);
+        }
+        let [group] = member
+            .groups(execute_bindings("0xa8", "0x2b0"))
+            .try_into()
+            .unwrap();
+        assert_eq!(
+            group.units[0].factor,
+            Err(Unresolved::new("duration-byte-factor"))
+        );
+        assert!(group.combination.is_err());
+    }
+}
+
+#[test]
+fn conditional_presence_writes_agree_when_the_count_and_factors_agree() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        mov w8, #1;
+        strb w8, [x19, #0xa4];
+        str wzr, [x19, #0xa8];
+        add x1, x19, #0xa8;
+        b extern 0x9000;
+        str wzr, [x19, #0xa8];
+        add x1, x19, #0xa8;
+        b extern 0x9000
+    );
+    let mut member = Member::new(code)
+        .key("value", 0x1004, 0x1014, READ_INT, true)
+        .key("alternate", 0x1018, 0x1020, READ_INT, true);
+    let alternate = member.fields.pop().unwrap();
+    member.fields[0].paths.extend(alternate.paths);
+    member.fields[0].readers.extend(alternate.readers);
+    let inventory = groups(
+        &member.fields,
+        &member.paths,
+        &|_: u64| Some((START, member.code.as_slice())),
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
+    );
+    assert!(inventory.groups.is_empty());
+    assert!(inventory.unresolved.is_empty());
+
+    let other_word = arm64!(at 0x1018; str wzr, [x19, #0x2b0]);
+    member.code[24..28].copy_from_slice(&other_word);
+    let inventory = groups(
+        &member.fields,
+        &member.paths,
+        &|_: u64| Some((START, member.code.as_slice())),
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
+    );
+    assert_eq!(inventory.unresolved[0].reason, "duration-key-alternatives");
+}
+
+#[test]
+fn a_prefix_restore_cannot_leave_stale_owner_provenance() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        ldp x20, x19, [sp, #0x10];
+        str wzr, [x19, #0xa8];
+        b extern 0x9000
+    );
+    let member = Member::new(code).key("value", 0x1004, 0x100c, READ_INT, true);
+    let inventory = groups(
+        &member.fields,
+        &member.paths,
+        &|_: u64| Some((START, member.code.as_slice())),
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
+    );
+    assert_eq!(inventory.unresolved[0].reason, "duration-prefix-store");
+}
+
+#[test]
+fn an_unscaled_stack_transfer_is_not_a_duration_group() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        add x1, sp, #0xc;
+        bl extern 0x9000;
+        ldr w8, [sp, #0xc];
+        str w8, [x19, #0x470];
+        ret
+    );
+    let mut member = Member::new(code).key("count", 0x1004, 0x1008, READ_INT, false);
+    let ReaderJoin::Joined { arguments, .. } = &mut member.fields[0].readers[0] else {
+        unreachable!()
+    };
+    arguments.insert("x1".into(), Value::Stack(0xc));
+    arguments.insert("sp".into(), Value::Stack(0));
+    let inventory = groups(
+        &member.fields,
+        &member.paths,
+        &|_| Some((START, member.code.as_slice())),
+        &BTreeMap::new(),
+        None,
+        &Ok(Countdown { counts: 0x40 }),
+        &BTreeMap::new(),
+    );
+    assert!(inventory.groups.is_empty());
+    assert!(inventory.unresolved.is_empty());
+
+    let mut scaled = stack_member();
+    let unscaled = arm64!(at 0x1010; mov w9, w8; mov w8, w8);
+    scaled.code[16..24].copy_from_slice(&unscaled);
+    let [group] = scaled.groups(None).try_into().unwrap();
+    assert_eq!(
+        factors(&group),
+        [("short_unit", Ok(Some(1))), ("long_unit", Ok(Some(360)))]
+    );
+}
+
+#[test]
+fn indexed_accesses_do_not_preserve_stack_addresses() {
+    for access in [
+        arm64!(at 0x100c; ldr w10, [x20, #4]!),
+        arm64!(at 0x100c; ldr w10, [x20], #4),
+        arm64!(at 0x100c; str w10, [x20, #4]!),
+        arm64!(at 0x100c; str w10, [x20], #4),
+    ] {
+        let mut code = Arm64::at(START);
+        arm64!(code;
+            mov x19, x0;
+            add x1, sp, #0xc;
+            bl extern 0x9000;
+            mov w10, #0;
+            ldr w8, [x20, #0xc];
+            mov w9, #30;
+            mul w8, w8, w9;
+            str w8, [x19, #0x470];
+            ret
+        );
+        let mut member = Member::new(code).key("count", 0x1004, 0x1008, READ_INT, false);
+        let ReaderJoin::Joined { arguments, .. } = &mut member.fields[0].readers[0] else {
+            unreachable!()
+        };
+        arguments.insert("x1".into(), Value::Stack(0xc));
+        arguments.insert("x20".into(), Value::Stack(0));
+        let inventory = |member: &Member| {
+            groups(
+                &member.fields,
+                &member.paths,
+                &|_| Some((START, member.code.as_slice())),
+                &BTreeMap::new(),
+                None,
+                &Ok(Countdown { counts: 0x40 }),
+                &BTreeMap::new(),
+            )
+        };
+        assert_eq!(inventory(&member).groups.len(), 1);
+        member.code[12..16].copy_from_slice(&access);
+        let result = inventory(&member);
+        assert!(result.groups.is_empty());
+        assert!(!result.unresolved.is_empty());
+    }
+}
+
+#[test]
+fn a_prefix_word_reset_requires_a_word_integer_reader() {
+    for callee in ["CReader::Read(short&)", ASSIGN] {
+        let mut code = Arm64::at(START);
+        arm64!(code;
+            mov x19, x0;
+            str wzr, [x19, #0xa8];
+            add x1, x19, #0xa8;
+            b extern 0x9000
+        );
+        let member = Member::new(code).key("value", 0x1004, 0x100c, callee, true);
+        let inventory = groups(
+            &member.fields,
+            &member.paths,
+            &|_| Some((START, member.code.as_slice())),
+            &BTreeMap::new(),
+            None,
+            &Ok(Countdown { counts: 0x40 }),
+            &BTreeMap::new(),
+        );
+        assert!(inventory.groups.is_empty(), "{callee}");
+        assert_eq!(
+            inventory.unresolved[0].reason, "duration-prefix-store",
+            "{callee}"
+        );
+    }
+}
+
+/// One shared-factor key writes a presence byte; its sibling proves the factor.
+fn scoped_byte_member(prefix: bool, byte: i64) -> Member {
+    let mut code = Arm64::at(START);
+    let byte = byte as u32;
+    arm64!(code; mov x19, x0);
+    if prefix {
+        arm64!(code;
+            mov w8, #1;
+            strb w8, [x19, #byte];
+            add x0, x19, #0xa8;
+            b extern 0x9000
+        );
+    } else {
+        arm64!(code;
+            add x0, x19, #0xa8;
+            bl extern 0x9000;
+            mov w8, #1;
+            strb w8, [x19, #byte];
+            ret
+        );
+    }
+    let sibling = code.here();
+    arm64!(code;
+        add x0, x19, #0xa8;
+        bl extern 0x9000;
+        mov w8, #30;
+        str w8, [x19, #0x2b0];
+        ret
+    );
+    Member::new(code)
+        .key(
+            "plain",
+            0x1004,
+            if prefix { 0x1010 } else { 0x1008 },
+            ASSIGN,
+            prefix,
+        )
+        .key("scaled", sibling, sibling + 4, ASSIGN, false)
+}
+
+#[test]
+fn scoped_literal_byte_writes_need_proved_disjointness() {
+    for prefix in [false, true] {
+        for literal_byte in 0x2a8..0x2ac {
+            let member = scoped_byte_member(prefix, literal_byte);
+            let [group] = groups(
+                &member.fields,
+                &member.paths,
+                &|_| Some((START, member.code.as_slice())),
+                &BTreeMap::from([(0x2b0, 1), (0x2b1, 0), (0x2b2, 0), (0x2b3, 0)]),
+                execute_bindings("0xa8", "0x2b0"),
+                &Ok(Countdown { counts: 0x40 }),
+                &BTreeMap::from([(0xa8, Ok(0x204))]),
+            )
+            .groups
+            .try_into()
+            .unwrap();
+            assert_eq!(
+                group.units[0].factor,
+                Err(Unresolved::new("duration-byte-factor"))
+            );
+            assert!(group.combination.is_err());
+        }
+        let member = scoped_byte_member(prefix, 0x2ac);
+        for (storage, expected) in [
+            (
+                BTreeMap::new(),
+                Err(Unresolved::new("duration-byte-storage")),
+            ),
+            (
+                BTreeMap::from([(0xa8, Err(Unresolved::new("scoped-missing")))]),
+                Err(Unresolved::new("duration-byte-storage")),
+            ),
+            (BTreeMap::from([(0xa8, Ok(0x204))]), Ok(None)),
+        ] {
+            let [group] = groups(
+                &member.fields,
+                &member.paths,
+                &|_| Some((START, member.code.as_slice())),
+                &BTreeMap::from([(0x2b0, 1), (0x2b1, 0), (0x2b2, 0), (0x2b3, 0)]),
+                execute_bindings("0xa8", "0x2b0"),
+                &Ok(Countdown { counts: 0x40 }),
+                &storage,
+            )
+            .groups
+            .try_into()
+            .unwrap();
+            assert_eq!(group.units[0].factor, expected);
+            assert_eq!(group.combination.is_ok(), expected.is_ok());
+        }
+    }
+}
+
+#[test]
+fn scoped_byte_bounds_require_the_subtype_selection_and_literal_width() {
+    use crate::engine::analysis::numeric::{NumericFacts, NumericReader};
+    use crate::engine::analysis::scoped_numeric::{Facts, Layout, Shared, Subtype};
+    use crate::{GrammarProperty, NumericConversion};
+    let mut facts = Facts {
+        shared: Shared {
+            forms: Err(Unresolved::new("unused-forms")),
+            literal_preserves_references: Err(Unresolved::new("unused-selection")),
+            selection: Ok(Layout {
+                literal: 0x28,
+                location: 8,
+                variable: 0,
+                trigger: 0x10,
+                script_value: 0x18,
+                modifier: 0x20,
+                modifier_unset: 0,
+            }),
+        },
+        subtypes: [(
+            0x9000,
+            Ok(Subtype::Numeric {
+                literal: 0x28,
+                token_reader: "numeric-token-reader".into(),
+            }),
+        )]
+        .into(),
+    };
+    let mut numeric = NumericFacts {
+        modifier_entry: Err(Unresolved::new("unused-modifier")),
+        readers: Default::default(),
+        token_readers: [(
+            "numeric-token-reader".into(),
+            NumericReader {
+                conversion: GrammarProperty::Partial(Some(NumericConversion {
+                    width_bits: GrammarProperty::Known(32),
+                    ..Default::default()
+                })),
+                gaps: vec![],
+            },
+        )]
+        .into(),
+    };
+    assert_eq!(scoped_storage(&facts, &numeric)[&0x9000], Ok(0x2c));
+    numeric
+        .token_readers
+        .get_mut("numeric-token-reader")
+        .unwrap()
+        .conversion = GrammarProperty::Partial(Some(NumericConversion {
+        width_bits: GrammarProperty::Known(64),
+        ..Default::default()
+    }));
+    assert_eq!(scoped_storage(&facts, &numeric)[&0x9000], Ok(0x30));
+    let proof = numeric.token_readers.clone();
+    numeric.token_readers.clear();
+    assert_eq!(
+        scoped_storage(&facts, &numeric)[&0x9000],
+        Err(Unresolved::new("duration-byte-storage"))
+    );
+    numeric.token_readers = proof;
+    facts.shared.selection.as_mut().unwrap().literal = 0x30;
+    assert_eq!(
+        scoped_storage(&facts, &numeric)[&0x9000],
+        Err(Unresolved::new("duration-byte-storage"))
+    );
+    facts.shared.selection = Err(Unresolved::new("missing-selection"));
+    assert_eq!(
+        scoped_storage(&facts, &numeric)[&0x9000],
+        Err(Unresolved::new("duration-byte-storage"))
+    );
+    facts
+        .subtypes
+        .insert(0x9000, Err(Unresolved::new("missing-subtype")));
+    assert_eq!(
+        scoped_storage(&facts, &numeric)[&0x9000],
+        Err(Unresolved::new("duration-byte-storage"))
+    );
 }

@@ -1,4 +1,5 @@
-//! Stored duration counts of a timed flag and a timed modifier, read by `Game::check_script`.
+//! Stored duration counts of flags, modifiers, stack literals and timed traits, read by
+//! `Game::check_script`.
 //!
 //! Storage and diagnostics are recorded separately: a malformed value keeps the count that the
 //! parser stored, next to the diagnostic that rejects it.
@@ -41,41 +42,51 @@ const MODIFIER_CASES: [(&str, &str); 9] = [
     ("malformed_after_literal", "days = 7 days = x"),
 ];
 
-/// Every case of one effect session, by name.
-fn checks() -> Vec<(String, String)> {
+/// Every effect and trigger case in one session, by name.
+fn checks() -> Vec<(String, String, DeclarationKind, &'static str)> {
     let flags = FLAG_CASES.iter().map(|(name, keys)| {
         (
             format!("set_timed_country_flag/{name}"),
             format!("set_timed_country_flag = {{ flag = native_duration_{name} {keys} }}"),
+            DeclarationKind::Effect,
+            "country",
         )
     });
     let modifiers = MODIFIER_CASES.iter().map(|(name, keys)| {
         (
             format!("add_modifier/{name}"),
             format!("add_modifier = {{ modifier = {MODIFIER} {keys} }}"),
+            DeclarationKind::Effect,
+            "country",
         )
     });
 
-    flags.chain(modifiers).collect()
+    let added = [
+        ("country_event/mixed_units", "country_event = { id = native_duration_missing.1 months = 2 years = 1 }", DeclarationKind::Effect, "country"),
+        ("has_passed_resolution/mixed_units", "has_passed_resolution = { months = 2 years = 1 }", DeclarationKind::Trigger, "country"),
+        ("set_timed_relation_flag/mixed_units", "set_timed_relation_flag = { who = root flag = native_duration_relation months = 2 days = 3 }", DeclarationKind::Effect, "country"),
+        ("add_timed_trait/mixed_units", "add_timed_trait = { trait = leader_trait_adaptable months = 2 days = 3 }", DeclarationKind::Effect, "leader"),
+    ].into_iter().map(|(name, text, kind, scope)| (name.into(), text.into(), kind, scope));
+
+    flags.chain(modifiers).chain(added).collect()
 }
 
 pub(super) async fn stored(native: &Native) -> Outcome {
-    let scope = native
-        .scopes()?
-        .value
-        .types
-        .into_iter()
-        .find(|scope| scope.name == "country")
-        .ok_or("country scope missing")?
-        .id;
+    let scopes = native.scopes()?.value.types;
     let mut report = BTreeMap::new();
     let mut game = native.start_game(options().loaded_modifiers()).await?;
     let mut result = async {
-        for (name, text) in checks() {
+        for (name, text, kind, scope_name) in checks() {
+            let scope = scopes
+                .iter()
+                .find(|scope| scope.name == scope_name)
+                .ok_or("scope missing")?
+                .id
+                .clone();
             let answer = game
                 .check_script(&ScriptCheck {
-                    kind: DeclarationKind::Effect,
-                    scope: scope.clone(),
+                    kind,
+                    scope,
                     text: text.clone(),
                 })
                 .await?;
@@ -94,11 +105,18 @@ pub(super) async fn stored(native: &Native) -> Outcome {
             else {
                 return Err(format!("{name}: no stored durations: {answer:?}").into());
             };
-            let [only] = stored.as_slice() else {
-                return Err(format!("{name}: expected one stored count: {answer:?}").into());
-            };
-            if observation.children != 1 || only.child != 0 {
+            if observation.children != 1 {
                 return Err(format!("{name}: expected one child: {answer:?}").into());
+            }
+            match stored.as_slice() {
+                [only] if only.child == 0 => {}
+                [] if matches!(observation.stored_durations, GrammarProperty::Partial(_)) => {}
+                _ => {
+                    return Err(format!(
+                        "{name}: expected one stored count or a partial storage gap: {answer:?}"
+                    )
+                    .into());
+                }
             }
 
             report.insert(name, record(&text, &answer));

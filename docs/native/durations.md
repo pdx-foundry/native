@@ -9,9 +9,11 @@ answers do not report durations; `pdx_native::internals::duration_groups` runs t
 over registry fields for the population run.
 
 A key is a duration unit only by mechanism. Only keys read by an integer or scoped numeric reader
-are candidates. Candidates whose reader joins share one callee and owner destination form a group
-when at least one key applies a factor after its reader returns. No key name, token or command
-selects a result.
+are candidates. Candidates whose reader joins share one callee and final owner destination form
+a group when at least one key applies a factor after its reader returns. Integer stack temporaries
+join at their final owner store. A scoped operand overlapping a scaled literal group leaves a typed
+`duration-scoped-literal` gap; its selection rules are not inferred from literal storage. No key
+name, token or command selects a result.
 
 The list of groups is `Known` only when the fixed keys are known, every key is joined, no candidate
 is left unclassified, and no nested block, at any depth, may hold a group. A candidate is
@@ -43,8 +45,9 @@ the SDK-493 trace (literal 3, multiplier 30). A later key replaces the operand o
 [scoped operand rules](scoped-numeric.md): a literal after a reference keeps the reference's source
 location.
 
-`add_timed_trait` has the same read shape, but its execute body is different. Its combination
-therefore stays unresolved, with per-key factors reported as `Partial`.
+`add_timed_trait` has the same read shape, but its execute body passes the product to
+`CLeader::AddTimedTrait` rather than the flag store. Its M451-hotfix offsets and consumption limit
+are given under [remaining execute bodies](#remaining-execute-bodies).
 
 ### Flag store countdown
 
@@ -55,8 +58,9 @@ therefore stays unresolved, with per-key factors reported as `Partial`.
 - Both bodies use the count array at `+0x40`. The method requires this agreement.
 
 A positive count is therefore removed on its count-th update. Zero becomes -1 and is never
-removed, and so is any negative count. An omitted duration writes operand 0 (SDK-493 observation),
-so `set_timed_*_flag` without a duration would set a permanent flag. This is a static reading.
+removed, and so is any negative count. The country live omitted case observes operand 0 and
+factor 1, whose product is permanent under this countdown. The static method does not establish
+omitted counts from constructor bytes.
 The expiry date also depends on how often each owner's update runs. `UpdateFlags` is called from
 `CGameState::DailyUpdate` lambdas and from many owner `UpdateFlags` methods, and the method does
 not establish that frequency. [SDK-650](https://linear.app/unnamed-system/issue/SDK-650) owns the
@@ -72,90 +76,127 @@ gives 3. The multiplication is 32-bit, so a large `months` value wraps while it 
 Consumption, including `add_modifier`'s `time_multiplier` (`CAddModifierEffect::GetDays`), is
 outside this method.
 
-### Unidentified keys
+## Constructor state on M451-hotfix
 
-- The 20 `*_event` effects share `CFireEventEffect::ReadMember`. It reads `months` and `years`
-  into a stack temporary (`sp+0x1c0`), scales it, and stores it at owner `+0x2d8`. `days` is a
-  separate `CVariableValue::Read` into another slot. The shared reader join requires an owner
-  destination, so `months` and `years` have no join, and no group forms.
-- A `days` key with no factor sibling cannot be told apart from any integer by mechanism.
-  `add_casus_belli`, `add_intel_report`, `create_message`, `give_fleet` and
-  `prolong_fleet_contract` are such keys.
-- `CHasPassedResolutionTrigger::ReadMember` has the same stack-temporary shape: `months` and
-  `years` read to `sp+0xc` and `sp+8`, scale, and store at `+0x470`, while `days` reads a scoped
-  operand at `+0x270`.
+The exact build is the M451-hotfix executable in [targets](targets.md). Constructor confinement
+and freshness are shared with [scoped operands](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654).
+Entered constructor bodies contribute facts only when every write is proved confined to the
+object. No duration group's omitted count or literal is established. Each remains unresolved;
+old observed values do not initialize the method's byte map.
 
-## Result on M45-release
+The compiler-summary path establishes initial factor 1 for the 27 ordinary timed flags and
+`add_timed_trait`. It does not establish the relation flag's initial factor. Its complete execute
+match proves the product and flag consumer, but `duration-initial-state` prevents the public
+combination and omitted count from being established. SDK-658 owns recovery of constructor facts;
+SDK-657 does not bypass the confinement checks.
 
-The population run asked `command_grammar` for all 2,170 registered effects and triggers and ran
-the grouping over all 164 discovered registries. No question failed.
+## Stack and execute facts on M451-hotfix (SDK-657)
+
+These facts apply to executable `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`,
+ARM64 slice `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
+
+### Stack temporaries and scoped literals
+
+- `CFireEventEffect::ReadMember` starts at `0x101d27360`. The 20 event effects read `months`
+  at `0x101d277b0` and `years` at `0x101d277cc`, through `sp+0x1c0`. They scale by 30 and 360,
+  respectively, then store at owner `+0x2d8` (`0x101d277dc`). These keys form one scaled-at-read
+  literal group per command. Its omitted literal is unresolved.
+- `CHasPassedResolutionTrigger::ReadMember` starts at `0x102224708`. `years` reads at
+  `0x102224768` through `sp+8`, and `months` at `0x102224794` through `sp+0xc`. Their factors
+  are 360 and 30; both store at owner `+0x470`. Its omitted literal is unresolved.
+- These stores overlap the **shared numeric scoped layout**, rather than proved independent
+  scalar duration members.
+  The event `days` path reads the operand at `+0xd8`; the shared numeric layout places a literal
+  at operand `+0x200`, hence owner `+0x2d8`. The resolution `days` operand is at `+0x270`, whose
+  possible literal is owner `+0x470` under that layout. The command's concrete subtype is not
+  established by its constructor state. The shared selection bodies establish the common literal
+  offset independently of constructor bytes; this is a possible overlap, not a subtype recovery.
+  The event operand at `+0x2e0` is the separate random-delay operand, not the `days` operand.
+  `CFireEventEffect::ExecuteActual` evaluates both `+0xd8` and `+0x2e0`, and uses the latter
+  as a random-delay bound when the first is positive. Runtime event delays remain outside this ticket.
+
+`months` and `years` overwrite the literal word, but do not clear the operand's variable,
+script value, trigger, modifier or source location. A scoped `days` read preserves its own
+selection rules. The current public combinations do not describe this mix of scoped selection
+and scaled literal stores. The method reports the literal groups and a conservative `ReaderSemantics` gap
+(`duration-scoped-literal`) for each of the 21 commands. Their duration lists are partial in both
+static and live answers. `days` is not folded into those groups. Removal requires a shared proof
+that joins the whole scoped operand and reports the mixed selection behavior; a change to the
+public combination type needs the lead's decision. The parent criterion is not met for this mix.
+
+### Remaining execute bodies
+
+Both bodies match complete canonical shapes, including their validity guards and consumer calls:
+
+- `CSetTimedRelationFlagEffect::ExecuteActual` resolves `who`, creates or accesses the country
+  relation, and checks its validity. It evaluates operand `+0x3f8`, loads factor `+0x600`, and
+  passes their wrapping signed 32-bit product to `CPdxIntegerFlags::SetFlag` in mode zero.
+  Its flag consumer is `FlagCountdown`. The initial factor is unresolved, so the combination
+  has `duration-initial-state` and its omitted count is unresolved. Relation update frequency is
+  outside the static method.
+- `CAddTimedTraitEffect::ExecuteActual` accesses and checks a leader, evaluates operand `+0xa8`,
+  loads factor `+0x2e0`, and passes their wrapping signed 32-bit product to
+  `CLeader::AddTimedTrait(CTrait const*, int)`. Its combination is the same shared-factor form
+  with initial factor 1; its omitted count is unresolved. This is not a flag store. Trait
+  consumption remains an `OutsideMethod` limit; no flag-countdown claim is made.
+
+### Candidates without a group
+
+- `transfer_resources_to_empire.percentage` reads the scoped operand at `+0x268`, then writes
+  byte one at `+0x470` (`0x101de22ec`). `while.count` reads the scoped operand at `+0x150`, then
+  writes byte one at `+0x358` (`0x101d31e00`). Neither path scales the count or stores a word
+  multiplier. A byte presence write alone does not establish a duration factor.
+- `CCouncilAgenda::ReadMember` resets words `+0x6d4` and `+0x6dc` to zero before tail-calling
+  the integer reader into those same words. Presence bytes are `+0x6d0` and `+0x6d8`.
+- `CAdvancedAuthoritySwap::ReadMember` does the same for words `+0x344`, `+0x34c` and `+0x354`,
+  with presence bytes `+0x340`, `+0x348` and `+0x350`.
+
+The reader overwrites each word reset; none of these paths applies a factor. The two commands
+and both registry candidates have no group and no unclassified duration candidate. Byte writes
+remain recorded during grouping: an overlap with a sibling's factor or count word is a typed
+`duration-byte-factor` gap, so a byte reset cannot silently mean factor preservation.
+
+### Population on M451-hotfix
+
+The population covers all 2,170 commands and all 164 registries, with no failed question.
 
 | Population | Groups | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Commands | 31 | 0 | 31 | 0 |
+| Commands | 52 | 0 | 52 | 0 |
 | Registry fields and nested collections | 0 | 0 | 0 | 0 |
 
-- **Groups.** 28 timed flags, `add_modifier`, `add_stage_modifier` and `add_timed_trait`.
-  - 27 timed flags have `SharedFactor` with initial factor 1 and `FlagCountdown`.
-  - `set_timed_relation_flag` (which also reads `who`) and `add_timed_trait` have execute bodies
-    that do not match, so their combination is unresolved (`duration-execute-body`).
-  - The two modifier effects are `ScaledAtRead` with factors 1, 30 and 360.
-- **Failure shapes**, by group:
-  - 29: the omitted count is not established. Factory state does not model the operand's
-    constructor or a constructor that is not inlined.
-  - 27: the flag update frequency, and so the expiry date, is outside the method.
-  - 2: consumption is outside the method (the modifier effects).
-  - 2: the execute body is not matched.
-- **Unclassified candidates**, 2 commands: after the reader call, `transfer_resources_to_empire`
-  (`percentage`) and `while` (`count`) run code that the method does not follow. Their lists are
-  partial.
-- **Duration lists**, all commands: 626 known, 515 partial and 1,029 unresolved. A list is never
-  more certain than the command's fixed keys, so most partial and unresolved lists follow them.
-- **Unit-named keys that no group covers**, 26 commands:
-  - the 20 `*_event` effects and `has_passed_resolution`: a stack-temporary destination;
-  - five `days`-only commands: no factor sibling.
+No omitted count or literal is established. Unit factors and read combinations are known for
+51 groups; the relation flag has partial unit factors and an unresolved initial shared factor.
+Failure shapes count groups and can overlap:
 
-The registry run found no group. Two registries, `common/council_agendas` and the
-`advanced_authority_swap` collection of `common/governments/authorities`, have candidates with an
-owner store before the reader call, so a group there is not ruled out.
+- 51 explicit omitted-count gaps;
+- 27 static flag-update-frequency limits;
+- 24 consumption limits;
+- 23 possible mixed scoped/literal-selection gaps (`duration-scoped-literal`);
+- 1 `duration-initial-state` gap, which also prevents the omitted-count proof.
 
-A group is complete only when its combination, every factor, its omitted count and its
-consumption are established. Before the constructor repair, no group met that criterion in
-the M45-release result above.
-
-Reproduce with `cargo run --release --example duration-population` and `STELLARIS_PATH` set.
-The run takes about three minutes. The report is `.local/sdk-646/duration-population.json`.
-
-## Constructor result on M451-hotfix (SDK-654)
-
-The exact build is the M451-hotfix executable in [targets](targets.md). The constructor repair
-is shared with [scoped operands](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654).
-The constructor walk establishes **no omitted count among the 31 groups**. Compiler-summary
-state remains independent of entered bodies, so rejected constructor evidence does not erase
-established unit factors or combinations. The method withholds all constructor additions for an
-owner when an entered walk is unconfined or incomplete. The evaluator does not establish the
-freshness or owner derivation needed to prove external stores disjoint; the shared constructor
-obstacles are on [scoped numeric](scoped-numeric.md).
-
-The groups are **0 complete, 31 partial, 0 failed**, with no failed question. The 27 timed-flag
-groups retain their combination and flag-countdown proofs, with outside-method expiry limits.
-Two modifier groups retain outside-method consumption limits. Those 29 groups have omitted-count
-gaps. `add_timed_trait` and `set_timed_relation_flag` have no omitted count because their execute
-bodies are unmatched (`duration-execute-body`), independently of constructor bytes.
-
-Duration lists are **626 known, 515 partial and 1,029 unresolved**. Every group and established
-property matches the main population. Reports and the field-by-field comparison are in
-`.local/sdk-654/floor/`. These omitted-count gaps remain unmet parent criteria; only Jackson can
-amend them.
+Duration lists are 625 known, 516 partial and 1,029 unresolved. No command or registry candidate
+has an unclassified prefix or continuation. **26 commands have uncovered unit-named keys**:
+21 have the scoped `days` mix above, and five have `days` without a factor sibling. The 21 groups
+cover 42 `months` and `years` keys. These gaps do not amend SDK-544.
+Before/after counts are in the
+[discovery index](discovery.md#stack-duration-keys-and-execute-bodies-sdk-657).
+Run `cargo run --release --example duration-population` with `STELLARIS_PATH`;
+`.local/sdk-657/rereview/duration-population.json` holds each answer.
 
 ## Live parser observations
 
 `Game::check_script` reports `stored_durations` for each top-level child after reading, before
-validation. Nothing is executed. `tests/live/durations.rs` runs one effect session in country
-scope, and `tests/expected/duration-m45/live.json` holds the reviewed results. Every case classified
-its one child, and every stored value agrees with the static groups. The `add_modifier` answers are
-complete. The `set_timed_country_flag` lists are partial, because the static list is partial: its
-`flag` key has no reader join, so the method cannot rule out another group.
+validation. Nothing is executed. `tests/live/durations.rs` runs one session with effect and trigger
+checks in country and leader scopes. `tests/expected/duration-m45/live.json` holds the reviewed
+results. Every case classifies one child. The 25 cases with decoded counts agree with the static
+storage proofs; the relation case retains a partial empty list because its combination and
+concrete scoped storage are unresolved. Omitted live values do not establish static constructor
+bytes. The `add_modifier` answers are partial because its other scoped operands lack proved
+literal widths; their disjointness from the duration word is unresolved. The
+`set_timed_country_flag` lists are partial,
+because the static list is partial: its `flag` key has no reader join, so the method cannot rule
+out another group.
 
 | `set_timed_country_flag` input | Operand literal | Factor | Other storage | Diagnostics |
 | --- | ---: | ---: | --- | --- |
@@ -188,21 +229,68 @@ The observations separate storage from acceptance:
 - The direct integer reader keeps 7 and reports `Malformed token`.
 - A fraction is truncated silently by both readers.
 
+The M451-hotfix live table also covers these four shapes:
+
+| Input shape | Observed storage | Diagnostics |
+| --- | --- | --- |
+| `country_event`, `months = 2 years = 1` | literal word 360, partial group list | validation: deliberately missing event |
+| `has_passed_resolution`, `months = 2 years = 1` | literal word 360, partial group list | none |
+| `set_timed_relation_flag`, `months = 2 days = 3` | partial empty duration list; initial factor unproved | none |
+| `add_timed_trait`, `months = 2 days = 3` | scoped literal 3, factor 30, known group list | none |
+
+The stack cases observe literal storage only; they do not establish scoped selection or execute
+an event or trigger. The trait case reads in leader scope. No new runtime meaning is inferred.
+
 ## Gaps
 
-- Update frequency outside the country flag store. The [SDK-650 live run](ready-world.md)
-  closed the country expiry gap on 4.5.1: mixed units produced 90 daily updates, one day expired
-  after one update, and zero, negative and overflowed counts remained through day 90. No conflict
-  with the static `FlagCountdown` reading was observed.
-- Consumption of scaled-at-read counts, including `time_multiplier`, and event delays.
-- The stack-temporary readers, `days`-only keys and the unclassified candidates.
-- The two omitted counts gated by unmatched execute bodies on M451-hotfix, as described above.
-  The M45-release measurement remains historical; no new release-build result is claimed.
+- **Five `days`-only commands:** `add_casus_belli`, `add_intel_report`, `create_message`,
+  `give_fleet` and `prolong_fleet_contract` have no factor sibling. Their numeric mechanisms do
+  not distinguish a duration from an ordinary integer. No key-name rule is used. Removing this
+  obstacle requires executable-derived duration-consumer evidence; otherwise Jackson must amend
+  the parent criterion. The criterion is not met for these commands.
+- **21 mixed scoped/literal readers:** the 20 event effects and `has_passed_resolution` share
+  literal storage between scoped `days` and scaled integer `months`/`years`. Each has the typed
+  `duration-scoped-literal` gap above. The constructor does not establish the subtype, so the
+  overlap remains conservative. Their `days` unit and mixed selection behavior are not
+  reported as established. Removal needs a shared whole-operand proof and an approved public
+  representation, or Jackson's amendment of the parent criterion.
+- **Two unproved literal-width bounds:** `add_modifier` and `add_stage_modifier` have other
+  scoped operands whose literal widths are unresolved. Their duration lists retain
+  `duration-scoped-literal` until byte disjointness can be proved. SDK-658 owns constructor
+  recovery; otherwise Jackson must amend the parent criterion.
+- **24 consumption limits:** the 21 stack-literal groups, `add_modifier`, `add_stage_modifier`
+  and `add_timed_trait` do not have a proved duration consumer in this method. Scaled-count
+  consumption, `time_multiplier` and event delays are outside this ticket. Trait execution
+  reaches `CLeader::AddTimedTrait`; its storage and update behavior are not a flag countdown.
+- **Omitted state for all 52 groups:** no count or literal is proved. The relation flag also lacks
+  its initial factor. SDK-658 owns constructor recovery; otherwise Jackson must amend the parent
+  criterion. Observed values do not substitute for confined, fresh constructor evidence.
+- **28 flag consumers:** the static method does not establish update frequency or expiry
+  dates outside the country observation. The [SDK-650 live run](ready-world.md) closes the country
+  expiry gap on 4.5.1 for its five cases; it does not establish relation or other owner frequencies.
+- Duration-list completeness still follows unknown child dispatch, reader joins and nested blocks.
+  Accepted ranges belong to SDK-655; live numeric widths beyond the existing decoders belong to
+  SDK-656. These limits do not amend the parent criterion.
 
 ## Pitfalls
 
-- A store before a tail call counts. The method checks owner stores on the whole token path,
-  not only after the call, and leaves a key with a store before its reader call unresolved.
+- A store before a tail call counts. A word reset is harmless only for a proved 4-byte integer
+  reader at that destination. Narrow integer and scoped readers leave `duration-prefix-store`.
+- An unscaled stack copy has factor 1 and cannot seed a duration group. A non-identity scale or
+  a factor constant must establish the group; identity keys can join an established group.
+- Indexed accesses invalidate their written-back base in the continuation walk. A later stack
+  load cannot reuse the base's previous offset.
+- Scoped literal overlap compares the word store's byte range with the literal's proved byte
+  range. A store into the upper word of a 64-bit literal still overlaps; an adjacent word does
+  not. Unknown literal widths retain `duration-scoped-literal`.
+- Presence bytes must miss factor words and the proved count storage. For a shared scoped count,
+  the protected span encloses its vtable, selection fields and literal, with literal width from
+  the numeric conversion proof. An overlap leaves `duration-byte-factor`; missing subtype,
+  selection or width evidence leaves `duration-byte-storage`. Prefix and continuation writes
+  obey the same disjointness check.
+- Conditional presence writes need not occur on every path. Alternatives agree on count
+  scales and word factors; their byte-write footprints are joined conservatively. Requiring equal
+  footprints falsely leaves the council agenda resets unresolved.
 - Do not claim `SharedFactor` from the read paths alone. A constant store beside an operand is a
   multiplier only when the execute body multiplies that operand by that slot.
 - Each public static query verifies the executable again, so asking `command_grammar` once per

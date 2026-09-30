@@ -923,12 +923,14 @@ fn a_bit_field_read_through_a_constant_index_reaches_its_reader_call() {
 
     assert_eq!(result.fields.len(), 1, "{:?}", result.gaps);
     assert!(matches!(
-        result.fields[0].readers[..],
-        [ReaderJoin::Missing(Unresolved {
-            reason: "reader-routing",
-            ..
-        })]
+        &result.fields[0].readers[..],
+        [ReaderJoin::Joined { arguments, .. }]
+            if arguments.get("x1") == Some(&fields::Value::Stack(0x10))
     ));
+    assert_eq!(
+        super::readers::destination(&result.fields[0].readers[0]),
+        None
+    );
 }
 
 #[test]

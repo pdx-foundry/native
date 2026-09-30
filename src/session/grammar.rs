@@ -144,7 +144,14 @@ pub(crate) fn normalize_with_numeric(
             name,
             &mut answer.gaps,
         );
-        super::durations::grammar(&mut answer.value, result, scoped, name, &mut answer.gaps);
+        super::durations::grammar(
+            &mut answer.value,
+            result,
+            scoped,
+            numeric,
+            name,
+            &mut answer.gaps,
+        );
     }
     answer.completeness = crate::Completeness::from_gaps(&answer.gaps);
     answer
@@ -1320,7 +1327,14 @@ mod tests {
         );
         let mut gaps = Vec::new();
 
-        super::super::durations::grammar(&mut answer.value, result, &scoped, "timed", &mut gaps);
+        super::super::durations::grammar(
+            &mut answer.value,
+            result,
+            &scoped,
+            &Default::default(),
+            "timed",
+            &mut gaps,
+        );
 
         (answer.value.durations, gaps)
     }
@@ -1339,6 +1353,173 @@ mod tests {
     }
 
     use crate::engine::analysis::durations::{Combination, Consumption, Group, Unit};
+
+    fn literal_numeric(width: u8) -> crate::engine::analysis::numeric::NumericFacts {
+        use crate::engine::analysis::numeric::{NumericFacts, NumericReader};
+        NumericFacts {
+            token_readers: [(
+                "CReader::Read(int&)".into(),
+                NumericReader {
+                    conversion: GrammarProperty::Partial(Some(crate::NumericConversion {
+                        width_bits: GrammarProperty::Known(width),
+                        ..Default::default()
+                    })),
+                    gaps: vec![],
+                },
+            )]
+            .into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn scaled_literals_do_not_claim_the_scoped_operands_selection_rules() {
+        use crate::engine::analysis::scoped_numeric::{Facts, Shared, Subtype};
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        let group = group(
+            Combination::ScaledAtRead,
+            Err(Unresolved::new("duration-consumption")),
+        );
+        result.scoped_destinations.insert(0x80, 0x9000);
+        let mut scoped = Facts {
+            shared: Shared {
+                forms: Err(Unresolved::new("scoped-body")),
+                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+                selection: Err(Unresolved::new("scoped-body")),
+            },
+            subtypes: [(
+                0x9000,
+                Ok(Subtype::Numeric {
+                    literal: 0x28,
+                    token_reader: "CReader::Read(int&)".into(),
+                }),
+            )]
+            .into(),
+        };
+        assert!(super::super::durations::scoped_literal_overlap(
+            &group,
+            &result,
+            &scoped,
+            &literal_numeric(32)
+        ));
+        result.durations.groups.push(group);
+        let mut answer = normalize(
+            Ok(&result),
+            "mixed",
+            crate::BuildId("authored".into()),
+            &facts(scan_at(0xa8)),
+        );
+        let mut gaps = Vec::new();
+        super::super::durations::grammar(
+            &mut answer.value,
+            &result,
+            &scoped,
+            &literal_numeric(32),
+            "mixed",
+            &mut gaps,
+        );
+        assert!(matches!(
+            answer.value.durations,
+            GrammarProperty::Partial(_)
+        ));
+        assert!(gaps.iter().any(|gap| gap.kind == GapKind::ReaderSemantics
+            && gap.detail.contains("duration-scoped-literal")));
+        let mut upper_word = result.durations.groups[0].clone();
+        upper_word.destination += 4;
+        assert!(super::super::durations::scoped_literal_overlap(
+            &upper_word,
+            &result,
+            &scoped,
+            &literal_numeric(64)
+        ));
+        upper_word.destination += 4;
+        assert!(!super::super::durations::scoped_literal_overlap(
+            &upper_word,
+            &result,
+            &scoped,
+            &literal_numeric(64)
+        ));
+        assert!(super::super::durations::scoped_literal_overlap(
+            &upper_word,
+            &result,
+            &scoped,
+            &Default::default()
+        ));
+        scoped.subtypes.clear();
+        assert!(super::super::durations::scoped_literal_overlap(
+            &result.durations.groups[0],
+            &result,
+            &scoped,
+            &literal_numeric(32)
+        ));
+        scoped.subtypes.insert(
+            0x9000,
+            Ok(Subtype::Numeric {
+                literal: 0x30,
+                token_reader: "CReader::Read(int&)".into(),
+            }),
+        );
+        assert!(!super::super::durations::scoped_literal_overlap(
+            &result.durations.groups[0],
+            &result,
+            &scoped,
+            &literal_numeric(32)
+        ));
+    }
+
+    #[test]
+    fn a_missing_scoped_constructor_does_not_prove_literal_stores_disjoint() {
+        use crate::engine::analysis::fields::{ReaderJoin, Value};
+        use crate::engine::analysis::scoped_numeric::{Facts, Layout, Shared};
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        let count = group(
+            Combination::ScaledAtRead,
+            Err(Unresolved::new("duration-consumption")),
+        );
+        result.fields.fields[0].readers = vec![ReaderJoin::Joined {
+            callee: "CVariableValue::Read(CReader&, EScopeType)".into(),
+            arguments: [("x0".into(), Value::Owner(0x80))].into(),
+            tail: true,
+        }];
+        result.scoped_destinations.clear();
+        let mut scoped = Facts {
+            shared: Shared {
+                forms: Err(Unresolved::new("scoped-body")),
+                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+                selection: Ok(Layout {
+                    literal: 0x28,
+                    location: 8,
+                    trigger: 0x10,
+                    script_value: 0x18,
+                    modifier: 0x20,
+                    modifier_unset: 0,
+                    variable: 0,
+                }),
+            },
+            subtypes: Default::default(),
+        };
+        assert!(super::super::durations::scoped_literal_overlap(
+            &count,
+            &result,
+            &scoped,
+            &literal_numeric(32)
+        ));
+        assert!(result.scoped_destinations.is_empty());
+        scoped.shared.selection.as_mut().unwrap().literal = 0x30;
+        assert!(super::super::durations::scoped_literal_overlap(
+            &count,
+            &result,
+            &scoped,
+            &literal_numeric(32)
+        ));
+        scoped.shared.selection = Err(Unresolved::new("scoped-layout"));
+        assert!(super::super::durations::scoped_literal_overlap(
+            &count,
+            &result,
+            &scoped,
+            &literal_numeric(32)
+        ));
+    }
 
     #[test]
     fn a_failed_countdown_proof_is_an_in_method_gap() {

@@ -112,7 +112,8 @@ pub struct Condition {
 /// A reader join proves routing only, never the reader's accepted grammar.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ReaderJoin {
-    /// Known reader/delegate receives the original reader and owner-derived destination.
+    /// Known reader/delegate receives the original reader and a proven owner or integer stack
+    /// destination.
     Joined {
         /// Symbol of the callee in this build. It is not a stable reader-kind identity.
         callee: String,

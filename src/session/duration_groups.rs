@@ -46,9 +46,12 @@ pub fn registry(native: &Native, registry: &str) -> Result<Vec<RegistryGroup>, E
                 .map(|(&start, code)| (start, *code))
                 .filter(|(start, code)| address < start + code.len() as u64)
         };
+        let scoped = native.scoped_numeric_facts(Operation::RegistryFields)?;
+        let numeric = native.numeric_facts(Operation::RegistryFields)?;
+        let storage = crate::engine::analysis::durations::scoped_storage(scoped, numeric);
         let mut groups = Vec::new();
 
-        collect(&result, &[], &code, &mut groups);
+        collect(&result, &[], &code, &storage, &mut groups);
 
         Ok(groups)
     })
@@ -58,10 +61,16 @@ fn collect(
     result: &RegistryFieldResult,
     path: &[String],
     code: &crate::engine::analysis::durations::CodeAt<'_>,
+    storage: &BTreeMap<u64, Result<u64, Unresolved>>,
     groups: &mut Vec<RegistryGroup>,
 ) {
     let no_countdown = Err(Unresolved::new("duration-execute-body"));
 
+    let scoped_storage = result
+        .scoped_destinations
+        .iter()
+        .filter_map(|(&offset, point)| Some((offset, storage.get(point)?.clone())))
+        .collect();
     groups.push(RegistryGroup {
         path: path.to_vec(),
         inventory: crate::engine::analysis::durations::groups(
@@ -71,6 +80,7 @@ fn collect(
             &BTreeMap::new(),
             None,
             &no_countdown,
+            &scoped_storage,
         ),
     });
 
@@ -83,6 +93,6 @@ fn collect(
         let mut child = path.to_vec();
         child.push(name);
 
-        collect(&collection.fields, &child, code, groups);
+        collect(&collection.fields, &child, code, storage, groups);
     }
 }

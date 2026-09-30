@@ -171,51 +171,126 @@ destination and gap.
 
 ## Duration keys (SDK-646)
 
-The M45-release run asked `command_grammar` for all 2,170 effects and triggers and grouped the
-fields of all 164 registries, with no failed question. It found 31 duration groups, all in
-commands: **0 complete, 31 partial, 0 failed**. The failure shapes are:
-
-- 29 groups: omitted count not established;
-- 27 groups: flag update frequency outside the method;
-- 2 groups: consumption outside the method;
-- 2 groups: execute body not matched.
-
-26 commands have unit-named keys that no group covers: 21 read into a stack temporary, and 5
-have only `days`. Two commands and two registries have candidates whose reader code is not
-followed, so their lists stay partial. Registries have no group. The [duration keys](durations.md) page has the facts
-and the live parser observations. Run `cargo run --release --example duration-population` with
-`STELLARIS_PATH` to reproduce; `.local/sdk-646/duration-population.json` lists every group and gap.
+`CommandGrammar.durations` groups keys that store one count, establishes their factors and
+combination, and reports omitted state and consumers independently. A missing property remains
+a typed gap. Registry grouping is a developer population question rather than a public field
+property. The [duration page](durations.md) holds the build-specific facts and live observations;
+the SDK-657 table below gives the current population and comparisons. The original M45-release
+baseline is retained in `.local/sdk-646/duration-population.json`.
 
 ## Constructor state (SDK-654)
 
+Constructor bodies add facts only when every write is proved confined to the object. The
+compiler-summary path supplies the independent baseline; unconfined entered bodies cannot
+remove or augment its facts. Freshness and store disjointness remain unproved, and SDK-658 owns
+recovery beyond this boundary. The shared obstacles are on
+[scoped numeric](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654).
+
 The M451-hotfix population covers 164 registries and 2,170 commands, with no failed question.
-Reports on main (`2d930e4`) and the branch are in `.local/sdk-654/floor/`: `main-scoped.json`,
-`main-duration.json`, `now-scoped.json` and `now-duration.json`. `floor-comparison.json` checks
-all established reader and duration properties field by field and records **zero regressions**.
-`pre-review-comparison.json` lists every changed answer beside the retained SDK-654 reports.
+The scoped baseline is `.local/sdk-654/floor/now-scoped.json`; duration baseline is
+`.local/sdk-654/floor/now-duration.json`. The SDK-657 scoped rerun is
+`.local/sdk-657/rebased/scoped-population.json`.
 
-| Population | Main: complete / partial / failed | SDK-654 before review | Current |
+| Population | Main | Pre-review SDK-654 | Current SDK-654 |
 | --- | --- | --- | --- |
-| Seven scoped registry destinations | 0 / 6 / 1 | 0 / 7 / 0 | 0 / 7 / 0 |
-| 302 scoped command arguments | 0 / 133 / 169 | 0 / 301 / 1 | 0 / 133 / 169 |
-| 31 command duration groups | 0 / 31 / 0 | 27 / 4 / 0 | 0 / 31 / 0 |
+| Scoped registry destinations, complete / partial / failed | 0 / 6 / 1 | 0 / 7 / 0 | 0 / 7 / 0 |
+| Scoped command arguments, complete / partial / failed | 0 / 133 / 169 | 0 / 301 / 1 | 0 / 133 / 169 |
+| Duration groups, complete / partial / failed | 0 / 31 / 0 | 27 / 4 / 0 | 0 / 31 / 0 |
+| Established duration omitted counts | 0 | 29 | 0 |
 
-All 302 scoped arguments and all seven fields remain enumerated. Command readers are identical
-to main; six field readers are identical, and `pop_decline_rate` gains signed 64-bit storage at
-scale 100000. Registry storage is 2 integer and 5 fixed point; command storage is 98 integer,
-35 fixed point and 169 unresolved. Numeric conversion and outside-method limits affect all
-133 arguments and 7 fields with established storage. Repeat or nested-field limits affect all
-7 fields. The 169 arguments retain `UnresolvedStorage: Scoped destination vtable is not
-established.` The shared confinement and freshness obstacles, plus the atomic/guard shape,
-are recorded on [scoped numeric](scoped-numeric.md).
+All 302 scoped arguments and seven fields remain enumerated. `pop_decline_rate` is the only
+constructor gain over main, with signed 64-bit storage at scale 100000. Registry storage is
+2 integer and 5 fixed point; command storage is 98 integer, 35 fixed point and 169 unresolved.
+Numeric conversion and outside-method limits affect the 133 arguments and 7 fields with
+established storage. Repeat or nested-field limits affect all 7 fields. Unresolved command
+storage retains `UnresolvedStorage: Scoped destination vtable is not established.`
 
-All 31 omitted counts remain unresolved, as on main; the pre-review SDK-654 report established
-29. Twenty-seven flag groups retain outside-method expiry limits, and two modifier groups retain
-outside-method consumption limits. These 29 groups have omitted-count gaps. The two unmatched
-execute bodies prevent the combination proof and omitted counts independently of constructor
-bytes. The constructor additions do not close the parent criterion.
+## Stack duration keys and execute bodies (SDK-657)
 
-Duration-list counts are 626 known, 515 partial and 1,029 unresolved, matching main and the
-pre-review report. No registry duration group was found. The independent compiler-summary
-baseline prevents unconfined entered bodies from removing existing facts; constructor additions
-require complete, confined evidence. Freshness and store disjointness remain unproved.
+The M451-hotfix population covers all 2,170 commands and 164 registries, with no failed question.
+The [duration page](durations.md#stack-and-execute-facts-on-m451-hotfix-sdk-657) records the exact
+member paths, consumers and remaining obstacles. Run `cargo run --release --example
+duration-population` with `STELLARIS_PATH`;
+`.local/sdk-657/rereview/duration-population.json` holds the current report;
+`.local/sdk-657/rebased/duration-population.json` holds the comparison baseline.
+
+| Measurement | SDK-657 before rebase | SDK-657 on `780c1e5` | SDK-657 on `9e2f544` |
+| --- | ---: | ---: | ---: |
+| Command groups | 52 | 52 | 52 |
+| Complete / partial / failed groups | 28 / 24 / 0 | 0 / 52 / 0 | 0 / 52 / 0 |
+| Established omitted counts or literals | 52 | 0 | 0 |
+| Known / partial / unresolved lists | 627 / 514 / 1,029 | 627 / 514 / 1,029 | 625 / 516 / 1,029 |
+| Unclassified command candidates | 0 | 0 | 0 |
+| Unclassified registry candidates | 0 | 0 | 0 |
+| Registry groups | 0 | 0 | 0 |
+| Commands with uncovered unit-named keys | 26 | 26 | 26 |
+| Explicit omitted-count gaps | 0 | 51 | 51 |
+| Static flag-update-frequency limits | 28 | 27 | 27 |
+| Consumption limits | 24 | 24 | 24 |
+| Mixed scoped/literal-selection gaps | 21 | 21 | 23 |
+| Initial shared-factor gaps | 0 | 1 | 1 |
+| Unmatched execute bodies | 0 | 0 | 0 |
+
+Failure shapes count groups and can overlap. The relation flag's `duration-initial-state` gap
+also blocks its omitted count, independently of the 51 explicit omitted-count gaps. Its execute
+match proves `FlagCountdown`; the timed trait's product reaches `CLeader::AddTimedTrait`, with
+consumption outside the method. Their constructor bytes do not establish omitted counts.
+
+The 21 stack groups cover 42 `months` and `years` keys. Their omitted literals are unresolved.
+The shared selection layout leaves a possible overlap with scoped `days`, even when the
+constructor does not establish a numeric subtype; `duration-scoped-literal` remains a conservative
+gap. No subtype or initial value is restored from the old report. The other five uncovered
+commands have `days` without a factor sibling. The two command candidates write presence bytes;
+registry candidates reset words that proved 4-byte integer readers overwrite. None forms a group.
+These results do not establish all of SDK-544 criterion 3.
+
+Byte disjointness covers the span enclosing the scoped vtable, selection fields and literal,
+using the established token conversion width. Missing subtype, selection or width evidence is
+`duration-byte-storage`; overlap is `duration-byte-factor`. Prefix and continuation controls
+cover every byte of the literal. An identity stack transfer cannot seed a duration group, but
+can join a sibling's proved scale. Prefix word-reset controls reject narrow and scoped readers.
+
+The tracked duration static expectations retain unresolved omitted counts for all covered
+groups. The relation flag has an unresolved initial factor and combination, partial unit factors
+and unresolved concrete scoped storage. Its live case has a partial empty duration list. The
+full command-grammar candidate matches `tests/expected/m45/command-grammars.json`; no entry
+changes.
+
+The duration-list overlap proof compares byte ranges, including the upper word of a 64-bit
+scoped literal. Unknown widths retain the gap. `add_modifier` and `add_stage_modifier` therefore
+have partial duration lists: their other scoped operands have unproved literal widths. The
+continuation walk invalidates bases written back by indexed accesses; stack-transfer controls
+cover pre- and post-indexed loads and stores.
+The nine `add_modifier` live cases retain the same values and diagnostics with partial lists.
+
+### Shared reader join population
+
+The stack join routes the original reader to a proved word-integer stack destination. The
+non-duration answer changes cover `months` and `years` in these 20 effects and one trigger:
+
+- `agreement_event`, `astral_rift_event`, `bypass_event`, `carrier_event`, `colony_event`,
+  `cosmic_storm_event`, `cosmic_storm_influence_field_event`, `country_event`,
+  `espionage_operation_event`, `first_contact_event`, `fleet_event`, `leader_event`,
+  `observer_event`, `planet_event`, `pop_faction_event`, `pop_group_event`, `ship_event`,
+  `situation_event`, `starbase_event`, `system_event`;
+- `has_passed_resolution`.
+
+Each of the 42 keys identifies integer reader `d7a95ab8c8d44489`, scalar form, no child members,
+not-applicable child family, no scoped operand, and partial signed 32-bit conversion with scale 1,
+decimal and radix-prefixed forms, and no explicit reader clamp. Repeat behavior, defaults and
+domains remain unknown. Event fixed-key lists remain partial. The resolution trigger has a known
+fixed-key list and empty child-family, numeric-key, ordering and target properties; its whole
+answer remains partial.
+
+The 20 effects share `CFireEventEffect::ReadMember`: calls `0x101d277b0` and `0x101d277cc` route
+the original reader to `sp+0x1c0`. The resolution trigger uses `sp+8` at `0x102224768` and
+`sp+0xc` at `0x102224794`. All call `CReader::Read(int&)` (`0x1025b6f08`), forwarding to
+`CToken::ReadValue(int&) const` (`0x1025bdf4c`) with `%i`. Numeric properties describe this
+reader's conversion, excluding caller post-processing. These calls have continuations, so no
+final-storage or replace claim follows. This proof does not depend on constructor bytes.
+
+The original non-duration comparisons are retained as
+`.local/sdk-657/{scoped,numeric,registry,command}-{parent,current}.json`, with full diffs in
+`registry-answer-diff.json` and `command-non-duration-diff.json`. They establish zero registry
+answer changes and 21 command answer changes for the shared join on the pre-rebase constructor
+baseline. The current scoped population follows the confined SDK-654 boundary above.

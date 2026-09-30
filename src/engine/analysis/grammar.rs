@@ -550,7 +550,15 @@ fn analyze_reader_with_state(
         })
         .collect();
     super::stop::sort_and_dedup(&mut stops);
-    let durations = durations(input, reader, depth, bytes, &fields, &leaves);
+    let durations = durations(
+        input,
+        reader,
+        depth,
+        bytes,
+        &fields,
+        &leaves,
+        &scoped_destinations,
+    );
     Ok(GrammarResult {
         durations,
         scoped_destinations,
@@ -587,6 +595,7 @@ fn durations(
     bytes: &BTreeMap<u64, u8>,
     fields: &[RootField],
     paths: &[TokenPath],
+    scoped_destinations: &BTreeMap<i64, u64>,
 ) -> super::durations::Inventory {
     let functions = &input.declarations.functions;
     let code = |address: u64| {
@@ -609,6 +618,12 @@ fn durations(
         super::durations::execute(&rows, &input.durations.names)
     });
 
+    let scoped_storage = scoped_destinations
+        .iter()
+        .filter_map(|(&offset, point)| {
+            Some((offset, input.durations.scoped_storage.get(point)?.clone()))
+        })
+        .collect();
     super::durations::groups(
         fields,
         paths,
@@ -616,6 +631,7 @@ fn durations(
         bytes,
         execute,
         &input.durations.countdown,
+        &scoped_storage,
     )
 }
 

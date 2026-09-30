@@ -1,0 +1,29 @@
+stp xr0,xr1,[sp,#-0x30]!
+stp xr2,xr3,[sp,#0x10]
+stp x29,x30,[sp,#0x20]
+add x29,sp,#0x20
+mov xr1,x1
+mov xr3,x0
+mov x0,x1
+bl CALL = CScopeObjectReference::AccessLeader()
+mov xr2,x0
+ldr xr4,[x0]
+ldr xr4,[xr4,#0x40]
+blr xr4
+cbz w0,@+13
+ldr xr0,[xr3,#0x2b0]
+add x0,xr3,#{operand}
+mov x1,xr1
+bl CALL = CIntVariableValue::GetValue(CEventScope&) const
+ldr wr4,[xr3,#{factor}]
+mul w2,wr4,w0
+mov x0,xr2
+mov x1,xr0
+ldp x29,x30,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x30
+b CALL = CLeader::AddTimedTrait(CTrait const*, int)
+ldp x29,x30,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x30
+ret
