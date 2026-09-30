@@ -72,7 +72,14 @@ fn direct_scan_proves_storage_and_partial_syntax_without_universal_acceptance() 
         assert!(
             matches!(fact.literal_syntax, GrammarProperty::Partial(ref forms) if !forms.is_empty())
         );
-        assert_eq!(fact.accepted_range, Unresolved);
+        assert_eq!(
+            fact.accepted_range,
+            if format == "%i" {
+                signed_32_range()
+            } else {
+                Unresolved
+            }
+        );
         assert_eq!(fact.clamp, Known(None));
     }
 }
@@ -157,9 +164,14 @@ fn old_reader_answers_default_to_unknown_and_exact_bounds_round_trip() {
 fn m45_numeric_reader_static_parity() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let facts = crate::internals::numeric_readers::run(&native).unwrap();
-    for (name, width, scale) in [
-        ("CToken::ReadValue(int&) const", 32, 1),
-        ("CToken::ReadValue(CFixedPoint&) const", 64, 100_000),
+    for (name, width, scale, range) in [
+        ("CToken::ReadValue(int&) const", 32, 1, signed_32_range()),
+        (
+            "CToken::ReadValue(CFixedPoint&) const",
+            64,
+            100_000,
+            fixed_point_range(100_000),
+        ),
     ] {
         let reader = &facts.token_readers[name];
         let GrammarProperty::Partial(Some(conversion)) = &reader.conversion else {
@@ -167,7 +179,7 @@ fn m45_numeric_reader_static_parity() {
         };
         assert_eq!(conversion.width_bits, Known(width), "{name}");
         assert_eq!(conversion.scale, Known(Some(scale)), "{name}");
-        assert_eq!(conversion.accepted_range, Unresolved, "{name}");
+        assert_eq!(conversion.accepted_range, range, "{name}");
     }
     let actual = serde_json::to_string_pretty(&facts).unwrap();
     if let Some(path) = std::env::var_os("NATIVE_NUMERIC_REPORT") {
@@ -384,7 +396,7 @@ fn fixed_point_facts_follow_both_integer_and_fractional_paths_to_the_store() {
         assert!(
             matches!(fact.literal_syntax, GrammarProperty::Partial(ref forms) if !forms.is_empty())
         );
-        assert_eq!(fact.accepted_range, Unresolved);
+        assert_eq!(fact.accepted_range, fixed_point_range(scale));
     }
 }
 
@@ -399,6 +411,7 @@ fn changed_scale_keeps_storage_but_not_a_false_uniform_scale() {
     let fact = token_conversion(&rows, &names, 0x10).unwrap();
     assert_eq!(fact.width_bits, Known(64));
     assert_eq!(fact.scale, Unresolved);
+    assert_eq!(fact.accepted_range, Unresolved);
 
     let (mut rows, names) = binary_rows();
     let shift = rows.iter_mut().find(|row| row.operation == "lsl").unwrap();
@@ -406,6 +419,7 @@ fn changed_scale_keeps_storage_but_not_a_false_uniform_scale() {
     let fact = token_conversion(&rows, &names, 0x10).unwrap();
     assert_eq!(fact.width_bits, Known(64));
     assert_eq!(fact.scale, Unresolved);
+    assert_eq!(fact.accepted_range, Unresolved);
 }
 
 #[test]
@@ -477,6 +491,15 @@ fn halfword_conversion_proves_width_without_inferring_sign_from_the_callee_type(
         assert_eq!(fact.signedness, Unresolved);
     }
     assert!(token_conversion(&rows, &names("%lld"), 0x10).is_none());
+    for (operation, replacement) in [("ldrh", "ldrsh"), ("strh", "strb")] {
+        let mut changed = rows.clone();
+        changed
+            .iter_mut()
+            .find(|row| row.operation == operation)
+            .unwrap()
+            .operation = replacement.into();
+        assert!(token_conversion(&changed, &names("%d"), 0x10).is_none());
+    }
 }
 
 #[test]
@@ -509,8 +532,16 @@ fn byte_conversion_keeps_narrowing_separate_from_parser_range() {
     assert_eq!(fact.width_bits, Known(8));
     assert_eq!(fact.signedness, Unresolved);
     assert_eq!(fact.accepted_range, Unresolved);
+    let mut changed = rows;
+    changed
+        .iter_mut()
+        .find(|row| row.operation == "ldrb")
+        .unwrap()
+        .operation = "ldrsb".into();
+    assert!(token_conversion(&changed, &names("%d"), 0x10).is_none());
 }
 
+mod boundaries;
 mod modifier;
 
 #[test]
@@ -527,7 +558,14 @@ fn scanner_formats_prove_only_partial_literal_families() {
     ] {
         let fact = token_conversion(&scan_rows(), &names(format), 0x10).unwrap();
         assert_eq!(fact.literal_syntax, GrammarProperty::Partial(forms));
-        assert_eq!(fact.accepted_range, Unresolved);
+        assert_eq!(
+            fact.accepted_range,
+            if format == "%i" {
+                signed_32_range()
+            } else {
+                Unresolved
+            }
+        );
         assert_eq!(fact.clamp, Known(None));
     }
     let (rows, names) = binary_rows();
@@ -587,4 +625,24 @@ fn an_incompatible_raw_conversion_cannot_add_literal_forms() {
     assert_eq!(gap, Some("numeric-raw-storage"));
     assert_eq!(combined.literal_syntax, forms);
     assert_eq!(combined.clamp, Unresolved);
+}
+
+fn signed_32_range() -> GrammarProperty<Box<NumericRange>> {
+    Known(Box::new(NumericRange {
+        minimum: Known(NumericBound::Signed(-2147483648)),
+        maximum: Known(NumericBound::Signed(2147483647)),
+    }))
+}
+
+fn fixed_point_range(scale: u64) -> GrammarProperty<Box<NumericRange>> {
+    Known(Box::new(NumericRange {
+        minimum: Known(NumericBound::Rational {
+            numerator: -9223372036854775808,
+            denominator: scale,
+        }),
+        maximum: Known(NumericBound::Rational {
+            numerator: 9223372036854775807,
+            denominator: scale,
+        }),
+    }))
 }

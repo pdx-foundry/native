@@ -21,20 +21,87 @@ const INPUTS: &[(&str, &[&str])] = &[
     ("integer_overflow", &["2147483648"]),
     ("integer_min", &["-2147483648"]),
     ("integer_underflow", &["-2147483649"]),
+    ("integer_below_max", &["2147483646"]),
+    ("integer_above_min", &["-2147483647"]),
+    ("fixed_below_max", &["92233720368547.75806"]),
     ("fixed_max", &["92233720368547.75807"]),
     ("fixed_overflow", &["92233720368547.75808"]),
+    ("fixed_above_min", &["-92233720368547.75807"]),
+    ("fixed_min", &["-92233720368547.75808"]),
+    ("fixed_underflow", &["-92233720368547.75809"]),
+    ("template_below_max", &["281474976710655.99993896484375"]),
+    ("template_max", &["281474976710655.999969482421875"]),
+    ("template_above_min", &["-281474976710655.999969482421875"]),
     ("template_min", &["-281474976710656.0"]),
+    ("template_underflow", &["-281474976710656.000030517578125"]),
     ("template_overflow", &["281474976710656.0"]),
+    ("quoted_space", &["\"12 34\""]),
+    ("fractional_trailing_text", &["1.25tail"]),
     ("malformed", &["7", "not_a_number"]),
 ];
 
 const FLOAT_INPUTS: &[(&str, &[&str])] = &[
     ("float_boundary", &["3.4028234663852886e38"]),
+    (
+        "float_below_max",
+        &["340282326356119256160033759537265639424"],
+    ),
+    ("float_max", &["340282346638528859811704183484516925440"]),
+    (
+        "float_overflow",
+        &["340282366920938463463374607431768211456"],
+    ),
+    (
+        "float_above_min",
+        &["-340282326356119256160033759537265639424"],
+    ),
+    ("float_min", &["-340282346638528859811704183484516925440"]),
+    (
+        "float_underflow",
+        &["-340282366920938463463374607431768211456"],
+    ),
+    ("float_normal_min", &["1.1754943508222875e-38"]),
+    ("float_subnormal_max", &["1.1754942106924411e-38"]),
+    ("float_subnormal_min", &["1.401298464324817e-45"]),
+    ("float_below_subnormal", &["7.006492321624085e-46"]),
+    ("float_zero", &["0"]),
+    ("float_negative_zero", &["-0"]),
+    ("trailing_text", &["12tail"]),
+    ("quoted_space", &["\"12 34\""]),
     ("fractional", &["1.23456789"]),
     ("malformed", &["7", "not_a_number"]),
 ];
 
 const SHORT_INPUTS: &[(&str, &[&str])] = &[
+    ("short_boundary", &["32767"]),
+    ("short_below_max", &["32766"]),
+    ("short_overflow", &["32768"]),
+    ("short_above_min", &["-32767"]),
+    ("short_min", &["-32768"]),
+    ("short_underflow", &["-32769"]),
+    ("unsigned_short_below_max", &["65534"]),
+    ("unsigned_short_max", &["65535"]),
+    ("unsigned_short_overflow", &["65536"]),
+    ("short_zero", &["0"]),
+    ("short_above_zero", &["1"]),
+    ("short_below_zero", &["-1"]),
+    ("scanner_max", &["2147483647"]),
+    ("scanner_overflow", &["2147483648"]),
+    ("scanner_min", &["-2147483648"]),
+    ("scanner_underflow", &["-2147483649"]),
+    ("trailing_text", &["12tail"]),
+    ("quoted_space", &["\"12 34\""]),
+    ("fractional", &["1.23456789"]),
+    ("malformed", &["7", "not_a_number"]),
+];
+
+const FLOAT_STORAGE_INPUTS: &[(&str, &[&str])] = &[
+    ("float_boundary", &["3.4028234663852886e38"]),
+    ("fractional", &["1.23456789"]),
+    ("malformed", &["7", "not_a_number"]),
+];
+
+const SHORT_STORAGE_INPUTS: &[(&str, &[&str])] = &[
     ("short_boundary", &["32767"]),
     ("fractional", &["1.23456789"]),
     ("malformed", &["7", "not_a_number"]),
@@ -90,14 +157,21 @@ pub(super) async fn matrix() -> Outcome {
             ][..],
             false,
             "CReader::Read(float&)",
-            FLOAT_INPUTS,
+            FLOAT_STORAGE_INPUTS,
         ),
         (
             "common/astral_actions",
-            &["unlock_threshold", "usages"][..],
+            &["unlock_threshold"][..],
             false,
             "CReader::Read(short&)",
             SHORT_INPUTS,
+        ),
+        (
+            "common/astral_actions",
+            &["usages"][..],
+            false,
+            "CReader::Read(short&)",
+            SHORT_STORAGE_INPUTS,
         ),
         (
             "common/sector_types",
@@ -110,7 +184,7 @@ pub(super) async fn matrix() -> Outcome {
             ][..],
             false,
             "CReader::Read(short&)",
-            SHORT_INPUTS,
+            SHORT_STORAGE_INPUTS,
         ),
     ] {
         let request = fixture(registry, fields, nested, inputs)?;
@@ -142,7 +216,7 @@ pub(super) async fn matrix() -> Outcome {
         serde_json::from_str(include_str!("../expected/numeric-m45/live.json"))?;
     if actual != expected {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(".local/sdk-656/numeric-conversion-live.json");
+            .join(".local/sdk-655/numeric-conversion-live.json");
         std::fs::create_dir_all(path.parent().unwrap())?;
         std::fs::write(&path, serde_json::to_string_pretty(&actual)?)?;
         return Err(format!(

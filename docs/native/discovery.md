@@ -108,6 +108,56 @@ fixed point: 80 cases, 84 stored occurrences. See [numeric conversion](numeric-c
 for the observed boundary behavior and limits. The report is `.local/sdk-644/numeric-population.json`;
 reproduce it with `cargo run --release --example numeric-population` and `STELLARIS_PATH` set.
 
+## Numeric boundary evidence (SDK-655)
+
+On M451-hotfix (`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`),
+the numeric and scoped population examples cover all 164 registries; the scoped example also
+covers all 2,170 commands. No registry or command question fails. Int, direct fixed-point and
+fixed-point template conversions have known faithful-storage ranges; other conversion gaps
+keep their enclosing answers partial. Scoped literals inherit ranges only after their concrete
+storage is established.
+
+| Population | Complete / partial / failed | Known ranges | Unresolved ranges |
+| --- | --- | --- | --- |
+| 184 numeric root fields | 0 / 184 / 0 | 174 | 10 |
+| Seven scoped registry destinations | 0 / 7 / 0 | 7 | 0 |
+| 302 scoped command arguments | 0 / 133 / 169 | 133 | 169 |
+
+Three of the 11 shared numeric readers have known ranges. The root fields without known ranges
+are seven short and three float fields. Scoped storage is two integer and five fixed-point
+fields, and 98 integer, 35 fixed-point and 169 unresolved command arguments. Every destination
+without established storage has `Reader.numeric: Unresolved`, so none retains a range. The
+[constructor confinement boundary](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654)
+explains the unresolved command storage; `Effect/release_vivarium_fauna_count.count` is one of
+these destinations, not the only one.
+
+Failure shapes, counting each affected destination once per shape:
+
+- Each numeric root field retains `numeric-overflow`, `numeric-lexical-boundary`,
+  `numeric-trailing-text` and `numeric-external-library-conversion`; 88 also retain
+  `numeric-raw-value-mode`. Three retain `numeric-float-bound-representation`, exposed as a
+  public `NumericConversion` gap stating that `NumericBound` cannot represent exact binary32
+  endpoints. Narrow signedness remains unresolved.
+- All seven scoped fields retain `NumericConversion: Scoped literal conversion boundaries and
+  overflow are incomplete.`, the qualified-scope/parameter/reference/evaluation `OutsideMethod`
+  gap, and `UnresolvedStorage: Repeat behavior or nested fields remain unresolved.`
+- The 133 scoped arguments with established storage retain the same numeric-conversion and
+  outside-method gaps. The other 169 retain
+  `UnresolvedStorage: Scoped destination vtable is not established.`
+
+[Numeric conversion](numeric-conversion.md#boundary-evidence-on-m451-hotfix-sdk-655) records
+matched engine paths, platform boundary checks, agreeing live boundaries and the remaining
+obstacles. [Scoped literal ranges](scoped-numeric.md#shared-literal-ranges-sdk-655) records the
+registry fixture coverage; it does not establish storage for unresolved command destinations.
+No amendment of SDK-544 is made. Reports are
+`.local/sdk-655/rebased/numeric-population.json` and
+`.local/sdk-655/rebased/scoped-numeric-population.json`; reproduce with `STELLARIS_PATH` set:
+
+```sh
+cargo run --release --example numeric-population > .local/sdk-655/rebased/numeric-population.json
+cargo run --release --example scoped-numeric-population > .local/sdk-655/rebased/scoped-numeric-population.json
+```
+
 ## Scoped numeric operands (SDK-645)
 
 The M45-release run queried all **164** discovered registries with no failed registry queries.
@@ -186,24 +236,22 @@ remove or augment its facts. Freshness and store disjointness remain unproved, a
 recovery beyond this boundary. The shared obstacles are on
 [scoped numeric](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654).
 
-The M451-hotfix population covers 164 registries and 2,170 commands, with no failed question.
-The scoped baseline is `.local/sdk-654/floor/now-scoped.json`; duration baseline is
-`.local/sdk-654/floor/now-duration.json`. The SDK-657 scoped rerun is
+The [numeric boundary population](#numeric-boundary-evidence-sdk-655) records current scoped
+counts, storage and failure shapes. The scoped constructor baseline is
+`.local/sdk-654/floor/now-scoped.json`; duration baseline is
+`.local/sdk-654/floor/now-duration.json`. The SDK-657 scoped comparison is
 `.local/sdk-657/rebased/scoped-population.json`.
 
-| Population | Main | Pre-review SDK-654 | Current SDK-654 |
+| Duration population | Main | Pre-review SDK-654 | Current SDK-654 |
 | --- | --- | --- | --- |
-| Scoped registry destinations, complete / partial / failed | 0 / 6 / 1 | 0 / 7 / 0 | 0 / 7 / 0 |
-| Scoped command arguments, complete / partial / failed | 0 / 133 / 169 | 0 / 301 / 1 | 0 / 133 / 169 |
-| Duration groups, complete / partial / failed | 0 / 31 / 0 | 27 / 4 / 0 | 0 / 31 / 0 |
-| Established duration omitted counts | 0 | 29 | 0 |
+| Groups, complete / partial / failed | 0 / 31 / 0 | 27 / 4 / 0 | 0 / 31 / 0 |
+| Established omitted counts | 0 | 29 | 0 |
 
-All 302 scoped arguments and seven fields remain enumerated. `pop_decline_rate` is the only
-constructor gain over main, with signed 64-bit storage at scale 100000. Registry storage is
-2 integer and 5 fixed point; command storage is 98 integer, 35 fixed point and 169 unresolved.
-Numeric conversion and outside-method limits affect the 133 arguments and 7 fields with
-established storage. Repeat or nested-field limits affect all 7 fields. Unresolved command
-storage retains `UnresolvedStorage: Scoped destination vtable is not established.`
+`pop_decline_rate` is the only scoped constructor gain over main, with signed 64-bit storage
+at scale 100000. Command storage matches the compiler-summary baseline; unconfined entered
+constructor bodies supply no additional storage facts. The pre-review scoped result
+(0 / 301 / 1 command arguments) is not supported by the confinement proof. Its retained report
+remains a comparison artifact, not current coverage.
 
 ## Stack duration keys and execute bodies (SDK-657)
 

@@ -1371,7 +1371,30 @@ fn numeric_command_arguments_share_registry_conversion_facts() {
             panic!("{command}/{key}: numeric facts absent");
         };
         assert_eq!(conversion.scale, GrammarProperty::Known(Some(scale)));
-        assert_eq!(conversion.accepted_range, GrammarProperty::Unresolved);
+        let (minimum, maximum) = if scale == 1 {
+            (
+                pdx_native::NumericBound::Signed(-2147483648),
+                pdx_native::NumericBound::Signed(2147483647),
+            )
+        } else {
+            (
+                pdx_native::NumericBound::Rational {
+                    numerator: i64::MIN,
+                    denominator: scale,
+                },
+                pdx_native::NumericBound::Rational {
+                    numerator: i64::MAX,
+                    denominator: scale,
+                },
+            )
+        };
+        assert_eq!(
+            conversion.accepted_range,
+            GrammarProperty::Known(Box::new(pdx_native::NumericRange {
+                minimum: GrammarProperty::Known(minimum),
+                maximum: GrammarProperty::Known(maximum),
+            }))
+        );
         assert!(
             answer
                 .gaps

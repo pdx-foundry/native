@@ -18,7 +18,11 @@ pub struct NumericConversion {
     /// list proves no exclusions or availability in every token/reader mode. Lexer boundaries,
     /// trailing text and overflow remain separate from these conversion forms.
     pub literal_syntax: GrammarProperty<Vec<NumericLiteralSyntax>>,
-    /// Accepted value bounds, independently of the destination's representable limits.
+    /// Bounds for faithful storage: no overflow or narrowing beyond the representation's
+    /// established rounding or truncation rule. Values outside may still parse successfully.
+    /// For example, ordinary base-10 fractional text read as an int truncates toward zero.
+    /// Storage width alone does not establish these bounds.
+    /// Unknown out-of-range behavior remains a conversion gap even when these bounds are known.
     pub accepted_range: GrammarProperty<Box<NumericRange>>,
     /// Explicit bound clamp in reader code. `Known(None)` does not establish the behavior of
     /// overflow in library calls or conversion instructions. Caller post-processing is excluded.
