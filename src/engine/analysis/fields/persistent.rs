@@ -42,7 +42,14 @@ pub(super) fn discover(
     let Some(binding) = &input.persistent else {
         return (BTreeMap::new(), BTreeMap::new(), vec![]);
     };
-    // Pointer slots are immutable image data, which a call or an unknown store cannot change.
+    // Constant pointer slots are immutable image data. A writable slot stays in each machine's
+    // memory, where a call or a store to an unknown address may change it.
+    let constant_pointers = binding
+        .pointers
+        .iter()
+        .filter(|(slot, _)| !binding.writable_slots.contains(slot))
+        .map(|(&slot, &target)| (slot, target))
+        .collect();
     let data = ReadOnlyData::new(
         input
             .read_only_data
@@ -50,7 +57,7 @@ pub(super) fn discover(
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
     )
-    .with_words(&binding.pointers);
+    .with_words(&constant_pointers);
     let mut agreement: Option<BTreeMap<i64, u64>> = None;
     let mut gaps = Vec::new();
     for constructor in &binding.constructors {
@@ -70,6 +77,9 @@ pub(super) fn discover(
             let code = Code::decode(&bodies)
                 .map_err(|_| Unresolved::new("persistent-constructor-code"))?;
             let mut machine = Machine::new(&code, &data);
+            for slot in &binding.writable_slots {
+                machine.write(*slot, 8, binding.pointers[slot]);
+            }
             machine.intercept_tail_calls(binding.summaries.keys().copied().collect());
             let owner = machine.reserve(SPAN);
             machine.set_register(0, owner);
@@ -129,6 +139,9 @@ pub(super) fn discover(
                     Exit::Stopped(target) if binding.never_return.contains(&target) => continue,
                     Exit::Returned => {}
                     _ => return Err(Unresolved::new("persistent-constructor-terminal")),
+                }
+                if path.machine.owner_stack_lost() {
+                    return Err(Unresolved::new("constructor-stack"));
                 }
                 let points: BTreeMap<_, _> = offsets
                     .iter()

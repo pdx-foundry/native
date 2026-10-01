@@ -261,6 +261,35 @@ fn is_read_only(kind: SectionKind) -> bool {
     )
 }
 
+/// Whether the loader leaves a section's bytes, including its rebased pointers, unchanged.
+fn is_constant(segment: &str, kind: SectionKind) -> bool {
+    is_read_only(kind) || segment == "__DATA_CONST"
+}
+
+/// The rebased pointer slots outside the constant sections, whose targets code may replace.
+pub(super) fn writable_slots(
+    bytes: &[u8],
+    pointers: &BTreeMap<u64, u64>,
+) -> Result<BTreeSet<u64>, AnalysisError> {
+    let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
+    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
+    let mut writable: BTreeSet<u64> = pointers.keys().copied().collect();
+
+    for section in file.sections() {
+        let segment = section
+            .segment_name()
+            .map_err(|_| AnalysisError::InvalidRange)?
+            .unwrap_or_default();
+        if is_constant(segment, section.kind()) {
+            let start = section.address();
+            let end = start.saturating_add(section.size());
+            writable.retain(|slot| !(start..end).contains(slot));
+        }
+    }
+
+    Ok(writable)
+}
+
 /// The read-only sections and `__DATA_CONST` as the loader leaves them: rebased pointers, such
 /// as vtable entries and global offset table slots, hold their targets.
 pub(super) fn constant_data(
@@ -272,9 +301,7 @@ pub(super) fn constant_data(
         pointers,
         bound_slots,
     };
-    loaded_data(bytes, &fixups, |segment, kind| {
-        is_read_only(kind) || segment == "__DATA_CONST"
-    })
+    loaded_data(bytes, &fixups, is_constant)
 }
 
 /// The chained-fixup facts that the loaded-data views need.

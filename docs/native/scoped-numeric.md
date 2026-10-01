@@ -164,7 +164,10 @@ position, argument values and established memory with their derivations. Preserv
 keep their derivation but not their values. A callee's write to a caller stack argument makes the
 caller forget its memory. While the entered path runs, a factory or registry call that is not
 entered also forgets caller memory, so a changed stack slot cannot reach a constructor as stale
-evidence.
+evidence. An allocation is such a call: the allocator may reach an escaped owner, although its
+result is a fresh object. A rebased pointer slot outside `__DATA_CONST` and the read-only sections
+is writable, so the entered path never treats its target as immutable data. A factory or registry
+run whose stack pointer moved by an unknown amount adds no facts.
 
 Command and registry constructor tail branches use the same join as direct calls, even when the
 callee's code is decoded. Summary points are checked and completed at the constructor's receiver

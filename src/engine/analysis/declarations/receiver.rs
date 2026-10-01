@@ -109,7 +109,14 @@ fn evaluate_factory(
         rows.extend(body_rows);
     }
     let code = Code::from_rows(rows);
-    let mut machine = Machine::new(&code, input.pointer_data());
+    // An entered run relies on stores being disjoint from the owner, so it does not take a
+    // writable pointer slot's target as immutable; the slot reads as unknown.
+    let data = if enter_constructors {
+        input.constant_pointer_data()
+    } else {
+        input.pointer_data()
+    };
+    let mut machine = Machine::new(&code, data);
     if enter_constructors {
         machine.intercept_tail_calls(input.constructors.keys().copied().collect());
     }
@@ -118,6 +125,10 @@ fn evaluate_factory(
             let size = machine.known_register(0, "allocation-size")?;
             if size == 0 || size > ALLOCATION {
                 return Err(Unresolved::new("allocation-bound"));
+            }
+            if enter_constructors {
+                // The allocator runs code that may reach memory, including an escaped owner.
+                machine.opaque_call_effects();
             }
             let object = machine.reserve(size);
             let owner = machine.labels().is_empty();
@@ -159,7 +170,7 @@ fn evaluate_factory(
                 }
                 let constructors = Constructors {
                     code: &code,
-                    data: input.pointer_data(),
+                    data,
                     summaries: &input.constructors,
                     owner,
                     end,
@@ -192,6 +203,9 @@ fn evaluate_factory(
         match path.end? {
             Exit::Returned => {}
             _ => return Err(Unresolved::new("factory-terminal")),
+        }
+        if path.machine.owner_stack_lost() {
+            return Err(Unresolved::new("constructor-stack"));
         }
         let object = path.machine.register(0).ok_or_else(|| {
             Unresolved::new("factory-return").traced(path.machine.register_trace(0))

@@ -73,7 +73,9 @@ fn input(
             .map(|function| (function.address, function))
             .collect(),
         pointers: BTreeMap::new(),
+        writable_slots: Default::default(),
         pointer_data: std::sync::OnceLock::new(),
+        constant_pointer_data: std::sync::OnceLock::new(),
         strings: BTreeMap::from([
             (WIN_DOCUMENTATION, "Wins the game\nwin = yes".into()),
             (
@@ -1259,4 +1261,105 @@ fn a_factory_stack_slot_that_an_unmodeled_call_may_change_is_no_constructor_evid
             (!changed).then_some(7)
         );
     }
+}
+
+/// A factory whose owner constructor at 0xc000 is `owner`. After construction the factory may
+/// allocate again, then writes the command vtable and 4 at +72, as a derived constructor does.
+fn reconstructing_factory(owner: Arm64, allocates_again: bool) -> DeclarationInput {
+    let mut input = initial_state_factory();
+    let mut create = Arm64::at(CREATE);
+    create.prologue();
+    arm64!(create; mov w0, #128);
+    create.call(NEW);
+    arm64!(create; mov x19, x0);
+    create.call(0xc000);
+    if allocates_again {
+        arm64!(create; mov w0, #16);
+        create.call(NEW);
+    }
+    create.address(8, VTABLE);
+    arm64!(create; str x8, [x19]; mov w9, #4; str w9, [x19, #72]; mov x0, x19);
+    create.epilogue();
+    arm64!(create; ret);
+    input.functions.insert(CREATE, function(create));
+    input.functions.insert(0xc000, function(owner));
+    input
+}
+
+#[test]
+fn a_writable_pointer_slot_may_hold_an_escaped_owner() {
+    const GLOBAL: u64 = 0x80000;
+    const SLOT: u64 = 0x88000;
+    for writable in [false, true] {
+        let mut owner = Arm64::at(0xc000);
+        arm64!(owner; mov x19, x0);
+        owner.load(5, GLOBAL);
+        arm64!(owner; str x19, [x5]; mov w8, #7; str w8, [x19, #64]); // may register the owner in the slot
+        owner.load(3, SLOT);
+        arm64!(owner; str wzr, [x3]; mov x0, x19; ret);
+        let mut input = reconstructing_factory(owner, false);
+        input.pointers.insert(SLOT, 0x90000);
+        if writable {
+            input.writable_slots.insert(SLOT);
+        }
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            (!writable).then_some(7)
+        );
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 72),
+            Some(4)
+        );
+    }
+}
+
+#[test]
+fn a_later_allocation_may_change_an_escaped_owner() {
+    const GLOBAL: u64 = 0x80000;
+    for allocates_again in [false, true] {
+        let mut owner = Arm64::at(0xc000);
+        owner.load(5, GLOBAL);
+        arm64!(owner; str x0, [x5]; mov w8, #7; str w8, [x0, #64]; ret); // registers the owner
+        let input = reconstructing_factory(owner, allocates_again);
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            (!allocates_again).then_some(7)
+        );
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 72),
+            Some(4)
+        );
+    }
+}
+
+#[test]
+fn a_factory_that_loses_its_stack_proof_adds_no_constructor_evidence() {
+    let mut input = initial_state_factory();
+    let mut create = Arm64::at(CREATE);
+    create.prologue();
+    arm64!(create; mov w0, #128);
+    create.call(NEW);
+    arm64!(create; mov x19, x0);
+    create.call(0xc000);
+    create.load(9, 0x80000);
+    arm64!(create;
+        mov x20, sp;
+        mov sp, x19; // the owner's address in the stack pointer
+        add x3, sp, x9;
+        mov sp, x20;
+        str wzr, [x3]
+    );
+    create.address(8, VTABLE);
+    arm64!(create; str x8, [x19]; mov x0, x19);
+    create.epilogue();
+    arm64!(create; ret);
+    input.functions.insert(CREATE, function(create));
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(state.vtable, VTABLE);
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        None
+    );
 }

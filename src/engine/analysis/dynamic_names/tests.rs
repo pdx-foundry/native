@@ -155,7 +155,9 @@ fn family(kind: DeclarationKind, commands: Vec<Authored>, bodies: Vec<Arm64>) ->
             constructors: BTreeMap::new(),
             functions,
             pointers,
+            writable_slots: Default::default(),
             pointer_data: std::sync::OnceLock::new(),
+            constant_pointer_data: std::sync::OnceLock::new(),
             strings: BTreeMap::new(),
             slots: ScopeSlots {
                 create: 0x10,

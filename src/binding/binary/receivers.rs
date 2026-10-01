@@ -242,6 +242,7 @@ pub(super) fn persistent(
         summaries,
         constructor_bodies,
         pointers: pointers.clone(),
+        writable_slots: super::language::writable_slots(bytes, pointers)?,
         readers,
         never_return: super::families::string_functions(symbols)
             .never_return

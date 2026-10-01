@@ -1220,6 +1220,7 @@ fn persistent_fixture() -> FieldInput {
         }],
         summaries: BTreeMap::from([(0xa000, BTreeMap::from([(0, 0xb000)]))]),
         pointers: BTreeMap::new(),
+        writable_slots: Default::default(),
         never_return: vec![],
         readers: BTreeMap::from([(
             0xb000,
@@ -1934,6 +1935,25 @@ fn scoped_destination_follows_called_constructor_code_instead_of_only_its_primar
         Some(&0xd000)
     );
 
+    // With the owner in the stack pointer, an unknown stack offset is not known to miss the owner.
+    let mut lost = input.clone();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor; mov x19, x0; add x0, x0, #0x40; bl extern 0xa000);
+    constructor.load(9, 0x80000);
+    arm64!(constructor;
+        mov x20, sp;
+        mov sp, x19;
+        add x3, sp, x9;
+        mov sp, x20;
+        str xzr, [x3];
+        mov x0, x19
+    );
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    lost.persistent.as_mut().unwrap().constructors[0].code = constructor.bytes();
+    assert!(!derive(lost).scoped_destinations.contains_key(&0x48));
+
     // Changed code leaves the embedded point unresolved; only the primary metadata survives.
     input
         .persistent
@@ -1982,4 +2002,54 @@ fn registry_member_tail_call_keeps_the_direct_call_fallback_for_unsupported_code
     assert_eq!(direct.scoped_destinations.get(&0x40), Some(&0xb000));
     assert_eq!(tail.fields, direct.fields);
     assert_eq!(tail.scoped_destinations, direct.scoped_destinations);
+}
+
+#[test]
+fn a_registry_writable_slot_may_hold_an_escaped_owner() {
+    const SLOT: u64 = 0x88000;
+    for writable in [false, true] {
+        let mut input = persistent_fixture();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == 0x4000)
+            .unwrap()
+            .name = "CVariableValue::Read(CReader&, EScopeType)".into();
+        input.functions[0].code = arm64!(at 0x1000;
+            cmp w2, #7;
+            b.eq extern 0x1010;
+            add x0, x0, #0x38;
+            b extern 0x5000;
+            add x8, x0, #0x48; // embedded operand
+            mov x0, x8;
+            mov w2, #4;
+            b extern 0x4000
+        );
+        let binding = input.persistent.as_mut().unwrap();
+        let mut body = Arm64::at(0xa000);
+        body.address(8, 0xb000);
+        arm64!(body; str x8, [x0]);
+        body.address(8, 0xd000);
+        arm64!(body; str x8, [x0, #8]);
+        body.load(5, 0x80000);
+        arm64!(body; str x0, [x5]); // may register the owner in the slot
+        body.load(3, SLOT);
+        arm64!(body; str xzr, [x3]; ret);
+        binding.constructor_bodies.insert(
+            0xa000,
+            Function {
+                address: 0xa000,
+                name: "CMember::CMember()".into(),
+                code: body.bytes(),
+            },
+        );
+        binding.pointers.insert(SLOT, 0x90000);
+        if writable {
+            binding.writable_slots.insert(SLOT);
+        }
+        assert_eq!(
+            derive(input).scoped_destinations.get(&0x48),
+            (!writable).then_some(&0xd000)
+        );
+    }
 }

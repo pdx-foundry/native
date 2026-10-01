@@ -289,22 +289,33 @@ impl<'a> Machine<'a> {
         Call::Return(value)
     }
 
-    /// Return from a call whose code this machine does not run. It may write any memory
-    /// outside the owner. When the owner is within its reach, it may also write any owner byte,
-    /// keep the owner where later code finds it, and return owner-derived values.
+    /// Return from a call whose code this machine does not run; see
+    /// [`Machine::opaque_call_effects`].
     pub fn opaque_call(&mut self) -> Call {
+        self.opaque_call_effects();
+
+        Call::Return(None)
+    }
+
+    /// Apply the effects of the call being handled when this machine does not run its code. It
+    /// may write any memory outside the owner. When the owner is within its reach, it may also
+    /// write any owner byte, keep the owner where later code finds it, and return owner-derived
+    /// values. A handler that knows the call's result, such as an allocation, returns it with
+    /// [`Machine::return_with_taint`] afterwards.
+    pub fn opaque_call_effects(&mut self) {
         let reaches = self
             .owner
             .as_ref()
             .is_none_or(|owner| owner.reaches_call(self.stack_pointer));
         self.forget_memory_outside_owner();
         if !reaches {
-            return self.return_with_taint(None, ReturnTaint::DISJOINT);
+            self.return_with_taint(None, ReturnTaint::DISJOINT);
+            return;
         }
 
         self.forget_owner();
         self.escape_owner();
-        self.return_with_taint(None, ReturnTaint::REACHING)
+        self.return_with_taint(None, ReturnTaint::REACHING);
     }
 
     /// A call returned. Without a taint from the call's handler, every register that the call
