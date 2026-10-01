@@ -12,6 +12,7 @@ use super::{
     InputError,
     decode::{Instruction, decode_arm64},
     evaluate::ReadOnlyData,
+    receivers::ConstructorImage,
     stop::Unresolved,
 };
 mod composition;
@@ -106,9 +107,8 @@ pub struct DeclarationInput {
     /// The read-only data with the target of every pointer slot. It is built from `pointers` on
     /// first use, so set `pointers` before the first walk; see [`DeclarationInput::pointer_data`].
     pub pointer_data: OnceLock<ReadOnlyData>,
-    /// The read-only data with the target of every constant pointer slot; see
-    /// [`DeclarationInput::constant_pointer_data`].
-    pub constant_pointer_data: OnceLock<ReadOnlyData>,
+    /// The image that constructor runs read; see [`DeclarationInput::constructor_image`].
+    pub constructor_image: OnceLock<ConstructorImage>,
     pub strings: BTreeMap<u64, String>,
     pub slots: ScopeSlots,
     pub parser_slots: ParserSlots,
@@ -125,17 +125,11 @@ impl DeclarationInput {
             .get_or_init(|| self.composition.data.with_words(&self.pointers))
     }
 
-    /// The read-only data with the target of every pointer slot that code cannot replace, for a
-    /// walk that relies on stores disjoint from a fresh owner. A writable slot reads as unknown.
-    pub fn constant_pointer_data(&self) -> &ReadOnlyData {
-        self.constant_pointer_data.get_or_init(|| {
-            let constant = self
-                .pointers
-                .iter()
-                .filter(|(slot, _)| !self.writable_slots.contains(slot))
-                .map(|(&slot, &target)| (slot, target))
-                .collect();
-            self.composition.data.with_words(&constant)
+    /// The image that a factory run entering constructor bodies reads. It is built from
+    /// `pointers` and `writable_slots` on first use.
+    pub fn constructor_image(&self) -> &ConstructorImage {
+        self.constructor_image.get_or_init(|| {
+            ConstructorImage::new(&self.composition.data, &self.pointers, &self.writable_slots)
         })
     }
 }

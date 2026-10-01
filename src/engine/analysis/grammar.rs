@@ -820,7 +820,7 @@ mod tests {
             ]),
             writable_slots: Default::default(),
             pointer_data: std::sync::OnceLock::new(),
-            constant_pointer_data: std::sync::OnceLock::new(),
+            constructor_image: std::sync::OnceLock::new(),
             strings: BTreeMap::new(),
             slots: ScopeSlots {
                 create: 0x10,

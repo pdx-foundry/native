@@ -75,7 +75,7 @@ fn input(
         pointers: BTreeMap::new(),
         writable_slots: Default::default(),
         pointer_data: std::sync::OnceLock::new(),
-        constant_pointer_data: std::sync::OnceLock::new(),
+        constructor_image: std::sync::OnceLock::new(),
         strings: BTreeMap::from([
             (WIN_DOCUMENTATION, "Wins the game\nwin = yes".into()),
             (
@@ -1308,6 +1308,39 @@ fn a_writable_pointer_slot_may_hold_an_escaped_owner() {
         assert_eq!(
             crate::engine::analysis::durations::word(&state.bytes, 72),
             Some(4)
+        );
+    }
+}
+
+#[test]
+fn a_writable_pointer_slot_read_by_the_factory_may_hold_its_escaped_owner() {
+    const SLOT: u64 = 0x88000;
+    for writable in [false, true] {
+        let mut input = initial_state_factory();
+        let mut create = Arm64::at(CREATE);
+        create.prologue();
+        arm64!(create; mov w0, #128);
+        create.call(NEW);
+        arm64!(create; mov x19, x0);
+        create.call(0xc000);
+        create.load(3, SLOT); // the allocator may have registered the owner in the slot
+        arm64!(create; str wzr, [x3]);
+        create.address(8, VTABLE);
+        arm64!(create; str x8, [x19]; mov x0, x19);
+        create.epilogue();
+        arm64!(create; ret);
+        let mut owner = Arm64::at(0xc000);
+        arm64!(owner; mov w8, #7; str w8, [x0, #64]; ret);
+        input.functions.insert(CREATE, function(create));
+        input.functions.insert(0xc000, function(owner));
+        input.pointers.insert(SLOT, 0x90000);
+        if writable {
+            input.writable_slots.insert(SLOT);
+        }
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            (!writable).then_some(7)
         );
     }
 }

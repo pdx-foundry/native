@@ -133,11 +133,13 @@ The baseline's established points and bytes take precedence; an entered body onl
 ### Owner derivation (SDK-658)
 
 The entered path tracks which values may point into the fresh owner (`evaluate/owner.rs`). The
-owner starts at the factory's `operator new` and at the registry owner's first argument. It starts
-escaped: nothing proves that the allocator, or code that ran before a registry constructor, kept
-the owner private. A pointer held in a register before the allocation, or loaded from constant
-image data, is underived; a pointer loaded from memory with unknown content is not. A registry
-constructor's caller is not analysed, so every register at its entry may hold the owner. A value
+owner starts at the factory's `operator new` and at the registry owner's first argument. Tracking
+starts conservative: the owner has escaped, and every register, vector and held byte may hold it.
+A registry constructor's caller is not analysed, so its run keeps this state. The one narrowing is
+an allocator's return (`Machine::return_allocated_owner`): a value held before the allocation is
+underived, but nothing proves that the allocator kept the owner private, so it stays escaped. A
+pointer loaded from constant image data is underived; one loaded from memory with unknown content
+is not. A value
 is owner-derived when it is computed from a derived register, vector or memory byte, or when a
 call that could reach the owner returns it. A store or call is judged by these rules:
 
@@ -171,7 +173,9 @@ entered also forgets caller memory, so a changed stack slot cannot reach a const
 evidence. An allocation is such a call: the allocator may reach an escaped owner, although its
 result is a fresh object. A rebased pointer slot outside `__DATA_CONST` and the read-only sections
 is writable. Earlier code may have replaced its target, so the entered path reads it as unknown.
-A factory or registry run whose stack pointer moved by an unknown amount adds no facts.
+A factory or registry run whose stack pointer moved by an unknown amount adds no facts. Both
+routes take these rules from `receivers.rs`: `ConstructorImage` gives each run its image, and
+`accept_entered_path` applies the stack rule.
 
 Command and registry constructor tail branches use the same join as direct calls, even when the
 callee's code is decoded. Summary points are checked and completed at the constructor's receiver

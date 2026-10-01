@@ -9,6 +9,9 @@
 //! A byte's taint is cleared only by a store of an underived value to its known address. A store
 //! to an unknown address and a forgotten byte keep their taint, since the byte may still hold its
 //! earlier value.
+//!
+//! Tracking assumes nothing: the owner has escaped and every value may derive from it. The one
+//! narrowing is an allocator's return, before which no value can point into the new owner.
 use std::cell::Cell;
 use std::collections::BTreeSet;
 
@@ -87,6 +90,13 @@ impl OwnerTaint {
 
     fn set_vector(&mut self, index: usize, derived: bool) {
         set_bit(&mut self.vectors, index, derived);
+    }
+
+    /// No value that the machine holds now derives from the owner.
+    fn underive_held_values(&mut self) {
+        self.registers = 0;
+        self.vectors = 0;
+        self.memory.clear();
     }
 
     fn contains(&self, address: u64, limit: u64) -> bool {
@@ -169,22 +179,47 @@ fn set_bit(bits: &mut u32, index: usize, set: bool) {
 }
 
 impl<'a> Machine<'a> {
-    /// Track which values may point into the fresh owner at `start..end`, which no value of
-    /// this machine derives from yet. The whole stack is this machine's private frame.
+    /// Track which values may point into the owner at `start..end`. Nothing is known about where
+    /// its address went: the owner has escaped, and every register, vector and byte that this
+    /// machine holds may point into it. The whole stack is this machine's private frame.
     pub fn track_owner(&mut self, start: u64, end: u64) {
         self.owner = Some(Box::new(OwnerTaint {
             start,
             end,
             frame_end: STACK_TOP,
-            registers: 0,
-            vectors: 0,
-            memory: BTreeSet::new(),
-            escaped: false,
+            registers: u32::MAX,
+            vectors: u32::MAX,
+            memory: self.memory.keys().copied().collect(),
+            escaped: true,
             clobbers_outside: false,
             stack_lost: false,
             inputs: Cell::new(false),
             returning: None,
         }));
+    }
+
+    /// Track the owner at `start..end` that the allocator call being handled returns, and return
+    /// it. Every value that this machine holds was computed before the allocation, so none points
+    /// into the owner. The allocator may still have published the owner, and may leave it in any
+    /// register that the call does not preserve.
+    pub fn return_allocated_owner(&mut self, start: u64, end: u64) -> Call {
+        self.track_owner(start, end);
+        if let Some(owner) = &mut self.owner {
+            owner.underive_held_values();
+        }
+
+        self.return_with_taint(Some(start), ReturnTaint::REACHING)
+    }
+
+    /// Track an owner at `start..end` that has not escaped and from which no value derives, as
+    /// an authored test arranges.
+    #[cfg(test)]
+    pub fn track_private_owner(&mut self, start: u64, end: u64) {
+        self.track_owner(start, end);
+        if let Some(owner) = &mut self.owner {
+            owner.underive_held_values();
+            owner.escaped = false;
+        }
     }
 
     /// The tracked owner's `(start, end)`.
@@ -197,15 +232,6 @@ impl<'a> Machine<'a> {
     pub fn derive_from_owner(&mut self, index: usize) {
         if let Some(owner) = &mut self.owner {
             owner.set_register(index, true);
-        }
-    }
-
-    /// Mark every general and vector register as possibly holding an owner-derived value, as at
-    /// the entry of code whose caller is not analysed.
-    pub fn derive_every_register_from_owner(&mut self) {
-        if let Some(owner) = &mut self.owner {
-            owner.registers = u32::MAX;
-            owner.vectors = u32::MAX;
         }
     }
 
@@ -452,7 +478,7 @@ mod tests {
     fn tracked<'a>(code: &'a Code, data: &'a ReadOnlyData) -> (Machine<'a>, u64) {
         let mut machine = Machine::new(code, data);
         let owner = machine.reserve(64);
-        machine.track_owner(owner, owner + 64);
+        machine.track_private_owner(owner, owner + 64);
         machine.set_register(0, owner);
         machine.derive_from_owner(0);
         machine.set_register(9, GLOBAL);
@@ -469,6 +495,89 @@ mod tests {
         assert_eq!(exit, Ok(Exit::Returned));
 
         machine.read(owner + 8, 4)
+    }
+
+    #[test]
+    fn tracking_starts_with_every_value_owner_derived() {
+        let bytes = arm64!(at 0x100;
+            fmov x20, d8;
+            ldr x21, [sp]; // a known byte written before tracking
+            mov w8, #7;
+            str w8, [x0, #8];
+            strb wzr, [x10]; // x10 is unknown and was held before tracking
+            ret
+        );
+        let code = Code::decode(&[(0x100, bytes.as_slice())]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let owner = machine.reserve(64);
+        machine.set_register(0, owner);
+        machine.write(machine.stack_pointer(), 8, GLOBAL);
+        machine.track_owner(owner, owner + 64);
+        assert!(machine.owner_escaped());
+        assert!((0..=30).all(|index| machine.owner_derived(index)));
+
+        let exit = machine.run(0x100, &mut |_, machine| Ok(machine.opaque_call()));
+        assert_eq!(exit, Ok(Exit::Returned));
+        assert!(machine.owner_derived(20));
+        assert!(machine.owner_derived(21));
+        assert_eq!(machine.read(owner + 8, 4), None);
+    }
+
+    /// Run `bytes` at 0x100, whose first call allocates a 64-byte owner, with a known stack word
+    /// written before the call. Returns the machine and the owner.
+    fn allocated<'a>(code: &'a Code, data: &'a ReadOnlyData) -> (Machine<'a>, u64) {
+        let mut machine = Machine::new(code, data);
+        machine.write(machine.stack_pointer(), 8, GLOBAL);
+        let exit = machine.run(0x100, &mut |_, machine| {
+            let owner = machine.reserve(64);
+            Ok(machine.return_allocated_owner(owner, owner + 64))
+        });
+        assert_eq!(exit, Ok(Exit::Returned));
+        let (owner, _) = machine.owner_range().unwrap();
+
+        (machine, owner)
+    }
+
+    #[test]
+    fn an_allocated_owner_derives_only_what_its_allocator_may_return() {
+        let bytes = arm64!(at 0x100;
+            bl extern 0x200;
+            fmov x20, d8;
+            ldr x21, [sp]; // a known byte written before the allocation
+            ret
+        );
+        let code = Code::decode(&[(0x100, bytes.as_slice())]).unwrap();
+        let data = ReadOnlyData::default();
+        let (machine, _) = allocated(&code, &data);
+        assert!(machine.owner_escaped());
+        for index in 0..=30 {
+            assert_eq!(
+                machine.owner_derived(index),
+                index <= 18 || index == 20,
+                "x{index}"
+            );
+        }
+
+        let preexisting = arm64!(at 0x100;
+            bl extern 0x200;
+            mov w8, #7;
+            str w8, [x0, #8];
+            strb wzr, [x19]; // x19 is unknown and was held before the allocation
+            ret
+        );
+        let clobbered = arm64!(at 0x100;
+            bl extern 0x200;
+            mov w8, #7;
+            str w8, [x0, #8];
+            strb wzr, [x9];
+            ret
+        );
+        for (bytes, kept) in [(preexisting, true), (clobbered, false)] {
+            let code = Code::decode(&[(0x100, bytes.as_slice())]).unwrap();
+            let (machine, owner) = allocated(&code, &data);
+            assert_eq!(machine.read(owner + 8, 4), kept.then_some(7));
+        }
     }
 
     #[test]

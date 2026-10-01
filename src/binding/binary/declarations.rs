@@ -85,7 +85,7 @@ pub(in crate::binding) fn read(
         pointers: pointers.clone(),
         writable_slots: super::language::writable_slots(bytes, pointers)?,
         pointer_data: std::sync::OnceLock::new(),
-        constant_pointer_data: std::sync::OnceLock::new(),
+        constructor_image: std::sync::OnceLock::new(),
         strings: strings.clone(),
         slots: ScopeSlots {
             create: recipe.create_slot,

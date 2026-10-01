@@ -1,6 +1,63 @@
-//! Effects shared by bounded constructor-summary consumers.
+//! Effects shared by bounded constructor-summary consumers, and the rules of the runs that enter
+//! constructor bodies.
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, ReturnTaint};
+use super::stop::Unresolved;
 use std::collections::{BTreeMap, BTreeSet};
+
+/// The image that a constructor route reads: its read-only sections with the targets of its
+/// constant pointer slots, and the image targets of its writable slots.
+pub(crate) struct ConstructorImage {
+    constant: ReadOnlyData,
+    writable: BTreeMap<u64, u64>,
+}
+
+impl ConstructorImage {
+    /// The image of `sections` with the rebased `pointers`, of which `writable_slots` lie outside
+    /// the constant sections.
+    pub fn new(
+        sections: &ReadOnlyData,
+        pointers: &BTreeMap<u64, u64>,
+        writable_slots: &BTreeSet<u64>,
+    ) -> Self {
+        let (writable, constant) = pointers
+            .iter()
+            .map(|(&slot, &target)| (slot, target))
+            .partition(|(slot, _)| writable_slots.contains(slot));
+
+        Self {
+            constant: sections.with_words(&constant),
+            writable,
+        }
+    }
+
+    /// A machine for a run that enters constructor bodies. Such a run relies on stores being
+    /// disjoint from the owner, so it does not take a writable slot's image target as its
+    /// value: earlier code may have replaced it, and the slot reads as unknown.
+    pub fn entered<'a>(&'a self, code: &'a Code) -> Machine<'a> {
+        Machine::new(code, &self.constant)
+    }
+
+    /// A machine for a summary-only registry run. It assumes that each writable slot holds its
+    /// image target, in memory that a store to an unknown address may change.
+    pub fn baseline<'a>(&'a self, code: &'a Code) -> Machine<'a> {
+        let mut machine = Machine::new(code, &self.constant);
+        for (&slot, &target) in &self.writable {
+            machine.write(slot, 8, target);
+        }
+
+        machine
+    }
+}
+
+/// Accept a returned path of a run that enters constructor bodies. A path whose stack pointer
+/// moved by an unknown amount adds no facts, since no store is known to stay in its private frame.
+pub(super) fn accept_entered_path(machine: &Machine<'_>) -> Result<(), Unresolved> {
+    if machine.owner_stack_lost() {
+        return Err(Unresolved::new("constructor-stack"));
+    }
+
+    Ok(())
+}
 
 /// Replace the receiver's remaining span with only the constructor's proven vtable points.
 /// The caller establishes ownership and the allocation end; summaries do not retain embedded state.
@@ -75,7 +132,7 @@ impl InitialState {
 /// which never depends on an entered body.
 pub(super) struct Constructors<'a> {
     pub code: &'a Code,
-    pub data: &'a ReadOnlyData,
+    pub image: &'a ConstructorImage,
     /// Each bound constructor's compiler vtable points, by offset from its receiver.
     pub summaries: &'a BTreeMap<u64, BTreeMap<u64, u64>>,
     pub owner: u64,
@@ -119,7 +176,7 @@ impl Constructors<'_> {
             return None;
         }
 
-        let mut machine = caller.fresh_callee(self.code, self.data);
+        let mut machine = caller.fresh_callee(self.code, &self.image.constant);
         if machine.owner_range() != Some((self.owner, self.end)) {
             return None;
         }
@@ -141,9 +198,10 @@ impl Constructors<'_> {
 
         let mut agreed: Option<InitialState> = None;
         for path in paths {
-            if !matches!(path.end, Ok(Exit::Returned)) || path.machine.owner_stack_lost() {
+            if !matches!(path.end, Ok(Exit::Returned)) {
                 return None;
             }
+            accept_entered_path(&path.machine).ok()?;
             let state = InitialState::of(&path.machine, self.owner, self.end);
             agreed = Some(match agreed {
                 Some(agreed) => agreed.join(state),
@@ -235,7 +293,7 @@ mod tests {
         end: u64,
     ) -> Option<InitialState> {
         let mut caller = caller.clone();
-        caller.track_owner(owner, end);
+        caller.track_private_owner(owner, end);
         for index in 0..9 {
             if caller
                 .register(index)
@@ -244,9 +302,13 @@ mod tests {
                 caller.derive_from_owner(index);
             }
         }
+        let image = ConstructorImage {
+            constant: data.clone(),
+            writable: BTreeMap::new(),
+        };
         Constructors {
             code,
-            data,
+            image: &image,
             summaries,
             owner,
             end,
