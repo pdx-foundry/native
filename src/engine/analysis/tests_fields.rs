@@ -1935,23 +1935,39 @@ fn scoped_destination_follows_called_constructor_code_instead_of_only_its_primar
         Some(&0xd000)
     );
 
-    // With the owner in the stack pointer, an unknown stack offset is not known to miss the owner.
+    // An unknown stack pointer may be the owner, so a store relative to it may reach the owner.
     let mut lost = input.clone();
     let mut constructor = Arm64::at(0x9000);
     constructor.prologue();
     arm64!(constructor; mov x19, x0; add x0, x0, #0x40; bl extern 0xa000);
     arm64!(constructor;
         mov x20, sp;
-        mov sp, x19;
-        add x3, sp, x21; // x21 is unknown and holds no owner address
+        mov sp, x21;
+        str xzr, [sp, #0x48];
         mov sp, x20;
-        str xzr, [x3];
         mov x0, x19
     );
     constructor.epilogue();
     arm64!(constructor; ret);
     lost.persistent.as_mut().unwrap().constructors[0].code = constructor.bytes();
     assert!(!derive(lost).scoped_destinations.contains_key(&0x48));
+
+    // An incoming argument may hold the owner, which its caller may have published.
+    let mut aliased = input.clone();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor;
+        mov x19, x0;
+        mov x20, x1;
+        add x0, x0, #0x40;
+        bl extern 0xa000;
+        str xzr, [x20, #0x48];
+        mov x0, x19
+    );
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    aliased.persistent.as_mut().unwrap().constructors[0].code = constructor.bytes();
+    assert!(!derive(aliased).scoped_destinations.contains_key(&0x48));
 
     // Changed code leaves the embedded point unresolved; only the primary metadata survives.
     input

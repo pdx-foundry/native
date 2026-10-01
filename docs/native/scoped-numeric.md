@@ -136,7 +136,8 @@ The entered path tracks which values may point into the fresh owner (`evaluate/o
 owner starts at the factory's `operator new` and at the registry owner's first argument. It starts
 escaped: nothing proves that the allocator, or code that ran before a registry constructor, kept
 the owner private. A pointer held in a register before the allocation, or loaded from constant
-image data, is underived; a pointer loaded from memory with unknown content is not. A value
+image data, is underived; a pointer loaded from memory with unknown content is not. A registry
+constructor's caller is not analysed, so every register at its entry may hold the owner. A value
 is owner-derived when it is computed from a derived register, vector or memory byte, or when a
 call that could reach the owner returns it. A store or call is judged by these rules:
 

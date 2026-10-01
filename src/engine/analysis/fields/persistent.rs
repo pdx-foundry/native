@@ -88,8 +88,9 @@ pub(super) fn discover(
             machine.set_register(0, owner);
             if enter_constructors {
                 machine.track_owner(owner, owner + SPAN);
-                machine.derive_from_owner(0);
-                // Code that ran before the constructor may already have published the owner.
+                // The constructor's caller may already have published the owner, and may pass
+                // it in any argument or preserved register.
+                machine.derive_every_register_from_owner();
                 machine.escape_owner();
             }
             let constructors = Constructors {

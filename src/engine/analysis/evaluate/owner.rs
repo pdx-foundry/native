@@ -193,9 +193,19 @@ impl<'a> Machine<'a> {
     }
 
     /// Mark general register `index` as holding an owner-derived value.
+    #[cfg(test)]
     pub fn derive_from_owner(&mut self, index: usize) {
         if let Some(owner) = &mut self.owner {
             owner.set_register(index, true);
+        }
+    }
+
+    /// Mark every general and vector register as possibly holding an owner-derived value, as at
+    /// the entry of code whose caller is not analysed.
+    pub fn derive_every_register_from_owner(&mut self) {
+        if let Some(owner) = &mut self.owner {
+            owner.registers = u32::MAX;
+            owner.vectors = u32::MAX;
         }
     }
 
