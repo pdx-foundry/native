@@ -14,6 +14,10 @@ def decode(read_unsigned, read_string, address, decoder):
         return {'String': read_string(address)}
     if decoder == 'Integer':
         return {'Integer': signed_integer(read_unsigned(address, 4), 32)}
+    if decoder == 'Float':
+        return {'Float': dict(bits=read_unsigned(address, 4))}
+    if decoder == 'Integer16':
+        return {'Integer16': dict(bits=read_unsigned(address, 2))}
     if isinstance(decoder, dict) and 'FixedPoint' in decoder:
         raw = signed_integer(read_unsigned(address, 8), 64)
         return {'FixedPoint': dict(raw=raw, scale=decoder['FixedPoint']['scale'])}

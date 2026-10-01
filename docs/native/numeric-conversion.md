@@ -78,8 +78,9 @@ field behavior must not become a shared-reader clamp.
 Expected results are in `tests/expected/numeric-m45/`. The live file includes the exact build and
 only inputs, stored values, final values and diagnostics. Raw first-run observations and the
 population report are retained in `.local/sdk-644/`; the initial live run's four debugger traces
-remain in its retained temporary directories named in that run's output. Static fixture binding
-still lacks decoders for float and the other integer widths; no live proof is claimed for them.
+remain in its retained temporary directories named in that run's output. The M451-hotfix float
+and short fixture coverage is described below; no live proof is claimed for the six widths
+without a bound field in the exposed population.
 
 ## First-release numeric forms (SDK-544)
 
@@ -114,3 +115,49 @@ cargo run --release --example numeric-population > .local/sdk-644/numeric-popula
 
 Exact-build commands use `STELLARIS_PATH`. The population counts and failure shapes are in the
 [discovery index](discovery.md#direct-numeric-conversion-sdk-644).
+
+## Float and short fixture storage on M451-hotfix (SDK-656)
+
+The exact build is `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`.
+`FixtureValue::Float { bits }` preserves the IEEE binary32 pattern; callers use `f32::from_bits`
+to obtain its value. `FixtureValue::Integer16 { bits }` preserves the short reader's stored
+16 bits. No signedness is inferred from these bits, and `Eq` remains available on fixture values
+and their containing types. Human-readable numeric interpretations occur only in the live test
+report. Static signedness, accepted ranges and conversion boundaries belong to SDK-655.
+
+The three float fields are `common/star_classes` `icon_scale` and `common/storm_types`
+`cosmic_storm_galaxy_lightning_time` and `cosmic_storm_galaxy_max_opacity`. The seven short fields
+are `common/astral_actions` `unlock_threshold` and `usages`, and `common/sector_types` `max_systems`,
+`min_systems`, `min_colonies`, `max_colonies` and `max_jumps`. Each field has a boundary, a fractional
+and a malformed sequence in `tests/live/numeric.rs`. Every observation requires the joined owner,
+source occurrence, parser return, storage and diagnostic window. The test checks static storage
+representation and width, while leaving unresolved short signedness unresolved.
+
+The matrix has 110 cases and 124 member-return stored values: the existing 80 cases and 84
+values, nine float cases and 12 values, and 21 short cases and 28 values. All 80 existing rows
+are unchanged on M451-hotfix; only their enclosing build stamp changes. The 30 added rows include
+test-only decimal text or signed/unsigned readings. Decimal text avoids a binary64 JSON
+round-trip discrepancy in the largest finite float; public values still contain only bits.
+No static/live representation or width conflict occurs. All new final values equal their last
+member-return value.
+
+| Input sequence | Float bits and decimal reading, all three fields | Short bits, all seven fields |
+| --- | --- | --- |
+| `3.4028234663852886e38` (float boundary) | `0x7f7fffff`, `3.4028234663852886e38` | Not selected |
+| `32767` (short boundary) | Not selected | `0x7fff` (both readings 32767) |
+| `1.23456789` | `0x3f9e0652`, `1.2345678806304932` | `0x0001` (both readings 1) |
+| `7`, then `not_a_number` | `0x40e00000`, then the same bits (7) | `0x0007`, then `0x0000` |
+
+Every malformed sequence emits one `Malformed token` diagnostic from `reader-malformed-report`.
+In these finite observations the float retains 7 while the short stores zero after the malformed
+occurrence. The short result differs from the direct int's retained 7; it must not become a
+shared integer conversion rule. These cases do not establish accepted ranges, general overflow
+or signedness.
+
+The other six shared integer readers have no live cases. Each is unavailable within the bounded
+M451-hotfix population: 0 of 1,564 root fields and 0 of 38 exposed nested fields. This applies
+separately to `signed char`, `unsigned char`, `unsigned short`, `unsigned int`, `long long` and
+`unsigned long long`. The search cannot reach 982 unresolved member descriptions and does not
+establish universal absence. The [discovery population](discovery.md#float-and-short-fixture-storage-sdk-656)
+records the counts and reproducible commands. Parent SDK-544 criterion 4 remains unmet for these
+six readers until Jackson amends it. No amendment is made by this ticket.

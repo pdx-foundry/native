@@ -317,6 +317,8 @@ pub(crate) struct FixtureNestedField {
 pub(crate) enum FixtureStorageDecoder {
     String,
     Integer,
+    Float,
+    Integer16,
     FixedPoint {
         scale: u64,
     },
@@ -349,7 +351,8 @@ impl FixtureStorageDecoder {
     pub(crate) fn reader_kind(self) -> crate::ReaderKind {
         match self {
             Self::String => crate::ReaderKind::String,
-            Self::Integer => crate::ReaderKind::Integer,
+            Self::Integer | Self::Integer16 => crate::ReaderKind::Integer,
+            Self::Float => crate::ReaderKind::Float,
             Self::FixedPoint { .. } => crate::ReaderKind::FixedPoint,
             Self::ScopedNumeric { .. } => crate::ReaderKind::ScopedNumeric,
         }
@@ -358,7 +361,9 @@ impl FixtureStorageDecoder {
     pub(crate) fn accepts(self, value: &crate::FixtureValue) -> bool {
         match (self, value) {
             (Self::String, crate::FixtureValue::String(_))
-            | (Self::Integer, crate::FixtureValue::Integer(_)) => true,
+            | (Self::Integer, crate::FixtureValue::Integer(_))
+            | (Self::Float, crate::FixtureValue::Float { .. })
+            | (Self::Integer16, crate::FixtureValue::Integer16 { .. }) => true,
             (Self::FixedPoint { scale }, crate::FixtureValue::FixedPoint { scale: actual, .. }) => {
                 scale > 0 && scale == *actual
             }

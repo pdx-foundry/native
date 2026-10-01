@@ -373,6 +373,36 @@ mod tests {
     }
 
     #[test]
+    fn float_and_short_storage_require_a_tail_reader_and_owner_destination() {
+        for (callee, decoder) in [
+            ("CReader::Read(float&)", FixtureStorageDecoder::Float),
+            ("CReader::Read(short&)", FixtureStorageDecoder::Integer16),
+        ] {
+            let mut positive = input(arm64!(at 0x1000;
+                cmp w2, #7; b.ne >rejected;
+                mov x8, x0; mov x0, x1; add x1, x8, #56;
+                b extern 0x3000;
+                rejected:; ret
+            ));
+            positive.symbols[1].name = callee.into();
+            let (storage, joined) = member_storage(&positive, 7).unwrap();
+            assert_eq!(storage.offset, 56);
+            assert_eq!(storage.decoder, decoder);
+            assert_eq!(joined, callee);
+            assert!(member_storage(&positive, 8).is_err());
+            for code in [
+                arm64!(at 0x1000; add x1, x0, #56; b extern 0x3000),
+                arm64!(at 0x1000; mov x0, x1; mov x1, #56; b extern 0x3000),
+                arm64!(at 0x1000; mov x8, x0; mov x0, x1; add x1, x8, #56; bl extern 0x3000; ret),
+            ] {
+                let mut negative = input(code);
+                negative.symbols[1].name = callee.into();
+                assert!(member_storage(&negative, 7).is_err());
+            }
+        }
+    }
+
+    #[test]
     fn storage_refuses_unknown_calls_wrong_receivers_and_non_tail_readers() {
         let controls = [
             arm64!(at 0x1000; bl extern 0x4000; b extern 0x3000),

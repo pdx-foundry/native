@@ -109,81 +109,41 @@ impl VerifiedAnalysis<'_> {
         load_entry: u64,
         record: &crate::engine::analysis::discovery::CandidateRecord,
     ) -> Result<Option<(u64, u64)>, AnalysisError> {
-        let expected_reader = format!(
-            "TSingleObjectGameDatabase<{}, {}, false>::LoadFromReader(CReader&, bool)",
-            record.database, record.owner_candidate
-        );
         let code = binary::code_range(&self.executable, load_entry, 256)?;
-        let rows = decode_arm64(&code, load_entry).map_err(|_| AnalysisError::InvalidRange)?;
-        let matches: Vec<_> =
-            rows.windows(3)
-                .filter_map(|window| {
-                    let [call, after, cleanup] = window else {
-                        return None;
-                    };
-                    let target = call
-                        .operands
-                        .strip_prefix("#0x")
-                        .and_then(|hex| u64::from_str_radix(hex, 16).ok())?;
-                    (call.operation == "bl"
-                        && after.operation == "mov"
-                        && after.operands == "x0,sp"
-                        && cleanup.operation == "bl"
-                        && self.catalog.symbols.iter().any(|symbol| {
-                            symbol.address == target && symbol.name == expected_reader
-                        }))
-                    .then_some((target, after.address))
-                })
-                .collect();
-
-        Ok(matches.first().copied().filter(|_| matches.len() == 1))
+        fixture_reader_boundary(&code, load_entry, &record.loader, &self.catalog.symbols)
     }
 
-    /// The one `owner(int, CString const&)` constructor that the file reader calls directly.
-    /// The scan runs from the reader's entry to the next symbol, which must be at most 16 KiB
-    /// away.
+    /// Join the owner's constructor directly, or through the matching template's new-entry reader.
     fn reader_constructor_call(
         &self,
         reader_entry: u64,
         owner: &str,
     ) -> Result<Option<u64>, AnalysisError> {
-        let constructor_name = format!("{owner}::{owner}(int, CString const&)");
-        let constructors: Vec<_> = self
-            .catalog
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == constructor_name)
-            .map(|symbol| symbol.address)
-            .collect();
-        let Some(next_symbol) = self
-            .catalog
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.address > reader_entry)
-            .map(|symbol| symbol.address)
-            .min()
-        else {
-            return Ok(None);
-        };
-        let Some(length) = next_symbol.checked_sub(reader_entry) else {
-            return Ok(None);
-        };
-        if length == 0 || length > 16 * 1024 {
-            return Ok(None);
+        let mut entry = reader_entry;
+        for depth in 0..2 {
+            let Some(end) = self
+                .catalog
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.address > entry)
+                .map(|symbol| symbol.address)
+                .min()
+            else {
+                return Ok(None);
+            };
+            let length = end - entry;
+            if length == 0 || length > 16 * 1024 {
+                return Ok(None);
+            }
+            let bytes = binary::code_range(&self.executable, entry, length)?;
+            let rows = decode_arm64(&bytes, entry).map_err(|_| AnalysisError::InvalidRange)?;
+            match fixture_constructor_route(&rows, entry, owner, &self.catalog.symbols) {
+                Some(FixtureConstructorRoute::Constructor(address)) => return Ok(Some(address)),
+                Some(FixtureConstructorRoute::NewEntry(address)) if depth == 0 => entry = address,
+                _ => return Ok(None),
+            }
         }
-
-        let reader_code = binary::code_range(&self.executable, reader_entry, length)?;
-        let reader_rows =
-            decode_arm64(&reader_code, reader_entry).map_err(|_| AnalysisError::InvalidRange)?;
-        let called: std::collections::BTreeSet<_> = reader_rows
-            .iter()
-            .filter(|row| row.operation == "bl")
-            .filter_map(|row| row.operands.strip_prefix("#0x"))
-            .filter_map(|hex| u64::from_str_radix(hex, 16).ok())
-            .filter(|address| constructors.contains(address))
-            .collect();
-
-        Ok(called.first().copied().filter(|_| called.len() == 1))
+        Ok(None)
     }
 
     /// Derive the loaded arrays from the executable readers before authorizing live access.
@@ -589,6 +549,92 @@ impl BoundAnalysis {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FixtureConstructorRoute {
+    Constructor(u64),
+    NewEntry(u64),
+}
+
+/// Select one proven direct constructor or one matching new-entry reader, without chasing other calls.
+fn fixture_constructor_route(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    entry: u64,
+    owner: &str,
+    symbols: &[Symbol],
+) -> Option<FixtureConstructorRoute> {
+    let constructor = format!("{owner}::{owner}(int, CString const&)");
+    let helper_names: std::collections::BTreeSet<_> = symbols
+        .iter()
+        .filter(|symbol| symbol.address == entry)
+        .filter_map(|symbol| symbol.name.strip_suffix("::LoadFromReader(CReader&, bool)"))
+        .map(|database| format!("{database}::ReadNewEntry(CReader&, CString const&)"))
+        .collect();
+    let mut routes = BTreeMap::new();
+    for row in rows.iter().filter(|row| row.operation == "bl") {
+        let Some(target) = row
+            .operands
+            .strip_prefix("#0x")
+            .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        else {
+            continue;
+        };
+        for symbol in symbols.iter().filter(|symbol| symbol.address == target) {
+            if symbol.name == constructor {
+                routes.insert(target, FixtureConstructorRoute::Constructor(target));
+            } else if helper_names.contains(&symbol.name) {
+                routes.insert(target, FixtureConstructorRoute::NewEntry(target));
+            }
+        }
+    }
+    let mut routes = routes.values();
+    match (routes.next(), routes.next()) {
+        (Some(route), None) => Some(*route),
+        _ => None,
+    }
+}
+
+/// Join the loader's exact template specialization to its reader and cleanup boundary.
+fn fixture_reader_boundary(
+    code: &[u8],
+    load_entry: u64,
+    loader: &str,
+    symbols: &[Symbol],
+) -> Result<Option<(u64, u64)>, AnalysisError> {
+    let Some(database) = loader.strip_suffix("::LoadFile(char const*, bool)") else {
+        return Ok(None);
+    };
+    let expected_reader = format!("{database}::LoadFromReader(CReader&, bool)");
+    let rows = decode_arm64(code, load_entry).map_err(|_| AnalysisError::InvalidRange)?;
+    let matches: Vec<_> = rows
+        .windows(3)
+        .filter_map(|window| {
+            let [call, after, cleanup] = window else {
+                return None;
+            };
+            let target = call
+                .operands
+                .strip_prefix("#0x")
+                .and_then(|hex| u64::from_str_radix(hex, 16).ok())?;
+            let cleanup_target = cleanup
+                .operands
+                .strip_prefix("#0x")
+                .and_then(|hex| u64::from_str_radix(hex, 16).ok())?;
+            (call.operation == "bl"
+                && after.operation == "mov"
+                && after.operands == "x0,sp"
+                && cleanup.operation == "bl"
+                && symbols
+                    .iter()
+                    .any(|symbol| symbol.address == target && symbol.name == expected_reader)
+                && symbols.iter().any(|symbol| {
+                    symbol.address == cleanup_target && symbol.name == "CReader::~CReader()"
+                }))
+            .then_some((target, after.address))
+        })
+        .collect();
+    Ok(matches.first().copied().filter(|_| matches.len() == 1))
+}
+
 /// Bind one unconditional direct read of the root reader into owner storage.
 fn fixture_storage_binding(
     field: &crate::engine::analysis::fields::RootField,
@@ -606,20 +652,17 @@ fn fixture_storage_binding(
         return None;
     };
     if field.paths.is_empty()
-        || !field
-            .paths
-            .iter()
-            .all(|&path| paths[path].conditions.is_empty())
+        || !field.paths.iter().all(|&path| {
+            paths[path].conditions.is_empty() && paths[path].domain == [field.token, field.token]
+        })
         || arguments.get("x0") != Some(&Value::Reader(0))
-        || arguments.get("x8") != Some(&Value::Constant(field.token))
     {
         return None;
     }
     let Some(Value::Owner(offset)) = arguments.get("x1") else {
         return None;
     };
-    // These representations were checked in the exact M45-release reader and token bodies.
-    // This binding is used only after the installation's catalogue identity is verified.
+    // Reader identity selects storage only after the exact-build installation is verified.
     let decoder = fixture_decoder(callee)?;
     Some(FixtureStorageBinding {
         offset: u64::try_from(*offset).ok()?,
@@ -725,6 +768,8 @@ fn fixture_decoder(callee: &str) -> Option<crate::protocol::observation::Fixture
     Some(match callee {
         "CReader::Read(CString&, bool)" => FixtureStorageDecoder::String,
         "CReader::Read(int&)" => FixtureStorageDecoder::Integer,
+        "CReader::Read(float&)" => FixtureStorageDecoder::Float,
+        "CReader::Read(short&)" => FixtureStorageDecoder::Integer16,
         "CReader::Read(CFixedPoint&)" => FixtureStorageDecoder::FixedPoint { scale: 100_000 },
         "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
             FixtureStorageDecoder::FixedPoint { scale: 32_768 }
