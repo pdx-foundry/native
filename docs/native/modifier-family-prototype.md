@@ -8,7 +8,8 @@ from [Validate modifier grammars and generated modifier families](https://linear
 complete family extraction or a complete shared modifier grammar.** No production API changed.
 
 **2026-09-24:** SDK-498 is closed. SDK-607 owns the remaining shared modifier-block grammar,
-and SDK-544 owns numeric conversion limits. SDK-486 owns the archive of the untracked
+and [numeric conversion](numeric-conversion.md) records the shared numeric facts and remaining
+conversion limits. SDK-486 owns the archive of the untracked
 `.local/sdk-498/` prototype.
 
 **Implemented 2026-09-23:** `Native::modifier_families` (SDK-540) recovers these templates and three
@@ -122,7 +123,7 @@ parity test belongs in the implementation. Do not add capture/replay APIs or evi
 | Other generation, including district maximums and conditional resource/job families | Precise method limit: caller/helper/condition recovery is absent; 44,334 loaded names unexplained | SDK-540; full loaded inventory SDK-564 |
 | Graphical fixed fields | Release disassembly and literal token constructors identify `icon`, `custom_tooltip` → `CString`; `icon_frame` → integer; `show_only_custom_tooltip`, `important`, `hide_from_country_list` → boolean | Shared grammar, SDK-607 |
 | Inherited special fields | `CPdxModifier::TryReadMember` handles token 27 `name` through a polymorphic name reader, and token 240 `data` through an integer reader | SDK-607 must qualify the name-reader variants |
-| Numeric modifier entries | Release code searches the declaration table, reads `CFixedPoint`, stores the entry, then checks category overlap | Conversion limits remain with SDK-544; grammar/duplicate qualification with SDK-607 |
+| Numeric modifier entries | Release code searches the declaration table, reads `CFixedPoint`, stores the entry, then checks category overlap | [Numeric conversion](numeric-conversion.md) owns the entry-reader proof and remaining conversion limits; grammar/duplicate qualification remains with SDK-607 |
 | Static/scripted modifier references | `CModifier::TryReadMember` tries loaded static modifiers, with immediate-add/deferred paths; `CScriptedModifier::PostReadInit` calls `AddDynamicModifier` | SDK-607 must test valid, absent, forward, and colliding keys through deferred completion |
 | Repeated graphical blocks | Historical M45-observe agenda probe: numeric entries reset; omitted tooltip/flag metadata persists | Fresh release and second-use transfer remain SDK-607 |
 | Post-read graphical validation | Release `InitPostRead` checks a nonempty icon: `GFX_` prefix bypasses the file check; other strings call `VFSExists` and may log a missing-icon diagnostic | SDK-607; sprite/localisation asset inventories are project/external inputs |

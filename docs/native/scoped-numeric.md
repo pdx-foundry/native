@@ -26,7 +26,8 @@ rules for stored representations, not evaluated results or guarantees of valid n
 
 The concrete literal uses the ordinary token conversion. Integer storage is signed 32-bit,
 scale 1; fixed storage is signed 64-bit, scale 100000. Numeric lexical boundaries, trailing
-text, accepted range, overflow, and library conversion remain unresolved as in SDK-644.
+text, overflow, and library conversion remain incomplete. Established literal ranges are
+reported in [shared literal ranges](#shared-literal-ranges-sdk-655).
 Script-value arithmetic, parameters, and evaluated values are outside this method. Duration
 units are in [duration keys](durations.md). A destination with incomplete constructor agreement
 reports `UnresolvedStorage` instead of guessing from its field name.
@@ -159,13 +160,10 @@ must remain potentially owner-derived. Until that shared proof exists, external 
 string-copy stores reject the constructor additions even when their real destinations may be
 separate allocations.
 
-The population covers 164 registries and 2,170 commands, with no failed question. Registry
-operands are **0 complete, 7 partial, 0 failed** (2 integer and 5 fixed point). Command operands
-are **0 complete, 133 partial, 169 failed**: 98 integer, 35 fixed point and 169 unresolved. All
-302 destinations remain enumerated. The main comparison finds no decreased answer: all command
-readers and six registry readers are identical; `pop_decline_rate` gains established storage.
-Reports and the field-by-field comparison are in `.local/sdk-654/floor/`;
-[discovery](discovery.md#constructor-state-sdk-654) records the three-way counts.
+The [current population](discovery.md#numeric-boundary-evidence-sdk-655) records storage,
+known ranges and failure shapes. The main comparison finds no decreased storage answer:
+command storage and six registry storage results are unchanged; `pop_decline_rate` gains established
+storage. Reports and the field-by-field comparison are in `.local/sdk-654/floor/`.
 
 A shared obstacle is `CToken::CToken(int, CString const&)` at `0x1025bc848`: unmodeled lexer
 and string calls leave the copied length or buffer unknown, and `strb` at `0x1025bc930` may write
@@ -340,3 +338,17 @@ scope with the same results where the input is the same.
   effect.
 - A plain country flag has count -1. A timed flag whose operand evaluates to zero has count 0 on
   day zero.
+
+## Shared literal ranges (SDK-655)
+
+Scoped numeric attachment copies `Reader.numeric` from the shared token-reader facts only
+when constructor evidence establishes the concrete literal storage. Those literals inherit the
+int or direct fixed-point range in [numeric conversion](numeric-conversion.md#faithful-storage-and-endpoint-requirements).
+Destinations with unresolved storage retain `Reader.numeric: Unresolved` and have no range.
+The [current population](discovery.md#numeric-boundary-evidence-sdk-655) records the known-range
+counts separately from overall answer completeness.
+
+The live matrix has 88 cases, including twelve boundary additions to the earlier 76 cases.
+`overclock_cooldown` and `cycle_length_in_days` each cover the inward neighbor, endpoint and
+outward neighbor of both limits. The live storage check also requires the inherited range.
+Outside-limit wrap remains a finite observation; the scoped literal conversion gap stays.

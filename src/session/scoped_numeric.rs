@@ -432,11 +432,18 @@ mod tests {
     #[test]
     fn attached_literal_is_conditional_and_preserves_its_shared_identity() {
         let mut reader = reader();
+        let conversion = GrammarProperty::Partial(Some(NumericConversion {
+            accepted_range: GrammarProperty::Known(Box::new(crate::NumericRange {
+                minimum: GrammarProperty::Known(crate::NumericBound::Signed(-2147483648)),
+                maximum: GrammarProperty::Known(crate::NumericBound::Signed(2147483647)),
+            })),
+            ..NumericConversion::default()
+        }));
         let numeric = NumericFacts {
             token_readers: [(
                 "CToken::ReadValue(int&) const".into(),
                 NumericReader {
-                    conversion: GrammarProperty::Partial(Some(NumericConversion::default())),
+                    conversion: conversion.clone(),
                     gaps: vec![Unresolved::new("numeric-overflow")],
                 },
             )]
@@ -458,6 +465,7 @@ mod tests {
             &mut gaps,
         );
         assert_eq!(reader.id, identity);
+        assert_eq!(reader.numeric, conversion);
         let GrammarProperty::Known(Some(operand)) = reader.scoped_operand else {
             panic!("missing operand");
         };

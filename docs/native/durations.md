@@ -269,8 +269,8 @@ an event or trigger. The trait case reads in leader scope. No new runtime meanin
   dates outside the country observation. The [SDK-650 live run](ready-world.md) closes the country
   expiry gap on 4.5.1 for its five cases; it does not establish relation or other owner frequencies.
 - Duration-list completeness still follows unknown child dispatch, reader joins and nested blocks.
-  Accepted ranges belong to SDK-655; live numeric widths beyond the existing decoders belong to
-  SDK-656. These limits do not amend the parent criterion.
+  Accepted ranges and the live numeric widths are on [numeric conversion](numeric-conversion.md).
+  These limits do not amend the parent criterion.
 
 ## Pitfalls
 

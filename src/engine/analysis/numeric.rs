@@ -6,12 +6,15 @@ mod modifier;
 pub(crate) use modifier::ModifierInput;
 pub use modifier::ModifierNumericEntry;
 
+/// Exact binary32 extrema do not fit the public bound variants.
+pub(crate) const FLOAT_BOUND_REPRESENTATION_GAP: &str = "numeric-float-bound-representation";
+
 use super::decode::Instruction;
 use super::references::shapes::{Bindings, Shape, canonical};
 use super::stop::Unresolved;
 use crate::{
-    GrammarProperty, NumericConversion, NumericLiteralSyntax, NumericRepresentation,
-    NumericSignedness,
+    GrammarProperty, NumericBound, NumericConversion, NumericLiteralSyntax, NumericRange,
+    NumericRepresentation, NumericSignedness,
 };
 
 /// Numeric facts keyed by the same callee that establishes the public reader identity.
@@ -89,14 +92,10 @@ fn analyze_token(input: &TokenInput) -> NumericReader {
         return unresolved("numeric-token-shape");
     };
 
+    let gaps = conversion_gaps(&conversion);
     NumericReader {
         conversion: GrammarProperty::Partial(Some(conversion)),
-        gaps: vec![
-            Unresolved::new("numeric-overflow"),
-            Unresolved::new("numeric-lexical-boundary"),
-            Unresolved::new("numeric-trailing-text"),
-            Unresolved::new("numeric-external-library-conversion"),
-        ],
+        gaps,
     }
 }
 
@@ -120,12 +119,7 @@ fn analyze_reader(input: &ReaderInput) -> NumericReader {
     let Some(conversion) = conversion else {
         return unresolved("numeric-token-shape");
     };
-    let mut gaps = vec![
-        Unresolved::new("numeric-overflow"),
-        Unresolved::new("numeric-lexical-boundary"),
-        Unresolved::new("numeric-trailing-text"),
-        Unresolved::new("numeric-external-library-conversion"),
-    ];
+    let mut gaps = conversion_gaps(&conversion);
     if let Some(reason) = missing_path {
         gaps.push(Unresolved::new(reason));
     }
@@ -136,6 +130,21 @@ fn analyze_reader(input: &ReaderInput) -> NumericReader {
         conversion: GrammarProperty::Partial(Some(conversion)),
         gaps,
     }
+}
+
+fn conversion_gaps(conversion: &NumericConversion) -> Vec<Unresolved> {
+    let mut gaps = vec![
+        Unresolved::new("numeric-overflow"),
+        Unresolved::new("numeric-lexical-boundary"),
+        Unresolved::new("numeric-trailing-text"),
+        Unresolved::new("numeric-external-library-conversion"),
+    ];
+    if conversion.representation == GrammarProperty::Known(NumericRepresentation::BinaryFloat)
+        && conversion.width_bits == GrammarProperty::Known(32)
+    {
+        gaps.push(Unresolved::new(FLOAT_BOUND_REPRESENTATION_GAP));
+    }
+    gaps
 }
 
 /// Raw mode transfers an already-scaled integer. Its scanner syntax contributes forms, but its
@@ -187,6 +196,7 @@ fn incomplete_path(mut conversion: NumericConversion) -> NumericConversion {
     conversion.width_bits = partial(conversion.width_bits);
     conversion.signedness = partial(conversion.signedness);
     conversion.scale = partial(conversion.scale);
+    conversion.accepted_range = GrammarProperty::Unresolved;
     conversion.clamp = GrammarProperty::Unresolved;
     conversion
 }
@@ -355,18 +365,44 @@ impl Form {
                 )
             }
         };
+        // These complete shapes have agreeing exact-platform scanner and live boundary
+        // controls (SDK-655). Other widths and scales must not inherit their ranges.
+        let accepted_range = match self {
+            Self::Scan if binding.get("format")?.as_str() == "\"%i\"" => {
+                Known(Box::new(NumericRange {
+                    minimum: Known(NumericBound::Signed(-2147483648)),
+                    maximum: Known(NumericBound::Signed(2147483647)),
+                }))
+            }
+            Self::Decimal if scale == Known(Some(100000)) => scaled_range(100000),
+            Self::Binary if scale == Known(Some(32768)) => scaled_range(32768),
+            _ => Unresolved,
+        };
         Some(NumericConversion {
             representation: Known(representation),
             width_bits: Known(width),
             signedness,
             scale,
             literal_syntax: GrammarProperty::Partial(literal_syntax),
+            accepted_range,
             // Every matched path has no explicit bound comparison/select on the converted
             // value. Scanner overflow and fcvtzs behavior are separate unresolved properties.
             clamp: Known(None),
-            ..NumericConversion::default()
         })
     }
+}
+
+fn scaled_range(denominator: u64) -> GrammarProperty<Box<NumericRange>> {
+    GrammarProperty::Known(Box::new(NumericRange {
+        minimum: GrammarProperty::Known(NumericBound::Rational {
+            numerator: i64::MIN,
+            denominator,
+        }),
+        maximum: GrammarProperty::Known(NumericBound::Rational {
+            numerator: i64::MAX,
+            denominator,
+        }),
+    }))
 }
 
 fn number(binding: &Bindings, key: &str) -> Option<u64> {

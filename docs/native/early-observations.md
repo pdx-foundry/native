@@ -209,19 +209,17 @@ reader stores 64 bits and shifts the whole part by 15, with fractional conversio
 The direct-call trace finds 11 calls in `SCameraParams`, `CCountry`, `CFleetIntel`,
 `SProjectRequirements`, `CFleet` and `CShipGrowthStage::CSerializer`. None is a numeric root field
 in the 164-registry scan. `SProjectRequirements` is a nested serializer; `common/special_projects`
-is not a discovered registry. The current fixture API accepts root fields on a verified registry
-owner, so it cannot mount and join that candidate to the required storage window.
+is not a discovered registry. The original root-only fixture route cannot mount and join that
+candidate. The nested fixture route below supplies the required storage window.
 
 The trace and token-reader disassembly are retained in `.local/sdk-643/template-callers.txt` and
 `.local/sdk-643/template-token-reader.txt`, including both build hashes. Static decoding alone
-does not satisfy the template live criterion. With maintainer approval on 2026-09-28, that
-criterion moved to [SDK-648](https://linear.app/unnamed-system/issue/SDK-648/observe-template-fixed-point-storage-through-a-nested-fixture-owner),
-a sibling of SDK-643 under SDK-544. SDK-643 now covers the verified direct `int&` and
-`CFixedPoint&` observations and can close when PR #105 merges. SDK-544 keeps the template proof
-open through SDK-648, which must establish a fixture loader plus nested-owner/source joins for
-an actual template-reader caller before adding boundary, fractional and malformed live cases. A world-object reader is
-outside this initial-load method. Duration expiry and scoped numeric evaluation remain with
-SDK-544's other children.
+does not satisfy the template live criterion. SDK-643 supplies the direct `int&` and `CFixedPoint&`
+observations. SDK-648 supplies the nested template-reader fixture loader, owner/source joins and
+boundary, fractional and malformed cases described below. [Numeric conversion](numeric-conversion.md)
+records the current conversion observations and remaining conversion limits. A world-object reader
+is outside this initial-load method; [duration keys](durations.md) owns duration expiry and
+[scoped numeric](scoped-numeric.md) owns scoped operand storage and world evaluation.
 
 ## Nested template numeric storage (SDK-648, M45-release)
 

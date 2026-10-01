@@ -128,7 +128,26 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Rational": {
+              "numerator": -9223372036854775808,
+              "denominator": 100000
+             }
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Rational": {
+              "numerator": 9223372036854775807,
+              "denominator": 100000
+             }
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -171,7 +190,26 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Rational": {
+          "numerator": -9223372036854775808,
+          "denominator": 100000
+         }
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Rational": {
+          "numerator": 9223372036854775807,
+          "denominator": 100000
+         }
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -413,7 +451,20 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Signed": -2147483648
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Signed": 2147483647
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -455,7 +506,20 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Signed": -2147483648
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Signed": 2147483647
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -817,7 +881,26 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Rational": {
+              "numerator": -9223372036854775808,
+              "denominator": 100000
+             }
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Rational": {
+              "numerator": 9223372036854775807,
+              "denominator": 100000
+             }
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -860,7 +943,26 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Rational": {
+          "numerator": -9223372036854775808,
+          "denominator": 100000
+         }
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Rational": {
+          "numerator": 9223372036854775807,
+          "denominator": 100000
+         }
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -912,7 +1014,26 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Rational": {
+              "numerator": -9223372036854775808,
+              "denominator": 100000
+             }
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Rational": {
+              "numerator": 9223372036854775807,
+              "denominator": 100000
+             }
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -955,7 +1076,26 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Rational": {
+          "numerator": -9223372036854775808,
+          "denominator": 100000
+         }
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Rational": {
+          "numerator": 9223372036854775807,
+          "denominator": 100000
+         }
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -1118,7 +1258,26 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Rational": {
+              "numerator": -9223372036854775808,
+              "denominator": 100000
+             }
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Rational": {
+              "numerator": 9223372036854775807,
+              "denominator": 100000
+             }
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -1161,7 +1320,26 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Rational": {
+          "numerator": -9223372036854775808,
+          "denominator": 100000
+         }
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Rational": {
+          "numerator": 9223372036854775807,
+          "denominator": 100000
+         }
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -1213,7 +1391,26 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Rational": {
+              "numerator": -9223372036854775808,
+              "denominator": 100000
+             }
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Rational": {
+              "numerator": 9223372036854775807,
+              "denominator": 100000
+             }
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -1256,7 +1453,26 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Rational": {
+          "numerator": -9223372036854775808,
+          "denominator": 100000
+         }
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Rational": {
+          "numerator": 9223372036854775807,
+          "denominator": 100000
+         }
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -1824,7 +2040,20 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Signed": -2147483648
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Signed": 2147483647
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -1866,7 +2095,20 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Signed": -2147483648
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Signed": 2147483647
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -1917,7 +2159,20 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Signed": -2147483648
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Signed": 2147483647
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -1959,7 +2214,20 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Signed": -2147483648
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Signed": 2147483647
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -2721,7 +2989,20 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Signed": -2147483648
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Signed": 2147483647
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -2763,7 +3044,20 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Signed": -2147483648
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Signed": 2147483647
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -2815,7 +3109,26 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Rational": {
+              "numerator": -9223372036854775808,
+              "denominator": 100000
+             }
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Rational": {
+              "numerator": 9223372036854775807,
+              "denominator": 100000
+             }
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -2858,7 +3171,26 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Rational": {
+          "numerator": -9223372036854775808,
+          "denominator": 100000
+         }
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Rational": {
+          "numerator": 9223372036854775807,
+          "denominator": 100000
+         }
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -3313,7 +3645,26 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Rational": {
+              "numerator": -9223372036854775808,
+              "denominator": 100000
+             }
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Rational": {
+              "numerator": 9223372036854775807,
+              "denominator": 100000
+             }
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -3395,7 +3746,26 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Rational": {
+          "numerator": -9223372036854775808,
+          "denominator": 100000
+         }
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Rational": {
+          "numerator": 9223372036854775807,
+          "denominator": 100000
+         }
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }
@@ -3864,7 +4234,20 @@
            "RadixPrefixedInteger"
           ]
          },
-         "accepted_range": "Unresolved",
+         "accepted_range": {
+          "Known": {
+           "minimum": {
+            "Known": {
+             "Signed": -2147483648
+            }
+           },
+           "maximum": {
+            "Known": {
+             "Signed": 2147483647
+            }
+           }
+          }
+         },
          "clamp": {
           "Known": null
          }
@@ -3945,7 +4328,20 @@
        "RadixPrefixedInteger"
       ]
      },
-     "accepted_range": "Unresolved",
+     "accepted_range": {
+      "Known": {
+       "minimum": {
+        "Known": {
+         "Signed": -2147483648
+        }
+       },
+       "maximum": {
+        "Known": {
+         "Signed": 2147483647
+        }
+       }
+      }
+     },
      "clamp": {
       "Known": null
      }

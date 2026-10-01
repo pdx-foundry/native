@@ -1,12 +1,25 @@
 //! Apply one cached conversion fact to each occurrence of a shared reader.
-use crate::engine::analysis::numeric::NumericFacts;
+use crate::engine::analysis::numeric::{FLOAT_BOUND_REPRESENTATION_GAP, NumericFacts};
 use crate::{
     CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
     GrammarProperty, Reader, ReaderId, ReaderKind,
 };
 
-/// Attach conversion facts and return whether numeric behavior remains incomplete.
-pub(super) fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> bool {
+#[derive(Default)]
+struct ReaderLimits {
+    incomplete: bool,
+    unrepresentable_bounds: bool,
+}
+
+impl ReaderLimits {
+    fn include(&mut self, other: Self) {
+        self.incomplete |= other.incomplete;
+        self.unrepresentable_bounds |= other.unrepresentable_bounds;
+    }
+}
+
+/// Attach conversion facts and retain the obstructions that need public gaps.
+fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimits {
     reader.scoped_operand =
         if matches!(reader.kind, ReaderKind::Unknown | ReaderKind::ScopedNumeric) {
             GrammarProperty::Unresolved
@@ -24,7 +37,13 @@ pub(super) fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> 
         {
             reader.kind = ReaderKind::Float;
         }
-        return !fact.gaps.is_empty();
+        return ReaderLimits {
+            incomplete: !fact.gaps.is_empty(),
+            unrepresentable_bounds: fact
+                .gaps
+                .iter()
+                .any(|gap| gap.reason == FLOAT_BOUND_REPRESENTATION_GAP),
+        };
     }
     reader.numeric = match reader.kind {
         ReaderKind::Boolean
@@ -34,10 +53,13 @@ pub(super) fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> 
         | ReaderKind::Block => GrammarProperty::Known(None),
         _ => GrammarProperty::Unresolved,
     };
-    matches!(
-        reader.kind,
-        ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float
-    )
+    ReaderLimits {
+        incomplete: matches!(
+            reader.kind,
+            ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float
+        ),
+        ..ReaderLimits::default()
+    }
 }
 
 pub(super) fn fields(
@@ -49,13 +71,13 @@ pub(super) fn fields(
     for field in values {
         let mut path = prefix.to_vec();
         path.push(field.name.clone());
-        let mut incomplete = attach_reader_facts(&mut field.reader, facts);
+        let mut limits = attach_reader_facts(&mut field.reader, facts);
         for alternative in &mut field.read {
             if let FieldReadOutcome::Read { reader: value, .. } = &mut alternative.outcome {
-                incomplete |= attach_reader_facts(value, facts);
+                limits.include(attach_reader_facts(value, facts));
             }
         }
-        if incomplete {
+        if limits.incomplete {
             let subject = if path.len() == 1 {
                 GapSubject::Field {
                     name: path[0].clone(),
@@ -63,7 +85,7 @@ pub(super) fn fields(
             } else {
                 GapSubject::KeyPath { path: path.clone() }
             };
-            gap(gaps, subject);
+            gap(gaps, subject, limits);
         }
         if let FieldMembers::Fields(children) = &mut field.members {
             fields(children, facts, &path, gaps);
@@ -77,26 +99,27 @@ pub(super) fn grammar(
     facts: &NumericFacts,
     gaps: &mut Vec<Gap>,
 ) {
-    let mut incomplete = attach_reader_facts(&mut value.reader, facts);
+    let mut limits = attach_reader_facts(&mut value.reader, facts);
     if let GrammarProperty::Known(forms) | GrammarProperty::Partial(forms) = &mut value.forms {
         for form in forms {
             if let CommandForm::Value(value) = form {
-                incomplete |= attach_reader_facts(&mut value.reader, facts);
+                limits.include(attach_reader_facts(&mut value.reader, facts));
             }
         }
     }
-    if incomplete {
-        gap(gaps, GapSubject::answer_item(name));
+    if limits.incomplete {
+        gap(gaps, GapSubject::answer_item(name), limits);
     }
     if let GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) = &mut value.fixed_keys {
         fields(keys, facts, &[], gaps);
     }
     if let GrammarProperty::Known(rules) | GrammarProperty::Partial(rules) = &mut value.ordering {
         for rule in rules {
-            if let crate::ChildOrderOutcome::Read(selected) = &mut rule.outcome
-                && attach_reader_facts(selected, facts)
-            {
-                gap(gaps, GapSubject::field(&rule.child));
+            if let crate::ChildOrderOutcome::Read(selected) = &mut rule.outcome {
+                let limits = attach_reader_facts(selected, facts);
+                if limits.incomplete {
+                    gap(gaps, GapSubject::field(&rule.child), limits);
+                }
             }
         }
     }
@@ -121,13 +144,23 @@ pub(super) fn grammar(
     }
 }
 
-fn gap(gaps: &mut Vec<Gap>, subject: GapSubject) {
+fn gap(gaps: &mut Vec<Gap>, subject: GapSubject, limits: ReaderLimits) {
     let gap = Gap {
-        kind: GapKind::NumericConversion, subject: Some(subject),
+        kind: GapKind::NumericConversion, subject: Some(subject.clone()),
         detail: "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established.".into(),
     };
     if !gaps.contains(&gap) {
         gaps.push(gap);
+    }
+    if limits.unrepresentable_bounds {
+        let gap = Gap {
+            kind: GapKind::NumericConversion,
+            subject: Some(subject),
+            detail: "Exact binary32 range endpoints cannot be represented by NumericBound.".into(),
+        };
+        if !gaps.contains(&gap) {
+            gaps.push(gap);
+        }
     }
 }
 
@@ -164,92 +197,118 @@ mod tests {
 
     #[test]
     fn fields_alternatives_and_command_values_reuse_the_same_fact_without_changing_ids() {
-        let callee = "CReader::Read(int&)";
-        let id = Some(ReaderId::from_callee(callee));
-        let shared = Reader {
-            id: id.clone(),
-            kind: ReaderKind::Integer,
-            family: crate::BlockFamily::NotApplicable,
-            numeric: GrammarProperty::Unresolved,
-            scoped_operand: crate::GrammarProperty::Unresolved,
-        };
-        let conversion = GrammarProperty::Partial(Some(NumericConversion {
-            width_bits: GrammarProperty::Known(32),
-            ..NumericConversion::default()
-        }));
-        let facts = NumericFacts {
-            token_readers: Default::default(),
-            modifier_entry: Err(Unresolved::new("modifier-numeric-not-analyzed")),
-            readers: [(
-                callee.into(),
-                NumericReader {
-                    conversion: conversion.clone(),
-                    gaps: vec![Unresolved::new("numeric-external-library-conversion")],
-                },
-            )]
-            .into(),
-        };
-        let mut registry = vec![numeric_field(shared.clone())];
-        let mut gaps = Vec::new();
-        fields(&mut registry, &facts, &[], &mut gaps);
-        let mut command = CommandGrammar {
-            reader: shared.clone(),
-            forms: GrammarProperty::Known(vec![CommandForm::Value(CommandValue {
-                reader: shared,
-                reference: FieldReference::NotEstablished,
-            })]),
-            fixed_keys: GrammarProperty::Known(vec![numeric_field(registry[0].reader.clone())]),
-            targets: GrammarProperty::Unresolved,
-            child_families: GrammarProperty::Unresolved,
-            numeric_keys: GrammarProperty::Unresolved,
-            ordering: GrammarProperty::Known(vec![crate::ChildOrderRule {
-                child: "amount".into(),
-                conditions: vec![crate::ChildOrderCondition::First(true)],
-                outcome: crate::ChildOrderOutcome::Read(registry[0].reader.clone()),
-            }]),
-            durations: GrammarProperty::Unresolved,
-        };
-        let mut nested = command.clone();
-        nested.numeric_keys = GrammarProperty::Known(Some(Box::new(command.clone())));
-        grammar(&mut nested, "nested", &facts, &mut Vec::new());
-        assert!(matches!(
-            nested.numeric_keys,
-            GrammarProperty::Partial(Some(_))
-        ));
-        grammar(&mut command, "command", &facts, &mut gaps);
-        let FieldReadOutcome::Read {
-            reader: alternative,
-            ..
-        } = &registry[0].read[0].outcome
-        else {
-            panic!()
-        };
-        let GrammarProperty::Known(forms) = command.forms else {
-            panic!()
-        };
-        let CommandForm::Value(value) = &forms[0] else {
-            panic!()
-        };
-        let GrammarProperty::Known(ordering) = &command.ordering else {
-            panic!()
-        };
-        let crate::ChildOrderOutcome::Read(ordered) = &ordering[0].outcome else {
-            panic!()
-        };
-        for reader in [
-            &registry[0].reader,
-            alternative,
-            &command.reader,
-            &value.reader,
-            ordered,
+        for (callee, representation, bound_gap) in [
+            (
+                "CReader::Read(int&)",
+                crate::NumericRepresentation::Integer,
+                false,
+            ),
+            (
+                "CReader::Read(float&)",
+                crate::NumericRepresentation::BinaryFloat,
+                true,
+            ),
+            (
+                "CReader::Read(float&)",
+                crate::NumericRepresentation::BinaryFloat,
+                false,
+            ),
         ] {
-            assert_eq!(reader.id, id);
-            assert_eq!(reader.numeric, conversion);
+            let id = Some(ReaderId::from_callee(callee));
+            let shared = Reader {
+                id: id.clone(),
+                kind: ReaderKind::Integer,
+                family: crate::BlockFamily::NotApplicable,
+                numeric: GrammarProperty::Unresolved,
+                scoped_operand: crate::GrammarProperty::Unresolved,
+            };
+            let conversion = GrammarProperty::Partial(Some(NumericConversion {
+                representation: GrammarProperty::Known(representation),
+                width_bits: GrammarProperty::Known(32),
+                ..NumericConversion::default()
+            }));
+            let facts = NumericFacts {
+                token_readers: Default::default(),
+                modifier_entry: Err(Unresolved::new("modifier-numeric-not-analyzed")),
+                readers: [(
+                    callee.into(),
+                    NumericReader {
+                        conversion: conversion.clone(),
+                        gaps: if bound_gap {
+                            vec![Unresolved::new(FLOAT_BOUND_REPRESENTATION_GAP)]
+                        } else {
+                            vec![Unresolved::new("numeric-external-library-conversion")]
+                        },
+                    },
+                )]
+                .into(),
+            };
+            let mut registry = vec![numeric_field(shared.clone())];
+            let mut gaps = Vec::new();
+            fields(&mut registry, &facts, &[], &mut gaps);
+            let mut command = CommandGrammar {
+                reader: shared.clone(),
+                forms: GrammarProperty::Known(vec![CommandForm::Value(CommandValue {
+                    reader: shared,
+                    reference: FieldReference::NotEstablished,
+                })]),
+                fixed_keys: GrammarProperty::Known(vec![numeric_field(registry[0].reader.clone())]),
+                targets: GrammarProperty::Unresolved,
+                child_families: GrammarProperty::Unresolved,
+                numeric_keys: GrammarProperty::Unresolved,
+                ordering: GrammarProperty::Known(vec![crate::ChildOrderRule {
+                    child: "amount".into(),
+                    conditions: vec![crate::ChildOrderCondition::First(true)],
+                    outcome: crate::ChildOrderOutcome::Read(registry[0].reader.clone()),
+                }]),
+                durations: GrammarProperty::Unresolved,
+            };
+            let mut nested = command.clone();
+            nested.numeric_keys = GrammarProperty::Known(Some(Box::new(command.clone())));
+            grammar(&mut nested, "nested", &facts, &mut Vec::new());
+            assert!(matches!(
+                nested.numeric_keys,
+                GrammarProperty::Partial(Some(_))
+            ));
+            grammar(&mut command, "command", &facts, &mut gaps);
+            let FieldReadOutcome::Read {
+                reader: alternative,
+                ..
+            } = &registry[0].read[0].outcome
+            else {
+                panic!()
+            };
+            let GrammarProperty::Known(forms) = command.forms else {
+                panic!()
+            };
+            let CommandForm::Value(value) = &forms[0] else {
+                panic!()
+            };
+            let GrammarProperty::Known(ordering) = &command.ordering else {
+                panic!()
+            };
+            let crate::ChildOrderOutcome::Read(ordered) = &ordering[0].outcome else {
+                panic!()
+            };
+            for reader in [
+                &registry[0].reader,
+                alternative,
+                &command.reader,
+                &value.reader,
+                ordered,
+            ] {
+                assert_eq!(reader.id, id);
+                assert_eq!(reader.numeric, conversion);
+            }
+            assert!(
+                gaps.iter()
+                    .all(|gap| gap.kind == GapKind::NumericConversion)
+            );
+            assert_eq!(
+                gaps.iter().any(|gap| gap.detail.contains("NumericBound")),
+                bound_gap
+            );
         }
-        assert!(
-            gaps.iter()
-                .all(|gap| gap.kind == GapKind::NumericConversion)
-        );
     }
     #[test]
     fn unknown_reader_keeps_scoped_operand_unresolved() {
@@ -290,7 +349,7 @@ mod tests {
                 storage_width_bits: 64,
             }),
         };
-        assert!(!attach_reader_facts(&mut block, &facts));
+        assert!(!attach_reader_facts(&mut block, &facts).incomplete);
         assert_eq!(block.numeric, GrammarProperty::Known(None));
     }
 

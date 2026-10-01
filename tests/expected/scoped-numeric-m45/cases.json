@@ -606,5 +606,101 @@
     "field": "overclock_cooldown",
     "body": "overclock_cooldown = 2\noverclock_cooldown = value:atlas_numeric_constant\noverclock_cooldown = 9",
     "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_range_min_outside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = -2147483649",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_range_min",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = -2147483648",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_range_min_inside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = -2147483647",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_range_max_inside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = 2147483646",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_range_max",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = 2147483647",
+    "original_body": ""
+  },
+  {
+    "id": "overclock_cooldown_range_max_outside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "overclock_cooldown",
+    "body": "overclock_cooldown = 2147483648",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_range_min_outside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = -92233720368547.75809",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_range_min",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = -92233720368547.75808",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_range_min_inside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = -92233720368547.75807",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_range_max_inside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = 92233720368547.75806",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_range_max",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = 92233720368547.75807",
+    "original_body": ""
+  },
+  {
+    "id": "cycle_length_in_days_range_max_outside",
+    "original_kind": "new",
+    "registry": "common/megastructures",
+    "field": "cycle_length_in_days",
+    "body": "cycle_length_in_days = 92233720368547.75808",
+    "original_body": ""
   }
 ]

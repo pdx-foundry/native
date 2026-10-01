@@ -776,8 +776,10 @@ collection, not a runtime ordering requirement. Parser acceptance requires a wit
 rejection requires a source-located diagnostic. A recorded answer supports reproduction but gives
 no new live credit. The bounded post-read window is explicitly `FixtureFileLoadAndValidation`.
 
-SDK-600 can assert the council agenda families above, but agenda cost, entry scopes, reference
-targets, and weight grammar remain with SDK-544, SDK-549, SDK-543, and SDK-545. The council answer
+SDK-600 can assert the council agenda families above. Agenda cost's storage and evaluation are
+recorded in [scoped numeric](scoped-numeric.md); its conversion boundaries remain in
+[numeric conversion](numeric-conversion.md). Entry scopes, reference targets, and weight grammar
+remain with SDK-549, SDK-543, and SDK-545. The council answer
 is still partial. Neither this method's static facts nor its parser samples satisfy the entire
 Milestone 4 gate or the later Atlas composition and live coverage run.
 

@@ -165,6 +165,17 @@ for contexts and scope types.
   nonnumeric reader; unresolved or partial properties must not be completed from storage limits
   or finite fixture observations. Caller post-processing is outside the shared conversion.
   Older recorded readers default this property to unresolved.
+  `accepted_range` means faithful storage without overflow or narrowing beyond the reader's
+  normal, established rounding or truncation rule. Values outside it may still parse successfully.
+  An endpoint is `Known` only with both a verified contract of the exact imported platform scanner,
+  checked by a reproducible test at and just beyond the limit, and agreeing live inward, endpoint
+  and outward boundary cases. A static proof of the libc implementation is not required.
+  Otherwise it remains `Unresolved`; a range with only one established endpoint is `Partial`.
+  Storage width alone is insufficient. A known range does not close `numeric-overflow` unless
+  out-of-range behavior is also established. The int reader's ordinary decimal fraction samples
+  truncate toward zero by scanning their integer prefix; this is not an exponent or suffix rule.
+  Exact binary32 endpoints remain unresolved because `NumericBound` has no suitable exact variant;
+  the float reader retains a typed numeric-conversion gap for that representation obstacle.
 - `ReaderKind::ScopedNumeric` identifies a shared reader whose destination can store an integer
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
   storage. `Reader.scoped_operand` reports partial routing forms, successful literal preservation

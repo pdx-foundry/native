@@ -313,7 +313,9 @@ These findings are from the prototypes.
   child scopes. The timed-flag method finds four fields but no qualified value readers.
 - **SDK-493.** One shared numeric operand grammar serves agenda cost and timed-flag time units,
   and transfers to the add-trust amount with a fixed-point type; cooldown is a plain integer.
-  Full numeric semantics are open in SDK-544. The consumer grammars are Atlas conclusions; Native
+  [Numeric conversion](numeric-conversion.md) records the shared conversion facts and remaining
+  conversion boundaries; [scoped numeric](scoped-numeric.md) records operand forms, storage and
+  evaluation. The consumer grammars are Atlas conclusions; Native
   keeps the instruction, reader and ABI mechanisms.
 
 Evidence: `atlas-discovery/prototype/{engine-registry-discovery,council-agenda-reconstruction}/`,

@@ -183,6 +183,30 @@ fn check_storage(reader: &pdx_native::Reader, value: &FixtureValue) -> Outcome {
     {
         return Err(format!("static/live storage conflict: {reader:?}; {value:?}").into());
     }
+    let (minimum, maximum) = if width == 32 {
+        (
+            pdx_native::NumericBound::Signed(-2147483648),
+            pdx_native::NumericBound::Signed(2147483647),
+        )
+    } else {
+        (
+            pdx_native::NumericBound::Rational {
+                numerator: i64::MIN,
+                denominator: scale,
+            },
+            pdx_native::NumericBound::Rational {
+                numerator: i64::MAX,
+                denominator: scale,
+            },
+        )
+    };
+    let expected = GrammarProperty::Known(Box::new(pdx_native::NumericRange {
+        minimum: GrammarProperty::Known(minimum),
+        maximum: GrammarProperty::Known(maximum),
+    }));
+    if conversion.accepted_range != expected {
+        return Err(format!("scoped literal did not inherit its shared range: {reader:?}").into());
+    }
     Ok(())
 }
 

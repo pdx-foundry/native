@@ -381,6 +381,240 @@
         }
       ]
     },
+    "cycle_length_in_days_range_max": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 9223372036854775807,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 9223372036854775807,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_range_max_inside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 9223372036854775806,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 9223372036854775806,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_range_max_outside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": -9223372036854775808,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": -9223372036854775808,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_range_min": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": -9223372036854775808,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": -9223372036854775808,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_range_min_inside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": -9223372036854775807,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": -9223372036854775807,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "cycle_length_in_days_range_min_outside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "cycle_length_in_days",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "FixedPoint": {
+              "raw": 9223372036854775807,
+              "scale": 100000
+            }
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "FixedPoint": {
+                "raw": 9223372036854775807,
+                "scale": 100000
+              }
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
     "cycle_length_in_days_trigger_value": {
       "coverage": "Complete",
       "diagnostics": [],
@@ -1634,6 +1868,204 @@
               "Integer": 7
             },
             "variable": "not_a_number"
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_range_max": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2147483647
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2147483647
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_range_max_inside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2147483646
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2147483646
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_range_max_outside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -2147483648
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -2147483648
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_range_min": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -2147483648
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -2147483648
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_range_min_inside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": -2147483647
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": -2147483647
+            },
+            "variable": ""
+          }
+        }
+      ]
+    },
+    "overclock_cooldown_range_min_outside": {
+      "coverage": "Complete",
+      "diagnostics": [],
+      "field": "overclock_cooldown",
+      "final": {
+        "ScopedNumeric": {
+          "has_modifier": false,
+          "has_script_value": false,
+          "has_source_location": false,
+          "has_trigger": false,
+          "literal": {
+            "Integer": 2147483647
+          },
+          "variable": ""
+        }
+      },
+      "gaps": [],
+      "registry": "common/megastructures",
+      "stored": [
+        {
+          "ScopedNumeric": {
+            "has_modifier": false,
+            "has_script_value": false,
+            "has_source_location": false,
+            "has_trigger": false,
+            "literal": {
+              "Integer": 2147483647
+            },
+            "variable": ""
           }
         }
       ]
