@@ -1,9 +1,9 @@
 //! Join generic persistent member destinations to constructor-installed virtual methods.
 use super::{ConcreteReader, FieldGap, FieldGapKind, FieldInput, ReaderJoin, RootField};
 use crate::engine::analysis::{
-    evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
+    evaluate::{Call, Code, Exit, ReadOnlyData},
     readers,
-    receivers::{Constructors, install_vtables},
+    receivers::{ConstructorImage, Constructors, accept_entered_path, install_vtables},
     stop::Unresolved,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,22 +42,14 @@ pub(super) fn discover(
     let Some(binding) = &input.persistent else {
         return (BTreeMap::new(), BTreeMap::new(), vec![]);
     };
-    // Constant pointer slots are immutable image data. A writable slot's image target is only an
-    // assumption of the summary-only run, in memory that a call or an unknown store may change.
-    let constant_pointers = binding
-        .pointers
-        .iter()
-        .filter(|(slot, _)| !binding.writable_slots.contains(slot))
-        .map(|(&slot, &target)| (slot, target))
-        .collect();
-    let data = ReadOnlyData::new(
+    let sections = ReadOnlyData::new(
         input
             .read_only_data
             .iter()
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
-    )
-    .with_words(&constant_pointers);
+    );
+    let image = ConstructorImage::new(&sections, &binding.pointers, &binding.writable_slots);
     let mut agreement: Option<BTreeMap<i64, u64>> = None;
     let mut gaps = Vec::new();
     for constructor in &binding.constructors {
@@ -76,26 +68,20 @@ pub(super) fn discover(
                 .collect();
             let code = Code::decode(&bodies)
                 .map_err(|_| Unresolved::new("persistent-constructor-code"))?;
-            let mut machine = Machine::new(&code, &data);
-            // Code that ran before the constructor may have replaced a writable slot's target.
-            if !enter_constructors {
-                for slot in &binding.writable_slots {
-                    machine.write(*slot, 8, binding.pointers[slot]);
-                }
-            }
+            let mut machine = if enter_constructors {
+                image.entered(&code)
+            } else {
+                image.baseline(&code)
+            };
             machine.intercept_tail_calls(binding.summaries.keys().copied().collect());
             let owner = machine.reserve(SPAN);
             machine.set_register(0, owner);
             if enter_constructors {
                 machine.track_owner(owner, owner + SPAN);
-                // The constructor's caller may already have published the owner, and may pass
-                // it in any argument or preserved register.
-                machine.derive_every_register_from_owner();
-                machine.escape_owner();
             }
             let constructors = Constructors {
                 code: &code,
-                data: &data,
+                image: &image,
                 summaries: &binding.summaries,
                 owner,
                 end: owner + SPAN,
@@ -146,9 +132,7 @@ pub(super) fn discover(
                     Exit::Returned => {}
                     _ => return Err(Unresolved::new("persistent-constructor-terminal")),
                 }
-                if path.machine.owner_stack_lost() {
-                    return Err(Unresolved::new("constructor-stack"));
-                }
+                accept_entered_path(&path.machine)?;
                 let points: BTreeMap<_, _> = offsets
                     .iter()
                     .filter_map(|&offset| {

@@ -6,7 +6,7 @@
 use super::{DeclarationInput, Function, decode, number};
 use crate::engine::analysis::{
     evaluate::{Call, Code, Exit, Machine, ReturnTaint},
-    receivers::{Constructors, install_vtables},
+    receivers::{Constructors, accept_entered_path, install_vtables},
     stop::Unresolved,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -109,17 +109,14 @@ fn evaluate_factory(
         rows.extend(body_rows);
     }
     let code = Code::from_rows(rows);
-    // An entered run relies on stores being disjoint from the owner, so it does not take a
-    // writable pointer slot's target as immutable; the slot reads as unknown.
-    let data = if enter_constructors {
-        input.constant_pointer_data()
-    } else {
-        input.pointer_data()
-    };
-    let mut machine = Machine::new(&code, data);
-    if enter_constructors {
+    let image = input.constructor_image();
+    let machine = if enter_constructors {
+        let mut machine = image.entered(&code);
         machine.intercept_tail_calls(input.constructors.keys().copied().collect());
-    }
+        machine
+    } else {
+        Machine::new(&code, input.pointer_data())
+    };
     let paths = machine.run_paths(entry, &mut |target, machine| {
         if target.is_some_and(|target| input.operator_new.contains(&target)) {
             let size = machine.known_register(0, "allocation-size")?;
@@ -136,13 +133,12 @@ fn evaluate_factory(
                 machine.label(object, size);
             }
             if owner && enter_constructors {
-                machine.track_owner(object, object + size);
-                // Nothing proves that the allocator keeps its result to itself.
-                machine.escape_owner();
+                return Ok(machine.return_allocated_owner(object, object + size));
             }
-            // The allocator may leave the owner in any register that it does not preserve.
+            // The result is not a tracked owner, but the allocator may leave one in any register
+            // that it does not preserve.
             let taint = ReturnTaint {
-                returned: owner,
+                returned: false,
                 clobbered: true,
             };
             return Ok(machine.return_with_taint(Some(object), taint));
@@ -172,7 +168,7 @@ fn evaluate_factory(
                 }
                 let constructors = Constructors {
                     code: &code,
-                    data,
+                    image,
                     summaries: &input.constructors,
                     owner,
                     end,
@@ -206,9 +202,7 @@ fn evaluate_factory(
             Exit::Returned => {}
             _ => return Err(Unresolved::new("factory-terminal")),
         }
-        if path.machine.owner_stack_lost() {
-            return Err(Unresolved::new("constructor-stack"));
-        }
+        accept_entered_path(&path.machine)?;
         let object = path.machine.register(0).ok_or_else(|| {
             Unresolved::new("factory-return").traced(path.machine.register_trace(0))
         })?;
