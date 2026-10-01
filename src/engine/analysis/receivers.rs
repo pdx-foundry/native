@@ -4,11 +4,15 @@ use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, ReturnTaint};
 use super::stop::{CauseKind, Trace, Unresolved};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod calls;
+pub(crate) use calls::ConstructorCalls;
+
 /// The image that a constructor route reads: its read-only sections with the targets of its
 /// constant pointer slots, and the image targets of its writable slots.
 pub(crate) struct ConstructorImage {
     constant: ReadOnlyData,
     writable: BTreeMap<u64, u64>,
+    calls: ConstructorCalls,
 }
 
 impl ConstructorImage {
@@ -27,7 +31,14 @@ impl ConstructorImage {
         Self {
             constant: sections.with_words(&constant),
             writable,
+            calls: ConstructorCalls::default(),
         }
+    }
+
+    /// Attach import semantics and helper bodies to the entered-constructor route.
+    pub fn with_calls(mut self, calls: ConstructorCalls) -> Self {
+        self.calls = calls;
+        self
     }
 
     /// A machine for a run that enters constructor bodies. Such a run relies on stores being
@@ -245,6 +256,9 @@ impl Constructors<'_> {
         }
         machine.intercept_tail_calls(self.summaries.keys().copied().collect());
         let paths = machine.run_paths(target, &mut |target, machine| {
+            if let Some(call) = self.image.calls.call(target, machine) {
+                return Ok(call);
+            }
             let nested = target.filter(|target| self.summaries.contains_key(target));
             let member = machine
                 .register(0)
@@ -373,6 +387,7 @@ mod tests {
         let image = ConstructorImage {
             constant: data.clone(),
             writable: BTreeMap::new(),
+            calls: ConstructorCalls::default(),
         };
         Constructors {
             code,
@@ -1021,6 +1036,7 @@ mod tests {
         let image = ConstructorImage {
             constant: data.clone(),
             writable: BTreeMap::new(),
+            calls: ConstructorCalls::default(),
         };
         let summaries = BTreeMap::from([(0x2000, BTreeMap::new())]);
 
@@ -1061,6 +1077,152 @@ mod tests {
                 .map(|cause| (cause.kind, cause.instruction, cause.entry))
                 .collect();
             assert_eq!(causes, [(kind, call, 0x1000)]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod string_tests {
+    use super::*;
+    use crate::engine::analysis::{assembler::arm64, declarations::Function};
+
+    #[test]
+    fn helper_code_can_overwrite_an_earlier_member() {
+        let root = arm64!(at 0x1000; bl extern 0x2000; ret);
+        let helper = arm64!(at 0x2000; mov w8, #9; str w8, [x1]; ret);
+        let code = Code::decode(&[(0x1000, &root), (0x2000, &helper)]).unwrap();
+        let image =
+            ConstructorImage::new(&ReadOnlyData::default(), &BTreeMap::new(), &BTreeSet::new())
+                .with_calls(ConstructorCalls {
+                    helpers: [(0x2000, helper)].into(),
+                    ..Default::default()
+                });
+        let mut machine = image.entered(&code);
+        let owner = machine.reserve(128);
+        machine.track_owner(owner, owner + 128);
+        machine.write(owner, 4, 7);
+        machine.set_register(0, owner + 64);
+        machine.set_register(1, owner);
+        let summaries = [(0x1000, BTreeMap::new())].into();
+        let state = Constructors {
+            code: &code,
+            image: &image,
+            summaries: &summaries,
+            owner,
+            end: owner + 128,
+        }
+        .initial_state(0x1000, &machine, 0)
+        .unwrap();
+        assert_eq!(state.bytes.get(&0), Some(&9));
+    }
+
+    #[test]
+    #[ignore = "requires STELLARIS_PATH with M451-hotfix"]
+    fn exact_build_string_and_token_constructor_effects() {
+        let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+        assert_eq!(
+            native.build().0,
+            "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38"
+        );
+        let analysis = native.bound().analysis.as_ref().unwrap();
+        let (grammar, _) = analysis
+            .grammar_input(crate::DeclarationKind::Effect)
+            .unwrap();
+        let input = &grammar.declarations;
+        let image = input.constructor_image();
+        struct ConstructorCase {
+            entries: [u64; 2],
+            lengths: [u64; 4],
+            inline_capacity: u64,
+            text_offset: u64,
+            source_is_string_object: bool,
+        }
+        // Both ABI entries are checked: the complete-object entry forwards to the base entry.
+        for case in [
+            ConstructorCase {
+                entries: [0x102521f3c, 0x102521fec],
+                lengths: [0, 3, 22, 23],
+                inline_capacity: 23,
+                text_offset: 0,
+                source_is_string_object: false,
+            },
+            ConstructorCase {
+                entries: [0x1025bc848, 0x1025bca48],
+                lengths: [0, 3, 255, 256],
+                inline_capacity: 256,
+                text_offset: 32,
+                source_is_string_object: true,
+            },
+        ] {
+            let mut bodies: Vec<_> = case
+                .entries
+                .iter()
+                .map(|entry| {
+                    let Function { address, code } = &input.functions[entry];
+                    (*address, code.as_slice())
+                })
+                .collect();
+            bodies.extend(
+                input
+                    .constructor_calls
+                    .helpers
+                    .iter()
+                    .map(|(&at, bytes)| (at, bytes.as_slice())),
+            );
+            let code = Code::decode(&bodies).unwrap();
+            let summaries = case
+                .entries
+                .iter()
+                .map(|&entry| (entry, BTreeMap::new()))
+                .collect();
+            for entry in case.entries {
+                for length in case.lengths {
+                    let mut machine = image.entered(&code);
+                    let owner = machine.reserve(1024);
+                    machine.track_owner(owner, owner + 1024);
+                    machine.write(owner, 8, 42);
+                    let source = 0x20000;
+                    let text = 0x21000;
+                    for offset in 0..length {
+                        machine.write(text + offset, 1, b'a'.into());
+                    }
+                    machine.write(text + length, 1, 0);
+                    machine.set_register(0, owner + 64);
+                    if case.source_is_string_object {
+                        // An established long CString, not guessed mutable image contents.
+                        machine.write(source, 8, text);
+                        machine.write(source + 8, 8, length);
+                        machine.write(source + 16, 8, (1 << 63) | (length + 1));
+                        machine.set_register(1, 7);
+                        machine.set_register(2, source);
+                    } else {
+                        machine.set_register(1, text);
+                    }
+                    let constructors = Constructors {
+                        code: &code,
+                        image,
+                        summaries: &summaries,
+                        owner,
+                        end: owner + 1024,
+                    };
+                    let state = constructors.initial_state(entry, &machine, 0);
+                    let bounded = length < case.inline_capacity;
+                    if bounded {
+                        let state = state.unwrap_or_else(|| panic!("{entry:#x}, {length}"));
+                        assert_eq!(state.bytes.get(&0), Some(&42), "{entry:#x}, {length}");
+                        let text_offset = 64 + case.text_offset;
+                        assert_eq!(state.bytes.get(&(text_offset + length)), Some(&0));
+                        for offset in 0..length {
+                            assert_eq!(state.bytes.get(&(text_offset + offset)), Some(&b'a'));
+                        }
+                    } else {
+                        assert!(
+                            state.is_none_or(|state| !state.bytes.contains_key(&0)),
+                            "unproved allocation path retained earlier bytes"
+                        );
+                    }
+                }
+            }
         }
     }
 }

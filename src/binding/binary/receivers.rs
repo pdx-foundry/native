@@ -95,6 +95,38 @@ pub(super) fn constructors(
     Ok(summaries)
 }
 
+/// Import effects and small engine accessors used by the constructor evaluator.
+/// Accessor names select code to execute; their bodies still determine all reads and writes.
+pub(super) fn constructor_calls(
+    bytes: &[u8],
+    symbols: &[Symbol],
+) -> Result<crate::engine::analysis::ConstructorCalls, AnalysisError> {
+    use crate::engine::analysis::ConstructorCalls;
+    let text = super::declarations::Text::read(bytes, symbols)?;
+    let mut calls = ConstructorCalls::default();
+    for symbol in symbols {
+        match symbol.name.as_str() {
+            "_strlen" => {
+                calls.lengths.insert(symbol.address);
+            }
+            "_memcpy" => {
+                calls.copies.insert(symbol.address);
+            }
+            "_memmove" => {
+                calls.moves.insert(symbol.address);
+            }
+            "CString::GetTCharPtr() const" | "CString::GetSize() const" => {
+                let (at, body) = text.function(symbol.address)?;
+                if body.len() <= MAX_CONSTRUCTOR_CODE_BYTES {
+                    calls.helpers.insert(at, body.to_vec());
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(calls)
+}
+
 /// Owner constructors and the virtual methods installed by their called constructors.
 pub(super) fn persistent(
     bytes: &[u8],
@@ -238,6 +270,7 @@ pub(super) fn persistent(
         })
         .collect();
     Ok(PersistentInput {
+        constructor_calls: constructor_calls(bytes, symbols)?,
         constructors,
         summaries,
         constructor_bodies,

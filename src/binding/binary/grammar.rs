@@ -65,6 +65,8 @@ pub(in crate::binding) fn read(
         &roots,
     )?;
 
+    declarations.constructor_calls = super::receivers::constructor_calls(bytes, symbols)?;
+
     let token_start = super::declarations::unique(symbols, "GetTokenArray()")?;
     let (_, token_code) = text.function(token_start)?;
     let rows = decode_arm64(token_code, token_start).map_err(|_| AnalysisError::InvalidRange)?;

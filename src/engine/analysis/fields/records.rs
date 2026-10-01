@@ -305,6 +305,8 @@ pub struct ConcreteReader {
 /// Exact executable inputs for owner constructor evaluation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistentInput {
+    #[serde(default)]
+    pub(crate) constructor_calls: super::super::receivers::ConstructorCalls,
     pub constructors: Vec<Function>,
     pub summaries: BTreeMap<u64, BTreeMap<u64, u64>>,
     /// Called constructor bodies for initial embedded storage.

@@ -18,6 +18,7 @@ pub mod modifiers;
 pub(crate) mod numeric;
 pub mod readers;
 mod receivers;
+pub(crate) use receivers::ConstructorCalls;
 pub mod references;
 pub(crate) mod scoped_numeric;
 pub mod scopes;

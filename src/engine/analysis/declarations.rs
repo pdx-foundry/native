@@ -100,6 +100,7 @@ pub struct DeclarationInput {
     pub operator_new: BTreeSet<u64>,
     /// Constructor entries available for concrete receiver joins.
     pub constructors: BTreeMap<u64, BTreeMap<u64, u64>>,
+    pub(crate) constructor_calls: super::receivers::ConstructorCalls,
     pub functions: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
     /// The pointer slots outside the constant sections, whose targets code may replace.
@@ -130,6 +131,7 @@ impl DeclarationInput {
     pub fn constructor_image(&self) -> &ConstructorImage {
         self.constructor_image.get_or_init(|| {
             ConstructorImage::new(&self.composition.data, &self.pointers, &self.writable_slots)
+                .with_calls(self.constructor_calls.clone())
         })
     }
 }

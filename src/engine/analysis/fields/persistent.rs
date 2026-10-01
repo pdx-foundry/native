@@ -49,7 +49,8 @@ pub(super) fn discover(
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
     );
-    let image = ConstructorImage::new(&sections, &binding.pointers, &binding.writable_slots);
+    let image = ConstructorImage::new(&sections, &binding.pointers, &binding.writable_slots)
+        .with_calls(binding.constructor_calls.clone());
     let mut agreement: Option<BTreeMap<i64, u64>> = None;
     let mut gaps = Vec::new();
     for constructor in &binding.constructors {
@@ -66,6 +67,16 @@ pub(super) fn discover(
                         .map(|body| (body.address, body.code.as_slice())),
                 )
                 .collect();
+            let mut bodies = bodies;
+            if enter_constructors {
+                bodies.extend(
+                    binding
+                        .constructor_calls
+                        .helpers
+                        .iter()
+                        .map(|(&at, bytes)| (at, bytes.as_slice())),
+                );
+            }
             let code = Code::decode(&bodies)
                 .map_err(|_| Unresolved::new("persistent-constructor-code"))?;
             let mut machine = if enter_constructors {

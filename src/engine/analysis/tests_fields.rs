@@ -1212,6 +1212,7 @@ fn persistent_fixture() -> FieldInput {
     constructor.epilogue();
     arm64!(constructor; ret);
     input.persistent = Some(PersistentInput {
+        constructor_calls: Default::default(),
         constructor_bodies: BTreeMap::new(),
         constructors: vec![Function {
             name: "CExample::CExample()".into(),
