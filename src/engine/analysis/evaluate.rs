@@ -323,6 +323,8 @@ pub struct Machine<'a> {
     labels: BTreeMap<u64, u64>,
     /// Known values that this path stored to an unknown address.
     unknown_stores: Vec<u64>,
+    store_span: Option<(u64, u64, u64, u64)>,
+    escaped_store: bool,
     /// How often this path arrived at each loop head of a [`Machine::run_paths_to`] run, or at a
     /// loop head of a [`Machine::run_paths_joining`] run without joining the state there.
     loop_visits: BTreeMap<u64, u32>,
@@ -408,6 +410,8 @@ impl<'a> Machine<'a> {
             tail_aliases: Vec::new(),
             labels: BTreeMap::new(),
             unknown_stores: Vec::new(),
+            store_span: None,
+            escaped_store: false,
             loop_visits: BTreeMap::new(),
             frames: Vec::new(),
             entry: 0,
@@ -477,6 +481,43 @@ impl<'a> Machine<'a> {
     /// The present stack pointer.
     pub fn stack_pointer(&self) -> u64 {
         self.stack_pointer
+    }
+
+    /// A fresh call frame at the caller's stack position, with only its established memory state.
+    pub fn fresh_callee(&self, code: &'a Code, data: &'a ReadOnlyData) -> Self {
+        let mut callee = Self::new(code, data);
+        callee.set_stack_pointer(self.stack_pointer);
+        // Absence already means unknown off-image, or the immutable backing byte on-image.
+        callee.memory = self
+            .memory
+            .iter()
+            .filter(|(address, byte)| data.byte(**address) != **byte)
+            .map(|(&address, &byte)| (address, byte))
+            .collect();
+        callee
+    }
+
+    /// Set the stack position for an authored caller or a separately evaluated call frame.
+    pub fn set_stack_pointer(&mut self, value: u64) {
+        self.stack_pointer = value;
+    }
+
+    /// Invalidate every tracked byte after a call whose stores may escape its receiver.
+    pub fn forget_memory(&mut self) {
+        for byte in self.memory.values_mut() {
+            *byte = None;
+        }
+    }
+
+    /// Watch writes outside this object span and the callee's private stack frame.
+    pub fn watch_store_span(&mut self, owner: u64, start: u64, end: u64) {
+        self.store_span = Some((owner, start, end, self.stack_pointer));
+        self.escaped_store = false;
+    }
+
+    /// Whether a write may have reached outside the watched span or private frame.
+    pub fn escaped_store(&self) -> bool {
+        self.escaped_store
     }
 
     /// Store `value` little-endian in `width` bytes.
@@ -559,6 +600,16 @@ impl<'a> Machine<'a> {
     }
 
     fn watch_store(&mut self, address: u64, width: u64) {
+        if let Some((owner, start, end, stack_entry)) = self.store_span {
+            let confined = address.checked_add(width).is_some_and(|limit| {
+                (address >= start && limit <= end)
+                    || (address >= self.stack_pointer
+                        && limit <= stack_entry
+                        && (limit <= owner || address >= end))
+            });
+            self.escaped_store |= !confined;
+        }
+
         if let Some(watch) = &mut self.read_watch {
             watch.written.extend(
                 (address..address.saturating_add(width))
@@ -1255,13 +1306,27 @@ impl<'a> Machine<'a> {
                 "add" | "sub" | "and" | "orr" | "eor" | "lsl" | "lsr" | "asr" | "mul",
                 [destination, left, right, rest @ ..],
             ) => {
+                let stack_offset = matches!(mnemonic, "add" | "sub")
+                    && matches!(
+                        left,
+                        Operand::Register(Register {
+                            name: Name::StackPointer,
+                            wide: true,
+                            ..
+                        })
+                    )
+                    && matches!(right, Operand::Immediate(_));
                 let wide = destination.is_wide();
                 let left = self.operand(left)?;
                 let right = self.modified(right, rest)?;
                 let value = left
                     .zip(right)
                     .map(|(left, right)| binary(mnemonic, left, right, wide));
-                self.assign(destination, value)?;
+                if stack_offset {
+                    self.assign_stack_offset(destination, value)?;
+                } else {
+                    self.assign(destination, value)?;
+                }
             }
             ("adds" | "subs", [destination, left, right, rest @ ..]) => {
                 let wide = destination.is_wide();
@@ -1973,6 +2038,7 @@ impl<'a> Machine<'a> {
         match register.name {
             Name::Zero => {}
             Name::StackPointer => {
+                self.escaped_store |= self.store_span.is_some();
                 self.stack_pointer = match value {
                     Some(value) => value,
                     None => self.stack_pointer - DYNAMIC_STACK,
@@ -1996,6 +2062,27 @@ impl<'a> Machine<'a> {
         Ok(())
     }
 
+    /// Only a known immediate offset from the current stack retains the private-frame proof.
+    fn assign_stack_offset(
+        &mut self,
+        destination: &Operand,
+        value: Option<u64>,
+    ) -> Result<(), Halt> {
+        if let (
+            Operand::Register(Register {
+                name: Name::StackPointer,
+                wide: true,
+                ..
+            }),
+            Some(value),
+        ) = (destination, value)
+        {
+            self.stack_pointer = value;
+            return Ok(());
+        }
+        self.assign(destination, value)
+    }
+
     /// The effective address, applying pre- or post-index write-back to the base register.
     fn address(&mut self, memory: &Memory, rest: &[Operand]) -> Result<Option<u64>, Halt> {
         let base = self.read_register(memory.base);
@@ -2010,13 +2097,17 @@ impl<'a> Machine<'a> {
             .map(|(base, index)| base.wrapping_add(index).wrapping_add(memory.offset as u64));
         match rest {
             [] if memory.write_back => {
-                self.assign(&Operand::Register(memory.base), offset)?;
+                if memory.index.is_none() {
+                    self.assign_stack_offset(&Operand::Register(memory.base), offset)?;
+                } else {
+                    self.assign(&Operand::Register(memory.base), offset)?;
+                }
                 Ok(offset)
             }
             [] => Ok(offset),
             [Operand::Immediate(post)] => {
                 let updated = base.map(|base| base.wrapping_add(*post as u64));
-                self.assign(&Operand::Register(memory.base), updated)?;
+                self.assign_stack_offset(&Operand::Register(memory.base), updated)?;
                 Ok(base)
             }
             _ => Err(Halt::unsupported("addressing")),
@@ -2026,6 +2117,7 @@ impl<'a> Machine<'a> {
     /// A store to an unknown address may overwrite any byte, so no written byte stays known,
     /// except in a protected range. A known value stored there is kept in `unknown_stores`.
     fn store_to_unknown(&mut self, values: &[Option<u64>]) {
+        self.escaped_store |= self.store_span.is_some();
         self.unknown_stores.extend(values.iter().flatten());
         let protected = &self.protected;
         let tracing = self.traces.is_some();
@@ -3402,6 +3494,30 @@ mod tests {
         assert_eq!(machine.register(2), Some(0x1234));
         assert_eq!(machine.read(stored, 8), Some(0x1234));
         assert_eq!(machine.read(stored + 8, 8), Some(0x55));
+    }
+
+    #[test]
+    fn watched_stack_updates_require_immediate_offsets() {
+        for (mnemonic, operands, escaped) in [
+            ("sub", "sp,sp,#32", false),
+            ("add", "sp,sp,#32", false),
+            ("stp", "x19,x20,[sp,#-16]!", false),
+            ("ldp", "x19,x20,[sp],#16", false),
+            ("mov", "sp,x1", true),
+            ("add", "sp,sp,x1", true),
+            ("sub", "sp,sp,x2", true),
+        ] {
+            let code = rows(&[(0x100, mnemonic, operands), (0x104, "ret", "")]);
+            let data = ReadOnlyData::default();
+            let mut machine = Machine::new(&code, &data);
+            let owner = machine.reserve(64);
+            machine.set_register(1, 16);
+            machine.watch_store_span(owner, owner, owner + 64);
+            machine
+                .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+                .unwrap();
+            assert_eq!(machine.escaped_store(), escaped, "{mnemonic} {operands}");
+        }
     }
 
     #[test]

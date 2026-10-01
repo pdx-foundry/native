@@ -1210,6 +1210,7 @@ fn persistent_fixture() -> FieldInput {
     constructor.epilogue();
     arm64!(constructor; ret);
     input.persistent = Some(PersistentInput {
+        constructor_bodies: BTreeMap::new(),
         constructors: vec![Function {
             name: "CExample::CExample()".into(),
             address: 0x9000,
@@ -1891,4 +1892,92 @@ fn scoped_retained_owner_routing_controls() {
             );
         }
     }
+}
+
+#[test]
+fn scoped_destination_follows_called_constructor_code_instead_of_only_its_primary_vtable() {
+    let mut input = persistent_fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CVariableValue::Read(CReader&, EScopeType)".into();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        add x8, x0, #0x48; // embedded operand, beyond the constructor's primary vtable
+        mov x0, x8;
+        mov w2, #4;
+        b extern 0x4000
+    );
+    let binding = input.persistent.as_mut().unwrap();
+    let mut body = Arm64::at(0xa000);
+    body.address(8, 0xb000);
+    arm64!(body; str x8, [x0]);
+    body.address(8, 0xd000);
+    arm64!(body; str x8, [x0, #8]; ret);
+    binding.constructor_bodies.insert(
+        0xa000,
+        Function {
+            address: 0xa000,
+            name: "CMember::CMember()".into(),
+            code: body.bytes(),
+        },
+    );
+    assert_eq!(
+        derive(input.clone()).scoped_destinations.get(&0x48),
+        Some(&0xd000)
+    );
+
+    // Changed code leaves the embedded point unresolved; only the primary metadata survives.
+    input
+        .persistent
+        .as_mut()
+        .unwrap()
+        .constructor_bodies
+        .get_mut(&0xa000)
+        .unwrap()
+        .code = arm64!(at 0xa000; brk #0);
+    assert!(!derive(input).scoped_destinations.contains_key(&0x48));
+}
+
+#[test]
+fn registry_member_tail_call_keeps_the_direct_call_fallback_for_unsupported_code() {
+    let mut input = persistent_fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CVariableValue::Read(CReader&, EScopeType)".into();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        add x8, x0, #0x40; // scoped destination supplied by the fallback
+        mov x0, x8;
+        mov w2, #4;
+        b extern 0x4000
+    );
+    let binding = input.persistent.as_mut().unwrap();
+    binding.constructor_bodies.insert(
+        0xa000,
+        Function {
+            address: 0xa000,
+            name: "CMember::CMember()".into(),
+            code: arm64!(at 0xa000; brk #0),
+        },
+    );
+    let direct = derive(input.clone());
+    let mut tail = Arm64::at(0x9000);
+    arm64!(tail; add x0, x0, #0x40; b extern 0xa000);
+    input.persistent.as_mut().unwrap().constructors[0].code = tail.bytes();
+    let tail = derive(input);
+    assert_eq!(direct.scoped_destinations.get(&0x40), Some(&0xb000));
+    assert_eq!(tail.fields, direct.fields);
+    assert_eq!(tail.scoped_destinations, direct.scoped_destinations);
 }

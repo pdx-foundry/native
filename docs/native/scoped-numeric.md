@@ -102,6 +102,91 @@ proof with negative controls, registry/effect parity, and timed-flag command par
 default targeted scoped-number tests and `cargo clippy --lib -- -D warnings` also pass. No
 recorded expectation was refreshed for this repair.
 
+## Constructor state on M451-hotfix (SDK-654)
+
+The executable and ARM64 identities are the M451-hotfix pair in [targets](targets.md).
+`engine/analysis/receivers.rs` owns constructor state; command factories consume it through
+`declarations/receiver.rs`, and registry destinations through `fields/persistent.rs`.
+The binding follows a bounded graph of constructor symbols, including constructor aliases.
+Neither a command nor a key selects a numeric subtype.
+
+A summary of a class's own vtable-group points alone misses the vtables of numeric members
+in an out-of-line owner constructor and the literal initialized by a directly called numeric
+constructor. The exact-build examples cover these shapes:
+
+| Shape | Engine example | Fact absent from a vtable-only summary |
+| --- | --- | --- |
+| Direct numeric member construction | `CSetTimedCountryFlagEffect` factory `0x101d9ab98`, operand `+0xa8`, integer constructor `0x100d1cc74` | The constructor's literal at operand `+0x200`; its primary point alone did not supply the omitted count |
+| Out-of-line owner with integer members | `CCountryEventEffect` factory `0x101d46d5c` calls `CFireEventEffect` constructor `0x101d2713c` | Integer points at owner `+0xd8` and `+0x2e0`; `0x100d1cd40` stores the supplied integer at operand `+0x200` |
+| Out-of-line owner with fixed-point members | `COrderedListEffect` constructor `0x101d251b8` calls `0x100d1bd80` at owner `+0x160`; `CAddModifierEffect` constructor `0x101e5ca24` calls `0x100d1be44` at `+0xb8` and `+0x2c0` | Embedded fixed-point points, absent from the owner's vtable group |
+| Registry constructor cleanup fragment counted as an owner | `CPurgeType` constructor `0x100be48e8` and outlined cleanup `0x1028debe8` | The real constructor establishes the operand point at `+0x690`; intersecting it with the cleanup fragment removed it |
+
+Outlined `[clone .cold.*]` cleanup fragments are not independent constructors. The ordinary
+one-instruction alias at `0x100be4ae4` delegates to the full `CPurgeType` constructor. Its numeric
+constructor call at `0x100be4a14` establishes `pop_decline_rate` as signed 64-bit, scale 100000.
+
+Compiler vtable-group summaries are an independent baseline. Command factories and registry
+owners evaluate that summary-only path separately from the path that enters constructor bodies.
+The baseline's established points and bytes take precedence. An unconfined or incomplete entered
+walk contributes no bytes, returned registers or control-flow facts to the baseline. The entire
+owner's entered-body contribution is withheld, including earlier and later constructor additions;
+this conservative rule does not erase facts established without entering those bodies.
+
+New constructor bytes and return values require agreement at every normal return and confinement
+of every entered walk. A store must fit within that walk's remaining receiver span or private
+stack frame; the private frame must also be disjoint from the whole owner. Earlier-member stores
+through another argument, unknown-address stores, unmodeled calls and unavailable nested bodies
+reject the added proof. Call-time invalidation propagates through failed wrappers in the entered
+path. The summary-only path remains unaffected. Callee machines inherit the caller's stack
+position and established memory state; unestablished caller memory stays unknown, and the private
+frame cannot overlap a caller stack argument. While confinement is watched, SP updates retain
+that proof only for known immediate offsets from SP, including immediate stack write-back.
+Moving another register into SP or using a register offset rejects the walk, even if SP is restored
+before return.
+
+Command and registry constructor tail branches use the same join as direct calls, even when the
+callee's code is decoded. Missing, changed, bounded-out or conflicting code contributes no
+initial-value evidence. New embedded points require constructor-written words; missing nested
+code cannot borrow a point from metadata. Partly written points are never completed from metadata.
+Reserved objects have no read-only backing; the method assumes neither zeroed allocation nor
+`_bzero` behavior.
+
+The evaluator does not establish freshness-based disjointness. A pre-existing database pointer or
+a heap buffer returned without an owner argument is not enough: recovery requires tracking owner
+derivation through known and unknown registers, memory, vectors, calls and path joins. A pointer
+loaded after storing `this`, and a pointer returned by an unmodeled call that received `this`,
+must remain potentially owner-derived. Until that shared proof exists, external registration and
+string-copy stores reject the constructor additions even when their real destinations may be
+separate allocations.
+
+The population covers 164 registries and 2,170 commands, with no failed question. Registry
+operands are **0 complete, 7 partial, 0 failed** (2 integer and 5 fixed point). Command operands
+are **0 complete, 133 partial, 169 failed**: 98 integer, 35 fixed point and 169 unresolved. All
+302 destinations remain enumerated. The main comparison finds no decreased answer: all command
+readers and six registry readers are identical; `pop_decline_rate` gains established storage.
+Reports and the field-by-field comparison are in `.local/sdk-654/floor/`;
+[discovery](discovery.md#constructor-state-sdk-654) records the three-way counts.
+
+A shared obstacle is `CToken::CToken(int, CString const&)` at `0x1025bc848`: unmodeled lexer
+and string calls leave the copied length or buffer unknown, and `strb` at `0x1025bc930` may write
+outside the member span. `CEffect::CEffect()` registers the object through external database
+pointers, including a store at `0x100456928`. Neither chain has a confinement or freshness proof.
+Their compiler summaries remain usable, but the entered bodies cannot establish additional
+operand points or initial values. Recovery requires a shared call/alias proof, not a subtype name
+or a cached initial byte. The parent storage criterion remains unmet for unresolved destinations.
+
+### Remaining constructor obstacles
+
+`release_vivarium_fauna_count.count` retains `UnresolvedStorage: Scoped destination vtable is
+not established.` Its factory `0x101e16b38` calls the owner constructor `0x101e16b84`. That body
+calls a fixed-point constructor at owner `+0xa8`, then reaches the unmodeled acquire-byte load
+`ldaprb w8,[x8]` at `0x101e16bcc`. The subsequent paths use the mutable sentinel guard and
+`___cxa_guard_acquire` / `___cxa_guard_release`. The bounded evaluator establishes neither this
+instruction nor those calls' effects on the owner. The initial operand cannot be retained from
+its earlier store without establishing the remaining paths. Removal requires a shared proof of
+this atomic/guard shape and negative controls. This destination remains an unmet parent
+criterion; only Jackson can amend it. No subtype is inferred from the constructor name.
+
 ## World evaluation on M451-hotfix (SDK-647)
 
 The static method gives storage and selection. It gives no evaluated number. The numbers below
