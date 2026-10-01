@@ -145,11 +145,11 @@ fn a_reload_from_overwritten_memory_names_the_store_and_not_an_earlier_loss() {
 }
 
 #[test]
-fn memory_lost_again_keeps_the_cause_that_first_lost_it() {
+fn memory_lost_again_records_each_loss_in_order() {
     let bytes = arm64!(at 0x100;
         str xzr, [sp];
         str xzr, [x7]; // x7 is unknown: the saved value is lost here
-        str xzr, [x8]; // x8 is unknown, but the saved value is already lost
+        str xzr, [x8]; // x8 is unknown: the value may be overwritten again
         ldr x1, [sp];
         br x1
     );
@@ -157,25 +157,13 @@ fn memory_lost_again_keeps_the_cause_that_first_lost_it() {
     let data = ReadOnlyData::default();
     let paths = every_path(&code, &data);
     let trace = stop_trace(&paths[0]);
-    assert_eq!(causes(trace), [cause(CauseKind::UnknownStore, 0x104)]);
-
-    let bytes = arm64!(at 0x100;
-        str xzr, [sp];
-        bl extern 0x900; // the method forgets the saved value here
-        bl extern 0x900; // and again
-        ldr x1, [sp];
-        br x1
+    assert_eq!(
+        causes(trace),
+        [
+            cause(CauseKind::UnknownStore, 0x104),
+            cause(CauseKind::UnknownStore, 0x108)
+        ]
     );
-    let code = authored(&bytes);
-    let paths = traced(&code, &data, |machine| {
-        machine.run_paths(ENTRY, &mut |_, machine| {
-            machine.forget(STACK_TOP, 8);
-            Ok(Call::Return(None))
-        })
-    });
-    let trace = stop_trace(&paths[0]);
-    assert_eq!(causes(trace), [cause(CauseKind::Invalidated, 0x104)]);
-    assert!(!trace.unrecorded);
 
     let bytes = arm64!(at 0x100;
         nop; // no instruction writes the value
@@ -192,8 +180,53 @@ fn memory_lost_again_keeps_the_cause_that_first_lost_it() {
         })
     });
     let trace = stop_trace(&paths[0]);
-    assert_eq!(causes(trace), [cause(CauseKind::Invalidated, 0x104)]);
+    assert_eq!(
+        causes(trace),
+        [
+            cause(CauseKind::Invalidated, 0x104),
+            cause(CauseKind::Invalidated, 0x108)
+        ]
+    );
     assert!(trace.unrecorded, "the value was never known");
+}
+
+#[test]
+fn a_bounded_memory_trace_keeps_its_first_losses_and_its_latest() {
+    let bytes = arm64!(at 0x100;
+        str xzr, [sp];
+        str xzr, [x3];
+        str xzr, [x4];
+        str xzr, [x5];
+        str xzr, [x6];
+        str xzr, [x7]; // the latest loss
+        ldr x1, [sp];
+        br x1
+    );
+    let code = authored(&bytes);
+    let data = ReadOnlyData::default();
+    let paths = every_path(&code, &data);
+    let trace = stop_trace(&paths[0]);
+    let instructions: Vec<_> = trace.causes().map(|cause| cause.instruction).collect();
+    assert_eq!(instructions, [0x104, 0x108, 0x10c, 0x114]);
+    assert!(trace.truncated);
+}
+
+#[test]
+fn a_definite_store_ends_the_losses_before_it() {
+    let bytes = arm64!(at 0x100;
+        str xzr, [sp];
+        str xzr, [x7]; // lost, then established again
+        str xzr, [sp];
+        str xzr, [x8]; // the only loss since the last store
+        ldr x1, [sp];
+        br x1
+    );
+    let code = authored(&bytes);
+    let data = ReadOnlyData::default();
+    let paths = every_path(&code, &data);
+    let trace = stop_trace(&paths[0]);
+    assert_eq!(causes(trace), [cause(CauseKind::UnknownStore, 0x10c)]);
+    assert!(!trace.unrecorded);
 }
 
 #[test]

@@ -60,28 +60,37 @@ cargo run --release --example inspect -- --registry-fields common/megastructures
 This shows each stop's reason, obstacle, instruction, symbol and offset, code entry and last
 instructions, followed by the internal gaps before normalization. `--trigger-grammar NAME` and
 `--effect-grammar NAME` do the same for one command's child grammar. They also show the
-obstruction when the command's receiver join stops. Record new engine facts and failed shapes on
-the method page as you find them.
+obstruction when the command's receiver join stops, and list each child key whose initial owner
+storage the factory does not establish: a scoped destination's vtable point or a duration group's
+omitted count. Record new engine facts and failed shapes on the method page as you find them.
 
-Add `--trace` to learn where a needed value stopped being known:
+Add `--trace` to learn where a needed value may have been lost:
 
 ```sh
 cargo run --release --example inspect -- --effect-grammar pop_change_ethic --trace
 ```
 
-A stop at an unknown register or flags, and the `factory-return` and `command-vtable` receiver
-checks, then list each cause with its instruction and code entry:
+A stop at an unknown register or flags, the `factory-return` and `command-vtable` receiver
+checks, and each initial-state stop then list each cause with its instruction and code entry:
 
 - a call that returned no known value, or clobbered a caller-saved register or the flags;
-- known memory that the method invalidated, such as an object after an unrecognized call;
-- a store to an unknown address that may have overwritten known memory;
-- a loop head where the joined paths disagreed on the value.
+- memory that the method invalidated, such as an object after an unrecognized call;
+- a store to an unknown address that may have overwritten memory;
+- a loop head, or the return of an entered constructor, where paths disagreed on the value;
+- a bound constructor whose body the method could not follow, such as one with a path that does
+  not return.
 
-The run follows the value through moves, loads and stores on its own path. Memory that becomes
-unknown again keeps its first recorded cause. Memory that was never known gains the first cause
-recorded for it and stays marked as partly unrecorded. Limits:
+The run follows the value through moves, loads and stores on its own path, and through the
+constructor bodies that it enters: a byte that a member constructor loses names the instruction
+and function inside that constructor, at any depth. A memory byte lists, in order, each place that
+may have overwritten it since its last definite store. The first is where it stopped being known;
+the last is its latest loss, so a recovery must repair each one. Memory that was never known stays
+marked as partly unrecorded. Limits:
 
-- A trace keeps at most `CAUSE_LIMIT` (4) causes and says when it dropped more.
+- A trace keeps at most `CAUSE_LIMIT` (4) causes and says when the list is incomplete. A memory
+  byte then keeps its first three losses and its latest.
+- `command-population --trace INSTALLATION` traces the whole inventory and groups the
+  initial-state stops by the functions of their first and latest loss (`state_obstacles`).
 - More than one cause means any of them may apply. Where joined paths lost a value for different
   reasons, the trace lists each.
 - A path that went on from a loop head does not learn the causes of a later arrival there that

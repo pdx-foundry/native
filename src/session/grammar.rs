@@ -693,6 +693,7 @@ mod tests {
         grammar::GrammarResult {
             durations: Default::default(),
             scoped_destinations: Default::default(),
+            state_traces: Default::default(),
             targets: vec![],
             nodes: vec![],
             nested: Default::default(),
@@ -1079,6 +1080,7 @@ mod tests {
         let make = |numeric| grammar::GrammarResult {
             durations: Default::default(),
             scoped_destinations: Default::default(),
+            state_traces: Default::default(),
             targets: vec![],
             nodes: vec![grammar::ReaderNode {
                 domain: [i32::MIN as i64, i32::MAX as i64],
@@ -1198,6 +1200,7 @@ mod tests {
         let result = grammar::GrammarResult {
             durations: Default::default(),
             scoped_destinations: Default::default(),
+            state_traces: Default::default(),
             targets: vec![],
             nodes: vec![],
             nested: Default::default(),
@@ -1246,6 +1249,7 @@ mod tests {
         let result = grammar::GrammarResult {
             durations: Default::default(),
             scoped_destinations: Default::default(),
+            state_traces: Default::default(),
             targets: vec![],
             nodes: vec![],
             nested: Default::default(),
@@ -1584,6 +1588,137 @@ mod tests {
         assert!(!matches!(property, GrammarProperty::Known(_)));
         assert!(gaps.iter().any(|gap| gap.detail.contains("nested blocks")));
         assert!(!complete.nested_durations());
+    }
+
+    fn scoped_join(offset: i64) -> crate::engine::analysis::fields::ReaderJoin {
+        use crate::engine::analysis::fields::{ReaderJoin, Value};
+
+        ReaderJoin::Joined {
+            callee: "CVariableValue::Read(CReader&, EScopeType)".into(),
+            arguments: [("x0".into(), Value::Owner(offset))].into(),
+            tail: true,
+        }
+    }
+
+    /// `width` bytes at `offset`, each lost at `instruction`.
+    fn lost(
+        offset: u64,
+        width: u64,
+        instruction: u64,
+    ) -> Vec<(u64, crate::engine::analysis::stop::Trace)> {
+        use crate::engine::analysis::stop::{Cause, CauseKind, Trace};
+
+        let trace = Trace::of(Cause {
+            kind: CauseKind::Invalidated,
+            instruction,
+            entry: 0xc000,
+        });
+        (offset..offset + width).map(|at| (at, trace)).collect()
+    }
+
+    fn stop_causes(stops: &[(String, Unresolved)]) -> Vec<(&str, &str, Vec<u64>)> {
+        stops
+            .iter()
+            .map(|(key, stop)| {
+                let causes = stop
+                    .trace
+                    .iter()
+                    .flat_map(|trace| trace.causes())
+                    .map(|cause| cause.instruction)
+                    .collect();
+                (key.as_str(), stop.reason, causes)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_scoped_destination_without_its_point_names_the_causes_of_each_missing_offset() {
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result.fields.fields[0].readers = vec![scoped_join(0x80), scoped_join(0x100)];
+        result.state_traces = lost(0x80, 8, 0x10)
+            .into_iter()
+            .chain(lost(0x100, 8, 0x20))
+            .collect();
+        let state_stops = super::super::scoped_numeric::state_stops;
+
+        result.scoped_destinations = [(0x80, 0x9000), (0x100, 0x9000)].into();
+        assert!(state_stops(&result).is_empty());
+
+        result.scoped_destinations = [(0x80, 0x9000)].into();
+        assert_eq!(
+            stop_causes(&state_stops(&result)),
+            [("district_type", "scoped-destination-state", vec![0x20])]
+        );
+
+        result.scoped_destinations.clear();
+        assert_eq!(
+            stop_causes(&state_stops(&result)),
+            [(
+                "district_type",
+                "scoped-destination-state",
+                vec![0x10, 0x20]
+            )]
+        );
+
+        result.state_traces.clear();
+        let stops = state_stops(&result);
+        assert_eq!(stops.len(), 1);
+        assert!(stops[0].1.trace.is_none());
+    }
+
+    #[test]
+    fn an_omitted_count_without_its_word_names_the_causes_of_that_word() {
+        use crate::engine::analysis::scoped_numeric::{Facts, Shared, Subtype};
+
+        let mut scoped = Facts {
+            shared: Shared {
+                forms: Err(Unresolved::new("scoped-body")),
+                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+                selection: Err(Unresolved::new("scoped-body")),
+            },
+            subtypes: Default::default(),
+        };
+        let state_stops = super::super::durations::state_stops;
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result.state_traces = lost(0xa8, 8, 0x30)
+            .into_iter()
+            .chain(lost(0xd0, 4, 0x40))
+            .collect();
+
+        result.durations.groups = vec![group(
+            Combination::ScaledAtRead,
+            Err(Unresolved::new("duration-consumption")),
+        )];
+        assert_eq!(
+            stop_causes(&state_stops(&result, &scoped)),
+            [("months", "omitted-count-state", vec![0x30])]
+        );
+        result.durations.groups[0].initial = (0xa8..0xac).map(|at| (at, 0)).collect();
+        assert!(state_stops(&result, &scoped).is_empty());
+
+        let shared = Combination::SharedFactor {
+            factor_slot: 0xb0,
+            initial_factor: 1,
+        };
+        result.durations.groups = vec![group(shared, Err(Unresolved::new("duration-consumption")))];
+        assert_eq!(
+            stop_causes(&state_stops(&result, &scoped)),
+            [("months", "omitted-count-state", vec![0x30])]
+        );
+
+        result.scoped_destinations.insert(0xa8, 0x9000);
+        assert!(state_stops(&result, &scoped).is_empty(), "no subtype");
+        scoped.subtypes.insert(
+            0x9000,
+            Ok(Subtype::Numeric {
+                literal: 0x28,
+                token_reader: "CReader::Read(int&)".into(),
+            }),
+        );
+        assert_eq!(
+            stop_causes(&state_stops(&result, &scoped)),
+            [("months", "omitted-count-state", vec![0x40])]
+        );
     }
 }
 

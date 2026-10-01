@@ -6,7 +6,7 @@
 //! answer: public gap text quotes only the reason.
 //!
 //! While cause tracing is on, an obstruction at an unknown value also carries a [`Trace`]: the
-//! places on its path where that value stopped being known. See
+//! places on its path where that value may have been lost. See
 //! [`trace_causes`](super::evaluate::trace_causes).
 use std::cmp::Ordering;
 use std::fmt;
@@ -170,12 +170,15 @@ pub enum Bound {
     TableEntries(usize),
 }
 
-/// Why a value that a walk needed was unknown: where, on the walk's own path, it stopped being
-/// known. A trace with more than one cause names no single cause.
+/// Why a value that a walk needed was unknown: where, on the walk's own path, it may have been
+/// lost. A memory byte's own losses since its last definite store are in order: the first is
+/// where it stopped being known, and the last is its latest loss. A value that combines others,
+/// through a register or where paths join, lists their causes in no particular order. A trace
+/// with more than one cause names no single cause.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct Trace {
     causes: [Option<Cause>; CAUSE_LIMIT],
-    /// The value combined more than [`CAUSE_LIMIT`] causes, and the rest are not kept.
+    /// More than [`CAUSE_LIMIT`] causes were recorded, so the listed causes are incomplete.
     pub truncated: bool,
     /// Part of the value was never known on the path, so no cause is recorded for it: it was
     /// unknown when the walk began, in memory that the path never wrote, or in a vector
@@ -191,7 +194,7 @@ impl Trace {
         unrecorded: true,
     };
 
-    /// A value that stopped being known because of `cause`.
+    /// A value that was lost at `cause`.
     pub(crate) const fn of(cause: Cause) -> Self {
         let mut causes = [None; CAUSE_LIMIT];
         causes[0] = Some(cause);
@@ -202,8 +205,9 @@ impl Trace {
         }
     }
 
-    /// The recorded causes, each once, in the order that the trace recorded them. A join comes
-    /// before the earlier causes that it combines.
+    /// The recorded causes, in the order that the trace recorded them. A join comes before the
+    /// earlier causes that it combines. Combined causes appear once each; a memory byte's losses
+    /// repeat a cause that overwrote it again after another loss.
     pub fn causes(&self) -> impl Iterator<Item = Cause> + '_ {
         self.causes.iter().flatten().copied()
     }
@@ -211,6 +215,27 @@ impl Trace {
     /// Whether the trace records nothing: no cause and no unrecorded part.
     pub(crate) fn is_empty(&self) -> bool {
         self.causes[0].is_none() && !self.unrecorded
+    }
+
+    /// Add `loss`, a later place that may have overwritten this memory byte. When every slot is
+    /// taken, `loss` replaces the last cause, so the trace keeps its first causes and its latest
+    /// loss.
+    pub(crate) fn record_loss(&mut self, loss: &Self) {
+        self.truncated |= loss.truncated;
+        self.unrecorded |= loss.unrecorded;
+        for cause in loss.causes() {
+            let recorded = self.causes().count();
+            if recorded > 0 && self.causes[recorded - 1] == Some(cause) {
+                continue;
+            }
+            match self.causes.get_mut(recorded) {
+                Some(slot) => *slot = Some(cause),
+                None => {
+                    self.causes[CAUSE_LIMIT - 1] = Some(cause);
+                    self.truncated = true;
+                }
+            }
+        }
     }
 
     /// Add the causes and markers of `other`, a value that this one combines. Causes past
@@ -230,18 +255,18 @@ impl Trace {
     }
 }
 
-/// One place where a value stopped being known.
+/// One place where a value may have been lost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct Cause {
     /// How the value stopped being known.
     pub kind: CauseKind,
-    /// The instruction at which the value stopped being known.
+    /// The instruction at which the value may have been lost.
     pub instruction: u64,
     /// Where the walk last entered code then, as in [`Stop::entry`].
     pub entry: u64,
 }
 
-/// How a value stopped being known.
+/// How a value may have been lost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum CauseKind {
     /// A call returned no known value in `x0`, or left a caller-saved register or the flags
@@ -252,9 +277,12 @@ pub enum CauseKind {
     Invalidated,
     /// A store to an unknown address may have written known memory.
     UnknownStore,
-    /// Paths that joined at this loop head disagreed on the value: one knew it and another did
-    /// not, or they knew different values.
+    /// Paths that joined at this loop head, or that returned from a constructor walk here,
+    /// disagreed on the value: one knew it and another did not, or they knew different values.
     Join,
+    /// A bound constructor whose body the method could not follow, such as one with a path
+    /// that does not return, may have written the value.
+    Unfollowed,
 }
 
 impl fmt::Display for Cause {
@@ -274,6 +302,7 @@ impl fmt::Display for CauseKind {
             Self::Invalidated => "invalidated by the method",
             Self::UnknownStore => "store to an unknown address",
             Self::Join => "paths disagreed where they joined",
+            Self::Unfollowed => "a constructor that the method could not follow",
         })
     }
 }
@@ -373,6 +402,18 @@ mod tests {
         let causes: Vec<_> = trace.causes().map(|cause| cause.instruction).collect();
         assert_eq!(causes, [0x104, 0x10c]);
         assert!(trace.unrecorded);
+    }
+
+    #[test]
+    fn a_memory_trace_skips_a_repeated_loss_and_keeps_its_latest_when_full() {
+        let mut trace = Trace::default();
+        for instruction in [0x200, 0x200, 0x204, 0x208, 0x20c, 0x210, 0x200] {
+            trace.record_loss(&call_at(instruction));
+        }
+
+        let instructions: Vec<_> = trace.causes().map(|cause| cause.instruction).collect();
+        assert_eq!(instructions, [0x200, 0x204, 0x208, 0x200]);
+        assert!(trace.truncated);
     }
 
     #[test]

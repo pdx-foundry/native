@@ -85,10 +85,13 @@ write that may change it; old observed values do not initialize the method's byt
 
 The compiler-summary path establishes initial factor 1 for the 27 ordinary timed flags and
 `add_timed_trait`. Entered constructor bodies establish the relation flag's initial factor 1 and
-an omitted count of 0 for `set_timed_relation_flag` and `add_timed_trait`. The other 50 groups
-lose their count word to a later `CEventTarget` member; its lexer calls may write any owner byte
-after the owner escaped (see the
-[remaining constructor obstacles](scoped-numeric.md#remaining-constructor-obstacles)).
+an omitted count of 0 for `set_timed_relation_flag` and `add_timed_trait`. The other 49 effect
+groups lose their count word to a later `CEventTarget` member: first at `CStaticLexer::GetString`
+`0x1004f6f10` and last at `CEventTarget::PopulateTokenString` `0x1004f6f44`, after the owner escaped
+(see the [remaining constructor obstacles](scoped-numeric.md#remaining-constructor-obstacles)).
+`has_passed_resolution`'s `months`/`years` group has no entered constructor body: its factory,
+`NTrigger::Create<CHasPassedResolutionTrigger>` `0x1021e95b4`, calls `_bzero`, `CTrigger::CTrigger()`
+and two `CIntVariableValue::CIntVariableValue()` by summary only (`0x1021e95d4`-`0x1021e9618`).
 
 ## Stack and execute facts on M451-hotfix (SDK-657)
 
@@ -261,8 +264,9 @@ an event or trigger. The trait case reads in leader scope. No new runtime meanin
   and `add_timed_trait` do not have a proved duration consumer in this method. Scaled-count
   consumption, `time_multiplier` and event delays are outside this ticket. Trait execution
   reaches `CLeader::AddTimedTrait`; its storage and update behavior are not a flag countdown.
-- **Omitted state for 50 groups:** no count or literal is proved, because a later `CEventTarget`
-  member's lexer calls may write any owner byte. Recovery needs a bounded model of those calls;
+- **Omitted state for 50 groups:** no count or literal is proved. For 49, a later `CEventTarget`
+  member's lexer calls may write any owner byte, the last at `PopulateTokenString` `0x1004f6f44`;
+  `has_passed_resolution` has only summary constructors. Recovery needs a bounded model of those calls;
   otherwise Jackson must amend the parent criterion. Observed values do not substitute for
   constructor evidence.
 - **28 flag consumers:** the static method does not establish update frequency or expiry

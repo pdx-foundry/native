@@ -5,6 +5,7 @@ use crate::engine::analysis::{
     numeric::NumericFacts,
     readers,
     scoped_numeric::{Facts, Subtype},
+    stop::{Trace, Unresolved},
 };
 use crate::{
     CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
@@ -126,6 +127,61 @@ fn attach_field(
             );
         }
     }
+}
+
+/// Each scoped destination whose vtable point the factory state does not establish, by the
+/// child key that reads it, with the trace of the unknown bytes while tracing causes. The
+/// command's value forms are under `(value)`.
+pub(super) fn state_stops(result: &GrammarResult) -> Vec<(String, Unresolved)> {
+    let points = &result.scoped_destinations;
+    let fields = result.fields.fields.iter().map(|root| {
+        let offsets = root
+            .readers
+            .iter()
+            .filter(|join| is_scoped(join))
+            .filter_map(readers::destination);
+        (root.name.clone(), offsets.collect::<Vec<_>>())
+    });
+    let forms = result.forms.iter().map(|forms| {
+        let offsets = forms
+            .alternatives
+            .iter()
+            .filter(|alternative| alternative.accepted)
+            .filter(|alternative| alternative.value.reader.as_ref().is_some_and(is_scoped))
+            .filter_map(|alternative| alternative.value.destination)
+            .map(|offset| offset as i64);
+        ("(value)".to_string(), offsets.collect())
+    });
+
+    fields
+        .chain(forms)
+        .filter_map(|(key, offsets)| {
+            let missing: Vec<_> = offsets
+                .into_iter()
+                .filter(|offset| !points.contains_key(offset))
+                .collect();
+            if missing.is_empty() {
+                return None;
+            }
+            let mut trace: Option<Trace> = None;
+            for other in missing
+                .iter()
+                .filter_map(|&offset| result.state_trace(offset, 8))
+            {
+                trace.get_or_insert_default().merge(&other);
+            }
+
+            Some((
+                key,
+                Unresolved::new("scoped-destination-state").traced(trace),
+            ))
+        })
+        .collect()
+}
+
+fn is_scoped(join: &ReaderJoin) -> bool {
+    matches!(join, ReaderJoin::Joined { callee, .. }
+        if readers::classify_callee(callee) == ReaderKind::ScopedNumeric)
 }
 
 fn joined_point(joins: &[ReaderJoin], points: &BTreeMap<i64, u64>) -> Option<u64> {

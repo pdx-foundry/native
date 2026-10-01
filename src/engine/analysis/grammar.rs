@@ -8,7 +8,7 @@ use super::{
         self, Condition, DataSection, DispatchInput, FieldGap, PathOutcome, ReaderJoin, RootField,
         Token, TokenPath, Value,
     },
-    stop::Unresolved,
+    stop::{Trace, Unresolved},
 };
 use crate::BlockFamily;
 
@@ -152,6 +152,27 @@ pub struct GrammarResult {
     pub stops: Vec<Unresolved>,
     /// Sibling keys that set one duration count, and candidates that could not be classified.
     pub durations: super::durations::Inventory,
+    /// Why each byte that the factory state does not establish is unknown, by owner offset,
+    /// while tracing causes. Only the command's own result has one.
+    pub state_traces: BTreeMap<u64, Trace>,
+}
+
+impl GrammarResult {
+    /// Why any of `width` bytes of the factory state at `offset` is unknown, with the causes of
+    /// each. `None` when no such byte has a trace, as when untraced.
+    pub fn state_trace(&self, offset: i64, width: u64) -> Option<Trace> {
+        let offset = u64::try_from(offset).ok()?;
+        let mut traces = self
+            .state_traces
+            .range(offset..offset.saturating_add(width))
+            .map(|(_, trace)| trace);
+        let mut trace = *traces.next()?;
+        for other in traces {
+            trace.merge(other);
+        }
+
+        Some(trace)
+    }
 }
 
 /// The child keys of a command reader, in the registry field method's records.
@@ -177,6 +198,7 @@ pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unre
     ));
     result.forms_key = Some(key);
     result.targets = targets::analyze(input, &result, &state.bytes);
+    result.state_traces = state.traces;
     Ok(result)
 }
 
@@ -561,6 +583,7 @@ fn analyze_reader_with_state(
     );
     Ok(GrammarResult {
         durations,
+        state_traces: BTreeMap::new(),
         scoped_destinations,
         targets: vec![],
         nodes,

@@ -751,6 +751,47 @@ fn traced_questions_match_untraced_questions() {
     }
 }
 
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn traced_initial_state_names_where_member_constructors_lost_a_destination() {
+    const GET_STRING: (u64, u64) = (0x1004f6f10, 0x1004f6ed0);
+    const GET_TCHAR_PTR: (u64, u64) = (0x1025bc894, 0x1025bc848);
+    const GET_SIZE: (u64, u64) = (0x1025bc8a0, 0x1025bc848);
+    const POPULATE_TOKEN_STRING: (u64, u64) = (0x1004f6f44, 0x1004f6ed0);
+    const EFFECT_REGISTRATION: (u64, u64) = (0x100456928, 0x10045680c);
+    let untraced_native = native();
+    // Each `Native` caches its analysis, so the traced questions need their own.
+    let traced_native = native();
+
+    for (command, key, latest) in [
+        ("country_event", "days", POPULATE_TOKEN_STRING),
+        (
+            "effect_on_blob",
+            "owned_planets_percentage",
+            EFFECT_REGISTRATION,
+        ),
+    ] {
+        let run = |native| command_grammar_stops::run(native, DeclarationKind::Effect, command);
+        let untraced = run(&untraced_native).unwrap();
+        let traced = trace_causes(|| run(&traced_native)).unwrap();
+
+        assert_eq!(traced.answer, untraced.answer, "{command}");
+        assert_eq!(traced.state_stops, untraced.state_stops, "{command}");
+        assert!(untraced.state_stops[key].trace.is_none(), "{command}");
+        let trace = traced.state_stops[key].trace.as_deref().unwrap();
+        let causes: Vec<_> = trace
+            .causes()
+            .map(|cause| (cause.instruction, cause.entry))
+            .collect();
+        assert_eq!(
+            causes,
+            [GET_STRING, GET_TCHAR_PTR, GET_SIZE, latest],
+            "{command}.{key}"
+        );
+        assert!(trace.truncated, "{command}.{key}");
+    }
+}
+
 /// What tracing must not change on one `Native`: every static answer, the internal results of
 /// four registries and 22 commands, and the traces of three known receiver failures.
 struct Observed {

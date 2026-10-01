@@ -271,10 +271,14 @@ The recovered arguments are 102 `order_by` and 7 other fixed-point operands (64-
 it and `add_timed_trait` gain omitted count 0.
 
 The 35 failed arguments have one failure shape, `UnresolvedStorage: Scoped destination vtable is
-not established`. Arguments by obstacle: 20 event `days` (`CToken` copy), 7 trigger-registration
-destinations (`CTrigger`), 5 event-target destinations (`CEventTarget`), 2 string copies
-(`CString`) and 1 static guard. The 50 duration groups without an omitted count share the
-`CEventTarget` obstacle. Duration failure shapes are 50 omitted-count gaps, 28 flag-update limits,
+not established`. SDK-667 traced each to its first and latest loss; the
+[obstacle table](scoped-numeric.md#remaining-constructor-obstacles) supersedes the SDK-658
+attribution by walk-completion order. By latest loss: 25 `CEventTarget::PopulateTokenString`
+(the 20 event `days`, `add_modifier` and `add_stage_modifier` `mult` / `multiplier`,
+`set_saved_date.days_from_present`), 6 `CTrigger` registration, 2 `CEffect` registration, 1 static
+guard and 1 unfollowed `CString` constructor. Of the 50 duration groups without an omitted count,
+49 share the `CEventTarget` obstacle and `has_passed_resolution` has only summary constructors. The
+traced and untraced SDK-667 populations change no answer against `main` (`1a4402d`). Duration failure shapes are 50 omitted-count gaps, 28 flag-update limits,
 24 consumption limits and 23 mixed scoped/literal-selection gaps. Duration lists stay 625 known,
 516 partial and 1,029 unresolved. Reports are `.local/sdk-658/now-scoped.json` and
 `.local/sdk-658/now-duration.json`.

@@ -4,7 +4,7 @@ use crate::engine::analysis::{
     evaluate::{Call, Code, Exit, ReadOnlyData},
     readers,
     receivers::{ConstructorImage, Constructors, accept_entered_path, install_vtables},
-    stop::Unresolved,
+    stop::{CauseKind, Unresolved},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -110,8 +110,14 @@ pub(super) fn discover(
                     }
                     let vtable_bound = || Unresolved::new("persistent-vtable-bound");
                     if !enter_constructors {
-                        install_vtables(machine, receiver, owner + SPAN, vtables)
-                            .ok_or_else(vtable_bound)?;
+                        install_vtables(
+                            machine,
+                            receiver,
+                            owner + SPAN,
+                            vtables,
+                            CauseKind::Invalidated,
+                        )
+                        .ok_or_else(vtable_bound)?;
                         return Ok(Call::Return(None));
                     }
                     let body_available = binding.constructor_bodies.contains_key(&target);

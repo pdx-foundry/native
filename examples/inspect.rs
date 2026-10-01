@@ -2,8 +2,9 @@
 //! callers, the code that forms a string's address, and fixed-up slots such as a vtable's. On a
 //! catalogued build, `--registry-fields` runs the registry field method and shows where each
 //! token path stopped; `--trigger-grammar` and `--effect-grammar` do the same for one command's
-//! child grammar. With `--trace`, an obstruction at an unknown value also lists where that value
-//! stopped being known. No game starts. Addresses in this output are for development only.
+//! child grammar, and name each child key whose initial owner storage the factory does not
+//! establish. With `--trace`, an obstruction at an unknown value also lists where that value may
+//! have been lost. No game starts. Addresses in this output are for development only.
 //!
 //! The image is `--image PATH`, or `STELLARIS_PATH` when that is absent. A directory resolves to
 //! its executable the way `Native::open` resolves an installation.
@@ -149,6 +150,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("stopped at {}", run.chain.stopped_at.unwrap_or("grammar"));
                     print_stop(&image, unresolved, arguments.trace);
                 }
+            }
+            if !run.state_stops.is_empty() {
+                println!("\ninitial state not established");
+            }
+            for (key, unresolved) in &run.state_stops {
+                println!("{key}");
+                print_stop(&image, unresolved, arguments.trace);
             }
         }
     }
@@ -321,14 +329,16 @@ fn print_stop(image: &Image, unresolved: &Unresolved, traced: bool) {
             let causes: Vec<_> = trace.causes().collect();
             match causes.len() {
                 0 => println!("  no recorded cause"),
-                1 => println!("  the value stopped being known here:"),
-                _ => println!("  the value stopped being known at one or more of these:"),
+                _ => println!("  the value may have been lost at:"),
             }
             for cause in causes {
                 print_cause(image, cause);
             }
             if trace.truncated {
-                println!("  more causes were dropped; a trace keeps at most {CAUSE_LIMIT}");
+                println!(
+                    "  the list is incomplete: a trace keeps at most {CAUSE_LIMIT} causes, and a \
+                     memory byte keeps its first losses and its latest"
+                );
             }
             if trace.unrecorded {
                 println!(

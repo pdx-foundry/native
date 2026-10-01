@@ -4,9 +4,13 @@
 //! Tracing is a developer diagnostic that [`trace_causes`] turns on. It never changes a value, a
 //! path or an end. A traced machine computes what an untraced one computes, and keeps a [`Trace`]
 //! beside each unknown register, the flags and each unknown byte. A value's trace is read only
-//! while the value is unknown, and every write of an unknown value sets it. Memory that may have
-//! been overwritten while it was already unknown keeps its first recorded cause, since that is
-//! where it stopped being known.
+//! while the value is unknown, and every write of an unknown value sets it. An unknown byte keeps,
+//! in order, the places that may have overwritten it since its last definite store: the first is
+//! where it stopped being known, and the last is its latest loss. A bounded trace keeps its first
+//! losses and its latest one.
+//!
+//! A call whose body a constructor walk enters runs on a separate machine. That machine starts
+//! with its caller's causes, and its owner bytes' causes replace the caller's when it returns.
 //!
 //! An instruction's unknown register reads collect in the machine's inputs, and an unknown value
 //! that the instruction computes takes them. A memory instruction divides its inputs, so that a
@@ -83,19 +87,30 @@ impl Traces {
             .unwrap_or(Trace::UNRECORDED)
     }
 
-    /// `cause` may have overwritten the byte at `address`, which was `known` or not. A byte
-    /// with a recorded cause keeps it, since it stopped being known there first. Any other byte
-    /// gains `cause`; a byte that was never known keeps its unrecorded part.
+    /// `cause` may have overwritten the byte at `address`, which was `known` or not. A known
+    /// byte starts a new trace. An unknown byte records `cause` as its latest loss, and a byte
+    /// that was never known keeps its unrecorded part.
     fn overwrite(&mut self, address: u64, known: bool, cause: Trace) {
         let mut trace = if known {
             Trace::default()
         } else {
             self.byte(address)
         };
-        if trace.causes().next().is_none() {
-            trace.merge(&cause);
-            self.memory.insert(address, trace);
-        }
+        trace.record_loss(&cause);
+        self.memory.insert(address, trace);
+    }
+
+    /// The traces that a call's separately evaluated body starts with: the caller's memory and
+    /// argument registers.
+    pub(super) fn for_callee(&self) -> Box<Self> {
+        let mut registers = [Trace::UNRECORDED; 31];
+        registers[..9].copy_from_slice(&self.registers[..9]);
+        Box::new(Self {
+            registers,
+            flags: Trace::UNRECORDED,
+            memory: self.memory.clone(),
+            inputs: Cell::default(),
+        })
     }
 
     fn read(&self, trace: &Trace) {
@@ -288,16 +303,12 @@ impl Machine<'_> {
         }
     }
 
-    /// The method is about to make `width` bytes at `address` unknown. Before any walk, no
-    /// instruction is the cause.
-    pub(super) fn trace_forgetting(&mut self, address: u64, width: u64) {
+    /// The method is about to make `width` bytes at `address` unknown, for the reason `kind`.
+    pub(super) fn trace_forgetting(&mut self, address: u64, width: u64, kind: CauseKind) {
         if self.traces.is_none() {
             return;
         }
-        let cause = match self.entry {
-            0 => Trace::UNRECORDED,
-            _ => self.cause(CauseKind::Invalidated),
-        };
+        let cause = self.forgetting_cause(kind);
         let bytes: Vec<_> = (address..address + width)
             .map(|address| (address, self.byte(address).is_some()))
             .collect();
@@ -306,6 +317,52 @@ impl Machine<'_> {
                 traces.overwrite(address, known, cause);
             }
         }
+    }
+
+    /// The method is about to make the known bytes of `length` bytes at `address` unknown, for
+    /// the reason `kind`. Each byte there that is already unknown and was written or inherited
+    /// gains the cause too, since the method may overwrite it again.
+    pub(super) fn trace_forgetting_unknown(&mut self, address: u64, length: u64, kind: CauseKind) {
+        if self.traces.is_none() {
+            return;
+        }
+        let range = address..address.saturating_add(length);
+        let mut unknown: Vec<u64> = self
+            .memory
+            .range(range.clone())
+            .filter(|(_, byte)| byte.is_none())
+            .map(|(&address, _)| address)
+            .collect();
+        unknown.extend(self.inherited_unknown_bytes(|address| range.contains(&address)));
+        let cause = self.forgetting_cause(kind);
+        if let Some(traces) = &mut self.traces {
+            for address in unknown {
+                traces.overwrite(address, false, cause);
+            }
+        }
+    }
+
+    /// Before any walk, no instruction is the cause.
+    fn forgetting_cause(&self, kind: CauseKind) -> Trace {
+        match self.entry {
+            0 => Trace::UNRECORDED,
+            _ => self.cause(kind),
+        }
+    }
+
+    /// The unknown bytes that `keep` selects and that only a trace records: a call's copy of
+    /// its caller's unknown memory, which [`Machine::fresh_callee`] leaves out of memory.
+    pub(super) fn inherited_unknown_bytes(&self, keep: impl Fn(u64) -> bool) -> Vec<u64> {
+        let Some(traces) = &self.traces else {
+            return Vec::new();
+        };
+        traces
+            .memory
+            .keys()
+            .copied()
+            .filter(|address| !self.memory.contains_key(address))
+            .filter(|&address| keep(address) && self.byte(address).is_none())
+            .collect()
     }
 
     /// The present instruction stores to an unknown address, which may have overwritten each
@@ -317,6 +374,36 @@ impl Machine<'_> {
                 traces.overwrite(address, known, cause);
             }
         }
+    }
+
+    /// The trace of each unknown byte of `length` bytes at `address`, by offset from `address`.
+    /// Empty when this machine does not trace causes.
+    pub(crate) fn unknown_byte_traces(&self, address: u64, length: u64) -> BTreeMap<u64, Trace> {
+        let Some(traces) = &self.traces else {
+            return BTreeMap::new();
+        };
+        (0..length)
+            .filter(|offset| self.byte(address + offset).is_none())
+            .map(|offset| (offset, traces.byte(address + offset)))
+            .collect()
+    }
+
+    /// Replace the trace of each unknown byte that `traces` lists by its offset from `address`.
+    pub(crate) fn set_byte_traces(&mut self, address: u64, traces: &BTreeMap<u64, Trace>) {
+        let unknown: Vec<_> = traces
+            .iter()
+            .filter(|(offset, _)| self.byte(address + *offset).is_none())
+            .map(|(offset, trace)| (address + offset, *trace))
+            .collect();
+        if let Some(machine_traces) = &mut self.traces {
+            machine_traces.memory.extend(unknown);
+        }
+    }
+
+    /// A trace whose one cause is that paths joining after the present instruction disagreed.
+    /// `None` when this machine does not trace causes.
+    pub(crate) fn join_cause(&self) -> Option<Trace> {
+        self.traces.as_ref().map(|_| self.cause(CauseKind::Join))
     }
 
     /// The call at the present instruction returned and left `registers` and the flags unknown.

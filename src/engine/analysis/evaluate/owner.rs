@@ -16,6 +16,7 @@ use std::cell::Cell;
 use std::collections::BTreeSet;
 
 use super::{Call, Machine, STACK_TOP};
+use crate::engine::analysis::stop::CauseKind;
 
 /// The argument registers `x0` to `x8`, and the registers that a call preserves, `x19` to `x29`.
 const REACHABLE_REGISTERS: u32 = 0x1ff | 0x7ff << 19;
@@ -309,10 +310,10 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// Make every known owner byte unknown.
-    fn forget_owner(&mut self) {
+    /// Make every known owner byte unknown, for the reason `kind`.
+    fn forget_owner(&mut self, kind: CauseKind) {
         if let Some((start, end)) = self.owner_range() {
-            self.forget_known_bytes(start, end - start);
+            self.forget_known_bytes_for(start, end - start, kind);
         }
     }
 
@@ -328,7 +329,13 @@ impl<'a> Machine<'a> {
     /// Return from a call whose code this machine does not run; see
     /// [`Machine::opaque_call_effects`].
     pub fn opaque_call(&mut self) -> Call {
-        self.opaque_call_effects();
+        self.opaque_call_for(CauseKind::Invalidated)
+    }
+
+    /// [`Machine::opaque_call`], whose owner writes have the cause `kind` while tracing causes,
+    /// such as [`CauseKind::Unfollowed`] for a bound constructor whose walk was rejected.
+    pub(crate) fn opaque_call_for(&mut self, kind: CauseKind) -> Call {
+        self.opaque_call_effects_for(kind);
 
         Call::Return(None)
     }
@@ -339,6 +346,10 @@ impl<'a> Machine<'a> {
     /// values. A handler that knows the call's result, such as an allocation, returns it with
     /// [`Machine::return_with_taint`] afterwards.
     pub fn opaque_call_effects(&mut self) {
+        self.opaque_call_effects_for(CauseKind::Invalidated);
+    }
+
+    fn opaque_call_effects_for(&mut self, kind: CauseKind) {
         let reaches = self
             .owner
             .as_ref()
@@ -349,7 +360,7 @@ impl<'a> Machine<'a> {
             return;
         }
 
-        self.forget_owner();
+        self.forget_owner(kind);
         self.escape_owner();
         self.return_with_taint(None, ReturnTaint::REACHING);
     }

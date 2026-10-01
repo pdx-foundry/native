@@ -1007,6 +1007,49 @@ fn factory_initial_state_withdraws_earlier_new_operands_after_an_unmodeled_call(
 }
 
 #[test]
+fn factory_state_names_the_member_call_that_lost_a_byte() {
+    let mut input = initial_state_factory();
+    let mut owner = Arm64::at(0xc000);
+    owner.prologue();
+    arm64!(owner; mov x19, x0);
+    owner.address(8, VTABLE);
+    arm64!(owner; str x8, [x19]; add x0, x19, #32; mov w1, #7);
+    owner.call(0xd000);
+    arm64!(owner; add x0, x19, #80);
+    owner.call(0xe000);
+    arm64!(owner; mov x0, x19);
+    owner.epilogue();
+    arm64!(owner; ret);
+    input.functions.insert(0xc000, function(owner));
+    let mut later = Arm64::at(0xe000);
+    later.prologue();
+    let lost = later.here();
+    later.call(0xf000); // unknown string lookup
+    later.epilogue();
+    arm64!(later; ret);
+    input.functions.insert(0xe000, function(later));
+    input.constructors.insert(0xe000, BTreeMap::new());
+
+    let untraced = super::receiver::factory_state(&input, FACTORY).unwrap();
+    let traced = trace_causes(|| super::receiver::factory_state(&input, FACTORY)).unwrap();
+
+    assert_eq!(traced.bytes, untraced.bytes);
+    assert!(untraced.traces.is_empty());
+    assert!(!traced.bytes.contains_key(&64));
+    assert!(
+        traced
+            .traces
+            .keys()
+            .all(|offset| !traced.bytes.contains_key(offset))
+    );
+    let causes: Vec<_> = traced.traces[&64]
+        .causes()
+        .map(|cause| (cause.kind, cause.instruction, cause.entry))
+        .collect();
+    assert_eq!(causes, [(CauseKind::Invalidated, lost, 0xe000)]);
+}
+
+#[test]
 fn factory_tail_constructor_uses_the_same_initial_state_join_as_a_direct_call() {
     let mut input = initial_state_factory();
     let mut create = Arm64::at(CREATE);
