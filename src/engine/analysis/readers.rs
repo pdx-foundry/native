@@ -246,7 +246,11 @@ pub(crate) fn arguments_join(
     } else if name.ends_with("::Read(CReader&, EScopeType)") {
         owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
     } else if name.starts_with("CReader::Read(") {
-        get("x0") == Some(&Value::Reader(0)) && owner(get("x1"))
+        get("x0") == Some(&Value::Reader(0))
+            && (owner(get("x1"))
+                || (classify_callee(name) == ReaderKind::Integer
+                    && scalar_width(name) == Some(4)
+                    && matches!(get("x1"), Some(Value::Stack(_)))))
     } else if name == "CVariableValue::Read(CReader&, EScopeType)" {
         owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
     } else if name.starts_with("void NParserUtil::ReadEffect<")
@@ -273,6 +277,40 @@ mod tests {
     use super::*;
     use crate::engine::analysis::stop::Unresolved;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn a_word_integer_reader_can_join_a_stack_temporary() {
+        let mut arguments = BTreeMap::from([
+            (
+                "x0".into(),
+                crate::engine::analysis::fields::Value::Reader(0),
+            ),
+            (
+                "x1".into(),
+                crate::engine::analysis::fields::Value::Stack(-16),
+            ),
+        ]);
+        assert!(arguments_join(
+            "CReader::Read(int&)",
+            &arguments,
+            false,
+            None
+        ));
+        for callee in [
+            "CReader::Read(short&)",
+            "CReader::Read(long long&)",
+            "CReader::Read(float&)",
+        ] {
+            assert!(!arguments_join(callee, &arguments, false, None));
+        }
+        arguments.remove("x0");
+        assert!(!arguments_join(
+            "CReader::Read(int&)",
+            &arguments,
+            false,
+            None
+        ));
+    }
 
     fn joined(callee: &str) -> ReaderJoin {
         ReaderJoin::Joined {

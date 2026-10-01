@@ -1,11 +1,11 @@
 {
-  "build": "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
+  "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
   "cases": {
     "add_modifier/days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -23,10 +23,10 @@
       "text": "add_modifier = { modifier = gave_up_pop days = 7 }"
     },
     "add_modifier/fractional_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -44,7 +44,7 @@
       "text": "add_modifier = { modifier = gave_up_pop days = 2.75 }"
     },
     "add_modifier/malformed_after_literal": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [
         {
           "line": 1,
@@ -53,7 +53,7 @@
         }
       ],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -71,10 +71,10 @@
       "text": "add_modifier = { modifier = gave_up_pop days = 7 days = x }"
     },
     "add_modifier/months": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -92,10 +92,10 @@
       "text": "add_modifier = { modifier = gave_up_pop months = 2 }"
     },
     "add_modifier/months_overflow": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -113,10 +113,10 @@
       "text": "add_modifier = { modifier = gave_up_pop months = 71582789 }"
     },
     "add_modifier/months_then_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -134,10 +134,10 @@
       "text": "add_modifier = { modifier = gave_up_pop months = 2 days = 3 }"
     },
     "add_modifier/negative_days": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -155,10 +155,10 @@
       "text": "add_modifier = { modifier = gave_up_pop days = -1 }"
     },
     "add_modifier/omitted": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -176,10 +176,10 @@
       "text": "add_modifier = { modifier = gave_up_pop  }"
     },
     "add_modifier/years": {
-      "completeness": "Complete",
+      "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Known": [
+        "Partial": [
           {
             "child": 0,
             "count": {
@@ -195,6 +195,82 @@
         ]
       },
       "text": "add_modifier = { modifier = gave_up_pop years = 2 }"
+    },
+    "add_timed_trait/mixed_units": {
+      "completeness": "Complete",
+      "diagnostics": [],
+      "stored_durations": {
+        "Known": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 3
+                },
+                "variable": ""
+              }
+            },
+            "factor": 30,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "add_timed_trait = { trait = leader_trait_adaptable months = 2 days = 3 }"
+    },
+    "country_event/mixed_units": {
+      "completeness": "Partial",
+      "diagnostics": [
+        {
+          "line": 1,
+          "stage": "validation",
+          "text": "Error in fire event effect at  file: <script> line: 1, could not find event: native_duration_missing.1\n"
+        }
+      ],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 360
+            },
+            "factor": null,
+            "units": [
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "country_event = { id = native_duration_missing.1 months = 2 years = 1 }"
+    },
+    "has_passed_resolution/mixed_units": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "Integer": 360
+            },
+            "factor": null,
+            "units": [
+              "months",
+              "years"
+            ]
+          }
+        ]
+      },
+      "text": "has_passed_resolution = { months = 2 years = 1 }"
     },
     "set_timed_country_flag/days": {
       "completeness": "Partial",
@@ -591,6 +667,14 @@
         ]
       },
       "text": "set_timed_country_flag = { flag = native_duration_zero_days days = 0 }"
+    },
+    "set_timed_relation_flag/mixed_units": {
+      "completeness": "Partial",
+      "diagnostics": [],
+      "stored_durations": {
+        "Partial": []
+      },
+      "text": "set_timed_relation_flag = { who = root flag = native_duration_relation months = 2 days = 3 }"
     }
   }
 }

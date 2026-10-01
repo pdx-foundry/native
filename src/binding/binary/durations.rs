@@ -22,6 +22,7 @@ pub(in crate::binding) fn input(
         execute_slot,
         names,
         countdown,
+        scoped_storage: BTreeMap::new(),
     }
 }
 

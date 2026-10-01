@@ -74,7 +74,11 @@ fn receiver(
 
     DurationReceiver {
         vtable: result.reader.vtable,
-        groups_complete: result.durations_complete() && slots.iter().all(Option::is_some),
+        groups_complete: result.durations_complete()
+            && slots.iter().all(Option::is_some)
+            && !result.durations.groups.iter().any(|group| {
+                super::durations::scoped_literal_overlap(group, result, scoped, numeric)
+            }),
         groups: slots.into_iter().flatten().collect(),
     }
 }

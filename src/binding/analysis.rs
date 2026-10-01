@@ -284,6 +284,19 @@ impl VerifiedAnalysis<'_> {
             &self.catalog.symbols,
             &mut input.forms.qualified_references,
         )?;
+        let scoped_input = self.scoped_numeric_input(recipe)?;
+        let scoped = crate::engine::analysis::scoped_numeric::analyze(&scoped_input);
+        let image = binary::references::Image {
+            bytes: &self.executable,
+            symbols: &self.catalog.symbols,
+            strings: &self.catalog.strings,
+            pointers: &self.catalog.pointers,
+            imports: &self.catalog.imports,
+        };
+        let numeric_input = binary::numeric::read(&image, recipe)?;
+        let numeric = crate::engine::analysis::numeric::analyze(&numeric_input);
+        input.durations.scoped_storage =
+            crate::engine::analysis::durations::scoped_storage(&scoped, &numeric);
         Ok((input, inventory))
     }
 

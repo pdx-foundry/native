@@ -7,7 +7,7 @@
   },
   "effect/add_modifier": {
     "durations": {
-      "Known": [
+      "Partial": [
         {
           "combination": {
             "Known": "ScaledAtRead"
@@ -38,13 +38,14 @@
       ]
     },
     "gaps": [
+      "ReaderSemantics: Duration keys days, months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
       "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method.",
       "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
     ]
   },
   "effect/add_stage_modifier": {
     "durations": {
-      "Known": [
+      "Partial": [
         {
           "combination": {
             "Known": "ScaledAtRead"
@@ -75,6 +76,7 @@
       ]
     },
     "gaps": [
+      "ReaderSemantics: Duration keys days, months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
       "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method.",
       "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
     ]
@@ -83,25 +85,31 @@
     "durations": {
       "Known": [
         {
-          "combination": "Unresolved",
+          "combination": {
+            "Known": {
+              "SharedFactor": {
+                "initial_factor": 1
+              }
+            }
+          },
           "consumption": "Unresolved",
           "omitted_count": "Unresolved",
           "units": [
             {
               "factor": {
-                "Partial": null
+                "Known": null
               },
               "key": "days"
             },
             {
               "factor": {
-                "Partial": 30
+                "Known": 30
               },
               "key": "months"
             },
             {
               "factor": {
-                "Partial": 360
+                "Known": 360
               },
               "key": "years"
             }
@@ -110,14 +118,41 @@
       ]
     },
     "gaps": [
-      "ReaderSemantics: Duration keys days, months, years: the combination is not established (duration-execute-body)."
+      "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method.",
+      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
     ]
   },
   "effect/country_event": {
     "durations": {
-      "Partial": []
+      "Partial": [
+        {
+          "combination": {
+            "Known": "ScaledAtRead"
+          },
+          "consumption": "Unresolved",
+          "omitted_count": "Unresolved",
+          "units": [
+            {
+              "factor": {
+                "Known": 30
+              },
+              "key": "months"
+            },
+            {
+              "factor": {
+                "Known": 360
+              },
+              "key": "years"
+            }
+          ]
+        }
+      ]
     },
-    "gaps": []
+    "gaps": [
+      "ReaderSemantics: Duration keys months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
+      "OutsideMethod: Duration keys months, years: what consumes the count is outside this method.",
+      "ReaderSemantics: Duration keys months, years: the omitted count is not established."
+    ]
   },
   "effect/set_timed_agreement_flag": {
     "durations": {
@@ -941,7 +976,9 @@
       "Partial": [
         {
           "combination": "Unresolved",
-          "consumption": "Unresolved",
+          "consumption": {
+            "Known": "FlagCountdown"
+          },
           "omitted_count": "Unresolved",
           "units": [
             {
@@ -967,7 +1004,7 @@
       ]
     },
     "gaps": [
-      "ReaderSemantics: Duration keys days, months, years: the combination is not established (duration-execute-body)."
+      "ReaderSemantics: Duration keys days, months, years: the combination is not established (duration-initial-state)."
     ]
   },
   "effect/set_timed_sector_flag": {
@@ -1316,8 +1353,34 @@
   },
   "trigger/has_passed_resolution": {
     "durations": {
-      "Partial": []
+      "Partial": [
+        {
+          "combination": {
+            "Known": "ScaledAtRead"
+          },
+          "consumption": "Unresolved",
+          "omitted_count": "Unresolved",
+          "units": [
+            {
+              "factor": {
+                "Known": 30
+              },
+              "key": "months"
+            },
+            {
+              "factor": {
+                "Known": 360
+              },
+              "key": "years"
+            }
+          ]
+        }
+      ]
     },
-    "gaps": []
+    "gaps": [
+      "ReaderSemantics: Duration keys months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
+      "OutsideMethod: Duration keys months, years: what consumes the count is outside this method.",
+      "ReaderSemantics: Duration keys months, years: the omitted count is not established."
+    ]
   }
 }
