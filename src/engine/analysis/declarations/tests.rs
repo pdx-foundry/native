@@ -68,6 +68,7 @@ fn input(
         entry_helpers: BTreeSet::from([HELPER]),
         operator_new: BTreeSet::from([NEW]),
         constructors: BTreeMap::new(),
+        constructor_calls: Default::default(),
         functions: functions
             .into_iter()
             .map(|function| (function.address, function))

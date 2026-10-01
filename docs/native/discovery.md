@@ -283,6 +283,37 @@ traced and untraced SDK-667 populations change no answer against `main` (`1a4402
 516 partial and 1,029 unresolved. Reports are `.local/sdk-658/now-scoped.json` and
 `.local/sdk-658/now-duration.json`.
 
+## Bounded constructor copies (SDK-659 prerequisite)
+
+The [bounded constructor effects](scoped-numeric.md#bounded-string-and-token-construction-sdk-659-prerequisite)
+were measured on M451-hotfix, executable SHA-256
+`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`.
+The scoped report over 2,170 commands and 164 registries is identical to the SDK-666 baseline,
+including every destination's reader and gaps: command arguments remain **0 complete, 267 partial,
+35 failed**, and registry destinations remain **0 complete, 7 partial, 0 failed**. No scoped
+question failed. Partial answers retain conversion-boundary and outside-method limits; all 35
+failed arguments still lack an established destination vtable. Registry answers also retain their
+repeat/nested-field limits.
+
+The full command inventory has 248 complete, 816 partial and 10 failed effect answers, and
+119 complete, 975 partial and 2 failed trigger answers. The registry sweep has 8 complete,
+156 partial and 0 failed queries, covering 1,564 root fields. These broader totals include
+properties outside scoped numeric storage.
+
+The latest storage losses are now 26 event-target population calls (including
+`create_pop_group.size`), 6 trigger registrations, 2 effect registrations and 1 static guard.
+The final literal-string call in `create_pop_group` is bounded, but the earlier nested effect and
+event-target constructors prevent recovery. `spawn_megastructure.orbit_distance` still ends at
+effect registration. Jackson approved moving both complete recovery criteria to SDK-661, dependent on SDK-660.
+SDK-659 closes on the bounded effects and independent verification; all 35 remaining AC2
+recoveries remain mandatory under SDK-544 (25 in SDK-660 and 10 in SDK-661).
+
+Reports are `.local/sdk-659/{scoped,commands,registries}.json`. Reproduce with
+`scoped-numeric-population`, `command-population --trace "$STELLARIS_PATH"` and
+`registry-field-sweep "$STELLARIS_PATH"`, each through `cargo run --release --example`.
+`cargo test`, `cargo parity`, the ignored exact-build constructor test,
+`cargo live fixture_scoped_numeric_matrix` and `cargo live world_numeric_stored` pass.
+
 ## Stack duration keys and execute bodies (SDK-657)
 
 The M451-hotfix population covers all 2,170 commands and 164 registries, with no failed question.

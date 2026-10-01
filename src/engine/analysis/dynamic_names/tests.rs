@@ -153,6 +153,7 @@ fn family(kind: DeclarationKind, commands: Vec<Authored>, bodies: Vec<Arm64>) ->
             entry_helpers: BTreeSet::new(),
             operator_new: BTreeSet::from([NEW]),
             constructors: BTreeMap::new(),
+            constructor_calls: Default::default(),
             functions,
             pointers,
             writable_slots: Default::default(),

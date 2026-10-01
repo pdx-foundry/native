@@ -534,6 +534,24 @@ impl<'a> Machine<'a> {
         self.record_stored_inputs(address, width, true);
     }
 
+    /// Copy a checked byte span, taking a snapshot so overlapping moves preserve their source.
+    /// Callers bound the length and check both end addresses before calling.
+    pub(crate) fn copy_bytes(&mut self, destination: u64, source: u64, length: u64) {
+        let traces = self.unknown_byte_traces(source, length);
+        let bytes: Vec<_> = (source..source + length)
+            .map(|at| (self.byte(at), self.loaded_owner(false, Some(at), 1)))
+            .collect();
+        for (offset, (byte, derived)) in bytes.into_iter().enumerate() {
+            let at = destination + offset as u64;
+            self.note_store(at, 1, derived);
+            self.memory.insert(at, byte);
+            if byte.is_some() {
+                self.record_stored_inputs(at, 1, true);
+            }
+        }
+        self.set_byte_traces(destination, &traces);
+    }
+
     /// Keep `length` bytes at `address` known when this path stores to an unknown address. The
     /// caller protects only memory that it has shown no unknown address can reach.
     pub fn protect(&mut self, address: u64, length: u64) {

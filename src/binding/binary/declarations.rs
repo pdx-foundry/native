@@ -81,6 +81,7 @@ pub(in crate::binding) fn read(
         entry_helpers,
         operator_new,
         constructors: BTreeMap::new(),
+        constructor_calls: Default::default(),
         functions,
         pointers: pointers.clone(),
         writable_slots: super::language::writable_slots(bytes, pointers)?,

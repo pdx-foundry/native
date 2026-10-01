@@ -225,6 +225,47 @@ Recovery needs a bounded model of these calls' writes, such as a copy length pro
 token's capacity, not a subtype name or a cached initial byte. These destinations remain an unmet
 parent criterion; only Jackson can amend it.
 
+### Bounded string and token construction (SDK-659 prerequisite)
+
+On the same M451-hotfix executable, constructor walks execute the bound `CString` accessors
+and model the C library imports `strlen`, `memcpy` and `memmove`. Engine function names select
+bodies; they do not establish effects. An accessor with an unknown receiver remains opaque.
+`strlen` preserves memory but returns a length only when every byte through the terminator is
+known within the 4,096-byte analysis bound. This bound is not an engine capacity.
+
+Copies require known source, destination and length, checked end addresses and a length at most
+4,096. `memcpy` additionally requires nonoverlapping spans; `memmove` snapshots its source.
+Byte values, loss traces and owner derivation move together. Unknown source bytes invalidate the corresponding
+destination bytes. Missing arguments, overflowing spans and unsupported copies retain opaque-call
+invalidation. A bounded write can overwrite an earlier member; only bytes outside its span survive.
+The terminator is a separate executed store. Neither an escaped owner nor an unknown source value
+licenses assuming that a constructor writes only its own member.
+
+The exact-build controls execute both ABI entries of each constructor. With established source
+state, `CString(char const*)` retains earlier owner bytes for lengths 0, 3 and 22; length 23 reaches
+an unproved allocator and does not retain them. `CToken(int, CString const&)` retains earlier bytes
+for lengths 0, 3 and 255, and writes a terminator within its 256-byte inline buffer. Length 256
+reaches an unproved allocating path. Capacity and destination follow from executed initialization,
+loads and branches, not from the class name. Unknown lengths do not establish this bounded path.
+These token controls are independent of `CEventTarget` and its global lexer source.
+
+This method does **not** recover the two arguments originally assigned to SDK-659. Jackson
+approved closing SDK-659 on these bounded effects and moving both complete recoveries to SDK-661,
+which depends on SDK-660. The parent SDK-544 requirements are unchanged. In
+`CCreatePopGroupEffect`, the size operand is followed by an embedded effect constructor at
+`0x101e69ee4` and an event-target constructor at `0x101e69f08`, before the final literal string
+constructor at `0x101e69f6c`. The final string contains `GROWTH_CAT_OTHER` and now has bounded
+effects, but the earlier registration and event-target calls have already lost the operand.
+Its latest remaining loss is `PopulateTokenString` at `0x1004f6f44`.
+`spawn_megastructure.orbit_distance` still ends at later effect registration. Both complete
+recoveries belong to SDK-661 and require the shared event-target/registration proofs; the 20 event `days` are also
+still unresolved. The earlier obstacle table records the baseline before this prerequisite.
+
+The [population result](discovery.md#bounded-constructor-copies-sdk-659-prerequisite) is unchanged.
+The ignored `exact_build_string_and_token_constructor_effects` test checks these isolated effects;
+`cargo parity` and the existing scoped fixture and stored-world numeric live cases pass. No new
+live recovery is claimed.
+
 ## World evaluation on M451-hotfix (SDK-647)
 
 The static method gives storage and selection. It gives no evaluated number. The numbers below

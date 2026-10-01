@@ -113,6 +113,14 @@ fn evaluate_factory(
         );
         rows.extend(body_rows);
     }
+    if enter_constructors {
+        for (&address, bytes) in &input.constructor_calls.helpers {
+            rows.extend(
+                crate::engine::analysis::decode::decode_arm64(bytes, address)
+                    .map_err(|_| Unresolved::new("constructor-helper-code"))?,
+            );
+        }
+    }
     let code = Code::from_rows(rows);
     let image = input.constructor_image();
     let machine = if enter_constructors {
