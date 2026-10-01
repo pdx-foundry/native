@@ -137,6 +137,8 @@ fn evaluate_factory(
             }
             if owner && enter_constructors {
                 machine.track_owner(object, object + size);
+                // Nothing proves that the allocator keeps its result to itself.
+                machine.escape_owner();
             }
             // The allocator may leave the owner in any register that it does not preserve.
             let taint = ReturnTaint {

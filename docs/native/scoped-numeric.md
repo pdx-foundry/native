@@ -133,7 +133,10 @@ The baseline's established points and bytes take precedence; an entered body onl
 ### Owner derivation (SDK-658)
 
 The entered path tracks which values may point into the fresh owner (`evaluate/owner.rs`). The
-owner starts at the factory's `operator new` and at the registry owner's first argument. A value
+owner starts at the factory's `operator new` and at the registry owner's first argument. It starts
+escaped: nothing proves that the allocator, or code that ran before a registry constructor, kept
+the owner private. A pointer held in a register before the allocation, or loaded from constant
+image data, is underived; a pointer loaded from memory with unknown content is not. A value
 is owner-derived when it is computed from a derived register, vector or memory byte, or when a
 call that could reach the owner returns it. A store or call is judged by these rules:
 
@@ -166,8 +169,8 @@ caller forget its memory. While the entered path runs, a factory or registry cal
 entered also forgets caller memory, so a changed stack slot cannot reach a constructor as stale
 evidence. An allocation is such a call: the allocator may reach an escaped owner, although its
 result is a fresh object. A rebased pointer slot outside `__DATA_CONST` and the read-only sections
-is writable, so the entered path never treats its target as immutable data. A factory or registry
-run whose stack pointer moved by an unknown amount adds no facts.
+is writable. Earlier code may have replaced its target, so the entered path reads it as unknown.
+A factory or registry run whose stack pointer moved by an unknown amount adds no facts.
 
 Command and registry constructor tail branches use the same join as direct calls, even when the
 callee's code is decoded. Summary points are checked and completed at the constructor's receiver

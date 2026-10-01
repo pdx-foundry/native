@@ -1135,6 +1135,7 @@ fn constructor_evidence_keeps_the_baseline_and_follows_owner_derivation() {
         let mut input = initial_state_factory();
         let mut create = Arm64::at(CREATE);
         create.prologue();
+        create.load(20, GLOBAL); // a pointer that existed before the owner
         arm64!(create; mov w0, #128);
         create.call(NEW);
         arm64!(create; mov x19, x0);
@@ -1144,7 +1145,8 @@ fn constructor_evidence_keeps_the_baseline_and_follows_owner_derivation() {
             str w8, [x19, #96]; // factory evidence that exists without entering any constructor
             mov x1, x19;
             add x0, x19, #112;
-            mov w2, #9
+            mov w2, #9;
+            mov x4, x20
         );
         create.call(0xe000);
         create.address(8, VTABLE); // as a derived constructor does after its bases
@@ -1160,17 +1162,13 @@ fn constructor_evidence_keeps_the_baseline_and_follows_owner_derivation() {
                 later.address(3, GLOBAL);
                 arm64!(later; str w2, [x3]);
             }
-            "preexisting_pointer" => {
-                later.load(3, GLOBAL);
-                arm64!(later; str w2, [x3]); // a pointer that existed before the owner
-            }
+            "preexisting_pointer" => arm64!(later; str w2, [x4]),
             "unknown" => arm64!(later; str w2, [x3]),
             "stored_owner_pointer" => {
-                later.load(5, GLOBAL);
                 arm64!(later;
                     sub sp, sp, #16;
                     str x1, [sp];
-                    str xzr, [x5]; // makes the stored owner unknown but keeps its derivation
+                    str xzr, [x4]; // makes the stored owner unknown but keeps its derivation
                     ldr x3, [sp];
                     str w2, [x3, #64];
                     add sp, sp, #16
@@ -1343,11 +1341,10 @@ fn a_factory_that_loses_its_stack_proof_adds_no_constructor_evidence() {
     create.call(NEW);
     arm64!(create; mov x19, x0);
     create.call(0xc000);
-    create.load(9, 0x80000);
     arm64!(create;
         mov x20, sp;
         mov sp, x19; // the owner's address in the stack pointer
-        add x3, sp, x9;
+        add x3, sp, x21; // x21 is unknown and holds no owner address
         mov sp, x20;
         str wzr, [x3]
     );
@@ -1361,5 +1358,23 @@ fn a_factory_that_loses_its_stack_proof_adds_no_constructor_evidence() {
     assert_eq!(
         crate::engine::analysis::durations::word(&state.bytes, 64),
         None
+    );
+}
+
+#[test]
+fn a_fresh_owner_may_be_published_by_its_allocator() {
+    let mut owner = Arm64::at(0xc000);
+    arm64!(owner; mov w8, #7; str w8, [x0, #64]);
+    owner.load(3, 0x80000); // where the allocator may have stored its result
+    arm64!(owner; str wzr, [x3]; ret);
+    let input = reconstructing_factory(owner, false);
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        None
+    );
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 72),
+        Some(4)
     );
 }

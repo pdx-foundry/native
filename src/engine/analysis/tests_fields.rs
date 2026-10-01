@@ -1940,11 +1940,10 @@ fn scoped_destination_follows_called_constructor_code_instead_of_only_its_primar
     let mut constructor = Arm64::at(0x9000);
     constructor.prologue();
     arm64!(constructor; mov x19, x0; add x0, x0, #0x40; bl extern 0xa000);
-    constructor.load(9, 0x80000);
     arm64!(constructor;
         mov x20, sp;
         mov sp, x19;
-        add x3, sp, x9;
+        add x3, sp, x21; // x21 is unknown and holds no owner address
         mov sp, x20;
         str xzr, [x3];
         mov x0, x19
@@ -2005,9 +2004,14 @@ fn registry_member_tail_call_keeps_the_direct_call_fallback_for_unsupported_code
 }
 
 #[test]
-fn a_registry_writable_slot_may_hold_an_escaped_owner() {
+fn a_registry_writable_slot_has_no_established_target() {
     const SLOT: u64 = 0x88000;
-    for writable in [false, true] {
+    for (shape, writable) in [
+        ("store", false),
+        ("store", true),
+        ("copy", false),
+        ("copy", true),
+    ] {
         let mut input = persistent_fixture();
         input
             .symbols
@@ -2029,12 +2033,17 @@ fn a_registry_writable_slot_may_hold_an_escaped_owner() {
         let mut body = Arm64::at(0xa000);
         body.address(8, 0xb000);
         arm64!(body; str x8, [x0]);
-        body.address(8, 0xd000);
-        arm64!(body; str x8, [x0, #8]);
-        body.load(5, 0x80000);
-        arm64!(body; str x0, [x5]); // may register the owner in the slot
-        body.load(3, SLOT);
-        arm64!(body; str xzr, [x3]; ret);
+        if shape == "store" {
+            body.address(8, 0xd000);
+            arm64!(body; str x8, [x0, #8]);
+            body.load(3, SLOT); // may hold the owner, which may have escaped before construction
+            arm64!(body; str xzr, [x3]; ret);
+            binding.pointers.insert(SLOT, 0x90000);
+        } else {
+            body.load(8, SLOT); // earlier code may have replaced the slot's target
+            arm64!(body; str x8, [x0, #8]; ret);
+            binding.pointers.insert(SLOT, 0xd000);
+        }
         binding.constructor_bodies.insert(
             0xa000,
             Function {
@@ -2043,13 +2052,13 @@ fn a_registry_writable_slot_may_hold_an_escaped_owner() {
                 code: body.bytes(),
             },
         );
-        binding.pointers.insert(SLOT, 0x90000);
         if writable {
             binding.writable_slots.insert(SLOT);
         }
         assert_eq!(
             derive(input).scoped_destinations.get(&0x48),
-            (!writable).then_some(&0xd000)
+            (!writable).then_some(&0xd000),
+            "{shape}"
         );
     }
 }

@@ -42,8 +42,8 @@ pub(super) fn discover(
     let Some(binding) = &input.persistent else {
         return (BTreeMap::new(), BTreeMap::new(), vec![]);
     };
-    // Constant pointer slots are immutable image data. A writable slot stays in each machine's
-    // memory, where a call or a store to an unknown address may change it.
+    // Constant pointer slots are immutable image data. A writable slot's image target is only an
+    // assumption of the summary-only run, in memory that a call or an unknown store may change.
     let constant_pointers = binding
         .pointers
         .iter()
@@ -77,8 +77,11 @@ pub(super) fn discover(
             let code = Code::decode(&bodies)
                 .map_err(|_| Unresolved::new("persistent-constructor-code"))?;
             let mut machine = Machine::new(&code, &data);
-            for slot in &binding.writable_slots {
-                machine.write(*slot, 8, binding.pointers[slot]);
+            // Code that ran before the constructor may have replaced a writable slot's target.
+            if !enter_constructors {
+                for slot in &binding.writable_slots {
+                    machine.write(*slot, 8, binding.pointers[slot]);
+                }
             }
             machine.intercept_tail_calls(binding.summaries.keys().copied().collect());
             let owner = machine.reserve(SPAN);
@@ -86,6 +89,8 @@ pub(super) fn discover(
             if enter_constructors {
                 machine.track_owner(owner, owner + SPAN);
                 machine.derive_from_owner(0);
+                // Code that ran before the constructor may already have published the owner.
+                machine.escape_owner();
             }
             let constructors = Constructors {
                 code: &code,
