@@ -1007,7 +1007,7 @@ fn m45_duration_stack_and_presence_parity() {
     for (name, combination, consumption) in [
         (
             "set_timed_relation_flag",
-            GrammarProperty::Unresolved,
+            GrammarProperty::Known(DurationCombination::SharedFactor { initial_factor: 1 }),
             GrammarProperty::Known(crate::DurationConsumption::FlagCountdown),
         ),
         (
@@ -1025,7 +1025,7 @@ fn m45_duration_stack_and_presence_parity() {
             panic!("{name}: duration list unresolved")
         };
         assert_eq!(groups[0].combination, combination);
-        assert_eq!(groups[0].omitted_count, GrammarProperty::Unresolved);
+        assert_eq!(groups[0].omitted_count, GrammarProperty::Known(0));
         assert_eq!(groups[0].consumption, consumption);
     }
 }

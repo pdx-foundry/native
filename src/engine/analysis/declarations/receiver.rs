@@ -5,7 +5,8 @@
 //! create method's return.
 use super::{DeclarationInput, Function, decode, number};
 use crate::engine::analysis::{
-    evaluate::{Call, Code, Exit, Machine},
+    evaluate::{Call, Code, Exit, Machine, ReturnTaint},
+    receivers::{Constructors, install_vtables},
     stop::Unresolved,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -44,8 +45,7 @@ pub(crate) fn factory_state(
     }
 }
 
-// The summary-only evaluation is independent of entered bodies. An unconfined or incomplete
-// constructor chain contributes no new bytes, registers or control-flow facts to that baseline.
+// The summary-only evaluation is independent of entered bodies, which add facts only above it.
 fn evaluate_factory(
     input: &DeclarationInput,
     factory: u64,
@@ -109,22 +109,43 @@ fn evaluate_factory(
         rows.extend(body_rows);
     }
     let code = Code::from_rows(rows);
-    let mut machine = Machine::new(&code, input.pointer_data());
+    // An entered run relies on stores being disjoint from the owner, so it does not take a
+    // writable pointer slot's target as immutable; the slot reads as unknown.
+    let data = if enter_constructors {
+        input.constant_pointer_data()
+    } else {
+        input.pointer_data()
+    };
+    let mut machine = Machine::new(&code, data);
     if enter_constructors {
         machine.intercept_tail_calls(input.constructors.keys().copied().collect());
     }
-    let mut invalidates_caller_memory = false;
     let paths = machine.run_paths(entry, &mut |target, machine| {
         if target.is_some_and(|target| input.operator_new.contains(&target)) {
             let size = machine.known_register(0, "allocation-size")?;
             if size == 0 || size > ALLOCATION {
                 return Err(Unresolved::new("allocation-bound"));
             }
+            if enter_constructors {
+                // The allocator runs code that may reach memory, including an escaped owner.
+                machine.opaque_call_effects();
+            }
             let object = machine.reserve(size);
-            if machine.labels().is_empty() {
+            let owner = machine.labels().is_empty();
+            if owner {
                 machine.label(object, size);
             }
-            return Ok(Call::Return(Some(object)));
+            if owner && enter_constructors {
+                machine.track_owner(object, object + size);
+                // Nothing proves that the allocator keeps its result to itself.
+                machine.escape_owner();
+            }
+            // The allocator may leave the owner in any register that it does not preserve.
+            let taint = ReturnTaint {
+                returned: owner,
+                clobbered: true,
+            };
+            return Ok(machine.return_with_taint(Some(object), taint));
         }
         if let Some((target, vtables)) =
             target.and_then(|target| Some((target, input.constructors.get(&target)?)))
@@ -144,51 +165,29 @@ fn evaluate_factory(
                 let receiver = machine.known_register(0, "constructor-receiver")?;
                 let (owner, end) =
                     allocation.ok_or(Unresolved::new("constructor-outside-allocation"))?;
-                if enter_constructors && !input.functions.contains_key(&target) {
-                    invalidates_caller_memory = true;
+                let vtable_bound = || Unresolved::new("constructor-vtable-bound");
+                if !enter_constructors {
+                    install_vtables(machine, receiver, end, vtables).ok_or_else(vtable_bound)?;
+                    return Ok(Call::Return(None));
                 }
-                let state = if enter_constructors && input.functions.contains_key(&target) {
-                    let state = crate::engine::analysis::receivers::initial_state(
-                        &code,
-                        input.pointer_data(),
-                        &input.constructors,
-                        target,
-                        machine,
-                        owner,
-                        end,
-                    );
-                    invalidates_caller_memory |= state
-                        .as_ref()
-                        .is_none_or(|state| state.invalidates_caller_memory);
-                    state
-                } else {
-                    None
+                let constructors = Constructors {
+                    code: &code,
+                    data,
+                    summaries: &input.constructors,
+                    owner,
+                    end,
                 };
-                if let Some(state) = state {
-                    if state.invalidates_caller_memory {
-                        machine.forget_memory();
-                    }
-                    if let Some(bytes) = state.bytes {
-                        crate::engine::analysis::receivers::install_initial_state(
-                            machine, receiver, end, &bytes,
-                        );
-                        return Ok(Call::Return(state.returned));
-                    }
-                    crate::engine::analysis::receivers::install_vtables(
-                        machine, receiver, end, vtables,
-                    )
-                    .ok_or(Unresolved::new("constructor-vtable-bound"))?;
-                    return Ok(Call::Return(state.returned));
-                }
-                crate::engine::analysis::receivers::install_vtables(
-                    machine, receiver, end, vtables,
-                )
-                .ok_or(Unresolved::new("constructor-vtable-bound"))?;
-                return Ok(Call::Return(None));
+                let body_available = input.functions.contains_key(&target);
+                return constructors
+                    .call(machine, target, receiver, body_available)
+                    .ok_or_else(vtable_bound);
             }
         }
         if target.is_some_and(|target| wrappers.contains(&target)) {
             return Ok(Call::Enter);
+        }
+        if enter_constructors {
+            return Ok(machine.opaque_call());
         }
         let objects: Vec<_> = machine
             .labels()
@@ -200,15 +199,15 @@ fn evaluate_factory(
         }
         Ok(Call::Return(None))
     });
-    if invalidates_caller_memory {
-        return Err(Unresolved::new("constructor-unconfined"));
-    }
     let mut vtables = BTreeSet::new();
     let mut bytes: Option<BTreeMap<u64, u8>> = None;
     for path in paths {
         match path.end? {
             Exit::Returned => {}
             _ => return Err(Unresolved::new("factory-terminal")),
+        }
+        if path.machine.owner_stack_lost() {
+            return Err(Unresolved::new("constructor-stack"));
         }
         let object = path.machine.register(0).ok_or_else(|| {
             Unresolved::new("factory-return").traced(path.machine.register_trace(0))

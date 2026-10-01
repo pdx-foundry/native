@@ -818,7 +818,9 @@ mod tests {
                 (VTABLE + 0x10, READ),
                 (VTABLE + 0x18, ROOT),
             ]),
+            writable_slots: Default::default(),
             pointer_data: std::sync::OnceLock::new(),
+            constant_pointer_data: std::sync::OnceLock::new(),
             strings: BTreeMap::new(),
             slots: ScopeSlots {
                 create: 0x10,

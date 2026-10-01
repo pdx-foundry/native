@@ -1,7 +1,7 @@
 use crate::engine::analysis::discovery::{CandidateRecord, Symbol};
 use crate::engine::analysis::stop::{Stop, Unresolved};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Raw function bytes from the selected executable slice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -311,6 +311,9 @@ pub struct PersistentInput {
     #[serde(default)]
     pub constructor_bodies: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
+    /// The pointer slots outside the constant sections, whose targets code may replace.
+    #[serde(default)]
+    pub writable_slots: BTreeSet<u64>,
     pub never_return: Vec<u64>,
     pub readers: BTreeMap<u64, ConcreteReader>,
 }

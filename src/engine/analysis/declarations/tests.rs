@@ -73,7 +73,9 @@ fn input(
             .map(|function| (function.address, function))
             .collect(),
         pointers: BTreeMap::new(),
+        writable_slots: Default::default(),
         pointer_data: std::sync::OnceLock::new(),
+        constant_pointer_data: std::sync::OnceLock::new(),
         strings: BTreeMap::from([
             (WIN_DOCUMENTATION, "Wins the game\nwin = yes".into()),
             (
@@ -710,8 +712,9 @@ fn an_unresolved_receiver_names_where_the_command_lost_its_vtable() {
     assert_eq!(lost, (Unresolved::new("command-vtable"), clobbered, false));
 
     let (mut body, _) = allocating_create();
+    arm64!(body; add x9, x19, x20);
     let store = body.here();
-    arm64!(body; str xzr, [x20]); // x20 is unknown, so this may overwrite the vtable
+    arm64!(body; str xzr, [x9]); // an unknown offset from the command may overwrite the vtable
     let lost = traced_receiver_failure(returning(body));
     let overwritten = vec![(CauseKind::UnknownStore, store)];
     assert_eq!(
@@ -1035,32 +1038,43 @@ fn factory_initial_value_requires_constructor_vtable_agreement() {
     );
 }
 
+/// An owner constructor that keeps 7 at +64 and calls the member constructor at 0xd000 for +80
+/// with the owner in x1 and 9 in w2.
+fn earlier_member_factory() -> DeclarationInput {
+    let mut input = initial_state_factory();
+    let mut owner = Arm64::at(0xc000);
+    owner.prologue();
+    arm64!(owner; mov x19, x0);
+    owner.address(8, VTABLE);
+    arm64!(owner;
+        str x8, [x19];
+        mov w8, #7;
+        str w8, [x19, #64];
+        mov x1, x19;
+        add x0, x19, #80;
+        mov w2, #9
+    );
+    owner.call(0xd000);
+    arm64!(owner; mov x0, x19);
+    owner.epilogue();
+    arm64!(owner; ret);
+    input.functions.insert(0xc000, function(owner));
+    input
+}
+
 #[test]
-fn nested_constructor_stores_cannot_preserve_earlier_owner_bytes() {
-    for destination in ["earlier_member", "unknown", "earlier_member_as_stack"] {
-        let mut input = initial_state_factory();
-        let mut owner = Arm64::at(0xc000);
-        owner.prologue();
-        arm64!(owner; mov x19, x0);
-        owner.address(8, VTABLE);
-        arm64!(owner;
-            str x8, [x19];
-            mov w8, #7;
-            str w8, [x19, #64];
-            mov x1, x19;
-            add x0, x19, #80;
-            mov w2, #9
-        );
-        owner.call(0xd000);
-        arm64!(owner; mov x0, x19);
-        owner.epilogue();
-        arm64!(owner; ret);
-        input.functions.insert(0xc000, function(owner));
+fn nested_constructor_stores_never_leave_earlier_owner_bytes_stale() {
+    for (destination, earlier, member) in [
+        ("earlier_member", Some(9), Some(0x35000)),
+        ("unknown", None, None),
+        ("earlier_member_as_stack", None, None),
+    ] {
+        let mut input = earlier_member_factory();
         let mut nested = Arm64::at(0xd000);
         nested.address(8, 0x35000);
         arm64!(nested; str x8, [x0]);
         match destination {
-            "unknown" => arm64!(nested; str w2, [x3]), // may reach any owner byte
+            "unknown" => arm64!(nested; str w2, [x3]), // x3 is clobbered and may hold the owner
             "earlier_member_as_stack" => arm64!(nested; mov sp, x1; str w2, [x1, #64]),
             _ => arm64!(nested; str w2, [x1, #64]), // preceding member through another argument
         }
@@ -1068,13 +1082,21 @@ fn nested_constructor_stores_cannot_preserve_earlier_owner_bytes() {
         input.functions.insert(0xd000, function(nested));
         let state = super::receiver::factory_state(&input, FACTORY).unwrap();
         assert_eq!(state.vtable, VTABLE);
-        assert!(!state.bytes.contains_key(&64), "destination: {destination}");
-        assert!(!state.bytes.contains_key(&80));
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            earlier,
+            "destination: {destination}"
+        );
+        assert_eq!(
+            word_at(&state.bytes, 80),
+            member,
+            "destination: {destination}"
+        );
 
         let mut wrapper = Arm64::at(0xd000);
         wrapper.prologue();
         wrapper.call(0xe000);
-        arm64!(wrapper; brk #0); // loses the wrapper proof after an escaped child write
+        arm64!(wrapper; brk #0); // a walk that does not return is a call that is not run
         let mut nested = Arm64::at(0xe000);
         match destination {
             "unknown" => arm64!(nested; str w2, [x3]),
@@ -1086,23 +1108,34 @@ fn nested_constructor_stores_cannot_preserve_earlier_owner_bytes() {
         input.functions.insert(0xe000, function(nested));
         input.constructors.insert(0xe000, BTreeMap::new());
         let state = super::receiver::factory_state(&input, FACTORY).unwrap();
-        assert!(!state.bytes.contains_key(&64));
+        assert!(!state.bytes.contains_key(&64), "destination: {destination}");
     }
 }
 
+/// The eight-byte word at `offset`, when every byte is known.
+fn word_at(bytes: &BTreeMap<u64, u8>, offset: u64) -> Option<u64> {
+    (0..8).try_fold(0_u64, |word, index| {
+        Some(word | u64::from(*bytes.get(&(offset + index))?) << (index * 8))
+    })
+}
+
 #[test]
-fn unconfined_constructor_evidence_cannot_erase_baseline_or_keep_new_members() {
-    for destination in [
-        "earlier_member",
-        "unknown",
-        "preexisting_pointer",
-        "stored_owner_pointer",
-        "owner_call_return",
-        "unsupported",
+fn constructor_evidence_keeps_the_baseline_and_follows_owner_derivation() {
+    const GLOBAL: u64 = 0x80000;
+    for (destination, kept) in [
+        ("earlier_member", true),
+        ("known_global", true),
+        ("preexisting_pointer", true),
+        ("unknown", false),
+        ("stored_owner_pointer", false),
+        ("returned_alias", false),
+        ("clobbered_alias", false),
+        ("unsupported", false),
     ] {
         let mut input = initial_state_factory();
         let mut create = Arm64::at(CREATE);
         create.prologue();
+        create.load(20, GLOBAL); // a pointer that existed before the owner
         arm64!(create; mov w0, #128);
         create.call(NEW);
         arm64!(create; mov x19, x0);
@@ -1112,31 +1145,45 @@ fn unconfined_constructor_evidence_cannot_erase_baseline_or_keep_new_members() {
             str w8, [x19, #96]; // factory evidence that exists without entering any constructor
             mov x1, x19;
             add x0, x19, #112;
-            mov w2, #9
+            mov w2, #9;
+            mov x4, x20
         );
         create.call(0xe000);
-        arm64!(create; mov x0, x19);
+        create.address(8, VTABLE); // as a derived constructor does after its bases
+        arm64!(create; str x8, [x19]; mov x0, x19);
         create.epilogue();
         arm64!(create; ret);
         input.functions.insert(CREATE, function(create));
         let mut later = Arm64::at(0xe000);
+        arm64!(later; mov x21, x0);
         match destination {
             "earlier_member" => arm64!(later; str w2, [x1, #64]),
-            "unknown" => arm64!(later; str w2, [x3]),
-            "preexisting_pointer" => {
-                later.address(3, 0x80000);
+            "known_global" => {
+                later.address(3, GLOBAL);
                 arm64!(later; str w2, [x3]);
             }
+            "preexisting_pointer" => arm64!(later; str w2, [x4]),
+            "unknown" => arm64!(later; str w2, [x3]),
             "stored_owner_pointer" => {
-                later.prologue();
-                arm64!(later; str x1, [sp]; ldr x3, [sp]; str w2, [x3, #64]);
-                later.epilogue();
+                arm64!(later;
+                    sub sp, sp, #16;
+                    str x1, [sp];
+                    str xzr, [x4]; // makes the stored owner unknown but keeps its derivation
+                    ldr x3, [sp];
+                    str w2, [x3, #64];
+                    add sp, sp, #16
+                );
             }
-            "owner_call_return" => {
+            "returned_alias" | "clobbered_alias" => {
                 later.prologue();
-                arm64!(later; mov x0, x1);
+                arm64!(later; mov x20, x1; mov x0, x1);
                 later.call(0xf000); // an unmodeled call receives this and may return an alias
-                arm64!(later; mov w2, #9; str w2, [x0, #64]);
+                arm64!(later; mov w8, #3; str w8, [x20, #72]; mov w2, #9);
+                if destination == "returned_alias" {
+                    arm64!(later; str w2, [x0, #64]);
+                } else {
+                    arm64!(later; str w2, [x1, #64]);
+                }
                 later.epilogue();
                 input.functions.insert(
                     0xf000,
@@ -1148,7 +1195,7 @@ fn unconfined_constructor_evidence_cannot_erase_baseline_or_keep_new_members() {
             }
             _ => arm64!(later; brk #0),
         }
-        arm64!(later; ret);
+        arm64!(later; mov w9, #4; str w9, [x21, #8]; ret); // only an entered walk writes it
         input.functions.insert(0xe000, function(later));
         input
             .constructors
@@ -1159,11 +1206,175 @@ fn unconfined_constructor_evidence_cannot_erase_baseline_or_keep_new_members() {
             crate::engine::analysis::durations::word(&state.bytes, 96),
             Some(5)
         );
-        assert!(!state.bytes.contains_key(&32), "destination: {destination}");
-        assert!(!state.bytes.contains_key(&64), "destination: {destination}");
-        let point = (0..8).fold(0_u64, |value, index| {
-            value | (u64::from(state.bytes[&(112 + index)]) << (index * 8))
-        });
-        assert_eq!(point, 0x36000);
+        assert_eq!(word_at(&state.bytes, 112), Some(0x36000));
+        assert_eq!(
+            word_at(&state.bytes, 32).is_some(),
+            kept,
+            "destination: {destination}"
+        );
+        let earlier = if destination == "earlier_member" {
+            9
+        } else {
+            7
+        };
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            kept.then_some(earlier),
+            "destination: {destination}"
+        );
+        assert!(!state.bytes.contains_key(&72), "destination: {destination}");
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 120),
+            (destination != "unsupported").then_some(4),
+            "destination: {destination}"
+        );
     }
+}
+
+#[test]
+fn a_factory_stack_slot_that_an_unmodeled_call_may_change_is_no_constructor_evidence() {
+    for changed in [false, true] {
+        let mut input = initial_state_factory();
+        let mut create = Arm64::at(CREATE);
+        create.prologue();
+        arm64!(create; mov w0, #128);
+        create.call(NEW);
+        arm64!(create; mov x19, x0; sub sp, sp, #16; mov w8, #7; str w8, [sp]; mov x0, sp);
+        if changed {
+            create.call(0xf000); // receives the slot and may change it
+        }
+        arm64!(create; mov x0, x19; mov x1, sp);
+        create.call(0xc000);
+        arm64!(create; add sp, sp, #16; mov x0, x19);
+        create.epilogue();
+        arm64!(create; ret);
+        input.functions.insert(CREATE, function(create));
+        let mut owner = Arm64::at(0xc000);
+        owner.address(8, VTABLE);
+        arm64!(owner; str x8, [x0]; ldr w9, [x1]; str w9, [x0, #64]; ret);
+        input.functions.insert(0xc000, function(owner));
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            (!changed).then_some(7)
+        );
+    }
+}
+
+/// A factory whose owner constructor at 0xc000 is `owner`. After construction the factory may
+/// allocate again, then writes the command vtable and 4 at +72, as a derived constructor does.
+fn reconstructing_factory(owner: Arm64, allocates_again: bool) -> DeclarationInput {
+    let mut input = initial_state_factory();
+    let mut create = Arm64::at(CREATE);
+    create.prologue();
+    arm64!(create; mov w0, #128);
+    create.call(NEW);
+    arm64!(create; mov x19, x0);
+    create.call(0xc000);
+    if allocates_again {
+        arm64!(create; mov w0, #16);
+        create.call(NEW);
+    }
+    create.address(8, VTABLE);
+    arm64!(create; str x8, [x19]; mov w9, #4; str w9, [x19, #72]; mov x0, x19);
+    create.epilogue();
+    arm64!(create; ret);
+    input.functions.insert(CREATE, function(create));
+    input.functions.insert(0xc000, function(owner));
+    input
+}
+
+#[test]
+fn a_writable_pointer_slot_may_hold_an_escaped_owner() {
+    const GLOBAL: u64 = 0x80000;
+    const SLOT: u64 = 0x88000;
+    for writable in [false, true] {
+        let mut owner = Arm64::at(0xc000);
+        arm64!(owner; mov x19, x0);
+        owner.load(5, GLOBAL);
+        arm64!(owner; str x19, [x5]; mov w8, #7; str w8, [x19, #64]); // may register the owner in the slot
+        owner.load(3, SLOT);
+        arm64!(owner; str wzr, [x3]; mov x0, x19; ret);
+        let mut input = reconstructing_factory(owner, false);
+        input.pointers.insert(SLOT, 0x90000);
+        if writable {
+            input.writable_slots.insert(SLOT);
+        }
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            (!writable).then_some(7)
+        );
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 72),
+            Some(4)
+        );
+    }
+}
+
+#[test]
+fn a_later_allocation_may_change_an_escaped_owner() {
+    const GLOBAL: u64 = 0x80000;
+    for allocates_again in [false, true] {
+        let mut owner = Arm64::at(0xc000);
+        owner.load(5, GLOBAL);
+        arm64!(owner; str x0, [x5]; mov w8, #7; str w8, [x0, #64]; ret); // registers the owner
+        let input = reconstructing_factory(owner, allocates_again);
+        let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 64),
+            (!allocates_again).then_some(7)
+        );
+        assert_eq!(
+            crate::engine::analysis::durations::word(&state.bytes, 72),
+            Some(4)
+        );
+    }
+}
+
+#[test]
+fn a_factory_that_loses_its_stack_proof_adds_no_constructor_evidence() {
+    let mut input = initial_state_factory();
+    let mut create = Arm64::at(CREATE);
+    create.prologue();
+    arm64!(create; mov w0, #128);
+    create.call(NEW);
+    arm64!(create; mov x19, x0);
+    create.call(0xc000);
+    arm64!(create;
+        mov x20, sp;
+        mov sp, x19; // the owner's address in the stack pointer
+        add x3, sp, x21; // x21 is unknown and holds no owner address
+        mov sp, x20;
+        str wzr, [x3]
+    );
+    create.address(8, VTABLE);
+    arm64!(create; str x8, [x19]; mov x0, x19);
+    create.epilogue();
+    arm64!(create; ret);
+    input.functions.insert(CREATE, function(create));
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(state.vtable, VTABLE);
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        None
+    );
+}
+
+#[test]
+fn a_fresh_owner_may_be_published_by_its_allocator() {
+    let mut owner = Arm64::at(0xc000);
+    arm64!(owner; mov w8, #7; str w8, [x0, #64]);
+    owner.load(3, 0x80000); // where the allocator may have stored its result
+    arm64!(owner; str wzr, [x3]; ret);
+    let input = reconstructing_factory(owner, false);
+    let state = super::receiver::factory_state(&input, FACTORY).unwrap();
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 64),
+        None
+    );
+    assert_eq!(
+        crate::engine::analysis::durations::word(&state.bytes, 72),
+        Some(4)
+    );
 }

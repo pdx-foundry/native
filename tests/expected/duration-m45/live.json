@@ -672,7 +672,29 @@
       "completeness": "Partial",
       "diagnostics": [],
       "stored_durations": {
-        "Partial": []
+        "Partial": [
+          {
+            "child": 0,
+            "count": {
+              "ScopedNumeric": {
+                "has_modifier": false,
+                "has_script_value": false,
+                "has_source_location": false,
+                "has_trigger": false,
+                "literal": {
+                  "Integer": 3
+                },
+                "variable": ""
+              }
+            },
+            "factor": 30,
+            "units": [
+              "days",
+              "months",
+              "years"
+            ]
+          }
+        ]
       },
       "text": "set_timed_relation_flag = { who = root flag = native_duration_relation months = 2 days = 3 }"
     }

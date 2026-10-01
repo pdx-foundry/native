@@ -93,7 +93,9 @@
             }
           },
           "consumption": "Unresolved",
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -118,8 +120,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method."
     ]
   },
   "effect/country_event": {
@@ -975,27 +976,35 @@
     "durations": {
       "Partial": [
         {
-          "combination": "Unresolved",
+          "combination": {
+            "Known": {
+              "SharedFactor": {
+                "initial_factor": 1
+              }
+            }
+          },
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
-                "Partial": null
+                "Known": null
               },
               "key": "days"
             },
             {
               "factor": {
-                "Partial": 30
+                "Known": 30
               },
               "key": "months"
             },
             {
               "factor": {
-                "Partial": 360
+                "Known": 360
               },
               "key": "years"
             }
@@ -1004,7 +1013,7 @@
       ]
     },
     "gaps": [
-      "ReaderSemantics: Duration keys days, months, years: the combination is not established (duration-initial-state)."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_sector_flag": {

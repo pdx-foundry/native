@@ -101,9 +101,14 @@ pub struct DeclarationInput {
     pub constructors: BTreeMap<u64, BTreeMap<u64, u64>>,
     pub functions: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
+    /// The pointer slots outside the constant sections, whose targets code may replace.
+    pub writable_slots: BTreeSet<u64>,
     /// The read-only data with the target of every pointer slot. It is built from `pointers` on
     /// first use, so set `pointers` before the first walk; see [`DeclarationInput::pointer_data`].
     pub pointer_data: OnceLock<ReadOnlyData>,
+    /// The read-only data with the target of every constant pointer slot; see
+    /// [`DeclarationInput::constant_pointer_data`].
+    pub constant_pointer_data: OnceLock<ReadOnlyData>,
     pub strings: BTreeMap<u64, String>,
     pub slots: ScopeSlots,
     pub parser_slots: ParserSlots,
@@ -118,6 +123,20 @@ impl DeclarationInput {
     pub fn pointer_data(&self) -> &ReadOnlyData {
         self.pointer_data
             .get_or_init(|| self.composition.data.with_words(&self.pointers))
+    }
+
+    /// The read-only data with the target of every pointer slot that code cannot replace, for a
+    /// walk that relies on stores disjoint from a fresh owner. A writable slot reads as unknown.
+    pub fn constant_pointer_data(&self) -> &ReadOnlyData {
+        self.constant_pointer_data.get_or_init(|| {
+            let constant = self
+                .pointers
+                .iter()
+                .filter(|(slot, _)| !self.writable_slots.contains(slot))
+                .map(|(&slot, &target)| (slot, target))
+                .collect();
+            self.composition.data.with_words(&constant)
+        })
     }
 }
 

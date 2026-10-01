@@ -126,6 +126,8 @@ pub(super) struct Arrival {
 pub(super) struct Inputs {
     trace: Trace,
     pub(super) receiver: BTreeSet<u64>,
+    /// Whether an input may be derived from a tracked owner.
+    pub(super) owner: bool,
 }
 
 impl Machine<'_> {
@@ -210,6 +212,7 @@ impl Machine<'_> {
                 .as_ref()
                 .map(|provenance| provenance.inputs.take())
                 .unwrap_or_default(),
+            owner: self.owner.as_ref().is_some_and(|owner| owner.inputs.take()),
         }
     }
 
@@ -220,6 +223,9 @@ impl Machine<'_> {
         if let Some(provenance) = &self.provenance {
             provenance.inputs.replace(inputs.receiver);
         }
+        if let Some(owner) = &self.owner {
+            owner.inputs.set(inputs.owner);
+        }
     }
 
     /// An unknown address supplies the origins; a known address supplies its unknown bytes.
@@ -229,11 +235,16 @@ impl Machine<'_> {
         address: Option<u64>,
         width: u64,
     ) -> Inputs {
+        let owner = self.loaded_owner(address_inputs.owner, address, width);
         match address {
-            None => address_inputs,
+            None => Inputs {
+                owner,
+                ..address_inputs
+            },
             Some(address) => Inputs {
                 trace: self.memory_trace(address, width).unwrap_or_default(),
                 receiver: self.receiver_sources(address, width),
+                owner,
             },
         }
     }
