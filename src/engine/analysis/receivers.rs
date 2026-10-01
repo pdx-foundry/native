@@ -1,6 +1,6 @@
 //! Effects shared by bounded constructor-summary consumers.
-use super::evaluate::Machine;
-use std::collections::BTreeMap;
+use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, ReturnTaint};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Replace the receiver's remaining span with only the constructor's proven vtable points.
 /// The caller establishes ownership and the allocation end; summaries do not retain embedded state.
@@ -23,172 +23,195 @@ pub(super) fn install_vtables(
     Some(())
 }
 
-/// Constructor-agreed bytes, return register and caller-memory invalidation.
-pub(super) struct InitialState {
-    /// Initialized bytes relative to the constructor receiver.
-    pub bytes: Option<BTreeMap<u64, u8>>,
-    /// Invalidate tracked caller memory before installing bytes proved after an escaped child write.
-    pub invalidates_caller_memory: bool,
+/// The owner state that an entered constructor leaves on every path that returns.
+struct InitialState {
+    /// Bytes of the whole owner, relative to its start, that every returning path agrees on.
+    bytes: BTreeMap<u64, u8>,
+    /// Owner offsets whose bytes may hold an owner-derived value on some returning path.
+    tainted: BTreeSet<u64>,
     /// The value agreed for x0 at every normal return.
-    pub returned: Option<u64>,
+    returned: Option<u64>,
+    /// Whether x0 may point into the owner on some returning path.
+    returned_owner_derived: bool,
+    /// Whether some path left an owner-derived value where other code can find it.
+    escaped: bool,
+    /// Whether some path wrote memory outside the owner and its private stack frame.
+    clobbers_outside: bool,
 }
 
-/// Evaluate a constructor with the call's arguments and established caller bytes.
-/// Only bound constructors are entered. Unknown calls and incomplete nested walks invalidate
-/// tracked caller memory on the entered path. Every normal return must agree. A write outside
-/// the receiver or private stack frame invalidates the whole owner proof. Consumers withhold
-/// all entered-body contributions on invalidation and retain their independent summary-only
-/// evaluation; baseline points and bytes never depend on this walk.
-pub(super) fn initial_state(
-    code: &super::evaluate::Code,
-    data: &super::evaluate::ReadOnlyData,
-    constructors: &BTreeMap<u64, BTreeMap<u64, u64>>,
-    target: u64,
-    caller: &Machine<'_>,
-    owner: u64,
-    end: u64,
-) -> Option<InitialState> {
-    ConstructorWalk {
-        code,
-        data,
-        constructors,
-        owner,
-        end,
+impl InitialState {
+    fn of(machine: &Machine<'_>, owner: u64, end: u64) -> Self {
+        Self {
+            bytes: machine.known_bytes(owner, end - owner),
+            tainted: machine.owner_derived_bytes(),
+            returned: machine.register(0),
+            returned_owner_derived: machine.owner_derived(0),
+            escaped: machine.owner_escaped(),
+            clobbers_outside: machine.clobbers_outside_owner(),
+        }
     }
-    .run(target, caller, 0)
+
+    /// The state that both this path and `other` leave: agreed bytes and every possible effect.
+    fn join(mut self, other: Self) -> Self {
+        self.bytes
+            .retain(|offset, byte| other.bytes.get(offset) == Some(byte));
+        self.tainted.extend(other.tainted);
+        if self.returned != other.returned {
+            self.returned = None;
+        }
+        self.returned_owner_derived |= other.returned_owner_derived;
+        self.escaped |= other.escaped;
+        self.clobbers_outside |= other.clobbers_outside;
+        self
+    }
 }
 
-struct ConstructorWalk<'a> {
-    code: &'a super::evaluate::Code,
-    data: &'a super::evaluate::ReadOnlyData,
-    constructors: &'a BTreeMap<u64, BTreeMap<u64, u64>>,
-    owner: u64,
-    end: u64,
+/// Bound constructors of one fresh owner at `owner..end`, whose entered bodies are in `code`.
+///
+/// An entered body may make an owner byte unknown through a call it does not run, or through a
+/// store that may point into the owner; a later store to a known address establishes the byte
+/// again. A walk that cannot be followed, such as one with a path that does not return, is a call
+/// that this machine does not run. Consumers keep their summary-only evaluation as the baseline,
+/// which never depends on an entered body.
+pub(super) struct Constructors<'a> {
+    pub code: &'a Code,
+    pub data: &'a ReadOnlyData,
+    /// Each bound constructor's compiler vtable points, by offset from its receiver.
+    pub summaries: &'a BTreeMap<u64, BTreeMap<u64, u64>>,
+    pub owner: u64,
+    pub end: u64,
 }
 
-impl ConstructorWalk<'_> {
-    fn run(&self, target: u64, caller: &Machine<'_>, depth: usize) -> Option<InitialState> {
-        use super::evaluate::{Call, Exit};
+impl Constructors<'_> {
+    /// Handle the call of the bound constructor `target` at `receiver` in a machine that tracks
+    /// the owner. Enters its body when `entered`; otherwise, or when the walk cannot be followed,
+    /// treats the call as one that the machine does not run and installs the compiler summary.
+    /// `None` when a summary point lies outside the owner.
+    pub fn call(
+        &self,
+        machine: &mut Machine<'_>,
+        target: u64,
+        receiver: u64,
+        entered: bool,
+    ) -> Option<Call> {
+        let walk = entered
+            .then(|| self.initial_state(target, machine, 0))
+            .flatten();
+        if let Some(state) = walk {
+            return Some(self.install(machine, &state));
+        }
 
+        let call = machine.opaque_call();
+        install_vtables(machine, receiver, self.end, self.summaries.get(&target)?)?;
+
+        Some(call)
+    }
+
+    /// Evaluate the constructor `target` with the call's arguments and the caller's state.
+    fn initial_state(
+        &self,
+        target: u64,
+        caller: &Machine<'_>,
+        depth: usize,
+    ) -> Option<InitialState> {
         let receiver = caller.register(0)?;
         if depth >= 8 || !(self.owner..self.end).contains(&receiver) {
             return None;
         }
+
         let mut machine = caller.fresh_callee(self.code, self.data);
-        machine.watch_store_span(self.owner, receiver, self.end);
-        for index in 0..9 {
-            if let Some(value) = caller.register(index) {
-                machine.set_register(index, value);
-            }
+        if machine.owner_range() != Some((self.owner, self.end)) {
+            return None;
         }
-        machine.intercept_tail_calls(self.constructors.keys().copied().collect());
-        let mut invalidates_caller_memory = false;
+        machine.intercept_tail_calls(self.summaries.keys().copied().collect());
         let paths = machine.run_paths(target, &mut |target, machine| {
-            let Some(target) = target.filter(|target| self.constructors.contains_key(target))
-            else {
-                machine.forget_memory();
-                invalidates_caller_memory = true;
-                return Ok(Call::Return(None));
-            };
-            let Some(nested) = machine
+            let nested = target.filter(|target| self.summaries.contains_key(target));
+            let member = machine
                 .register(0)
-                .filter(|nested| (receiver..self.end).contains(nested))
-            else {
-                machine.forget_memory();
-                invalidates_caller_memory = true;
-                return Ok(Call::Return(None));
-            };
-            let Some(state) = self.run(target, machine, depth + 1) else {
-                machine.forget_memory();
-                invalidates_caller_memory = true;
-                return Ok(Call::Return(None));
-            };
-            if state.invalidates_caller_memory {
-                machine.forget_memory();
-                invalidates_caller_memory = true;
-            }
-            if let Some(bytes) = state.bytes {
-                install_initial_state(machine, nested, self.end, &bytes);
-            } else {
-                forget_initial_bytes(machine, nested, self.end);
-            }
-            Ok(Call::Return(state.returned))
-        });
-        let escaped_store = paths.iter().any(|path| path.machine.escaped_store());
-        let unresolved = || {
-            (escaped_store || invalidates_caller_memory).then_some(InitialState {
-                bytes: None,
-                returned: None,
-                invalidates_caller_memory: true,
+                .is_some_and(|nested| (receiver..self.end).contains(&nested));
+            let state = nested
+                .filter(|_| member)
+                .and_then(|nested| self.initial_state(nested, machine, depth + 1));
+
+            Ok(match state {
+                Some(state) => self.install(machine, &state),
+                None => machine.opaque_call(),
             })
-        };
-        let mut bytes: Option<BTreeMap<u64, u8>> = None;
-        let mut returned = None;
+        });
+
+        let mut agreed: Option<InitialState> = None;
         for path in paths {
-            if !matches!(path.end, Ok(Exit::Returned)) {
-                return unresolved();
+            if !matches!(path.end, Ok(Exit::Returned)) || path.machine.owner_stack_lost() {
+                return None;
             }
-            let current = path.machine.known_bytes(receiver, self.end - receiver);
-            if let Some(agreed) = &mut bytes {
-                agreed.retain(|offset, byte| current.get(offset) == Some(byte));
-            } else {
-                returned = Some(path.machine.register(0));
-                bytes = Some(current);
-            }
-            if returned != Some(path.machine.register(0)) {
-                returned = Some(None);
-            }
-        }
-        if escaped_store {
-            return Some(InitialState {
-                bytes: None,
-                returned: returned.flatten(),
-                invalidates_caller_memory: true,
+            let state = InitialState::of(&path.machine, self.owner, self.end);
+            agreed = Some(match agreed {
+                Some(agreed) => agreed.join(state),
+                None => state,
             });
         }
-        let Some(mut bytes) = bytes else {
-            return unresolved();
-        };
-        // The outer receiver keeps its existing compiler vtable proof. New embedded points
-        // require constructor-written words; a partial word is never completed from metadata.
-        for (&offset, &point) in self.constructors.get(&target)? {
-            if offset
-                .checked_add(8)
-                .is_none_or(|end| end > self.end - receiver)
-            {
-                return unresolved();
+        let mut state = agreed?;
+        self.complete_summary(target, receiver - self.owner, depth, &mut state.bytes)?;
+
+        Some(state)
+    }
+
+    /// Check the constructor's compiler vtable points, at `base` in the owner, against the bytes
+    /// it wrote. The outer receiver keeps its existing compiler vtable proof; new embedded points
+    /// require constructor-written words, and a partial word is never completed from metadata.
+    fn complete_summary(
+        &self,
+        target: u64,
+        base: u64,
+        depth: usize,
+        bytes: &mut BTreeMap<u64, u8>,
+    ) -> Option<()> {
+        for (&offset, &point) in self.summaries.get(&target)? {
+            let at = base.checked_add(offset)?;
+            if at.checked_add(8)? > self.end - self.owner {
+                return None;
             }
-            if (0..8).any(|index| {
+            let point_bytes = point.to_le_bytes();
+            let disagrees = (0..8).any(|index| {
                 bytes
-                    .get(&(offset + index))
-                    .is_some_and(|byte| *byte != (point >> (index * 8)) as u8)
-            }) {
-                return unresolved();
+                    .get(&(at + index))
+                    .is_some_and(|byte| *byte != point_bytes[index as usize])
+            });
+            if disagrees {
+                return None;
             }
-            if depth == 0 && (0..8).all(|index| !bytes.contains_key(&(offset + index))) {
-                for index in 0..8 {
-                    bytes.insert(offset + index, (point >> (index * 8)) as u8);
+            if depth == 0 && (0..8).all(|index| !bytes.contains_key(&(at + index))) {
+                for (index, byte) in (at..).zip(point_bytes) {
+                    bytes.insert(index, byte);
                 }
             }
         }
-        Some(InitialState {
-            bytes: Some(bytes),
-            returned: returned.flatten(),
-            invalidates_caller_memory,
-        })
-    }
-}
 
-/// Replace the receiver's remaining span with constructor-agreed bytes.
-pub(super) fn install_initial_state(
-    machine: &mut Machine<'_>,
-    receiver: u64,
-    end: u64,
-    bytes: &BTreeMap<u64, u8>,
-) {
-    forget_initial_bytes(machine, receiver, end);
-    for (&offset, &byte) in bytes {
-        machine.write(receiver + offset, 1, byte.into());
+        Some(())
+    }
+
+    /// Replace the caller's owner state with the constructor's, apply the constructor's other
+    /// effects, and return from the call.
+    fn install(&self, machine: &mut Machine<'_>, state: &InitialState) -> Call {
+        forget_initial_bytes(machine, self.owner, self.end);
+        for (&offset, &byte) in &state.bytes {
+            machine.write(self.owner + offset, 1, byte.into());
+        }
+        machine.set_owner_derived_bytes(&state.tainted);
+        if state.clobbers_outside {
+            machine.forget_memory_outside_owner();
+        }
+        if state.escaped {
+            machine.escape_owner();
+        }
+
+        machine.return_with_taint(
+            state.returned,
+            ReturnTaint {
+                returned: state.returned_owner_derived,
+                clobbered: true,
+            },
+        )
     }
 }
 
@@ -203,11 +226,59 @@ pub(super) fn forget_initial_bytes(machine: &mut Machine<'_>, receiver: u64, end
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::analysis::evaluate::{Code, ReadOnlyData};
+    use crate::engine::analysis::assembler::{Arm64, arm64};
+    use crate::engine::analysis::durations::word;
+
+    /// An address that no section maps, so a load from it is unknown and underived.
+    const GLOBAL: u64 = 0x80000;
+
+    /// Walk the constructor at 0x1000 from `caller`, which tracks the owner at `owner..end`.
+    /// Each argument register that points into the owner is owner-derived.
+    fn walk(
+        code: &Code,
+        data: &ReadOnlyData,
+        summaries: &BTreeMap<u64, BTreeMap<u64, u64>>,
+        caller: &Machine<'_>,
+        owner: u64,
+        end: u64,
+    ) -> Option<InitialState> {
+        let mut caller = caller.clone();
+        caller.track_owner(owner, end);
+        for index in 0..9 {
+            if caller
+                .register(index)
+                .is_some_and(|value| (owner..end).contains(&value))
+            {
+                caller.derive_from_owner(index);
+            }
+        }
+        Constructors {
+            code,
+            data,
+            summaries,
+            owner,
+            end,
+        }
+        .initial_state(0x1000, &caller, 0)
+    }
+
+    /// Walk `parent` at 0x1000, which calls the member constructor `child` at 0x2000, on a
+    /// 64-byte owner.
+    fn walk_parent(parent: Arm64, child: Arm64) -> InitialState {
+        let parent = parent.bytes();
+        let child = child.bytes();
+        let code = Code::decode(&[(0x1000, &parent), (0x2000, &child)]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut caller = Machine::new(&code, &data);
+        let owner = caller.reserve(64);
+        caller.set_register(0, owner);
+        let summaries = BTreeMap::from([(0x1000, BTreeMap::new()), (0x2000, BTreeMap::new())]);
+
+        walk(&code, &data, &summaries, &caller, owner, owner + 64).unwrap()
+    }
 
     #[test]
     fn callee_frame_does_not_alias_a_caller_stack_argument() {
-        use crate::engine::analysis::assembler::{Arm64, arm64};
         let mut body = Arm64::at(0x1000);
         body.prologue();
         arm64!(body;
@@ -227,38 +298,16 @@ mod tests {
         caller.set_register(0, owner);
         caller.set_register(1, caller.stack_pointer());
         let constructors = BTreeMap::from([(0x1000, BTreeMap::new())]);
-        let state = initial_state(
-            &code,
-            &data,
-            &constructors,
-            0x1000,
-            &caller,
-            owner,
-            owner + 64,
-        )
-        .unwrap();
-        assert!(!state.bytes.unwrap().contains_key(&32));
+        let state = walk(&code, &data, &constructors, &caller, owner, owner + 64).unwrap();
+        assert!(!state.bytes.contains_key(&32));
 
         caller.write(caller.stack_pointer(), 4, 7);
-        let state = initial_state(
-            &code,
-            &data,
-            &constructors,
-            0x1000,
-            &caller,
-            owner,
-            owner + 64,
-        )
-        .unwrap();
-        assert_eq!(
-            super::super::durations::word(&state.bytes.unwrap(), 32),
-            Some(7)
-        );
+        let state = walk(&code, &data, &constructors, &caller, owner, owner + 64).unwrap();
+        assert_eq!(word(&state.bytes, 32), Some(7));
     }
 
     #[test]
     fn external_stack_pointer_cannot_preserve_a_stale_caller_load() {
-        use crate::engine::analysis::assembler::{Arm64, arm64};
         let mut parent = Arm64::at(0x1000);
         parent.prologue();
         arm64!(parent;
@@ -291,24 +340,9 @@ mod tests {
         caller.set_register(0, owner);
         caller.write(0x80000, 4, 7);
         let constructors = BTreeMap::from([(0x1000, BTreeMap::new()), (0x2000, BTreeMap::new())]);
-        let state = initial_state(
-            &code,
-            &data,
-            &constructors,
-            0x1000,
-            &caller,
-            owner,
-            owner + 128,
-        )
-        .unwrap();
-        assert!(state.invalidates_caller_memory);
-        assert_eq!(
-            state
-                .bytes
-                .as_ref()
-                .and_then(|bytes| super::super::durations::word(bytes, 32)),
-            None
-        );
+        let state = walk(&code, &data, &constructors, &caller, owner, owner + 128).unwrap();
+        assert!(state.escaped);
+        assert_eq!(word(&state.bytes, 32), None);
     }
 
     #[test]
@@ -345,5 +379,143 @@ mod tests {
                 None
             );
         }
+    }
+
+    #[test]
+    fn a_member_summary_is_checked_and_completed_at_the_member_offset() {
+        let child = arm64!(at 0x1000;
+            mov w9, #9;
+            str w9, [x1, #16]; // an earlier member through the owner
+            ret
+        );
+        let code = Code::decode(&[(0x1000, child.as_slice())]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut caller = Machine::new(&code, &data);
+        let owner = caller.reserve(64);
+        caller.write(owner, 8, 0x30000);
+        caller.set_register(0, owner + 32);
+        caller.set_register(1, owner);
+        let summaries = BTreeMap::from([(0x1000, BTreeMap::from([(0, 0x35000), (8, 0x36000)]))]);
+        let state = walk(&code, &data, &summaries, &caller, owner, owner + 64).unwrap();
+        let point = |offset: u64| {
+            (0..8).try_fold(0_u64, |point, index| {
+                Some(point | u64::from(*state.bytes.get(&(offset + index))?) << (index * 8))
+            })
+        };
+        assert_eq!(point(0), Some(0x30000));
+        assert_eq!(point(32), Some(0x35000));
+        assert_eq!(point(40), Some(0x36000));
+        assert_eq!(word(&state.bytes, 16), Some(9));
+    }
+
+    #[test]
+    fn a_member_write_to_a_caller_stack_argument_leaves_no_stale_caller_value() {
+        let mut parent = Arm64::at(0x1000);
+        parent.prologue();
+        arm64!(parent;
+            sub sp, sp, #16;
+            mov w8, #7;
+            str w8, [sp];
+            mov x19, x0;
+            add x0, x19, #32;
+            mov x1, sp;
+            mov w2, #9
+        );
+        parent.call(0x2000);
+        arm64!(parent;
+            ldr w8, [sp];
+            str w8, [x19, #40];
+            add sp, sp, #16;
+            mov x0, x19
+        );
+        parent.epilogue();
+        arm64!(parent; ret);
+        let mut child = Arm64::at(0x2000);
+        arm64!(child; str w2, [x1]; ret);
+        let state = walk_parent(parent, child);
+        assert!(state.clobbers_outside);
+        assert_eq!(word(&state.bytes, 40), None);
+    }
+
+    #[test]
+    fn a_member_walk_joins_the_effects_of_each_returning_path() {
+        let registering = [
+            arm64!(at 0x2000; cbz x10, extern 0x2008; str x0, [x2]; ret),
+            arm64!(at 0x2000; cbnz x10, extern 0x2008; str x0, [x2]; ret),
+        ];
+        for child in registering {
+            let mut parent = Arm64::at(0x1000);
+            parent.prologue();
+            arm64!(parent; mov x19, x0; add x0, x19, #32);
+            parent.address(2, GLOBAL);
+            parent.call(0x2000);
+            arm64!(parent; mov w8, #5; str w8, [x19, #16]);
+            parent.load(3, GLOBAL); // the owner if the member registered it there
+            arm64!(parent; str wzr, [x3]; mov x0, x19);
+            parent.epilogue();
+            arm64!(parent; ret);
+            let parent = parent.bytes();
+            let code = Code::decode(&[(0x1000, &parent), (0x2000, &child)]).unwrap();
+            let data = ReadOnlyData::default();
+            let mut caller = Machine::new(&code, &data);
+            let owner = caller.reserve(64);
+            caller.set_register(0, owner);
+            let summaries = BTreeMap::from([(0x1000, BTreeMap::new()), (0x2000, BTreeMap::new())]);
+            let state = walk(&code, &data, &summaries, &caller, owner, owner + 64).unwrap();
+            assert!(state.escaped);
+            assert_eq!(word(&state.bytes, 16), None);
+        }
+    }
+
+    #[test]
+    fn a_member_that_returns_an_unknown_owner_address_derives_its_return() {
+        let mut parent = Arm64::at(0x1000);
+        parent.prologue();
+        arm64!(parent; mov x19, x0; mov x1, x0; add x0, x19, #32);
+        parent.address(2, GLOBAL);
+        parent.call(0x2000);
+        arm64!(parent;
+            mov w8, #5;
+            str w8, [x19, #16];
+            str wzr, [x0];
+            mov x0, x19
+        );
+        parent.epilogue();
+        arm64!(parent; ret);
+        let mut child = Arm64::at(0x2000);
+        arm64!(child;
+            ldr x10, [x2];
+            add x0, x1, x10; // the owner at an unknown offset
+            ret
+        );
+        let state = walk_parent(parent, child);
+        assert_eq!(word(&state.bytes, 16), None);
+    }
+
+    #[test]
+    fn an_unknown_owner_address_stored_by_a_member_stays_derived() {
+        let mut parent = Arm64::at(0x1000);
+        parent.prologue();
+        arm64!(parent; mov x19, x0; mov x1, x0; add x0, x19, #32);
+        parent.address(2, GLOBAL);
+        parent.call(0x2000);
+        arm64!(parent;
+            mov w8, #5;
+            str w8, [x19, #16];
+            ldr x3, [x19, #32];
+            str wzr, [x3];
+            mov x0, x19
+        );
+        parent.epilogue();
+        arm64!(parent; ret);
+        let mut child = Arm64::at(0x2000);
+        arm64!(child;
+            ldr x10, [x2];
+            add x10, x1, x10; // the owner at an unknown offset
+            str x10, [x0];
+            ret
+        );
+        let state = walk_parent(parent, child);
+        assert_eq!(word(&state.bytes, 16), None);
     }
 }

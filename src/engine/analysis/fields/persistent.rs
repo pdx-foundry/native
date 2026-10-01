@@ -3,6 +3,7 @@ use super::{ConcreteReader, FieldGap, FieldGapKind, FieldInput, ReaderJoin, Root
 use crate::engine::analysis::{
     evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
     readers,
+    receivers::{Constructors, install_vtables},
     stop::Unresolved,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,13 +42,15 @@ pub(super) fn discover(
     let Some(binding) = &input.persistent else {
         return (BTreeMap::new(), BTreeMap::new(), vec![]);
     };
+    // Pointer slots are immutable image data, which a call or an unknown store cannot change.
     let data = ReadOnlyData::new(
         input
             .read_only_data
             .iter()
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
-    );
+    )
+    .with_words(&binding.pointers);
     let mut agreement: Option<BTreeMap<i64, u64>> = None;
     let mut gaps = Vec::new();
     for constructor in &binding.constructors {
@@ -67,13 +70,20 @@ pub(super) fn discover(
             let code = Code::decode(&bodies)
                 .map_err(|_| Unresolved::new("persistent-constructor-code"))?;
             let mut machine = Machine::new(&code, &data);
-            for (&slot, &pointer) in &binding.pointers {
-                machine.write(slot, 8, pointer);
-            }
             machine.intercept_tail_calls(binding.summaries.keys().copied().collect());
             let owner = machine.reserve(SPAN);
             machine.set_register(0, owner);
-            let mut invalidates_caller_memory = false;
+            if enter_constructors {
+                machine.track_owner(owner, owner + SPAN);
+                machine.derive_from_owner(0);
+            }
+            let constructors = Constructors {
+                code: &code,
+                data: &data,
+                summaries: &binding.summaries,
+                owner,
+                end: owner + SPAN,
+            };
             let paths = machine.run_paths(constructor.address, &mut |target, machine| {
                 if target.is_some_and(|target| binding.never_return.contains(&target)) {
                     return Ok(Call::Stop);
@@ -96,64 +106,23 @@ pub(super) fn discover(
                     if !(owner..owner + SPAN).contains(&receiver) {
                         return Err(Unresolved::new("persistent-constructor-owner"));
                     }
-                    if enter_constructors && !binding.constructor_bodies.contains_key(&target) {
-                        invalidates_caller_memory = true;
+                    let vtable_bound = || Unresolved::new("persistent-vtable-bound");
+                    if !enter_constructors {
+                        install_vtables(machine, receiver, owner + SPAN, vtables)
+                            .ok_or_else(vtable_bound)?;
+                        return Ok(Call::Return(None));
                     }
-                    let state =
-                        if enter_constructors && binding.constructor_bodies.contains_key(&target) {
-                            let state = crate::engine::analysis::receivers::initial_state(
-                                &code,
-                                &data,
-                                &binding.summaries,
-                                target,
-                                machine,
-                                owner,
-                                owner + SPAN,
-                            );
-                            invalidates_caller_memory |= state
-                                .as_ref()
-                                .is_none_or(|state| state.invalidates_caller_memory);
-                            state
-                        } else {
-                            None
-                        };
-                    if let Some(state) = state {
-                        if state.invalidates_caller_memory {
-                            machine.forget_memory();
-                        }
-                        if let Some(bytes) = state.bytes {
-                            crate::engine::analysis::receivers::install_initial_state(
-                                machine,
-                                receiver,
-                                owner + SPAN,
-                                &bytes,
-                            );
-                            return Ok(Call::Return(state.returned));
-                        }
-                        crate::engine::analysis::receivers::install_vtables(
-                            machine,
-                            receiver,
-                            owner + SPAN,
-                            vtables,
-                        )
-                        .ok_or(Unresolved::new("constructor-vtable-bound"))?;
-                        return Ok(Call::Return(state.returned));
-                    }
-                    crate::engine::analysis::receivers::install_vtables(
-                        machine,
-                        receiver,
-                        owner + SPAN,
-                        vtables,
-                    )
-                    .ok_or(Unresolved::new("persistent-vtable-bound"))?;
-                    return Ok(Call::Return(None));
+                    let entered = binding.constructor_bodies.contains_key(&target);
+                    return constructors
+                        .call(machine, target, receiver, entered)
+                        .ok_or_else(vtable_bound);
+                }
+                if enter_constructors {
+                    return Ok(machine.opaque_call());
                 }
                 machine.forget(owner, SPAN);
                 Ok(Call::Return(None))
             });
-            if invalidates_caller_memory {
-                return Err(Unresolved::new("constructor-unconfined"));
-            }
             let mut established: Option<BTreeMap<i64, u64>> = None;
             for path in paths {
                 match path.end? {

@@ -32,8 +32,11 @@ use super::InputError;
 use super::decode::{Instruction, decode_arm64};
 use super::stop::{Bound, Obstacle, Unknown, Unresolved};
 
+mod owner;
 mod provenance;
 mod trace;
+use owner::OwnerTaint;
+pub use owner::ReturnTaint;
 pub use provenance::Decision;
 use provenance::Provenance;
 
@@ -323,8 +326,8 @@ pub struct Machine<'a> {
     labels: BTreeMap<u64, u64>,
     /// Known values that this path stored to an unknown address.
     unknown_stores: Vec<u64>,
-    store_span: Option<(u64, u64, u64, u64)>,
-    escaped_store: bool,
+    /// Which values may point into a fresh owner, while the machine tracks one.
+    owner: Option<Box<OwnerTaint>>,
     /// How often this path arrived at each loop head of a [`Machine::run_paths_to`] run, or at a
     /// loop head of a [`Machine::run_paths_joining`] run without joining the state there.
     loop_visits: BTreeMap<u64, u32>,
@@ -377,6 +380,7 @@ struct HeadState {
     provenance: Option<Provenance>,
     returned_values: BTreeMap<u64, Option<u64>>,
     tail_aliases: Vec<(usize, u64)>,
+    owner: Option<Box<OwnerTaint>>,
     widened: u32,
     traces: Option<Box<Traces>>,
 }
@@ -410,8 +414,7 @@ impl<'a> Machine<'a> {
             tail_aliases: Vec::new(),
             labels: BTreeMap::new(),
             unknown_stores: Vec::new(),
-            store_span: None,
-            escaped_store: false,
+            owner: None,
             loop_visits: BTreeMap::new(),
             frames: Vec::new(),
             entry: 0,
@@ -483,7 +486,9 @@ impl<'a> Machine<'a> {
         self.stack_pointer
     }
 
-    /// A fresh call frame at the caller's stack position, with only its established memory state.
+    /// A fresh call frame at the caller's stack position, with the call's arguments, the
+    /// caller's established memory state and, while the caller tracks an owner, the owner-derived
+    /// values that the callee can read.
     pub fn fresh_callee(&self, code: &'a Code, data: &'a ReadOnlyData) -> Self {
         let mut callee = Self::new(code, data);
         callee.set_stack_pointer(self.stack_pointer);
@@ -494,6 +499,7 @@ impl<'a> Machine<'a> {
             .filter(|(address, byte)| data.byte(**address) != **byte)
             .map(|(&address, &byte)| (address, byte))
             .collect();
+        self.owner_callee(&mut callee);
         callee
     }
 
@@ -509,20 +515,9 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// Watch writes outside this object span and the callee's private stack frame.
-    pub fn watch_store_span(&mut self, owner: u64, start: u64, end: u64) {
-        self.store_span = Some((owner, start, end, self.stack_pointer));
-        self.escaped_store = false;
-    }
-
-    /// Whether a write may have reached outside the watched span or private frame.
-    pub fn escaped_store(&self) -> bool {
-        self.escaped_store
-    }
-
     /// Store `value` little-endian in `width` bytes.
     pub fn write(&mut self, address: u64, width: u64, value: u64) {
-        self.watch_store(address, width);
+        self.note_store(address, width, false);
         for offset in 0..width {
             self.memory
                 .insert(address + offset, Some((value >> (offset * 8)) as u8));
@@ -582,7 +577,7 @@ impl<'a> Machine<'a> {
 
     /// Store bytes from classified script input whose values are unknown.
     pub fn write_unknown(&mut self, address: u64, width: u64) {
-        self.watch_store(address, width);
+        self.note_store(address, width, false);
         self.forget(address, width);
         if let Some(provenance) = &mut self.provenance {
             for at in address..address + width {
@@ -599,16 +594,9 @@ impl<'a> Machine<'a> {
             .collect()
     }
 
-    fn watch_store(&mut self, address: u64, width: u64) {
-        if let Some((owner, start, end, stack_entry)) = self.store_span {
-            let confined = address.checked_add(width).is_some_and(|limit| {
-                (address >= start && limit <= end)
-                    || (address >= self.stack_pointer
-                        && limit <= stack_entry
-                        && (limit <= owner || address >= end))
-            });
-            self.escaped_store |= !confined;
-        }
+    /// A definite store of `width` bytes at `address`, of an owner-derived value or not.
+    fn note_store(&mut self, address: u64, width: u64, derived: bool) {
+        self.store_owner_bytes(address, width, derived);
 
         if let Some(watch) = &mut self.read_watch {
             watch.written.extend(
@@ -1029,6 +1017,7 @@ impl<'a> Machine<'a> {
             || kept.provenance != self.provenance
             || kept.returned_values != self.returned_values
             || kept.tail_aliases != self.tail_aliases
+            || kept.owner.is_some() != self.owner.is_some()
         {
             return match self.record_loop_arrival(pc) {
                 visits if visits > LOOP_LIMIT => {
@@ -1081,6 +1070,8 @@ impl<'a> Machine<'a> {
             }
         }
 
+        lost |= self.widen_owner(kept.owner.as_deref());
+
         if !lost {
             if let Some(arrival) = &arrival {
                 self.trace_covered(kept, arrival);
@@ -1113,6 +1104,7 @@ impl<'a> Machine<'a> {
             provenance: self.provenance.clone(),
             returned_values: self.returned_values.clone(),
             tail_aliases: self.tail_aliases.clone(),
+            owner: self.owner.clone(),
             widened,
             traces: self.traces.clone(),
         }
@@ -1229,6 +1221,7 @@ impl<'a> Machine<'a> {
             }
             provenance.flags.clear();
         }
+        self.owner_call_returned();
         self.trace_call(lost);
     }
 
@@ -1249,12 +1242,16 @@ impl<'a> Machine<'a> {
             if !matches!(mnemonic, "str" | "stur" | "stp" | "ldr" | "ldur" | "ldp") {
                 let destinations = if mnemonic == "ldp" { 2 } else { 1 };
                 for operand in operands.iter().take(destinations) {
-                    if let Operand::Register(Register {
+                    let Operand::Register(Register {
                         name: Name::Vector(index),
                         ..
                     }) = operand
-                        && let Some(provenance) = &mut self.provenance
-                    {
+                    else {
+                        continue;
+                    };
+                    let derived = self.owner.as_ref().is_some_and(|owner| owner.inputs.get());
+                    self.set_owner_vector(*index, derived);
+                    if let Some(provenance) = &mut self.provenance {
                         provenance.vectors[*index] = if self.vectors[*index].is_none() {
                             provenance.inputs.borrow().clone()
                         } else {
@@ -1741,6 +1738,7 @@ impl<'a> Machine<'a> {
                 let address_inputs = self.take_inputs();
                 self.vectors[*index] = address.and_then(|address| self.load_bytes(address, *bytes));
                 let sources = self.loaded_inputs(address_inputs, address, *bytes);
+                self.set_owner_vector(*index, sources.owner);
                 if let Some(provenance) = &mut self.provenance {
                     provenance.vectors[*index] = sources.receiver;
                 }
@@ -1764,7 +1762,7 @@ impl<'a> Machine<'a> {
                         self.restore_inputs(value_inputs);
                         self.store_bytes(address, *bytes, value);
                     }
-                    None => self.store_to_unknown(&halves(value)),
+                    None => self.store_to_unknown(&halves(value), value_inputs.owner),
                 }
             }
             (
@@ -1791,6 +1789,8 @@ impl<'a> Machine<'a> {
                 let first_sources = self.loaded_inputs(address_inputs.clone(), address, *bytes);
                 let second_sources =
                     self.loaded_inputs(address_inputs, address.map(|at| at + bytes), *bytes);
+                self.set_owner_vector(*first, first_sources.owner);
+                self.set_owner_vector(*second, second_sources.owner);
                 if let Some(provenance) = &mut self.provenance {
                     provenance.vectors[*first] = first_sources.receiver;
                     provenance.vectors[*second] = second_sources.receiver;
@@ -1826,7 +1826,8 @@ impl<'a> Machine<'a> {
                     None => {
                         let mut values = halves(first).to_vec();
                         values.extend(halves(second));
-                        self.store_to_unknown(&values);
+                        let derived = first_inputs.owner || second_inputs.owner;
+                        self.store_to_unknown(&values, derived);
                     }
                 }
             }
@@ -1868,7 +1869,7 @@ impl<'a> Machine<'a> {
                         self.restore_inputs(value_inputs);
                         self.store(address, width, value);
                     }
-                    None => self.store_to_unknown(&[value]),
+                    None => self.store_to_unknown(&[value], value_inputs.owner),
                 }
             }
             ("stp", [first, second, Operand::Memory(memory), rest @ ..]) => {
@@ -1884,7 +1885,10 @@ impl<'a> Machine<'a> {
                         self.restore_inputs(second_inputs);
                         self.store(address + width, width, second);
                     }
-                    None => self.store_to_unknown(&[first, second]),
+                    None => {
+                        let derived = first_inputs.owner || second_inputs.owner;
+                        self.store_to_unknown(&[first, second], derived);
+                    }
                 }
             }
             _ => return Ok(false),
@@ -2020,6 +2024,7 @@ impl<'a> Machine<'a> {
             Name::Zero => Some(0),
             Name::StackPointer => Some(self.stack_pointer),
             Name::General(index) => {
+                self.read_owner_register(index);
                 if self.registers[index].is_none() {
                     self.read_unknown_register(index);
                 }
@@ -2038,7 +2043,7 @@ impl<'a> Machine<'a> {
         match register.name {
             Name::Zero => {}
             Name::StackPointer => {
-                self.escaped_store |= self.store_span.is_some();
+                self.lose_owner_stack();
                 self.stack_pointer = match value {
                     Some(value) => value,
                     None => self.stack_pointer - DYNAMIC_STACK,
@@ -2053,6 +2058,7 @@ impl<'a> Machine<'a> {
                     };
                 }
                 self.registers[index] = value;
+                self.assign_owner_register(index);
                 if value.is_none() {
                     self.trace_register(index);
                 }
@@ -2115,10 +2121,13 @@ impl<'a> Machine<'a> {
     }
 
     /// A store to an unknown address may overwrite any byte, so no written byte stays known,
-    /// except in a protected range. A known value stored there is kept in `unknown_stores`.
-    fn store_to_unknown(&mut self, values: &[Option<u64>]) {
-        self.escaped_store |= self.store_span.is_some();
+    /// except in a protected range, or in a tracked owner that the address cannot point into. A
+    /// known value stored there is kept in `unknown_stores`.
+    fn store_to_unknown(&mut self, values: &[Option<u64>], derived: bool) {
         self.unknown_stores.extend(values.iter().flatten());
+        let protected_before = self.protected.len();
+        let disjoint_owner = self.store_owner_unknown(derived);
+        self.protected.extend(disjoint_owner);
         let protected = &self.protected;
         let tracing = self.traces.is_some();
         let mut overwritten = Vec::new();
@@ -2150,6 +2159,8 @@ impl<'a> Machine<'a> {
                 }
             }
         }
+        // The owner is protected only from this store.
+        self.protected.truncate(protected_before);
     }
 
     fn store(&mut self, address: u64, width: u64, value: Option<u64>) {
@@ -2157,7 +2168,8 @@ impl<'a> Machine<'a> {
     }
 
     fn store_bytes(&mut self, address: u64, width: u64, value: Option<u128>) {
-        self.watch_store(address, width);
+        let derived = self.owner.as_ref().is_some_and(|owner| owner.inputs.get());
+        self.note_store(address, width, derived);
         for offset in 0..width {
             let byte = value.map(|value| (value >> (offset * 8)) as u8);
             self.memory.insert(address + offset, byte);
@@ -2167,6 +2179,7 @@ impl<'a> Machine<'a> {
 
     /// Vector register `index`, noting an unknown one as an input of the present instruction.
     fn vector(&self, index: usize) -> Option<u128> {
+        self.read_owner_vector(index);
         if self.vectors[index].is_none() {
             self.read_unknown_vector();
             if let Some(provenance) = &self.provenance {
@@ -2902,7 +2915,7 @@ mod tests {
         let command = machine.reserve(16);
         machine.write(command + 4, 4, 7);
         machine.watch_reads(command, 16);
-        machine.store_to_unknown(&[None]);
+        machine.store_to_unknown(&[None], false);
         machine.load(command + 4, 4);
         assert!(machine.receiver_reads().is_empty());
     }
@@ -3498,7 +3511,7 @@ mod tests {
 
     #[test]
     fn watched_stack_updates_require_immediate_offsets() {
-        for (mnemonic, operands, escaped) in [
+        for (mnemonic, operands, lost) in [
             ("sub", "sp,sp,#32", false),
             ("add", "sp,sp,#32", false),
             ("stp", "x19,x20,[sp,#-16]!", false),
@@ -3512,11 +3525,11 @@ mod tests {
             let mut machine = Machine::new(&code, &data);
             let owner = machine.reserve(64);
             machine.set_register(1, 16);
-            machine.watch_store_span(owner, owner, owner + 64);
+            machine.track_owner(owner, owner + 64);
             machine
                 .run(0x100, &mut |_, _| Ok(Call::Return(None)))
                 .unwrap();
-            assert_eq!(machine.escaped_store(), escaped, "{mnemonic} {operands}");
+            assert_eq!(machine.owner_stack_lost(), lost, "{mnemonic} {operands}");
         }
     }
 
