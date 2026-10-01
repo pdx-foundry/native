@@ -209,21 +209,65 @@ fn public(group: &Group, result: &GrammarResult, scoped: &Facts) -> Duration {
     }
 }
 
+/// Why an omitted count is not established.
+enum MissingCount {
+    /// The factory state does not establish `width` bytes at owner `offset`.
+    State { offset: i64, width: u64 },
+    /// The combination or the operand's subtype is not established.
+    Method,
+}
+
 /// The initial count: the count slot, or the operand's initial literal times the initial factor.
-fn omitted_count(group: &Group, result: &GrammarResult, scoped: &Facts) -> Option<i64> {
+fn omitted_count(
+    group: &Group,
+    result: &GrammarResult,
+    scoped: &Facts,
+) -> Result<i64, MissingCount> {
+    let word = |offset: i64| {
+        durations::word(&group.initial, offset).ok_or(MissingCount::State { offset, width: 4 })
+    };
+
     match group.combination {
-        Ok(Combination::ScaledAtRead) => durations::word(&group.initial, group.destination),
+        Ok(Combination::ScaledAtRead) => word(group.destination),
         Ok(Combination::SharedFactor { initial_factor, .. }) => {
-            let point = result.scoped_destinations.get(&group.destination)?;
+            let point =
+                result
+                    .scoped_destinations
+                    .get(&group.destination)
+                    .ok_or(MissingCount::State {
+                        offset: group.destination,
+                        width: 8,
+                    })?;
             let Some(Ok(Subtype::Numeric { literal, .. })) = scoped.subtypes.get(point) else {
+                return Err(MissingCount::Method);
+            };
+            let literal = word(group.destination + *literal as i64)?;
+
+            Ok((literal as i32).wrapping_mul(initial_factor as i32).into())
+        }
+        Err(_) => Err(MissingCount::Method),
+    }
+}
+
+/// Each duration group whose omitted count the factory state does not establish, by its keys,
+/// with the trace of the unknown bytes while tracing causes.
+pub(super) fn state_stops(result: &GrammarResult, scoped: &Facts) -> Vec<(String, Unresolved)> {
+    result
+        .durations
+        .groups
+        .iter()
+        .filter_map(|group| {
+            let Err(MissingCount::State { offset, width }) = omitted_count(group, result, scoped)
+            else {
                 return None;
             };
-            let literal = durations::word(&group.initial, group.destination + *literal as i64)?;
+            let keys: Vec<_> = group.units.iter().map(|unit| unit.key.as_str()).collect();
+            let stop =
+                Unresolved::new("omitted-count-state").traced(result.state_trace(offset, width));
 
-            Some((literal as i32).wrapping_mul(initial_factor as i32).into())
-        }
-        Err(_) => None,
-    }
+            Some((keys.join("/"), stop))
+        })
+        .collect()
 }
 
 fn group_gaps(group: &Group, duration: &Duration) -> Vec<(GapKind, String)> {

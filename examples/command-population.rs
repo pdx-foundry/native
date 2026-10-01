@@ -7,6 +7,7 @@ use pdx_native::internals::command_grammar_stops::{self, Chain, GrammarResult, R
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::reference_readers::{self, Initialization, ReferenceFacts};
 use pdx_native::internals::registry_field_stops::Stop;
+use pdx_native::internals::trace_causes;
 use pdx_native::{
     Answer, CommandGrammar, Completeness, DeclarationKind, EmptyKey, FieldReference,
     GrammarProperty, KeyMatch, LookupStage, MissingResult, Native, ReferenceTarget,
@@ -24,9 +25,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         [installation] => population(installation)?,
         [flag, installation] if flag == "--baseline" => population(installation)?,
+        [flag, installation] if flag == "--trace" => trace_causes(|| population(installation))?,
         _ => {
             return Err(
-                "usage: command-population [--baseline] INSTALLATION | --diff BEFORE AFTER".into(),
+                "usage: command-population [--baseline | --trace] INSTALLATION \
+                 | --diff BEFORE AFTER"
+                    .into(),
             );
         }
     };
@@ -88,6 +92,7 @@ fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
             "totals": report.totals,
             "failure_shapes": report.failure_shapes,
             "stop_groups": report.stop_groups,
+            "state_obstacles": report.state_obstacles,
             "initialization_lookups": initialization.report(),
             "forms": forms,
             "targets": targets,
@@ -115,6 +120,8 @@ struct Report {
     totals: Totals,
     failure_shapes: BTreeMap<String, BTreeSet<String>>,
     stop_groups: BTreeMap<String, BTreeSet<String>>,
+    /// Each traced initial-state stop, by the functions of its first and latest loss.
+    state_obstacles: BTreeMap<String, BTreeSet<String>>,
     cases: Vec<Value>,
 }
 
@@ -158,6 +165,25 @@ impl Report {
         };
         if chain.receiver.is_none() || chain.stopped_at == Some("reader slots and bodies") {
             self.totals.receiver_join_failed += 1;
+        }
+        for (key, stop) in diagnostics["state_stops"].as_object().into_iter().flatten() {
+            let functions: Vec<_> = stop["causes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|cause| {
+                    cause["function"]
+                        .as_str()
+                        .unwrap_or("outside every function")
+                })
+                .collect();
+            let (Some(first), Some(latest)) = (functions.first(), functions.last()) else {
+                continue;
+            };
+            self.state_obstacles
+                .entry(format!("{first} -> {latest}"))
+                .or_default()
+                .insert(format!("{name}.{key}"));
         }
         for gap in &answer.gaps {
             self.failure_shapes
@@ -487,7 +513,34 @@ fn diagnostics(image: &Image, run: &Run) -> Value {
         let key = json!({"reason": stop["reason"], "operation": stop["operation"], "obstacle": stop["obstacle"], "function": stop["function"]}).to_string();
         *groups.entry(key).or_default() += 1;
     }
-    json!({"chain": run.chain, "delegates": delegates, "stops": stops, "stop_groups": groups})
+    json!({"chain": run.chain, "delegates": delegates, "stops": stops, "stop_groups": groups,
+        "state_stops": state_stops(image, run)})
+}
+
+/// Each initial-state stop with the place and function of each recorded cause.
+fn state_stops(image: &Image, run: &Run) -> Value {
+    let stops: serde_json::Map<String, Value> = run
+        .state_stops
+        .iter()
+        .map(|(key, unresolved)| {
+            let causes: Vec<_> = unresolved
+                .trace
+                .iter()
+                .flat_map(|trace| trace.causes())
+                .map(|cause| {
+                    json!({"kind": cause.kind, "place": image.place(cause.instruction),
+                        "function": image.function_at(cause.instruction)})
+                })
+                .collect();
+            let trace = unresolved.trace.as_deref();
+            let stop = json!({"reason": unresolved.reason, "causes": causes,
+                "incomplete": trace.is_some_and(|trace| trace.truncated),
+                "unrecorded": trace.is_some_and(|trace| trace.unrecorded)});
+            (key.clone(), stop)
+        })
+        .collect();
+
+    Value::Object(stops)
 }
 
 fn grammar_diagnostics(

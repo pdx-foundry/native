@@ -112,8 +112,14 @@ fn child_reader(
                     (at > VTABLE && (at..at + size).contains(&receiver)).then_some(at + size)
                 })
                 .ok_or(Unresolved::new("numeric-constructor-allocation"))?;
-            crate::engine::analysis::receivers::install_vtables(machine, receiver, end, vtables)
-                .ok_or(Unresolved::new("numeric-constructor-bound"))?;
+            crate::engine::analysis::receivers::install_vtables(
+                machine,
+                receiver,
+                end,
+                vtables,
+                crate::engine::analysis::stop::CauseKind::Invalidated,
+            )
+            .ok_or(Unresolved::new("numeric-constructor-bound"))?;
             return Ok(Call::Return(None));
         }
         let object = machine.known_register(0, "numeric-child-receiver")?;

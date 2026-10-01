@@ -1,7 +1,7 @@
 //! Effects shared by bounded constructor-summary consumers, and the rules of the runs that enter
 //! constructor bodies.
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData, ReturnTaint};
-use super::stop::Unresolved;
+use super::stop::{CauseKind, Trace, Unresolved};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The image that a constructor route reads: its read-only sections with the targets of its
@@ -61,11 +61,13 @@ pub(super) fn accept_entered_path(machine: &Machine<'_>) -> Result<(), Unresolve
 
 /// Replace the receiver's remaining span with only the constructor's proven vtable points.
 /// The caller establishes ownership and the allocation end; summaries do not retain embedded state.
+/// While tracing causes, the forgotten span has the cause `kind`.
 pub(super) fn install_vtables(
     machine: &mut Machine<'_>,
     receiver: u64,
     end: u64,
     points: &BTreeMap<u64, u64>,
+    kind: CauseKind,
 ) -> Option<()> {
     let span = end.checked_sub(receiver)?;
     for &offset in points.keys() {
@@ -73,17 +75,60 @@ pub(super) fn install_vtables(
             return None;
         }
     }
-    machine.forget(receiver, span);
+    machine.forget_for(receiver, span, kind);
     for (&offset, &point) in points {
         machine.write(receiver + offset, 8, point);
     }
     Some(())
 }
 
+/// Join the traces of the bytes that two paths do not agree on. Each side gives the bytes it
+/// knows and the traces of those it does not, by offset. A byte that neither knows merges both
+/// traces; a byte that one side knew, or that both knew differently, has `disagreement` first.
+/// Empty when untraced, as `disagreement` is then `None`.
+pub(super) fn join_byte_traces(
+    (bytes, traces): (&BTreeMap<u64, u8>, &BTreeMap<u64, Trace>),
+    (other_bytes, other_traces): (&BTreeMap<u64, u8>, &BTreeMap<u64, Trace>),
+    disagreement: Option<Trace>,
+) -> BTreeMap<u64, Trace> {
+    let Some(disagreement) = disagreement else {
+        return BTreeMap::new();
+    };
+    let offsets: BTreeSet<u64> = bytes
+        .keys()
+        .chain(other_bytes.keys())
+        .chain(traces.keys())
+        .chain(other_traces.keys())
+        .copied()
+        .collect();
+    let agreed = |offset: &u64| match (bytes.get(offset), other_bytes.get(offset)) {
+        (Some(byte), Some(other)) => byte == other,
+        _ => false,
+    };
+
+    offsets
+        .into_iter()
+        .filter(|offset| !agreed(offset))
+        .map(|offset| {
+            let unknown = [traces.get(&offset), other_traces.get(&offset)];
+            let mut trace = match unknown {
+                [Some(_), Some(_)] => Trace::default(),
+                _ => disagreement,
+            };
+            for side in unknown.into_iter().flatten() {
+                trace.merge(side);
+            }
+            (offset, trace)
+        })
+        .collect()
+}
+
 /// The owner state that an entered constructor leaves on every path that returns.
 struct InitialState {
     /// Bytes of the whole owner, relative to its start, that every returning path agrees on.
     bytes: BTreeMap<u64, u8>,
+    /// Why each other owner byte is unknown, by offset, while tracing causes.
+    traces: BTreeMap<u64, Trace>,
     /// Owner offsets whose bytes may hold an owner-derived value on some returning path.
     tainted: BTreeSet<u64>,
     /// The value agreed for x0 at every normal return.
@@ -100,6 +145,7 @@ impl InitialState {
     fn of(machine: &Machine<'_>, owner: u64, end: u64) -> Self {
         Self {
             bytes: machine.known_bytes(owner, end - owner),
+            traces: machine.unknown_byte_traces(owner, end - owner),
             tainted: machine.owner_derived_bytes(),
             returned: machine.register(0),
             returned_owner_derived: machine.owner_derived(0),
@@ -109,7 +155,13 @@ impl InitialState {
     }
 
     /// The state that both this path and `other` leave: agreed bytes and every possible effect.
-    fn join(mut self, other: Self) -> Self {
+    /// A byte that the paths disagree on has the cause `disagreement` while tracing.
+    fn join(mut self, other: Self, disagreement: Option<Trace>) -> Self {
+        self.traces = join_byte_traces(
+            (&self.bytes, &self.traces),
+            (&other.bytes, &other.traces),
+            disagreement,
+        );
         self.bytes
             .retain(|offset, byte| other.bytes.get(offset) == Some(byte));
         self.tainted.extend(other.tainted);
@@ -158,8 +210,19 @@ impl Constructors<'_> {
             return Some(self.install(machine, &state));
         }
 
-        let call = machine.opaque_call();
-        install_vtables(machine, receiver, self.end, self.summaries.get(&target)?)?;
+        let kind = if body_available {
+            CauseKind::Unfollowed
+        } else {
+            CauseKind::Invalidated
+        };
+        let call = machine.opaque_call_for(kind);
+        install_vtables(
+            machine,
+            receiver,
+            self.end,
+            self.summaries.get(&target)?,
+            kind,
+        )?;
 
         Some(call)
     }
@@ -186,13 +249,13 @@ impl Constructors<'_> {
             let member = machine
                 .register(0)
                 .is_some_and(|nested| (receiver..self.end).contains(&nested));
-            let state = nested
-                .filter(|_| member)
-                .and_then(|nested| self.initial_state(nested, machine, depth + 1));
+            let Some(nested) = nested.filter(|_| member) else {
+                return Ok(machine.opaque_call());
+            };
 
-            Ok(match state {
+            Ok(match self.initial_state(nested, machine, depth + 1) {
                 Some(state) => self.install(machine, &state),
-                None => machine.opaque_call(),
+                None => machine.opaque_call_for(CauseKind::Unfollowed),
             })
         });
 
@@ -204,7 +267,7 @@ impl Constructors<'_> {
             accept_entered_path(&path.machine).ok()?;
             let state = InitialState::of(&path.machine, self.owner, self.end);
             agreed = Some(match agreed {
-                Some(agreed) => agreed.join(state),
+                Some(agreed) => agreed.join(state, path.machine.join_cause()),
                 None => state,
             });
         }
@@ -248,13 +311,14 @@ impl Constructors<'_> {
         Some(())
     }
 
-    /// Replace the caller's owner state with the constructor's, apply the constructor's other
-    /// effects, and return from the call.
+    /// Replace the caller's owner state with the constructor's, with the causes of its unknown
+    /// bytes, apply the constructor's other effects, and return from the call.
     fn install(&self, machine: &mut Machine<'_>, state: &InitialState) -> Call {
         machine.forget_known_bytes(self.owner, self.end - self.owner);
         for (&offset, &byte) in &state.bytes {
             machine.write(self.owner + offset, 1, byte.into());
         }
+        machine.set_byte_traces(self.owner, &state.traces);
         machine.set_owner_derived_bytes(&state.tainted);
         if state.clobbers_outside {
             machine.forget_memory_outside_owner();
@@ -278,9 +342,13 @@ mod tests {
     use super::*;
     use crate::engine::analysis::assembler::{Arm64, arm64};
     use crate::engine::analysis::durations::word;
+    use crate::engine::analysis::evaluate::trace_causes;
 
     /// An address that no section maps, so a load from it is unknown and underived.
     const GLOBAL: u64 = 0x80000;
+
+    /// A function that is not a bound constructor, so a call to it is not followed.
+    const UNBOUND: u64 = 0x9000;
 
     /// Walk the constructor at 0x1000 from `caller`, which tracks the owner at `owner..end`.
     /// Each argument register that points into the owner is owner-derived.
@@ -413,7 +481,8 @@ mod tests {
                 &mut machine,
                 owner + 16,
                 owner + 64,
-                &BTreeMap::from([(0, 4), (32, 5)])
+                &BTreeMap::from([(0, 4), (32, 5)]),
+                CauseKind::Invalidated
             ),
             Some(())
         );
@@ -428,7 +497,8 @@ mod tests {
                     &mut machine,
                     owner + 16,
                     owner + 64,
-                    &BTreeMap::from([(offset, 6)])
+                    &BTreeMap::from([(offset, 6)]),
+                    CauseKind::Invalidated
                 ),
                 None
             );
@@ -571,5 +641,426 @@ mod tests {
         );
         let state = walk_parent(parent, child);
         assert_eq!(word(&state.bytes, 16), None);
+    }
+
+    /// Walk the constructor at 0x1000 on a 64-byte owner in x0, with `bodies` decoded and each
+    /// of `constructors` bound, untraced and then traced. Both walks must leave the same state,
+    /// and only the traced one has causes.
+    fn traced_walk(bodies: Vec<Arm64>, constructors: &[u64]) -> InitialState {
+        let starts: Vec<u64> = bodies.iter().map(Arm64::start).collect();
+        let bytes: Vec<Vec<u8>> = bodies.into_iter().map(Arm64::bytes).collect();
+        let segments: Vec<(u64, &[u8])> = starts
+            .iter()
+            .copied()
+            .zip(bytes.iter().map(Vec::as_slice))
+            .collect();
+        let code = Code::decode(&segments).unwrap();
+        let data = ReadOnlyData::default();
+        let summaries = constructors
+            .iter()
+            .map(|&constructor| (constructor, BTreeMap::new()))
+            .collect();
+        let run = || {
+            let mut caller = Machine::new(&code, &data);
+            let owner = caller.reserve(64);
+            caller.set_register(0, owner);
+            walk(&code, &data, &summaries, &caller, owner, owner + 64).unwrap()
+        };
+
+        let untraced = run();
+        let traced = trace_causes(run);
+        assert_eq!(traced.bytes, untraced.bytes);
+        assert_eq!(traced.tainted, untraced.tainted);
+        assert_eq!(traced.returned, untraced.returned);
+        assert_eq!(traced.escaped, untraced.escaped);
+        assert_eq!(traced.clobbers_outside, untraced.clobbers_outside);
+        assert!(untraced.traces.is_empty());
+
+        traced
+    }
+
+    /// The constructor at 0x1000: it stores 7 at owner +16, with x1 the owner and x2 the address
+    /// `GLOBAL`, then runs `body` and returns the owner.
+    fn parent_constructor(body: impl FnOnce(&mut Arm64)) -> Arm64 {
+        let mut parent = Arm64::at(0x1000);
+        parent.prologue();
+        arm64!(parent; mov x19, x0; mov x1, x0; mov w8, #7; str w8, [x19, #16]);
+        parent.address(2, GLOBAL);
+        body(&mut parent);
+        arm64!(parent; mov x0, x19);
+        parent.epilogue();
+        arm64!(parent; ret);
+        parent
+    }
+
+    /// Call the member constructor `target` for owner +32, and return the call's address.
+    fn call_member(body: &mut Arm64, target: u64) -> u64 {
+        arm64!(body; add x0, x19, #32);
+        let call = body.here();
+        body.call(target);
+        call
+    }
+
+    /// Call `UNBOUND`, and return the call's address.
+    fn call_unbound(body: &mut Arm64) -> u64 {
+        let call = body.here();
+        body.call(UNBOUND);
+        call
+    }
+
+    /// A function at `start` that runs `body` in a frame and returns.
+    fn member(start: u64, body: impl FnOnce(&mut Arm64)) -> Arm64 {
+        let mut member = Arm64::at(start);
+        member.prologue();
+        body(&mut member);
+        member.epilogue();
+        arm64!(member; ret);
+        member
+    }
+
+    /// The member at 0x2000 runs `first` when the word at `GLOBAL` is zero, or `second` at
+    /// 0x2100, or the other way round when `swapped`.
+    fn branching_member(
+        swapped: bool,
+        first: impl FnOnce(&mut Arm64),
+        second: impl FnOnce(&mut Arm64),
+    ) -> [Arm64; 2] {
+        let mut member = Arm64::at(0x2000);
+        member.prologue();
+        arm64!(member; ldr x10, [x2]);
+        if swapped {
+            arm64!(member; cbz x10, extern 0x2100);
+        } else {
+            arm64!(member; cbnz x10, extern 0x2100);
+        }
+        first(&mut member);
+        member.epilogue();
+        arm64!(member; ret);
+        let mut other = Arm64::at(0x2100);
+        second(&mut other);
+        other.epilogue();
+        arm64!(other; ret);
+        [member, other]
+    }
+
+    /// Each recorded cause of owner byte `offset`: its kind, instruction and entry.
+    fn losses(state: &InitialState, offset: u64) -> Vec<(CauseKind, u64, u64)> {
+        state.traces[&offset]
+            .causes()
+            .map(|cause| (cause.kind, cause.instruction, cause.entry))
+            .collect()
+    }
+
+    #[test]
+    fn a_byte_that_only_one_side_records_joins_in_either_order() {
+        let join = Trace::of(crate::engine::analysis::stop::Cause {
+            kind: CauseKind::Join,
+            instruction: 0x2010,
+            entry: 0x2000,
+        });
+        let known = BTreeMap::from([(40, 7)]);
+        let none = BTreeMap::new();
+        let untraced = BTreeMap::new();
+
+        for (first, second) in [(&known, &none), (&none, &known)] {
+            let traces = join_byte_traces((first, &untraced), (second, &untraced), Some(join));
+            assert_eq!(traces, BTreeMap::from([(40, join)]));
+        }
+    }
+
+    #[test]
+    fn a_nested_opaque_call_is_the_cause_of_a_forgotten_owner_byte() {
+        let mut forgotten = 0;
+        let grandchild = member(0x3000, |body| forgotten = call_unbound(body));
+        let child = member(0x2000, |body| {
+            arm64!(body; add x0, x0, #8);
+            body.call(0x3000);
+        });
+        let parent = parent_constructor(|body| {
+            call_member(body, 0x2000);
+        });
+
+        let state = traced_walk(vec![parent, child, grandchild], &[0x1000, 0x2000, 0x3000]);
+
+        assert_eq!(word(&state.bytes, 16), None);
+        assert_eq!(
+            losses(&state, 16),
+            [(CauseKind::Invalidated, forgotten, 0x3000)]
+        );
+    }
+
+    #[test]
+    fn a_tainted_unknown_address_store_is_the_cause() {
+        let mut store = 0;
+        let child = member(0x2000, |body| {
+            arm64!(body; ldr x10, [x2]; add x10, x1, x10); // the owner at an unknown offset
+            store = body.here();
+            arm64!(body; str wzr, [x10]);
+        });
+        let parent = parent_constructor(|body| {
+            call_member(body, 0x2000);
+        });
+
+        let state = traced_walk(vec![parent, child], &[0x1000, 0x2000]);
+
+        assert_eq!(
+            losses(&state, 16),
+            [(CauseKind::UnknownStore, store, 0x2000)]
+        );
+    }
+
+    #[test]
+    fn a_later_definite_store_leaves_no_cause() {
+        let child = member(0x2000, |body| {
+            call_unbound(body);
+        });
+        let parent = parent_constructor(|body| {
+            call_member(body, 0x2000);
+            arm64!(body; mov w8, #5; str w8, [x19, #16]);
+        });
+
+        let state = traced_walk(vec![parent, child], &[0x1000, 0x2000]);
+
+        assert_eq!(word(&state.bytes, 16), Some(5));
+        assert!(!state.traces.contains_key(&16));
+    }
+
+    #[test]
+    fn a_byte_that_a_member_does_not_touch_keeps_the_callers_cause() {
+        let mut forgotten = 0;
+        let child = member(0x2000, |_| {});
+        let parent = parent_constructor(|body| {
+            forgotten = call_unbound(body);
+            call_member(body, 0x2000);
+        });
+
+        let state = traced_walk(vec![parent, child], &[0x1000, 0x2000]);
+
+        assert_eq!(
+            losses(&state, 16),
+            [(CauseKind::Invalidated, forgotten, 0x1000)]
+        );
+    }
+
+    #[test]
+    fn a_member_that_establishes_a_byte_again_replaces_the_callers_cause() {
+        let mut forgotten = 0;
+        let child = member(0x2000, |body| {
+            arm64!(body; mov w8, #5; str w8, [x1, #16]);
+            forgotten = call_unbound(body);
+        });
+        let parent = parent_constructor(|body| {
+            call_unbound(body);
+            arm64!(body; mov x1, x19);
+            call_member(body, 0x2000);
+        });
+
+        let state = traced_walk(vec![parent, child], &[0x1000, 0x2000]);
+
+        assert_eq!(
+            losses(&state, 16),
+            [(CauseKind::Invalidated, forgotten, 0x2000)]
+        );
+    }
+
+    #[test]
+    fn each_loss_in_a_member_is_kept_in_order() {
+        let (mut first, mut second) = (0, 0);
+        let child = member(0x2000, |body| {
+            first = call_unbound(body);
+            second = call_unbound(body);
+        });
+        let parent = parent_constructor(|body| {
+            call_member(body, 0x2000);
+        });
+
+        let state = traced_walk(vec![parent, child], &[0x1000, 0x2000]);
+
+        assert_eq!(
+            losses(&state, 16),
+            [
+                (CauseKind::Invalidated, first, 0x2000),
+                (CauseKind::Invalidated, second, 0x2000)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_callee_store_adds_to_the_causes_that_it_inherited() {
+        let mut inherited = 0;
+        let mut overwritten = 0;
+        let child = member(0x2000, |body| {
+            arm64!(body; ldr x10, [x2]; add x10, x1, x10); // the owner at an unknown offset
+            overwritten = body.here();
+            arm64!(body; str wzr, [x10]);
+        });
+        let parent = parent_constructor(|body| {
+            arm64!(body; ldr x10, [x2]; add x10, x19, x10); // the owner at an unknown offset
+            inherited = body.here();
+            arm64!(body; str wzr, [x10]);
+            call_member(body, 0x2000);
+        });
+
+        let state = traced_walk(vec![parent, child], &[0x1000, 0x2000]);
+
+        assert_eq!(
+            losses(&state, 16),
+            [
+                (CauseKind::UnknownStore, inherited, 0x1000),
+                (CauseKind::UnknownStore, overwritten, 0x2000)
+            ]
+        );
+
+        let child = member(0x2000, |body| {
+            arm64!(body; ldr x10, [x2]; str wzr, [x10]); // a pointer from before the owner
+        });
+        let parent = parent_constructor(|body| {
+            arm64!(body; ldr x10, [x2]; add x10, x19, x10); // the owner at an unknown offset
+            inherited = body.here();
+            arm64!(body; str wzr, [x10]);
+            call_member(body, 0x2000);
+        });
+
+        let state = traced_walk(vec![parent, child], &[0x1000, 0x2000]);
+
+        assert_eq!(
+            losses(&state, 16),
+            [(CauseKind::UnknownStore, inherited, 0x1000)]
+        );
+    }
+
+    #[test]
+    fn returning_paths_that_lost_a_byte_differently_keep_both_causes() {
+        for swapped in [false, true] {
+            let (mut first, mut second) = (0, 0);
+            let [child, other] = branching_member(
+                swapped,
+                |body| first = call_unbound(body),
+                |body| second = call_unbound(body),
+            );
+            let parent = parent_constructor(|body| {
+                call_member(body, 0x2000);
+            });
+
+            let state = traced_walk(vec![parent, child, other], &[0x1000, 0x2000]);
+
+            let mut causes = losses(&state, 16);
+            causes.sort();
+            assert_eq!(
+                causes,
+                [
+                    (CauseKind::Invalidated, first, 0x2000),
+                    (CauseKind::Invalidated, second, 0x2000)
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn returning_paths_that_disagree_on_a_byte_join_first() {
+        for swapped in [false, true] {
+            let mut forgotten = 0;
+            let [child, other] =
+                branching_member(swapped, |_| {}, |body| forgotten = call_unbound(body));
+            let parent = parent_constructor(|body| {
+                call_member(body, 0x2000);
+            });
+
+            let state = traced_walk(vec![parent, child, other], &[0x1000, 0x2000]);
+
+            let causes = losses(&state, 16);
+            assert_eq!(causes.len(), 2);
+            assert_eq!((causes[0].0, causes[0].2), (CauseKind::Join, 0x2000));
+            assert_eq!(causes[1], (CauseKind::Invalidated, forgotten, 0x2000));
+            assert!(!state.traces[&16].unrecorded);
+
+            let [child, other] = branching_member(
+                swapped,
+                |body| arm64!(body; mov w8, #5; str w8, [x1, #16]),
+                |body| arm64!(body; mov w8, #6; str w8, [x1, #16]),
+            );
+            let parent = parent_constructor(|body| {
+                call_member(body, 0x2000);
+            });
+
+            let state = traced_walk(vec![parent, child, other], &[0x1000, 0x2000]);
+
+            let causes = losses(&state, 16);
+            assert_eq!(causes.len(), 1);
+            assert_eq!((causes[0].0, causes[0].2), (CauseKind::Join, 0x2000));
+        }
+    }
+
+    #[test]
+    fn a_member_walk_that_cannot_be_followed_is_the_cause() {
+        let mut child = Arm64::at(0x2000);
+        arm64!(child; ldr x10, [x2]; cbz x10, extern 0x2100; ret);
+        let mut other = Arm64::at(0x2100);
+        arm64!(other; b extern 0x2100); // a path that does not return
+        let mut call = 0;
+        let parent = parent_constructor(|body| call = call_member(body, 0x2000));
+
+        let state = traced_walk(vec![parent, child, other], &[0x1000, 0x2000]);
+
+        assert_eq!(word(&state.bytes, 16), None);
+        assert_eq!(losses(&state, 16), [(CauseKind::Unfollowed, call, 0x1000)]);
+    }
+
+    #[test]
+    fn a_constructor_call_that_is_not_followed_records_one_cause() {
+        let mut caller = Arm64::at(0x1000);
+        caller.prologue();
+        let call = caller.here();
+        caller.call(0x2000);
+        caller.epilogue();
+        arm64!(caller; ret);
+        let caller = caller.bytes();
+        let looping = arm64!(at 0x2000; b extern 0x2000);
+        let code = Code::decode(&[(0x1000, &caller), (0x2000, &looping)]).unwrap();
+        let data = ReadOnlyData::default();
+        let image = ConstructorImage {
+            constant: data.clone(),
+            writable: BTreeMap::new(),
+        };
+        let summaries = BTreeMap::from([(0x2000, BTreeMap::new())]);
+
+        for (body_available, kind) in [
+            (true, CauseKind::Unfollowed),
+            (false, CauseKind::Invalidated),
+        ] {
+            let paths = trace_causes(|| {
+                let mut machine = Machine::new(&code, &data);
+                let owner = machine.reserve(64);
+                machine.write(owner + 16, 4, 7);
+                machine.set_register(0, owner);
+                machine.track_private_owner(owner, owner + 64);
+                machine.derive_from_owner(0);
+                let constructors = Constructors {
+                    code: &code,
+                    image: &image,
+                    summaries: &summaries,
+                    owner,
+                    end: owner + 64,
+                };
+                let paths = machine.run_paths(0x1000, &mut |target, machine| {
+                    Ok(constructors
+                        .call(machine, target.unwrap(), owner, body_available)
+                        .unwrap())
+                });
+                paths
+                    .into_iter()
+                    .map(|path| path.machine.memory_trace(owner + 16, 1))
+                    .collect::<Vec<_>>()
+            });
+
+            let [Some(trace)] = paths.as_slice() else {
+                panic!("one traced path");
+            };
+            let causes: Vec<_> = trace
+                .causes()
+                .map(|cause| (cause.kind, cause.instruction, cause.entry))
+                .collect();
+            assert_eq!(causes, [(kind, call, 0x1000)]);
+        }
     }
 }

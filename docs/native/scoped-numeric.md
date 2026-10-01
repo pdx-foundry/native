@@ -196,15 +196,29 @@ passes the address of a stack slot that holds `this` to `CPdxArray::InsertAtEmpl
 (`0x10045691c`). Both calls may reach the owner, so the owner has escaped before the derived
 constructor's members are built. Every later call that is not entered may then write any owner
 byte. An operand is established only when its member's bytes are written after the last such
-call. The remaining 35 arguments lose their bytes to a later member constructor:
+call.
 
-| Later constructor | Calls that may write the owner | Lost destinations |
+`command-population --trace` names, for each of the remaining 35 arguments, every place that may
+have overwritten its bytes after they were written (see [method authoring](method-authoring.md)).
+A recovery must repair each of them, through the latest. The traces correct two attributions that
+SDK-658 made from walk-completion order: the event `days` are not lost to a later `CToken` alone,
+and `effect_on_blob.owned_planets_percentage` is not lost to `CTrigger` alone.
+
+| First loss | Latest loss | Lost destinations |
 | --- | --- | --- |
-| `CEventTarget::CEventTarget()` `0x1004f6ed0` | `CStaticLexer::GetString` `0x1004f6f10`, `CEventTarget::PopulateTokenString` `0x1004f6f44` | `add_modifier` and `add_stage_modifier` `mult` / `multiplier`; `set_saved_date.days_from_present` |
-| `CToken::CToken(int, CString const&)` `0x1025bc848`, built by a later `CIntVariableValue` | `_memcpy` `0x1025bc92c` into the token's buffer with an unknown length, then `strb` `0x1025bc930` at an unknown index | The 20 event effects' `days` at owner `+0xd8`, lost to the `random` member at `+0x2e0` |
-| `CTrigger::CTrigger()` `0x100d0613c` | Trigger database registration (`0x100d06194`-`0x100d061ac`) | `closest_system` and `num_neighbor_systems` steps and distances, `effect_on_blob.owned_planets_percentage` |
-| `CString::CString(char const*)` `0x102521fec` | `_memmove` `0x102522074`, then `strb` `0x102522078` at an unknown index | `create_pop_group.size`, `spawn_megastructure.orbit_distance` |
-| `CReleaseVivariumFaunaCountEffect` constructor `0x101e16b84` | `___cxa_guard_acquire` `0x101e16c10` and `___cxa_guard_release` `0x101e16c2c` | `release_vivarium_fauna_count.count` |
+| `CEventTarget::CEventTarget()` `0x1004f6ed0`: `CStaticLexer::GetString` `0x1004f6f10` | `CEventTarget::PopulateTokenString` `0x1004f6f44`, in the same constructor | The 20 event effects' `days` at owner `+0xd8`; `add_modifier` and `add_stage_modifier` `mult` / `multiplier`; `set_saved_date.days_from_present` |
+| `GetString` `0x1004f6f10` | `CEffect::CEffect()` `0x10045680c` of a later member: `str w8,[x21,#0x58]` `0x100456928` to the registration array | `effect_on_blob.owned_planets_percentage`, `spawn_megastructure.orbit_distance` |
+| `GetString` `0x1004f6f10` | `CTrigger::CTrigger()` `0x100d0613c` of a later member: trigger database registration (`0x100d06194`-`0x100d061ac`) | `closest_system.min_steps` (effect and trigger), `num_neighbor_systems.min_distance` |
+| `CTrigger::CTrigger()` registration `0x100d06194` | `CTrigger::CTrigger()` registration `0x100d061ac` | `closest_system.max_steps` (effect and trigger), `num_neighbor_systems.max_distance` |
+| `GetString` `0x1004f6f10` | `CReleaseVivariumFaunaCountEffect` constructor `0x101e16b84`: `___cxa_guard_acquire` `0x101e16c10` | `release_vivarium_fauna_count.count` |
+| `CEffect::CEffect()`: `CPdxArray::InsertAtEmplace` `0x10045691c` | `CString::CString(char const*)` called at `0x101e69f6c`, whose walk is not followed | `create_pop_group.size` |
+
+Between `GetString` and `PopulateTokenString`, `CEventTarget::CEventTarget()` builds a `CToken`
+(`CToken::CToken(int, CString const&)` `0x1025bc848`). Its `CString::GetTCharPtr` `0x1025bc894`,
+`CString::GetSize` `0x1025bc8a0`, `_memcpy` `0x1025bc92c` and `strb` `0x1025bc930` at an unknown
+index each lose the same bytes again. A trace keeps four causes, so the population shows the first
+three and the latest; the full list comes from `inspect --effect-grammar country_event --trace`
+with a larger `CAUSE_LIMIT` in a local build.
 
 The `ldaprb` at `0x101e16bcc` is evaluated as a byte load; the guard calls are the obstacle.
 Recovery needs a bounded model of these calls' writes, such as a copy length proved below the

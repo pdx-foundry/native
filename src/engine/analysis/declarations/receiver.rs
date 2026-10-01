@@ -6,8 +6,8 @@
 use super::{DeclarationInput, Function, decode, number};
 use crate::engine::analysis::{
     evaluate::{Call, Code, Exit, Machine, ReturnTaint},
-    receivers::{Constructors, accept_entered_path, install_vtables},
-    stop::Unresolved,
+    receivers::{Constructors, accept_entered_path, install_vtables, join_byte_traces},
+    stop::{CauseKind, Trace, Unresolved},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,6 +21,8 @@ pub(crate) fn factory_vtable(input: &DeclarationInput, factory: u64) -> Result<u
 pub(crate) struct FactoryState {
     pub vtable: u64,
     pub bytes: BTreeMap<u64, u8>,
+    /// Why each other allocation byte is unknown, by offset, while tracing causes.
+    pub traces: BTreeMap<u64, Trace>,
 }
 
 pub(crate) fn factory_state(
@@ -37,6 +39,9 @@ pub(crate) fn factory_state(
                 }) =>
         {
             entered.bytes.extend(baseline.bytes);
+            entered
+                .traces
+                .retain(|offset, _| !entered.bytes.contains_key(offset));
             Ok(entered)
         }
         (Ok(baseline), _) => Ok(baseline),
@@ -163,7 +168,8 @@ fn evaluate_factory(
                     allocation.ok_or(Unresolved::new("constructor-outside-allocation"))?;
                 let vtable_bound = || Unresolved::new("constructor-vtable-bound");
                 if !enter_constructors {
-                    install_vtables(machine, receiver, end, vtables).ok_or_else(vtable_bound)?;
+                    install_vtables(machine, receiver, end, vtables, CauseKind::Invalidated)
+                        .ok_or_else(vtable_bound)?;
                     return Ok(Call::Return(None));
                 }
                 let constructors = Constructors {
@@ -196,7 +202,7 @@ fn evaluate_factory(
         Ok(Call::Return(None))
     });
     let mut vtables = BTreeSet::new();
-    let mut bytes: Option<BTreeMap<u64, u8>> = None;
+    let mut agreed: Option<(BTreeMap<u64, u8>, BTreeMap<u64, Trace>)> = None;
     for path in paths {
         match path.end? {
             Exit::Returned => {}
@@ -215,18 +221,28 @@ fn evaluate_factory(
         vtables.insert(vtable);
         let size = path.machine.labelled(object).unwrap();
         let returned = path.machine.known_bytes(object, size);
-        if let Some(agreed) = &mut bytes {
-            agreed.retain(|offset, byte| returned.get(offset) == Some(byte));
-        } else {
-            bytes = Some(returned);
-        }
+        let traces = path.machine.unknown_byte_traces(object, size);
+        agreed = Some(match agreed {
+            Some((mut bytes, earlier)) => {
+                let traces = join_byte_traces(
+                    (&bytes, &earlier),
+                    (&returned, &traces),
+                    path.machine.join_cause(),
+                );
+                bytes.retain(|offset, byte| returned.get(offset) == Some(byte));
+                (bytes, traces)
+            }
+            None => (returned, traces),
+        });
     }
     if vtables.len() != 1 {
         return Err(Unresolved::new("ambiguous-command-vtable"));
     }
+    let (bytes, traces) = agreed.unwrap_or_default();
     Ok(FactoryState {
         vtable: *vtables.first().unwrap(),
-        bytes: bytes.unwrap_or_default(),
+        bytes,
+        traces,
     })
 }
 

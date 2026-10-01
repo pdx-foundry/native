@@ -30,7 +30,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::decode::{Instruction, decode_arm64};
-use super::stop::{Bound, Obstacle, Unknown, Unresolved};
+use super::stop::{Bound, CauseKind, Obstacle, Unknown, Unresolved};
 
 mod owner;
 mod provenance;
@@ -488,7 +488,8 @@ impl<'a> Machine<'a> {
 
     /// A fresh call frame at the caller's stack position, with the call's arguments, the
     /// caller's established memory state and, while the caller tracks an owner, the owner-derived
-    /// values that the callee can read.
+    /// values that the callee can read. While tracing causes, the callee starts with the causes
+    /// of the caller's unknown memory and arguments.
     pub fn fresh_callee(&self, code: &'a Code, data: &'a ReadOnlyData) -> Self {
         let mut callee = Self::new(code, data);
         callee.set_stack_pointer(self.stack_pointer);
@@ -505,6 +506,7 @@ impl<'a> Machine<'a> {
             }
         }
         callee.vectors[..8].copy_from_slice(&self.vectors[..8]);
+        callee.traces = self.traces.as_ref().map(|traces| traces.for_callee());
         self.copy_owner_taint_to_callee(&mut callee);
 
         callee
@@ -713,6 +715,12 @@ impl<'a> Machine<'a> {
     /// read-only backing, so a byte without an entry is already unknown; filling the rest of a
     /// large object with unknown entries would only enlarge path clones.
     pub fn forget_known_bytes(&mut self, address: u64, length: u64) {
+        self.forget_known_bytes_for(address, length, CauseKind::Invalidated);
+    }
+
+    /// [`Machine::forget_known_bytes`], for the reason `kind` while tracing causes.
+    pub(super) fn forget_known_bytes_for(&mut self, address: u64, length: u64, kind: CauseKind) {
+        self.trace_forgetting_unknown(address, length, kind);
         let known: Vec<u64> = self
             .memory
             .range(address..address.saturating_add(length))
@@ -720,13 +728,18 @@ impl<'a> Machine<'a> {
             .map(|(&at, _)| at)
             .collect();
         for at in known {
-            self.forget(at, 1);
+            self.forget_for(at, 1, kind);
         }
     }
 
     /// Make `width` bytes at `address` unknown, such as a field that a call may have written.
     pub fn forget(&mut self, address: u64, width: u64) {
-        self.trace_forgetting(address, width);
+        self.forget_for(address, width, CauseKind::Invalidated);
+    }
+
+    /// [`Machine::forget`], for the reason `kind` while tracing causes.
+    pub(super) fn forget_for(&mut self, address: u64, width: u64, kind: CauseKind) {
+        self.trace_forgetting(address, width, kind);
         for offset in 0..width {
             self.memory.insert(address + offset, None);
         }
@@ -2164,6 +2177,13 @@ impl<'a> Machine<'a> {
                 *byte = None;
             }
         }
+        let inherited = self.inherited_unknown_bytes(|address| {
+            !self
+                .protected
+                .iter()
+                .any(|(start, end)| (*start..*end).contains(&address))
+        });
+        overwritten.extend(inherited.into_iter().map(|address| (address, false)));
         self.trace_unknown_store(&overwritten);
         // The store may have written any unprotected watched byte, so a later load of one is not
         // initial receiver state.

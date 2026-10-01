@@ -18,7 +18,7 @@ use crate::engine::analysis::{
     declarations::{self, Site},
     grammar,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::Native;
 use crate::{Answer, CommandGrammar, DeclarationKind, Error, Operation};
@@ -37,6 +37,11 @@ pub struct Run {
     pub result: Result<GrammarResult, Unresolved>,
     /// Registration, factory and receiver joins retained even if a later stage fails.
     pub chain: Chain,
+    /// Child keys whose initial owner storage the factory does not establish: a scoped
+    /// destination's vtable point (`scoped-destination-state`), or the omitted count of the
+    /// duration group whose keys are joined by `/` (`omitted-count-state`). While tracing causes,
+    /// each carries the trace of the unknown bytes.
+    pub state_stops: BTreeMap<String, Unresolved>,
 }
 
 /// Run the command grammar method once for the command `name` of `kind` on an opened
@@ -243,6 +248,10 @@ fn inspect_command(
         chain.stopped_at = None;
         Ok(result)
     })();
+    let state_stops = result
+        .as_ref()
+        .map(|result| state_stops(result, scoped))
+        .unwrap_or_default();
     Run {
         answer: super::grammar::normalize_with_numeric(
             result.as_ref(),
@@ -254,7 +263,18 @@ fn inspect_command(
         ),
         result,
         chain,
+        state_stops,
     }
+}
+
+fn state_stops(
+    result: &GrammarResult,
+    scoped: &crate::engine::analysis::scoped_numeric::Facts,
+) -> BTreeMap<String, Unresolved> {
+    let mut stops = super::scoped_numeric::state_stops(result);
+    stops.extend(super::durations::state_stops(result, scoped));
+
+    stops.into_iter().collect()
 }
 
 #[cfg(test)]
