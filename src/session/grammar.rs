@@ -1660,6 +1660,23 @@ mod tests {
             )]
         );
 
+        let mut repeated = crate::engine::analysis::stop::Trace::default();
+        for (_, trace) in lost(0, 1, 0x10).into_iter().chain(lost(0, 1, 0x20)) {
+            repeated.record_loss(&trace);
+        }
+        repeated.record_loss(&lost(0, 1, 0x10)[0].1);
+        result.state_traces = (0x80..0x88).map(|at| (at, repeated)).collect();
+        result.scoped_destinations = [(0x100, 0x9000)].into();
+        assert_eq!(
+            stop_causes(&state_stops(&result)),
+            [(
+                "district_type",
+                "scoped-destination-state",
+                vec![0x10, 0x20, 0x10]
+            )],
+            "the latest loss stays last"
+        );
+
         result.state_traces.clear();
         let stops = state_stops(&result);
         assert_eq!(stops.len(), 1);

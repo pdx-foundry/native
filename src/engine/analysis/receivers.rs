@@ -96,6 +96,7 @@ pub(super) fn join_byte_traces(
     };
     let offsets: BTreeSet<u64> = bytes
         .keys()
+        .chain(other_bytes.keys())
         .chain(traces.keys())
         .chain(other_traces.keys())
         .copied()
@@ -748,6 +749,23 @@ mod tests {
             .causes()
             .map(|cause| (cause.kind, cause.instruction, cause.entry))
             .collect()
+    }
+
+    #[test]
+    fn a_byte_that_only_one_side_records_joins_in_either_order() {
+        let join = Trace::of(crate::engine::analysis::stop::Cause {
+            kind: CauseKind::Join,
+            instruction: 0x2010,
+            entry: 0x2000,
+        });
+        let known = BTreeMap::from([(40, 7)]);
+        let none = BTreeMap::new();
+        let untraced = BTreeMap::new();
+
+        for (first, second) in [(&known, &none), (&none, &known)] {
+            let traces = join_byte_traces((first, &untraced), (second, &untraced), Some(join));
+            assert_eq!(traces, BTreeMap::from([(40, join)]));
+        }
     }
 
     #[test]

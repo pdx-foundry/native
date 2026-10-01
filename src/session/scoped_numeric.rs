@@ -5,7 +5,7 @@ use crate::engine::analysis::{
     numeric::NumericFacts,
     readers,
     scoped_numeric::{Facts, Subtype},
-    stop::{Trace, Unresolved},
+    stop::Unresolved,
 };
 use crate::{
     CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
@@ -163,12 +163,14 @@ pub(super) fn state_stops(result: &GrammarResult) -> Vec<(String, Unresolved)> {
             if missing.is_empty() {
                 return None;
             }
-            let mut trace: Option<Trace> = None;
-            for other in missing
+            let mut traces = missing
                 .iter()
-                .filter_map(|&offset| result.state_trace(offset, 8))
-            {
-                trace.get_or_insert_default().merge(&other);
+                .filter_map(|&offset| result.state_trace(offset, 8));
+            let mut trace = traces.next();
+            if let Some(trace) = &mut trace {
+                for other in traces {
+                    trace.merge(&other);
+                }
             }
 
             Some((
