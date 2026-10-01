@@ -112,9 +112,9 @@ pub(super) fn discover(
                             .ok_or_else(vtable_bound)?;
                         return Ok(Call::Return(None));
                     }
-                    let entered = binding.constructor_bodies.contains_key(&target);
+                    let body_available = binding.constructor_bodies.contains_key(&target);
                     return constructors
-                        .call(machine, target, receiver, entered)
+                        .call(machine, target, receiver, body_available)
                         .ok_or_else(vtable_bound);
                 }
                 if enter_constructors {

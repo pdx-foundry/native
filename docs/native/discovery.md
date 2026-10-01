@@ -121,15 +121,15 @@ storage is established.
 | --- | --- | --- | --- |
 | 184 numeric root fields | 0 / 184 / 0 | 174 | 10 |
 | Seven scoped registry destinations | 0 / 7 / 0 | 7 | 0 |
-| 302 scoped command arguments | 0 / 133 / 169 | 133 | 169 |
+| 302 scoped command arguments | 0 / 267 / 35 | 267 | 35 |
 
 Three of the 11 shared numeric readers have known ranges. The root fields without known ranges
 are seven short and three float fields. Scoped storage is two integer and five fixed-point
-fields, and 98 integer, 35 fixed-point and 169 unresolved command arguments. Every destination
-without established storage has `Reader.numeric: Unresolved`, so none retains a range. The
-[constructor confinement boundary](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654)
-explains the unresolved command storage; `Effect/release_vivarium_fauna_count.count` is one of
-these destinations, not the only one.
+fields, and 123 integer, 144 fixed-point and 35 unresolved command arguments, after the
+[owner-derivation recovery](#owner-derivation-sdk-658). Every destination without established
+storage has `Reader.numeric: Unresolved`, so none retains a range. The
+[remaining constructor obstacles](scoped-numeric.md#remaining-constructor-obstacles) explain the
+unresolved command storage.
 
 Failure shapes, counting each affected destination once per shape:
 
@@ -141,8 +141,8 @@ Failure shapes, counting each affected destination once per shape:
 - All seven scoped fields retain `NumericConversion: Scoped literal conversion boundaries and
   overflow are incomplete.`, the qualified-scope/parameter/reference/evaluation `OutsideMethod`
   gap, and `UnresolvedStorage: Repeat behavior or nested fields remain unresolved.`
-- The 133 scoped arguments with established storage retain the same numeric-conversion and
-  outside-method gaps. The other 169 retain
+- The 267 scoped arguments with established storage retain the same numeric-conversion and
+  outside-method gaps. The other 35 retain
   `UnresolvedStorage: Scoped destination vtable is not established.`
 
 [Numeric conversion](numeric-conversion.md#boundary-evidence-on-m451-hotfix-sdk-655) records
@@ -230,11 +230,9 @@ baseline is retained in `.local/sdk-646/duration-population.json`.
 
 ## Constructor state (SDK-654)
 
-Constructor bodies add facts only when every write is proved confined to the object. The
-compiler-summary path supplies the independent baseline; unconfined entered bodies cannot
-remove or augment its facts. Freshness and store disjointness remain unproved, and SDK-658 owns
-recovery beyond this boundary. The shared obstacles are on
-[scoped numeric](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654).
+SDK-654 added constructor bodies only when every write was proved confined to the object; the
+[owner-derivation proof](#owner-derivation-sdk-658) replaces that rule. The compiler-summary path
+supplies the independent baseline; entered bodies cannot remove its facts.
 
 The [numeric boundary population](#numeric-boundary-evidence-sdk-655) records current scoped
 counts, storage and failure shapes. The scoped constructor baseline is
@@ -247,11 +245,39 @@ counts, storage and failure shapes. The scoped constructor baseline is
 | Groups, complete / partial / failed | 0 / 31 / 0 | 27 / 4 / 0 | 0 / 31 / 0 |
 | Established omitted counts | 0 | 29 | 0 |
 
-`pop_decline_rate` is the only scoped constructor gain over main, with signed 64-bit storage
-at scale 100000. Command storage matches the compiler-summary baseline; unconfined entered
-constructor bodies supply no additional storage facts. The pre-review scoped result
-(0 / 301 / 1 command arguments) is not supported by the confinement proof. Its retained report
-remains a comparison artifact, not current coverage.
+Under the confinement rule, `pop_decline_rate` was the only scoped constructor gain over main,
+with signed 64-bit storage at scale 100000. The pre-review scoped result (0 / 301 / 1 command
+arguments) was not supported by that proof; its report remains a comparison artifact.
+
+## Owner derivation (SDK-658)
+
+Entered constructor bodies now add bytes that no later write may change, using the owner-derivation
+proof on [scoped numeric](scoped-numeric.md#owner-derivation-sdk-658). The M451-hotfix populations
+cover all 2,170 commands and 164 registries, with no failed question. `.local/sdk-658/compare.py`
+compares them field by field with `main` (`34841c4`): no answer decreases, 134 command arguments
+and two duration groups gain facts. Each recovered storage agrees with the unconfined SDK-654
+report.
+
+| Population | `main` | SDK-658 |
+| --- | --- | --- |
+| Scoped command arguments, complete / partial / failed | 0 / 133 / 169 | 0 / 267 / 35 |
+| Scoped registry destinations, complete / partial / failed | 0 / 7 / 0 | 0 / 7 / 0 |
+| Duration groups, complete / partial / failed | 0 / 52 / 0 | 1 / 51 / 0 |
+| Established omitted counts | 0 | 2 |
+
+The recovered arguments are 102 `order_by` and 7 other fixed-point operands (64-bit, scale
+100000), and 20 event `random`, the relation flag's three units, `set_saved_date.expires` and
+`steal_specimens.count` (32-bit, scale 1). `set_timed_relation_flag` gains its initial factor 1;
+it and `add_timed_trait` gain omitted count 0.
+
+The 35 failed arguments have one failure shape, `UnresolvedStorage: Scoped destination vtable is
+not established`. Arguments by obstacle: 20 event `days` (`CToken` copy), 7 trigger-registration
+destinations (`CTrigger`), 5 event-target destinations (`CEventTarget`), 2 string copies
+(`CString`) and 1 static guard. The 50 duration groups without an omitted count share the
+`CEventTarget` obstacle. Duration failure shapes are 50 omitted-count gaps, 28 flag-update limits,
+24 consumption limits and 23 mixed scoped/literal-selection gaps. Duration lists stay 625 known,
+516 partial and 1,029 unresolved. Reports are `.local/sdk-658/now-scoped.json` and
+`.local/sdk-658/now-duration.json`.
 
 ## Stack duration keys and execute bodies (SDK-657)
 
@@ -341,7 +367,7 @@ The original non-duration comparisons are retained as
 `.local/sdk-657/{scoped,numeric,registry,command}-{parent,current}.json`, with full diffs in
 `registry-answer-diff.json` and `command-non-duration-diff.json`. They establish zero registry
 answer changes and 21 command answer changes for the shared join on the pre-rebase constructor
-baseline. The current scoped population follows the confined SDK-654 boundary above.
+baseline. The current scoped population is the [SDK-658](#owner-derivation-sdk-658) one.
 
 ## Float and short fixture storage (SDK-656)
 

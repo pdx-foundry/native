@@ -164,9 +164,9 @@ fn evaluate_factory(
                     owner,
                     end,
                 };
-                let entered = input.functions.contains_key(&target);
+                let body_available = input.functions.contains_key(&target);
                 return constructors
-                    .call(machine, target, receiver, entered)
+                    .call(machine, target, receiver, body_available)
                     .ok_or_else(vtable_bound);
             }
         }

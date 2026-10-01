@@ -499,7 +499,14 @@ impl<'a> Machine<'a> {
             .filter(|(address, byte)| data.byte(**address) != **byte)
             .map(|(&address, &byte)| (address, byte))
             .collect();
-        self.owner_callee(&mut callee);
+        for index in 0..9 {
+            if let Some(value) = self.registers[index] {
+                callee.set_register(index, value);
+            }
+        }
+        callee.vectors[..8].copy_from_slice(&self.vectors[..8]);
+        self.copy_owner_taint_to_callee(&mut callee);
+
         callee
     }
 
@@ -700,6 +707,21 @@ impl<'a> Machine<'a> {
             .range(address..address.saturating_add(length))
             .next()
             .is_some()
+    }
+
+    /// Make each known byte of `length` bytes at `address` unknown. Scratch objects have no
+    /// read-only backing, so a byte without an entry is already unknown; filling the rest of a
+    /// large object with unknown entries would only enlarge path clones.
+    pub fn forget_known_bytes(&mut self, address: u64, length: u64) {
+        let known: Vec<u64> = self
+            .memory
+            .range(address..address.saturating_add(length))
+            .filter(|(_, byte)| byte.is_some())
+            .map(|(&at, _)| at)
+            .collect();
+        for at in known {
+            self.forget(at, 1);
+        }
     }
 
     /// Make `width` bytes at `address` unknown, such as a field that a call may have written.

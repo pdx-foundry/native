@@ -622,15 +622,7 @@ mod constructor_parity {
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
     fn m45_constructor_initial_storage_parity() {
         let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-        // These owner constructors call unconfined registration or token/string code.
-        for (command, keys) in [
-            ("country_event", vec!["days", "random"]),
-            ("ordered_active_first_contact", vec!["order_by"]),
-            (
-                "add_modifier",
-                vec!["mult", "multiplier", "time_multiplier"],
-            ),
-        ] {
+        let field = |command: &str, key: &str| {
             let answer = native
                 .command_grammar(DeclarationKind::Effect, command)
                 .unwrap();
@@ -639,26 +631,69 @@ mod constructor_parity {
             else {
                 panic!("{command}: {:?}", answer.gaps);
             };
-            for key in keys {
-                let field = fields.iter().find(|field| field.name == key).unwrap();
-                assert_eq!(field.reader.kind, crate::ReaderKind::ScopedNumeric);
-                assert_eq!(
-                    field.reader.numeric,
-                    GrammarProperty::Unresolved,
-                    "{command}.{key}"
-                );
-                assert_eq!(
-                    field.reader.scoped_operand,
-                    GrammarProperty::Unresolved,
-                    "{command}.{key}"
-                );
-                assert!(
-                    answer
-                        .gaps
-                        .iter()
-                        .any(|gap| gap.kind == crate::GapKind::UnresolvedStorage)
-                );
-            }
+            let field = fields.into_iter().find(|field| field.name == key).unwrap();
+            assert_eq!(field.reader.kind, crate::ReaderKind::ScopedNumeric);
+            (field, answer.gaps)
+        };
+        // Owner stores after the last call that may reach the owner establish these operands.
+        for (command, key, width, scale) in [
+            ("country_event", "random", 32, 1),
+            ("set_saved_date", "expires", 32, 1),
+            ("set_timed_relation_flag", "days", 32, 1),
+            ("set_timed_relation_flag", "months", 32, 1),
+            ("set_timed_relation_flag", "years", 32, 1),
+            ("steal_specimens", "count", 32, 1),
+            ("ordered_active_first_contact", "order_by", 64, 100000),
+            ("add_modifier", "time_multiplier", 64, 100000),
+            ("give_culling_rewards", "mult", 64, 100000),
+            ("give_culling_rewards", "multiplier", 64, 100000),
+            ("steal_planet_output", "percentage", 64, 100000),
+            ("create_ambient_object", "scripted_scale", 64, 100000),
+        ] {
+            let (field, _) = field(command, key);
+            let GrammarProperty::Partial(Some(numeric)) = &field.reader.numeric else {
+                panic!("{command}.{key}: {:?}", field.reader.numeric);
+            };
+            assert_eq!(
+                numeric.width_bits,
+                GrammarProperty::Known(width),
+                "{command}.{key}"
+            );
+            assert_eq!(
+                numeric.scale,
+                GrammarProperty::Known(Some(scale)),
+                "{command}.{key}"
+            );
+            assert!(
+                matches!(field.reader.scoped_operand, GrammarProperty::Known(Some(_))),
+                "{command}.{key}"
+            );
+        }
+        // A later member constructor calls code that may write any owner byte: token and
+        // string copies, event-target lexing, trigger registration and a static guard.
+        for (command, key) in [
+            ("country_event", "days"),
+            ("add_modifier", "mult"),
+            ("add_modifier", "multiplier"),
+            ("closest_system", "min_steps"),
+            ("create_pop_group", "size"),
+            ("release_vivarium_fauna_count", "count"),
+        ] {
+            let (field, gaps) = field(command, key);
+            assert_eq!(
+                field.reader.numeric,
+                GrammarProperty::Unresolved,
+                "{command}.{key}"
+            );
+            assert_eq!(
+                field.reader.scoped_operand,
+                GrammarProperty::Unresolved,
+                "{command}.{key}"
+            );
+            assert!(
+                gaps.iter()
+                    .any(|gap| gap.kind == crate::GapKind::UnresolvedStorage)
+            );
         }
         let purges = native
             .registry_fields("common/species_rights/purge_types")
@@ -674,10 +709,12 @@ mod constructor_parity {
         assert_eq!(numeric.width_bits, GrammarProperty::Known(64));
         assert_eq!(numeric.scale, GrammarProperty::Known(Some(100000)));
 
-        for command in [
-            "set_timed_country_flag",
-            "add_modifier",
-            "add_stage_modifier",
+        for (command, omitted) in [
+            ("set_timed_country_flag", GrammarProperty::Unresolved),
+            ("add_modifier", GrammarProperty::Unresolved),
+            ("add_stage_modifier", GrammarProperty::Unresolved),
+            ("set_timed_relation_flag", GrammarProperty::Known(0)),
+            ("add_timed_trait", GrammarProperty::Known(0)),
         ] {
             let answer = native
                 .command_grammar(DeclarationKind::Effect, command)
@@ -688,11 +725,7 @@ mod constructor_parity {
                 panic!("{command}: {:?}", answer.gaps);
             };
             assert_eq!(groups.len(), 1, "{command}");
-            assert_eq!(
-                groups[0].omitted_count,
-                GrammarProperty::Unresolved,
-                "{command}"
-            );
+            assert_eq!(groups[0].omitted_count, omitted, "{command}");
         }
     }
 }

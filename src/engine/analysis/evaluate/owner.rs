@@ -275,17 +275,8 @@ impl<'a> Machine<'a> {
 
     /// Make every known owner byte unknown.
     fn forget_owner(&mut self) {
-        let Some((start, end)) = self.owner_range() else {
-            return;
-        };
-        let known: Vec<u64> = self
-            .memory
-            .range(start..end)
-            .filter(|(_, byte)| byte.is_some())
-            .map(|(&address, _)| address)
-            .collect();
-        for address in known {
-            self.forget(address, 1);
+        if let Some((start, end)) = self.owner_range() {
+            self.forget_known_bytes(start, end - start);
         }
     }
 
@@ -328,16 +319,10 @@ impl<'a> Machine<'a> {
         self.vectors = [None; 32];
     }
 
-    /// A fresh call frame at this machine's stack position: the callee's arguments and every
-    /// owner-derived value that it can read. The values of preserved registers are unknown to the
-    /// callee, but their taint stays, because the callee may read or spill them.
-    pub(super) fn owner_callee(&self, callee: &mut Self) {
-        for index in 0..9 {
-            if let Some(value) = self.registers[index] {
-                callee.set_register(index, value);
-            }
-        }
-        callee.vectors[..8].copy_from_slice(&self.vectors[..8]);
+    /// Give `callee` every owner-derived value that it can read. The values of preserved
+    /// registers are unknown to the callee, but their taint stays, because the callee may read or
+    /// spill them.
+    pub(super) fn copy_owner_taint_to_callee(&self, callee: &mut Self) {
         let Some(owner) = &self.owner else {
             return;
         };

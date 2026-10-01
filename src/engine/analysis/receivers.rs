@@ -84,17 +84,17 @@ pub(super) struct Constructors<'a> {
 
 impl Constructors<'_> {
     /// Handle the call of the bound constructor `target` at `receiver` in a machine that tracks
-    /// the owner. Enters its body when `entered`; otherwise, or when the walk cannot be followed,
-    /// treats the call as one that the machine does not run and installs the compiler summary.
-    /// `None` when a summary point lies outside the owner.
+    /// the owner. Enters its body when `body_available`; otherwise, or when the walk cannot be
+    /// followed, treats the call as one that the machine does not run and installs the compiler
+    /// summary. `None` when a summary point lies outside the owner.
     pub fn call(
         &self,
         machine: &mut Machine<'_>,
         target: u64,
         receiver: u64,
-        entered: bool,
+        body_available: bool,
     ) -> Option<Call> {
-        let walk = entered
+        let walk = body_available
             .then(|| self.initial_state(target, machine, 0))
             .flatten();
         if let Some(state) = walk {
@@ -193,7 +193,7 @@ impl Constructors<'_> {
     /// Replace the caller's owner state with the constructor's, apply the constructor's other
     /// effects, and return from the call.
     fn install(&self, machine: &mut Machine<'_>, state: &InitialState) -> Call {
-        forget_initial_bytes(machine, self.owner, self.end);
+        machine.forget_known_bytes(self.owner, self.end - self.owner);
         for (&offset, &byte) in &state.bytes {
             machine.write(self.owner + offset, 1, byte.into());
         }
@@ -212,14 +212,6 @@ impl Constructors<'_> {
                 clobbered: true,
             },
         )
-    }
-}
-
-// These consumers reserve scratch allocations with no read-only backing. Invalidating known
-// bytes suffices; filling the rest of a 64 KiB owner with unknown entries only enlarges path clones.
-pub(super) fn forget_initial_bytes(machine: &mut Machine<'_>, receiver: u64, end: u64) {
-    for offset in machine.known_bytes(receiver, end - receiver).keys() {
-        machine.forget(receiver + offset, 1);
     }
 }
 

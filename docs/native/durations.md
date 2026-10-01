@@ -78,17 +78,17 @@ outside this method.
 
 ## Constructor state on M451-hotfix
 
-The exact build is the M451-hotfix executable in [targets](targets.md). Constructor confinement
-and freshness are shared with [scoped operands](scoped-numeric.md#constructor-state-on-m451-hotfix-sdk-654).
-Entered constructor bodies contribute facts only when every write is proved confined to the
-object. No duration group's omitted count or literal is established. Each remains unresolved;
-old observed values do not initialize the method's byte map.
+The exact build is the M451-hotfix executable in [targets](targets.md). Constructor owner
+derivation is shared with [scoped operands](scoped-numeric.md#owner-derivation-sdk-658). A
+constructor-written byte is claimed only when every returning path agrees on it after every later
+write that may change it; old observed values do not initialize the method's byte map.
 
 The compiler-summary path establishes initial factor 1 for the 27 ordinary timed flags and
-`add_timed_trait`. It does not establish the relation flag's initial factor. Its complete execute
-match proves the product and flag consumer, but `duration-initial-state` prevents the public
-combination and omitted count from being established. SDK-658 owns recovery of constructor facts;
-SDK-657 does not bypass the confinement checks.
+`add_timed_trait`. Entered constructor bodies establish the relation flag's initial factor 1 and
+an omitted count of 0 for `set_timed_relation_flag` and `add_timed_trait`. The other 50 groups
+lose their count word to a later `CEventTarget` member; its lexer calls may write any owner byte
+after the owner escaped (see the
+[remaining constructor obstacles](scoped-numeric.md#remaining-constructor-obstacles)).
 
 ## Stack and execute facts on M451-hotfix (SDK-657)
 
@@ -162,37 +162,36 @@ The population covers all 2,170 commands and all 164 registries, with no failed 
 
 | Population | Groups | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Commands | 52 | 0 | 52 | 0 |
+| Commands | 52 | 1 | 51 | 0 |
 | Registry fields and nested collections | 0 | 0 | 0 | 0 |
 
-No omitted count or literal is established. Unit factors and read combinations are known for
-51 groups; the relation flag has partial unit factors and an unresolved initial shared factor.
+Unit factors and read combinations are known for all 52 groups. Omitted counts of 0 are
+established for `set_timed_relation_flag`, which is the complete group, and `add_timed_trait`.
 Failure shapes count groups and can overlap:
 
-- 51 explicit omitted-count gaps;
-- 27 static flag-update-frequency limits;
+- 50 explicit omitted-count gaps;
+- 28 static flag-update-frequency limits;
 - 24 consumption limits;
-- 23 possible mixed scoped/literal-selection gaps (`duration-scoped-literal`);
-- 1 `duration-initial-state` gap, which also prevents the omitted-count proof.
+- 23 possible mixed scoped/literal-selection gaps (`duration-scoped-literal`).
 
 Duration lists are 625 known, 516 partial and 1,029 unresolved. No command or registry candidate
 has an unclassified prefix or continuation. **26 commands have uncovered unit-named keys**:
 21 have the scoped `days` mix above, and five have `days` without a factor sibling. The 21 groups
 cover 42 `months` and `years` keys. These gaps do not amend SDK-544.
 Before/after counts are in the
-[discovery index](discovery.md#stack-duration-keys-and-execute-bodies-sdk-657).
+[discovery index](discovery.md#owner-derivation-sdk-658).
 Run `cargo run --release --example duration-population` with `STELLARIS_PATH`;
-`.local/sdk-657/rereview/duration-population.json` holds each answer.
+`.local/sdk-658/now-duration.json` holds each answer.
 
 ## Live parser observations
 
 `Game::check_script` reports `stored_durations` for each top-level child after reading, before
 validation. Nothing is executed. `tests/live/durations.rs` runs one session with effect and trigger
 checks in country and leader scopes. `tests/expected/duration-m45/live.json` holds the reviewed
-results. Every case classifies one child. The 25 cases with decoded counts agree with the static
-storage proofs; the relation case retains a partial empty list because its combination and
-concrete scoped storage are unresolved. Omitted live values do not establish static constructor
-bytes. The `add_modifier` answers are partial because its other scoped operands lack proved
+results. Every case classifies one child. The 26 cases with decoded counts agree with the static
+storage proofs. The relation case `months = 2 days = 3` stores count 3 with factor 30: the later
+`days` replaces the count but keeps the factor. Omitted live values do not establish static
+constructor bytes. The `add_modifier` answers are partial because its other scoped operands lack proved
 literal widths; their disjointness from the duration word is unresolved. The
 `set_timed_country_flag` lists are partial,
 because the static list is partial: its `flag` key has no reader join, so the method cannot rule
@@ -254,17 +253,18 @@ an event or trigger. The trait case reads in leader scope. No new runtime meanin
   overlap remains conservative. Their `days` unit and mixed selection behavior are not
   reported as established. Removal needs a shared whole-operand proof and an approved public
   representation, or Jackson's amendment of the parent criterion.
-- **Two unproved literal-width bounds:** `add_modifier` and `add_stage_modifier` have other
-  scoped operands whose literal widths are unresolved. Their duration lists retain
-  `duration-scoped-literal` until byte disjointness can be proved. SDK-658 owns constructor
-  recovery; otherwise Jackson must amend the parent criterion.
+- **Two unproved literal-width bounds:** `add_modifier` and `add_stage_modifier` have `mult` and
+  `multiplier` operands whose storage is lost to the later `CEventTarget` member. Their duration
+  lists retain `duration-scoped-literal` until byte disjointness can be proved; otherwise Jackson
+  must amend the parent criterion.
 - **24 consumption limits:** the 21 stack-literal groups, `add_modifier`, `add_stage_modifier`
   and `add_timed_trait` do not have a proved duration consumer in this method. Scaled-count
   consumption, `time_multiplier` and event delays are outside this ticket. Trait execution
   reaches `CLeader::AddTimedTrait`; its storage and update behavior are not a flag countdown.
-- **Omitted state for all 52 groups:** no count or literal is proved. The relation flag also lacks
-  its initial factor. SDK-658 owns constructor recovery; otherwise Jackson must amend the parent
-  criterion. Observed values do not substitute for confined, fresh constructor evidence.
+- **Omitted state for 50 groups:** no count or literal is proved, because a later `CEventTarget`
+  member's lexer calls may write any owner byte. Recovery needs a bounded model of those calls;
+  otherwise Jackson must amend the parent criterion. Observed values do not substitute for
+  constructor evidence.
 - **28 flag consumers:** the static method does not establish update frequency or expiry
   dates outside the country observation. The [SDK-650 live run](ready-world.md) closes the country
   expiry gap on 4.5.1 for its five cases; it does not establish relation or other owner frequencies.

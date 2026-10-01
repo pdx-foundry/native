@@ -128,62 +128,77 @@ constructor call at `0x100be4a14` establishes `pop_decline_rate` as signed 64-bi
 
 Compiler vtable-group summaries are an independent baseline. Command factories and registry
 owners evaluate that summary-only path separately from the path that enters constructor bodies.
-The baseline's established points and bytes take precedence. An unconfined or incomplete entered
-walk contributes no bytes, returned registers or control-flow facts to the baseline. The entire
-owner's entered-body contribution is withheld, including earlier and later constructor additions;
-this conservative rule does not erase facts established without entering those bodies.
+The baseline's established points and bytes take precedence; an entered body only adds facts.
 
-New constructor bytes and return values require agreement at every normal return and confinement
-of every entered walk. A store must fit within that walk's remaining receiver span or private
-stack frame; the private frame must also be disjoint from the whole owner. Earlier-member stores
-through another argument, unknown-address stores, unmodeled calls and unavailable nested bodies
-reject the added proof. Call-time invalidation propagates through failed wrappers in the entered
-path. The summary-only path remains unaffected. Callee machines inherit the caller's stack
-position and established memory state; unestablished caller memory stays unknown, and the private
-frame cannot overlap a caller stack argument. While confinement is watched, SP updates retain
-that proof only for known immediate offsets from SP, including immediate stack write-back.
-Moving another register into SP or using a register offset rejects the walk, even if SP is restored
-before return.
+### Owner derivation (SDK-658)
+
+The entered path tracks which values may point into the fresh owner (`evaluate/owner.rs`). The
+owner starts at the factory's `operator new` and at the registry owner's first argument. A value
+is owner-derived when it is computed from a derived register, vector or memory byte, or when a
+call that could reach the owner returns it. A store or call is judged by these rules:
+
+| Write | Effect on owner bytes | Other effects |
+| --- | --- | --- |
+| Known address | Exact, including earlier members | Outside the owner and private frame: caller memory is forgotten after return; a derived value escapes |
+| Unknown, underived address | Kept: a pointer that existed before the owner cannot point into it | Every other byte becomes unknown; a derived value escapes |
+| Unknown, derived address | Every owner byte becomes unknown | Every other byte becomes unknown |
+| Call that is not entered | Unknown when the call may reach the owner | Every byte outside the owner becomes unknown |
+
+A call may reach the owner when the owner escaped, or when an argument register (`x0`-`x8`,
+`v0`-`v7`), a preserved register (`x19`-`x29`, `v8`-`v15`) or any stack byte is derived. A
+reaching call makes the owner escape and derives every register it does not preserve. After an
+escape, a load of an unknown byte is derived. Only a store of an underived value to a known address
+clears a byte's derivation; a forgotten byte may keep its earlier value. Loop-head joins and
+returning paths take the union of derivations and escapes.
+
+An owner byte is claimed when every returning path agrees on it after every later write that may
+change it. An unknown write therefore does not withdraw the walk: a later store to a known
+address establishes its bytes again. A walk with a path that does not return, a stack pointer
+moved by an unknown amount, a receiver outside the owner or a summary point that disagrees with a
+constructor-written word is not followed. Its call is treated as one that is not entered, and the
+compiler summary is installed.
+
+Entered constructors report the whole owner, so a write to an earlier member through another
+argument gives the new value, never a stale one. Callee machines inherit the caller's stack
+position, argument values and established memory with their derivations. Preserved registers
+keep their derivation but not their values. A callee's write to a caller stack argument makes the
+caller forget its memory. While the entered path runs, a factory or registry call that is not
+entered also forgets caller memory, so a changed stack slot cannot reach a constructor as stale
+evidence.
 
 Command and registry constructor tail branches use the same join as direct calls, even when the
-callee's code is decoded. Missing, changed, bounded-out or conflicting code contributes no
-initial-value evidence. New embedded points require constructor-written words; missing nested
-code cannot borrow a point from metadata. Partly written points are never completed from metadata.
+callee's code is decoded. Summary points are checked and completed at the constructor's receiver
+offset in the owner. New embedded points require constructor-written words; missing nested code
+cannot borrow a point from metadata. Partly written points are never completed from metadata.
 Reserved objects have no read-only backing; the method assumes neither zeroed allocation nor
 `_bzero` behavior.
 
-The evaluator does not establish freshness-based disjointness. A pre-existing database pointer or
-a heap buffer returned without an owner argument is not enough: recovery requires tracking owner
-derivation through known and unknown registers, memory, vectors, calls and path joins. A pointer
-loaded after storing `this`, and a pointer returned by an unmodeled call that received `this`,
-must remain potentially owner-derived. Until that shared proof exists, external registration and
-string-copy stores reject the constructor additions even when their real destinations may be
-separate allocations.
-
-The [current population](discovery.md#numeric-boundary-evidence-sdk-655) records storage,
-known ranges and failure shapes. The main comparison finds no decreased storage answer:
-command storage and six registry storage results are unchanged; `pop_decline_rate` gains established
-storage. Reports and the field-by-field comparison are in `.local/sdk-654/floor/`.
-
-A shared obstacle is `CToken::CToken(int, CString const&)` at `0x1025bc848`: unmodeled lexer
-and string calls leave the copied length or buffer unknown, and `strb` at `0x1025bc930` may write
-outside the member span. `CEffect::CEffect()` registers the object through external database
-pointers, including a store at `0x100456928`. Neither chain has a confinement or freshness proof.
-Their compiler summaries remain usable, but the entered bodies cannot establish additional
-operand points or initial values. Recovery requires a shared call/alias proof, not a subtype name
-or a cached initial byte. The parent storage criterion remains unmet for unresolved destinations.
+The [current population](discovery.md#owner-derivation-sdk-658) records storage, known ranges and
+failure shapes. The comparison with `main` finds no decreased answer; 134 command arguments gain
+storage, and every recovered storage agrees with the earlier unconfined run. Reports and the
+field-by-field comparison are in `.local/sdk-658/`.
 
 ### Remaining constructor obstacles
 
-`release_vivarium_fauna_count.count` retains `UnresolvedStorage: Scoped destination vtable is
-not established.` Its factory `0x101e16b38` calls the owner constructor `0x101e16b84`. That body
-calls a fixed-point constructor at owner `+0xa8`, then reaches the unmodeled acquire-byte load
-`ldaprb w8,[x8]` at `0x101e16bcc`. The subsequent paths use the mutable sentinel guard and
-`___cxa_guard_acquire` / `___cxa_guard_release`. The bounded evaluator establishes neither this
-instruction nor those calls' effects on the owner. The initial operand cannot be retained from
-its earlier store without establishing the remaining paths. Removal requires a shared proof of
-this atomic/guard shape and negative controls. This destination remains an unmet parent
-criterion; only Jackson can amend it. No subtype is inferred from the constructor name.
+Most factories call `_bzero` on the new owner, and every effect owner's `CEffect::CEffect()`
+passes the address of a stack slot that holds `this` to `CPdxArray::InsertAtEmplace`
+(`0x10045691c`). Both calls may reach the owner, so the owner has escaped before the derived
+constructor's members are built. Every later call that is not entered may then write any owner
+byte. An operand is established only when its member's bytes are written after the last such
+call. The remaining 35 arguments lose their bytes to a later member constructor:
+
+| Later constructor | Calls that may write the owner | Lost destinations |
+| --- | --- | --- |
+| `CEventTarget::CEventTarget()` `0x1004f6ed0` | `CStaticLexer::GetString` `0x1004f6f10`, `CEventTarget::PopulateTokenString` `0x1004f6f44` | `add_modifier` and `add_stage_modifier` `mult` / `multiplier`; `set_saved_date.days_from_present` |
+| `CToken::CToken(int, CString const&)` `0x1025bc848`, built by a later `CIntVariableValue` | `_memcpy` `0x1025bc92c` into the token's buffer with an unknown length, then `strb` `0x1025bc930` at an unknown index | The 20 event effects' `days` at owner `+0xd8`, lost to the `random` member at `+0x2e0` |
+| `CTrigger::CTrigger()` `0x100d0613c` | Trigger database registration (`0x100d06194`-`0x100d061ac`) | `closest_system` and `num_neighbor_systems` steps and distances, `effect_on_blob.owned_planets_percentage` |
+| `CString::CString(char const*)` `0x102521fec` | `_memmove` `0x102522074`, then `strb` `0x102522078` at an unknown index | `create_pop_group.size`, `spawn_megastructure.orbit_distance` |
+| `CReleaseVivariumFaunaCountEffect` constructor `0x101e16b84` | `___cxa_guard_acquire` `0x101e16c10` and `___cxa_guard_release` `0x101e16c2c` | `release_vivarium_fauna_count.count` |
+
+The `ldaprb` at `0x101e16bcc` is evaluated as a byte load; the guard calls are the obstacle.
+Recovery needs a bounded model of these calls' writes, such as a copy length proved below the
+token's capacity, not a subtype name or a cached initial byte. These destinations remain an unmet
+parent criterion; only Jackson can amend it.
 
 ## World evaluation on M451-hotfix (SDK-647)
 
