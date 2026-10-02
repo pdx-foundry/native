@@ -73,8 +73,8 @@ confirmed one countdown update per engine day for the five tested cases.
 `months` multiplies the slot in place by 30 (`lsl #5`, then `sub …, lsl #1`), and `years` by 360
 (`mul`). `days` is a tail call. The last key read replaces the count, so `months = 2 days = 3`
 gives 3. The multiplication is 32-bit, so a large `months` value wraps while it is read.
-Consumption, including `add_modifier`'s `time_multiplier` (`CAddModifierEffect::GetDays`), is
-outside this method.
+Consumption, including `add_modifier`'s `time_multiplier`, is outside this method. The
+consumers are recorded under [modifier and trait consumers](#modifier-and-trait-consumers-on-m451-hotfix-sdk-672).
 
 ## Constructor state on M451-hotfix
 
@@ -160,7 +160,8 @@ Both bodies match complete canonical shapes, including their validity guards and
   loads factor `+0x2e0`, and passes their wrapping signed 32-bit product to
   `CLeader::AddTimedTrait(CTrait const*, int)`. Its combination is the same shared-factor form
   with initial factor 1; its omitted count is unresolved. This is not a flag store. Trait
-  consumption remains an `OutsideMethod` limit; no flag-countdown claim is made.
+  consumption remains an `OutsideMethod` limit; no flag-countdown claim is made. The trait
+  consumer is recorded under [modifier and trait consumers](#modifier-and-trait-consumers-on-m451-hotfix-sdk-672).
 
 ### Candidates without a group
 
@@ -264,23 +265,136 @@ The M451-hotfix live table also covers these seven shapes:
 The stack cases observe literal storage only; they do not establish scoped selection or execute
 an event or trigger. The trait case reads in leader scope. No new runtime meaning is inferred.
 
+## Modifier and trait consumers on M451-hotfix (SDK-672)
+
+These are static findings on the M451-hotfix executable. No method reports them; the public
+answer keeps an `OutsideMethod` consumption limit for these three groups. They are recorded as
+documentation and as input for later lint rules. None of them is the flag countdown.
+
+| Shape | Reached by | Form | Count behavior |
+| --- | --- | --- | --- |
+| Modifier countdown | `add_modifier` in every scope except astral rift | Countdown | Every negative count is never removed. 0 and 1 are both removed on the first update; n > 0 on the n-th. |
+| No countdown found | `add_stage_modifier`; `add_modifier` in astral rift scope | Count stored, not consumed | No count has special handling. The owner or stage sets the lifetime. |
+| Trait expiry date | `add_timed_trait` | Expiry date | Removed at the first update where the wrapped expiry is at or before the current date. No count is permanent. |
+
+### Shared modifier path and `time_multiplier`
+
+Both modifier effects use `CAddModifierEffect::ReadMember` (`0x101e5cac4`, the same slot in both
+vtables). `time_multiplier` reads into operand `+0x2c0`; `mult` and `multiplier` read into
+`+0xb8`. The constructor (`0x101e5c984`) stores count -1 and builds both operands from `_VONE`
+(`0x102d9b0a0`, raw 100000, so 1.0).
+
+Each execute body (`0x101e5cd18`; stage `0x101e5dcb8` and `0x101e5dd3c`) evaluates the raw
+multiplier m. When m equals 100000 exactly, the count goes to the consumer unchanged. Otherwise
+the count becomes trunc(count × m / 100000), toward zero, and the consumer reads the low 32 bits.
+The fast path (|count| ≤ 30370 and |m| ≤ `0xb504f333`) is exact. The slow path splits the signed
+larger of count × 100000 and m, and its 64-bit `mul` and `madd` can wrap (`0x101e5cd7c`–`0x101e5cdac`):
+count -2000000000 with m 0.5 gives 844674407, not -1000000000. `GetDays` (`0x101e5cc30`) holds
+the same arithmetic and has no direct caller.
+
+The multiplier changes the class of a count: m < 0 reverses its sign; 0 < m < 1.0 turns -1 into
+0; a large product is cut to 32 bits. An omitted `time_multiplier` is exactly 1.0.
+
+### Modifier countdown
+
+`CTimedModifierCollection::AddTimedModifier` (`0x100979e84`) stores the count unchanged in a
+0x28-byte entry (modifier `+8`, count `+0x10`, multiplier `+0x18`, flag `+0x20`). For a modifier
+that is already present, it keeps the larger signed count (`0x100979ef0`) and replaces the
+multiplier and flag. A later non-negative count therefore replaces a permanent entry, and a later
+-1 cannot make a timed entry permanent. `CollectModifier` (`0x100979c14`) applies every entry and
+ignores the count.
+
+`CTimedModifierCollection::DailyUpdate` (`0x100979aa4`) skips a negative count (`0x100979ae8`).
+It decrements any other count, and removes the entry when the count before the decrement was
+below 2, unsigned (`0x100979af4`). So 0 and 1 behave the same, unlike the flag store, where 0
+becomes permanent.
+
+Every owner wrapper passes the count through unchanged, and a direct countdown call exists for
+each collection:
+
+| Owner | Wrapper | Collection | Countdown call |
+| --- | --- | --- | --- |
+| Country | `0x100264bac` | `+0x1a40` | `0x1002453a8` |
+| Pop group | `0x100a610c0` | `+0x398` | `0x100a56314` |
+| Federation progression | `0x10052dee4` | `+0x1c8` | `0x10052c644`, `0x10052c688` |
+| Galactic object | `0x10059a6d0` | `+0x660` | `0x1005841c8` |
+| Megastructure | `0x101117820` | `+0x660` | `0x101117df0`, `0x101118120` |
+| Planet, ship (`CColonyCarrier`) | `0x100fc036c` | planet `+0x2c8`, ship `+0x2e8` | planet `0x10114155c`, `0x101141618`, `0x101141b64`; ship `0x1011770f8` |
+| Starbase fleet | `0x101016510` | `+0x2a8` | `0x101007f54` |
+| Pop faction | `0x100a787a8` | `+0xc8` | `0x100a794e0` |
+| Starbase | `0x100c27e48` | `+0x13d0` | `0x100c17030` |
+| Cosmic storm field | `0x100fe5e00` | `+0x40` | `0x100fe56ac` |
+| Spy network | effect `0x101e5cf00` | `+0x78` | `0x100c078f0` |
+| Espionage operation | effect `0x101e5d184` | `+0xb0` | `0x10048acc8` |
+
+Some owner countdowns are conditional. The espionage operation skips it on two paths
+(`0x10048ac94`, `0x10048acc0`), and the megastructure and planet calls run only when the collection
+is not empty. `CFederationProgression::AddTimedModifier` does not insert a `*_cooldown` modifier
+when a cheat-manager byte is set (`0x10052df40`). A fleet that is not a starbase applies the
+modifier to each of its ships.
+
+### No countdown found
+
+`add_stage_modifier` stores into espionage operation `+0xd0` (`0x101e5ddfc`) or, through
+`CAstralRift::AddStageTimedModifier` (`0x100f3a574`), into rift `+0x450`. `add_modifier` in astral
+rift scope stores into rift `+0x430` (`0x100f3a4f4`). No path from these three collections to the
+countdown was found:
+
+- The countdown has 17 direct callers, and none uses these offsets.
+- It is not a virtual function. No code forms an address in its page, and no data fixup targets it.
+- A pattern scan of the whole executable finds one copy of the countdown body.
+
+This is strong evidence, not a complete write analysis: a differently compiled update of entry
+`+0x10` would not be found. Lifetime comes from the owner instead.
+`CEspionageOperation::FinishCurrentStage` (`0x10048b068`) and `ResetCurrentStage` (`0x10048b680`)
+clear the operation's stage collection. `CAstralRift::FireAstralRiftEventById` (`0x100f370d0`)
+clears the rift stage collection after a successful event lookup. Rift `+0x430` is cleared only by
+an explicit removal or when the rift is destroyed. The count is still merged by maximum and is
+returned by `CalcDaysLeft` (`0x10097a0d4`).
+
+### Trait expiry date
+
+`CLeader::AddTimedTrait` (`0x1008ebb44`) adds the count to the current date with
+`CStellarisDate::AddDays` (`0x100c5e218`, 24 date units per day, 32-bit `madd`). It stores a
+`{trait, date}` pair at leader `+0x9c8`. Adding the trait again replaces the date (`0x1008ebc10`)
+instead of keeping the later one. `CLeader::UpdateTimedTraits` (`0x1008e512c`) keeps a pair while
+its date is after the current date (signed, `0x1008e5190`). Otherwise it removes the pair and
+every equal entry in the leader's trait list (`+0x9b0`).
+
+The expiry is int32(now + int32(24 × count)), where the count is already the wrapping product of
+operand and factor. The rule applies to the wrapped value, not to the sign of the count: 0 and
+small negatives expire on the first update, -178956968 adds 64 date units and survives it, and
+536870912 adds nothing.
+
+`CAddTimedTraitEffect::PostValidate` (`0x101da6108`) logs `Invalid or no duration for … effect.`
+when `CIntVariableValue::IsSet` (`0x100d1cdb8`) is false. That is true for an omitted count and
+for a literal 0 with no variable, so `days = 0` and `months = 0` log. A negative count does not. The
+result does not stop execution: the effect-database validation loop ignores it (`0x100456128`).
+The ready-world route rejects any diagnostic before execution, so it would refuse those cases.
+
 ## Gaps
+
+These limits are accepted at closure by the
+[SDK-544 AC3 amendment](https://linear.app/unnamed-system/issue/SDK-544) of 2026-10-02. AC3
+requires parser facts: readers, unit factors, combination, omitted counts, accepted range,
+truncation and wrap. Consumer meaning is required only where a shared method proves it.
 
 - **Five `days`-only commands:** `add_casus_belli`, `add_intel_report`, `create_message`,
   `give_fleet` and `prolong_fleet_contract` have no factor sibling. Their numeric mechanisms do
-  not distinguish a duration from an ordinary integer. No key-name rule is used. Removing this
-  obstacle requires executable-derived duration-consumer evidence; otherwise Jackson must amend
-  the parent criterion. The criterion is not met for these commands.
+  not distinguish a duration from an ordinary integer. No key-name rule is used. Each `days` key
+  stays an integer key with no duration group.
 - **21 mixed scoped/literal readers:** the 20 event effects and `has_passed_resolution` share
   literal storage between scoped `days` and scaled integer `months`/`years`. Each has the typed
   `duration-scoped-literal` gap above. The constructor does not establish the subtype, so the
   overlap remains conservative. Their `days` unit and mixed selection behavior are not
-  reported as established. Removal needs a shared whole-operand proof and an approved public
-  representation, or Jackson's amendment of the parent criterion.
+  reported as established. Removal needs a shared whole-operand proof and a public
+  representation of the mixed selection.
 - **24 consumption limits:** the 21 stack-literal groups, `add_modifier`, `add_stage_modifier`
-  and `add_timed_trait` do not have a proved duration consumer in this method. Scaled-count
-  consumption, `time_multiplier` and event delays are outside this ticket. Trait execution
-  reaches `CLeader::AddTimedTrait`; its storage and update behavior are not a flag countdown.
+  and `add_timed_trait` keep `OutsideMethod` consumption. The modifier and trait consumers are
+  described [above](#modifier-and-trait-consumers-on-m451-hotfix-sdk-672); event delays were not
+  investigated. Reporting a consumer needs a representation for scope-dependent consumers
+  (`add_modifier` differs in astral rift scope) and a live route that reads them. The ready-world
+  route reads only country flags and variables.
 - **28 flag consumers:** the static method does not establish update frequency or expiry
   dates outside the country observation. The [SDK-650 live run](ready-world.md) closes the country
   expiry gap on 4.5.1 for its five cases; it does not establish relation or other owner frequencies.
@@ -307,6 +421,12 @@ an event or trigger. The trait case reads in leader scope. No new runtime meanin
 - Conditional presence writes need not occur on every path. Alternatives agree on count
   scales and word factors; their byte-write footprints are joined conservatively. Requiring equal
   footprints falsely leaves the council agenda resets unresolved.
+- Do not carry flag-countdown meaning to another consumer. A stored -1, a shared read shape or a
+  shared factor does not establish what the count means. Zero is permanent in the flag store but
+  expires on the first update in the modifier countdown and the trait date.
+- A consumer can depend on the scope type at execution. `add_modifier` reaches the modifier
+  countdown in most scopes, but no countdown in astral rift scope. One command can have more than
+  one consumer.
 - Do not claim `SharedFactor` from the read paths alone. A constant store beside an operand is a
   multiplier only when the execute body multiplies that operand by that slot.
 - Each public static query verifies the executable again, so asking `command_grammar` once per

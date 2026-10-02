@@ -22,7 +22,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Write a method | [Method authoring](native/method-authoring.md) | Inspector, stop diagnostics, authored tests, parity and whole-inventory runs |
 | Registry fields and scheduling | [Registry fields](native/registry-fields.md) | The current field sweep and its stops, compiler jump tables and bit fields, token paths, members and shared readers, scheduler table, owner joins |
 | Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, representation selection, world evaluation results and remaining limits |
-| Duration keys | [Duration keys](native/durations.md) | Unit factors, shared-factor and scaled-at-read combination, the flag-store countdown and unidentified keys |
+| Duration keys | [Duration keys](native/durations.md) | Unit factors, shared-factor and scaled-at-read combination, the flag-store countdown, modifier and trait consumers, and unidentified keys |
 | Engine commands and scopes | [Engine commands](native/engine-commands.md) | Engine documentation commands, target getters, modifier, category, scope and link declarations, localization tables, on_action and game rule call sites |
 | References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, database directories, owner initializers, identifier grammar, flag stores and namespaces |
 | Generated modifiers | [Modifier families](native/modifier-families.md) | Modifier families from database generators, the loaded modifier table, post-read code and shared helpers, the per-item post-read call |
