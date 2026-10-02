@@ -36,10 +36,16 @@ impl Answers {
         Ok(Self { directory, build })
     }
 
-    /// Whether any file for this operation is present; decoding remains the query's job.
+    /// Whether an answer file is present where the operation's questions read it; decoding
+    /// remains the query's job. A file at the other layout is not an answer.
     pub(crate) fn contains(&self, operation: crate::Operation) -> bool {
         let path = self.directory.join(operation.name());
-        path.with_extension("json").is_file() || contains_json(&path)
+        let (file, directory) = match layout(operation) {
+            Layout::File => (true, false),
+            Layout::Directory => (false, true),
+            Layout::FileOrDirectory => (true, true),
+        };
+        (file && path.with_extension("json").is_file()) || (directory && contains_json(&path))
     }
 
     /// Preserve the original build, and mark the answer as recorded regardless of its file.
@@ -149,6 +155,35 @@ pub(crate) fn write<T: Serialize>(
     std::fs::write(&path, bytes).map_err(failed)
 }
 
+/// Where an operation's questions read their files, as the module layout states.
+enum Layout {
+    /// One `<operation>.json`.
+    File,
+    /// `<operation>/<subject>.json`.
+    Directory,
+    /// `loaded_modifiers.json`, or a subject directory for a session with a fixture.
+    FileOrDirectory,
+}
+
+fn layout(operation: crate::Operation) -> Layout {
+    use crate::Operation::*;
+    match operation {
+        RegistryFields | ModifierFamilies | Declarations | CommandGrammar | ObserveFixture
+        | CheckScript => Layout::Directory,
+        LoadedModifiers => Layout::FileOrDirectory,
+        Registries
+        | Modifiers
+        | ModifierCategories
+        | Scopes
+        | ScopeLinks
+        | LocalizationDeclarations
+        | OnActions
+        | GameRules
+        | Defines
+        | DynamicNames => Layout::File,
+    }
+}
+
 fn contains_json(directory: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(directory) else {
         return false;
@@ -185,5 +220,42 @@ mod tests {
             Err(Error::Recorded(_))
         ));
         assert_eq!(Answers::open(root.path().into()).unwrap().build, build);
+    }
+
+    #[test]
+    fn support_follows_the_layout_that_each_operation_reads() {
+        use crate::Operation;
+        let root = tempfile::tempdir().unwrap();
+        let build = BuildId("original".into());
+        let answer: Result<Answer<Vec<String>>, Error> = Ok(Answer {
+            value: Vec::new(),
+            completeness: crate::Completeness::Complete,
+            gaps: Vec::new(),
+            source: crate::Source {
+                build: build.clone(),
+                native_version: "test".into(),
+                method: "test".into(),
+                basis: Basis::StaticAnalysis,
+            },
+        });
+        // A subject file under a singleton question is not where `registries()` reads.
+        write(root.path(), &build, "registries", Some("archive"), &answer).unwrap();
+        // A singleton file for a subject question is not where `observe_fixture` reads.
+        write(root.path(), &build, "observe_fixture", None, &answer).unwrap();
+        write(
+            root.path(),
+            &build,
+            "registry_fields",
+            Some("common/traditions"),
+            &answer,
+        )
+        .unwrap();
+        write(root.path(), &build, "loaded_modifiers", None, &answer).unwrap();
+        let recorded = Answers::open(root.path().into()).unwrap();
+        assert!(!recorded.contains(Operation::Registries));
+        assert!(!recorded.contains(Operation::ObserveFixture));
+        assert!(recorded.contains(Operation::RegistryFields));
+        assert!(recorded.contains(Operation::LoadedModifiers));
+        assert!(!recorded.contains(Operation::Scopes));
     }
 }

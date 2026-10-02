@@ -133,9 +133,9 @@ constructor, and member-reader boundaries are unique. Its obstacle is deriving t
 object and source layouts on other builds. A future binding must replace or reverify
 them; the method reports unsupported fields and registries as unavailable.
 
-### Manual category read-entry exception
+### Manual category read-entry exception (historical)
 
-`InitialCategoryLoad` and `CategoryFieldReads` remain public, category-specific names.
+This section describes the state before 2026-10-02. `InitialCategoryLoad` and `CategoryFieldReads` were public, category-specific names.
 The M45 binding retains the `tree_template` and `traditions` token values for
 `common/tradition_categories`. This exception claims only that those two reader entries
 occur in the initial category-load window; it says nothing about storage or validation.
@@ -145,7 +145,7 @@ The root-field analysis does not yet derive the read-entry hook and token select
 one general operation. Replace these names and token constants when that operation can
 select a field from the exact-build binding and pass an unfamiliar-category transfer.
 
-This is the only entry in the locality gate's exception list (`tests/locality.rs`). It covers
+This was the only entry in the locality gate's exception list (`tests/locality.rs`); the list is empty since 2026-10-02. It covers
 the registry check in `src/fixture.rs`. Since SDK-569, the fixture reducer takes the category
 field names and their count from the binding's `FixtureBinding.fields`, not from its own
 constants. The reducer's three registration entries are part of the same window and are

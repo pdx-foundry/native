@@ -2,7 +2,7 @@
 
 ## API scope, 2026-10-02
 
-`ScopedOperand` reports routing forms only. Representation selection and literal assignment preservation are retired public properties. Their findings below remain available. Internal layout proofs still support parser storage and duration overlap checks; they are not runtime results.
+`ScopedOperand` reports routing forms only. Representation selection and literal assignment preservation are retired public properties. Their findings below remain available. Internal layout proofs still support parser storage and duration overlap checks; they are not runtime results. The properties, their analysis (`src/engine/analysis/scoped_numeric.rs`, `src/session/scoped_numeric.rs`), their expected output (`tests/expected/m45/command-grammars.json`, `tests/expected/numeric-m45/readers.json`) and the world controls are in Git at `d8f9d8a`.
 
 On M45-release, `CVariableValue::Read` and `Assign` share an operand reader. A destination's
 constructor vtable point selects `CIntVariableValue`, `CFixedPointVariableValue`, or the base

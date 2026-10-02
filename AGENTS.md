@@ -34,6 +34,7 @@ inspections (such as warnings and errors).
 - [Native specification](docs/specs/native.md) Public operations, answers and behavior.
 - [Technical design](docs/design/architecture.md) Module boundaries and target composition.
 - [Simplification decision](docs/design/simplification.md) The approved API scope and removed mechanisms.
+- [Simplification review](docs/design/simplification-review.md) The compiler-need vision, proposed cuts and ticket changes of 2026-10-02.
 - [Roadmap](docs/roadmap.md) Milestones toward full config coverage.
 - [Development improvements](docs/design/native-dx.md) Proposed improvements for writing and adapting methods.
 - [Atlas caller migration](docs/design/atlas-caller-migration.md) Migration from the prototype to the simplified API.
