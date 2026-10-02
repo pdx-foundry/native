@@ -40,6 +40,26 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 This page also holds the define read helpers and the reference and dynamic-name counts. The
 retired SDK-482 reference method is recorded on [references](references.md#sdk-482-prototype).
 
+## Shared modifier blocks
+
+On M451-hotfix (`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`),
+`registry-fields/v11` covers 30 constructor-bound modifier fields across 17 of 164 registries:
+**0 complete, 30 partial, 0 failed**. All four reader identities agree across their uses and each
+has one proven address point. The variants have 2, 8, 11 and 13 named keys; both entry forms are
+known for all 30 fields. Another 57 generic persistent Block fields have no concrete reader join
+and are outside this denominator. They are not all modifier uses.
+
+Public gap occurrences in these blocks: `modifier-name-reader` 30, `reader-routing` 58,
+`instruction` 4, shared numeric conversion 89, and unresolved repeated-block storage 30.
+Routing stops cover `key`, `divide_over_pop_groups` and the parameter-list reader;
+the instruction stops are parameter-list paths. Counts retain separate stopped paths, so one
+field can contribute repeated public gaps. See [modifier blocks](modifier-blocks.md) for
+per-variant keys, failure ownership, the live fixture and exact-build limits.
+
+Reproduce with `cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH"`.
+The tracked M45-release field population predates v11. Its executable was unavailable, so its
+baseline remains unchanged; verification and the frozen main/candidate comparison use M451-hotfix.
+
 ## References
 
 On M45-release the reference method runs over every registry field bound to a reference reader:

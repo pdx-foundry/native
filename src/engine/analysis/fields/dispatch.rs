@@ -27,6 +27,8 @@ pub(crate) struct DispatchInput<'a> {
     pub read_only_data: &'a [DataSection],
     pub reader_token_offset: Option<u64>,
     pub member_delegates: bool,
+    /// Permit unmodeled OR updates without widening existing field or command methods.
+    pub bitwise_updates: bool,
     /// The constructor-proven owner address point and executable pointer slots.
     pub owner_vtable: Option<(u64, &'a BTreeMap<u64, u64>)>,
     /// Constructors whose body proves a wrapped owner pointer at this object offset.
@@ -66,6 +68,7 @@ impl<'a> DispatchInput<'a> {
             read_only_data,
             reader_token_offset: Some(reader_token_offset),
             member_delegates: true,
+            bitwise_updates: false,
             owner_vtable: None,
             serializer_constructors: None,
         }
@@ -513,6 +516,7 @@ fn apply(
     entry: u64,
     reader_token_offset: Option<u64>,
     wrapped_owner: Option<(i64, i64)>,
+    bitwise_updates: bool,
 ) -> Result<(), Unresolved> {
     if matches!(row.operation.as_str(), "str" | "strb" | "stp") {
         state.serializer = None;
@@ -755,7 +759,8 @@ fn apply(
             }
         }
         // Bit-field reads do not set flags; their result is not followed.
-        ("ubfx" | "and" | "orr", [destination, ..]) => state.assign(destination, None),
+        ("ubfx" | "and", [destination, ..]) => state.assign(destination, None),
+        ("orr", [destination, ..]) if bitwise_updates => state.assign(destination, None),
         ("adrp" | "adr", [destination, address]) => {
             state.assign(destination, number(address).map(Value::Constant))
         }
@@ -788,6 +793,7 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
             read_only_data: &input.read_only_data,
             reader_token_offset: None,
             member_delegates: false,
+            bitwise_updates: false,
             owner_vtable: None,
             serializer_constructors: None,
         },
@@ -1125,6 +1131,7 @@ fn explore_member_with_wrapped_owner(
                     entry,
                     input.reader_token_offset,
                     wrapped_owner,
+                    input.bitwise_updates,
                 ) {
                     Ok(()) => continue,
                     Err(unresolved) => Branching::gap(&state, row.address, unresolved),
@@ -1698,6 +1705,49 @@ fn emplaced_destination(bindings: &super::KeyReaders, state: &State) -> Option<i
 mod tests {
     use super::*;
     use crate::engine::analysis::{assembler::arm64, declarations::Function};
+
+    #[test]
+    fn bitwise_updates_extend_only_the_opted_in_member_walk() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: "CReader::Read(CString&, bool)".into(),
+                address: 0x2000,
+            },
+        ];
+        let functions = BTreeMap::from([(
+            0x1000,
+            Function {
+                address: 0x1000,
+                code: arm64!(at 0x1000;
+                    ldrb w8, [x0, #16];
+                    orr w8, w8, #1;
+                    strb w8, [x0, #16];
+                    add x8, x0, #24; // string destination after an unrelated flag update
+                    mov x0, x1;
+                    mov x1, x8;
+                    mov w2, #0;
+                    b extern 0x2000
+                ),
+            },
+        )]);
+        let readers = super::super::KeyReaders::default();
+        let mut input = DispatchInput::command(&functions, &symbols, &[], 0x38, &readers);
+        let (paths, _) = explore_member(&input, root);
+        assert!(
+            matches!(&paths[0].outcome, PathOutcome::Gap(stop) if stop.reason == "instruction")
+        );
+        input.bitwise_updates = true;
+        let (paths, _) = explore_member(&input, root);
+        assert!(
+            matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
+            if callee == "CReader::Read(CString&, bool)")
+        );
+    }
 
     #[test]
     fn serializer_delegate_reads_the_constructor_wrapped_owner() {

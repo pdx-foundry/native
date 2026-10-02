@@ -12,12 +12,17 @@ Verified on M451-hotfix, executable
 `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
 The four reader identities retain the read/member hash used by persistent fields:
 
-| Reader identity | Member implementation | Fixed keys |
-| --- | --- | ---: |
-| `e327ea91dfe75d65` | `CModifier::ReadMember` | 2 |
-| `5a74c67fe5a4adf9` | `CGraphicalModifier::ReadMember` | 8 |
-| `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 11 |
-| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 13 |
+| Reader identity | Member implementation | Fields | Address points | Fixed keys |
+| --- | --- | ---: | ---: | ---: |
+| `e327ea91dfe75d65` | `CModifier::ReadMember` | 1 | 1 | 2 |
+| `5a74c67fe5a4adf9` | `CGraphicalModifier::ReadMember` | 2 | 1 | 8 |
+| `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 25 | 1 | 11 |
+| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 2 | 1 | 13 |
+
+The full population covers 164 registries and 1,564 root fields. Thirty modifier fields in
+17 registries share these four variants: **0 complete, 30 partial, 0 failed**. Every repeated
+reader identity has the same block. Another 57 generic persistent Block fields have no concrete
+reader join; these include weights and other non-modifier blocks.
 
 All variants have partial fixed keys and two known entry forms. The smallest variant has
 `name` (unknown reader) and `data` (integer). Graphical adds `icon`, `custom_tooltip` (string),
@@ -51,8 +56,8 @@ and base-member fallback. It does not copy the numeric entry's conversion limits
 
 The virtual trailer is followed only with a constructor-proven address point, an owner-derived
 call target and the original owner, reader and token arguments. The shared member walk limits
-depth and detects cycles. An `orr` that only changes a flag drops its destination provenance;
-this permits the subsequent string reader for `apply_modifier_to_other_planets` to join.
+depth and detects cycles. The modifier walk opts into `orr` updates that drop result provenance; existing field and
+command walks keep their prior instruction boundary. This permits the subsequent string reader for `apply_modifier_to_other_planets` to join.
 
 The description serializer constructor stores its wrapped owner at offset 8. A stack-object
 member call with that proven wrapper resolves the description destination. A wrong receiver,
@@ -90,6 +95,12 @@ cargo run --release --example command-population -- "$STELLARIS_PATH"
 cargo parity modifier_blocks
 cargo live fixture_modifier_block
 ```
+
+The live fixture passed on this build in 37 seconds: all 13 reported fixed keys, a numeric
+modifier, the scripted modifier `pop_job_amenities_mult` and the static modifier `gave_up_pop`
+completed one observed reader invocation with complete parsing and no immediate diagnostics.
+Disposal was confirmed; no game or debugger process remained. This does not test deferred
+completion or runtime application.
 
 The sweep's `modifier_blocks` section reports fields and distinct address-point counts per reader,
 key differences from the smallest variant, complete/partial/failed counts, failure shapes and
