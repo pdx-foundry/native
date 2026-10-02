@@ -58,3 +58,26 @@ pub(super) fn analyze(
         storage_width_bits: 64,
     })
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct MemberTokens {
+    pub name: i64,
+    pub data: i64,
+}
+
+/// Reserved tokens proved by the same complete member shape as the numeric entry.
+pub(crate) fn member_tokens(input: &ModifierInput) -> Result<MemberTokens, Unresolved> {
+    let lines = canonical(&input.member, &input.names);
+    let binding = Shape::parse(include_str!("shapes/modifier_member.txt"))
+        .matches(&lines)
+        .ok_or(Unresolved::new("modifier-numeric-member-flow"))?;
+    let token = |name| {
+        number(&binding, name)
+            .and_then(|value| i64::try_from(value).ok())
+            .ok_or(Unresolved::new("modifier-base-token"))
+    };
+    Ok(MemberTokens {
+        name: token("other_token_a")?,
+        data: token("other_token_b")?,
+    })
+}

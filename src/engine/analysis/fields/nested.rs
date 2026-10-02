@@ -153,6 +153,7 @@ pub(super) fn discover(
             class: object.class.clone(),
             fields: Box::new(RegistryFieldResult {
                 persistent: Default::default(),
+                persistent_points: Default::default(),
                 scoped_destinations: Default::default(),
                 uses: Vec::new(),
                 fields,

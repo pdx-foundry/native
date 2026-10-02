@@ -1,0 +1,91 @@
+# Lookup anchors: argument provenance, key equality, hit/miss routes and base fallback.
+# Frame setup/restoration and all subsequent insertion/cleanup code are checked separately or omitted.
+mov xr7,x2
+mov xr8,x1
+mov xr9,x0
+adrp xr5,PAGE
+ldr xr10,[xr5,G] = database
+cbz xr10,@+33
+ldr x1,[xr8,#{key_text}]
+mov x0,sp
+bl CALL = key_string
+add x0,xr8,#{value_token}
+bl CALL = fixed_value
+mov xr6,x0
+ldr xr10,[xr5,G] = database
+ldr wr2,[xr10,#0x3dc]
+cmp wr2,#0x1
+b.lt @+62
+ldr xr1,[xr10,#0x3d0]
+ldrb wr10,[sp,#0x17]
+sxtb wr11,wr10
+cmp wr11,#0x0
+ldp xr12,xr11,[sp]
+csel xr4,xr11,xr10,lt
+mov xr10,sp
+csel xr3,xr12,xr10,lt
+cbz xr4,@+6
+mov xr0,#0x0
+b @+31
+add xr1,xr1,#0x8
+subs xr2,xr2,#0x1
+b.eq @+48
+ldr xr5,[xr1]
+ldrb wr10,[xr5,#0x16f]
+sxtb wr11,wr10
+ldr xr12,[xr5,#0x160]
+cmp wr11,#0x0
+csel xr10,xr12,xr10,lt
+cbnz xr10,@-9
+b @+43
+mov x0,xr9
+mov x1,xr8
+mov x2,xr7
+ldr x0,[xr11]
+mov x1,xr3
+mov x2,xr4
+bl CALL = compare_bytes
+cbz w0,@+27
+add xr0,xr0,#0x1
+cmp xr0,xr2
+b.eq @+21
+ldr xr5,[xr1,xr0,lsl#3]
+ldrb wr10,[xr5,#0x16f]
+sxtb wr11,wr10
+ldr xr12,[xr5,#0x160]
+cmp wr11,#0x0
+csel xr11,xr12,xr10,lt
+cmp xr11,xr4
+b.ne @-10
+add xr11,xr5,#0x158
+tbnz wr10,#7,@-17
+mov xr12,xr3
+ldrb wr13,[xr11]
+ldrb wr14,[xr12]
+cmp wr13,wr14
+b.ne @-17
+add xr11,xr11,#0x1
+add xr12,xr12,#0x1
+subs xr10,xr10,#0x1
+b.ne @-7
+b @+4
+adrp xr10,PAGE
+ldr xr10,[xr10,G] = null_item
+ldr xr5,[xr10]
+ldr xr10,[xr5]
+ldr xr10,[xr10,#0x98]
+mov x0,xr5
+blr xr10
+cbz w0,@+9
+ldrb wr10,[xr5,#0x1a8]
+tbnz wr10,#1,@+29
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0xc0]
+mov x0,xr9
+mov x1,xr8
+blr xr10
+b @+55
+mov x0,xr9
+mov x1,xr8
+mov x2,xr7
+bl CALL = base_member

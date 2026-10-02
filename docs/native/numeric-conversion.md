@@ -42,7 +42,9 @@ components separately, so an exponent on the fraction is not a whole-value expon
 The modifier boundary proof follows the declaration-table numeric path into the same fixed-point
 reader and through both insertion capacity paths to a 64-bit entry store. Its shared identity is
 `a9818fec780f8313`. This join is in the developer report; it does not add parser properties to
-modifier declarations or claim that modifier blocks themselves store a scalar. Modifier grammar,
+modifier declarations or claim that modifier blocks themselves store a scalar. The
+[modifier grammar](modifier-blocks.md) reuses this entry identity and the same normalization pass;
+its block reader keeps `numeric: Known(None)`. Modifier grammar,
 category applicability, duplicates and application remain outside this method.
 
 ## Live observations
@@ -93,7 +95,7 @@ named gap. The world observations are on M451-hotfix; see
 | --- | --- | --- | --- |
 | `add_resource` `mult` and `multiplier` | Scoped operand, signed 64-bit, scale 100000, with the partial operand forms and the selection rule ([scoped numeric](scoped-numeric.md)) | World: with `energy = 10`, literal `2.5` adds 25 through either key; a variable of 2.5 adds 25; `trigger:num_owned_planets` (1) adds 10; `value:tech_weight_likelihood` (1.25) adds 12.5; `modifier:country_edict_fund_add` (15) adds 150 | Literal boundaries, as for every scoped operand |
 | `add_resource` resource amounts | None. `CAddResourceEffect::ReadMember` gives every other key to `CFixedResourceTable::CSerializer::ReadMember`, and the command grammar does not route that member (`reader-routing`, `unknown-key-reader`) | World: `energy = 10` adds raw 1000000, `0.5` adds raw 50000, `-3` removes raw 300000 | The static reader of resource-named keys. Owner: the command grammar gaps of SDK-625 and SDK-626 |
-| Additive naval capacity, `country_naval_cap_add` | A modifier entry joins the direct fixed-point reader: signed 64-bit, scale 100000 (`tests/expected/numeric-m45/modifier-entry.json`) | The direct fixed-point cases above. World: after `add_modifier` of `fallen_empire_base` (entry value 1000), `modifier:country_naval_cap_add` gives raw 100000000 and integer 1000, from 0 before | Storage of an entry from authored text is not observed: a world loads no mod content, and the fixture route does not decode modifier entries. Grammar: SDK-607. Application and propagation: SDK-547 |
+| Additive naval capacity, `country_naval_cap_add` | A modifier entry joins the direct fixed-point reader: signed 64-bit, scale 100000 (`tests/expected/numeric-m45/modifier-entry.json`) | The direct fixed-point cases above. World: after `add_modifier` of `fallen_empire_base` (entry value 1000), `modifier:country_naval_cap_add` gives raw 100000000 and integer 1000, from 0 before | Storage of an entry from authored text is not observed: a world loads no mod content, and the fixture route does not decode modifier entries. Grammar: [modifier blocks](modifier-blocks.md). Application and propagation: SDK-547 |
 | Multiplicative naval capacity, `country_naval_cap_mult` | The same entry reader | World: after `add_modifier` of `community_champion_counselor` (entry value 0.1), `modifier:country_naval_cap_mult` gives raw 10000 and integer 0, from 0 before | The same |
 | Literal values | The table of reader shapes above | The live matrix above; the world literal cases | The conversion gap shapes in the [discovery index](discovery.md#numeric-boundary-evidence-sdk-655) |
 
@@ -102,7 +104,7 @@ integer 0 for 0.1 is the truncation of a fixed-point result in an integer destin
 The added modifiers were not visible in the statement after `add_modifier`; see the pitfall on
 the scoped numeric page.
 
-The named gaps in this table (SDK-625 and SDK-626 for resource amounts, SDK-607 for modifier
+The named gaps in this table (SDK-625 and SDK-626 for resource amounts, the modifier-block method for remaining modifier
 grammar and authored entries, SDK-547 for application) are accepted limits at the closure of
 SDK-544. The modifier-entry join (shared reader `a9818fec780f8313`, the unchanged 64-bit store on
 both insertion capacity paths) is checked on M451-hotfix by `m45_numeric_reader_static_parity`

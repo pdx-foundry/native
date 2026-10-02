@@ -56,6 +56,7 @@ These are not accepted designs. Do not implement from them without an accepted d
 - [Registry items](docs/native/registry-items.md) Loaded collections and observation completeness.
 - [Engine commands](docs/native/engine-commands.md) Commands, scopes, localization, on_actions and game rules.
 - [References and dynamic names](docs/native/references.md) Reference lookups, flag namespaces, their shapes and the SDK-482 history.
+- [Modifier blocks](docs/native/modifier-blocks.md) Shared fixed keys, entry forms and reader gaps.
 - [Modifier families](docs/native/modifier-families.md) Generated names and the loaded modifier table.
 - [Targets](docs/native/targets.md) Exact executable identities and build adaptation findings.
 

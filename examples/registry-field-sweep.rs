@@ -8,6 +8,8 @@
 //!
 //! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports and
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
+#[path = "support/modifier_blocks.rs"]
+mod modifier_blocks;
 #[path = "support/population.rs"]
 mod population;
 
@@ -93,6 +95,9 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
 
         match run {
             Ok(registry_field_stops::Run { answer, result }) => {
+                report
+                    .modifier_blocks
+                    .add(&registry.name, &answer, &result)?;
                 let stops = place_gaps(&image, &registry.name, result.gaps);
                 report.add_answer(&registry.name, answer, stops, elapsed_ms)?;
             }
@@ -203,6 +208,7 @@ struct SweepReport {
     fields_without_reader_identity: Vec<String>,
     failure_shapes: BTreeMap<String, Vec<Value>>,
     references: ReferenceTally,
+    modifier_blocks: modifier_blocks::Tally,
     stop_cases: Vec<StopCase>,
     cases: Vec<Value>,
 }
@@ -368,6 +374,7 @@ impl SweepReport {
                 "failure_shapes": self.references.shapes,
                 "readers": reference_readers,
             },
+            "modifier_blocks": self.modifier_blocks.report(),
             "stop_shapes": stop_shapes(&self.stop_cases),
             "report_limits": {
                 "failure_shapes": "Grouped by public gap detail.",
@@ -394,7 +401,7 @@ impl ReferenceTally {
     fn add(&mut self, registry: &str, answer: &Answer<Vec<Field>>, fields: &[Field], parent: &str) {
         for field in fields {
             let path = format!("{parent}{}", field.name);
-            if let pdx_native::FieldMembers::Fields(children) = &field.members {
+            if let Some(children) = modifier_blocks::children(&field.members) {
                 self.add(registry, answer, children, &format!("{path}."));
             }
             let reads_reference = field.read.iter().any(|alternative| {
@@ -448,7 +455,7 @@ fn count_families(fields: &[Field], counts: &mut BTreeMap<String, usize>, level:
         *counts
             .entry(format!("{level}.{:?}", field.reader.family))
             .or_default() += 1;
-        if let pdx_native::FieldMembers::Fields(children) = &field.members {
+        if let Some(children) = modifier_blocks::children(&field.members) {
             count_families(children, counts, "nested");
         }
     }
@@ -474,7 +481,7 @@ fn count_shapes(fields: &[Field], counts: &mut BTreeMap<String, usize>, nested: 
                 .entry(format!("{level}.read.{condition}"))
                 .or_default() += 1;
         }
-        if let pdx_native::FieldMembers::Fields(children) = &field.members {
+        if let Some(children) = modifier_blocks::children(&field.members) {
             count_shapes(children, counts, true);
         }
     }

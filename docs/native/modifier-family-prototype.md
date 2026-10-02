@@ -7,7 +7,8 @@ from [Validate modifier grammars and generated modifier families](https://linear
 **Generation rules are recoverable for the five traced templates. This does not establish
 complete family extraction or a complete shared modifier grammar.** No production API changed.
 
-**2026-09-24:** SDK-498 is closed. SDK-607 owns the remaining shared modifier-block grammar,
+**2026-09-24:** SDK-498 is closed. The [modifier-block method](modifier-blocks.md) (SDK-607)
+now reports shared fixed keys and entry forms with typed gaps,
 and [numeric conversion](numeric-conversion.md) records the shared numeric facts and remaining
 conversion limits. SDK-486 owns the archive of the untracked
 `.local/sdk-498/` prototype.
@@ -121,13 +122,13 @@ parity test belongs in the implementation. Do not add capture/replay APIs or evi
 | --- | --- | --- |
 | Five templates above | Demonstrated static mechanism plus two fresh live mutations | Family implementation, SDK-540 |
 | Other generation, including district maximums and conditional resource/job families | Precise method limit: caller/helper/condition recovery is absent; 44,334 loaded names unexplained | SDK-540; full loaded inventory SDK-564 |
-| Graphical fixed fields | Release disassembly and literal token constructors identify `icon`, `custom_tooltip` → `CString`; `icon_frame` → integer; `show_only_custom_tooltip`, `important`, `hide_from_country_list` → boolean | Shared grammar, SDK-607 |
-| Inherited special fields | `CPdxModifier::TryReadMember` handles token 27 `name` through a polymorphic name reader, and token 240 `data` through an integer reader | SDK-607 must qualify the name-reader variants |
-| Numeric modifier entries | Release code searches the declaration table, reads `CFixedPoint`, stores the entry, then checks category overlap | [Numeric conversion](numeric-conversion.md#first-release-numeric-forms-sdk-544) owns the entry-reader proof, checked on M451-hotfix for SDK-544, and the shared reader's remaining conversion limits; grammar/duplicate qualification and authored-entry storage remain with SDK-607 |
-| Static/scripted modifier references | `CModifier::TryReadMember` tries loaded static modifiers, with immediate-add/deferred paths; `CScriptedModifier::PostReadInit` calls `AddDynamicModifier` | SDK-607 must test valid, absent, forward, and colliding keys through deferred completion |
-| Repeated graphical blocks | Historical M45-observe agenda probe: numeric entries reset; omitted tooltip/flag metadata persists | Fresh release and second-use transfer remain SDK-607 |
-| Post-read graphical validation | Release `InitPostRead` checks a nonempty icon: `GFX_` prefix bypasses the file check; other strings call `VFSExists` and may log a missing-icon diagnostic | SDK-607; sprite/localisation asset inventories are project/external inputs |
-| Localisation and whole shared grammar | A `CString` read does not prove localisation-key existence. The old root walker returned 13 gaps here: unsupported load writeback or indirect call | SDK-607; no complete grammar claim |
+| Graphical fixed fields | Release disassembly and literal token constructors identify `icon`, `custom_tooltip` → `CString`; `icon_frame` → integer; `show_only_custom_tooltip`, `important`, `hide_from_country_list` → boolean | [Modifier blocks](modifier-blocks.md) |
+| Inherited special fields | `CPdxModifier::TryReadMember` handles token 27 `name` through a polymorphic name reader, and token 240 `data` through an integer reader | The modifier-block method names both keys; name-reader variants remain a typed gap |
+| Numeric modifier entries | Release code searches the declaration table, reads `CFixedPoint`, stores the entry, then checks category overlap | [Numeric conversion](numeric-conversion.md#first-release-numeric-forms-sdk-544) owns the entry-reader proof, checked on M451-hotfix for SDK-544, and the shared reader's remaining conversion limits; [modifier blocks](modifier-blocks.md) owns entry grammar; duplicates and authored-entry storage remain outside it |
+| Static/scripted modifier references | `CModifier::TryReadMember` tries loaded static modifiers, with immediate-add/deferred paths; `CScriptedModifier::PostReadInit` calls `AddDynamicModifier` | The modifier-block method proves the static reference form and composes scripted names with the family answer. Absent, forward and colliding keys through deferred completion remain unqualified |
+| Repeated graphical blocks | Historical M45-observe agenda probe: numeric entries reset; omitted tooltip/flag metadata persists | Retained prototype result; fresh-build and second-use transfer are outside SDK-607 |
+| Post-read graphical validation | Release `InitPostRead` checks a nonempty icon: `GFX_` prefix bypasses the file check; other strings call `VFSExists` and may log a missing-icon diagnostic | Retained code finding; post-read checks are outside SDK-607. Sprite/localisation inventories are project/external inputs |
+| Localisation and whole shared grammar | A `CString` read does not prove localisation-key existence. The old root walker returned 13 gaps here: unsupported load writeback or indirect call | The modifier-block method keeps reader gaps; it makes no localisation or complete-grammar claim |
 | Runtime effect and propagation | Untested by startup registration or parser storage | SDK-497 / SDK-547 |
 | Duplicate warnings, severity, recommended syntax | Consumer policy, separate from engine storage and diagnostics | Atlas/consumer |
 

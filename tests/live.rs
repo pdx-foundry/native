@@ -220,6 +220,7 @@ enum Case {
     FixtureTransfer,
     FixtureRelicPortrait,
     FixtureBlockParsing,
+    FixtureModifierBlock,
     FixtureNumeric {
         registry: &'static str,
         integer: Option<&'static str>,
@@ -460,6 +461,7 @@ fn cases() -> Vec<(String, Case)> {
         Case::FixtureRelicPortrait,
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
+    cases.push(("fixture_modifier_block".into(), Case::FixtureModifierBlock));
     cases.push((
         "fixture_numeric_megastructures".into(),
         Case::FixtureNumeric {
@@ -756,6 +758,7 @@ fn cases() -> Vec<(String, Case)> {
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
+        Case::FixtureModifierBlock => fixture_modifier_block(native).await,
         Case::FixtureNumeric {
             registry,
             integer,
@@ -1298,6 +1301,98 @@ async fn fixture_block_parsing(native: &Native) -> Outcome {
                 .any(|gap| gap.kind == GapKind::IncompleteObservation)
         {
             return Err(format!("block parser joins: {answer:?}").into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// One initial reader invocation covers the fixed keys and both entry forms. Deferred
+/// completion and runtime application are outside this observation.
+async fn fixture_modifier_block(native: &Native) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticWindow, FieldMembers, FixtureFieldQuestion, FixtureParsing,
+        FixtureRequest, GrammarProperty,
+    };
+    let text = r#"native_modifier_block = {
+ modifier = {
+  name = native_modifier_block
+  data = 1
+  icon = mod_country_resource_max_add
+  icon_frame = 1
+  custom_tooltip = native_modifier_tooltip
+  show_only_custom_tooltip = no
+  important = no
+  hide_from_country_list = no
+  key = native_modifier_block
+  divide_over_pop_groups = no
+  apply_modifier_to_other_planets = gave_up_pop
+  description = native_modifier_description
+  description_parameters = { }
+  country_resource_max_add = 1
+  pop_job_amenities_mult = 0.1
+  gave_up_pop = 1
+ }
+}
+"#;
+    let fields = native.registry_fields(TRADITIONS)?;
+    let field = fields
+        .value
+        .iter()
+        .find(|field| field.name == "modifier")
+        .ok_or("modifier missing")?;
+    let FieldMembers::ModifierBlock(block) = &field.members else {
+        return Err("modifier grammar missing".into());
+    };
+    let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) = &block.fixed_keys else {
+        return Err("modifier keys unresolved".into());
+    };
+    for key in keys {
+        if !text.contains(&format!("\n  {} =", key.name)) {
+            return Err(format!("fixture omits reported key {}", key.name).into());
+        }
+    }
+    let request = FixtureRequest::field_outcomes(
+        "common/traditions/native_modifier_block.txt",
+        text,
+        [
+            FixtureFieldQuestion::new(TRADITIONS, "native_modifier_block", "modifier")
+                .with_parsing(),
+        ],
+    );
+    let mut game = native
+        .start_game(options().registries([TRADITIONS]).fixture(request))
+        .await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let [outcome] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("modifier outcomes: {answer:?}").into());
+        };
+        let FixtureParsing::Observed {
+            occurrences,
+            completeness: Completeness::Complete,
+        } = &outcome.parsing
+        else {
+            return Err(format!("modifier parser observation: {answer:?}").into());
+        };
+        if occurrences.len() != 1
+            || occurrences[0].return_line.is_none()
+            || outcome.owner.is_none()
+            || !answer.value.diagnostics.is_empty()
+            || !matches!(
+                answer.value.diagnostic_coverage,
+                DiagnosticCoverage::Complete {
+                    window: DiagnosticWindow::FixtureFileLoad
+                }
+            )
+            || answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::IncompleteObservation)
+        {
+            return Err(format!("modifier reader did not complete cleanly: {answer:?}").into());
         }
         Ok(())
     }

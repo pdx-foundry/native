@@ -12,6 +12,7 @@ ABSENT = object()
 # These schema members are collections of independent facts. Other lists, including
 # reference priority and key paths, retain their order and length.
 UNORDERED_MEMBERS = {
+    "entries",
     "forms", "targets", "child_families", "fixed_keys", "ordering", "durations",
     "units", "literal_syntax", "read", "uses", "All", "Fields", "Lookups", "Listed",
 }

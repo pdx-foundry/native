@@ -46,6 +46,7 @@ pub const FILES: &[&str] = &[
     "modifier-declarations.json",
     "modifier-categories.json",
     "modifier-families.json",
+    "modifier-blocks.json",
     "on-actions.json",
     "game-rules.json",
     "localization-declarations.json",
@@ -80,8 +81,8 @@ fn current_answer<T>(native: &Native, answer: Answer<T>) -> Result<Answer<T>> {
 /// Produce the current answer's selected view, without accepting it as correct.
 pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> {
     if let Some((registry, _)) = FIELD_FILES.iter().find(|(_, file)| *file == name) {
-        return Ok(json!(
-            current_answer(native, native.registry_fields(registry)?)?.value
+        return Ok(compact_fields(
+            &current_answer(native, native.registry_fields(registry)?)?.value,
         ));
     }
     match name {
@@ -165,6 +166,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
                 .map(|item| &item.name)
                 .collect::<Vec<_>>()
         )),
+        "modifier-blocks.json" => modifier_blocks(native),
         "modifier-families.json" => {
             let mut families = BTreeMap::new();
             for registry in expected

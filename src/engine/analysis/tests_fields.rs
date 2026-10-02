@@ -1286,6 +1286,10 @@ fn scoped_destination_requires_ctor_agreement_and_owner_reader_join() {
 
 #[test]
 fn persistent_family_and_identity_follow_the_constructed_destination() {
+    assert_eq!(
+        derive(persistent_fixture()).persistent_points.get(&0x40),
+        Some(&0xb000)
+    );
     let first = crate::session::questions::normalized_fields(
         &derive(persistent_fixture()),
         &Default::default(),

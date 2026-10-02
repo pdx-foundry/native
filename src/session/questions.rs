@@ -247,7 +247,22 @@ impl Native {
         let references = self.reference_facts(Operation::RegistryFields)?;
         let numeric = self.numeric_facts(Operation::RegistryFields)?;
         let scoped = self.scoped_numeric_facts(Operation::RegistryFields)?;
-        Ok(self.registry_field_answer(registry, &result, references, numeric, scoped))
+        let modifiers = self.modifier_block_facts()?;
+        Ok(self.registry_field_answer(registry, &result, references, numeric, scoped, modifiers))
+    }
+
+    pub(crate) fn modifier_block_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::modifier_blocks::ModifierBlockFacts, Error> {
+        self.bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation: Operation::RegistryFields,
+                reason: "this build has no static analysis recipe".into(),
+            })?
+            .modifier_block_facts()
+            .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
     pub(crate) fn numeric_facts(
@@ -303,9 +318,11 @@ impl Native {
         references: &ReferenceFacts,
         numeric: &crate::engine::analysis::numeric::NumericFacts,
         scoped: &crate::engine::analysis::scoped_numeric::Facts,
+        modifiers: &crate::engine::analysis::modifier_blocks::ModifierBlockFacts,
     ) -> Answer<Vec<Field>> {
         let mut gaps = normalized_gaps(result, registry.trim_end_matches('/'), references);
         let mut value = normalized_fields(result, references);
+        super::modifier_blocks::attach(&mut value, result, modifiers, references, &mut gaps);
         super::numeric::fields(&mut value, numeric, &[], &mut gaps);
         super::scoped_numeric::fields(&mut value, result, scoped, numeric, &mut gaps);
         Answer {
@@ -727,6 +744,7 @@ mod field_gap_tests {
         };
         RegistryFieldResult {
             persistent: Default::default(),
+            persistent_points: Default::default(),
             scoped_destinations: Default::default(),
             uses: vec![],
             collections: vec![],

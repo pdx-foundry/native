@@ -108,8 +108,41 @@ pub enum FieldMembers {
     None,
     /// Named child fields, with any remaining limitations in the answer's gaps.
     Fields(Vec<crate::Field>),
+    /// Fixed keys and entry forms of a shared modifier-block reader.
+    ModifierBlock(ModifierBlock),
     /// The child fields have not been established.
     Unresolved,
+}
+
+/// Parser acceptance of a shared modifier block. This does not establish runtime effects,
+/// occurrence limits, duplicate rules, or the existence of localisation keys.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModifierBlock {
+    /// Named keys, with a partial result when some member paths remain unresolved.
+    pub fixed_keys: crate::GrammarProperty<Vec<crate::Field>>,
+    /// Forms of entries whose keys are not fixed keys.
+    pub entries: crate::GrammarProperty<Vec<ModifierEntry>>,
+}
+
+/// An entry selected by a name in the modifier table or a reference registry.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ModifierEntry {
+    /// The key is a modifier name, as reported by `Native::modifiers`,
+    /// `Native::modifier_families`, or `Game::loaded_modifiers`. Scripted modifiers use this
+    /// form: their registry's modifier-family answer makes each item key a modifier name.
+    Numeric {
+        /// The shared fixed-point reader and its conversion properties.
+        value: Reader,
+    },
+    /// The key is an item key of the target registry.
+    Reference {
+        /// Registry containing the referenced items, or an unresolved registry join.
+        target: crate::ReferenceTarget,
+        /// Broad value form; no numeric conversion limits are stated here.
+        value: crate::ReaderKind,
+    },
 }
 
 /// A scalar default established independently of input acceptance and occurrence rules.

@@ -17,10 +17,11 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v10` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v10`, `command-grammar/v12` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v10`, `command-grammar/v12` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v10`, `command-grammar/v12` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Native::registry_fields` | `registry-fields/v11` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v11`, `command-grammar/v12` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v11`, `command-grammar/v12` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v11`, `command-grammar/v12` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v11` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
 | `Game::observe_world` | `observe-world/v2` | `src/engine/operations/world.rs`, `src/world.rs`, the world recipe in `src/binding/targets/recipes.rs` | [Ready-world observations](ready-world.md) |
 | `CommandGrammar.durations` | `command-grammar/v12` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
@@ -38,6 +39,28 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 
 This page also holds the define read helpers and the reference and dynamic-name counts. The
 retired SDK-482 reference method is recorded on [references](references.md#sdk-482-prototype).
+
+## Shared modifier blocks
+
+On M451-hotfix (`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`),
+`registry-fields/v11` covers 30 constructor-bound modifier fields across 17 of 164 registries:
+**0 complete, 30 partial, 0 failed**. All four reader identities agree across their uses and each
+has one proven address point. The variants have 2, 8, 11 and 13 named keys; both entry forms are
+known for all 30 fields. Another 57 generic persistent Block fields have no concrete reader join
+and are outside this denominator. They are not all modifier uses.
+
+Public gap occurrences in these blocks: `modifier-name-reader` 30, `reader-routing` 58,
+`instruction` 4, shared numeric conversion 89, and unresolved repeated-block storage 30.
+Routing stops cover `key`, `divide_over_pop_groups` and the parameter-list reader;
+the instruction stops are parameter-list paths. Counts retain separate stopped paths, so one
+field can contribute repeated public gaps. See [modifier blocks](modifier-blocks.md) for
+per-variant keys, failure ownership, the live fixture and exact-build limits.
+
+Reproduce with `cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH"`.
+The tracked M45-release field population predates v11. Its executable was unavailable, so its
+baseline remains unchanged; verification and the frozen main/candidate comparison use M451-hotfix.
+The comparison changes only the 30 modifier members and their added gaps: no other field facts
+change, no fields or gaps are removed, and command answers have zero changes.
 
 ## References
 

@@ -179,7 +179,9 @@ from the object, not the token, so they correctly stay unknown flags.
 does not meet the Milestone 4 semantic gate: normalized conditions, numeric conversion, block
 families, scope context and weight grammar have their own acceptance criteria. `CPersistent`
 block classification for `ai_weight` and `modifier` does not establish their accepted keys or
-member family.
+member family. SDK-607 now attaches the [shared modifier grammar](modifier-blocks.md) to root
+fields with a proven modifier address point; failed persistent joins and nested modifier fields
+remain outside that result.
 
 ## Compiler jump tables
 

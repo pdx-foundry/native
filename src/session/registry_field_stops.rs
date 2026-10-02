@@ -44,7 +44,14 @@ pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
         let numeric = native.numeric_facts(Operation::RegistryFields)?;
         let scoped = native.scoped_numeric_facts(Operation::RegistryFields)?;
         Ok(Run {
-            answer: native.registry_field_answer(registry, &result, references, numeric, scoped),
+            answer: native.registry_field_answer(
+                registry,
+                &result,
+                references,
+                numeric,
+                scoped,
+                native.modifier_block_facts()?,
+            ),
             result,
         })
     })

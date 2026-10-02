@@ -44,6 +44,9 @@ pub(in crate::binding) struct PersistentRecipe {
 pub(in crate::binding) struct DeclarationRecipe {
     /// Concrete modifier parser and numeric-entry insertion functions.
     pub numeric_modifier_member: &'static str,
+    pub modifier_serializer_constructor: &'static str,
+    pub modifier_reference_database: &'static str,
+    pub modifier_reference_member: &'static str,
     pub numeric_modifier_insert: &'static str,
     /// Numeric shared-reader signatures to bind; conversions are proved from their code.
     pub numeric_types: &'static [&'static str],
@@ -298,6 +301,9 @@ fn m451_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
 
 const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     numeric_modifier_member: "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::TryReadMember(CReader&, int)",
+    modifier_serializer_constructor: "CCustomDescription::CSerializer::CSerializer(CCustomDescription&)",
+    modifier_reference_database: "CStaticModifierDatabase",
+    modifier_reference_member: "CModifier::TryReadMember(CReader&, int)",
     numeric_modifier_insert: "CPdxModifierEntry<ModifierType>& CPdxArray<CPdxModifierEntry<ModifierType>, int>::InsertAtEmplace<ModifierType, CFixedPoint&>(int, ModifierType, CFixedPoint&)",
     numeric_types: &[
         "signed char",

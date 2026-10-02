@@ -17,6 +17,40 @@ use pdx_native::{
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
+    use pdx_native::{GenerationCondition, GrammarProperty, ModifierEntry, NamePart};
+    let native = native();
+    assert_eq!(
+        modifier_blocks(&native).unwrap(),
+        expected::<Value>("modifier-blocks.json")
+    );
+    let mut variants = BTreeMap::new();
+    for registry in native.registries().unwrap().value {
+        for field in native.registry_fields(&registry.name).unwrap().value {
+            check_modifier_identity(&mut variants, &field).unwrap();
+        }
+    }
+    assert_eq!(variants.len(), 4);
+    for block in variants.values() {
+        let GrammarProperty::Known(entries) = &block.entries else {
+            panic!("unresolved entries")
+        };
+        assert!(entries.iter().any(|entry| matches!(entry,
+            ModifierEntry::Reference {target: ReferenceTarget::Registry {name}, value: ReaderKind::FixedPoint}
+            if name == "common/static_modifiers")));
+        assert!(entries.iter().any(|entry| matches!(entry, ModifierEntry::Numeric {value} if value.kind == ReaderKind::FixedPoint)));
+    }
+    let families = native
+        .modifier_families("common/scripted_modifiers")
+        .unwrap();
+    assert_eq!(families.value.len(), 1);
+    assert_eq!(families.value[0].name, vec![NamePart::ItemKey]);
+    assert_eq!(families.value[0].condition, GenerationCondition::Always);
+    assert_eq!(families.value[0].name_limit, None);
+}
+
 /// Report an inapplicable live observation outside harness capture, so a passing run shows the skip.
 fn report_historical_storage_skip(
     build: &pdx_native::BuildId,

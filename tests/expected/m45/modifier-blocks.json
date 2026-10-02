@@ -1,0 +1,227 @@
+{
+  "1c2988588f7e8eaa": {
+    "entries": {
+      "Known": [
+        {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+      ]
+    },
+    "fixed_keys": {
+      "Partial": [
+        ["name", "Unknown"],
+        ["icon", "String"],
+        ["key", "Unknown"],
+        ["data", "Integer"],
+        ["custom_tooltip", "String"],
+        ["apply_modifier_to_other_planets", "String"],
+        ["show_only_custom_tooltip", "Boolean"],
+        ["icon_frame", "Integer"],
+        ["description", "String"],
+        ["important", "Boolean"],
+        ["description_parameters", "Unknown"],
+        ["divide_over_pop_groups", "Unknown"],
+        ["hide_from_country_list", "Boolean"]
+      ]
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {"kind": "field", "name": "modifier"},
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "key"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
+        "The modifier block analysis stopped at instruction."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
+        "The modifier block analysis stopped at instruction."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "divide_over_pop_groups"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "name"]},
+        "The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["modifier", "data"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["modifier", "icon_frame"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "modifier"},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ]
+    ]
+  },
+  "5a74c67fe5a4adf9": {
+    "entries": {
+      "Known": [
+        {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+      ]
+    },
+    "fixed_keys": {
+      "Partial": [
+        ["name", "Unknown"],
+        ["icon", "String"],
+        ["data", "Integer"],
+        ["custom_tooltip", "String"],
+        ["show_only_custom_tooltip", "Boolean"],
+        ["icon_frame", "Integer"],
+        ["important", "Boolean"],
+        ["hide_from_country_list", "Boolean"]
+      ]
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {"kind": "field", "name": "modifier"},
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "name"]},
+        "The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["modifier", "data"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["modifier", "icon_frame"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "modifier"},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ]
+    ]
+  },
+  "ba5f8cddeba0d833": {
+    "entries": {
+      "Known": [
+        {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+      ]
+    },
+    "fixed_keys": {
+      "Partial": [
+        ["name", "Unknown"],
+        ["icon", "String"],
+        ["key", "Unknown"],
+        ["data", "Integer"],
+        ["custom_tooltip", "String"],
+        ["apply_modifier_to_other_planets", "String"],
+        ["show_only_custom_tooltip", "Boolean"],
+        ["icon_frame", "Integer"],
+        ["important", "Boolean"],
+        ["divide_over_pop_groups", "Unknown"],
+        ["hide_from_country_list", "Boolean"]
+      ]
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {"kind": "field", "name": "country_modifier"},
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["country_modifier", "key"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["country_modifier", "divide_over_pop_groups"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["country_modifier", "name"]},
+        "The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["country_modifier", "data"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["country_modifier", "icon_frame"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "country_modifier"},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ]
+    ]
+  },
+  "e327ea91dfe75d65": {
+    "entries": {
+      "Known": [
+        {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+      ]
+    },
+    "fixed_keys": {
+      "Partial": [
+        ["name", "Unknown"],
+        ["data", "Integer"]
+      ]
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {"kind": "field", "name": "modifier"},
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["modifier", "name"]},
+        "The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["modifier", "data"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "modifier"},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ]
+    ]
+  }
+}

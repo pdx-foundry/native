@@ -734,7 +734,9 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": {
+   "ModifierBlock": "5a74c67fe5a4adf9"
+  },
   "name": "modifier",
   "read": [
    {

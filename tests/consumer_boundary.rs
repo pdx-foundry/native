@@ -55,6 +55,8 @@ const EXPORTS: &[&str] = &[
     "LocalizationDeclarations",
     "LocalizationLink",
     "LocalizationOutput",
+    "ModifierBlock",
+    "ModifierEntry",
     "ModifierCategory",
     "ModifierDeclaration",
     "ModifierFamily",

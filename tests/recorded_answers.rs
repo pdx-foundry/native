@@ -27,6 +27,56 @@ fn write(root: &Path, file: &str, value: serde_json::Value) {
     fs::write(path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
 }
 
+#[test]
+fn modifier_block_members_read_back_with_the_existing_field_operation() {
+    use pdx_native::{FieldMembers, GrammarProperty, ModifierEntry};
+    let root = recorded();
+    let mut field = recorded_field("modifier", "Block");
+    let mut child = recorded_field("description", "String");
+    child["members"] = json!("None");
+    field["reader"]["family"] = json!("Modifier");
+    field["members"] = json!({"ModifierBlock": {
+        "fixed_keys": {"Partial": [child]},
+        "entries": {"Known": [
+            {"Numeric": {"value": {"id":"shared-fixed", "kind":"FixedPoint"}}},
+            {"Reference": {"target":{"Registry":{"name":"common/static_modifiers"}}, "value":"FixedPoint"}}
+        ]}
+    }});
+    write(
+        root.path(),
+        "registry_fields/common/traditions.json",
+        json!({"Ok": {
+            "value":[field], "completeness":"Partial", "gaps":[], "source":source()
+        }}),
+    );
+    let answer = Native::from_recorded_answers(root.path())
+        .unwrap()
+        .registry_fields("common/traditions")
+        .unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    let FieldMembers::ModifierBlock(block) = &answer.value[0].members else {
+        panic!("missing block")
+    };
+    let GrammarProperty::Partial(keys) = &block.fixed_keys else {
+        panic!("missing keys")
+    };
+    assert_eq!(keys[0].name, "description");
+    assert_eq!(keys[0].reader.kind, ReaderKind::String);
+    let GrammarProperty::Known(entries) = &block.entries else {
+        panic!("missing entries")
+    };
+    assert!(
+        matches!(&entries[0], ModifierEntry::Numeric { value } if value.kind == ReaderKind::FixedPoint)
+    );
+    assert!(matches!(
+        &entries[1],
+        ModifierEntry::Reference {
+            value: ReaderKind::FixedPoint,
+            ..
+        }
+    ));
+}
+
 /// Files that a consumer could write by hand: a complete answer, a partial answer, and an error.
 fn recorded() -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();

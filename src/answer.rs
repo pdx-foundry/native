@@ -1111,7 +1111,7 @@ pub enum BlockFamily {
     Trigger,
     /// Effect commands.
     Effect,
-    /// Modifier entries; their detailed grammar is not established.
+    /// Modifier entries; registry fields can carry their grammar in `FieldMembers::ModifierBlock`.
     Modifier,
     /// The family is not established, including conflicting or missing alternatives.
     #[default]

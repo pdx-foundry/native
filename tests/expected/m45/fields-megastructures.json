@@ -539,7 +539,9 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": {
+   "ModifierBlock": "ba5f8cddeba0d833"
+  },
   "name": "country_modifier",
   "read": [
    {
@@ -683,7 +685,9 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": {
+   "ModifierBlock": "ba5f8cddeba0d833"
+  },
   "name": "orbit_modifier",
   "read": [
    {
@@ -755,7 +759,9 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": {
+   "ModifierBlock": "ba5f8cddeba0d833"
+  },
   "name": "ship_modifier",
   "read": [
    {
@@ -802,7 +808,9 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": {
+   "ModifierBlock": "ba5f8cddeba0d833"
+  },
   "name": "station_modifier",
   "read": [
    {
@@ -2702,7 +2710,9 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": {
+   "ModifierBlock": "ba5f8cddeba0d833"
+  },
   "name": "system_modifier",
   "read": [
    {
