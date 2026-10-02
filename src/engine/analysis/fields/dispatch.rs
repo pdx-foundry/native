@@ -514,9 +514,8 @@ fn apply(
     row: &Instruction,
     state: &mut State,
     entry: u64,
-    reader_token_offset: Option<u64>,
+    input: &DispatchInput<'_>,
     wrapped_owner: Option<(i64, i64)>,
-    bitwise_updates: bool,
 ) -> Result<(), Unresolved> {
     if matches!(row.operation.as_str(), "str" | "strb" | "stp") {
         state.serializer = None;
@@ -645,6 +644,17 @@ fn apply(
                 4
             };
             if row.operation.starts_with("str")
+                && let Some(Value::Owner(at)) = &location
+            {
+                let overlaps = |slot: i64| *at < slot + 8 && at.saturating_add(width) > slot;
+                if wrapped_owner.is_some_and(|(slot, _)| overlaps(slot)) {
+                    return Err(unsupported("serializer-owner-overwrite"));
+                }
+                if input.owner_vtable.is_some() && overlaps(0) {
+                    return Err(unsupported("owner-vtable-overwrite"));
+                }
+            }
+            if row.operation.starts_with("str")
                 && location
                     .as_ref()
                     .is_some_and(|at| state.overlaps_stored(at, width))
@@ -674,7 +684,7 @@ fn apply(
                     {
                         return saved.clone();
                     }
-                    if width == 4 && matches!(v, Value::Reader(offset) if Some(offset as u64) == reader_token_offset) {
+                    if width == 4 && matches!(v, Value::Reader(offset) if Some(offset as u64) == input.reader_token_offset) {
                         Value::Token
                     } else {
                         Value::Load(Box::new(v), width)
@@ -760,7 +770,7 @@ fn apply(
         }
         // Bit-field reads do not set flags; their result is not followed.
         ("ubfx" | "and", [destination, ..]) => state.assign(destination, None),
-        ("orr", [destination, ..]) if bitwise_updates => state.assign(destination, None),
+        ("orr", [destination, ..]) if input.bitwise_updates => state.assign(destination, None),
         ("adrp" | "adr", [destination, address]) => {
             state.assign(destination, number(address).map(Value::Constant))
         }
@@ -1125,14 +1135,7 @@ fn explore_member_with_wrapped_owner(
             } else if row.operation == "br" {
                 table_jump(row, &state, &rows, &indexes, input.read_only_data, entry)
             } else {
-                match apply(
-                    row,
-                    &mut state,
-                    entry,
-                    input.reader_token_offset,
-                    wrapped_owner,
-                    input.bitwise_updates,
-                ) {
+                match apply(row, &mut state, entry, input, wrapped_owner) {
                     Ok(()) => continue,
                     Err(unresolved) => Branching::gap(&state, row.address, unresolved),
                 }
@@ -1776,7 +1779,17 @@ mod tests {
         let rows = crate::engine::analysis::decode::decode_arm64(&constructor, 0x2000).unwrap();
         let slot = super::super::serializer_owner_slot(&rows).unwrap();
         let constructors = BTreeMap::from([(0x2000, slot)]);
-        for control in ["joined", "wrong-receiver", "non-owner", "overwritten"] {
+        for control in [
+            "joined",
+            "wrong-receiver",
+            "non-owner",
+            "overwritten",
+            "slot-store",
+            "slot-word-store",
+            "slot-byte-store",
+            "slot-alias-store",
+            "adjacent-store",
+        ] {
             let mut code = arm64!(at 0x1000;
                 mov x20, x1;
                 mov x19, x2;
@@ -1799,6 +1812,26 @@ mod tests {
                 }
                 _ => {}
             }
+            let mut body = crate::engine::analysis::assembler::Arm64::at(0x3000);
+            match control {
+                "slot-store" => {
+                    arm64!(body; str xzr, [x0, #8]);
+                }
+                "slot-word-store" => {
+                    arm64!(body; str wzr, [x0, #12]);
+                }
+                "slot-byte-store" => {
+                    arm64!(body; strb wzr, [x0, #15]);
+                }
+                "slot-alias-store" => {
+                    arm64!(body; add x9, x0, #8; str xzr, [x9]);
+                }
+                "adjacent-store" => {
+                    arm64!(body; str xzr, [x0, #16]);
+                }
+                _ => {}
+            }
+            arm64!(body; mov x8, x1; ldr x1, [x0, #8]; mov x0, x8; mov w2, #0; b extern 0x4000);
             let functions = BTreeMap::from([
                 (
                     0x1000,
@@ -1811,7 +1844,7 @@ mod tests {
                     0x3000,
                     Function {
                         address: 0x3000,
-                        code: arm64!(at 0x3000; mov x8, x1; ldr x1, [x0, #8]; mov x0, x8; mov w2, #0; b extern 0x4000),
+                        code: body.bytes(),
                     },
                 ),
             ]);
@@ -1821,7 +1854,7 @@ mod tests {
             let (paths, gaps) = explore_member(&input, root);
             assert!(gaps.is_empty());
             assert_eq!(paths.len(), 1);
-            if control == "joined" {
+            if matches!(control, "joined" | "adjacent-store") {
                 let PathOutcome::Reader(join @ ReaderJoin::Joined { tail: false, .. }) =
                     &paths[0].outcome
                 else {
@@ -1835,7 +1868,7 @@ mod tests {
                 assert!(
                     matches!(
                         paths[0].outcome,
-                        PathOutcome::Reader(ReaderJoin::Missing(_))
+                        PathOutcome::Reader(ReaderJoin::Missing(_)) | PathOutcome::Gap(_)
                     ),
                     "{control}: {:?}",
                     paths[0]
@@ -1874,6 +1907,12 @@ mod tests {
             "offset-receiver",
             "wrong-reader",
             "wrong-token",
+            "vtable-store",
+            "vtable-word-store",
+            "vtable-byte-store",
+            "vtable-alias-store",
+            "adjacent-store",
+            "before-delegate",
         ] {
             let mut code = original.clone();
             match control {
@@ -1891,6 +1930,29 @@ mod tests {
                 "wrong-token" => code
                     .splice(8..8, arm64!(at 0x1000; mov w2, #7))
                     .for_each(drop),
+                "vtable-store" => {
+                    code.splice(0..0, arm64!(at 0x1000; str xzr, [x0]))
+                        .for_each(drop);
+                }
+                "vtable-word-store" => {
+                    code.splice(0..0, arm64!(at 0x1000; str wzr, [x0, #4]))
+                        .for_each(drop);
+                }
+                "vtable-byte-store" => {
+                    code.splice(0..0, arm64!(at 0x1000; strb wzr, [x0, #7]))
+                        .for_each(drop);
+                }
+                "vtable-alias-store" => {
+                    code.splice(0..0, arm64!(at 0x1000; mov x9, x0; str xzr, [x9]))
+                        .for_each(drop);
+                }
+                "adjacent-store" => {
+                    code.splice(0..0, arm64!(at 0x1000; str xzr, [x0, #8]))
+                        .for_each(drop);
+                }
+                "before-delegate" => {
+                    code = arm64!(at 0x1000; str xzr, [x0]; b extern 0x2000);
+                }
                 _ => {}
             }
             let functions = BTreeMap::from([(
@@ -1913,7 +1975,7 @@ mod tests {
             let (paths, gaps) = explore_member(&input, root);
             assert!(gaps.is_empty());
             assert_eq!(paths.len(), 1);
-            if control == "joined" {
+            if matches!(control, "joined" | "adjacent-store") {
                 assert!(
                     matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, tail: false, .. }) if callee == member)
                 );

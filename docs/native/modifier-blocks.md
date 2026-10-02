@@ -56,12 +56,15 @@ and base-member fallback. It does not copy the numeric entry's conversion limits
 
 The virtual trailer is followed only with a constructor-proven address point, an owner-derived
 call target and the original owner, reader and token arguments. The shared member walk limits
-depth and detects cycles. The modifier walk opts into `orr` updates that drop result provenance; existing field and
+depth and detects cycles. A store overlapping the owner vtable stops the path before virtual
+resolution or member delegation. The modifier walk opts into `orr` updates that drop result provenance; existing field and
 command walks keep their prior instruction boundary. This permits the subsequent string reader for `apply_modifier_to_other_planets` to join.
 
 The description serializer constructor stores its wrapped owner at offset 8. A stack-object
 member call with that proven wrapper resolves the description destination. A wrong receiver,
-non-owner constructor argument or intervening store prevents this join. The list loop for
+non-owner constructor argument or intervening store prevents this join. Stores inside the
+serializer that overlap its wrapped-pointer slot also stop the path, including partial and
+aliased stores; writes beside the slot do not invalidate it. The list loop for
 `description_parameters` still stops on reader routing or an unsupported instruction.
 
 | Gap | Owner / missing fact |
