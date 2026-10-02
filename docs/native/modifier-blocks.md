@@ -36,6 +36,11 @@ refer to these variants by reader identity. These are static results on the hotf
 M45-release could not be verified because its executable is unavailable. The tracked
 `tests/population/m45-release/` field baseline predates `registry-fields/v11` and remains unchanged.
 
+Frozen captures of main `a51cfc8` and candidate `59b26bf` on the same installed build show
+30 field-member changes across 17 registries, no removed fields or gaps, and zero command-answer
+changes. Other field properties are unchanged. Reports and commit identities are retained under
+`.local/population/sdk607/` (`main`, `candidate-v3`, `verified-summary.json`).
+
 ## Entry forms
 
 A numeric entry's key is a name in the modifier table. Its value uses the shared fixed-point
@@ -57,8 +62,9 @@ and base-member fallback. It does not copy the numeric entry's conversion limits
 The virtual trailer is followed only with a constructor-proven address point, an owner-derived
 call target and the original owner, reader and token arguments. The shared member walk limits
 depth and detects cycles. A store overlapping the owner vtable stops the path before virtual
-resolution or member delegation. The modifier walk opts into `orr` updates that drop result provenance; existing field and
-command walks keep their prior instruction boundary. This permits the subsequent string reader for `apply_modifier_to_other_planets` to join.
+resolution or member delegation. The modifier walk opts into `orr` updates that drop result
+provenance; existing field and command walks keep their prior instruction boundary. This permits
+the subsequent string reader for `apply_modifier_to_other_planets` to join.
 
 The description serializer constructor stores its wrapped owner at offset 8. A stack-object
 member call with that proven wrapper resolves the description destination. A wrong receiver,

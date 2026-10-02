@@ -59,6 +59,8 @@ per-variant keys, failure ownership, the live fixture and exact-build limits.
 Reproduce with `cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH"`.
 The tracked M45-release field population predates v11. Its executable was unavailable, so its
 baseline remains unchanged; verification and the frozen main/candidate comparison use M451-hotfix.
+The comparison changes only the 30 modifier members and their added gaps: no other field facts
+change, no fields or gaps are removed, and command answers have zero changes.
 
 ## References
 
