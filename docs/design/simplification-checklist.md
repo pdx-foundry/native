@@ -36,74 +36,76 @@ change and relevant verification are complete. Preserve engine knowledge before 
 - [x] Cut 1: preserve the world route and fixture retrieval commit, remove it, retain script checks.
 - [x] Cut 2: retain the category-reader field-outcome check, then remove entries/category reads.
 - [x] Cut 6: move key-layout tests, retain internal loader-rule checks, remove public item selection.
-- [ ] Cut 8: require recorded answer properties, together with the Atlas pin and new recordings.
+- [x] Cut 8: require recorded answer properties, together with the Atlas pin and new recordings.
 - [x] Repair recorded `Native::supports` to reflect the available operations.
 
 ## Atlas
 
 - [x] Remove `with_runtime`, the unused `category_reads` session, and the `RegistryItems` filter.
-- [ ] Apply SDK-625 static claim rules, repeat behavior scoring, and SDK-626 triage rules.
+- [x] Apply SDK-625 static claim rules, repeat behavior scoring, and SDK-626 triage rules.
 - [x] Assign entry-scope gaps to SDK-608 and remove runtime promises from `CONTEXT.md`.
-- [ ] Move the Native pin and record answers again on M451-hotfix.
+- [x] Move the Native pin and record answers again on M451-hotfix.
 
 ## Verification and delivery
 
 - [x] Run focused checks during each cut and retain meaningful live controls.
 - [x] Run Native formatting, complete offline tests, and required parity/live checks.
-- [ ] Run Atlas verification with the new recordings.
-- [ ] Review the final changes, repair findings, and record actual results below.
-- [ ] Commit the implementation without including unrelated changes.
+- [x] Run Atlas verification with the new recordings.
+- [x] Review the final changes, repair findings, and record actual results below.
+- [x] Commit the implementation without including unrelated changes.
 
-## Results and remaining work
+## Results
 
-Implementation started 2026-10-02. Linear changes independently verified: all original descriptions
-remain; 25 amendment-table tickets and SDK-541/673/676 have dated amendments. SDK-677 owns registry
-entry contexts; SDK-678 owns ship-size templates. SDK-573 was already Done and stays historical.
+Completed 2026-10-02. Native implementation: `92b27b3eaf2f7021ad9e8105ad9818edd0b7ec19`.
+Atlas implementation: `46e8055a893d4f7d50716b8d12da09d423ec7cbf`. Both are published on their repository's
+`codex/compiler-simplification` branch. Atlas pins Native's implementation commit; this final
+checklist update changes no API or recordings.
 
-All nine Native code cuts are implemented; final checks and Atlas recording migration remain.
-The category control now uses field-outcome parsing for both fields. The key-layout controls use
-loaded modifier keys, including the bypass +0x18 layout. One internal single-registry loader
-control remains for SDK-552. World code, save and evaluated cases are retrievable at `d8f9d8a`
-(and the earlier complete fixture tree at `2d930e4`).
+All nine cuts and the recorded-support repair are complete. World code and its save/expected
+cases remain retrievable at `d8f9d8a` (also the earlier complete fixture tree `2d930e4`). Knowledge
+pages preserve removed facts. The category control uses both fields' parser outcomes; modifier
+key-layout controls use loaded keys; one internal loader fixture remains for SDK-552.
 
-Verified so far: all Rust targets compile before the final recording-shape edits; 19 fixture
-reducer tests and 4 fixture request/recording tests pass; 13 Python protocol and 41 Python worker
-tests pass. A read-only review found stale parity properties and weak migrated fault assertions;
-both are repaired. Final checks will verify the changed recording shape and source stamps.
+Linear changes were independently verified: original ticket descriptions remain; all 25
+amendment-table tickets plus SDK-541/673/676 carry dated amendments. The four agreed cancellations
+and blocker changes are applied. SDK-677 owns registry entry contexts, SDK-678 owns ship-size
+templates, and SDK-573 remains historically Done.
 
-Atlas caller edits remove runtime requests, category_reads and the RegistryItems filter. Claim
-scoring, current recordings, pin, and Atlas verification remain. Its existing Cargo.lock change
-and untracked .DS_Store files are preserved.
+Native verification:
 
-The 17 recording tests pass after removing answer defaults. Rust all-target compilation passes.
-The private script wire reply now has its own raw observation type, so public recordings require
-stored-duration properties without requiring the worker to invent them.
+- Full workspace suite passes, including 804 library tests, integration tests, examples and 12
+  documentation tests. Formatting, Clippy and documentation builds pass with warnings denied.
+- All 97 observation and 14 population Python tests pass.
+- All 33 static parity checks pass across the initial and focused runs. Historical SDK-533
+  storage is explicitly skipped because its exact M45 build differs from M451-hotfix.
+- Seven dedicated duration, numeric and scoped-operand static controls pass.
+- Six live controls pass: category parsing, dropped record, internal loader fixture, modifier key
+  layouts, 48 script operands plus five rejection cases, and stored durations.
 
-The complete Native library run passed (804 tests; 26 ignored), and all integration groups before
-the examples passed. Two example fixtures still depended on the removed answer defaults; they
-now name each property explicitly, and the full example suite passes. Atlas all-target compilation
-passes after migrating storage and new error/gap variants. Repeat scoring and its regression
-tests are implemented; these tests await fresh recordings. Native parity/live verification and
-fresh Atlas capture are queued next. Independent standards and spec reviews are running.
+Atlas verification:
 
-Follow-up verification: all 12 documentation tests pass. Removed the orphan Python world-only
-test with its retired module; all 97 observation and 14 population Python tests pass. Native
-Clippy passes with warnings denied. The standards review's trivial duration-input wrapper and
-the spec review's obsolete profiling caller are repaired. The current live profiling workloads
-use the loader fixture and loaded-modifier key layouts; historical results retain their retrieval
-commit. The Atlas code review found no further issues. Fresh recordings and pin remain pending.
+- Fresh M451-hotfix capture exits 0 with confirmed game disposal: 28,187 rules and 14,027 gaps.
+  All 343 fixture files come from that capture; only the documented loaded-modifier test sample
+  is reduced. Older recordings remain in Atlas Git history.
+- All 72 offline tests pass against the actual remote Native pin in an isolated source copy;
+  formatting, Clippy, documentation and the full-config acceptance gate pass.
+- Live and full recorded snapshots agree after basis, identity and supported-operation
+  differences are normalized. Full recorded answers give zero current-engine coverage.
+- Coverage is 16,341 / 58,032 (28.158602%): 362 gains, all repeat-behavior maximum questions,
+  with no losses. Ledger bytes and the 19 source diagnostics are unchanged. Name-list,
+  script-doc, define and modifier-tag comparisons are unchanged.
+- The measured gap shapes, compiler/config triage rule and all report hashes are in Atlas
+  `docs/coverage/simplification.md`. The baseline now pins the reviewed fresh reports.
 
-The full Native workspace suite now passes, including examples and doc tests; documentation also
-builds with warnings denied. Static parity passed 30 of 33 tests. All three failures reported the
-same 12 old method stamps and one retired duration-consumer gap; those exact expectations are
-updated. The dedicated duration baseline also lost 33 retired consumer-only gaps. Layout checks
-pass. Only the failed parity checks and the changed numeric/duration controls will be rerun before
-live controls and Atlas capture. Both Atlas review axes report no actionable findings.
+Standards and specification reviews are complete. Their findings (a leftover duration wrapper,
+obsolete profiling caller and fixture README order wording) are repaired. Test failures exposed
+stale defaults, method stamps and schema variants; all are repaired and verified.
 
-Native verification is complete: 33 static parity checks pass across the initial run and focused
-rerun; the historical SDK-533 storage observation is explicitly skipped on the different exact
-build. All seven dedicated duration/numeric/scoped static controls pass. The six retained live
-controls pass: category field parsing, dropped record, internal loader fixture, modifier key
-layouts, 48 script operands plus five rejection cases, and stored durations. Fresh Atlas capture
-exited 0 with 28,187 rules and 14,027 gaps on M451-hotfix. Atlas coverage is 16,341 / 58,032;
-the same 19 source diagnostics remain. Baseline review, pin and offline Atlas tests remain.
+Existing Native `AGENTS.md` edits, Atlas's local Native patch and its corresponding working
+lockfile change, and untracked `.DS_Store` files remain outside the commits. The committed Atlas
+lockfile changes only Native's Git revision. Final remote-pin verification used a source copy
+because workspace tooling returned the working lockfile to its local-patch form.
+
+Final verification logs: Codex jobs `job-fth19c1_` (Native parity/live and fresh capture) and
+`job-slw0mzgj` (Atlas remote-pin suite and coverage gate). Earlier offline Native success is in
+`job-nglwlwwx`; that job's stale parity expectations were repaired in the focused run.
