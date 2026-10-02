@@ -148,7 +148,8 @@ Failure shapes, counting each affected destination once per shape:
 matched engine paths, platform boundary checks, agreeing live boundaries and the remaining
 obstacles. [Scoped literal ranges](scoped-numeric.md#shared-literal-ranges-sdk-655) records the
 registry fixture coverage; it does not establish storage for unresolved command destinations.
-No amendment of SDK-544 is made. Reports are
+SDK-655 made no amendment of SDK-544; the later AC4 amendment is recorded on
+[numeric conversion](numeric-conversion.md#float-and-short-fixture-storage-on-m451-hotfix-sdk-656). Reports are
 `.local/sdk-655/rebased/numeric-population.json` and
 `.local/sdk-655/rebased/scoped-numeric-population.json`; reproduce with `STELLARIS_PATH` set:
 
@@ -305,7 +306,8 @@ The final literal-string call in `create_pop_group` is bounded, but the earlier 
 event-target constructors prevent recovery. `spawn_megastructure.orbit_distance` still ends at
 effect registration. Jackson approved moving both complete recovery criteria to SDK-661, dependent on SDK-660.
 SDK-659 closes on the bounded effects and independent verification; all 35 remaining AC2
-recoveries remain mandatory under SDK-544 (25 in SDK-660 and 10 in SDK-661).
+recoveries remain mandatory under SDK-544 (25 in SDK-660 and 10 in SDK-661). SDK-660 later
+recovered all 35 under the member-confined rule, and SDK-661 closed with no destination left.
 
 Reports are `.local/sdk-659/{scoped,commands,registries}.json`. Reproduce with
 `scoped-numeric-population`, `command-population --trace "$STELLARIS_PATH"` and
@@ -414,7 +416,9 @@ constructor does not establish a numeric subtype; `duration-scoped-literal` rema
 gap. No subtype or initial value is restored from the old report. The other five uncovered
 commands have `days` without a factor sibling. The two command candidates write presence bytes;
 registry candidates reset words that proved 4-byte integer readers overwrite. None forms a group.
-These results do not establish all of SDK-544 criterion 3.
+These results did not establish all of SDK-544 criterion 3. SDK-660 later establishes the 52
+omitted counts and the relation flag's initial factor, and the SDK-544 AC3 amendment sets what the
+criterion requires.
 
 Byte disjointness covers the span enclosing the scoped vtable, selection fields and literal,
 using the established token conversion width. Missing subtype, selection or width evidence is
@@ -422,9 +426,10 @@ using the established token conversion width. Missing subtype, selection or widt
 cover every byte of the literal. An identity stack transfer cannot seed a duration group, but
 can join a sibling's proved scale. Prefix word-reset controls reject narrow and scoped readers.
 
-The tracked duration static expectations retain unresolved omitted counts for all covered
-groups. The relation flag has an unresolved initial factor and combination, partial unit factors
-and unresolved concrete scoped storage. Its live case has a partial empty duration list. The
+At SDK-657, the tracked duration static expectations retained unresolved omitted counts for all
+covered groups, and the relation flag's live case had a partial empty duration list. SDK-660
+rerecorded them: every omitted count is known, and the relation case stores literal 3 with factor
+30. The
 full command-grammar candidate matches `tests/expected/m45/command-grammars.json`; no entry
 changes.
 
@@ -492,8 +497,8 @@ alternative gives this bounded result:
 
 These six readers are unavailable to the initial-load fixture method within this population.
 The search cannot reach 982 unresolved member descriptions; it does not establish universal
-absence. No discovery repair is part of SDK-656. Parent SDK-544 criterion 4 stays open for these
-readers until Jackson amends it. The separate inline project loader supplies template fixed-point
+absence. No discovery repair is part of SDK-656. The SDK-544 AC4 amendment of 2026-10-01 excludes
+these readers from the live requirement on this bounded search. The separate inline project loader supplies template fixed-point
 cases outside this registry population.
 
 Reproduce the population with `STELLARIS_PATH` set:
@@ -540,3 +545,62 @@ are `fixture-storage-population-parent.log`, `fixture-storage-population-parent-
 `fixture-storage-population-parent.json`. The parent float supplement covers the three fields
 excluded by its original integer/fixed-point test filter. Detailed joins and addresses stay in
 these retained reports; fixture-binding pitfalls are on [early observations](early-observations.md).
+
+## SDK-544 closing verification (SDK-665)
+
+On M451-hotfix (`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`) at `main`
+`6f643a1`, every SDK-544 check that applies to this build passes. The criteria follow the
+[AC4 amendment](numeric-conversion.md#float-and-short-fixture-storage-on-m451-hotfix-sdk-656)
+(2026-10-01) and the [AC3 amendment](durations.md#gaps) (2026-10-02).
+
+| Population | Result |
+| --- | --- |
+| Inventory | 164 registries; 2,170 commands (1,074 effects, 1,096 triggers) |
+| Numeric root fields | 184 in 63 registries: 0 complete, 184 partial, 0 failed |
+| Scoped registry destinations | 7: 0 complete, 7 partial, 0 failed |
+| Scoped command arguments | 302: 0 complete, 302 partial, 0 failed; storage 150 signed 32-bit integer, 152 signed 64-bit fixed point at scale 100000 |
+| Duration groups | 52: 28 complete, 24 partial, 0 failed; duration lists 627 known, 517 partial, 1,026 unresolved |
+| Registry field answers | 8 complete, 156 partial, 0 failed |
+| Command answers | Effects 248 / 819 / 7, triggers 119 / 975 / 2 (complete / partial / failed) |
+
+The scoped, duration and command reports are equal to the SDK-660 reports apart from elapsed
+times (`tools/population/compare.py`: no regression, no changed entry). The registry field sweep
+diff has no changed registry. The failure shapes are those of the
+[SDK-660 section](#member-confined-calls-sdk-660): for scoped operands, scoped-literal conversion
+boundaries and the qualified-scope and reference limit; for durations, 28 flag-update-frequency
+limits, 24 consumption limits and 21 `duration-scoped-literal` gaps.
+
+Property audit of the same reports:
+
+- Every numeric reader answer in the registry sweep, root and nested (388 read alternatives), has a
+  known representation, width and scale and a known literal or script-value capability; 20 have no
+  established range.
+- In the command inventory, 1,221 of 1,225 numeric reader positions have the same facts. The other
+  four are the command-level readers of `set_ai_armor_ratio`, `set_ai_shields_ratio`,
+  `set_ai_starbase_armor_ratio` and `set_ai_starbase_shields_ratio`: their numeric property is
+  unresolved, but each value form joins the shared fixed-point reader (`a9818fec780f8313`, signed
+  64-bit, scale 100000) with complete facts.
+- All 135 unit keys of the 52 duration groups join readers with a known representation, width,
+  scale, range and capability. The five days-only keys are signed 32-bit integers
+  (`add_intel_report` and `create_message` direct, the other three scoped).
+
+Checks run:
+
+- `cargo test --release`: 930 passed.
+- `cargo parity`: 32 passed.
+- Exact-build lib tests for numeric readers, boundaries, scoped operands, constructor storage
+  (35 destinations, 52 omitted counts), durations and fixture storage: 21 passed.
+- `cargo test --release --test numeric_scanner -- --ignored`: passed.
+- `cargo live fixture_numeric`, `cargo live fixture_scoped_numeric`, `cargo live stored_durations`
+  and `cargo live world_`: all 22 cases passed, including the 189-case conversion matrix, the
+  88-case scoped matrix (62 retained cases), flag expiry and the world numeric sessions.
+
+Five exact-build binding tests fail on this build and are outside the SDK-544 gate.
+`every_m45_named_candidate_has_one_initial_loader_entry`,
+`fixture_bindings_follow_reader_arguments_and_owner_symbols`,
+`m45_loaded_modifier_table_binds_by_symbol_with_each_generator_registry` and
+`nested_fixture_bindings_derive_owner_key_and_numeric_storage` assert M45-release addresses.
+`repeated_public_and_binding_queries_agree` compares the public field answer with an internal path
+that does not apply numeric and scoped facts. The template fixed-point storage of the nested test
+is covered on this build by `fixture_numeric_nested_projects`.
+[SDK-674](https://linear.app/unnamed-system/issue/SDK-674) owns all five.

@@ -102,6 +102,13 @@ integer 0 for 0.1 is the truncation of a fixed-point result in an integer destin
 The added modifiers were not visible in the statement after `add_modifier`; see the pitfall on
 the scoped numeric page.
 
+The named gaps in this table (SDK-625 and SDK-626 for resource amounts, SDK-607 for modifier
+grammar and authored entries, SDK-547 for application) are accepted limits at the closure of
+SDK-544. The modifier-entry join (shared reader `a9818fec780f8313`, the unchanged 64-bit store on
+both insertion capacity paths) is checked on M451-hotfix by `m45_numeric_reader_static_parity`
+against `tests/expected/numeric-m45/modifier-entry.json`. It does not resolve the shared reader's
+`numeric-overflow` and `numeric-external-library-conversion` limits.
+
 ## Verification
 
 ```sh
@@ -160,8 +167,26 @@ M451-hotfix population: 0 of 1,564 root fields and 0 of 38 exposed nested fields
 separately to `signed char`, `unsigned char`, `unsigned short`, `unsigned int`, `long long` and
 `unsigned long long`. The search cannot reach 982 unresolved member descriptions and does not
 establish universal absence. The [discovery population](discovery.md#float-and-short-fixture-storage-sdk-656)
-records the counts and reproducible commands. Parent SDK-544 criterion 4 remains unmet for these
-six readers until Jackson amends it. No amendment is made by this ticket.
+records the counts and reproducible commands.
+
+The [SDK-544 AC4 amendment](https://linear.app/unnamed-system/issue/SDK-544) of 2026-10-01 excludes
+these six readers from the live fixture requirement on M451-hotfix, on this bounded search. They
+keep their static checks and platform scanner samples. A later change that exposes one of them
+through a supported fixture route must add its boundary, fractional and malformed cases and the
+static/live conflict check. The five required kinds have these live cases:
+
+| Kind | Field | Live case |
+| --- | --- | --- |
+| `int` | `common/megastructures` `sensor_range` | `fixture_numeric_megastructures`, `fixture_numeric_conversion_matrix` |
+| Direct fixed point | `common/megastructures` `build_time`, `common/armies` `war_exhaustion` | `fixture_numeric_megastructures`, `fixture_numeric_armies`, `fixture_numeric_conversion_matrix` |
+| Template fixed point | `common/special_projects` nested `fleet_power` | `fixture_numeric_nested_projects`, `fixture_numeric_conversion_matrix` |
+| `float` | `common/star_classes` `icon_scale`; two `common/storm_types` fields | `fixture_numeric_conversion_matrix` |
+| `short` | `common/astral_actions` `unlock_threshold`, `usages`; five `common/sector_types` fields | `fixture_numeric_conversion_matrix` |
+
+Each kind has boundary, fractional and malformed inputs. Every observation requires the joined
+owner, source occurrence, parser return, storage and diagnostic window. `check_storage` in
+`tests/live/numeric.rs` fails the run when the static representation, width, scale or signedness
+differs from the observed storage.
 
 ## Boundary evidence on M451-hotfix (SDK-655)
 
@@ -348,9 +373,9 @@ NATIVE_SCANNER_REPORT=.local/sdk-655/scanner-platform.json cargo test --release 
 `numeric-overflow` and `numeric-external-library-conversion` stay for all 11 readers. Finite
 platform samples do not prove behavior for all overlong numbers, all lexical forms, other
 locales, or fixed-point arithmetic after scanning. The six readers without an exposed live field
-still have the SDK-656 fixture obstacle above. The three ranges above combine these platform
-checks with matched engine paths and live boundaries; the other eight remain unresolved. No
-parent-criterion amendment is made. Exact finite
+are excluded from the live requirement by the AC4 amendment above. The three ranges above combine
+these platform checks with matched engine paths and live boundaries; the other eight remain
+unresolved. Exact finite
 binary32 extrema also exceed every current `NumericBound` representation; the maintainer decision
 keeps that type unchanged and requires the specific float gap above.
 
@@ -396,7 +421,8 @@ the member return; its final fallback remains separate from the shared-reader ob
 
 The six unbound reader types listed under SDK-656 have platform scanner samples but no live
 field cases. Raw binary-lexer mode and internally constructed kind-`0x167` tokens have no new
-live claim. These limitations are not counted as successful coverage or amendments to SDK-544.
+live claim. These limitations are not counted as successful coverage; the AC4 amendment above
+accepts the six readers as exclusions, not as covered readers.
 
 Reproduce with `cargo live fixture_numeric` and `cargo live fixture_scoped_numeric`, one at a
 time. The reviewed numeric expectations are `tests/expected/numeric-m45/live.json`; mismatches

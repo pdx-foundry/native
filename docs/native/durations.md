@@ -59,8 +59,8 @@ are given under [remaining execute bodies](#remaining-execute-bodies).
 
 A positive count is therefore removed on its count-th update. Zero becomes -1 and is never
 removed, and so is any negative count. The country live omitted case observes operand 0 and
-factor 1, whose product is permanent under this countdown. The static method does not establish
-omitted counts from constructor bytes.
+factor 1, whose product is permanent under this countdown. The static omitted count 0 agrees; see
+[constructor state](#constructor-state-on-m451-hotfix).
 The expiry date also depends on how often each owner's update runs. `UpdateFlags` is called from
 `CGameState::DailyUpdate` lambdas and from many owner `UpdateFlags` methods, and the method does
 not establish that frequency. [SDK-650](https://linear.app/unnamed-system/issue/SDK-650) owns the
@@ -130,9 +130,9 @@ ARM64 slice `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
   scalar duration members.
   The event `days` path reads the operand at `+0xd8`; the shared numeric layout places a literal
   at operand `+0x200`, hence owner `+0x2d8`. The resolution `days` operand is at `+0x270`, whose
-  possible literal is owner `+0x470` under that layout. The command's concrete subtype is not
-  established by its constructor state. The shared selection bodies establish the common literal
-  offset independently of constructor bytes; this is a possible overlap, not a subtype recovery.
+  possible literal is owner `+0x470` under that layout. Constructor state (SDK-660) establishes
+  both `days` operands as signed 32-bit scoped integers, so the storage is known. The remaining
+  gap is the mix of scoped selection and scaled literal writes, not the storage.
   The event operand at `+0x2e0` is the separate random-delay operand, not the `days` operand.
   `CFireEventEffect::ExecuteActual` evaluates both `+0xd8` and `+0x2e0`, and uses the latter
   as a random-delay bound when the first is positive. Runtime event delays remain outside this ticket.
@@ -144,7 +144,7 @@ and scaled literal stores. The method reports the literal groups and a conservat
 (`duration-scoped-literal`) for each of the 21 commands. Their duration lists are partial in both
 static and live answers. `days` is not folded into those groups. Removal requires a shared proof
 that joins the whole scoped operand and reports the mixed selection behavior; a change to the
-public combination type needs the lead's decision. The parent criterion is not met for this mix.
+public combination type needs the lead's decision. The SDK-544 AC3 amendment accepts this gap.
 
 ### Remaining execute bodies
 
@@ -153,13 +153,13 @@ Both bodies match complete canonical shapes, including their validity guards and
 - `CSetTimedRelationFlagEffect::ExecuteActual` resolves `who`, creates or accesses the country
   relation, and checks its validity. It evaluates operand `+0x3f8`, loads factor `+0x600`, and
   passes their wrapping signed 32-bit product to `CPdxIntegerFlags::SetFlag` in mode zero.
-  Its flag consumer is `FlagCountdown`. The initial factor is unresolved, so the combination
-  has `duration-initial-state` and its omitted count is unresolved. Relation update frequency is
-  outside the static method.
+  Its flag consumer is `FlagCountdown`. Its initial factor is 1 and its omitted count is 0 (see
+  [constructor state](#constructor-state-on-m451-hotfix)). Relation update frequency is outside
+  the static method.
 - `CAddTimedTraitEffect::ExecuteActual` accesses and checks a leader, evaluates operand `+0xa8`,
   loads factor `+0x2e0`, and passes their wrapping signed 32-bit product to
   `CLeader::AddTimedTrait(CTrait const*, int)`. Its combination is the same shared-factor form
-  with initial factor 1; its omitted count is unresolved. This is not a flag store. Trait
+  with initial factor 1; its omitted count is 0. This is not a flag store. Trait
   consumption remains an `OutsideMethod` limit; no flag-countdown claim is made. The trait
   consumer is recorded under [modifier and trait consumers](#modifier-and-trait-consumers-on-m451-hotfix-sdk-672).
 
@@ -200,7 +200,8 @@ Duration lists are 627 known, 517 partial and 1,026 unresolved. `add_modifier` a
 `add_stage_modifier` became known, and one other list became partial. No command or registry
 candidate has an unclassified prefix or continuation. **26 commands have uncovered unit-named
 keys**: 21 have the scoped `days` mix above, and five have `days` without a factor sibling. The 21
-groups cover 42 `months` and `years` keys. These gaps do not amend SDK-544. Before/after counts are
+groups cover 42 `months` and `years` keys. The SDK-544 AC3 amendment accepts these limits; see
+[gaps](#gaps). Before/after counts are
 in the [discovery index](discovery.md#member-confined-calls-sdk-660). Run
 `cargo run --release --example duration-population` with `STELLARIS_PATH`;
 `.local/sdk-660/after/duration.json` holds each answer.
@@ -256,7 +257,7 @@ The M451-hotfix live table also covers these seven shapes:
 | --- | --- | --- |
 | `country_event`, `months = 2 years = 1` | literal word 360, partial group list | validation: deliberately missing event |
 | `has_passed_resolution`, `months = 2 years = 1` | literal word 360, partial group list | none |
-| `set_timed_relation_flag`, `months = 2 days = 3` | partial empty duration list; initial factor unproved | none |
+| `set_timed_relation_flag`, `months = 2 days = 3` | scoped literal 3, factor 30, partial group list | none |
 | `add_timed_trait`, `months = 2 days = 3` | scoped literal 3, factor 30, known group list | none |
 | `country_event`, omitted | literal word 0, the static omitted count | validation: deliberately missing event |
 | `add_stage_modifier`, omitted, astral rift scope | count -1, the static omitted count, known group list | none |
@@ -382,12 +383,12 @@ truncation and wrap. Consumer meaning is required only where a shared method pro
 - **Five `days`-only commands:** `add_casus_belli`, `add_intel_report`, `create_message`,
   `give_fleet` and `prolong_fleet_contract` have no factor sibling. Their numeric mechanisms do
   not distinguish a duration from an ordinary integer. No key-name rule is used. Each `days` key
-  stays an integer key with no duration group.
+  stays a numeric key with no duration group: `add_intel_report` and `create_message` read an
+  integer, the other three a scoped integer operand.
 - **21 mixed scoped/literal readers:** the 20 event effects and `has_passed_resolution` share
   literal storage between scoped `days` and scaled integer `months`/`years`. Each has the typed
-  `duration-scoped-literal` gap above. The constructor does not establish the subtype, so the
-  overlap remains conservative. Their `days` unit and mixed selection behavior are not
-  reported as established. Removal needs a shared whole-operand proof and a public
+  `duration-scoped-literal` gap above. The `days` storage is known, but its unit and the mixed
+  selection behavior are not reported as established. Removal needs a shared whole-operand proof and a public
   representation of the mixed selection.
 - **24 consumption limits:** the 21 stack-literal groups, `add_modifier`, `add_stage_modifier`
   and `add_timed_trait` keep `OutsideMethod` consumption. The modifier and trait consumers are
@@ -400,7 +401,7 @@ truncation and wrap. Consumer meaning is required only where a shared method pro
   expiry gap on 4.5.1 for its five cases; it does not establish relation or other owner frequencies.
 - Duration-list completeness still follows unknown child dispatch, reader joins and nested blocks.
   Accepted ranges and the live numeric widths are on [numeric conversion](numeric-conversion.md).
-  These limits do not amend the parent criterion.
+  These are typed limits of the method; AC3 does not require complete duration lists.
 
 ## Pitfalls
 
