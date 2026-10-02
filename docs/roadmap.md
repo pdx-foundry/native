@@ -180,7 +180,9 @@ Milestone 4 completes only when all of these hold:
    storage decoding belongs to SDK-544; SDK-598 blocks SDK-545's runtime weight checks; SDK-599
    blocks SDK-549's scope-availability check. SDK-542 and SDK-550 own any missing parser diagnostic
    hooks. Missing observations are unmet criteria, not static passes. Only Jackson may amend them.
-   Existing SDK-547 runtime/application bounds and SDK-550 expansion bounds remain the exclusions.
+   Existing SDK-547 runtime/application bounds and SDK-550 expansion bounds remain exclusions, with
+   the SDK-544 AC4 amendment (six unexposed integer readers) and AC3 amendment (duration parser
+   facts, not consumer meaning).
 3. **Method transfer:** each method runs unchanged over its full registry or command inventory,
    recording complete, partial and failed counts and distinct failure shapes. SDK-569 passes.
    Production registry validation follows the bound build; M45-release parity explicitly asserts

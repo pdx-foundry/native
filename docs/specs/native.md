@@ -369,7 +369,11 @@ storage decoding; SDK-598 supplies runtime weight observations for SDK-545; SDK-
 scope-availability observations for SDK-549. SDK-542 and SDK-550 include any diagnostic hooks
 needed for their accepted/rejected nesting and expansion fixtures. Missing capability is an unmet
 criterion, not a gap that permits the ticket to close. Existing SDK-547 runtime/application bounds
-and SDK-550 script-expansion bounds are the only accepted exclusions.
+and SDK-550 script-expansion bounds are accepted exclusions. Jackson amended SDK-544 twice: AC4
+(2026-10-01) excludes six integer readers with no exposed field from the live fixture requirement,
+and AC3 (2026-10-02) requires parser facts for durations, not consumer meaning. The
+[numeric conversion](../native/numeric-conversion.md) and [duration](../native/durations.md) pages
+record the accepted limits.
 
 Each method runs unchanged over its full discovered registry or command inventory, with complete,
 partial and failed counts and distinct failure shapes on the method's page in `docs/native/`
