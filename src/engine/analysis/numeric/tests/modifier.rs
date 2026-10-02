@@ -435,3 +435,35 @@ fn changing_either_capacity_paths_numeric_store_fails_the_boundary_proof() {
         "modifier-numeric-shared-reader"
     );
 }
+
+#[test]
+fn inherited_tokens_come_from_the_proven_member_shape() {
+    assert_eq!(
+        super::super::modifier::member_tokens(&input()).unwrap(),
+        super::super::modifier::MemberTokens {
+            name: 27,
+            data: 240
+        }
+    );
+    let mut input = input();
+    let comparison = input
+        .member
+        .iter_mut()
+        .find(|row| row.operation == "cmp" && row.operands == "w2,#0x1b")
+        .unwrap();
+    comparison.operands = "w2,#0x1d".into();
+    assert_eq!(
+        super::super::modifier::member_tokens(&input).unwrap(),
+        super::super::modifier::MemberTokens {
+            name: 29,
+            data: 240
+        }
+    );
+    let comparison = input
+        .member
+        .iter_mut()
+        .find(|row| row.operation == "cmp" && row.operands == "w2,#0x1d")
+        .unwrap();
+    comparison.operands = "w1,#0x1d".into();
+    assert!(super::super::modifier::member_tokens(&input).is_err());
+}

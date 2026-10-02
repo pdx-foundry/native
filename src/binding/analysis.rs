@@ -28,6 +28,9 @@ pub(crate) struct BoundAnalysis {
     /// Derived from the catalog's executable; every read checks the executable first.
     references: OnceLock<Result<ReferenceFacts, AnalysisError>>,
     numeric: OnceLock<Result<crate::engine::analysis::numeric::NumericFacts, AnalysisError>>,
+    modifier_blocks: OnceLock<
+        Result<crate::engine::analysis::modifier_blocks::ModifierBlockFacts, AnalysisError>,
+    >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
@@ -505,6 +508,7 @@ impl BoundAnalysis {
             families: OnceLock::new(),
             references: OnceLock::new(),
             numeric: OnceLock::new(),
+            modifier_blocks: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
         }
@@ -891,6 +895,32 @@ impl BoundAnalysis {
                 };
                 let input = binary::numeric::read(&image, recipe)?;
                 Ok(crate::engine::analysis::numeric::analyze(&input))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// Shared modifier grammar at each executable-bound address point.
+    pub(crate) fn modifier_block_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::modifier_blocks::ModifierBlockFacts, AnalysisError> {
+        let verified = self.verified()?;
+        self.modifier_blocks
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                let image = binary::references::Image {
+                    bytes: &verified.executable,
+                    symbols: &verified.catalog.symbols,
+                    strings: &verified.catalog.strings,
+                    pointers: &verified.catalog.pointers,
+                    imports: &verified.catalog.imports,
+                };
+                let input =
+                    binary::modifier_blocks::read(&image, &verified.catalog.candidates, recipe)?;
+                Ok(crate::engine::analysis::modifier_blocks::analyze(
+                    &input,
+                    self.numeric_facts()?,
+                ))
             })
             .as_ref()
             .map_err(Clone::clone)

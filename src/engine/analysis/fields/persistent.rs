@@ -10,14 +10,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const SPAN: u64 = 0x10000;
 
-pub(super) fn discover(
-    input: &FieldInput,
-    fields: &[RootField],
-) -> (
-    BTreeMap<i64, ConcreteReader>,
-    BTreeMap<i64, u64>,
-    Vec<FieldGap>,
-) {
+#[derive(Default)]
+pub(super) struct PersistentFields {
+    pub readers: BTreeMap<i64, ConcreteReader>,
+    pub points: BTreeMap<i64, u64>,
+    pub scoped: BTreeMap<i64, u64>,
+    pub gaps: Vec<FieldGap>,
+}
+
+pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFields {
     let offsets: BTreeSet<_> = fields
         .iter()
         .flat_map(|field| &field.readers)
@@ -37,10 +38,10 @@ pub(super) fn discover(
         .filter(|offset| (0..SPAN as i64 - 8).contains(offset))
         .collect();
     if offsets.is_empty() {
-        return (BTreeMap::new(), BTreeMap::new(), vec![]);
+        return PersistentFields::default();
     }
     let Some(binding) = &input.persistent else {
-        return (BTreeMap::new(), BTreeMap::new(), vec![]);
+        return PersistentFields::default();
     };
     let sections = ReadOnlyData::new(
         input
@@ -194,6 +195,7 @@ pub(super) fn discover(
         })
         .collect();
     let scoped = points
+        .clone()
         .into_iter()
         .filter(|(offset, _)| {
             fields.iter().flat_map(|field| &field.readers).any(|join| {
@@ -205,7 +207,12 @@ pub(super) fn discover(
             })
         })
         .collect();
-    (readers, scoped, gaps)
+    PersistentFields {
+        readers,
+        points,
+        scoped,
+        gaps,
+    }
 }
 
 fn intersect(agreement: &mut Option<BTreeMap<i64, u64>>, points: BTreeMap<i64, u64>) {

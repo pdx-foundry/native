@@ -97,7 +97,7 @@ fn reader_input(
     ))
 }
 
-fn modifier_input(
+pub(super) fn modifier_input(
     text: &Text<'_>,
     symbols: &[Symbol],
     names: &BTreeMap<u64, String>,

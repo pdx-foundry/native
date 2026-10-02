@@ -190,6 +190,12 @@ for contexts and scope types.
   date or update frequency. A partial list proves no absence. Older recordings default the
   property to unresolved.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
+- Constructor-bound root modifier fields expose `FieldMembers::ModifierBlock`: fixed keys with
+  reader kinds and numeric or static-modifier-reference entry forms. Each property may be partial
+  or unresolved. Numeric entries share the ordinary conversion facts; scripted modifier names
+  come from the registry's existing `modifier_families` answer. String reads do not establish
+  localisation-key existence. Runtime effects, repeated-block behavior, deferred completion and
+  nested modifier fields remain outside this grammar. See [modifier blocks](../native/modifier-blocks.md).
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
 - Atlas's published gaps carry a reason and owner category. Repair-ticket mappings live in docs,

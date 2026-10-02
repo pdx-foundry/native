@@ -87,8 +87,36 @@ pub(super) fn fields(
             };
             gap(gaps, subject, limits);
         }
-        if let FieldMembers::Fields(children) = &mut field.members {
-            fields(children, facts, &path, gaps);
+        match &mut field.members {
+            FieldMembers::Fields(children) => fields(children, facts, &path, gaps),
+            FieldMembers::ModifierBlock(block) => {
+                if let GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) =
+                    &mut block.fixed_keys
+                {
+                    fields(keys, facts, &path, gaps);
+                }
+                if let GrammarProperty::Known(entries) | GrammarProperty::Partial(entries) =
+                    &mut block.entries
+                {
+                    for entry in entries {
+                        if let crate::ModifierEntry::Numeric { value } = entry {
+                            let limits = attach_reader_facts(value, facts);
+                            if limits.incomplete {
+                                gap(
+                                    gaps,
+                                    if path.len() == 1 {
+                                        GapSubject::field(&field.name)
+                                    } else {
+                                        GapSubject::key_path(path.clone())
+                                    },
+                                    limits,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -410,5 +438,82 @@ mod tests {
                 GrammarProperty::Partial(Some(_))
             ));
         }
+    }
+    #[test]
+    fn modifier_children_and_entries_use_the_shared_normalization_pass() {
+        use crate::engine::analysis::fields::ReaderJoin;
+        use crate::{ModifierBlock, ModifierEntry};
+        let reader = |callee: &str| {
+            super::super::fields::reader(&[ReaderJoin::Joined {
+                callee: callee.into(),
+                arguments: Default::default(),
+                tail: false,
+            }])
+        };
+        let conversion = GrammarProperty::Partial(Some(NumericConversion::default()));
+        let facts = NumericFacts {
+            readers: ["CReader::Read(int&)", "CReader::Read(CFixedPoint&)"]
+                .into_iter()
+                .map(|callee| {
+                    (
+                        callee.into(),
+                        NumericReader {
+                            conversion: conversion.clone(),
+                            gaps: vec![Unresolved::new("numeric-overflow")],
+                        },
+                    )
+                })
+                .collect(),
+            ..NumericFacts::default()
+        };
+        let integer = numeric_field(reader("CReader::Read(int&)"));
+        let mut children: Vec<_> = ["icon", "custom_tooltip", "description"]
+            .into_iter()
+            .map(|name| {
+                let mut field = numeric_field(reader("CReader::Read(CString&, bool)"));
+                field.name = name.into();
+                field
+            })
+            .collect();
+        children.push(integer.clone());
+        let mut parent = numeric_field(reader("CReader::Read(CPersistent&)"));
+        parent.name = "modifier".into();
+        parent.members = FieldMembers::ModifierBlock(ModifierBlock {
+            fixed_keys: GrammarProperty::Partial(children),
+            entries: GrammarProperty::Known(vec![ModifierEntry::Numeric {
+                value: reader("CReader::Read(CFixedPoint&)"),
+            }]),
+        });
+        let mut gaps = vec![];
+        fields(std::slice::from_mut(&mut parent), &facts, &[], &mut gaps);
+        let mut outside = vec![integer];
+        fields(&mut outside, &facts, &[], &mut vec![]);
+        assert_eq!(parent.reader.numeric, GrammarProperty::Known(None));
+        let FieldMembers::ModifierBlock(block) = &parent.members else {
+            panic!()
+        };
+        let GrammarProperty::Partial(children) = &block.fixed_keys else {
+            panic!()
+        };
+        for child in &children[..3] {
+            assert_eq!(child.reader.numeric, GrammarProperty::Known(None));
+            assert_eq!(child.reader.scoped_operand, GrammarProperty::Known(None));
+            assert_eq!(child.reference, FieldReference::NotEstablished);
+        }
+        assert_eq!(children[3], outside[0]);
+        assert!(gaps.iter().any(|gap| gap.kind == GapKind::NumericConversion
+            && gap.subject == Some(GapSubject::field("modifier"))));
+        assert_eq!(
+            crate::Completeness::from_gaps(&gaps),
+            crate::Completeness::Partial
+        );
+        let GrammarProperty::Known(entries) = &block.entries else {
+            panic!()
+        };
+        let ModifierEntry::Numeric { value } = &entries[0] else {
+            panic!()
+        };
+        assert_eq!(value.numeric, conversion);
+        assert_eq!(value.scoped_operand, GrammarProperty::Known(None));
     }
 }

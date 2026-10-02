@@ -19,6 +19,7 @@ const MAX_PATH: usize = 500;
 const MAX_TABLE_ENTRIES: usize = 1024;
 
 /// Executable inputs shared by registry fields and command member dispatch.
+#[derive(Clone)]
 pub(crate) struct DispatchInput<'a> {
     functions: Vec<FunctionView<'a>>,
     key_readers: &'a super::KeyReaders,
@@ -26,8 +27,21 @@ pub(crate) struct DispatchInput<'a> {
     pub read_only_data: &'a [DataSection],
     pub reader_token_offset: Option<u64>,
     pub member_delegates: bool,
+    /// The constructor-proven owner address point and executable pointer slots.
+    pub owner_vtable: Option<(u64, &'a BTreeMap<u64, u64>)>,
+    /// Constructors whose body proves a wrapped owner pointer at this object offset.
+    pub serializer_constructors: Option<&'a BTreeMap<u64, i64>>,
 }
 impl<'a> DispatchInput<'a> {
+    pub(crate) fn with_owner_vtable(
+        &self,
+        owner_vtable: Option<(u64, &'a BTreeMap<u64, u64>)>,
+    ) -> Self {
+        Self {
+            owner_vtable,
+            ..self.clone()
+        }
+    }
     pub(crate) fn command(
         functions: &'a BTreeMap<u64, crate::engine::analysis::declarations::Function>,
         symbols: &'a [Symbol],
@@ -52,6 +66,8 @@ impl<'a> DispatchInput<'a> {
             read_only_data,
             reader_token_offset: Some(reader_token_offset),
             member_delegates: true,
+            owner_vtable: None,
+            serializer_constructors: None,
         }
     }
 }
@@ -81,6 +97,7 @@ enum Flags {
 #[derive(Clone)]
 struct State {
     stack: BTreeMap<i64, Value>,
+    serializer: Option<(i64, i64, i64)>,
     copied_tokens: BTreeSet<i64>,
     targets: BTreeSet<i64>,
     emplaced: BTreeSet<i64>,
@@ -495,7 +512,11 @@ fn apply(
     state: &mut State,
     entry: u64,
     reader_token_offset: Option<u64>,
+    wrapped_owner: Option<(i64, i64)>,
 ) -> Result<(), Unresolved> {
+    if matches!(row.operation.as_str(), "str" | "strb" | "stp") {
+        state.serializer = None;
+    }
     let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
     let unsupported = |reason| stop(reason, Obstacle::Unsupported);
     if let Some((destination, entry)) = table_load(row, state) {
@@ -638,6 +659,11 @@ fn apply(
                 };
                 // A load retains origin as a load, never as the original receiver or pointer.
                 let value = location.map(|v| {
+                    if let Some((slot, owner)) = wrapped_owner
+                        && width == 8 && v == Value::Owner(slot)
+                    {
+                        return Value::Owner(owner);
+                    }
                     if state.stored.is_some() && width == 8
                         && let Value::Stack(at) = &v
                         && let Some(saved) = state.saved_addresses.get(at)
@@ -729,7 +755,7 @@ fn apply(
             }
         }
         // Bit-field reads do not set flags; their result is not followed.
-        ("ubfx" | "and", [destination, ..]) => state.assign(destination, None),
+        ("ubfx" | "and" | "orr", [destination, ..]) => state.assign(destination, None),
         ("adrp" | "adr", [destination, address]) => {
             state.assign(destination, number(address).map(Value::Constant))
         }
@@ -762,6 +788,8 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
             read_only_data: &input.read_only_data,
             reader_token_offset: None,
             member_delegates: false,
+            owner_vtable: None,
+            serializer_constructors: None,
         },
         &root,
     )
@@ -772,8 +800,18 @@ pub(crate) fn explore_member(
     input: &DispatchInput<'_>,
     root: &str,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
+    explore_member_with_wrapped_owner(input, root, None, 0)
+}
+
+fn explore_member_with_wrapped_owner(
+    input: &DispatchInput<'_>,
+    root: &str,
+    wrapped_owner: Option<(i64, i64)>,
+    depth: usize,
+) -> (Vec<TokenPath>, Vec<FieldGap>) {
     let initial = State {
         stack: BTreeMap::new(),
+        serializer: None,
         copied_tokens: BTreeSet::new(),
         targets: BTreeSet::new(),
         emplaced: BTreeSet::new(),
@@ -848,6 +886,24 @@ pub(crate) fn explore_member(
             state.pc += 1;
             state.path.push(row.address);
             let args: Vec<_> = row.operands.split(',').collect();
+            if input.owner_vtable.is_some()
+                && matches!(row.operation.as_str(), "blr" | "br")
+                && !matches!(state.value(&row.operands), Some(Value::TableTarget { .. }))
+            {
+                let target = owner_virtual_target(input, &state, &row.operands);
+                let name = target.and_then(|address| names.get(&address).copied().flatten());
+                let outcome = call_outcome(
+                    name,
+                    &state,
+                    rejects,
+                    row.address,
+                    entry,
+                    row.operation == "br",
+                    input,
+                );
+                leaves.push(state.finish(row.address, outcome));
+                break;
+            }
             if row.operation == "ret"
                 && matches!(row.operands.as_str(), "" | "x30")
                 && let Some((join, _, _)) = &state.stored
@@ -865,6 +921,71 @@ pub(crate) fn explore_member(
                 {
                     state.pc = *index;
                     continue;
+                }
+                if let Some(slot) = target.and_then(|target| {
+                    input
+                        .serializer_constructors
+                        .and_then(|constructors| constructors.get(&target))
+                }) {
+                    if row.operation == "bl"
+                        && let (Some(Value::Stack(stack)), Some(Value::Owner(owner))) =
+                            (state.value("x0"), state.value("x1"))
+                    {
+                        state.serializer = Some((stack, *slot, owner));
+                        state.clobber_call();
+                        continue;
+                    }
+                    leaves.push(state.finish(
+                        row.address,
+                        PathOutcome::Reader(ReaderJoin::Missing(stop(
+                            "serializer-delegate",
+                            Obstacle::Call,
+                        ))),
+                    ));
+                    break;
+                }
+                if let Some((stack, slot, owner)) = state.serializer {
+                    let name = target.and_then(|address| names.get(&address).copied().flatten());
+                    if depth < 8
+                        && name.is_some_and(crate::engine::analysis::readers::is_member)
+                        && state.value("x0") == Some(Value::Stack(stack))
+                        && state.value("x1") == Some(Value::Reader(0))
+                        && matches!(state.value("x2"), Some(Value::Token | Value::TokenWord(0)))
+                    {
+                        let child_input = input.with_owner_vtable(None);
+                        let (children, gaps) = explore_member_with_wrapped_owner(
+                            &child_input,
+                            name.unwrap(),
+                            Some((slot, owner)),
+                            depth + 1,
+                        );
+                        tables.extend(gaps);
+                        for child in children {
+                            let Some(mut child) = super::member::inherit_path(
+                                child,
+                                state.domain,
+                                &state.conditions,
+                                &state.path,
+                            ) else {
+                                continue;
+                            };
+                            if let PathOutcome::Reader(ReaderJoin::Joined { tail, .. }) =
+                                &mut child.outcome
+                            {
+                                *tail &= row.operation == "b";
+                            }
+                            leaves.push(child);
+                        }
+                    } else {
+                        leaves.push(state.finish(
+                            row.address,
+                            PathOutcome::Reader(ReaderJoin::Missing(stop(
+                                "serializer-delegate",
+                                Obstacle::Call,
+                            ))),
+                        ));
+                    }
+                    break;
                 }
                 if state.stored.is_some() {
                     let touches = (0..=8)
@@ -998,7 +1119,13 @@ pub(crate) fn explore_member(
             } else if row.operation == "br" {
                 table_jump(row, &state, &rows, &indexes, input.read_only_data, entry)
             } else {
-                match apply(row, &mut state, entry, input.reader_token_offset) {
+                match apply(
+                    row,
+                    &mut state,
+                    entry,
+                    input.reader_token_offset,
+                    wrapped_owner,
+                ) {
                     Ok(()) => continue,
                     Err(unresolved) => Branching::gap(&state, row.address, unresolved),
                 }
@@ -1076,6 +1203,21 @@ fn call_outcome(
     tail: bool,
     input: &DispatchInput<'_>,
 ) -> PathOutcome {
+    if input.owner_vtable.is_some()
+        && name.is_some_and(|name| name.ends_with("::TryReadMember(CReader&, int)"))
+        && state.registers.get("x0") == Some(&Value::Owner(0))
+        && state.registers.get("x1") == Some(&Value::Reader(0))
+        && matches!(
+            state.registers.get("x2"),
+            Some(Value::Token | Value::TokenWord(0))
+        )
+    {
+        return PathOutcome::Reader(ReaderJoin::Joined {
+            callee: name.unwrap().into(),
+            arguments: state.registers.clone(),
+            tail,
+        });
+    }
     if name == Some("CReader::ReportUnexpected()")
         && state.registers.get("x0") == Some(&Value::Reader(0))
     {
@@ -1109,6 +1251,24 @@ fn call_outcome(
             Some(input.key_readers.value_token),
         ))
     }
+}
+
+fn owner_virtual_target(input: &DispatchInput<'_>, state: &State, operand: &str) -> Option<u64> {
+    let (point, pointers) = input.owner_vtable?;
+    if state.registers.get("x0") != Some(&Value::Owner(0)) {
+        return None;
+    }
+    let Value::Load(slot, 8) = state.value(operand)? else {
+        return None;
+    };
+    let (base, offset) = match slot.as_ref() {
+        Value::Offset(base, offset) => (base.as_ref(), *offset),
+        base => (base, 0),
+    };
+    if *base != Value::Load(Box::new(Value::Owner(0)), 8) || offset < 0 {
+        return None;
+    }
+    pointers.get(&point.checked_add(offset as u64)?).copied()
 }
 
 /// The paths on each side of the conditional branch `row`, each limited to the token
@@ -1537,10 +1697,194 @@ fn emplaced_destination(bindings: &super::KeyReaders, state: &State) -> Option<i
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::{assembler::arm64, declarations::Function};
+
+    #[test]
+    fn serializer_delegate_reads_the_constructor_wrapped_owner() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let member = "Serializer::ReadMember(CReader&, int)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: "constructor".into(),
+                address: 0x2000,
+            },
+            Symbol {
+                name: member.into(),
+                address: 0x3000,
+            },
+            Symbol {
+                name: "CReader::Read(CString&, bool)".into(),
+                address: 0x4000,
+            },
+        ];
+        let constructor =
+            arm64!(at 0x2000; adrp x8, extern 0x8000; add x8, x8, #0x10; stp x8, x1, [x0]; ret);
+        let rows = crate::engine::analysis::decode::decode_arm64(&constructor, 0x2000).unwrap();
+        let slot = super::super::serializer_owner_slot(&rows).unwrap();
+        let constructors = BTreeMap::from([(0x2000, slot)]);
+        for control in ["joined", "wrong-receiver", "non-owner", "overwritten"] {
+            let mut code = arm64!(at 0x1000;
+                mov x20, x1;
+                mov x19, x2;
+                add x1, x0, #0x40;
+                mov x0, sp;
+                bl extern 0x2000;
+                mov x0, sp;
+                mov x1, x20;
+                mov x2, x19;
+                bl extern 0x3000;
+                ret
+            );
+            match control {
+                "wrong-receiver" => {
+                    code[20..24].copy_from_slice(&arm64!(at 0x1014; add x0, sp, #0x10))
+                }
+                "non-owner" => code[8..12].copy_from_slice(&arm64!(at 0x1008; mov x1, x20)),
+                "overwritten" => {
+                    code[20..24].copy_from_slice(&arm64!(at 0x1014; str xzr, [sp, #8]))
+                }
+                _ => {}
+            }
+            let functions = BTreeMap::from([
+                (
+                    0x1000,
+                    Function {
+                        address: 0x1000,
+                        code,
+                    },
+                ),
+                (
+                    0x3000,
+                    Function {
+                        address: 0x3000,
+                        code: arm64!(at 0x3000; mov x8, x1; ldr x1, [x0, #8]; mov x0, x8; mov w2, #0; b extern 0x4000),
+                    },
+                ),
+            ]);
+            let readers = super::super::KeyReaders::default();
+            let mut input = DispatchInput::command(&functions, &symbols, &[], 0x38, &readers);
+            input.serializer_constructors = Some(&constructors);
+            let (paths, gaps) = explore_member(&input, root);
+            assert!(gaps.is_empty());
+            assert_eq!(paths.len(), 1);
+            if control == "joined" {
+                let PathOutcome::Reader(join @ ReaderJoin::Joined { tail: false, .. }) =
+                    &paths[0].outcome
+                else {
+                    panic!("{:?}", paths[0])
+                };
+                assert_eq!(
+                    crate::engine::analysis::readers::destination(join),
+                    Some(0x40)
+                );
+            } else {
+                assert!(
+                    matches!(
+                        paths[0].outcome,
+                        PathOutcome::Reader(ReaderJoin::Missing(_))
+                    ),
+                    "{control}: {:?}",
+                    paths[0]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn virtual_member_requires_the_proven_owner_slot_and_arguments() {
+        let root = "CExample::ReadMember(CReader&, int)";
+        let member = "CExample::TryReadMember(CReader&, int)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: member.into(),
+                address: 0x2000,
+            },
+        ];
+        let original = arm64!(at 0x1000;
+            ldr x8, [x0];
+            ldr x8, [x8, #0x40];
+            blr x8;
+            ret
+        );
+        for control in [
+            "joined",
+            "missing-point",
+            "missing-pointer",
+            "wrong-slot",
+            "non-owner",
+            "wrong-receiver",
+            "offset-receiver",
+            "wrong-reader",
+            "wrong-token",
+        ] {
+            let mut code = original.clone();
+            match control {
+                "wrong-slot" => code[4..8].copy_from_slice(&arm64!(at 0x1000; ldr x8, [x8, #0x48])),
+                "non-owner" => code[..4].copy_from_slice(&arm64!(at 0x1000; ldr x8, [x1])),
+                "wrong-receiver" => code
+                    .splice(8..8, arm64!(at 0x1000; mov x0, x1))
+                    .for_each(drop),
+                "offset-receiver" => code
+                    .splice(8..8, arm64!(at 0x1000; add x0, x0, #8))
+                    .for_each(drop),
+                "wrong-reader" => code
+                    .splice(8..8, arm64!(at 0x1000; mov x1, x0))
+                    .for_each(drop),
+                "wrong-token" => code
+                    .splice(8..8, arm64!(at 0x1000; mov w2, #7))
+                    .for_each(drop),
+                _ => {}
+            }
+            let functions = BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code,
+                },
+            )]);
+            let pointers = if control == "missing-pointer" {
+                BTreeMap::new()
+            } else {
+                BTreeMap::from([(0x8040, 0x2000)])
+            };
+            let key_readers = super::super::KeyReaders::default();
+            let mut input = DispatchInput::command(&functions, &symbols, &[], 0x38, &key_readers);
+            if control != "missing-point" {
+                input.owner_vtable = Some((0x8000, &pointers));
+            }
+            let (paths, gaps) = explore_member(&input, root);
+            assert!(gaps.is_empty());
+            assert_eq!(paths.len(), 1);
+            if control == "joined" {
+                assert!(
+                    matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, tail: false, .. }) if callee == member)
+                );
+            } else {
+                assert!(
+                    matches!(
+                        &paths[0].outcome,
+                        PathOutcome::Gap(_) | PathOutcome::Reader(ReaderJoin::Missing(_))
+                    ),
+                    "{control}: {:?}",
+                    paths[0]
+                );
+            }
+        }
+    }
+
     #[test]
     fn register_widths_preserve_only_valid_provenance() {
         let mut state = State {
             stack: BTreeMap::new(),
+            serializer: None,
             copied_tokens: BTreeSet::new(),
             targets: BTreeSet::new(),
             emplaced: BTreeSet::new(),

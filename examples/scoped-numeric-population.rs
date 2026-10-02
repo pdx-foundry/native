@@ -107,8 +107,19 @@ impl Population {
                     }
                 }
             }
-            if let FieldMembers::Fields(children) = &field.members {
-                self.fields(owner, children, &path, gaps);
+            match &field.members {
+                FieldMembers::Fields(children) => self.fields(owner, children, &path, gaps),
+                FieldMembers::ModifierBlock(block) => {
+                    if let Some(keys) = established(&block.fixed_keys) {
+                        self.fields(owner, keys, &path, gaps);
+                    }
+                    for entry in established(&block.entries).into_iter().flatten() {
+                        if let pdx_native::ModifierEntry::Numeric { value } = entry {
+                            self.reader(owner, &path, value, gaps);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }

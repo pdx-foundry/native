@@ -36,6 +36,14 @@ integer and fixed-point destinations; the constructor vtable point selects concr
 See [scoped numeric](scoped-numeric.md). Other unknown and missing readers retain field-specific
 typed gaps.
 
+## Modifier blocks
+
+Constructor-bound root fields with `family: Modifier` carry `FieldMembers::ModifierBlock`: named
+keys and entry forms, each with explicit partial or unresolved results. The block itself has
+`numeric: Known(None)`. Its fixed-key readers and numeric entry use the same conversion pass as
+ordinary fields. String readers make no localisation claim. See [modifier blocks](modifier-blocks.md)
+for the four variants, their shared identities and remaining gaps.
+
 ## Numeric properties
 
 SDK-644 adds a separate `Reader.numeric` property and the broad `Float` kind. The identity and

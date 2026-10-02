@@ -165,7 +165,7 @@ fn reachable_functions(
 
 /// The content directory of each database: the template join first, then the directory that the
 /// database's own loader enumerates.
-fn database_directories(
+pub(super) fn database_directories(
     text: &Text<'_>,
     image: &Image<'_>,
     candidates: &[NamedCandidate],

@@ -108,6 +108,7 @@ impl Layout<'_> {
     fn inline(&self, depth: usize, section: &str) -> bool {
         match self.name {
             "on-actions.json" | "game-rules.json" | "localization-declarations.json" => depth >= 2,
+            "modifier-blocks.json" => depth >= 4,
             "dynamic-names.json" => section == "gaps" || depth >= 3,
             "defines.json" => section == "samples" && depth >= 2,
             _ => false,

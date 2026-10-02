@@ -3,6 +3,106 @@ use pdx_native::*;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
+/// Field selections refer to the separately reviewed shared modifier grammar by reader identity.
+pub fn compact_fields(fields: &[Field]) -> Value {
+    json!(
+        fields
+            .iter()
+            .map(|field| {
+                let mut value = json!(field);
+                match &field.members {
+                    FieldMembers::ModifierBlock(_) => {
+                        value["members"] = json!({"ModifierBlock": field.reader.id})
+                    }
+                    FieldMembers::Fields(children) => {
+                        value["members"] = json!({"Fields": compact_fields(children)})
+                    }
+                    _ => {}
+                }
+                value
+            })
+            .collect::<Vec<_>>()
+    )
+}
+
+/// One representative of each constructor-bound modifier reader variant.
+pub fn modifier_blocks(native: &Native) -> super::Result<Value> {
+    let mut variants = BTreeMap::new();
+    for registry in [
+        "common/governments/councilors",
+        "common/council_agendas",
+        "common/megastructures",
+        "common/traditions",
+    ] {
+        let answer = native.registry_fields(registry)?;
+        let field = answer
+            .value
+            .iter()
+            .find(|field| field.reader.family == BlockFamily::Modifier)
+            .ok_or("modifier sample missing")?;
+        let FieldMembers::ModifierBlock(block) = &field.members else {
+            return Err(format!("{registry}: modifier grammar missing").into());
+        };
+        let keys = |fields: &[Field]| {
+            fields
+                .iter()
+                .map(|field| json!([field.name, field.reader.kind]))
+                .collect::<Vec<_>>()
+        };
+        let fixed_keys = match &block.fixed_keys {
+            GrammarProperty::Known(fields) => json!({"Known": keys(fields)}),
+            GrammarProperty::Partial(fields) => json!({"Partial": keys(fields)}),
+            GrammarProperty::Unresolved => json!("Unresolved"),
+        };
+        let gaps: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| match &gap.subject {
+                Some(GapSubject::Field { name }) => name == &field.name,
+                Some(GapSubject::KeyPath { path }) => path.first() == Some(&field.name),
+                _ => false,
+            })
+            .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+            .collect();
+        let id = serde_json::to_value(&field.reader.id)?
+            .as_str()
+            .ok_or("missing modifier identity")?
+            .to_owned();
+        variants.insert(
+            id,
+            json!({"fixed_keys":fixed_keys,"entries":block.entries,"gaps":gaps}),
+        );
+    }
+    Ok(json!(variants))
+}
+
+/// Equal public reader identities must describe the same modifier grammar.
+#[cfg(test)]
+pub fn check_modifier_identity(
+    variants: &mut BTreeMap<String, ModifierBlock>,
+    field: &Field,
+) -> super::Result<()> {
+    if let FieldMembers::ModifierBlock(block) = &field.members {
+        let id = field
+            .reader
+            .id
+            .as_ref()
+            .ok_or("modifier block has no reader identity")?;
+        let id = serde_json::to_value(id)?
+            .as_str()
+            .ok_or("invalid reader identity")?
+            .to_owned();
+        if let Some(previous) = variants.get(&id) {
+            if previous != block {
+                return Err(format!("modifier grammar differs for {}", field.name).into());
+            }
+        } else {
+            variants.insert(id.clone(), block.clone());
+        }
+    }
+    Ok(())
+}
+
 pub fn entry(context: &EntryContext) -> String {
     let scope = |scope: &EntryScope| match scope {
         EntryScope::Scope(reference) => reference.name.clone(),
@@ -180,4 +280,56 @@ pub fn compact_namespace(namespace: &pdx_native::DynamicNamespace) -> Value {
         "read_by": commands(&namespace.read_by),
         "dynamic_form": format!("{:?}", namespace.dynamic_form),
     })
+}
+
+#[cfg(test)]
+mod modifier_tests {
+    use super::*;
+
+    fn field() -> Field {
+        serde_json::from_value(json!({
+            "name":"modifier", "reader":{"id":"shared","kind":"Block","family":"Modifier"},
+            "shape":{"value":"Unknown","repeat":"Unknown"}, "read":[],
+            "members":{"ModifierBlock":{"fixed_keys":{"Known":[]},"entries":{"Known":[
+                {"Reference":{"target":{"Registry":{"name":"common/static_modifiers"}},"value":"FixedPoint"}}
+            ]}}}, "domain":"Unknown","default":"Unknown","uses":[]
+        })).unwrap()
+    }
+
+    #[test]
+    fn shared_identity_rejects_different_blocks() {
+        let field = field();
+        let mut variants = BTreeMap::new();
+        check_modifier_identity(&mut variants, &field).unwrap();
+        let mut other = field.clone();
+        other.name = "other_use".into();
+        check_modifier_identity(&mut variants, &other).unwrap();
+        let FieldMembers::ModifierBlock(block) = &mut other.members else {
+            unreachable!()
+        };
+        block.entries = GrammarProperty::Unresolved;
+        assert!(check_modifier_identity(&mut variants, &other).is_err());
+    }
+
+    #[test]
+    fn modifier_parity_rejects_removed_keys_and_changed_reference_kinds() {
+        let expected = json!({"shared":{
+            "fixed_keys":{"Partial":[["description","String"]]},
+            "entries":{"Known":[{"Reference":{"target":{"Registry":{"name":"common/static_modifiers"}},"value":"FixedPoint"}}]}
+        }});
+        let build = serde_json::from_value(json!("test-build")).unwrap();
+        let mut removed = expected.clone();
+        removed["shared"]["fixed_keys"]["Partial"] = json!([]);
+        let mut changed_kind = expected.clone();
+        changed_kind["shared"]["entries"]["Known"][0]["Reference"]["value"] = json!("Float");
+        for changed in [removed, changed_kind] {
+            let report = super::super::comparison::compare_static(
+                &build,
+                "modifier-blocks.json",
+                &serde_json::to_vec(&expected).unwrap(),
+                &serde_json::to_vec(&changed).unwrap(),
+            );
+            assert!(!report.passes());
+        }
+    }
 }

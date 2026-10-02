@@ -5,8 +5,8 @@ use super::{
     declarations::{self, CommandReader, DeclarationInput},
     discovery::Symbol,
     fields::{
-        self, Condition, DataSection, DispatchInput, FieldGap, PathOutcome, ReaderJoin, RootField,
-        Token, TokenPath, Value,
+        self, DataSection, DispatchInput, FieldGap, PathOutcome, ReaderJoin, RootField, Token,
+        TokenPath, Value,
     },
     stop::{Trace, Unresolved},
 };
@@ -362,10 +362,7 @@ fn analyze_reader_with_state(
                 }
             }
         }
-        let PathOutcome::Reader(ReaderJoin::Joined {
-            callee, arguments, ..
-        }) = &path.outcome
-        else {
+        let PathOutcome::Reader(ReaderJoin::Joined { callee, .. }) = &path.outcome else {
             nodes[node].record(&path, &input.tokens);
             leaves.push(path);
             continue;
@@ -402,33 +399,18 @@ fn analyze_reader_with_state(
             leaves.push(path);
             continue;
         }
-        let Some(Value::Owner(offset)) = arguments.get("x0") else {
-            nodes[node].ledger.push(LedgerEntry {
-                domain: path.domain,
-                disposition: ReaderNode::gap(
-                    path.domain,
-                    &input.tokens,
-                    Unresolved::new("delegate-receiver"),
-                ),
-            });
-            stops.push(Unresolved::new("delegate-receiver"));
-            leaves.push(path);
-            continue;
+        let (children, child_gaps) = match fields::follow_member(&dispatch, &path, &chain) {
+            Ok(children) => children,
+            Err(stop) => {
+                nodes[node].ledger.push(LedgerEntry {
+                    domain: path.domain,
+                    disposition: ReaderNode::gap(path.domain, &input.tokens, stop.clone()),
+                });
+                stops.push(stop);
+                leaves.push(path);
+                continue;
+            }
         };
-        if chain.len() >= DELEGATION_LIMIT || chain.contains(callee) {
-            nodes[node].ledger.push(LedgerEntry {
-                domain: path.domain,
-                disposition: ReaderNode::gap(
-                    path.domain,
-                    &input.tokens,
-                    Unresolved::new("grammar-delegation-limit"),
-                ),
-            });
-            stops.push(Unresolved::new("grammar-delegation-limit"));
-            leaves.push(path);
-            continue;
-        }
-        let (children, child_gaps) = fields::explore_member(&dispatch, callee);
         let child_node = nodes.len();
         nodes.push(ReaderNode::new(path.domain));
         nodes[child_node].table_gaps = child_gaps.len();
@@ -446,21 +428,7 @@ fn analyze_reader_with_state(
         gaps.extend(child_gaps);
         let mut chain = chain;
         chain.push(callee.clone());
-        for mut child in children {
-            child.domain = [
-                child.domain[0].max(path.domain[0]),
-                child.domain[1].min(path.domain[1]),
-            ];
-            if child.domain[0] > child.domain[1] {
-                continue;
-            }
-            translate(&mut child, *offset);
-            child
-                .conditions
-                .splice(0..0, path.conditions.iter().cloned());
-            child
-                .instructions
-                .splice(0..0, path.instructions.iter().copied());
+        for child in children {
             pending.push((child, chain.clone(), child_node));
         }
     }
@@ -733,36 +701,6 @@ fn initializer(input: &GrammarInput, vtable: u64) -> Result<String, Unresolved> 
     }
 
     Ok(names.first().unwrap().to_string())
-}
-
-fn translate(path: &mut TokenPath, offset: i64) {
-    for Condition { value: tested, .. } in &mut path.conditions {
-        if let Some(tested) = tested {
-            translate_value(tested, offset);
-        }
-    }
-    if let PathOutcome::Reader(ReaderJoin::Stored { destination, .. }) = &mut path.outcome {
-        *destination += offset;
-    }
-    if let PathOutcome::Reader(ReaderJoin::Joined { arguments, .. }) = &mut path.outcome {
-        for argument in arguments.values_mut() {
-            translate_value(argument, offset);
-        }
-    }
-}
-
-fn translate_value(value: &mut Value, offset: i64) {
-    match value {
-        Value::Owner(at) => *at += offset,
-        Value::Load(base, _) | Value::Offset(base, _) | Value::EqualsAny(base, _) => {
-            translate_value(base, offset)
-        }
-        Value::Indexed(base, index, _) | Value::SumProduct(base, index, _) => {
-            translate_value(base, offset);
-            translate_value(index, offset);
-        }
-        _ => {}
-    }
 }
 
 #[cfg(test)]

@@ -49,7 +49,8 @@ pub use engine::operations::registry_items::GameReadiness;
 pub use field::{
     EmptyKey, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
     FieldReadOutcome, FieldReference, FieldShape, FieldUse, FieldUseId, KeyMatch, LookupStage,
-    MissingResult, ReferenceLookup, ReferenceTarget, RepeatBehavior, ValueShape,
+    MissingResult, ModifierBlock, ModifierEntry, ReferenceLookup, ReferenceTarget, RepeatBehavior,
+    ValueShape,
 };
 pub use fixture::{
     DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,

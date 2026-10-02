@@ -2,7 +2,7 @@
 //! store, so a constant alone cannot establish a scale. Bound scanner contracts establish
 //! partial literal forms; library edge cases and lexer acceptance remain unresolved.
 use std::collections::BTreeMap;
-mod modifier;
+pub(crate) mod modifier;
 pub(crate) use modifier::ModifierInput;
 pub use modifier::ModifierNumericEntry;
 

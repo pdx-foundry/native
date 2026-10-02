@@ -1255,7 +1255,9 @@
  {
   "default": "Unknown",
   "domain": "Unknown",
-  "members": "Unresolved",
+  "members": {
+   "ModifierBlock": "1c2988588f7e8eaa"
+  },
   "name": "modifier",
   "read": [
    {
