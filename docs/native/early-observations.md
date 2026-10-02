@@ -1,5 +1,13 @@
 # Injection and observations before registration/parsing
 
+The registration-entry and category-read public route was retired by the 2026-10-02
+[simplification review](../design/simplification-review.md). The implementation and its live
+controls remain in Git at `d8f9d8ab337d10c9e920caeb02fc651f53b78042`. The findings below remain
+engine knowledge. The current category control requests field outcomes with parsing for
+`tree_template` and `traditions`, checking source lines, shared owner, entries and returns.
+The generic field-outcome method replaces the fixed category tokens and locality exception.
+
+
 SDK-483 was accepted on 2026-09-17 for M45-observe. The experiment is `4188faf564b8609fde747da09bd4b8db8045b315`, branch `prototype/sdk-483-early-observations`. The retained source and evidence are in `typed-extraction/typed-extraction/early-observation-prototype/`.
 
 ## Qualified sequence

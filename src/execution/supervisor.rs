@@ -195,11 +195,7 @@ fn run(
             return Err(SupervisorError("Conflicting ordinary game instance".into()));
         }
         prepare_profile(&work)?;
-        if let Some(world) = &request.world {
-            prepare_world_profile(&work, world)?;
-        } else {
-            plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
-        }
+        plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
         if !plan.session_content_unchanged(&request.registries, &content) {
             return Err(SupervisorError(
                 "Registry content changed during profile preparation".into(),
@@ -246,10 +242,7 @@ fn run(
                 attempt: &report.attempt,
                 registries: request.registries.clone(),
                 fixture: request.fixture.as_ref(),
-                category_fields: plan.category_fields(),
                 loaded_modifiers: request.loaded_modifiers.as_deref(),
-                world: request.world.as_ref(),
-                world_variable_scale: plan.world_variable_scale(),
                 build: crate::BuildId(request.build.clone()),
                 startup: Duration::from_secs(request.startup_seconds),
                 idle: Duration::from_secs(request.idle_seconds),
@@ -343,12 +336,8 @@ struct Session<'a> {
     registries: Vec<String>,
     fixture: Option<&'a crate::FixtureRequest>,
     /// The field tokens that the bound category fixture window reads.
-    category_fields: &'a [crate::protocol::observation::FixtureFieldBinding],
     /// The registries whose item keys the modifier observation reads, when it is requested.
     loaded_modifiers: Option<&'a [String]>,
-    world: Option<&'a crate::WorldRequest>,
-    /// The scale that every observed world variable must carry.
-    world_variable_scale: Option<u64>,
     build: crate::BuildId,
     startup: Duration,
     idle: Duration,
@@ -419,7 +408,6 @@ fn observe_session(
                     ));
                 }
                 child.identity()?;
-                let paused_thread = witness.thread;
                 events.record(OwnerEvent::GamePauseConfirmed {
                     pid: u64::from(child.pid()),
                     returned: witness.returned,
@@ -442,32 +430,6 @@ fn observe_session(
                                     .into(),
                             )
                         })?;
-                let world = match (readiness, session.world) {
-                    (crate::GameReadiness::PausedDuringRegistryInitialization, Some(_)) => {
-                        return Ok(SessionOutcome::TimedOut);
-                    }
-                    (crate::GameReadiness::PausedInWorld, Some(request)) => {
-                        let raw = files::read_bounded(
-                            &session.work_directory.join("world.json"),
-                            4 * 1024 * 1024,
-                        )?;
-                        Some(crate::engine::operations::world::answer(
-                            serde_json::from_slice(&raw)?,
-                            request,
-                            session.world_variable_scale,
-                            session.attempt,
-                            child.pid(),
-                            paused_thread,
-                            session.build.clone(),
-                        )?)
-                    }
-                    (crate::GameReadiness::PausedInWorld, None) | (_, Some(_)) => {
-                        return Err(SupervisorError(
-                            "world pause and prepared observation disagree".into(),
-                        ));
-                    }
-                    (_, None) => None,
-                };
                 let registries: std::collections::BTreeMap<_, _> = session
                     .registries
                     .iter()
@@ -479,7 +441,6 @@ fn observe_session(
                 let fixture = session.fixture.map(|request| {
                     crate::engine::operations::fixture::reduce(
                         request,
-                        session.category_fields,
                         &records,
                         events.all(),
                         session.build.clone(),
@@ -507,10 +468,9 @@ fn observe_session(
                     fixture.as_ref(),
                     modifiers.as_ref(),
                 ));
-                content_loaded = readiness == crate::GameReadiness::PausedAfterContentLoad;
+                content_loaded = readiness == crate::GameReadiness::AfterContentLoad;
                 output.send(Reply::Paused {
                     readiness,
-                    world: Box::new(world),
                     fixture: Box::new(fixture),
                     modifiers: Box::new(modifiers),
                     registries: registries.clone(),
@@ -581,15 +541,6 @@ fn observe_session(
                         result: Err(error),
                     })?,
                 }
-            }
-            Ok(Input::Control(Control::ReadWorld { request })) => {
-                if answers.is_none() || session.world.is_none() || checking.is_some() {
-                    return Err(SupervisorError(
-                        "world read outside an idle world pause".into(),
-                    ));
-                }
-                output.send(Reply::ObservationRead { request })?;
-                deadline = Instant::now() + session.idle;
             }
             Ok(Input::Control(Control::ReadRegistry { name, request })) => {
                 if checking.is_some() {
@@ -692,29 +643,6 @@ fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
     Ok(())
 }
 
-/// Copy a bounded save into the private profile and select the engine's continue-save route.
-fn prepare_world_profile(
-    work: &Path,
-    request: &crate::WorldRequest,
-) -> Result<(), SupervisorError> {
-    let raw = files::read_bounded(&request.save, 16 * 1024 * 1024)?;
-    let profile = work.join("profile");
-    let save_root = profile.join("save games");
-    binding::private_directory(&save_root)?;
-    let saves = save_root.join("native_world");
-    binding::private_directory(&saves)?;
-    files::write_new(&saves.join("fixture.sav"), &raw)?;
-    files::write_json(
-        &profile.join("continue_game.json"),
-        &serde_json::json!({
-            "title": "save games/native_world/fixture",
-            "desc": "Native prepared world",
-            "date": ""
-        }),
-    )?;
-    Ok(())
-}
-
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 mod tests {
     use super::*;
@@ -729,36 +657,6 @@ mod tests {
         root
     }
 
-    #[test]
-    fn world_profile_preserves_source_and_supplies_every_continue_metadata_string() {
-        let root = store();
-        let source = root.path().join("source.sav");
-        fs::write(&source, b"game-produced save").unwrap();
-        let request = crate::WorldRequest {
-            save: source.clone(),
-            country: "Earth".into(),
-            effect: String::new(),
-            days: 0,
-            flags: vec![],
-            variables: vec![],
-        };
-        prepare_profile(root.path()).unwrap();
-        prepare_world_profile(root.path(), &request).unwrap();
-        let profile = root.path().join("profile");
-        assert_eq!(fs::read(&source).unwrap(), b"game-produced save");
-        assert_eq!(
-            fs::read(profile.join("save games/native_world/fixture.sav")).unwrap(),
-            fs::read(&source).unwrap()
-        );
-        let metadata: serde_json::Value =
-            serde_json::from_slice(&fs::read(profile.join("continue_game.json")).unwrap()).unwrap();
-        for key in ["title", "desc", "date"] {
-            assert!(
-                metadata[key].is_string(),
-                "continue metadata requires {key}"
-            );
-        }
-    }
     fn reserve(root: &Path, attempt: &str, output: &Path) -> Result<Reservation, SupervisorError> {
         Reservation::reserve(
             binding::test_reservation(root)?,
@@ -841,10 +739,7 @@ mod tests {
                 attempt: "unit",
                 registries: vec![registry.into()],
                 fixture: None,
-                category_fields: &[],
                 loaded_modifiers: worker.contains("SDK_CHECK_MODE").then_some(&[][..]),
-                world: None,
-                world_variable_scale: None,
                 build: crate::BuildId("unit".into()),
                 startup: Duration::from_secs(3),
                 idle,
@@ -1140,7 +1035,7 @@ exec sleep 30
         };
         assert_eq!(
             *readiness,
-            crate::GameReadiness::PausedAfterRegistryInitialization
+            crate::GameReadiness::AfterRegistryInitialization
         );
         assert_eq!(registries[registry].observed, Observed::Complete);
         assert!(registries[registry].items.is_empty());

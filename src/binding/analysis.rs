@@ -950,13 +950,13 @@ impl BoundAnalysis {
         verified.scoped_numeric_input(recipe)
     }
 
-    /// The flag setter, the flag update and the timed-flag execute body, decoded.
+    /// The timed-flag execute body, decoded.
     #[cfg(test)]
-    pub(crate) fn duration_bodies_for_test(
+    pub(crate) fn duration_execute_for_test(
         &self,
-    ) -> Result<binary::durations::Bodies, AnalysisError> {
+    ) -> Result<Vec<crate::engine::analysis::decode::Instruction>, AnalysisError> {
         let verified = self.verified()?;
-        binary::durations::bodies(&verified.executable, &verified.catalog.symbols)
+        binary::durations::execute_body(&verified.executable, &verified.catalog.symbols)
             .ok_or(AnalysisError::InvalidRange)
     }
 

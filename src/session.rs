@@ -130,9 +130,8 @@ impl Native {
         binding.blocking_reasons(self.target_integrity(binding), false)
     }
     /// Start a supervised game and wait until it is paused after its registries load, or after
-    /// all content loads with `GameOptions::loaded_modifiers`. `GameOptions::world` loads a
-    /// private save and returns after its prepared observation at a normal world update pause.
-    /// With recorded answers, no process starts; the prepared fixture or world selects its recording.
+    /// all content loads with `GameOptions::loaded_modifiers`. With recorded answers, no process
+    /// starts; the prepared fixture selects its recording.
     ///
     /// Dropping this future requests cleanup. No async runtime owns the process: an independent
     /// thread and the supervisor do, so cleanup continues if the caller is lost.
@@ -144,24 +143,15 @@ impl Native {
         if let Some(fixture) = &options.fixture {
             fixture.validate()?;
         }
-        if let Some(world) = &options.world {
-            world.validate()?;
-        }
         let (binding, recorder) = match &self.backend {
             Backend::Recorded(answers) => {
-                return Ok(crate::Game::recorded(
-                    answers.clone(),
-                    options.fixture,
-                    options.world,
-                ));
+                return Ok(crate::Game::recorded(answers.clone(), options.fixture));
             }
             Backend::Live { binding, recorder } => (binding, recorder),
         };
-        if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.startup_seconds)
-            || !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.idle_seconds)
-        {
+        if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.startup_seconds) {
             return Err(Error::Startup {
-                reason: "Startup and idle budgets must be 1 to 180 seconds".into(),
+                reason: "Startup budget must be 1 to 180 seconds".into(),
                 disposal: Disposal::NotApplicable,
             });
         }
@@ -171,13 +161,7 @@ impl Native {
                 reason: "this build has no fixture observation recipe".into(),
             });
         }
-        if options.world.is_some() && !binding.has_world_method() {
-            return Err(Error::Unsupported {
-                operation: Operation::ObserveWorld,
-                reason: "this build has no ready world observation recipe".into(),
-            });
-        }
-        let reasons = if options.registries.is_some() {
+        let reasons = if options.loader_registry.is_some() || options.fixture.is_some() {
             self.selected_blocking_reasons(binding)
         } else {
             self.blocking_reasons(binding)
@@ -187,14 +171,12 @@ impl Native {
         }
         if !reasons.is_empty() {
             return Err(Error::Unsupported {
-                operation: if options.world.is_some() {
-                    Operation::ObserveWorld
-                } else if options.loaded_modifiers {
+                operation: if options.loaded_modifiers {
                     Operation::LoadedModifiers
                 } else if options.fixture.is_some() {
                     Operation::ObserveFixture
                 } else {
-                    Operation::RegistryItems
+                    Operation::Registries
                 },
                 reason: format!("{reasons:?}"),
             });
@@ -206,23 +188,18 @@ impl Native {
             // A failure leaves every check's duration table empty, so its answer is partial.
             let _ = analysis.prepare_script_durations();
         }
-        let registries = options
-            .registries
-            .clone()
-            .unwrap_or_else(|| binding.default_registries());
+        let mut registries = match &options.loader_registry {
+            Some(registry) => vec![registry.clone()],
+            None => binding.default_registries(),
+        };
         if let Some(fixture) = &options.fixture
-            && !registries.iter().any(|name| name == fixture.registry())
             && !binding
                 .analysis
                 .as_ref()
                 .is_some_and(|analysis| analysis.has_inline_fixture(fixture.registry()))
+            && !registries.iter().any(|name| name == fixture.registry())
         {
-            return Err(Error::FixtureRequest {
-                reason: format!(
-                    "select {} in GameOptions::registries to observe this fixture",
-                    fixture.registry()
-                ),
-            });
+            registries.push(fixture.registry().into());
         }
         let known: std::collections::BTreeSet<_> = self
             .registries()?
@@ -268,7 +245,6 @@ impl Native {
             work,
             keep_work: options.keep_work_directory,
             fixture: options.fixture,
-            world: options.world,
             modifiers,
             binding: binding.clone(),
         };
@@ -276,7 +252,7 @@ impl Native {
     }
 }
 
-/// The supervisor's request for one live session. A fixture's deadline also bounds startup.
+/// The supervisor's request for one live session, with a fixed idle timeout.
 fn session_request(
     binding: &Binding,
     options: &crate::GameOptions,
@@ -284,24 +260,50 @@ fn session_request(
     work: &std::path::Path,
     modifiers: Option<&ModifierJoin>,
 ) -> crate::protocol::session::SessionRequest {
-    let startup_seconds = options
-        .fixture
-        .as_ref()
-        .map_or(options.startup_seconds, |fixture| {
-            options.startup_seconds.min(fixture.deadline_seconds)
-        });
-
     crate::protocol::session::SessionRequest {
         installation: binding.installation_location(),
         build: binding.build().into(),
         // The supervisor creates this directory; `work` holds nothing else.
         work_directory: work.join("session"),
-        startup_seconds,
-        idle_seconds: options.idle_seconds,
+        startup_seconds: options.startup_seconds,
+        idle_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
         registries: registries.to_vec(),
         fault: options.fault.clone(),
         fixture: options.fixture.clone(),
         loaded_modifiers: modifiers.map(ModifierJoin::registries),
-        world: options.world.clone(),
     }
+}
+
+/// Run one bounded loader-rule control for Native's development tests.
+/// The result is an initial-load key observation; no recording or persistent game is returned.
+pub async fn check_registry_load(
+    native: &Native,
+    mut options: crate::GameOptions,
+    registry: &str,
+) -> Result<crate::Answer<Vec<String>>, crate::Error> {
+    if matches!(native.backend, Backend::Recorded(_)) {
+        return Err(crate::Error::Unsupported {
+            operation: crate::Operation::Registries,
+            reason: "loader controls require a live installation".into(),
+        });
+    }
+    if let Some(fixture) = &options.fixture {
+        fixture.validate()?;
+    }
+    let registry = registry.trim_end_matches('/');
+    if options.loaded_modifiers
+        || options
+            .fixture
+            .as_ref()
+            .is_some_and(|fixture| fixture.registry() != registry)
+    {
+        return Err(crate::Error::FixtureRequest {
+            reason: "loader controls observe one registry and its optional fixture".into(),
+        });
+    }
+    options.loader_registry = Some(registry.into());
+    let mut game = native.start_game(options).await?;
+    let result = game.loader_items(registry).await;
+    game.close().await?;
+    result
 }

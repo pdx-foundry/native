@@ -29,7 +29,7 @@
 //! game and supervisor process that a case started is gone when the case ends.
 use pdx_native::internals::{ObservationControl as Fault, ObservationTarget};
 use pdx_native::{
-    Answer, Basis, Completeness, Disposal, Error, Game, GameOptions, GameReadiness, GapKind, Native,
+    Answer, Basis, Completeness, Disposal, Error, Game, GameOptions, GapKind, Native,
 };
 use std::{
     collections::BTreeSet,
@@ -42,10 +42,6 @@ const TRADITIONS: &str = "common/traditions";
 const CATEGORIES: &str = "common/tradition_categories";
 const ASCENSION_PERKS: &str = "common/ascension_perks";
 const RELICS: &str = "common/relics";
-const MAP_GALAXY: &str = "map/galaxy";
-const CIVICS: &str = "common/governments/civics";
-const GAME_SCENARIOS: &str = "common/game_scenarios";
-const MAP_MODES: &str = "common/map_modes";
 /// The registries whose database generators register modifier families (SDK-540), with the
 /// item counts of the catalogued M45 build.
 const GENERATOR_REGISTRIES: [(&str, usize); 6] = [
@@ -56,9 +52,6 @@ const GENERATOR_REGISTRIES: [(&str, usize); 6] = [
     ("common/situations", 90),
     ("common/zones", 146),
 ];
-/// Item counts of the catalogued M45 build.
-const ITEM_COUNTS: [(&str, usize); 3] =
-    [(TRADITIONS, 234), (CATEGORIES, 33), (ASCENSION_PERKS, 49)];
 
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
@@ -131,22 +124,6 @@ fn main() {
     let mut failed = Vec::new();
     println!("running {} live cases, one at a time", cases.len());
     for (name, case) in cases {
-        if matches!(
-            case,
-            Case::WorldReady
-                | Case::WorldExpiry
-                | Case::WorldRejected
-                | Case::WorldWrongCountry
-                | Case::WorldFailure(_)
-                | Case::WorldCancel
-                | Case::WorldNumeric(_)
-        ) && !matches!(
-            native.supports(pdx_native::Operation::ObserveWorld),
-            pdx_native::Support::Supported
-        ) {
-            println!("test {name} ... skipped: this build has no world observation support");
-            continue;
-        }
         let before = game_processes();
         if !before.is_empty() {
             // Never start a second game, and never touch a game that is not ours.
@@ -188,32 +165,15 @@ fn main() {
 }
 
 enum Case {
-    WorldExpiry,
-    WorldRejected,
-    WorldWrongCountry,
-    WorldReady,
-    WorldFailure(Fault),
-    WorldCancel,
-    /// One session of the world numeric table, by its name.
-    WorldNumeric(&'static str),
-    WorldNumericStored,
+    ScriptNumericStored,
     StoredDurations,
     ScriptArguments,
     ScriptAttribution,
     ScriptDeepNesting,
     ScriptAccessFailure,
-    Normal,
-    InvalidSelection,
-    OutsideCommon,
-    LateOnly,
-    NonstandardKey,
-    GeneratorRegistries,
-    RecordedRoundTrip,
+    LoaderFixture,
+    LoadedModifierKeyLayouts,
     Fixture(Fault),
-    FixtureOutsideSelection,
-    FixtureSelection(pdx_native::FixtureObservationKind),
-    FixtureRegistrationDropped,
-    FixtureLaterRegistryDropped,
     FixtureTimeout,
     FixtureRefusal,
     FixtureOutcome(FixtureOutcomeCase),
@@ -244,7 +204,6 @@ enum Case {
         samples: Vec<ValidationSample>,
     },
     StartupTimeout,
-    Cancel,
     DropWithoutClose,
     Fault {
         registry: &'static str,
@@ -314,7 +273,6 @@ enum FixtureOutcomeCase {
     Omitted,
     Repeated,
     Malformed,
-    Runtime,
     UnknownField,
     SameOwner,
     CategoryUnsupported,
@@ -326,44 +284,7 @@ enum FixtureOutcomeCase {
 
 fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
-        ("world_ready".to_owned(), Case::WorldReady),
-        ("world_expiry".to_owned(), Case::WorldExpiry),
-        ("world_rejected".to_owned(), Case::WorldRejected),
-        ("world_wrong_country".to_owned(), Case::WorldWrongCountry),
-        (
-            "world_missing_hook".to_owned(),
-            Case::WorldFailure(Fault::MissingHook),
-        ),
-        (
-            "world_worker_loss".to_owned(),
-            Case::WorldFailure(Fault::WorkerLoss),
-        ),
-        (
-            "world_access_failure".to_owned(),
-            Case::WorldFailure(Fault::AccessFailure),
-        ),
-        ("world_cancel".to_owned(), Case::WorldCancel),
-        (
-            "world_numeric_operands".to_owned(),
-            Case::WorldNumeric("operands"),
-        ),
-        (
-            "world_numeric_selection".to_owned(),
-            Case::WorldNumeric("selection"),
-        ),
-        (
-            "world_numeric_qualified".to_owned(),
-            Case::WorldNumeric("qualified"),
-        ),
-        (
-            "world_numeric_resources".to_owned(),
-            Case::WorldNumeric("resources"),
-        ),
-        (
-            "world_numeric_fallback".to_owned(),
-            Case::WorldNumeric("fallback"),
-        ),
-        ("world_numeric_stored".to_owned(), Case::WorldNumericStored),
+        ("script_numeric".to_owned(), Case::ScriptNumericStored),
         ("stored_durations".to_owned(), Case::StoredDurations),
         ("script_arguments".to_owned(), Case::ScriptArguments),
         ("script_attribution".to_owned(), Case::ScriptAttribution),
@@ -372,7 +293,11 @@ fn cases() -> Vec<(String, Case)> {
             "script_access_failure".to_owned(),
             Case::ScriptAccessFailure,
         ),
-        ("normal".to_owned(), Case::Normal),
+        ("loader_fixture".to_owned(), Case::LoaderFixture),
+        (
+            "loaded_modifier_key_layouts".to_owned(),
+            Case::LoadedModifierKeyLayouts,
+        ),
         ("loaded_modifiers".to_owned(), Case::LoadedModifiers),
         (
             "loaded_modifiers_worker_loss".to_owned(),
@@ -382,19 +307,8 @@ fn cases() -> Vec<(String, Case)> {
             "loaded_modifiers_missing_registry_hook".to_owned(),
             Case::LoadedModifiersMissingRegistryHook,
         ),
-        ("invalid_selection".to_owned(), Case::InvalidSelection),
-        ("outside_common".to_owned(), Case::OutsideCommon),
-        ("late_only".to_owned(), Case::LateOnly),
-        ("nonstandard_key".to_owned(), Case::NonstandardKey),
-        ("generator_registries".to_owned(), Case::GeneratorRegistries),
-        ("recorded_round_trip".to_owned(), Case::RecordedRoundTrip),
         ("startup_timeout".to_owned(), Case::StartupTimeout),
-        ("cancel".to_owned(), Case::Cancel),
         ("drop_without_close".to_owned(), Case::DropWithoutClose),
-        (
-            "fixture_outside_selection_is_rejected".to_owned(),
-            Case::FixtureOutsideSelection,
-        ),
     ];
     let faults = [
         ("missing_hook", Fault::MissingHook, Expect::NoAnswer),
@@ -448,10 +362,6 @@ fn cases() -> Vec<(String, Case)> {
     ] {
         cases.push((format!("fixture_{name}"), Case::Fixture(control)));
     }
-    cases.push((
-        "fixture_registration_only".into(),
-        Case::FixtureSelection(pdx_native::FixtureObservationKind::RegistrationEntries),
-    ));
     cases.push((
         "fixture_transfer_string_reader".into(),
         Case::FixtureTransfer,
@@ -707,18 +617,6 @@ fn cases() -> Vec<(String, Case)> {
             ],
         },
     ));
-    cases.push((
-        "fixture_field_reads_only".into(),
-        Case::FixtureSelection(pdx_native::FixtureObservationKind::CategoryFieldReads),
-    ));
-    cases.push((
-        "fixture_registration_dropped_record".into(),
-        Case::FixtureRegistrationDropped,
-    ));
-    cases.push((
-        "fixture_later_registry_dropped_record".into(),
-        Case::FixtureLaterRegistryDropped,
-    ));
     cases.push(("fixture_timeout".into(), Case::FixtureTimeout));
     cases.push(("fixture_refusal".into(), Case::FixtureRefusal));
     for (name, case) in [
@@ -726,7 +624,6 @@ fn cases() -> Vec<(String, Case)> {
         ("omitted", FixtureOutcomeCase::Omitted),
         ("repeated", FixtureOutcomeCase::Repeated),
         ("malformed", FixtureOutcomeCase::Malformed),
-        ("runtime", FixtureOutcomeCase::Runtime),
         ("unknown_field", FixtureOutcomeCase::UnknownField),
         ("same_owner", FixtureOutcomeCase::SameOwner),
         (
@@ -777,49 +674,26 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             ref commands,
             ref samples,
         } => fixture_argument(native, field, commands, samples).await,
-        Case::WorldExpiry => world::expiry(native).await,
-        Case::WorldRejected => world::rejected(native).await,
-        Case::WorldWrongCountry => world::wrong_country(native).await,
-        Case::WorldReady => world::ready(native).await,
-        Case::WorldFailure(control) => world::failure(native, control).await,
-        Case::WorldCancel => world::cancel(native).await,
-        Case::WorldNumeric(session) => world_numeric::evaluated(native, session).await,
-        Case::WorldNumericStored => world_numeric::stored(native).await,
+        Case::ScriptNumericStored => script_numeric::stored(native).await,
         Case::StoredDurations => stored_durations::stored(native).await,
         Case::ScriptArguments => script_checks::arguments(native).await,
         Case::ScriptAttribution => script_checks::attribution(native).await,
         Case::ScriptDeepNesting => script_checks::deep_nesting(native).await,
         Case::ScriptAccessFailure => script_checks::access_failure(native).await,
-        Case::Normal => normal(native).await,
+        Case::LoaderFixture => loader_fixture(native).await,
+        Case::LoadedModifierKeyLayouts => loaded_modifier_key_layouts(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
         Case::LoadedModifiersMissingRegistryHook => {
             loaded_modifiers_missing_registry_hook(native).await
         }
-        Case::InvalidSelection => invalid_selection(native).await,
-        Case::GeneratorRegistries => generator_registries(native).await,
-        Case::OutsideCommon => outside_common(native).await,
-        Case::LateOnly => late_only(native).await,
-        Case::NonstandardKey => nonstandard_key(native).await,
-        Case::RecordedRoundTrip => recorded_round_trip(native).await,
-        Case::Fixture(control) => fixture_case(control, None).await,
-        Case::FixtureOutsideSelection => fixture_outside_selection(native).await,
-        Case::FixtureSelection(kind) => fixture_case(Fault::Normal, Some(kind)).await,
-        Case::FixtureRegistrationDropped => {
-            fixture_case(
-                Fault::DroppedRecord,
-                Some(pdx_native::FixtureObservationKind::RegistrationEntries),
-            )
-            .await
-        }
-        Case::FixtureLaterRegistryDropped => fixture_later_registry_dropped(native).await,
+        Case::Fixture(control) => fixture_case(control).await,
         Case::FixtureTimeout => fixture_timeout(native).await,
         Case::FixtureRefusal => fixture_refusal(native).await,
         Case::FixtureOutcome(case) => fixture_outcome(case).await,
         Case::FixtureTransfer => fixture_transfer(native).await,
         Case::FixtureRelicPortrait => fixture_relic_portrait(native).await,
         Case::StartupTimeout => startup_timeout(native).await,
-        Case::Cancel => cancel(native).await,
         Case::DropWithoutClose => drop_without_close(native).await,
         Case::Fault {
             registry,
@@ -981,18 +855,6 @@ async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
     let mut result = async {
         let answer = game.observe_fixture().await?;
         assert_fixture_outcome(case, &answer)?;
-        let expected_counts = match case {
-            FixtureOutcomeCase::CategoryUnsupported
-            | FixtureOutcomeCase::CategoryStorageUnsupported => (234, 1),
-            FixtureOutcomeCase::MaximumQuestions => (32, 33),
-            FixtureOutcomeCase::UnrelatedDefinitions => (517, 33),
-            _ => (1, 33),
-        };
-        if complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)? != expected_counts.0
-            || complete(&game.registry_items(CATEGORIES).await?, CATEGORIES)? != expected_counts.1
-        {
-            return Err("fixture did not replace only its selected registry".into());
-        }
         assert_recorded_fixture(recorded.path(), request, &answer).await?;
         Ok(())
     }
@@ -1012,9 +874,7 @@ async fn fixture_transfer(native: &Native) -> Outcome {
             FixtureFieldQuestion::new(ASCENSION_PERKS, "native_transfer", "unlocks_agenda"),
         ],
     );
-    let mut game = native
-        .start_game(options().registries([ASCENSION_PERKS]).fixture(request))
-        .await?;
+    let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
         if answer.completeness != Completeness::Complete {
@@ -1061,9 +921,7 @@ async fn fixture_relic_portrait(native: &Native) -> Outcome {
             "portrait",
         )],
     );
-    let mut game = native
-        .start_game(options().registries([RELICS]).fixture(request))
-        .await?;
+    let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
         if answer.completeness != Completeness::Complete {
@@ -1200,7 +1058,7 @@ async fn fixture_numeric(
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recorded.path());
     let mut game = native
-        .start_game(options().registries([registry]).fixture(request.clone()))
+        .start_game(options().fixture(request.clone()))
         .await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
@@ -1273,9 +1131,7 @@ async fn fixture_block_parsing(native: &Native) -> Outcome {
         "native_blocks = {\n potential = {\n  and = { always = yes }\n }\n potential = { always = no }\n}\n",
         [FixtureFieldQuestion::new(TRADITIONS, "native_blocks", "potential").with_parsing()],
     );
-    let mut game = native
-        .start_game(options().registries([TRADITIONS]).fixture(request))
-        .await?;
+    let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
         let [outcome] = answer.value.field_outcomes.as_slice() else {
@@ -1362,9 +1218,7 @@ async fn fixture_modifier_block(native: &Native) -> Outcome {
                 .with_parsing(),
         ],
     );
-    let mut game = native
-        .start_game(options().registries([TRADITIONS]).fixture(request))
-        .await?;
+    let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
         let [outcome] = answer.value.field_outcomes.as_slice() else {
@@ -1415,9 +1269,7 @@ async fn fixture_validation(native: &Native, field: &str, samples: &[ValidationS
         FixtureFieldQuestion::new(TRADITIONS, sample.definition(), field).with_parsing()
     });
     let request = FixtureRequest::field_outcomes(&file, text, questions).through_validation();
-    let mut game = native
-        .start_game(options().registries([TRADITIONS]).fixture(request))
-        .await?;
+    let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
         let failures = validation_failures(field, &file, samples, &answer);
@@ -1556,9 +1408,9 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
         return unrelated_definitions_request();
     }
     let body = match case {
-        FixtureOutcomeCase::Valid
-        | FixtureOutcomeCase::Runtime
-        | FixtureOutcomeCase::DiagnosticsNotRequested => " unlocks_agenda = \"agenda_one\"\n",
+        FixtureOutcomeCase::Valid | FixtureOutcomeCase::DiagnosticsNotRequested => {
+            " unlocks_agenda = \"agenda_one\"\n"
+        }
         FixtureOutcomeCase::Omitted => "",
         FixtureOutcomeCase::Repeated => {
             " unlocks_agenda = \"agenda_one\"\n unlocks_agenda = \"agenda_two\"\n"
@@ -1575,9 +1427,6 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
     };
     let mut question =
         FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda");
-    if matches!(case, FixtureOutcomeCase::Runtime) {
-        question = question.with_runtime();
-    }
     if matches!(case, FixtureOutcomeCase::DiagnosticsNotRequested) {
         question.diagnostics = false;
     }
@@ -1648,9 +1497,7 @@ fn assert_fixture_outcome(
 
     let expected_completeness = if matches!(
         case,
-        FixtureOutcomeCase::Runtime
-            | FixtureOutcomeCase::CategoryUnsupported
-            | FixtureOutcomeCase::CategoryStorageUnsupported
+        FixtureOutcomeCase::CategoryUnsupported | FixtureOutcomeCase::CategoryStorageUnsupported
     ) {
         Completeness::Partial
     } else {
@@ -1683,7 +1530,6 @@ fn assert_fixture_outcome(
         | FixtureOutcomeCase::Omitted
         | FixtureOutcomeCase::Repeated
         | FixtureOutcomeCase::Malformed
-        | FixtureOutcomeCase::Runtime
         | FixtureOutcomeCase::UnknownField
         | FixtureOutcomeCase::DiagnosticsNotRequested => assert_agenda_outcome(case, answer),
     }
@@ -1762,12 +1608,12 @@ fn assert_same_owner(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome
 }
 
 /// Checks the one `unlocks_agenda` question of the single-tradition cases: its identity, stored
-/// values, parser diagnostics and runtime outcome.
+/// values and parser diagnostics.
 fn assert_agenda_outcome(
     case: FixtureOutcomeCase,
     answer: &Answer<pdx_native::FixtureObservation>,
 ) -> Outcome {
-    use pdx_native::{DiagnosticJoin, FixtureRuntime, ReaderKind};
+    use pdx_native::{DiagnosticJoin, ReaderKind};
 
     let outcome = answer
         .value
@@ -1783,7 +1629,6 @@ fn assert_agenda_outcome(
     }
     match case {
         FixtureOutcomeCase::Valid
-        | FixtureOutcomeCase::Runtime
         | FixtureOutcomeCase::DiagnosticsNotRequested
         | FixtureOutcomeCase::UnknownField => {
             assert_string_storage(outcome, &[(2, 1, "agenda_one")], Some("agenda_one"))?;
@@ -1848,18 +1693,6 @@ fn assert_agenda_outcome(
             return Err(format!("unexpected parser diagnostics: {answer:?}").into());
         }
         _ => {}
-    }
-    if matches!(case, FixtureOutcomeCase::Runtime) {
-        if !matches!(outcome.runtime, FixtureRuntime::Unavailable(_))
-            || !answer
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == GapKind::OutsideMethod)
-        {
-            return Err(format!("runtime outcome: {answer:?}").into());
-        }
-    } else if outcome.runtime != FixtureRuntime::NotRequested {
-        return Err("unrequested runtime was not kept distinct".into());
     }
     Ok(())
 }
@@ -2005,16 +1838,20 @@ fn options() -> GameOptions {
 }
 
 fn fixture_request() -> pdx_native::FixtureRequest {
-    pdx_native::FixtureRequest::new(
+    pdx_native::FixtureRequest::field_outcomes(
         "common/tradition_categories/atlas.txt",
         "atlas_early_category = {\n tree_template = \"atlas_early_template\"\n traditions = { }\n}\n",
+        ["tree_template", "traditions"].map(|field| {
+            let mut question =
+                pdx_native::FixtureFieldQuestion::new(CATEGORIES, "atlas_early_category", field)
+                    .with_parsing();
+            question.diagnostics = false;
+            question
+        }),
     )
 }
 
-async fn fixture_case(
-    control: Fault,
-    selection: Option<pdx_native::FixtureObservationKind>,
-) -> Outcome {
+async fn fixture_case(control: Fault) -> Outcome {
     use pdx_native::{Operation, Support};
     let recorded = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
@@ -2022,10 +1859,7 @@ async fn fixture_case(
     if native.supports(Operation::ObserveFixture) != Support::Supported {
         return Err("fixture operation is not supported".into());
     }
-    let mut request = fixture_request();
-    if let Some(kind) = selection {
-        request.observations = vec![kind];
-    }
+    let request = fixture_request();
     let mut prepared = options().fixture(request.clone());
     if control != Fault::Normal {
         prepared = prepared.fault(ObservationTarget::Fixture, control);
@@ -2047,19 +1881,10 @@ async fn fixture_case(
     let mut game = started?;
     let mut result = async {
         let first = game.observe_fixture().await;
-        assert_first_fixture_result(control, selection, &request, &first)?;
+        assert_first_fixture_result(control, &first)?;
         for _ in 0..2 {
-            let categories = game.registry_items(CATEGORIES).await?;
-            if complete(&categories, CATEGORIES)? != 1
-                || categories.value != ["atlas_early_category"]
-            {
-                return Err(format!("mounted categories: {categories:?}").into());
-            }
-            if complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)? != 234 {
-                return Err("fixture altered the pinned traditions".into());
-            }
             if game.observe_fixture().await != first {
-                return Err("fixture read changed after registry query".into());
+                return Err("fixture answer changed after repeated query".into());
             }
         }
         assert_fixture_replay(recorded.path(), &request, first).await?;
@@ -2073,16 +1898,13 @@ async fn fixture_case(
     result
 }
 
-/// Checks the first fixture answer against the fault and the selected observations.
+/// Check category source joins and parser returns independently of storage support.
 fn assert_first_fixture_result(
     control: Fault,
-    selection: Option<pdx_native::FixtureObservationKind>,
-    request: &pdx_native::FixtureRequest,
     first: &Result<Answer<pdx_native::FixtureObservation>, Error>,
 ) -> Outcome {
-    use pdx_native::{Operation, ProcessingStage};
-
-    match (&control, first) {
+    use pdx_native::{FixtureParsing, Operation};
+    match (control, first) {
         (
             Fault::MissingHook | Fault::LateHook,
             Err(Error::Observation {
@@ -2091,73 +1913,49 @@ fn assert_first_fixture_result(
             }),
         ) => {}
         (Fault::DroppedRecord | Fault::MissingTerminal | Fault::AccessFailure, Ok(answer)) => {
-            if answer.completeness != Completeness::Partial || answer.gaps.is_empty() {
+            if answer.completeness != Completeness::Partial
+                || !answer
+                    .gaps
+                    .iter()
+                    .any(|gap| gap.kind == GapKind::IncompleteObservation)
+            {
                 return Err(
                     format!("{control:?}: expected partial fixture answer: {answer:?}").into(),
                 );
             }
-            let registration_only =
-                selection == Some(pdx_native::FixtureObservationKind::RegistrationEntries);
-            let expected_registrations = if registration_only && control == Fault::DroppedRecord {
-                2
-            } else {
-                3
-            };
-            let expected_reads = if registration_only {
-                0
-            } else if control == Fault::DroppedRecord {
-                1
-            } else {
-                2
-            };
-            if answer.value.registration_entries.len() != expected_registrations
-                || answer.value.field_reads.len() != expected_reads
-            {
-                return Err(format!("{control:?}: established entries lost: {answer:?}").into());
-            }
         }
         (Fault::Normal, Ok(answer)) => {
-            let reads = &answer.value.field_reads;
-            let expected_registrations: &[u64] = if request
-                .observations
-                .contains(&pdx_native::FixtureObservationKind::RegistrationEntries)
+            let outcomes = &answer.value.field_outcomes;
+            if answer.source.basis != Basis::LiveObservation
+                || outcomes.len() != 2
+                || outcomes[0].owner.is_none()
+                || outcomes[0].owner != outcomes[1].owner
             {
-                &[1, 2, 3]
-            } else {
-                &[]
-            };
-            let expected_reads: &[(&str, u64, &str)] = if request
-                .observations
-                .contains(&pdx_native::FixtureObservationKind::CategoryFieldReads)
-            {
-                &[
-                    ("common/tradition_categories/atlas.txt", 2, "tree_template"),
-                    ("common/tradition_categories/atlas.txt", 3, "traditions"),
-                ]
-            } else {
-                &[]
-            };
-            if answer.completeness != Completeness::Complete
-                || !answer.gaps.is_empty()
-                || answer.source.basis != Basis::LiveObservation
-                || answer
-                    .value
-                    .registration_entries
+                return Err(format!("category owner join: {answer:?}").into());
+            }
+            for (field, line) in [("tree_template", 2), ("traditions", 3)] {
+                let outcome = outcomes
                     .iter()
-                    .map(|entry| entry.ordinal)
-                    .collect::<Vec<_>>()
-                    != expected_registrations
-                || reads
-                    .iter()
-                    .map(|read| (read.file.as_str(), read.line, read.field.as_str()))
-                    .collect::<Vec<_>>()
-                    != expected_reads
-                || (reads.len() == 2 && reads[0].owner != reads[1].owner)
-                || reads
-                    .iter()
-                    .any(|read| read.stage != ProcessingStage::FieldReadEntry)
-            {
-                return Err(format!("normal fixture: {answer:?}").into());
+                    .find(|outcome| outcome.question.field == field)
+                    .ok_or("category field outcome missing")?;
+                if outcome.file != "common/tradition_categories/atlas.txt"
+                    || outcome.question.definition != "atlas_early_category"
+                    || outcome.definition_line != Some(1)
+                {
+                    return Err(format!("category source join: {outcome:?}").into());
+                }
+                match &outcome.parsing {
+                    FixtureParsing::Observed {
+                        occurrences,
+                        completeness: Completeness::Complete,
+                    } if occurrences.len() == 1
+                        && occurrences[0].line == line
+                        && occurrences[0].occurrence == 1
+                        && occurrences[0].return_line.is_some() => {}
+                    other => {
+                        return Err(format!("category parser did not return: {other:?}").into());
+                    }
+                }
             }
         }
         (_, answer) => {
@@ -2167,7 +1965,7 @@ fn assert_first_fixture_result(
     if let Ok(answer) = first
         && answer.value.diagnostic_coverage != pdx_native::DiagnosticCoverage::NotRequested
     {
-        return Err(format!("entry-only diagnostic coverage: {answer:?}").into());
+        return Err(format!("unrequested diagnostic coverage: {answer:?}").into());
     }
     Ok(())
 }
@@ -2208,76 +2006,28 @@ async fn assert_fixture_replay(
     Ok(())
 }
 
-async fn fixture_outside_selection(native: &Native) -> Outcome {
-    match native
-        .start_game(
-            options()
-                .registries([MAP_GALAXY])
-                .fixture(fixture_request()),
-        )
-        .await
-    {
-        Err(Error::FixtureRequest { reason }) if reason.contains("GameOptions::registries") => {
-            Ok(())
-        }
-        other => Err(format!("fixture outside registry selection: {other:?}").into()),
-    }
-}
-
 async fn fixture_timeout(native: &Native) -> Outcome {
-    let mut request = fixture_request();
-    request.deadline_seconds = 1;
-    match native.start_game(options().fixture(request)).await {
+    let mut options = options().fixture(fixture_request());
+    options.startup_seconds = 1;
+    match native.start_game(options).await {
         Err(Error::Startup {
             disposal: Disposal::Confirmed,
             reason,
         }) if reason.contains("TimedOut") => Ok(()),
         Ok(mut game) => {
             let _ = game.close().await;
-            Err("fixture deadline was not enforced".into())
+            Err("fixture startup deadline was not enforced".into())
         }
         Err(error) => Err(format!("fixture timeout: {error:?}").into()),
     }
 }
 
-async fn fixture_later_registry_dropped(native: &Native) -> Outcome {
-    let mut game = native
-        .start_game(options().fixture(fixture_request()).fault(
-            ObservationTarget::Registry(CATEGORIES.into()),
-            Fault::DroppedRecord,
-        ))
-        .await?;
-    let mut result = async {
-        let fixture = game.observe_fixture().await?;
-        if fixture.completeness != Completeness::Complete
-            || !fixture.gaps.is_empty()
-            || fixture.value.registration_entries.len() != 3
-            || fixture.value.field_reads.len() != 2
-        {
-            return Err(
-                format!("later registry loss changed completed fixture: {fixture:?}").into(),
-            );
-        }
-        let categories = game.registry_items(CATEGORIES).await?;
-        if categories.completeness != Completeness::Partial || categories.gaps.is_empty() {
-            return Err(format!("registry fault did not take effect: {categories:?}").into());
-        }
-        if game.observe_fixture().await? != fixture {
-            return Err("fixture changed after registry query".into());
-        }
-        Ok(())
-    }
-    .await;
-    and_close(&mut result, &mut game).await;
-    result
-}
-
 async fn fixture_refusal(native: &Native) -> Outcome {
     let before = work_directories()?;
-    let request = pdx_native::FixtureRequest::new("common/unsupported/fixture.txt", "x = {}");
+    let mut request = fixture_request();
+    request.files = [("../fixture.txt".into(), "x = {}".into())].into();
     match native.start_game(options().fixture(request)).await {
-        Err(Error::FixtureRequest { reason })
-            if reason.contains("requires a common/tradition_categories fixture") => {}
+        Err(Error::FixtureRequest { .. }) => {}
         Ok(mut game) => {
             let _ = game.close().await;
             return Err("unsupported fixture launched".into());
@@ -2390,7 +2140,7 @@ fn complete(answer: &Answer<Vec<String>>, registry: &str) -> Result<usize, Strin
 }
 
 /// Compare a few live key layouts with independent top-level keys in the selected game files.
-fn source_keys_match(answer: &Answer<Vec<String>>, registry: &str) -> Outcome {
+fn source_keys_match(keys: &[String], registry: &str) -> Outcome {
     let root = std::path::PathBuf::from(std::env::var_os("STELLARIS_PATH").unwrap());
     let mut source = BTreeSet::new();
     for entry in std::fs::read_dir(root.join(registry))? {
@@ -2401,7 +2151,7 @@ fn source_keys_match(answer: &Answer<Vec<String>>, registry: &str) -> Outcome {
         let text = std::fs::read_to_string(path)?;
         source.extend(text.lines().filter_map(source_key).map(str::to_owned));
     }
-    let observed: BTreeSet<_> = answer.value.iter().cloned().collect();
+    let observed: BTreeSet<_> = keys.iter().cloned().collect();
     if observed != source {
         return Err(format!("{registry}: live keys differ from top-level source keys").into());
     }
@@ -2438,52 +2188,10 @@ async fn close_confirmed(game: &mut Game) -> Outcome {
     if game.close().await? != Disposal::Confirmed {
         return Err("the second close gave another disposal".into());
     }
-    match game.registry_items(TRADITIONS).await {
+    match game.observe_fixture().await {
         Err(Error::Closed) => Ok(()),
         other => Err(format!("after close: {other:?}").into()),
     }
-}
-
-async fn normal(native: &Native) -> Outcome {
-    let mut game = native
-        .start_game(options().registries([TRADITIONS, CATEGORIES, ASCENSION_PERKS]))
-        .await?;
-    let readiness = game.readiness();
-    let mut result = async {
-        if readiness != GameReadiness::PausedAfterRegistryInitialization {
-            return Err(format!("readiness: {readiness:?}").into());
-        }
-        // Both orders, so that each registry is read after the other.
-        for (registry, count) in ITEM_COUNTS.into_iter().chain(ITEM_COUNTS.into_iter().rev()) {
-            let first = game.registry_items(registry).await?;
-            if complete(&first, registry)? != count {
-                return Err(format!("{registry}: {} items", first.value.len()).into());
-            }
-            if registry == ASCENSION_PERKS {
-                source_keys_match(&first, registry)?;
-            }
-            if game.registry_items(registry).await? != first {
-                return Err(format!("{registry}: a repeated read gave another answer").into());
-            }
-        }
-        match game.registry_items("common/agendas").await {
-            Err(Error::Unsupported { .. }) => {}
-            other => {
-                return Err(format!("a registry outside the discovery method: {other:?}").into());
-            }
-        }
-        match game.registry_items("common/ethics").await {
-            Err(Error::Unsupported { reason, .. })
-                if reason.contains("GameOptions::registries") =>
-            {
-                Ok(())
-            }
-            other => Err(format!("a listed but unselected registry: {other:?}").into()),
-        }
-    }
-    .await;
-    and_close(&mut result, &mut game).await;
-    result
 }
 
 /// The loaded tags of the five declared names that content registers again (M45-release).
@@ -2520,11 +2228,7 @@ async fn loaded_modifiers(native: &Native) -> Outcome {
     let declared = native.modifiers()?.value;
     let earlier_work = work_directories()?;
     let mut game = native.start_game(options().loaded_modifiers()).await?;
-    let readiness = game.readiness();
     let mut result = async {
-        if readiness != GameReadiness::PausedAfterContentLoad {
-            return Err(format!("readiness: {readiness:?}").into());
-        }
         let answer = game.loaded_modifiers().await?;
         if answer.source.basis != Basis::LiveObservation
             || answer.value.content != LoadedContent::Installation
@@ -2613,7 +2317,6 @@ async fn loaded_modifiers(native: &Native) -> Outcome {
         if game.loaded_modifiers().await? != answer {
             return Err("a repeated read gave another answer".into());
         }
-        complete(&game.registry_items(TRADITIONS).await?, TRADITIONS)?;
         Ok(())
     }
     .await;
@@ -2666,7 +2369,6 @@ async fn loaded_modifiers_missing_registry_hook(native: &Native) -> Outcome {
     let mut game = native
         .start_game(
             options()
-                .registries([TRADITIONS])
                 .fault(
                     ObservationTarget::Registry(TRADITIONS.into()),
                     Fault::MissingHook,
@@ -2674,19 +2376,15 @@ async fn loaded_modifiers_missing_registry_hook(native: &Native) -> Outcome {
                 .loaded_modifiers(),
         )
         .await?;
-    let readiness = game.readiness();
     let mut result = async {
-        if readiness != GameReadiness::PausedAfterContentLoad {
-            return Err(format!("readiness: {readiness:?}").into());
-        }
         let loaded = game.loaded_modifiers().await?;
         if loaded.value.modifiers.len() != LOADED_MODIFIERS {
             return Err(format!("{} loaded modifiers", loaded.value.modifiers.len()).into());
         }
-        match game.registry_items(TRADITIONS).await {
-            Err(Error::Observation { .. }) => Ok(()),
-            other => Err(format!("a registry without its hook: {other:?}").into()),
+        if !loaded.value.registry_items.contains_key("common/buildings") {
+            return Err("modifier keys were lost with an unrelated loader hook".into());
         }
+        Ok(())
     }
     .await;
     and_close(&mut result, &mut game).await;
@@ -2714,157 +2412,6 @@ async fn loaded_modifiers_worker_loss(native: &Native) -> Outcome {
     }
 }
 
-async fn invalid_selection(native: &Native) -> Outcome {
-    match native
-        .start_game(options().registries(["common/no_such_registry"]))
-        .await
-    {
-        Err(Error::UnknownRegistry { .. }) => {}
-        other => return Err(format!("unknown registry: {other:?}").into()),
-    }
-    match native
-        .start_game(options().registries([TRADITIONS, TRADITIONS]))
-        .await
-    {
-        Err(Error::Startup {
-            disposal: Disposal::NotApplicable,
-            ..
-        }) => Ok(()),
-        other => Err(format!("duplicate registry: {other:?}").into()),
-    }
-}
-
-async fn outside_common(native: &Native) -> Outcome {
-    let mut game = native
-        .start_game(options().registries([MAP_GALAXY, CIVICS, TRADITIONS]))
-        .await?;
-    let mut result = async {
-        let galaxy = game.registry_items(MAP_GALAXY).await?;
-        if complete(&galaxy, MAP_GALAXY)? != 10 {
-            return Err(format!("{MAP_GALAXY}: {} items", galaxy.value.len()).into());
-        }
-        source_keys_match(&galaxy, MAP_GALAXY)?;
-        let civics = game.registry_items(CIVICS).await?;
-        if complete(&civics, CIVICS)? != 358 {
-            return Err("civic count changed".into());
-        }
-        source_keys_match(&civics, CIVICS)?;
-        let traditions = game.registry_items(TRADITIONS).await?;
-        if complete(&traditions, TRADITIONS)? != 234 {
-            return Err("tradition control changed".into());
-        }
-        Ok(())
-    }
-    .await;
-    and_close(&mut result, &mut game).await;
-    result
-}
-
-/// A registry whose loader never runs before the startup deadline: the worker stops the game
-/// there, and the answer says that the deadline, not another loader, ended the session.
-async fn late_only(native: &Native) -> Outcome {
-    let mut options = options().registries([GAME_SCENARIOS]);
-    options.startup_seconds = 60;
-    let mut game = native.start_game(options).await?;
-    let mut result = async {
-        if game.readiness() != GameReadiness::PausedDuringRegistryInitialization {
-            return Err("late-only session did not pause during initialization".into());
-        }
-        match game.registry_items(GAME_SCENARIOS).await {
-            Err(Error::Unsupported { reason, .. })
-                if reason.contains("initial loader") && reason.contains("startup deadline") =>
-            {
-                Ok(())
-            }
-            other => Err(format!("late-only registry: {other:?}").into()),
-        }
-    }
-    .await;
-    and_close(&mut result, &mut game).await;
-    result
-}
-
-/// `common/map_modes` keeps its key at `+0x18`; its loader runs before the pause (SDK-573).
-async fn nonstandard_key(native: &Native) -> Outcome {
-    let mut game = native
-        .start_game(options().registries([MAP_MODES, TRADITIONS]))
-        .await?;
-    let mut result = async {
-        if game.readiness() != GameReadiness::PausedAfterRegistryInitialization {
-            return Err(format!("readiness: {:?}", game.readiness()).into());
-        }
-        let answer = game.registry_items(MAP_MODES).await?;
-        if complete(&answer, MAP_MODES)? != 8 {
-            return Err(format!("{MAP_MODES}: {} items", answer.value.len()).into());
-        }
-        source_keys_match(&answer, MAP_MODES)
-    }
-    .await;
-    and_close(&mut result, &mut game).await;
-    result
-}
-
-/// The six generator registries load on the launch thread before the pause (SDK-573).
-async fn generator_registries(native: &Native) -> Outcome {
-    let mut game = native
-        .start_game(options().registries(GENERATOR_REGISTRIES.map(|(name, _)| name)))
-        .await?;
-    let mut result = async {
-        if game.readiness() != GameReadiness::PausedAfterRegistryInitialization {
-            return Err(format!("readiness: {:?}", game.readiness()).into());
-        }
-        for (registry, count) in GENERATOR_REGISTRIES {
-            let answer = game.registry_items(registry).await?;
-            if complete(&answer, registry)? != count {
-                return Err(format!("{registry}: {} items", answer.value.len()).into());
-            }
-        }
-        Ok(())
-    }
-    .await;
-    and_close(&mut result, &mut game).await;
-    result
-}
-
-async fn recorded_round_trip(_native: &Native) -> Outcome {
-    let directory = tempfile::tempdir()?;
-    let real = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
-        .record_answers_to(directory.path());
-    let discovered = real.registries()?;
-    let selected = [TRADITIONS, CATEGORIES, ASCENSION_PERKS];
-    let mut game = real.start_game(options().registries(selected)).await?;
-    let mut original = Vec::new();
-    let mut result = async {
-        for name in selected {
-            original.push((name, game.registry_items(name).await?));
-        }
-        Ok(())
-    }
-    .await;
-    and_close(&mut result, &mut game).await;
-    result?;
-    let recorded = Native::from_recorded_answers(directory.path())?;
-    let mut again = recorded.registries()?;
-    again.source.basis = discovered.source.basis;
-    if again != discovered {
-        return Err("recorded registry list differs".into());
-    }
-    let mut game = recorded
-        .start_game(GameOptions::new(Command::new("must-not-start")))
-        .await?;
-    for (name, original) in original {
-        let mut again = game.registry_items(name).await?;
-        again.source.basis = original.source.basis;
-        if again != original {
-            return Err(format!("recorded {name} differs").into());
-        }
-    }
-    if game.close().await? != Disposal::NotApplicable {
-        return Err("recorded close started a process".into());
-    }
-    Ok(())
-}
-
 /// Always close, so that a failed check leaves no game. The first failure is the one reported.
 async fn and_close(result: &mut Outcome, game: &mut Game) {
     let closed = close_confirmed(game).await;
@@ -2876,71 +2423,49 @@ async fn and_close(result: &mut Outcome, game: &mut Game) {
 async fn fault(
     native: &Native,
     registry: &'static str,
-    other: &'static str,
+    _other: &'static str,
     control: Fault,
     expect: Expect,
 ) -> Outcome {
-    let mut game = native
-        .start_game(
-            options()
-                .registries([registry, other])
-                .fault(ObservationTarget::Registry(registry.into()), control),
-        )
-        .await?;
-    let readiness = game.readiness();
-    let mut result = async {
-        // A hook fault stops the game before the faulted registry returns from its load.
-        let expected_readiness = match control {
-            Fault::MissingHook | Fault::LateHook => {
-                GameReadiness::PausedDuringRegistryInitialization
-            }
-            _ => GameReadiness::PausedAfterRegistryInitialization,
-        };
-        if readiness != expected_readiness {
-            return Err(format!("readiness: {readiness:?}").into());
-        }
-        // Both orders: a failed read must not change the other registry's answer.
-        for name in [registry, other, other, registry] {
-            let answer = game.registry_items(name).await;
-            if name == other {
-                let answer = answer?;
-                if complete(&answer, name)? == 0 {
-                    return Err(format!("{name}: no items").into());
-                }
-                continue;
-            }
-            match (expect, answer) {
-                (Expect::NoAnswer, Err(Error::Observation { .. })) => {}
-                (Expect::PartialAnswer, Ok(answer))
-                    if answer.completeness == Completeness::Partial
-                        && answer
-                            .gaps
-                            .iter()
-                            .any(|gap| gap.kind == GapKind::IncompleteObservation) => {}
-                (_, answer) => return Err(format!("{name} with {control:?}: {answer:?}").into()),
-            }
-        }
-        Ok(())
-    }
+    let result = pdx_native::internals::check_registry_load(
+        native,
+        options().fault(ObservationTarget::Registry(registry.into()), control),
+        registry,
+    )
     .await;
-    and_close(&mut result, &mut game).await;
-    result
+    match (expect, result) {
+        (
+            Expect::NoAnswer,
+            Err(Error::Startup {
+                disposal: Disposal::Confirmed,
+                reason,
+            }),
+        ) if matches!(control, Fault::MissingHook | Fault::LateHook)
+            && reason.contains("WorkerLost") =>
+        {
+            Ok(())
+        }
+        (Expect::NoAnswer, Err(Error::Observation { .. })) if control == Fault::AccessFailure => {
+            Ok(())
+        }
+        (Expect::PartialAnswer, Ok(answer))
+            if answer.completeness == Completeness::Partial
+                && answer
+                    .gaps
+                    .iter()
+                    .any(|gap| gap.kind == GapKind::IncompleteObservation) =>
+        {
+            Ok(())
+        }
+        (_, answer) => Err(format!("{registry} with {control:?}: {answer:?}").into()),
+    }
 }
 
 /// The supervisor stops the debugger worker while the faulted registry loads. The game never
 /// reaches its pause, so there is no `Game`; the start fails and the game is still reaped.
 async fn worker_loss(native: &Native, registry: &'static str, control: Fault) -> Outcome {
-    let other = if registry == TRADITIONS {
-        CATEGORIES
-    } else {
-        TRADITIONS
-    };
     match native
-        .start_game(
-            options()
-                .registries([registry, other])
-                .fault(ObservationTarget::Registry(registry.into()), control),
-        )
+        .start_game(options().fault(ObservationTarget::Registry(registry.into()), control))
         .await
     {
         Err(Error::Startup {
@@ -2969,17 +2494,6 @@ async fn startup_timeout(native: &Native) -> Outcome {
             Err("the game started within one second".into())
         }
     }
-}
-
-async fn cancel(native: &Native) -> Outcome {
-    let mut game = native.start_game(options()).await?;
-    game.cancel();
-    let mut result = match game.registry_items(TRADITIONS).await {
-        Err(Error::Closed) => Ok(()),
-        other => Err(format!("after cancel: {other:?}").into()),
-    };
-    and_close(&mut result, &mut game).await;
-    result
 }
 
 /// The caller forgets to close. The supervisor sees its control input end and reaps the game.
@@ -3247,7 +2761,7 @@ async fn fixture_nested_numeric(control: Fault) -> Outcome {
     let recorded = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recorded.path());
-    let mut prepared = options().registries([TRADITIONS]).fixture(request.clone());
+    let mut prepared = options().fixture(request.clone());
     if control != Fault::Normal {
         prepared = prepared.fault(ObservationTarget::Fixture, control);
     }
@@ -3295,8 +2809,44 @@ async fn fixture_nested_numeric(control: Fault) -> Outcome {
     result
 }
 
-#[path = "live/world.rs"]
-mod world;
+#[path = "live/script_numeric.rs"]
+mod script_numeric;
 
-#[path = "live/world_numeric.rs"]
-mod world_numeric;
+/// The internal loader control keeps fixture replacement testable for SDK-552.
+async fn loader_fixture(native: &Native) -> Outcome {
+    let answer = pdx_native::internals::check_registry_load(
+        native,
+        options().fixture(fixture_request()),
+        CATEGORIES,
+    )
+    .await?;
+    if complete(&answer, CATEGORIES)? != 1 || answer.value != ["atlas_early_category"] {
+        return Err(format!("fixture loader keys: {answer:?}").into());
+    }
+    Ok(())
+}
+
+/// Loaded modifier keys cover generator registries and the nonstandard +0x18 bypass key.
+async fn loaded_modifier_key_layouts(native: &Native) -> Outcome {
+    let mut game = native.start_game(options().loaded_modifiers()).await?;
+    let mut result = async {
+        let answer = game.loaded_modifiers().await?;
+        for (registry, count) in GENERATOR_REGISTRIES {
+            let keys = answer
+                .value
+                .registry_items
+                .get(registry)
+                .ok_or_else(|| format!("no loaded keys for {registry}: {:?}", answer.gaps))?;
+            if keys.len() != count {
+                return Err(format!("{registry}: {} keys, expected {count}", keys.len()).into());
+            }
+            if registry == "common/bypass" {
+                source_keys_match(keys, registry)?;
+            }
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}

@@ -3,15 +3,13 @@
 use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
 use crate::protocol::{
     hooks,
-    observation::{FixtureFieldBinding, FixtureStorageDecoder, diagnostic_stage},
+    observation::{FixtureStorageDecoder, diagnostic_stage},
 };
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
-    Error, FieldRead, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
-    FixtureObservationKind as Kind, FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime,
-    FixtureStorage, FixtureValue, Gap, GapKind, GapSubject, Operation, ParsedFieldOccurrence,
-    ProcessingStage, Reader, ReaderId, ReaderKind, RegistrationEntry, Source,
-    StoredFieldOccurrence,
+    Error, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation, FixtureOwnerId,
+    FixtureParsing, FixtureRequest, FixtureStorage, FixtureValue, Gap, GapKind, GapSubject,
+    Operation, ParsedFieldOccurrence, Reader, ReaderId, ReaderKind, Source, StoredFieldOccurrence,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,21 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) enum FixtureEvent {
-    RegistrationEntry {
-        ordinal: u64,
-    },
-    RegistrationEnd {
-        count: u64,
-    },
     LoadStart {
         file: String,
-    },
-    FieldRead {
-        file: String,
-        line: u64,
-        field: String,
-        owner: String,
-        ordinal: u64,
     },
     Definition {
         file: String,
@@ -109,11 +94,8 @@ pub(crate) enum FixtureEvent {
     },
     LoadReturned {
         file: String,
-        field_count: u64,
     },
     End {
-        registrations: u64,
-        field_reads: u64,
         #[serde(default)]
         field_outcomes: u64,
         #[serde(default)]
@@ -125,22 +107,13 @@ pub(crate) enum FixtureEvent {
     },
 }
 
-/// `category_fields` are the field tokens that the build's category window reads, from its
-/// fixture binding.
 pub(crate) fn reduce(
     request: &FixtureRequest,
-    category_fields: &[FixtureFieldBinding],
     records: &[WorkerRecord],
     owner_events: &[OwnerEvent],
     build: BuildId,
 ) -> Result<Answer<FixtureObservation>, Error> {
     let mut hooks = vec![hooks::FIXTURE_LOAD];
-    if request.requests(Kind::RegistrationEntries) {
-        hooks.push(hooks::FIXTURE_REGISTRATION);
-    }
-    if request.requests(Kind::CategoryFieldReads) {
-        hooks.push(hooks::FIXTURE_FIELD);
-    }
     let diagnostics_requested = request
         .field_questions
         .iter()
@@ -170,7 +143,7 @@ pub(crate) fn reduce(
             reason: "Fixture hook activation before resume was not established".into(),
         });
     };
-    let mut window = Window::new(request, category_fields, thread, resumed);
+    let mut window = Window::new(request, thread, resumed);
     for record in records {
         // The terminal closes this question's window. Later registry record loss does not
         // revoke it; damaged transport still removes the terminal in read_worker_stream.
@@ -272,17 +245,13 @@ fn parsed_line(occurrence: &ParsedFieldOccurrence, line: u64) -> bool {
 
 struct Window<'a> {
     request: &'a FixtureRequest,
-    category_fields: &'a [FixtureFieldBinding],
     thread: u64,
     resumed: u64,
     next_sequence: u64,
     loading: bool,
     returned: bool,
     validated: bool,
-    registrations_ended: bool,
     ended: bool,
-    owner: Option<String>,
-    last_field_ordinal: u64,
     owner_ids: BTreeMap<String, FixtureOwnerId>,
     next_owner_id: u64,
     definitions: BTreeMap<String, DefinitionState>,
@@ -304,25 +273,16 @@ struct Window<'a> {
 }
 
 impl<'a> Window<'a> {
-    fn new(
-        request: &'a FixtureRequest,
-        category_fields: &'a [FixtureFieldBinding],
-        thread: u64,
-        resumed: u64,
-    ) -> Self {
+    fn new(request: &'a FixtureRequest, thread: u64, resumed: u64) -> Self {
         Self {
             request,
-            category_fields,
             thread,
             resumed,
             next_sequence: 1,
             loading: false,
             returned: false,
             validated: false,
-            registrations_ended: false,
             ended: false,
-            owner: None,
-            last_field_ordinal: 0,
             owner_ids: BTreeMap::new(),
             next_owner_id: 1,
             definitions: BTreeMap::new(),
@@ -436,16 +396,7 @@ impl<'a> Window<'a> {
             return;
         }
         match event {
-            FixtureEvent::RegistrationEntry { ordinal } => self.accept_registration_entry(*ordinal),
-            FixtureEvent::RegistrationEnd { count } => self.accept_registration_end(*count),
             FixtureEvent::LoadStart { file } => self.accept_load_start(file),
-            FixtureEvent::FieldRead {
-                file,
-                line,
-                field,
-                owner,
-                ordinal,
-            } => self.accept_field_read(file, *line, field, owner, *ordinal),
             FixtureEvent::Definition {
                 file,
                 line,
@@ -494,19 +445,13 @@ impl<'a> Window<'a> {
                     self.validated = true;
                 }
             }
-            FixtureEvent::LoadReturned { file, field_count } => {
-                self.accept_load_returned(file, *field_count)
-            }
+            FixtureEvent::LoadReturned { file } => self.accept_load_returned(file),
             FixtureEvent::End {
-                registrations,
-                field_reads,
                 field_outcomes,
                 diagnostics,
                 producer_last_sequence,
             } => self.accept_end(
                 record.seq,
-                *registrations,
-                *field_reads,
                 *field_outcomes,
                 *diagnostics,
                 *producer_last_sequence,
@@ -515,83 +460,12 @@ impl<'a> Window<'a> {
         }
     }
 
-    fn accept_registration_entry(&mut self, ordinal: u64) {
-        let expected = self
-            .value
-            .registration_entries
-            .last()
-            .map_or(1, |entry| entry.ordinal + 1);
-        if !self.request.requests(Kind::RegistrationEntries)
-            || self.loading
-            || self.registrations_ended
-            || !(1..=3).contains(&ordinal)
-            || ordinal < expected
-        {
-            self.window_gap("Invalid registration entry order");
-            return;
-        }
-        if ordinal != expected {
-            self.window_gap("A registration entry is missing");
-        }
-        self.value.registration_entries.push(RegistrationEntry {
-            ordinal,
-            stage: ProcessingStage::RegistrationEntry,
-        });
-    }
-
-    fn accept_registration_end(&mut self, count: u64) {
-        if !self.request.requests(Kind::RegistrationEntries)
-            || self.registrations_ended
-            || self.loading
-            || count != 3
-            || self.value.registration_entries.len() != 3
-        {
-            self.window_gap("The registration terminal disagrees with its entries");
-        }
-        self.registrations_ended = true;
-    }
-
     fn accept_load_start(&mut self, file: &str) {
         if self.loading || file != self.request.file() {
             self.window_gap("The fixture loader entry is repeated or names another file");
             return;
         }
-        if self.request.requests(Kind::RegistrationEntries) && !self.registrations_ended {
-            self.window_gap("Registration did not finish before the fixture load");
-        }
         self.loading = true;
-    }
-
-    fn accept_field_read(&mut self, file: &str, line: u64, field: &str, owner: &str, ordinal: u64) {
-        let in_window =
-            self.request.requests(Kind::CategoryFieldReads) && self.loading && !self.returned;
-        let in_source = self.is_fixture_line(file, line);
-        let field_known = self
-            .category_fields
-            .iter()
-            .any(|binding| binding.name == field);
-        let owner_joins = super::registry_items::pointer(owner)
-            && self.owner.as_ref().is_none_or(|expected| expected == owner);
-        let in_order =
-            ordinal > self.last_field_ordinal && ordinal <= self.category_fields.len() as u64;
-
-        if !(in_window && in_source && field_known && owner_joins && in_order) {
-            self.window_gap("A field read lacks a matching file, owner, line, order or loader");
-            return;
-        }
-        if ordinal != self.last_field_ordinal + 1 {
-            self.window_gap("A field read is missing");
-        }
-        self.last_field_ordinal = ordinal;
-        self.owner = Some(owner.into());
-        let public_owner = self.public_owner(owner);
-        self.value.field_reads.push(FieldRead {
-            file: file.into(),
-            line,
-            field: field.into(),
-            owner: public_owner,
-            stage: ProcessingStage::FieldReadEntry,
-        });
     }
 
     fn accept_definition(&mut self, file: &str, line: u64, definition: &str, owner: &str) {
@@ -982,13 +856,10 @@ impl<'a> Window<'a> {
         }
     }
 
-    fn accept_load_returned(&mut self, file: &str, field_count: u64) {
+    fn accept_load_returned(&mut self, file: &str) {
         if !self.loading || self.returned || file != self.request.file() {
             self.window_gap("The fixture return has no unique matching loader entry");
             return;
-        }
-        if field_count != self.value.field_reads.len() as u64 {
-            self.window_gap("The loader return disagrees with the field reads");
         }
         self.returned = true;
     }
@@ -1008,18 +879,11 @@ impl<'a> Window<'a> {
     fn accept_end(
         &mut self,
         sequence: u64,
-        registrations: u64,
-        field_reads: u64,
         field_outcomes: u64,
         diagnostics: u64,
         producer_last_sequence: u64,
     ) {
-        if !self.returned
-            || producer_last_sequence != sequence
-            || registrations != self.value.registration_entries.len() as u64
-            || field_reads != self.value.field_reads.len() as u64
-            || (self.request.requests(Kind::RegistrationEntries) && !self.registrations_ended)
-        {
+        if !self.returned || producer_last_sequence != sequence {
             self.window_gap("The fixture terminal disagrees with its window");
         }
         if field_outcomes != self.field_terminals.len() as u64 {
@@ -1276,17 +1140,6 @@ impl<'a> Window<'a> {
                 );
                 FixtureStorage::Unavailable(reason)
             };
-            let runtime = if question.runtime {
-                let reason = "Runtime is outside the initial file-load method";
-                self.push_gap(
-                    GapKind::OutsideMethod,
-                    Some(GapSubject::field(question.field.clone())),
-                    reason,
-                );
-                FixtureRuntime::Unavailable(reason.into())
-            } else {
-                FixtureRuntime::NotRequested
-            };
             self.value.field_outcomes.push(FixtureFieldOutcome {
                 question,
                 file: self.request.file().into(),
@@ -1298,7 +1151,6 @@ impl<'a> Window<'a> {
                 parsing,
                 storage,
                 diagnostics: self.diagnostic_indices.remove(&index).unwrap_or_default(),
-                runtime,
             });
         }
     }
@@ -1353,7 +1205,7 @@ impl<'a> Window<'a> {
             },
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v5", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v6", Basis::LiveObservation),
         }
     }
 }
@@ -1363,45 +1215,7 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
 
-    const FILE: &str = "common/tradition_categories/atlas.txt";
-
     /// The category field tokens of the M45-release fixture binding.
-    fn category_fields() -> Vec<FixtureFieldBinding> {
-        [(16793, "tree_template"), (14263, "traditions")]
-            .into_iter()
-            .map(|(token, name)| FixtureFieldBinding {
-                token,
-                name: name.into(),
-            })
-            .collect()
-    }
-
-    fn request() -> FixtureRequest {
-        FixtureRequest::new(
-            FILE,
-            "atlas = {\n tree_template = \"template\"\n traditions = {}\n}\n",
-        )
-    }
-    fn events() -> Vec<Value> {
-        let hook = json!({"enabled":true,"locations":1,"resolved":1,"hits":0});
-        let fixture = |event: Value| json!({"kind":"fixture", "event":event});
-        vec![
-            json!({"kind":"launch-stopped", "error":"success", "pid":42, "triple":"arm64-macos", "frames":[{"function":"_dyld_start"}]}),
-            json!({"kind":"hooks-active-before-resume", "hooks":{"fixture:registration":hook, "fixture:load":hook, "fixture:field":hook}}),
-            json!({"kind":"resume","error":"success"}),
-            fixture(json!({"kind":"registration-entry","ordinal":1})),
-            fixture(json!({"kind":"registration-entry","ordinal":2})),
-            fixture(json!({"kind":"registration-entry","ordinal":3})),
-            fixture(json!({"kind":"registration-end","count":3})),
-            fixture(json!({"kind":"load-start","file":FILE})),
-            fixture(json!({"kind":"field-read","file":FILE,"line":2,"field":"tree_template","owner":"0x2000","ordinal":1})),
-            fixture(json!({"kind":"field-read","file":FILE,"line":3,"field":"traditions","owner":"0x2000","ordinal":2})),
-            fixture(json!({"kind":"load-returned","file":FILE,"field_count":2})),
-            fixture(json!({"kind":"end","registrations":3,"field_reads":2,"producer_last_sequence":12})),
-        ].into_iter().enumerate().map(|(index, mut event)| {
-            event["seq"] = json!(index + 1); event["thread"] = json!(7); event["run"] = json!("attempt"); event
-        }).collect()
-    }
     fn records(events: Vec<Value>) -> Vec<WorkerRecord> {
         events
             .into_iter()
@@ -1409,10 +1223,9 @@ mod tests {
             .collect()
     }
 
-    fn field_request(runtime: bool) -> FixtureRequest {
-        let mut question =
+    fn field_request() -> FixtureRequest {
+        let question =
             crate::FixtureFieldQuestion::new("common/traditions", "sample", "unlocks_agenda");
-        question.runtime = runtime;
         FixtureRequest::field_outcomes(
             "common/traditions/sample.txt",
             "sample = {\n unlocks_agenda = \"one\"\n unlocks_agenda = \"two\"\n}\n",
@@ -1421,7 +1234,7 @@ mod tests {
     }
 
     fn field_request_without_diagnostics() -> FixtureRequest {
-        let mut request = field_request(false);
+        let mut request = field_request();
         request.field_questions[0].diagnostics = false;
         request
     }
@@ -1449,16 +1262,15 @@ mod tests {
                 json!({"kind":"field-terminal","question":0,"owner":null,"definition_line":null,"reader_id":"block-reader","reader_kind":"Block","final_value":null,"unavailable":"No block storage decoder"}),
                 json!({"kind":"parsing-terminal","question":0,"count":1,"unavailable":null}),
                 json!({"kind":"diagnostics-terminal","count":1}),
-                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
+                json!({"kind":"load-returned","file":"common/traditions/sample.txt"}),
             ],
-            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":1,"diagnostics":1}),
+            json!({"kind":"end","field_outcomes":1,"diagnostics":1}),
         )
     }
 
     fn block_parsing_answer(events: Vec<Value>) -> Answer<FixtureObservation> {
         reduce(
             &block_parsing_request(),
-            &[],
             &records(events),
             &owner(),
             BuildId("build".into()),
@@ -1507,7 +1319,6 @@ mod tests {
     fn validation_answer(events: Vec<Value>) -> Answer<FixtureObservation> {
         reduce(
             &block_parsing_request().through_validation(),
-            &[],
             &records(events),
             &owner(),
             BuildId("build".into()),
@@ -1639,7 +1450,6 @@ mod tests {
             assert!(
                 reduce(
                     &block_parsing_request().through_validation(),
-                    &[],
                     &records(events),
                     &owner(),
                     BuildId("build".into())
@@ -1818,9 +1628,9 @@ mod tests {
                 json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":2,"value":{"String":"two"}}),
                 json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":{"String":"two"},"unavailable":null}),
                 json!({"kind":"diagnostics-terminal","count":1}),
-                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
+                json!({"kind":"load-returned","file":"common/traditions/sample.txt"}),
             ],
-            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":1,"diagnostics":1}),
+            json!({"kind":"end","field_outcomes":1,"diagnostics":1}),
         )
     }
 
@@ -1913,9 +1723,9 @@ mod tests {
                 json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_decoder":null,"unavailable":"No exact-build storage binding for this field"}),
                 json!({"kind":"field-terminal","question":0,"owner":null,"definition_line":null,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":null,"unavailable":"No exact-build storage binding for this field"}),
                 json!({"kind":"diagnostics-unavailable","reason":"Parser diagnostics are outside this registry binding"}),
-                json!({"kind":"load-returned","file":"common/tradition_categories/sample.txt","field_count":0}),
+                json!({"kind":"load-returned","file":"common/tradition_categories/sample.txt"}),
             ],
-            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":1,"diagnostics":0}),
+            json!({"kind":"end","field_outcomes":1,"diagnostics":0}),
         )
     }
 
@@ -1945,9 +1755,9 @@ mod tests {
                 terminal(0, "tip"),
                 terminal(1, "agenda"),
                 json!({"kind":"diagnostics-terminal","count":0}),
-                json!({"kind":"load-returned","file":"common/traditions/sample.txt","field_count":0}),
+                json!({"kind":"load-returned","file":"common/traditions/sample.txt"}),
             ],
-            json!({"kind":"end","registrations":0,"field_reads":0,"field_outcomes":2,"diagnostics":0}),
+            json!({"kind":"end","field_outcomes":2,"diagnostics":0}),
         )
     }
 
@@ -2007,81 +1817,12 @@ mod tests {
     }
     fn answer(events: Vec<Value>) -> Answer<FixtureObservation> {
         reduce(
-            &request(),
-            &category_fields(),
+            &field_request(),
             &records(events),
             &owner(),
             BuildId("build".into()),
         )
         .unwrap()
-    }
-
-    #[test]
-    fn complete_window_keeps_source_lines_and_replaces_addresses_with_owner_identity() {
-        let answer = answer(events());
-        assert_eq!(answer.completeness, Completeness::Complete);
-        assert!(answer.gaps.is_empty());
-        assert_eq!(
-            answer
-                .value
-                .registration_entries
-                .iter()
-                .map(|entry| entry.ordinal)
-                .collect::<Vec<_>>(),
-            [1, 2, 3]
-        );
-        let reads = &answer.value.field_reads;
-        assert_eq!(
-            reads
-                .iter()
-                .map(|read| (read.file.as_str(), read.line, read.field.as_str()))
-                .collect::<Vec<_>>(),
-            [(FILE, 2, "tree_template"), (FILE, 3, "traditions")]
-        );
-        assert_eq!(reads[0].owner, reads[1].owner);
-        assert_eq!(reads[0].stage, ProcessingStage::FieldReadEntry);
-        assert!(!serde_json::to_string(&answer).unwrap().contains("0x2000"));
-        let mut relocated = events();
-        for index in [8, 9] {
-            relocated[index]["event"]["owner"] = json!("0x8000");
-        }
-        assert_eq!(answer, self::answer(relocated));
-    }
-
-    #[test]
-    fn category_reads_follow_the_bound_fields() {
-        let reduce_with = |fields: &[(u64, &str)], events: Vec<Value>| {
-            let fields: Vec<_> = fields
-                .iter()
-                .map(|&(token, name)| FixtureFieldBinding {
-                    token,
-                    name: name.into(),
-                })
-                .collect();
-
-            reduce(
-                &request(),
-                &fields,
-                &records(events),
-                &owner(),
-                BuildId("build".into()),
-            )
-            .unwrap()
-            .completeness
-        };
-        let mut renamed_events = events();
-        renamed_events[8]["event"]["field"] = json!("template");
-
-        let renamed = [(1, "template"), (2, "traditions")];
-        assert_eq!(
-            reduce_with(&renamed, renamed_events),
-            Completeness::Complete
-        );
-        assert_eq!(reduce_with(&renamed, events()), Completeness::Partial);
-        assert_eq!(
-            reduce_with(&[(1, "tree_template")], events()),
-            Completeness::Partial
-        );
     }
 
     #[test]
@@ -2098,7 +1839,6 @@ mod tests {
 
             let result = reduce(
                 &category_outcome_request(),
-                &category_fields(),
                 &records(events),
                 &owner(),
                 BuildId("b".into()),
@@ -2115,20 +1855,19 @@ mod tests {
             (0, "/triple", json!("x86_64-macos")),
             (0, "/thread", json!(0)),
             (0, "/frames/0/function", json!("main")),
-            (1, "/hooks/fixture:field/enabled", json!(false)),
+            (1, "/hooks/fixture:member/enabled", json!(false)),
             (1, "/hooks/fixture:load/locations", json!(0)),
-            (1, "/hooks/fixture:registration/resolved", json!(2)),
-            (1, "/hooks/fixture:field/hits", json!(1)),
+            (1, "/hooks/fixture:constructor/resolved", json!(2)),
+            (1, "/hooks/fixture:member/hits", json!(1)),
             (2, "/error", json!("failed")),
             (2, "/seq", json!(1)),
         ] {
-            let mut changed = events();
+            let mut changed = field_events();
             *changed[index].pointer_mut(pointer).unwrap() = value;
             assert!(
                 matches!(
                     reduce(
-                        &request(),
-                        &category_fields(),
+                        &field_request(),
                         &records(changed),
                         &owner(),
                         BuildId("b".into())
@@ -2139,12 +1878,11 @@ mod tests {
             );
         }
         for index in [0, 1, 2] {
-            let mut changed = events();
+            let mut changed = field_events();
             changed.remove(index);
             assert!(
                 reduce(
-                    &request(),
-                    &category_fields(),
+                    &field_request(),
                     &records(changed),
                     &owner(),
                     BuildId("b".into())
@@ -2154,9 +1892,8 @@ mod tests {
         }
         assert!(
             reduce(
-                &request(),
-                &category_fields(),
-                &records(events()),
+                &field_request(),
+                &records(field_events()),
                 &[],
                 BuildId("b".into())
             )
@@ -2165,117 +1902,39 @@ mod tests {
     }
 
     #[test]
-    fn bad_joins_counts_order_and_terminals_never_complete() {
-        for (index, pointer, value) in [
-            (3, "/thread", json!(8)),
-            (3, "/event/ordinal", json!(0)),
-            (6, "/event/count", json!(2)),
-            (7, "/event/file", json!("foreign.txt")),
-            (8, "/event/owner", json!("0x0")),
-            (9, "/event/owner", json!("0x3000")),
-            (8, "/event/file", json!("foreign.txt")),
-            (8, "/event/line", json!(0)),
-            (8, "/event/line", json!(100)),
-            (8, "/event/field", json!("unbound")),
-            (9, "/event/ordinal", json!(1)),
-            (9, "/thread", json!(8)),
-            (10, "/event/file", json!("foreign.txt")),
-            (10, "/event/field_count", json!(1)),
-            (11, "/event/registrations", json!(2)),
-            (11, "/event/field_reads", json!(1)),
-            (11, "/event/producer_last_sequence", json!(11)),
-        ] {
-            let mut changed = events();
-            *changed[index].pointer_mut(pointer).unwrap() = value;
-            let answer = answer(changed);
-            assert_eq!(
-                answer.completeness,
-                Completeness::Partial,
-                "{index} {pointer}"
-            );
-            assert!(!answer.gaps.is_empty());
-        }
-        for index in 3..12 {
-            let mut changed = events();
-            changed.remove(index);
-            assert_eq!(
-                answer(changed).completeness,
-                Completeness::Partial,
-                "missing {index}"
-            );
-        }
-        for (left, right) in [(3, 7), (7, 8), (9, 10), (10, 11)] {
-            let mut changed = events();
-            changed.swap(left, right);
-            assert_eq!(answer(changed).completeness, Completeness::Partial);
-        }
-    }
-
-    #[test]
-    fn record_loss_and_missing_terminal_keep_the_established_reads() {
-        let mut dropped = events();
-        dropped.remove(8);
-        let partial = answer(dropped);
-        assert_eq!(partial.completeness, Completeness::Partial);
-        assert_eq!(partial.value.field_reads.len(), 1);
-        assert_eq!(partial.value.field_reads[0].field, "traditions");
-        let mut no_terminal = events();
-        no_terminal.pop();
-        assert_eq!(answer(no_terminal).value.field_reads.len(), 2);
-        let mut lost = owner();
-        lost.push(OwnerEvent::WorkerExited { returncode: -9 });
-        assert_eq!(
-            reduce(
-                &request(),
-                &category_fields(),
-                &records(events()),
-                &lost,
-                BuildId("b".into())
-            )
-            .unwrap()
-            .completeness,
-            Completeness::Partial
-        );
-    }
-
-    #[test]
     fn later_registry_record_loss_does_not_revoke_a_completed_fixture_window() {
-        let expected = answer(events());
-        let mut later_loss = events();
-        later_loss.push(json!({"kind":"registry-entry", "run":"attempt", "seq":14,
+        let expected = answer(field_events());
+        let mut later_loss = field_events();
+        later_loss.push(json!({"kind":"registry-entry", "run":"attempt", "seq":15,
             "thread":7, "name":"tradition_categories", "owner":"0x4000",
             "index":1, "object":"0x8000", "key":"other"}));
-        later_loss.push(json!({"kind":"callback-error", "run":"attempt", "seq":15,
+        later_loss.push(json!({"kind":"callback-error", "run":"attempt", "seq":16,
             "error":"a later observation failed"}));
         assert_eq!(answer(later_loss), expected);
     }
 
     #[test]
     fn damaged_tail_invalidates_fixture_terminal_even_after_a_complete_window() {
-        let mut raw = events()
+        let mut raw = field_events()
             .into_iter()
             .map(|event| format!("{event}\n"))
             .collect::<String>();
         raw.push('{');
         let (records, damage) = event_stream::read_worker_stream(raw.as_bytes(), "attempt");
         assert!(damage.is_some());
-        let answer = reduce(
-            &request(),
-            &category_fields(),
-            &records,
-            &owner(),
-            BuildId("b".into()),
-        )
-        .unwrap();
+        let answer = reduce(&field_request(), &records, &owner(), BuildId("b".into())).unwrap();
         assert_eq!(answer.completeness, Completeness::Partial);
-        assert_eq!(answer.value.field_reads.len(), 2);
+        assert_eq!(answer.value.field_outcomes.len(), 1);
+        assert!(matches!(
+            answer.value.field_outcomes[0].storage,
+            FixtureStorage::Observed { .. }
+        ));
     }
 
     #[test]
-    fn field_storage_diagnostics_and_runtime_are_independent() {
+    fn field_storage_and_diagnostics_are_independent() {
         let complete = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(field_events()),
             &owner(),
             BuildId("b".into()),
@@ -2291,7 +1950,6 @@ mod tests {
         assert_eq!(complete.value.diagnostics.len(), 1);
         let outcome = &complete.value.field_outcomes[0];
         assert_eq!(outcome.diagnostics, [0]);
-        assert_eq!(outcome.runtime, FixtureRuntime::NotRequested);
         assert!(matches!(
             &outcome.storage,
             FixtureStorage::Observed { occurrences, final_value, completeness }
@@ -2300,31 +1958,10 @@ mod tests {
                     && *completeness == Completeness::Complete
         ));
 
-        let runtime = reduce(
-            &field_request(true),
-            &category_fields(),
-            &records(field_events()),
-            &owner(),
-            BuildId("b".into()),
-        )
-        .unwrap();
-        assert_eq!(runtime.completeness, Completeness::Partial);
-        assert!(matches!(
-            runtime.value.field_outcomes[0].runtime,
-            FixtureRuntime::Unavailable(_)
-        ));
-        assert!(
-            runtime
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == GapKind::OutsideMethod)
-        );
-
         let mut missing_diagnostic_terminal = field_events();
         missing_diagnostic_terminal.remove(10);
         let partial = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(missing_diagnostic_terminal),
             &owner(),
             BuildId("b".into()),
@@ -2341,8 +1978,7 @@ mod tests {
         unjoined_diagnostic[7]["event"]["file"] = json!("foreign.txt");
         unjoined_diagnostic[7]["event"]["line"] = json!(0);
         let partial = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(unjoined_diagnostic),
             &owner(),
             BuildId("b".into()),
@@ -2358,8 +1994,7 @@ mod tests {
         let mut inconsistent_subjoin = field_events();
         inconsistent_subjoin[7]["event"]["line"] = json!(3);
         let partial = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(inconsistent_subjoin),
             &owner(),
             BuildId("b".into()),
@@ -2389,8 +2024,7 @@ mod tests {
             ("Block", GapKind::OutsideMethod, ReaderKind::Block),
         ] {
             let answer = reduce(
-                &field_request(false),
-                &category_fields(),
+                &field_request(),
                 &records(unavailable_field_events(reader_kind)),
                 &owner(),
                 BuildId("b".into()),
@@ -2415,14 +2049,7 @@ mod tests {
             event.pointer("/event/kind").and_then(Value::as_str) != Some("diagnostics-unavailable")
         });
         renumber(&mut events);
-        let answer = reduce(
-            &request,
-            &category_fields(),
-            &records(events),
-            &owner(),
-            BuildId("b".into()),
-        )
-        .unwrap();
+        let answer = reduce(&request, &records(events), &owner(), BuildId("b".into())).unwrap();
         assert_eq!(answer.completeness, Completeness::Partial);
         assert!(
             answer
@@ -2442,7 +2069,6 @@ mod tests {
     fn diagnostics_require_requested_supported_intact_terminals() {
         let not_requested = reduce(
             &field_request_without_diagnostics(),
-            &category_fields(),
             &records(no_diagnostic_events()),
             &owner(),
             BuildId("b".into()),
@@ -2456,7 +2082,6 @@ mod tests {
 
         let unsupported = reduce(
             &category_outcome_request(),
-            &category_fields(),
             &records(category_outcome_events()),
             &owner(),
             BuildId("b".into()),
@@ -2500,8 +2125,7 @@ mod tests {
         cases.push(diagnostic_after_terminal);
         for events in cases {
             let answer = reduce(
-                &field_request(false),
-                &category_fields(),
+                &field_request(),
                 &records(events),
                 &owner(),
                 BuildId("b".into()),
@@ -2521,14 +2145,7 @@ mod tests {
         raw.push('{');
         let (records, damage) = event_stream::read_worker_stream(raw.as_bytes(), "attempt");
         assert!(damage.is_some());
-        let answer = reduce(
-            &field_request(false),
-            &category_fields(),
-            &records,
-            &owner(),
-            BuildId("b".into()),
-        )
-        .unwrap();
+        let answer = reduce(&field_request(), &records, &owner(), BuildId("b".into())).unwrap();
         assert!(matches!(
             answer.value.diagnostic_coverage,
             DiagnosticCoverage::Unavailable(_)
@@ -2544,12 +2161,11 @@ mod tests {
     }
 
     #[test]
-    fn storage_authority_lifecycle_and_runtime_fail_independently() {
+    fn storage_authority_and_lifecycle_fail_independently() {
         let mut wrong_authority = field_events();
         wrong_authority[9]["event"]["reader_id"] = Value::Null;
         let answer = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(wrong_authority),
             &owner(),
             BuildId("b".into()),
@@ -2568,8 +2184,7 @@ mod tests {
         missing_final[9]["event"]["final_value"] = Value::Null;
         missing_final[9]["event"]["unavailable"] = json!("Final storage read failed");
         let answer = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(missing_final),
             &owner(),
             BuildId("b".into()),
@@ -2589,8 +2204,7 @@ mod tests {
         storage_after_terminal[10]["event"]["occurrence"] = json!(3);
         renumber(&mut storage_after_terminal);
         let answer = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(storage_after_terminal),
             &owner(),
             BuildId("b".into()),
@@ -2602,24 +2216,19 @@ mod tests {
         missing_terminal.remove(9);
         renumber(&mut missing_terminal);
         let answer = reduce(
-            &field_request(true),
-            &category_fields(),
+            &field_request(),
             &records(missing_terminal),
             &owner(),
             BuildId("b".into()),
         )
         .unwrap();
-        assert!(matches!(
-            answer.value.field_outcomes[0].runtime,
-            FixtureRuntime::Unavailable(_)
-        ));
+        assert_eq!(answer.completeness, Completeness::Partial);
     }
 
     #[test]
     fn owner_identity_follows_the_engine_object_and_ignores_addresses() {
         let expected = reduce(
             &two_field_request(),
-            &category_fields(),
             &records(two_field_events()),
             &owner(),
             BuildId("b".into()),
@@ -2638,7 +2247,6 @@ mod tests {
         }
         let relocated = reduce(
             &two_field_request(),
-            &category_fields(),
             &records(relocated),
             &owner(),
             BuildId("b".into()),
@@ -2648,7 +2256,6 @@ mod tests {
 
         let different = reduce(
             &different_owner_request(),
-            &category_fields(),
             &records(different_owner_events()),
             &owner(),
             BuildId("b".into()),
@@ -2663,7 +2270,7 @@ mod tests {
 
     #[test]
     fn repair_regressions_require_independent_terminals_and_partial_preservation() {
-        let mut entry_only = events();
+        let mut entry_only = field_events();
         entry_only.insert(
             11,
             json!({"kind":"fixture", "event":{"kind":"diagnostics-terminal","count":0},
@@ -2679,8 +2286,7 @@ mod tests {
         missing_field_terminal.remove(9);
         renumber(&mut missing_field_terminal);
         let partial = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(missing_field_terminal),
             &owner(),
             BuildId("b".into()),
@@ -2700,8 +2306,7 @@ mod tests {
         duplicate_field_terminal.insert(10, duplicate_field_terminal[9].clone());
         renumber(&mut duplicate_field_terminal);
         let partial = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(duplicate_field_terminal),
             &owner(),
             BuildId("b".into()),
@@ -2716,8 +2321,7 @@ mod tests {
         let mut missing_end = field_events();
         missing_end.pop();
         let partial = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(missing_end),
             &owner(),
             BuildId("b".into()),
@@ -2729,8 +2333,7 @@ mod tests {
         let mut wrong_diagnostic_count = field_events();
         wrong_diagnostic_count[10]["event"]["count"] = json!(2);
         let partial = reduce(
-            &field_request(false),
-            &category_fields(),
+            &field_request(),
             &records(wrong_diagnostic_count),
             &owner(),
             BuildId("b".into()),
@@ -2744,18 +2347,10 @@ mod tests {
     }
     #[test]
     fn nested_diagnostics_require_the_matching_parent_selector() {
-        let mut request = field_request(false);
+        let mut request = field_request();
         request.field_questions[0].parent_field = Some("requirements".into());
-        let run = |events| {
-            reduce(
-                &request,
-                &category_fields(),
-                &records(events),
-                &owner(),
-                BuildId("b".into()),
-            )
-            .unwrap()
-        };
+        let run =
+            |events| reduce(&request, &records(events), &owner(), BuildId("b".into())).unwrap();
         let mut events = field_events();
         for row in &mut events {
             if row["event"]["kind"] == "diagnostic" {
@@ -2806,8 +2401,7 @@ mod tests {
             events[9]["event"]["final_value"] = last.clone();
             let run = |events| {
                 reduce(
-                    &field_request(false),
-                    &category_fields(),
+                    &field_request(),
                     &records(events),
                     &owner(),
                     BuildId("b".into()),
@@ -2895,8 +2489,7 @@ mod tests {
             events[9]["event"]["final_value"] = value(9);
             let run = |events| {
                 reduce(
-                    &field_request(false),
-                    &category_fields(),
+                    &field_request(),
                     &records(events),
                     &owner(),
                     BuildId("b".into()),

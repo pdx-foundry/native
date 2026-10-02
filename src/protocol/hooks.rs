@@ -12,13 +12,10 @@ macro_rules! hooks {
 }
 
 hooks! {
-    WORLD = "world:ready",
     REGISTRY = "registry:",
     REGISTRY_RETURN = "registry-return:",
     FIXTURE = "fixture:",
     FIXTURE_LOAD = "fixture:load",
-    FIXTURE_REGISTRATION = "fixture:registration",
-    FIXTURE_FIELD = "fixture:field",
     FIXTURE_CONSTRUCTOR = "fixture:constructor",
     FIXTURE_READER = "fixture:reader",
     FIXTURE_MEMBER = "fixture:member",

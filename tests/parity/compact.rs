@@ -288,11 +288,11 @@ mod modifier_tests {
 
     fn field() -> Field {
         serde_json::from_value(json!({
-            "name":"modifier", "reader":{"id":"shared","kind":"Block","family":"Modifier"},
+            "name":"modifier", "reader":{"id":"shared","kind":"Block","family":"Modifier","numeric":"Unresolved","scoped_operand":"Unresolved"},
             "shape":{"value":"Unknown","repeat":"Unknown"}, "read":[],
             "members":{"ModifierBlock":{"fixed_keys":{"Known":[]},"entries":{"Known":[
                 {"Reference":{"target":{"Registry":{"name":"common/static_modifiers"}},"value":"FixedPoint"}}
-            ]}}}, "domain":"Unknown","default":"Unknown","uses":[]
+            ]}}}, "domain":"Unknown","reference":"NotEstablished","uses":[]
         })).unwrap()
     }
 

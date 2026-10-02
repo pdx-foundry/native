@@ -26,7 +26,6 @@ pub(in crate::binding) struct Recipe {
     pub strategy: StrategyId,
     pub declarations: Option<&'static DeclarationRecipe>,
     pub script_checks: Option<fn() -> crate::protocol::script_check::ScriptCheckBinding>,
-    pub world: Option<fn() -> crate::protocol::world::WorldBinding>,
 }
 
 /// Virtual reader slots and shared family methods on the selected build.
@@ -109,7 +108,6 @@ pub(super) const M45_RELEASE: Recipe = Recipe {
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     declarations: Some(&M45_DECLARATIONS),
     script_checks: Some(m45_script_checks),
-    world: None,
 };
 
 pub(super) const M451_HOTFIX: Recipe = Recipe {
@@ -121,7 +119,6 @@ pub(super) const M451_HOTFIX: Recipe = Recipe {
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     declarations: Some(&M45_DECLARATIONS),
     script_checks: Some(m451_script_checks),
-    world: Some(m451_world),
 };
 
 /// Console memory readers and pre-filter logger on the exact M45-release ARM64 slice.
@@ -431,49 +428,3 @@ pub(in crate::binding) const M45_INLINE_FIXTURES: &[InlineFixtureRecipe] = &[Inl
     root_call: 0x1d0,
     file_end: 0xa8,
 }];
-
-/// World calls and layouts verified by fresh 4.5.1 disassembly.
-fn m451_world() -> crate::protocol::world::WorldBinding {
-    use crate::protocol::{script_check::CallBinding, world::WorldBinding};
-    let call = |address, widths: &[u8]| CallBinding {
-        address,
-        widths: widths.to_vec(),
-    };
-    WorldBinding {
-        pause_entry: 0x10086de64,
-        normal_stack: vec![
-            "CGameIdler::Idle(bool)".into(),
-            "CApplication::UpdateOneFrame(bool)".into(),
-        ],
-        game_state: 0x1032e9450,
-        idler: 0x1032e9438,
-        ready_offset: 0x98,
-        paused_offset: 0x584,
-        date_offset: 0xb8,
-        local_human: call(0x100715484, &[64]),
-        human_country: call(0x10085d4e0, &[64]),
-        country_id_offset: 0x20,
-        human_country_offset: 0x54,
-        country_name: call(0x100238a60, &[64]),
-        scope_constructor: call(0x1004e7b38, &[64, 32]),
-        scope_country: call(0x1004e3234, &[64, 64]),
-        scope_size: 0x180,
-        scope_type: 4,
-        scope_type_offset: 8,
-        scope_id_offset: 0x10,
-        scope_flags: call(0x1004ea4d8, &[64]),
-        effect_execute: call(0x100458118, &[64, 64]),
-        fast_forward: call(0x1006f0374, &[32, 8]),
-        date_string: call(0x1006fabe4, &[64]),
-        flags_data_offset: 0x10,
-        flags_count_offset: 0x1c,
-        counts_data_offset: 0x40,
-        counts_count_offset: 0x4c,
-        flag_width: 2,
-        flag_name: call(0x1022a35b8, &[16]),
-        variable_store: call(0x100d0d704, &[64, 64]),
-        variable_is_set: call(0x100d1e7b8, &[64, 64]),
-        variable_value: call(0x100d1e784, &[64, 64]),
-        variable_scale: 100_000,
-    }
-}

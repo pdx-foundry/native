@@ -1,5 +1,9 @@
 # Registry fields
 
+## Simplification, 2026-10-02
+
+FieldDefault was removed on 2026-10-02: only Unknown had been established. FieldDomain remains. SDK-627 now owns enum domains, repeat behavior and fields whose absence validation rejects; SDK-628 is canceled, while the established flag-to-field selections remain. The historical findings below are retained.
+
 `Native::registry_fields(registry)` (`registry-fields/v8`) gives root fields, reader and storage shapes,
 loader alternatives, nested object fields and local stored-value selections. `Native::registries()` gives the registries. The module
 comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` describe the methods.

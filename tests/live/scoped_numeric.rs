@@ -59,9 +59,7 @@ async fn observe_batch(
     }
     let request =
         FixtureRequest::field_outcomes(format!("{registry}/native_scoped.txt"), text, questions);
-    let mut game = native
-        .start_game(options().registries([registry]).fixture(request))
-        .await?;
+    let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = match game.observe_fixture().await {
         Ok(answer) => record_batch(registry, fields, batch, &answer, report),
         Err(error) => Err(error.into()),
@@ -221,7 +219,6 @@ pub(super) async fn worker_loss() -> Outcome {
     match native
         .start_game(
             options()
-                .registries([registry])
                 .fixture(request)
                 .fault(ObservationTarget::Fixture, Fault::WorkerLoss),
         )

@@ -1,6 +1,5 @@
 [
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "effect",
@@ -47,7 +46,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "agenda_cost",
@@ -93,9 +91,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -124,20 +119,6 @@
            },
            "Variable"
           ]
-         },
-         "literal_assignment_preserves_reference_state": {
-          "Known": true
-         },
-         "selection": {
-          "Known": {
-           "literal_condition": "EmptySourceLocation",
-           "reference_priority": [
-            "Trigger",
-            "ScriptValue",
-            "Modifier",
-            "Variable"
-           ]
-          }
          }
         }
        }
@@ -187,9 +168,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -218,20 +196,6 @@
        },
        "Variable"
       ]
-     },
-     "literal_assignment_preserves_reference_state": {
-      "Known": true
-     },
-     "selection": {
-      "Known": {
-       "literal_condition": "EmptySourceLocation",
-       "reference_priority": [
-        "Trigger",
-        "ScriptValue",
-        "Modifier",
-        "Variable"
-       ]
-      }
      }
     }
    }
@@ -244,7 +208,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "agenda_cooldown",
@@ -290,9 +253,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -345,9 +305,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -363,7 +320,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "agenda_finish_modifier_duration",
@@ -409,9 +365,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -464,9 +417,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -482,7 +432,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "potential",
@@ -529,7 +478,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "allow",
@@ -576,7 +524,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "init_effect",
@@ -623,7 +570,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "ai_weight",
@@ -670,7 +616,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "finish_modifier",
@@ -732,7 +677,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "ModifierBlock": "5a74c67fe5a4adf9"

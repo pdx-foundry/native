@@ -24,9 +24,6 @@ pub struct NumericConversion {
     /// Storage width alone does not establish these bounds.
     /// Unknown out-of-range behavior remains a conversion gap even when these bounds are known.
     pub accepted_range: GrammarProperty<Box<NumericRange>>,
-    /// Explicit bound clamp in reader code. `Known(None)` does not establish the behavior of
-    /// overflow in library calls or conversion instructions. Caller post-processing is excluded.
-    pub clamp: GrammarProperty<Option<Box<NumericRange>>>,
 }
 
 /// Destination representation established from conversion and stores.

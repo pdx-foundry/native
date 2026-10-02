@@ -1,5 +1,19 @@
 # Registry items on M45
 
+The public item query and registry selection were retired by the 2026-10-02
+[simplification review](../design/simplification-review.md), which supersedes the Milestone 2
+instruction to retain them. Native selects session registries and includes the fixture registry.
+`LoadedModifiers.registry_items` retains the keys needed for the modifier explanation join.
+The live `loaded_modifier_key_layouts` control covers the six generator registries, including
+the `+0x18` bypass layout, with independent source-key comparison. The former `map_modes`
+control and the full initial-loader report remain in Git at `d8f9d8a`.
+
+`internals::check_registry_load` retains one bounded, live-only registry observation for
+SDK-552 loader-rule controls. It owns launch and close, accepts an optional fixture in that same
+registry, and returns no persistent game. The collection bounds, hook/terminal joins and cleanup
+checks remain. The details below preserve the original discovery and controls.
+
+
 `Game::registry_items(name)` reads a selected registry's collection when its initial loader
 returns. `Complete` means that every slot, key, owner, thread, sequence and terminal witness
 agrees at that boundary. It says nothing about later validation or gameplay. A loader that has

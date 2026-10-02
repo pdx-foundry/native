@@ -77,7 +77,6 @@ impl Member {
             &code,
             &initial,
             execute,
-            &Ok(Countdown { counts: 0x40 }),
             &BTreeMap::new(),
         )
         .groups
@@ -91,7 +90,6 @@ fn execute_bindings(operand: &str, factor: &str) -> Option<Result<Execution, Unr
             ("factor".to_string(), factor.to_string()),
         ]
         .into(),
-        flag_countdown: true,
     }))
 }
 
@@ -152,7 +150,6 @@ fn a_shared_factor_needs_the_execute_body_that_multiplies_its_operand_and_slot()
             initial_factor: 1
         })
     );
-    assert_eq!(group.consumption, Ok(Consumption::FlagCountdown));
 
     for execute in [
         None,
@@ -163,7 +160,7 @@ fn a_shared_factor_needs_the_execute_body_that_multiplies_its_operand_and_slot()
         let [group] = member.groups(execute).try_into().unwrap();
 
         assert!(group.combination.is_err());
-        assert!(group.consumption.is_err());
+
         assert_eq!(factors(&group)[1], ("months", Ok(Some(30))));
     }
 }
@@ -208,7 +205,7 @@ fn a_scaled_read_multiplies_its_destination_in_place() {
         ]
     );
     assert_eq!(group.combination, Ok(Combination::ScaledAtRead));
-    assert!(group.consumption.is_err());
+
     assert_eq!(word(&group.initial, group.destination), Some(0));
 }
 
@@ -390,7 +387,6 @@ fn a_stack_transfer_requires_the_read_slot_and_owner_provenance() {
             &code,
             &BTreeMap::new(),
             None,
-            &Ok(Countdown { counts: 0x40 }),
             &BTreeMap::new(),
         );
         assert!(inventory.groups.is_empty());
@@ -409,7 +405,6 @@ fn a_stack_write_cannot_be_ignored_between_the_reader_and_the_owner_store() {
         &|_: u64| Some((START, member.code.as_slice())),
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
     assert!(inventory.groups.is_empty());
@@ -449,7 +444,6 @@ fn a_byte_write_overlapping_the_count_is_unresolved() {
         &|_: u64| Some((START, member.code.as_slice())),
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
     assert_eq!(inventory.unresolved[0].reason, "duration-post-read-store");
@@ -473,7 +467,6 @@ fn a_prefix_reset_overwritten_by_the_integer_reader_forms_no_group() {
         &|_: u64| Some((START, member.code.as_slice())),
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
     assert!(inventory.groups.is_empty());
@@ -507,7 +500,6 @@ fn a_missing_initial_factor_leaves_the_shared_combination_unresolved() {
         &code,
         &BTreeMap::new(),
         execute_bindings("0xa8", "0x2b0"),
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     )
     .groups
@@ -517,37 +509,6 @@ fn a_missing_initial_factor_leaves_the_shared_combination_unresolved() {
     assert_eq!(
         group.combination,
         Err(Unresolved::new("duration-initial-state"))
-    );
-}
-
-#[test]
-fn a_missing_countdown_proof_keeps_the_combination_but_not_the_consumption() {
-    let member = shared_factor_member();
-    let code = |address: u64| {
-        (START..START + member.code.len() as u64)
-            .contains(&address)
-            .then_some((START, member.code.as_slice()))
-    };
-    let initial = (0x2b0..0x2b4)
-        .map(|at| (at, u8::from(at == 0x2b0)))
-        .collect();
-    let [group] = groups(
-        &member.fields,
-        &member.paths,
-        &code,
-        &initial,
-        execute_bindings("0xa8", "0x2b0"),
-        &Err(Unresolved::new("duration-flag-update")),
-        &BTreeMap::new(),
-    )
-    .groups
-    .try_into()
-    .unwrap();
-
-    assert!(group.combination.is_ok());
-    assert_eq!(
-        group.consumption,
-        Err(Unresolved::new("duration-flag-update"))
     );
 }
 
@@ -572,7 +533,6 @@ fn a_candidate_whose_code_cannot_be_followed_is_kept_as_unresolved() {
         },
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
 
@@ -609,19 +569,15 @@ fn register_only_instructions_do_not_hide_a_factor() {
 /// The exact-build bodies, each mutated so that its proof must fail.
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-fn m45_duration_consumption_proofs() {
+fn m45_duration_execution_proofs() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = native.bound().analysis.as_ref().unwrap();
     let (input, _) = analysis
         .grammar_input(crate::DeclarationKind::Effect)
         .unwrap();
-    let (set_flag, update_flags, execute_rows) = analysis.duration_bodies_for_test().unwrap();
+    let execute_rows = analysis.duration_execute_for_test().unwrap();
     let names = &input.durations.names;
 
-    assert_eq!(
-        countdown(&set_flag, &update_flags, names),
-        Ok(Countdown { counts: 0x40 })
-    );
     let bindings = execute(&execute_rows, names).unwrap();
     assert_eq!(bindings.bindings["operand"], "0xa8");
     assert_eq!(bindings.bindings["factor"], "0x2b0");
@@ -662,21 +618,6 @@ fn m45_duration_consumption_proofs() {
         .cloned()
         .collect();
     assert!(execute(&without_multiply, names).is_err());
-
-    for (from, to) in [("tbnz", "tbz"), ("subs", "sub")] {
-        assert!(
-            countdown(&set_flag, &mutated(&update_flags, from, to), names).is_err(),
-            "{from}"
-        );
-    }
-    assert!(
-        countdown(
-            &mutated(&set_flag, "cmp w4,#1", "cmp w4,#0"),
-            &update_flags,
-            names
-        )
-        .is_err()
-    );
 }
 
 /// Every command in the tracked expected file, with its public durations and their gaps.
@@ -809,7 +750,6 @@ fn the_authored_relation_execute_requires_the_product_and_consumer() {
     let proof = execute(&rows, &names).unwrap();
     assert_eq!(proof.bindings["operand"], "0x3f8");
     assert_eq!(proof.bindings["factor"], "0x600");
-    assert!(proof.flag_countdown);
     for operation in ["mul", "consumer"] {
         let mut missing = rows.clone();
         let row = missing
@@ -872,7 +812,6 @@ fn the_authored_trait_execute_requires_the_product_and_consumer() {
     let proof = execute(&rows, &names).unwrap();
     assert_eq!(proof.bindings["operand"], "0xa8");
     assert_eq!(proof.bindings["factor"], "0x2e0");
-    assert!(!proof.flag_countdown);
     for operation in ["mul", "b"] {
         let mut missing = rows.clone();
         let row = missing
@@ -1004,16 +943,14 @@ fn m45_duration_stack_and_presence_parity() {
             );
         }
     }
-    for (name, combination, consumption) in [
+    for (name, combination) in [
         (
             "set_timed_relation_flag",
             GrammarProperty::Known(DurationCombination::SharedFactor { initial_factor: 1 }),
-            GrammarProperty::Known(crate::DurationConsumption::FlagCountdown),
         ),
         (
             "add_timed_trait",
             GrammarProperty::Known(DurationCombination::SharedFactor { initial_factor: 1 }),
-            GrammarProperty::Unresolved,
         ),
     ] {
         let answer = native
@@ -1026,7 +963,6 @@ fn m45_duration_stack_and_presence_parity() {
         };
         assert_eq!(groups[0].combination, combination);
         assert_eq!(groups[0].omitted_count, GrammarProperty::Known(0));
-        assert_eq!(groups[0].consumption, consumption);
     }
 }
 
@@ -1108,7 +1044,6 @@ fn conditional_presence_writes_agree_when_the_count_and_factors_agree() {
         &|_: u64| Some((START, member.code.as_slice())),
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
     assert!(inventory.groups.is_empty());
@@ -1122,7 +1057,6 @@ fn conditional_presence_writes_agree_when_the_count_and_factors_agree() {
         &|_: u64| Some((START, member.code.as_slice())),
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
     assert_eq!(inventory.unresolved[0].reason, "duration-key-alternatives");
@@ -1144,7 +1078,6 @@ fn a_prefix_restore_cannot_leave_stale_owner_provenance() {
         &|_: u64| Some((START, member.code.as_slice())),
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
     assert_eq!(inventory.unresolved[0].reason, "duration-prefix-store");
@@ -1173,7 +1106,6 @@ fn an_unscaled_stack_transfer_is_not_a_duration_group() {
         &|_| Some((START, member.code.as_slice())),
         &BTreeMap::new(),
         None,
-        &Ok(Countdown { counts: 0x40 }),
         &BTreeMap::new(),
     );
     assert!(inventory.groups.is_empty());
@@ -1222,7 +1154,6 @@ fn indexed_accesses_do_not_preserve_stack_addresses() {
                 &|_| Some((START, member.code.as_slice())),
                 &BTreeMap::new(),
                 None,
-                &Ok(Countdown { counts: 0x40 }),
                 &BTreeMap::new(),
             )
         };
@@ -1251,7 +1182,6 @@ fn a_prefix_word_reset_requires_a_word_integer_reader() {
             &|_| Some((START, member.code.as_slice())),
             &BTreeMap::new(),
             None,
-            &Ok(Countdown { counts: 0x40 }),
             &BTreeMap::new(),
         );
         assert!(inventory.groups.is_empty(), "{callee}");
@@ -1313,7 +1243,6 @@ fn scoped_literal_byte_writes_need_proved_disjointness() {
                 &|_| Some((START, member.code.as_slice())),
                 &BTreeMap::from([(0x2b0, 1), (0x2b1, 0), (0x2b2, 0), (0x2b3, 0)]),
                 execute_bindings("0xa8", "0x2b0"),
-                &Ok(Countdown { counts: 0x40 }),
                 &BTreeMap::from([(0xa8, Ok(0x204))]),
             )
             .groups
@@ -1343,7 +1272,6 @@ fn scoped_literal_byte_writes_need_proved_disjointness() {
                 &|_| Some((START, member.code.as_slice())),
                 &BTreeMap::from([(0x2b0, 1), (0x2b1, 0), (0x2b2, 0), (0x2b3, 0)]),
                 execute_bindings("0xa8", "0x2b0"),
-                &Ok(Countdown { counts: 0x40 }),
                 &storage,
             )
             .groups
@@ -1363,7 +1291,7 @@ fn scoped_byte_bounds_require_the_subtype_selection_and_literal_width() {
     let mut facts = Facts {
         shared: Shared {
             forms: Err(Unresolved::new("unused-forms")),
-            literal_preserves_references: Err(Unresolved::new("unused-selection")),
+
             selection: Ok(Layout {
                 literal: 0x28,
                 location: 8,

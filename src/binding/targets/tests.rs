@@ -50,12 +50,7 @@ fn release_and_hotfix_select_their_own_recipes() {
             format: record.format,
         };
         let selected = lookup(&image).unwrap();
-        let expected_pause = record.recipe.world.map(|world| world().pause_entry);
         let expected_script = record.recipe.script_checks.unwrap()();
-        assert_eq!(
-            selected.world.map(|world| world().pause_entry),
-            expected_pause
-        );
         assert_eq!(
             selected.script_checks.unwrap()().logger_entry,
             expected_script.logger_entry

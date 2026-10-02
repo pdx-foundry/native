@@ -5,7 +5,7 @@
 //! starts no process. A file can also be written by hand, for example for a failure case.
 //!
 //! Layout: `build.json`, `registries.json`, `registry_fields/<registry>.json`,
-//! `registry_items/<registry>.json` and `modifier_families/<registry>.json`, where `<registry>` is
+//! `modifier_families/<registry>.json`, where `<registry>` is
 //! the content directory, such as `common/traditions`. The language
 //! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json`, `defines.json` and
 //! `dynamic_names.json`, and
@@ -34,6 +34,12 @@ impl Answers {
         let build = serde_json::from_slice(&bytes)
             .map_err(|error| Error::Recorded(format!("{}: {error}", path.display())))?;
         Ok(Self { directory, build })
+    }
+
+    /// Whether any file for this operation is present; decoding remains the query's job.
+    pub(crate) fn contains(&self, operation: crate::Operation) -> bool {
+        let path = self.directory.join(operation.name());
+        path.with_extension("json").is_file() || contains_json(&path)
     }
 
     /// Preserve the original build, and mark the answer as recorded regardless of its file.
@@ -141,6 +147,23 @@ pub(crate) fn write<T: Serialize>(
     let mut bytes = serde_json::to_vec_pretty(answer).expect("answers serialize");
     bytes.push(b'\n');
     std::fs::write(&path, bytes).map_err(failed)
+}
+
+fn contains_json(directory: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let Ok(kind) = entry.file_type() else {
+            return false;
+        };
+        (kind.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "json"))
+            || (kind.is_dir() && contains_json(&entry.path()))
+    })
 }
 
 #[cfg(test)]

@@ -1,5 +1,9 @@
 # Shared numeric conversion
 
+## Simplification, 2026-10-02
+
+The public numeric clamp property was removed on 2026-10-02. All complete reader shapes established no explicit clamp; the preserved findings below distinguish that result from overflow behavior. The remaining numeric conversion properties stay in the API.
+
 SDK-644 adds conversion facts to `Reader.numeric` in registry fields, conditional read
 alternatives, command values, fixed keys and ordering-selected readers. The shared identity is
 unchanged. `Known(None)` means an established nonnumeric reader; `Unresolved` means no numeric

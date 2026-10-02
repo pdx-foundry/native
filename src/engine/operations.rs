@@ -7,5 +7,3 @@ pub(crate) mod event_stream;
 pub(crate) mod fixture;
 pub(crate) mod loaded_modifiers;
 pub(crate) mod registry_items;
-
-pub(crate) mod world;

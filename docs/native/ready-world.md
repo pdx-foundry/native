@@ -1,6 +1,24 @@
 # Ready-world observations (SDK-650, SDK-647)
 
-## Verified route
+## Retired route, 2026-10-02
+
+The world API and M451-hotfix world recipe are retired by the
+[simplification review](../design/simplification-review.md). The M451-hotfix target remains for
+fixture outcomes and `check_script`. All findings below are historical exact-build observations.
+
+Commit `2d930e4` contains both `tests/fixtures/world-m451/fixture.sav` and
+`tests/expected/world-numeric-m451/cases.json`, plus their world tests. The save was first added in
+`9ad2938`; the numeric cases followed in `2d930e4`. The last complete pre-cut implementation is
+`d8f9d8ab337d10c9e920caeb02fc651f53b78042`, including the world recipe, worker, protocol and controls.
+Use `git show <commit>:<path>` to retrieve a file or create a separate checkout at that commit to
+restore the complete route. Match the exact executable identity in [targets](targets.md) first.
+The private `.local/sdk-650/` and `.local/sdk-647/` findings remain in place.
+
+The non-world operand controls now live in `tests/live/script_numeric.rs`, with only parser
+expectations in `tests/expected/script-numeric-m451/cases.json`. Run `cargo live script_numeric`.
+Keep this page complete so the route can be restored if the entry-context self-link assumption fails.
+
+## Historical verified route
 
 The route is supported on the exact M451-hotfix ARM64 executable in [targets](targets.md).
 The 4.5.0 target keeps its startup operations; it has no world recipe. Addresses and layouts

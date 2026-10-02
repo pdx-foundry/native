@@ -112,7 +112,6 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
         fault: None,
         fixture: None,
         loaded_modifiers: None,
-        world: None,
     };
     request.validate().unwrap();
     assert_eq!(

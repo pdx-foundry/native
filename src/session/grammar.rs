@@ -1318,7 +1318,7 @@ mod tests {
         let scoped = Facts {
             shared: Shared {
                 forms: Err(Unresolved::new("scoped-body")),
-                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+
                 selection: Err(Unresolved::new("scoped-body")),
             },
             subtypes: Default::default(),
@@ -1343,7 +1343,7 @@ mod tests {
         (answer.value.durations, gaps)
     }
 
-    fn group(combination: Combination, consumption: Result<Consumption, Unresolved>) -> Group {
+    fn group(combination: Combination) -> Group {
         Group {
             units: vec![Unit {
                 key: "months".into(),
@@ -1351,12 +1351,11 @@ mod tests {
             }],
             destination: 0xa8,
             combination: Ok(combination),
-            consumption,
             initial: Default::default(),
         }
     }
 
-    use crate::engine::analysis::durations::{Combination, Consumption, Group, Unit};
+    use crate::engine::analysis::durations::{Combination, Group, Unit};
 
     fn literal_numeric(width: u8) -> crate::engine::analysis::numeric::NumericFacts {
         use crate::engine::analysis::numeric::{NumericFacts, NumericReader};
@@ -1380,15 +1379,12 @@ mod tests {
     fn scaled_literals_do_not_claim_the_scoped_operands_selection_rules() {
         use crate::engine::analysis::scoped_numeric::{Facts, Shared, Subtype};
         let mut result = keyed(Ok(INITIALIZER.into()));
-        let group = group(
-            Combination::ScaledAtRead,
-            Err(Unresolved::new("duration-consumption")),
-        );
+        let group = group(Combination::ScaledAtRead);
         result.scoped_destinations.insert(0x80, 0x9000);
         let mut scoped = Facts {
             shared: Shared {
                 forms: Err(Unresolved::new("scoped-body")),
-                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+
                 selection: Err(Unresolved::new("scoped-body")),
             },
             subtypes: [(
@@ -1476,10 +1472,7 @@ mod tests {
         use crate::engine::analysis::fields::{ReaderJoin, Value};
         use crate::engine::analysis::scoped_numeric::{Facts, Layout, Shared};
         let mut result = keyed(Ok(INITIALIZER.into()));
-        let count = group(
-            Combination::ScaledAtRead,
-            Err(Unresolved::new("duration-consumption")),
-        );
+        let count = group(Combination::ScaledAtRead);
         result.fields.fields[0].readers = vec![ReaderJoin::Joined {
             callee: "CVariableValue::Read(CReader&, EScopeType)".into(),
             arguments: [("x0".into(), Value::Owner(0x80))].into(),
@@ -1489,7 +1482,7 @@ mod tests {
         let mut scoped = Facts {
             shared: Shared {
                 forms: Err(Unresolved::new("scoped-body")),
-                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+
                 selection: Ok(Layout {
                     literal: 0x28,
                     location: 8,
@@ -1526,37 +1519,6 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_countdown_proof_is_an_in_method_gap() {
-        let mut result = keyed(Ok(INITIALIZER.into()));
-        result.durations.groups = vec![group(
-            Combination::SharedFactor {
-                factor_slot: 0x2b0,
-                initial_factor: 1,
-            },
-            Err(Unresolved::new("duration-flag-update")),
-        )];
-        let (_, gaps) = durations(&result);
-
-        assert!(gaps.iter().any(|gap| {
-            gap.kind == GapKind::ReaderSemantics
-                && gap
-                    .detail
-                    .contains("countdown is not established (duration-flag-update)")
-        }));
-
-        result.durations.groups = vec![group(
-            Combination::ScaledAtRead,
-            Err(Unresolved::new("duration-consumption")),
-        )];
-        let (_, gaps) = durations(&result);
-
-        assert!(
-            gaps.iter().any(|gap| gap.kind == GapKind::OutsideMethod
-                && gap.detail.contains("outside this method"))
-        );
-    }
-
-    #[test]
     fn an_unclassified_candidate_or_a_deep_nested_group_keeps_the_list_partial() {
         let complete = keyed(Ok(INITIALIZER.into()));
 
@@ -1574,10 +1536,7 @@ mod tests {
         );
 
         let mut deepest = keyed(Ok(INITIALIZER.into()));
-        deepest.durations.groups = vec![group(
-            Combination::ScaledAtRead,
-            Err(Unresolved::new("duration-consumption")),
-        )];
+        deepest.durations.groups = vec![group(Combination::ScaledAtRead)];
         let mut middle = keyed(Ok(INITIALIZER.into()));
         middle.nested.insert("inner".into(), Box::new(deepest));
         let mut outer = keyed(Ok(INITIALIZER.into()));
@@ -1690,7 +1649,7 @@ mod tests {
         let mut scoped = Facts {
             shared: Shared {
                 forms: Err(Unresolved::new("scoped-body")),
-                literal_preserves_references: Err(Unresolved::new("scoped-body")),
+
                 selection: Err(Unresolved::new("scoped-body")),
             },
             subtypes: Default::default(),
@@ -1702,10 +1661,7 @@ mod tests {
             .chain(lost(0xd0, 4, 0x40))
             .collect();
 
-        result.durations.groups = vec![group(
-            Combination::ScaledAtRead,
-            Err(Unresolved::new("duration-consumption")),
-        )];
+        result.durations.groups = vec![group(Combination::ScaledAtRead)];
         assert_eq!(
             stop_causes(&state_stops(&result, &scoped)),
             [("months", "omitted-count-state", vec![0x30])]
@@ -1717,7 +1673,7 @@ mod tests {
             factor_slot: 0xb0,
             initial_factor: 1,
         };
-        result.durations.groups = vec![group(shared, Err(Unresolved::new("duration-consumption")))];
+        result.durations.groups = vec![group(shared)];
         assert_eq!(
             stop_causes(&state_stops(&result, &scoped)),
             [("months", "omitted-count-state", vec![0x30])]

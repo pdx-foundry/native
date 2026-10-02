@@ -300,6 +300,9 @@ STELLARIS_PATH="$STELLARIS_PATH" cargo test --lib binding::analysis::tests -- --
 python3 tools/observation/test_protocol.py
 ```
 
-The optional historical live baselines can be reproduced with
+The optional current live controls can be measured with
 `python3 tools/profiling/measure.py .local/perf-live --release --live --suite-repeats 2`.
-Run that separately from lifecycle unit tests. It is not needed to measure the static command.
+Since the simplification of 2026-10-02, these use the internal loader fixture and loaded-modifier
+key layouts. The old outside-common and public registry-report workloads remain at `d8f9d8a`;
+the historical measurements above describe those workloads. Run live measurements separately
+from lifecycle unit tests. They are not needed to measure the static command.

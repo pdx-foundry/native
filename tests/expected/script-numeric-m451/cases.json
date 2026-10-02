@@ -3,7 +3,6 @@
   "sessions": [
     {
       "name": "operands",
-      "complete": true,
       "before": [
         "set_variable = { which = n647_positive value = 7.9 }",
         "set_variable = { which = n647_negative value = -2.75 }"
@@ -14,10 +13,6 @@
           "operands": [
             "7"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": 7,
-          "fixed": 700000,
           "stored": {
             "literal": {
               "Integer": 7
@@ -27,21 +22,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            2,
-            25
-          ]
+          }
         },
         {
           "name": "literal_fraction",
           "operands": [
             "2.75"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": 2,
-          "fixed": 275000,
           "stored": {
             "literal": {
               "Integer": 2
@@ -51,22 +38,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            4,
-            28,
-            36
-          ]
+          }
         },
         {
           "name": "literal_negative",
           "operands": [
             "-7"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": -7,
-          "fixed": -700000,
           "stored": {
             "literal": {
               "Integer": -7
@@ -76,18 +54,11 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            3
-          ]
+          }
         },
         {
           "name": "omitted",
           "operands": [],
-          "route": "literal",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -97,21 +68,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            1,
-            24
-          ]
+          }
         },
         {
           "name": "literal_negative_fraction",
           "operands": [
             "-2.75"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": -2,
-          "fixed": -275000,
           "stored": {
             "literal": {
               "Integer": -2
@@ -121,20 +84,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            5
-          ]
+          }
         },
         {
           "name": "literal_hex",
           "operands": [
             "0x10"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": 16,
-          "fixed": 1600000,
           "stored": {
             "literal": {
               "Integer": 16
@@ -144,20 +100,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            6
-          ]
+          }
         },
         {
           "name": "literal_octal",
           "operands": [
             "010"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": 8,
-          "fixed": 800000,
           "stored": {
             "literal": {
               "Integer": 8
@@ -167,20 +116,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            7
-          ]
+          }
         },
         {
           "name": "literal_overflow",
           "operands": [
             "2147483648"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": -2147483648,
-          "fixed": 214748364800000,
           "stored": {
             "literal": {
               "Integer": -2147483648
@@ -190,20 +132,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            8
-          ]
+          }
         },
         {
           "name": "literal_very_large",
           "operands": [
             "999999999999999999999999"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": -1,
-          "fixed": -100000,
           "stored": {
             "literal": {
               "Integer": -1
@@ -213,20 +148,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            9
-          ]
+          }
         },
         {
           "name": "constant",
           "operands": [
             "@ruler_job_weight"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": 1000,
-          "fixed": 100000000,
           "stored": {
             "literal": {
               "Integer": 1000
@@ -236,22 +164,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            10,
-            29,
-            37
-          ]
+          }
         },
         {
           "name": "variable",
           "operands": [
             "n647_positive"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 7,
-          "fixed": 790000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -261,18 +180,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "variable_negative",
           "operands": [
             "n647_negative"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": -2,
-          "fixed": -275000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -282,18 +196,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_negative"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "trigger_planets",
           "operands": [
             "trigger:num_owned_planets"
           ],
-          "route": "trigger",
-          "same_as": null,
-          "integer": 1,
-          "fixed": 100000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -303,18 +212,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "trigger_size",
           "operands": [
             "trigger:empire_size"
           ],
-          "route": "trigger",
-          "same_as": null,
-          "integer": 50,
-          "fixed": 5000000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -324,18 +228,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "modifier",
           "operands": [
             "modifier:country_edict_fund_add"
           ],
-          "route": "modifier",
-          "same_as": null,
-          "integer": 15,
-          "fixed": 1500000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -345,18 +244,13 @@
             "has_script_value": false,
             "has_modifier": true,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "modifier_fraction",
           "operands": [
             "modifier:pop_cat_specialist_bonus_workforce_mult"
           ],
-          "route": "modifier",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 10000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -366,18 +260,13 @@
             "has_script_value": false,
             "has_modifier": true,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "modifier_negative",
           "operands": [
             "modifier:ships_upkeep_mult"
           ],
-          "route": "modifier",
-          "same_as": null,
-          "integer": 0,
-          "fixed": -2000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -387,18 +276,13 @@
             "has_script_value": false,
             "has_modifier": true,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "modifier_absent",
           "operands": [
             "modifier:country_naval_cap_add"
           ],
-          "route": "modifier",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -408,18 +292,13 @@
             "has_script_value": false,
             "has_modifier": true,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "script_value",
           "operands": [
             "value:tech_weight_likelihood"
           ],
-          "route": "script_value",
-          "same_as": null,
-          "integer": 1,
-          "fixed": 125000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -429,12 +308,7 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            11,
-            30,
-            38
-          ]
+          }
         }
       ],
       "after": [
@@ -446,53 +320,10 @@
         "export_modifier_to_variable = { modifier = country_naval_cap_add variable = n647_w_modifier_absent }",
         "if = { limit = { num_owned_planets = 1 } set_country_flag = n647_w_one_planet }",
         "if = { limit = { num_owned_planets = 2 } set_country_flag = n647_w_two_planets }"
-      ],
-      "flags": {
-        "n647_w_one_planet": -1,
-        "n647_w_two_planets": null
-      },
-      "variables": {
-        "n647_negative": -275000,
-        "n647_positive": 790000,
-        "n647_w_modifier": 1500000,
-        "n647_w_modifier_absent": 0,
-        "n647_w_modifier_fraction": 10000,
-        "n647_w_modifier_negative": -2000,
-        "n647_w_planets": 100000,
-        "n647_w_size": 5000000
-      },
-      "equal": [
-        [
-          "n647_f_trigger_planets",
-          "n647_w_planets"
-        ],
-        [
-          "n647_f_trigger_size",
-          "n647_w_size"
-        ],
-        [
-          "n647_f_modifier",
-          "n647_w_modifier"
-        ],
-        [
-          "n647_f_modifier_fraction",
-          "n647_w_modifier_fraction"
-        ],
-        [
-          "n647_f_modifier_negative",
-          "n647_w_modifier_negative"
-        ],
-        [
-          "n647_f_modifier_absent",
-          "n647_w_modifier_absent"
-        ]
-      ],
-      "differences": [],
-      "diagnostics": []
+      ]
     },
     {
       "name": "selection",
-      "complete": true,
       "before": [
         "set_variable = { which = n647_positive value = 7.9 }",
         "set_variable = { which = n647_negative value = -2.75 }"
@@ -503,10 +334,6 @@
           "operands": [
             "n647_positive"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 7,
-          "fixed": 790000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -516,18 +343,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "trigger",
           "operands": [
             "trigger:num_owned_planets"
           ],
-          "route": "trigger",
-          "same_as": null,
-          "integer": 1,
-          "fixed": 100000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -537,18 +359,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "modifier",
           "operands": [
             "modifier:country_edict_fund_add"
           ],
-          "route": "modifier",
-          "same_as": null,
-          "integer": 15,
-          "fixed": 1500000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -558,18 +375,13 @@
             "has_script_value": false,
             "has_modifier": true,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "script_value",
           "operands": [
             "value:tech_weight_likelihood"
           ],
-          "route": "script_value",
-          "same_as": null,
-          "integer": 1,
-          "fixed": 125000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -579,18 +391,13 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "script_value_second",
           "operands": [
             "value:voidworms_tiny_spawn_chance"
           ],
-          "route": "script_value",
-          "same_as": null,
-          "integer": 90000,
-          "fixed": 9000000000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -600,8 +407,7 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "literal_literal",
@@ -609,10 +415,6 @@
             "2",
             "9"
           ],
-          "route": "literal",
-          "same_as": null,
-          "integer": 9,
-          "fixed": 900000,
           "stored": {
             "literal": {
               "Integer": 9
@@ -622,11 +424,7 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            16,
-            33
-          ]
+          }
         },
         {
           "name": "variable_literal",
@@ -634,10 +432,6 @@
             "n647_positive",
             "4"
           ],
-          "route": "variable",
-          "same_as": "variable",
-          "integer": 7,
-          "fixed": 790000,
           "stored": {
             "literal": {
               "Integer": 4
@@ -647,8 +441,7 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "literal_variable",
@@ -656,10 +449,6 @@
             "4",
             "n647_positive"
           ],
-          "route": "variable",
-          "same_as": "variable",
-          "integer": 7,
-          "fixed": 790000,
           "stored": {
             "literal": {
               "Integer": 4
@@ -669,8 +458,7 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "value_literal",
@@ -678,10 +466,6 @@
             "value:tech_weight_likelihood",
             "9"
           ],
-          "route": "script_value",
-          "same_as": "script_value",
-          "integer": 1,
-          "fixed": 125000,
           "stored": {
             "literal": {
               "Integer": 9
@@ -691,12 +475,7 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            18,
-            34,
-            41
-          ]
+          }
         },
         {
           "name": "literal_value",
@@ -704,10 +483,6 @@
             "2",
             "value:tech_weight_likelihood"
           ],
-          "route": "script_value",
-          "same_as": "script_value",
-          "integer": 1,
-          "fixed": 125000,
           "stored": {
             "literal": {
               "Integer": 2
@@ -717,10 +492,7 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            17
-          ]
+          }
         },
         {
           "name": "value_value",
@@ -728,10 +500,6 @@
             "value:tech_weight_likelihood",
             "value:voidworms_tiny_spawn_chance"
           ],
-          "route": "script_value",
-          "same_as": "script_value_second",
-          "integer": 90000,
-          "fixed": 9000000000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -741,10 +509,7 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": [
-            19
-          ]
+          }
         },
         {
           "name": "trigger_variable",
@@ -752,10 +517,6 @@
             "trigger:num_owned_planets",
             "n647_positive"
           ],
-          "route": "trigger",
-          "same_as": "trigger",
-          "integer": 1,
-          "fixed": 100000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -765,8 +526,7 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "variable_trigger",
@@ -774,10 +534,6 @@
             "n647_positive",
             "trigger:num_owned_planets"
           ],
-          "route": "trigger",
-          "same_as": "trigger",
-          "integer": 1,
-          "fixed": 100000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -787,8 +543,7 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "value_variable",
@@ -796,10 +551,6 @@
             "value:tech_weight_likelihood",
             "n647_positive"
           ],
-          "route": "script_value",
-          "same_as": "script_value",
-          "integer": 1,
-          "fixed": 125000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -809,8 +560,7 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "modifier_variable",
@@ -818,10 +568,6 @@
             "modifier:country_edict_fund_add",
             "n647_positive"
           ],
-          "route": "modifier",
-          "same_as": "modifier",
-          "integer": 15,
-          "fixed": 1500000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -831,8 +577,7 @@
             "has_script_value": false,
             "has_modifier": true,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "trigger_value",
@@ -840,10 +585,6 @@
             "trigger:num_owned_planets",
             "value:tech_weight_likelihood"
           ],
-          "route": "trigger",
-          "same_as": "trigger",
-          "integer": 1,
-          "fixed": 100000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -853,20 +594,13 @@
             "has_script_value": true,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         }
       ],
-      "after": [],
-      "flags": {},
-      "variables": {},
-      "equal": [],
-      "differences": [],
-      "diagnostics": []
+      "after": []
     },
     {
       "name": "qualified",
-      "complete": true,
       "before": [
         "set_variable = { which = n647_positive value = 7.9 }",
         "set_variable = { which = n647_negative value = -2.75 }",
@@ -878,10 +612,6 @@
           "operands": [
             "n647_positive"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 7,
-          "fixed": 790000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -891,18 +621,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "root_variable",
           "operands": [
             "root.n647_positive"
           ],
-          "route": "variable",
-          "same_as": "variable",
-          "integer": 7,
-          "fixed": 790000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -912,18 +637,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "owner_variable",
           "operands": [
             "owner.n647_positive"
           ],
-          "route": "variable",
-          "same_as": "variable",
-          "integer": 7,
-          "fixed": 790000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -933,18 +653,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "capital_variable",
           "operands": [
             "capital_scope.n647_planet"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 3,
-          "fixed": 350000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -954,18 +669,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_planet"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "target_variable",
           "operands": [
             "event_target:n647_capital.n647_planet"
           ],
-          "route": "variable",
-          "same_as": "capital_variable",
-          "integer": 3,
-          "fixed": 350000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -975,18 +685,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_planet"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "capital_modifier",
           "operands": [
             "capital_scope.modifier:planet_max_districts_add"
           ],
-          "route": "modifier",
-          "same_as": null,
-          "integer": -3,
-          "fixed": -300000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -996,18 +701,13 @@
             "has_script_value": false,
             "has_modifier": true,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "capital_trigger",
           "operands": [
             "capital_scope.trigger:planet_size"
           ],
-          "route": "trigger",
-          "same_as": null,
-          "integer": 18,
-          "fixed": 1800000,
           "stored": {
             "literal": {
               "Integer": 0
@@ -1017,36 +717,17 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         }
       ],
       "after": [
         "capital_scope = { export_trigger_value_to_variable = { trigger = planet_size variable = n647_size } export_modifier_to_variable = { modifier = planet_max_districts_add variable = n647_districts } }",
         "set_variable = { which = n647_w_size value = capital_scope.n647_size }",
         "set_variable = { which = n647_w_districts value = capital_scope.n647_districts }"
-      ],
-      "flags": {},
-      "variables": {
-        "n647_w_districts": -300000,
-        "n647_w_size": 1800000
-      },
-      "equal": [
-        [
-          "n647_f_capital_trigger",
-          "n647_w_size"
-        ],
-        [
-          "n647_f_capital_modifier",
-          "n647_w_districts"
-        ]
-      ],
-      "differences": [],
-      "diagnostics": []
+      ]
     },
     {
       "name": "resources",
-      "complete": true,
       "before": [
         "set_variable = { which = n647_mult value = 2.5 }",
         "export_resource_stockpile_to_variable = { resource = energy variable = n647_r0 }",
@@ -1088,134 +769,10 @@
         "set_timed_country_flag = { flag = n647_t_mult days = modifier:country_naval_cap_mult }"
       ],
       "cases": [],
-      "after": [],
-      "flags": {
-        "n647_t_add": 1000,
-        "n647_t_mult": 0,
-        "n647_w_has_modifiers": -1
-      },
-      "variables": {
-        "n647_o_add_0": 0,
-        "n647_o_add_1": 0,
-        "n647_o_add_2": 100000000,
-        "n647_o_mult_0": 0,
-        "n647_o_mult_1": 0,
-        "n647_o_mult_2": 10000,
-        "n647_r0": 20000000,
-        "n647_r1": 21000000,
-        "n647_r2": 23500000,
-        "n647_r3": 26000000,
-        "n647_r4": 28500000,
-        "n647_r5": 29500000,
-        "n647_r6": 30750000,
-        "n647_r7": 30800000,
-        "n647_r8": 30500000,
-        "n647_r9": 45500000,
-        "n647_x_add_0": 0,
-        "n647_x_add_1": 0,
-        "n647_x_add_2": 100000000,
-        "n647_x_mult_0": 0,
-        "n647_x_mult_1": 0,
-        "n647_x_mult_2": 10000
-      },
-      "equal": [
-        [
-          "n647_x_add_0",
-          "n647_o_add_0"
-        ],
-        [
-          "n647_x_mult_0",
-          "n647_o_mult_0"
-        ],
-        [
-          "n647_x_add_1",
-          "n647_o_add_1"
-        ],
-        [
-          "n647_x_mult_1",
-          "n647_o_mult_1"
-        ],
-        [
-          "n647_x_add_2",
-          "n647_o_add_2"
-        ],
-        [
-          "n647_x_mult_2",
-          "n647_o_mult_2"
-        ]
-      ],
-      "differences": [
-        {
-          "before": "n647_r0",
-          "after": "n647_r1",
-          "raw": 1000000
-        },
-        {
-          "before": "n647_r1",
-          "after": "n647_r2",
-          "raw": 2500000
-        },
-        {
-          "before": "n647_r2",
-          "after": "n647_r3",
-          "raw": 2500000
-        },
-        {
-          "before": "n647_r3",
-          "after": "n647_r4",
-          "raw": 2500000
-        },
-        {
-          "before": "n647_r4",
-          "after": "n647_r5",
-          "raw": 1000000
-        },
-        {
-          "before": "n647_r5",
-          "after": "n647_r6",
-          "raw": 1250000
-        },
-        {
-          "before": "n647_r6",
-          "after": "n647_r7",
-          "raw": 50000
-        },
-        {
-          "before": "n647_r7",
-          "after": "n647_r8",
-          "raw": -300000
-        },
-        {
-          "before": "n647_r8",
-          "after": "n647_r9",
-          "raw": 15000000
-        },
-        {
-          "before": "n647_o_add_0",
-          "after": "n647_o_add_1",
-          "raw": 0
-        },
-        {
-          "before": "n647_o_add_0",
-          "after": "n647_o_add_2",
-          "raw": 100000000
-        },
-        {
-          "before": "n647_o_mult_0",
-          "after": "n647_o_mult_1",
-          "raw": 0
-        },
-        {
-          "before": "n647_o_mult_0",
-          "after": "n647_o_mult_2",
-          "raw": 10000
-        }
-      ],
-      "diagnostics": []
+      "after": []
     },
     {
       "name": "fallback",
-      "complete": false,
       "before": [
         "capital_scope = { save_event_target_as = n647_capital }"
       ],
@@ -1225,10 +782,6 @@
           "operands": [
             "n647_unset"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -1238,18 +791,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_unset"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "unknown_modifier",
           "operands": [
             "modifier:n647_no_modifier"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -1259,18 +807,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         },
         {
           "name": "unknown_prefix",
           "operands": [
             "bogus:n647"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -1280,18 +823,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "bogus:n647"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "unknown_target",
           "operands": [
             "event_target:n647_absent.n647_positive"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -1301,18 +839,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_positive"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "capital_unset",
           "operands": [
             "capital_scope.n647_unset"
           ],
-          "route": "variable",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -1322,18 +855,13 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": "n647_unset"
-          },
-          "prototype": []
+          }
         },
         {
           "name": "planet_scope_trigger",
           "operands": [
             "event_target:n647_capital.trigger:num_owned_planets"
           ],
-          "route": "trigger",
-          "same_as": null,
-          "integer": 0,
-          "fixed": 0,
           "stored": {
             "literal": {
               "Integer": 0
@@ -1343,29 +871,10 @@
             "has_script_value": false,
             "has_modifier": false,
             "variable": ""
-          },
-          "prototype": []
+          }
         }
       ],
-      "after": [],
-      "flags": {},
-      "variables": {},
-      "equal": [],
-      "differences": [],
-      "diagnostics": [
-        "execution: Variable n647_unset is not set for scoped country 'United Nations of Earth' at  file: <world> line: 2\n",
-        "execution: Variable n647_unset is not set for scoped country 'United Nations of Earth' at  file: <world> line: 3\n",
-        "execution: Variable  is not set for scoped country 'United Nations of Earth' at  file: <world> line: 4\n",
-        "execution: Variable  is not set for scoped country 'United Nations of Earth' at  file: <world> line: 5\n",
-        "execution: Variable bogus:n647 is not set for scoped country 'United Nations of Earth' at  file: <world> line: 6\n",
-        "execution: Variable bogus:n647 is not set for scoped country 'United Nations of Earth' at  file: <world> line: 7\n",
-        "execution: Invalid event target scope 'event_target:n647_absent' at  file: <world> line: 8\n",
-        "execution: Invalid event target scope 'event_target:n647_absent' at  file: <world> line: 9\n",
-        "execution: Variable n647_unset is not set for scoped colony 'Earth' at  file: <world> line: 10\n",
-        "execution: Variable n647_unset is not set for scoped colony 'Earth' at  file: <world> line: 11\n",
-        "execution: Invalid Scope type for trigger num_owned_planets used as a variable at  file: <world> line: 12, got colony\n",
-        "execution: Invalid Scope type for trigger num_owned_planets used as a variable at  file: <world> line: 13, got colony\n"
-      ]
+      "after": []
     }
   ],
   "rejected": [

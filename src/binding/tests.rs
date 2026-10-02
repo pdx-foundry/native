@@ -224,8 +224,14 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     assert!(descriptor.contains("replace_path=\"common/traditions\""));
     assert!(descriptor.contains("replace_path=\"common/tradition_categories\""));
 
-    let fixture =
-        crate::FixtureRequest::new("common/tradition_categories/atlas.txt", "atlas = {}\n");
+    let fixture = crate::FixtureRequest::field_outcomes(
+        "common/tradition_categories/atlas.txt",
+        "atlas = {}\n",
+        [
+            crate::FixtureFieldQuestion::new("common/tradition_categories", "test", "traditions")
+                .with_parsing(),
+        ],
+    );
     let fixture_work = tempdir().unwrap();
     fs::create_dir(fixture_work.path().join("profile")).unwrap();
     plan.prepare_registry_profile(fixture_work.path(), Some(&fixture), &registries, content)
@@ -373,7 +379,6 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         registries: vec!["common/traditions".into()],
         fixture: None,
         loaded_modifiers: None,
-        world: None,
         fault: Some(Fault {
             target: crate::protocol::session::ObservationTarget::Registry(
                 "common/traditions".into(),

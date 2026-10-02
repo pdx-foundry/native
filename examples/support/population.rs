@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn real_registry_and_nested_command_fields_use_their_serde_defaults() {
+    fn missing_registry_and_nested_command_properties_remain_changes() {
         let fields: Value = serde_json::from_str(include_str!(
             "../../tests/expected/m45/fields-traditions.json"
         ))
@@ -188,12 +188,13 @@ mod tests {
                 &mut before,
                 &mut after
             ),
-            BTreeSet::from(["value[].reference".into()])
+            BTreeSet::new()
         );
-        assert_eq!(before, after);
+        assert_ne!(before, after);
 
         let grammar = json!({
             "reader": field["reader"], "child_families": "Unresolved",
+            "forms": "Unresolved", "targets": "Unresolved", "durations": "Unresolved",
             "fixed_keys": {"Known": [field]}, "numeric_keys": "Unresolved", "ordering": "Unresolved"
         });
         let mut nested = grammar.clone();
@@ -212,9 +213,9 @@ mod tests {
                 &mut before,
                 &mut after
             ),
-            BTreeSet::from(["value.numeric_keys.Known.fixed_keys.Known[].reference".into()])
+            BTreeSet::new()
         );
-        assert_eq!(before, after);
+        assert_ne!(before, after);
     }
 
     #[test]

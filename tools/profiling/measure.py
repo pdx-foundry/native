@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure static Native analysis; optionally include the live SDK-559 workloads."""
+"""Measure static Native analysis; optionally include the retained live controls."""
 
 import argparse
 import json
@@ -76,8 +76,8 @@ def main():
     ]
     if args.live:
         jobs.extend([
-            ("outside-common", [executables["live"], "--ignored", "outside_common"]),
-            ("registry-report", [executables["registry-items-report"], installation]),
+            ("loader-fixture", [executables["live"], "--ignored", "loader_fixture"]),
+            ("modifier-key-layouts", [executables["live"], "--ignored", "loaded_modifier_key_layouts"]),
         ])
     for label, command in jobs:
         for repetition in range(1, args.repeats + 1):

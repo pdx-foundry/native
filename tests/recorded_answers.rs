@@ -10,10 +10,10 @@ use serde_json::json;
 use std::{fs, path::Path};
 
 fn recorded_field(name: &str, kind: &str) -> serde_json::Value {
-    json!({ "name": name, "reader": { "id": if kind == "Unknown" { None } else { Some(name) }, "kind": kind },
+    json!({ "name": name, "reader": { "id": if kind == "Unknown" { None } else { Some(name) }, "kind": kind, "family": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved" },
         "shape": { "value": "Unknown", "repeat": "Unknown" },
         "read": [{ "condition": "Unresolved", "outcome": "Unresolved" }],
-        "members": "Unresolved", "domain": "Unknown", "default": "Unknown", "uses": [] })
+        "members": "Unresolved", "domain": "Unknown", "uses": [], "reference": "NotEstablished" })
 }
 
 fn source() -> serde_json::Value {
@@ -38,7 +38,7 @@ fn modifier_block_members_read_back_with_the_existing_field_operation() {
     field["members"] = json!({"ModifierBlock": {
         "fixed_keys": {"Partial": [child]},
         "entries": {"Known": [
-            {"Numeric": {"value": {"id":"shared-fixed", "kind":"FixedPoint"}}},
+            {"Numeric": {"value": {"id":"shared-fixed", "kind":"FixedPoint", "family":"NotApplicable", "numeric":"Unresolved", "scoped_operand":"Unresolved"}}},
             {"Reference": {"target":{"Registry":{"name":"common/static_modifiers"}}, "value":"FixedPoint"}}
         ]}
     }});
@@ -101,26 +101,6 @@ fn recorded() -> tempfile::TempDir {
     );
     write(
         root.path(),
-        "registry_items/common/traditions.json",
-        json!({ "Ok": { "value": ["tr_example_adopt", "tr_example_finish"],
-            "completeness": "Complete", "gaps": [], "source": source() } }),
-    );
-    for (file, key) in [
-        (
-            "registry_items/common/governments/civics.json",
-            "civic_example",
-        ),
-        ("registry_items/map/galaxy.json", "galaxy_example"),
-    ] {
-        write(
-            root.path(),
-            file,
-            json!({ "Ok": { "value": [key],
-            "completeness": "Complete", "gaps": [], "source": source() } }),
-        );
-    }
-    write(
-        root.path(),
         "registry_fields/common/traditions.json",
         json!({ "Ok": { "value": [
             recorded_field("boolean", "Boolean"),
@@ -133,12 +113,6 @@ fn recorded() -> tempfile::TempDir {
         ], "completeness": "Partial",
             "gaps": [{ "kind": "ReaderSemantics", "subject": {"kind": "field", "name": "unknown"}, "detail": "Example." }],
             "source": source() } }),
-    );
-    write(
-        root.path(),
-        "registry_items/common/tradition_categories.json",
-        json!({ "Err": { "Observation": { "operation": "RegistryItems",
-            "reason": "the observation worker was lost" } } }),
     );
     write(
         root.path(),
@@ -531,6 +505,14 @@ fn opening_recorded_answers_requires_valid_build_metadata() {
 #[tokio::test]
 async fn static_and_live_answers_from_another_build_are_refused() {
     let root = recorded();
+    write(
+        root.path(),
+        "loaded_modifiers.json",
+        json!({ "Ok": {
+            "value": {"content": "Installation", "modifiers": [], "registry_items": {}},
+            "completeness": "Complete", "gaps": [], "source": source()
+        }}),
+    );
     write(root.path(), "build.json", json!("another-build"));
     let native = Native::from_recorded_answers(root.path()).unwrap();
     assert!(matches!(native.registries(), Err(Error::Recorded(_))));
@@ -541,7 +523,7 @@ async fn static_and_live_answers_from_another_build_are_refused() {
         .await
         .unwrap();
     assert!(matches!(
-        game.registry_items("common/traditions").await,
+        game.loaded_modifiers().await,
         Err(Error::Recorded(_))
     ));
     assert_eq!(game.close().await.unwrap(), Disposal::NotApplicable);
@@ -592,9 +574,15 @@ async fn the_loaded_modifier_inventory_reads_its_recorded_file_with_no_game() {
     assert_eq!(game.close().await.unwrap(), Disposal::NotApplicable);
 
     // A session with a fixture reads the recording of that fixture, which does not exist here.
-    let fixture = pdx_native::FixtureRequest::new(
+    let fixture = pdx_native::FixtureRequest::field_outcomes(
         "common/tradition_categories/example.txt",
         "example = {}\n",
+        [pdx_native::FixtureFieldQuestion::new(
+            "common/tradition_categories",
+            "example",
+            "traditions",
+        )
+        .with_parsing()],
     );
     let mut game = native
         .start_game(GameOptions::new(std::process::Command::new("must-not-start")).fixture(fixture))
@@ -603,39 +591,6 @@ async fn the_loaded_modifier_inventory_reads_its_recorded_file_with_no_game() {
     assert!(matches!(
         game.loaded_modifiers().await,
         Err(Error::NotRecorded { .. })
-    ));
-}
-
-#[tokio::test]
-async fn live_questions_need_no_supervisor_and_start_no_process() {
-    let root = recorded();
-    let native = Native::from_recorded_answers(root.path()).unwrap();
-    // Recorded answers ignore the options: this command is never started.
-    let options = GameOptions::new(std::process::Command::new("must-not-start"));
-    let mut game = native.start_game(options).await.unwrap();
-    let items = game.registry_items("common/traditions").await.unwrap();
-    assert_eq!(items.value, ["tr_example_adopt", "tr_example_finish"]);
-    assert_eq!(items.completeness, Completeness::Complete);
-    assert_eq!(items.source.basis, Basis::Recorded);
-    assert_eq!(items.source.build, native.build());
-    for (name, key) in [
-        ("common/governments/civics", "civic_example"),
-        ("map/galaxy", "galaxy_example"),
-    ] {
-        assert_eq!(game.registry_items(name).await.unwrap().value, [key]);
-    }
-    assert!(matches!(
-        game.registry_items("common/tradition_categories").await,
-        Err(Error::Observation { .. })
-    ));
-    assert!(matches!(
-        game.registry_items("common/armies").await,
-        Err(Error::NotRecorded { .. })
-    ));
-    assert_eq!(game.close().await.unwrap(), Disposal::NotApplicable);
-    assert!(matches!(
-        game.registry_items("common/traditions").await,
-        Err(Error::Closed)
     ));
 }
 
@@ -765,8 +720,7 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
                 {"key": "months", "factor": {"Known": 30}}
             ],
             "combination": {"Known": {"SharedFactor": {"initial_factor": 1}}},
-            "omitted_count": {"Known": 0},
-            "consumption": {"Known": "FlagCountdown"}
+            "omitted_count": {"Known": 0}
         }]}
     });
     let grammar: CommandGrammar = serde_json::from_value(value.clone()).unwrap();
@@ -809,16 +763,52 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
 }
 
 #[test]
-fn old_command_grammar_without_forms_targets_and_durations_keeps_them_unresolved() {
-    let grammar: pdx_native::CommandGrammar = serde_json::from_value(json!({
-        "reader": {"id": null, "kind": "Unknown", "family": "Unknown"},
+fn recorded_answer_properties_must_be_present() {
+    let root = recorded();
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    for property in [
+        "reference",
+        "reader/numeric",
+        "reader/scoped_operand",
+        "reader/family",
+    ] {
+        let mut field = recorded_field("number", "Integer");
+        let (parent, key) = property.rsplit_once('/').unwrap_or(("", property));
+        let object = if parent.is_empty() {
+            &mut field
+        } else {
+            &mut field[parent]
+        };
+        object.as_object_mut().unwrap().remove(key);
+        write(
+            root.path(),
+            "registry_fields/common/traditions.json",
+            json!({"Ok": {
+                "value": [field], "completeness": "Complete", "gaps": [], "source": source()
+            }}),
+        );
+        assert!(
+            matches!(
+                native.registry_fields("common/traditions"),
+                Err(Error::Recorded(_))
+            ),
+            "{property}"
+        );
+    }
+    let grammar = json!({
+        "reader": {"id": null, "kind": "Unknown", "family": "Unknown", "numeric":"Unresolved", "scoped_operand":"Unresolved"},
+        "forms": "Unresolved", "targets": "Unresolved", "durations": "Unresolved",
         "child_families": "Unresolved", "fixed_keys": "Unresolved",
         "numeric_keys": "Unresolved", "ordering": "Unresolved"
-    }))
-    .unwrap();
-    assert_eq!(grammar.forms, pdx_native::GrammarProperty::Unresolved);
-    assert_eq!(grammar.targets, pdx_native::GrammarProperty::Unresolved);
-    assert_eq!(grammar.durations, pdx_native::GrammarProperty::Unresolved);
+    });
+    for property in ["forms", "targets", "durations"] {
+        let mut missing = grammar.clone();
+        missing.as_object_mut().unwrap().remove(property);
+        assert!(
+            serde_json::from_value::<pdx_native::CommandGrammar>(missing).is_err(),
+            "{property}"
+        );
+    }
 }
 
 #[test]
@@ -847,4 +837,50 @@ fn recorded_numeric_facts_keep_partial_properties_and_exact_bounds() {
     let answer = native.registry_fields("common/numeric").unwrap();
     assert_eq!(answer.value[0].reader.numeric, numeric);
     assert_eq!(answer.source.basis, Basis::Recorded);
+}
+
+#[test]
+fn recorded_support_requires_a_file_for_the_operation() {
+    use pdx_native::Operation;
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "build.json", json!("authored-build"));
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    for operation in Operation::ALL {
+        assert!(matches!(
+            native.supports(*operation),
+            Support::Unsupported(_)
+        ));
+    }
+    fs::create_dir_all(root.path().join("registry_fields/common/empty")).unwrap();
+    fs::write(
+        root.path().join("registry_fields/common/notes.txt"),
+        "not an answer",
+    )
+    .unwrap();
+    assert!(matches!(
+        native.supports(Operation::RegistryFields),
+        Support::Unsupported(_)
+    ));
+    write(
+        root.path(),
+        "registry_fields/common/example.json",
+        json!({"Err": "BuildChanged"}),
+    );
+    write(
+        root.path(),
+        "loaded_modifiers.json",
+        json!({"Err": "BuildChanged"}),
+    );
+    assert_eq!(
+        native.supports(Operation::RegistryFields),
+        Support::Supported
+    );
+    assert_eq!(
+        native.supports(Operation::LoadedModifiers),
+        Support::Supported
+    );
+    assert!(matches!(
+        native.supports(Operation::ObserveFixture),
+        Support::Unsupported(_)
+    ));
 }

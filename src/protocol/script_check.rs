@@ -123,8 +123,22 @@ pub(crate) struct CheckReply {
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CheckedScript {
-    pub observation: crate::ScriptObservation,
+    pub observation: CheckObservation,
     pub durations: StoredDurations,
+}
+
+/// Raw parser and diagnostic observations, before duration reads are classified.
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CheckObservation {
+    pub check: u64,
+    pub read_returned: bool,
+    pub children: u32,
+    pub diagnostics: Vec<crate::ScriptDiagnostic>,
+    pub foreign: Vec<crate::ForeignScriptDiagnostic>,
+    pub unjoined: Vec<crate::ScriptDiagnostic>,
+    pub hooks_active: bool,
+    pub bound_reached: bool,
 }
 
 /// The duration counts that the worker read from the top-level children.
@@ -152,7 +166,14 @@ impl CheckedScript {
 
         crate::ScriptObservation {
             stored_durations,
-            ..self.observation
+            check: self.observation.check,
+            read_returned: self.observation.read_returned,
+            children: self.observation.children,
+            diagnostics: self.observation.diagnostics,
+            foreign: self.observation.foreign,
+            unjoined: self.observation.unjoined,
+            hooks_active: self.observation.hooks_active,
+            bound_reached: self.observation.bound_reached,
         }
     }
 }

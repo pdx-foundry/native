@@ -1,14 +1,14 @@
 //! Attach a command's duration groups, their omitted counts, and gaps for what is not established.
 use crate::engine::analysis::{
-    durations::{self, Combination, Consumption, Group},
+    durations::{self, Combination, Group},
     grammar::GrammarResult,
     numeric::NumericFacts,
     scoped_numeric::{Facts, Subtype},
     stop::Unresolved,
 };
 use crate::{
-    CommandGrammar, Duration, DurationCombination, DurationConsumption, DurationUnit, Gap, GapKind,
-    GapSubject, GrammarProperty,
+    CommandGrammar, Duration, DurationCombination, DurationUnit, Gap, GapKind, GapSubject,
+    GrammarProperty,
 };
 
 pub(super) fn grammar(
@@ -192,12 +192,6 @@ fn public(group: &Group, result: &GrammarResult, scoped: &Facts) -> Duration {
             },
         })
         .collect();
-    let consumption = match group.consumption {
-        Ok(Consumption::FlagCountdown) => {
-            GrammarProperty::Known(DurationConsumption::FlagCountdown)
-        }
-        Err(_) => GrammarProperty::Unresolved,
-    };
     let omitted_count = omitted_count(group, result, scoped)
         .map_or(GrammarProperty::Unresolved, GrammarProperty::Known);
 
@@ -205,7 +199,6 @@ fn public(group: &Group, result: &GrammarResult, scoped: &Facts) -> Duration {
         units,
         combination,
         omitted_count,
-        consumption,
     }
 }
 
@@ -274,28 +267,11 @@ fn group_gaps(group: &Group, duration: &Duration) -> Vec<(GapKind, String)> {
     let mut gaps = Vec::new();
     let reason = |stop: &Unresolved| stop.reason;
 
-    match (&group.combination, &group.consumption) {
-        (Err(stop), _) => gaps.push((
+    if let Err(stop) = &group.combination {
+        gaps.push((
             GapKind::ReaderSemantics,
             format!("the combination is not established ({}).", reason(stop)),
-        )),
-        (Ok(_), Err(stop)) if stop.reason == "duration-consumption" => gaps.push((
-            GapKind::OutsideMethod,
-            "what consumes the count is outside this method.".into(),
-        )),
-        (Ok(_), Err(stop)) => gaps.push((
-            GapKind::ReaderSemantics,
-            format!(
-                "the flag-store countdown is not established ({}).",
-                reason(stop)
-            ),
-        )),
-        (Ok(_), Ok(Consumption::FlagCountdown)) => gaps.push((
-            GapKind::OutsideMethod,
-            "how often the flag store updates, and so the expiry date, is not established \
-             statically."
-                .into(),
-        )),
+        ));
     }
 
     if group.combination.is_ok() && duration.omitted_count == GrammarProperty::Unresolved {

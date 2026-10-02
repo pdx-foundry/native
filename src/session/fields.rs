@@ -8,7 +8,7 @@ use crate::engine::analysis::references::{
     self, Lookup, ReferenceFacts, initialization::InitializationLookup,
 };
 use crate::{
-    EmptyKey, Field, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
+    EmptyKey, Field, FieldCondition, FieldDomain, FieldMembers, FieldReadAlternative,
     FieldReadOutcome, FieldReference, FieldShape, KeyMatch, LookupStage, MissingResult, Reader,
     ReaderId, ReaderKind, ReferenceLookup, ReferenceTarget, RepeatBehavior, ValueShape,
 };
@@ -299,7 +299,7 @@ fn ordinary_field(
             FieldMembers::Unresolved
         },
         domain: FieldDomain::Unknown,
-        default: FieldDefault::Unknown,
+
         uses: Vec::new(),
         reference: if lookups.is_empty() {
             FieldReference::NotEstablished
@@ -486,7 +486,7 @@ fn collection_field(
                 .collect(),
         ),
         domain: FieldDomain::Unknown,
-        default: FieldDefault::Unknown,
+
         uses: Vec::new(),
         reference: FieldReference::NotEstablished,
     }

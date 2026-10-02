@@ -50,7 +50,7 @@ pub(crate) struct Layout {
 #[derive(Debug, Clone)]
 pub(crate) struct Shared {
     pub forms: Result<Forms, Unresolved>,
-    pub literal_preserves_references: Result<bool, Unresolved>,
+
     pub selection: Result<Layout, Unresolved>,
 }
 
@@ -111,7 +111,6 @@ pub(crate) fn analyze(input: &Input) -> Facts {
     } else {
         Err(Unresolved::new("scoped-operand-forms"))
     };
-    let literal_preserves_references = assign.as_ref().map(|_| true).map_err(Clone::clone);
     let selection = selection(
         input,
         assign.as_ref().map(|(_, location)| *location),
@@ -129,11 +128,7 @@ pub(crate) fn analyze(input: &Input) -> Facts {
         })
         .collect();
     Facts {
-        shared: Shared {
-            forms,
-            literal_preserves_references,
-            selection,
-        },
+        shared: Shared { forms, selection },
         subtypes,
     }
 }
@@ -439,11 +434,13 @@ mod tests {
         assert!(subtype(&input, 0x8000, &config, Ok(0x10)).is_err());
     }
     #[test]
-    fn old_reader_recording_keeps_scoped_operand_unresolved() {
-        let reader: crate::Reader =
-            serde_json::from_str(r#"{"numeric":"Unresolved","id":null,"kind":"ScopedNumeric"}"#)
-                .unwrap();
-        assert_eq!(reader.scoped_operand, crate::GrammarProperty::Unresolved);
+    fn reader_recordings_require_scoped_operand_facts() {
+        assert!(
+            serde_json::from_str::<crate::Reader>(
+                r#"{"numeric":"Unresolved","family":"Unknown","id":null,"kind":"ScopedNumeric"}"#
+            )
+            .is_err()
+        );
     }
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
@@ -460,7 +457,6 @@ mod tests {
             .scoped_numeric_facts(crate::Operation::RegistryFields)
             .unwrap();
         assert!(facts.shared.forms.is_ok(), "{:?}", facts.shared.forms);
-        assert!(facts.shared.literal_preserves_references.is_ok());
         assert!(
             facts.shared.selection.is_ok(),
             "{:?}",
@@ -497,12 +493,7 @@ mod tests {
             .find(|row| row.operation == "blr")
             .unwrap()
             .operation = "br".into();
-        assert!(
-            analyze(&changed_assign)
-                .shared
-                .literal_preserves_references
-                .is_err()
-        );
+        assert!(analyze(&changed_assign).shared.forms.is_err());
 
         let mut missing_prefix = input.clone();
         missing_prefix

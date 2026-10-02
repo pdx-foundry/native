@@ -33,17 +33,7 @@ struct Exception {
     removal: &'static str,
 }
 
-const EXCEPTIONS: &[Exception] = &[Exception {
-    file: "src/fixture.rs",
-    function: "validate",
-    text: "common/tradition_categories",
-    reason: "Manual category read-entry exception (docs/native/early-observations.md): the public \
-             InitialCategoryLoad window and CategoryFieldReads kind exist only for the category \
-             registry whose read entries the M45 binding supplies.",
-    removal: "Replace both names and this check when root-field analysis selects the read-entry \
-              hook and field tokens from the exact-build binding and passes an \
-              unfamiliar-category transfer.",
-}];
+const EXCEPTIONS: &[Exception] = &[];
 
 /// Words that name a value holding an engine subject, alone or in a compound name such as
 /// `field_name`. A literal compared with such a value selects behavior for one registry, class,

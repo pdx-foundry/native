@@ -113,12 +113,6 @@ pub(crate) struct Binding {
 }
 
 impl Binding {
-    pub(crate) fn has_world_method(&self) -> bool {
-        self.operation
-            .as_ref()
-            .is_some_and(|operation| operation.world.is_some() && operation.script_checks.is_some())
-    }
-
     pub(crate) fn has_script_check_method(&self) -> bool {
         self.operation
             .as_ref()
@@ -389,23 +383,6 @@ impl ExecutionPlan {
             .as_ref()
             .expect("an opened installation has an operation")
     }
-    /// The field tokens that this build's category fixture window reads. Empty when the build
-    /// has no category fixture binding.
-    pub fn category_fields(&self) -> &[crate::protocol::observation::FixtureFieldBinding] {
-        self.operation()
-            .fixture
-            .as_ref()
-            .map_or(&[], |fixture| &fixture.fields)
-    }
-
-    /// Raw units in one whole unit of a world variable. `None` when the build has no world recipe.
-    pub fn world_variable_scale(&self) -> Option<u64> {
-        self.operation()
-            .world
-            .as_ref()
-            .map(|world| world.variable_scale)
-    }
-
     pub fn integrity(&self) -> Result<(), crate::supervisor::SupervisorError> {
         match self.binding.target_integrity() {
             None => Ok(()),
@@ -533,7 +510,7 @@ impl ExecutionPlan {
             parent_field: question.parent_field.clone(),
             parsing: question.parsing,
             diagnostics: question.diagnostics,
-            runtime: question.runtime,
+
             reader_id: field.and_then(|field| field.reader.id.as_ref().map(|id| id.0.clone())),
             reader_kind,
             reader_family: field.map_or(crate::BlockFamily::Unknown, |field| field.reader.family),
@@ -615,18 +592,12 @@ impl ExecutionPlan {
             bindings.outcome_registries.push(inline);
             return Ok(crate::protocol::observation::FixtureSetup {
                 file: fixture.file().into(),
-                registration_entries: false,
-                field_reads: false,
                 validation: false,
                 questions,
                 bindings,
             });
         }
-        let fields = if fixture.field_questions.is_empty() {
-            Vec::new()
-        } else {
-            self.bind_fixture_registry(fixture.registry(), &mut bindings)?
-        };
+        let fields = self.bind_fixture_registry(fixture.registry(), &mut bindings)?;
         let questions = fixture
             .field_questions
             .iter()
@@ -637,9 +608,6 @@ impl ExecutionPlan {
             .collect();
         Ok(crate::protocol::observation::FixtureSetup {
             file: fixture.file().into(),
-            registration_entries: fixture
-                .requests(crate::FixtureObservationKind::RegistrationEntries),
-            field_reads: fixture.requests(crate::FixtureObservationKind::CategoryFieldReads),
             validation,
             questions,
             bindings,
@@ -687,30 +655,10 @@ impl ExecutionPlan {
                         .map_err(crate::supervisor::SupervisorError)
                 })
                 .transpose()?,
-            world: request
-                .world
-                .as_ref()
-                .map(|input| -> Result<_, crate::supervisor::SupervisorError> {
-                    let binding = self
-                        .binding
-                        .operation
-                        .as_ref()
-                        .and_then(|operation| operation.world.clone())
-                        .ok_or_else(|| {
-                            crate::supervisor::SupervisorError(
-                                "ready world observation recipe is unavailable".into(),
-                            )
-                        })?;
-                    Ok(crate::protocol::world::WorldSetup {
-                        binding,
-                        input: input.clone(),
-                    })
-                })
-                .transpose()?,
             startup_seconds: request.startup_seconds,
             machine: &operation.machine,
             package: &operation.strategy.package,
-            script_checks: if request.loaded_modifiers.is_some() || request.world.is_some() {
+            script_checks: if request.loaded_modifiers.is_some() {
                 self.binding.script_check_binding()?
             } else {
                 None

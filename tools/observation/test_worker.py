@@ -48,12 +48,12 @@ class WorkerFailureReportingTests(unittest.TestCase):
     def test_a_held_pause_clears_the_previous_observation_deadline(self):
         from script_checks import WorkerDiagnostics
         report = WorkerDiagnostics('unit', 9, Mock())
-        report.update(deadline=time.monotonic() + 5, phase='world-observation')
+        report.update(deadline=time.monotonic() + 5, phase='initialization')
         with tempfile.TemporaryDirectory() as root, patch.object(worker, 'ROOT', Path(root)), \
                 patch.object(worker, 'request', dict(attempt='unit', fault=None)), \
                 patch.object(worker, 'diagnostics', report):
             (Path(root) / 'raw-trace.jsonl').touch()
-            worker.emit('session-paused', returned=[], cause='world-ready', thread=7)
+            worker.emit('session-paused', returned=[], cause='loaders-returned', thread=7)
         self.assertIsNone(report.state['deadline_milliseconds'])
         self.assertEqual(report.state['phase'], 'held')
 
@@ -262,7 +262,7 @@ class PauseTests(unittest.TestCase):
         worker.fixture.emit.assert_called_once()
 
     def test_worker_loss_at_each_observer_stops_without_a_pause(self):
-        for target, hook in [('fixture', 'fixture_field'), ('modifiers', 'modifiers_return')]:
+        for target, hook in [('fixture', 'fixture_member'), ('modifiers', 'modifiers_return')]:
             with self.subTest(target=target):
                 worker.breakpoints.clear()
                 worker.progress = worker.SessionProgress(['one'], modifier_active=True)
@@ -293,27 +293,16 @@ class PauseTests(unittest.TestCase):
         worker.progress.callback_failed = True
         self.assertEqual(worker.decide_pause(worker.progress), (True, None))
 
-    def test_fixture_hooks_use_the_shared_names_for_each_selection(self):
+    def test_fixture_hooks_use_the_shared_names_for_field_outcomes(self):
         outcome = dict(registry='common/traditions', load_entry=1, constructor_entry=2,
                        reader_entry=3, member_entry=4, malformed_entry=5, unexpected_entry=6)
-        bindings = dict(fields=[], outcome_registries=[outcome], load_entry=7,
-                        registration_entry=8, field_entry=9)
-        for registrations, fields, questions, diagnostics in [
-                (True, True, False, False), (True, False, False, False),
-                (False, True, False, False), (False, False, True, False),
-                (False, False, True, True)]:
-            with self.subTest(selection=(registrations, fields, questions, diagnostics)):
+        bindings = dict(outcome_registries=[outcome])
+        for diagnostics in [False, True]:
+            with self.subTest(diagnostics=diagnostics):
                 config = dict(validation=False, bindings=bindings, file='common/traditions/example.txt',
-                              registration_entries=registrations, field_reads=fields,
-                              questions=[dict(index=0, definition='one', token=1, diagnostics=diagnostics)] if questions else [])
+                              questions=[dict(index=0, definition='one', token=1, diagnostics=diagnostics)])
                 observer = worker.FixtureObserver(config)
-                expected = ['fixture_load']
-                if registrations:
-                    expected.append('fixture_registration')
-                if fields:
-                    expected.append('fixture_field')
-                if questions:
-                    expected.extend(['fixture_constructor', 'fixture_reader', 'fixture_member'])
+                expected = ['fixture_load', 'fixture_constructor', 'fixture_reader', 'fixture_member']
                 if diagnostics:
                     expected.extend(['fixture_malformed', 'fixture_unexpected'])
                 self.assertEqual([name for name, _ in observer.hooks()], [protocol.HOOK[name] for name in expected])
@@ -326,13 +315,11 @@ class PauseTests(unittest.TestCase):
         self.assertEqual(worker.controlled_hook(request), protocol.HOOK['registry'] + 'one')
 
         fixture = Mock()
-        fixture.hooks.return_value = [(protocol.HOOK['fixture_field'], 48)]
-        request = dict(registries={}, fixture=dict(field_reads=True, registration_entries=True),
+        fixture.hooks.return_value = [(protocol.HOOK['fixture_member'], 48)]
+        request = dict(registries={}, fixture=dict(questions=[dict(index=0)]),
                        fault=dict(target='fixture', control=protocol.CONTROL['late_hook']))
-        self.assertEqual(worker.requested_hooks(request, None, fixture), [(protocol.HOOK['fixture_field'], 48)])
-        self.assertEqual(worker.controlled_hook(request), protocol.HOOK['fixture_field'])
-        request['fixture']['field_reads'] = False
-        self.assertEqual(worker.controlled_hook(request), protocol.HOOK['fixture_registration'])
+        self.assertEqual(worker.requested_hooks(request, None, fixture), [(protocol.HOOK['fixture_member'], 48)])
+        self.assertEqual(worker.controlled_hook(request), protocol.HOOK['fixture_member'])
         request['fault'] = None
         self.assertIsNone(worker.controlled_hook(request))
 
@@ -341,10 +328,10 @@ class PauseTests(unittest.TestCase):
         self.assertTrue(worker.dropped_by_fault('registry-entry', dict(name='one', index=0), request))
         self.assertFalse(worker.dropped_by_fault('registry-entry', dict(name='two', index=0), request))
         self.assertFalse(worker.dropped_by_fault('registry-entry', dict(name='one', index=1), request))
-        self.assertFalse(worker.dropped_by_fault('fixture', dict(event=dict(kind='field-read', ordinal=1)), request))
+        self.assertFalse(worker.dropped_by_fault('fixture', dict(event=dict(kind='field-parse', question=0, occurrence=1, returned=False)), request))
         request = dict(fault=dict(target='fixture', control=protocol.CONTROL['dropped_record']),
-                       fixture=dict(field_reads=True))
-        self.assertTrue(worker.dropped_by_fault('fixture', dict(event=dict(kind='field-read', ordinal=1)), request))
+                       fixture=dict(questions=[dict(index=0)]))
+        self.assertTrue(worker.dropped_by_fault('fixture', dict(event=dict(kind='field-parse', question=0, occurrence=1, returned=False)), request))
         self.assertFalse(worker.dropped_by_fault('registry-entry', dict(name='one', index=0), request))
 
 
@@ -354,7 +341,7 @@ class ParserObservationTests(unittest.TestCase):
         worker.breakpoints.clear()
         self.file = 'common/traditions/example.txt'
         question = dict(index=0, definition='one', field='potential', token=1,
-                        parsing=True, diagnostics=True, runtime=False, reader_id='block', reader_family='Trigger',
+                        parsing=True, diagnostics=True, reader_id='block', reader_family='Trigger',
                         reader_kind='Block', storage=None, storage_unavailable='No storage decoder')
         self.observer = worker.FixtureObserver(dict(validation=False, file=self.file,
             bindings=dict(fields=[], outcome_registries=[]), questions=[question]))
@@ -562,12 +549,12 @@ class NestedFixtureTests(unittest.TestCase):
             nested=dict(parent_token=7, owner_offset=64, member_entry=900), token=8,
             storage=dict(offset=80, decoder={'FixedPoint': {'scale': 32768}}),
             storage_unavailable=None, reader_id='reader', reader_kind='FixedPoint', reader_family='NotApplicable',
-            parsing=True, diagnostics=True, runtime=False)
+            parsing=True, diagnostics=True)
         binding = dict(registry='common/example', load_entry=10, reader_entry=20, constructor_entry=24,
             member_entry=30, reader_return=40, malformed_entry=50, unexpected_entry=60, fields=[],
             inline=dict(root_return=24, key_storage=dict(offset=8, decoder='String')))
         config = dict(file='common/example/nested.txt', questions=[self.question], validation=False,
-            registration_entries=False, field_reads=False, bindings=dict(fields=[], outcome_registries=[binding]))
+            bindings=dict(outcome_registries=[binding]))
         self.observer = worker.InlineFixtureObserver(config)
         self.observer.loading = True
         self.observer.thread = 7

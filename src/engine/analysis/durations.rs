@@ -1,5 +1,4 @@
-//! Duration keys: sibling keys that set one count, the factor each key applies, and the flag-store
-//! countdown that consumes a shared-factor count.
+//! Duration keys: sibling keys that set one count and the factor each key applies.
 //!
 //! A key is a duration unit only by mechanism. Its reader stores an integer or a scoped numeric
 //! operand. After reading, the key either scales the count (`ScaledAtRead`) or stores a constant
@@ -24,36 +23,15 @@ use super::stop::Unresolved;
 /// The most instructions followed after one reader call.
 const CONTINUATION_LIMIT: usize = 64;
 
-/// Executable-bound inputs for duration consumption.
+/// Executable-bound inputs for duration combination.
+#[cfg_attr(test, derive(Default))]
 pub struct Input {
     /// Execute slot of an effect, or evaluate slot of a trigger, relative to its vtable point.
     pub execute_slot: u64,
     /// Demangled names by address and pointer slot, for the canonical execute body.
     pub names: BTreeMap<u64, String>,
-    /// The flag-store countdown proof, shared by every command.
-    pub countdown: Result<Countdown, Unresolved>,
     /// Span enclosing the proved selection fields and literal, by numeric subtype point.
     pub(crate) scoped_storage: BTreeMap<u64, Result<u64, Unresolved>>,
-}
-
-#[cfg(test)]
-impl Default for Input {
-    fn default() -> Self {
-        Self {
-            execute_slot: 0,
-            names: BTreeMap::new(),
-            countdown: Err(Unresolved::new("duration-flag-setter")),
-            scoped_storage: BTreeMap::new(),
-        }
-    }
-}
-
-/// `SetFlag` replaces an existing flag's date and count in mode 0; `UpdateFlags` skips negative
-/// counts, decrements the others, and removes a flag whose decremented count is zero.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Countdown {
-    /// Offset of the count array that both bodies use.
-    pub counts: u64,
 }
 
 /// Sibling keys of one reader that set one duration count.
@@ -65,8 +43,6 @@ pub struct Group {
     pub destination: i64,
     /// How keys combine; `SharedFactor` requires the matched execute body.
     pub combination: Result<Combination, Unresolved>,
-    /// What consumes the count.
-    pub consumption: Result<Consumption, Unresolved>,
     /// Factory-agreed initial bytes of the owner, for the omitted count.
     pub initial: BTreeMap<u64, u8>,
 }
@@ -93,13 +69,6 @@ pub enum Combination {
         /// The factor before any key is read.
         initial_factor: i64,
     },
-}
-
-/// What consumes a duration count.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Consumption {
-    /// The execute body passes the count to the flag setter, and the flag store counts it down.
-    FlagCountdown,
 }
 
 /// What one key's path does to owner storage after its reader call.
@@ -135,13 +104,11 @@ enum Destination {
     Stack(i64),
 }
 
-/// The complete execute-body proof and the consumption it establishes.
+/// The execute-body proof that joins an operand and its factor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Execution {
     /// Operand and factor offsets captured from the body.
     pub bindings: Bindings,
-    /// Whether the product reaches the proved flag store.
-    pub flag_countdown: bool,
 }
 
 /// The function that holds an address: its start and code.
@@ -166,7 +133,6 @@ pub fn groups(
     code: &CodeAt<'_>,
     initial: &BTreeMap<u64, u8>,
     execute: Option<Result<Execution, Unresolved>>,
-    countdown: &Result<Countdown, Unresolved>,
     scoped_storage: &BTreeMap<i64, Result<u64, Unresolved>>,
 ) -> Inventory {
     let mut candidates: BTreeMap<(String, i64), Vec<KeyResult>> = BTreeMap::new();
@@ -197,7 +163,6 @@ pub fn groups(
                 keys,
                 initial,
                 execute.as_ref(),
-                countdown,
                 scoped_storage.get(&destination),
             ));
         } else if let Some(stop) = keys.iter().find_map(|(_, effect)| effect.clone().err()) {
@@ -656,7 +621,6 @@ fn group(
     keys: Vec<KeyResult>,
     initial: &BTreeMap<u64, u8>,
     execute: Option<&Result<Execution, Unresolved>>,
-    countdown: &Result<Countdown, Unresolved>,
     scoped_storage: Option<&Result<u64, Unresolved>>,
 ) -> Group {
     let scaled = keys
@@ -680,27 +644,20 @@ fn group(
         .collect::<Vec<_>>();
     let unresolved_key = units.iter().find_map(|unit| unit.factor.clone().err());
 
-    let (combination, consumption) = match (scaled, slots.len(), unresolved_key) {
-        (_, _, Some(stop)) => (Err(stop.clone()), Err(stop)),
-        (true, 0, None) => (
-            Ok(Combination::ScaledAtRead),
-            Err(Unresolved::new("duration-consumption")),
-        ),
+    let combination = match (scaled, slots.len(), unresolved_key) {
+        (_, _, Some(stop)) => Err(stop),
+        (true, 0, None) => Ok(Combination::ScaledAtRead),
         (false, 1, None) => {
             let factor = *slots.first().unwrap();
-            shared_factor(destination, factor, initial, execute, countdown)
+            shared_factor(destination, factor, initial, execute)
         }
-        _ => {
-            let stop = Unresolved::new("duration-mixed-keys");
-            (Err(stop.clone()), Err(stop))
-        }
+        _ => Err(Unresolved::new("duration-mixed-keys")),
     };
 
     Group {
         units,
         destination,
         combination,
-        consumption,
         initial: initial.clone(),
     }
 }
@@ -819,40 +776,24 @@ fn shared_factor(
     factor: i64,
     initial: &BTreeMap<u64, u8>,
     execute: Option<&Result<Execution, Unresolved>>,
-    countdown: &Result<Countdown, Unresolved>,
-) -> (
-    Result<Combination, Unresolved>,
-    Result<Consumption, Unresolved>,
-) {
-    let execute = match execute {
-        Some(Ok(bindings)) => bindings,
-        Some(Err(stop)) => return (Err(stop.clone()), Err(stop.clone())),
-        None => {
-            let stop = Unresolved::new("duration-execute-body");
-            return (Err(stop.clone()), Err(stop));
-        }
-    };
+) -> Result<Combination, Unresolved> {
+    let execute = execute
+        .ok_or(Unresolved::new("duration-execute-body"))?
+        .as_ref()
+        .map_err(Clone::clone)?;
     let joined = offset(&execute.bindings, "operand") == Some(operand)
         && offset(&execute.bindings, "factor") == Some(factor);
 
     if !joined {
-        let stop = Unresolved::new("duration-execute-join");
-        return (Err(stop.clone()), Err(stop));
+        return Err(Unresolved::new("duration-execute-join"));
     }
 
-    let combination = word(initial, factor)
+    word(initial, factor)
         .map(|initial_factor| Combination::SharedFactor {
             factor_slot: factor,
             initial_factor,
         })
-        .ok_or(Unresolved::new("duration-initial-state"));
-    let consumption = if execute.flag_countdown {
-        countdown.clone().map(|_| Consumption::FlagCountdown)
-    } else {
-        Err(Unresolved::new("duration-consumption"))
-    };
-
-    (combination, consumption)
+        .ok_or(Unresolved::new("duration-initial-state"))
 }
 
 /// The signed 32-bit word at `offset` in the factory state.
@@ -873,43 +814,17 @@ pub fn execute(
     names: &BTreeMap<u64, String>,
 ) -> Result<Execution, Unresolved> {
     let lines = canonical(rows, names);
-    for (shape, flag_countdown) in [
-        (include_str!("durations/shapes/execute.txt"), true),
-        (include_str!("durations/shapes/relation_execute.txt"), true),
-        (include_str!("durations/shapes/trait_execute.txt"), false),
+    for shape in [
+        include_str!("durations/shapes/execute.txt"),
+        include_str!("durations/shapes/relation_execute.txt"),
+        include_str!("durations/shapes/trait_execute.txt"),
     ] {
         if let Some(bindings) = Shape::parse(shape).matches(&lines) {
-            return Ok(Execution {
-                bindings,
-                flag_countdown,
-            });
+            return Ok(Execution { bindings });
         }
     }
 
     Err(Unresolved::new("duration-execute-body"))
-}
-
-/// Prove the flag-store countdown from the setter and the daily update bodies.
-pub fn countdown(
-    set_flag: &[Instruction],
-    update_flags: &[Instruction],
-    names: &BTreeMap<u64, String>,
-) -> Result<Countdown, Unresolved> {
-    let set = Shape::parse(include_str!("durations/shapes/set_flag.txt"))
-        .matches(&canonical(set_flag, names))
-        .ok_or(Unresolved::new("duration-flag-setter"))?;
-    let update = Shape::parse(include_str!("durations/shapes/update_flags.txt"))
-        .matches(&canonical(update_flags, names))
-        .ok_or(Unresolved::new("duration-flag-update"))?;
-    let agreed = ["flag_count", "flags", "dates", "counts"]
-        .iter()
-        .all(|name| set.contains_key(*name) && set.get(*name) == update.get(*name));
-    let counts = offset(&set, "counts").filter(|_| agreed);
-
-    counts
-        .and_then(|counts| u64::try_from(counts).ok())
-        .map(|counts| Countdown { counts })
-        .ok_or(Unresolved::new("duration-flag-layout"))
 }
 
 fn offset(bindings: &Bindings, name: &str) -> Option<i64> {

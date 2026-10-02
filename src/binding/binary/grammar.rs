@@ -124,7 +124,11 @@ pub(in crate::binding) fn read(
         }
     }
     let targets = target_input(symbols, recipe, &command_bindings)?;
-    let durations = super::durations::input(&text, symbols, names, form_input.role_slot);
+    let durations = crate::engine::analysis::durations::Input {
+        execute_slot: form_input.role_slot,
+        names,
+        scoped_storage: BTreeMap::new(),
+    };
     Ok(GrammarInput {
         durations,
         targets,

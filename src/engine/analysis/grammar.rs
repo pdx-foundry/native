@@ -28,7 +28,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v12";
+pub const METHOD: &str = "command-grammar/v13";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -615,15 +615,7 @@ fn durations(
             Some((offset, input.durations.scoped_storage.get(point)?.clone()))
         })
         .collect();
-    super::durations::groups(
-        fields,
-        paths,
-        &code,
-        bytes,
-        execute,
-        &input.durations.countdown,
-        &scoped_storage,
-    )
+    super::durations::groups(fields, paths, &code, bytes, execute, &scoped_storage)
 }
 
 fn scoped_point(bytes: &BTreeMap<u64, u8>, offset: i64) -> Option<u64> {

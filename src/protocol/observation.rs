@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) const VERSION: &str = "native-observation/24";
+pub(crate) const VERSION: &str = "native-observation/25";
 pub(crate) const MAX_RECORD: usize = 64 * 1024;
 pub(crate) const MAX_TRACE: usize = 4 * 1024 * 1024;
 /// Bound of the loaded modifier table file.
@@ -79,7 +79,6 @@ pub(crate) struct WorkerRequest {
     /// Read the loaded modifier table at the documentation point, and pause there.
     pub modifiers: Option<ModifierTableBinding>,
     pub script_checks: Option<super::script_check::ScriptCheckBinding>,
-    pub world: Option<super::world::WorldSetup>,
     pub deadline_seconds: u64,
 }
 
@@ -159,7 +158,6 @@ pub(crate) fn python_bindings() -> String {
         "modifier_table": schemars::schema_for!(ModifierTable),
         "script_check": schemars::schema_for!(super::script_check::CheckRequest),
         "script_reply": schemars::schema_for!(super::script_check::CheckReply),
-        "world": schemars::schema_for!(super::world::WorldResult),
         "worker_diagnostics": schemars::schema_for!(WorkerDiagnostics),
     });
     format!(
@@ -235,19 +233,15 @@ pub(crate) struct RegistryBinding {
     pub string_tag_offset: u64,
 }
 
-/// Exact-build entry points and source-location layout for category fixtures.
+/// Exact-build entry points and source-location layout for fixture outcomes.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixtureBinding {
-    pub registration_entry: u64,
-    pub load_entry: u64,
-    pub field_entry: u64,
     pub reader_lexer_offset: u64,
     pub lexer_file_offset: u64,
     pub file_name_offset: u64,
     pub string_tag_offset: u64,
     pub file_line_offset: u64,
-    pub fields: Vec<FixtureFieldBinding>,
     pub outcome_registries: Vec<FixtureOutcomeRegistryBinding>,
     pub validation: Option<FixtureValidationBinding>,
 }
@@ -268,14 +262,6 @@ pub(crate) struct FixtureValidationBinding {
     pub complete_entry: u64,
     pub source_file_prefix: String,
     pub source_line_prefix: String,
-}
-
-/// A field token selected by the exact-build recipe.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct FixtureFieldBinding {
-    pub token: u64,
-    pub name: String,
 }
 
 /// Exact-build hooks and storage layouts for one fixture registry.
@@ -412,7 +398,6 @@ pub(crate) struct FixtureQuestionSetup {
     pub parent_field: Option<String>,
     pub parsing: bool,
     pub diagnostics: bool,
-    pub runtime: bool,
     pub reader_id: Option<String>,
     pub reader_kind: crate::ReaderKind,
     pub reader_family: crate::BlockFamily,
@@ -426,8 +411,6 @@ pub(crate) struct FixtureQuestionSetup {
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixtureSetup {
     pub file: String,
-    pub registration_entries: bool,
-    pub field_reads: bool,
     pub validation: bool,
     pub questions: Vec<FixtureQuestionSetup>,
     pub bindings: FixtureBinding,

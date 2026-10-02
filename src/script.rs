@@ -72,7 +72,7 @@ pub struct ForeignScriptDiagnostic {
 }
 
 /// What one bounded read and validation observed. Silence never establishes acceptance.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScriptObservation {
     /// One-based identity within this session; retained commands may report again later.
     pub check: u64,
@@ -91,11 +91,7 @@ pub struct ScriptObservation {
     /// Whether the diagnostic count or message-size bound was reached.
     pub bound_reached: bool,
     /// Stored duration counts. `Known` only when every top-level child was classified by its
-    /// receiver; a child with no duration group adds no entry. Old recordings read as
-    /// `Unresolved`.
-    #[serde(default)]
-    // Out of the worker reply schema: the worker sends raw reads, not a `GrammarProperty`.
-    #[schemars(skip)]
+    /// receiver; a child with no duration group adds no entry.
     pub stored_durations: crate::GrammarProperty<Vec<StoredDuration>>,
 }
 
@@ -202,17 +198,10 @@ mod tests {
     }
 
     #[test]
-    fn old_recordings_read_stored_durations_as_unresolved() {
+    fn recordings_require_stored_durations() {
         let mut recorded = serde_json::to_value(observation()).unwrap();
         recorded.as_object_mut().unwrap().remove("stored_durations");
-
-        let old: ScriptObservation = serde_json::from_value(recorded).unwrap();
-
-        assert_eq!(old.stored_durations, crate::GrammarProperty::Unresolved);
-        assert_eq!(
-            old.answer(BuildId("test".into())).completeness,
-            Completeness::Partial
-        );
+        assert!(serde_json::from_value::<ScriptObservation>(recorded).is_err());
     }
 
     #[test]
@@ -231,7 +220,16 @@ mod tests {
             (false, crate::GrammarProperty::Partial(stored.clone())),
         ] {
             let checked = CheckedScript {
-                observation: observation(),
+                observation: crate::protocol::script_check::CheckObservation {
+                    check: 1,
+                    read_returned: true,
+                    children: 0,
+                    diagnostics: vec![],
+                    foreign: vec![],
+                    unjoined: vec![],
+                    hooks_active: true,
+                    bound_reached: false,
+                },
                 durations: StoredDurations {
                     complete,
                     stored: stored.clone(),

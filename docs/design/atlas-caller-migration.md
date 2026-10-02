@@ -13,8 +13,8 @@ see [preservation](../native/preservation.md). Atlas's published claim ledger is
 | `traditions`, `tradition_categories` | `common/traditions`, `common/tradition_categories` |
 | `with_supervisor(command, options)` then `start_game()` | `start_game(GameOptions::new(command))` |
 | Caller-supplied retention directory | Native-owned temporary work directory |
-| `get_registry_items(name)` and `RegistryResult` | `registry_items(name)` and `Answer<Vec<String>>` |
-| A fixed live registry list | `GameOptions::registries(names)` before `start_game` |
+| `get_registry_items(name)` and `RegistryResult` | Item names come from user files; modifier join keys remain in `LoadedModifiers.registry_items` |
+| A fixed live registry list | Native selects registries and includes the fixture registry |
 | `registry_availability()` | The result of each question: complete, partial, or `Error` |
 | `close()` returning `GameReport` | `close()` returning `Result<Disposal, Error>` |
 | `Engine::replay_registry`, descriptors and final snapshots | `Native::from_recorded_answers(directory)?` and the same question flow |
@@ -23,9 +23,6 @@ see [preservation](../native/preservation.md). Atlas's published claim ledger is
 `Native::open` still returns `OpenError`. Question and session errors use `Error`; a failed start
 can carry `Error::Startup { reason, disposal }`. A lost supervisor connection never confirms disposal.
 Always await `close`, even when one or all questions fail. Each registry result is independent.
-Select the content directories to observe before starting the game. Omitting the selection keeps
-the two M45 tradition registries for existing callers. A discovered registry outside the session
-selection returns `Unsupported`; Atlas can run another bounded session for it.
 Failed final cleanup returns `Error::Cleanup { reason, disposal }` and keeps the work directory.
 A confirmed process disposal can accompany a cleanup error, such as an unresolved host reservation.
 
@@ -57,7 +54,7 @@ The former `Field.conditional` Boolean is replaced by paired `read` alternatives
 alternative retains its `condition` and `outcome` (`Read`, `Rejected`, or `Unresolved`).
 Never combine the condition from one alternative with another's reader or shape.
 
-Keep `shape.value`, `shape.repeat`, `members`, `domain`, `default`, and `uses` in snapshots.
+Keep `shape.value`, `shape.repeat`, `members`, `domain`, and `uses` in snapshots.
 Replacement and accumulation describe storage, not allowed occurrence counts. `Unknown`
 is an unanswered fact. `members: Fields` can still have gaps; an empty child inventory does
 not prove an empty grammar.
@@ -67,8 +64,9 @@ acceptance. Its condition can be `All([Unresolved, FieldZero { path, zero }])`; 
 terms and the registry-relative nested path. A use ID identifies the containing method on
 this build, so independent selections may share it. An empty use list does not prove absence
 of runtime conditions. SDK-597 owns this snapshot migration and SDK-546 consumes the naming
-relationships. SDK-627 and SDK-628 retain the remaining default/domain/occurrence and enclosing
-selection gaps respectively.
+relationships. SDK-627 owns domains and unknown repeat behavior. SDK-628 is cancelled; runtime selection is
+out of scope. Atlas credits maximum 1 for Replace and an unbounded maximum for Accumulate,
+without publishing either as an engine limit. Required fields need validation evidence.
 
 ## Block and command grammar migration (SDK-542 / SDK-597 / SDK-625)
 
@@ -84,57 +82,20 @@ A routing rule does not impose runtime order. `limit` is a child key, not a regi
 `CommandForm::Block`. A value alternative is listed only when its whole stage chain accepts it.
 `targets` lists each target argument (the command's own value or a named key path) with its
 accepted scope types and `TargetCheckStage`. A known empty list means the command takes no target.
-Both are `#[serde(default)]`, so older recorded answers read them as `Unresolved`. Use
+All answer properties must be present; move the pin and record again on M451-hotfix. Use
 `completeness == Complete` to decide whether a grammar can drive a validation rule.
 
 For fixture conclusions, request `.with_parsing()` on each question and `.through_validation()`
 on the field-outcome request when deferred errors matter. Require witnessed complete parsing and
-complete relevant diagnostic coverage for acceptance. Keep storage and runtime separate. Recorded
+complete relevant diagnostic coverage for acceptance. Keep parsing, storage and diagnostics separate; runtime claims are out of scope. Recorded
 answers give no new live coverage credit. The [method contract](../native/command-grammar.md#consumer-boundary)
 names the SDK-597, SDK-625 and SDK-600 responsibilities and remaining gates.
 
-## Local caller and checks
+## Current caller checks
 
-The caller has `describe`, `live` and `recorded` commands. Both live and recorded modes call
-`collect(&Native, GameOptions)`. It reads both registries, retains each result and closes before
-serializing. Startup failure yields no fabricated game or answers. Failed questions or unconfirmed
-disposal give the CLI a nonzero exit status after it writes the structured results.
-
-From the caller directory:
-
-```sh
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo test --locked
-cargo run --release -- describe /path/to/Stellaris
-cargo run --release -- live /path/to/Stellaris /path/to/answers
-cargo run --release -- recorded /path/to/answers
-```
-
-The four tests use small authored `Result<Answer<Vec<String>>, Error>` records. They check
-preservation of partial values and gaps, source stamps, independent failures, missing and corrupt
-records, and the recorded CLI with an empty `PATH`. A recorded query error tests the consumer's
-error handling; it does not reproduce a failed process start. Native's live suite checks that path.
-
-## Frozen tradition flow
-
-The Atlas caller now has a tracked `frozen` flow. Atlas owns the question list and its mapping
-to `config/common/traditions.cwt`. Native supplies whole answers; Atlas reports each question as
-observed, an owned gap, or unanswered. Native support remains a separate section. A field's
-unresolved reader does not erase observations about other fields.
-
-The flow uses four sessions: unmounted registry item names; tradition parser outcomes over valid,
-omitted, repeated, malformed and unknown-field inputs; category parser outcomes; and the category
-read-entry fixture. Only the first session asks for item names. Native's recorded item key is the
-registry name, not the fixture, so querying differently mounted item lists in several sessions
-would make live and recorded runs disagree. Fixture answers have their own request keys.
-
-Run `frozen INSTALLATION ANSWERS` to record the live questions, then
-`frozen-recorded ANSWERS` to run the same questions without a process. The answers must match
-apart from `Basis`; a live close is `Confirmed`, and a recorded close is `NotApplicable`.
-The production Atlas caller pins the merged Native Git commit in its manifest and lockfile.
-Check its public boundary with:
-
-```sh
-ATLAS_CALLER_PATH=/path/to/pdx-atlas cargo test --test consumer_boundary -- --ignored
-```
+Atlas owns its extraction fixtures and offline snapshot tests. Its `snapshot` command records
+current answers on M451-hotfix. Remove `with_runtime`, the unused `category_reads` session and the
+`RegistryItems` support filter when moving the Native pin. Follow Atlas's README for its snapshot,
+ledger and coverage checks. SDK-608 owns entry-scope gaps. SDK-626 creates a failure-shape ticket
+only when a config claim depends on a fact that changes compiler acceptance, rejection, typing
+or completion; other shapes are marked out of scope under the 2026-10-02 vision.

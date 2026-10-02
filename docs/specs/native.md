@@ -3,7 +3,10 @@
 Status: implementation specification, rewritten 2026-09-20 to agree with the approved
 [simplification decision](../design/simplification.md). It replaces the evidence-producer
 specification of 2026-09-17. The earlier text is in Git history. The delivered operations agree
-with this document; the roadmap tracks the operations that are still planned.
+with this document; the roadmap tracks the operations that are still planned. The agreed
+[2026-10-02 review](../design/simplification-review.md) narrows the product to static engine facts
+that a compiler uses to accept, reject, type or complete script, plus the smallest live check
+of a static answer. Runtime values are out of scope. Atlas is the only consumer.
 
 ## Problem Statement
 
@@ -46,7 +49,7 @@ a rule.
    defines, on_actions) marked as declared, so that I can distinguish them from observed behavior.
 7. As an Atlas developer, I want to supply fixture files and receive source-correlated field
    observations, so that I control the experiment without controlling hooks or launch timing.
-8. As an Atlas developer, I want parser storage, validation, and runtime outcomes reported
+8. As an Atlas developer, I want parsing, parser storage, and validation reported
    separately, so that engine recovery does not imply valid input.
 9. As an Atlas developer, I want unknown conditions and typed gaps kept in partial answers, so that
    useful answers do not conceal what is missing.
@@ -54,8 +57,8 @@ a rule.
     build and method that support it.
 11. As an Atlas developer, I want recorded answers for static and live questions, so that I can
     develop and test extraction without a game.
-12. As an Atlas developer, I want deadlines and cancellation, so that a stuck game cannot leave
-    extraction waiting.
+12. As an Atlas developer, I want a bounded startup, a fixed idle timeout, explicit close and cleanup on drop,
+    so that a stuck game cannot leave extraction waiting.
 13. As an operator, I want isolated profiles and owned processes, so that experiments do not change
     my ordinary game profile or unrelated processes.
 14. As an operator, I want cleanup to survive caller and worker failure, so that a failed probe
@@ -97,11 +100,9 @@ the state after the simplification effort:
 | `Native::open` | Implemented | Installation location | A pinned installation, or a precise `OpenError` |
 | `supports` | Implemented | An `Operation` | `Support::Supported`, or `Support::Unsupported` with a reason |
 | `registries`, `registry_fields` | Implemented | A registry name for fields | Registries; fields with reader identity, broad kind, block family, conditional read alternatives and reference lookups (target registry by content directory, stage, key match, missing-key result), with explicit unknowns |
-| `start_game` | Implemented | Supervisor command and deadlines | A `Game` paused at a stated readiness boundary |
-| `Game::registry_items` | Implemented | A registry name | Item names from the engine collection |
+| `start_game` | Implemented | Supervisor command, startup budget and optional fixture or loaded-modifier request | A `Game` paused at the internal boundary for its questions |
 | `Game::loaded_modifiers` | Implemented for M45-release | `GameOptions::loaded_modifiers` before launch | The modifier table after all content loads, read where the engine documents its modifiers: each name with its loaded category tags, whether the executable declares it, and each `modifier_families` family and loaded item that gives it; the loaded keys of each family registry; the loaded content. Unexplained names and unjoined generation sites are gaps. No config or log file is read. |
-| `Game::observe_world` | Implemented for M451-hotfix | `GameOptions::world(WorldRequest)` before launch: compatible save, exact displayed local human country, prepared effect, 0–120 days, up to 32 flags and up to 32 variables | One fixed observation from the normal main-thread world pause: actual country, initial date, effect execution and diagnostics, then engine date, each flag's presence/signed count and each variable's raw fixed-point value and scale (or unset) for day zero and each advanced day. Repeated reads do not execute again. |
-| `Game::close`, `Game::cancel` | Implemented | — | A disposal result from `close`; `cancel` requests shutdown |
+| `Game::close` | Implemented | — | A disposal result; dropping the session or an active call also starts cleanup |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations` | Implemented for effects and triggers | A declaration kind | Engine name, description, usage, and declared scopes from every registration call and tail call in executable text, including registry helper constructors and names composed at run time through up to two callers; each chain of callers is one declaration. Registrations that cannot be followed, unreadable documentation, and scope getters that cannot be followed make the answer partial. Target arguments and their accepted scopes are in `command_grammar`. |
 | `command_grammar` | Implemented for M45-release effects and triggers | A declaration kind and registered command name | The accepted forms (value alternatives with their reader kind, a block, or both); target arguments with the scope types they accept and the stage that checks them; concrete shared reader identity, child families, fixed keys with their reference lookups (including the receiver initializer's lookup of a stored key), nested members, numeric child grammar, conditional reader ordering and duration key groups. The answer is `Complete` only when every property is established at every depth. Every property keeps unresolved evidence explicit; this is not runtime meaning. A missing registered command gives `UnknownCommand`. |
@@ -113,10 +114,8 @@ the state after the simplification effort:
 | `game_rules` | Implemented | — | Game rules from the engine's rule declarations, scripted and weighted, with each distinct context that the rule set's call sites supply. A declared rule with no followed call site is a gap. |
 | `dynamic_names` | Implemented for M45-release integer flags | — | One namespace for each flag store that commands reach: its owner (a scope type, or one global store), the effects and triggers that define, remove and read names in it, and whether they accept `name@target`. Two commands share a namespace only when both reach the same store. Saved event targets and variables are outside it; commands and stores that the method cannot follow are gaps. |
 | `defines` | Implemented for M45-release | — | Define namespace, name and engine read type from compiled read helpers; unresolved helpers are gaps. No shipped define or config file is read. |
-| `Game::check_script` | M45-release at the loaded-modifier pause | Trigger or effect text and a scope ID from `Native::scopes` | Whether reading returned, top-level child count, current diagnostics with stage and optional line, prior-check diagnostics, unjoined messages, capture bounds, and stored duration counts of top-level children. No trigger evaluation or effect execution. |
-| `Game::observe_fixture`: registration entries | M45-release only; first three initial effect-registration calls | One file under `common/tradition_categories`, selected before launch | Entry ordinal and stage during the initial category-load window |
-| `Game::observe_fixture`: category reads | M45-release only; `tree_template` and `traditions` in `common/tradition_categories` | One category file and `InitialCategoryLoad` | At most two read-entry events before storage or validation; no parser outcome claim |
-| `Game::observe_fixture`: field outcomes | M45-release only; initial file load, optionally through bounded deferred validation, for a registry with verified boundaries | At most 32 named definition and field questions in one bounded relative text file | Separate parser entry/return occurrences, source-correlated diagnostics and typed string, integer or fixed-point storage where bound; other dimensions report unavailable. Lost observations cannot establish acceptance. |
+| `Game::check_script` | M45-release and M451-hotfix at the loaded-modifier pause | Trigger or effect text and a scope ID from `Native::scopes` | Whether reading returned, top-level child count, current diagnostics with stage and optional line, prior-check diagnostics, unjoined messages, capture bounds, and stored duration counts of top-level children. No trigger evaluation or effect execution. |
+| `Game::observe_fixture`: field outcomes | M45-release and M451-hotfix; initial file load, optionally through bounded deferred validation, for a registry with verified boundaries | At most 32 named definition and field questions in one bounded relative text file | Separate parser entry/return occurrences, source-correlated diagnostics and typed string, integer or fixed-point storage where bound; other dimensions report unavailable. Lost observations cannot establish acceptance. |
 
 Rules for the API:
 
@@ -129,8 +128,11 @@ Rules for the API:
   Missing behavior needs a Native extension or an explicit gap. There is no raw-native escape hatch.
 - **The build is fixed at `open`.** Native checks that the executable is unchanged before each
   operation. A caller cannot force an adapter or ask for the nearest supported version.
-- **Later operations** (prepared scripts, state reads, save loading) are added as methods on
-  `Game` with their own readiness boundary. They are not promised now.
+- Native selects the observed registries, including the fixture registry. Loaded item keys serve
+  the modifier-family check; a language service reads user item names from files. SDK-552 owns
+  file selection and duplicate rules, alongside definition-name rules (`skip_root_key`, `name_field`).
+- `check_script` stays public as the smallest grammar control. New features require an accepted
+  Atlas corpus comparison or a ticket naming a specific control.
 
 ### 3. Answers
 
@@ -157,14 +159,13 @@ for contexts and scope types.
   missing hook, or a lost record gives `Partial` with a gap, or an `Error`.
 - An unsupported operation does not mean that the game forbids a construct.
 - `Basis` keeps a declaration, a traced static relationship, and an observed behavior distinct.
-- Parser storage, engine validation, and runtime outcome are separate values. A scope pointer does
-  not establish scope availability. A candidate reference class does not establish lookup semantics.
+- Parsing, parser storage and engine validation are separate values. Runtime outcomes and
+  scope availability are out of scope. A candidate reference class does not establish lookup semantics.
 - Two fields that use one shared reader report the same reader identity.
 - `Reader.numeric` supplies independently known numeric representation, width, signedness, scale,
-  partial literal forms, accepted range and explicit reader clamp. `Known(None)` establishes a
+  partial literal forms and accepted range. `Known(None)` establishes a
   nonnumeric reader; unresolved or partial properties must not be completed from storage limits
   or finite fixture observations. Caller post-processing is outside the shared conversion.
-  Older recorded readers default this property to unresolved.
   `accepted_range` means faithful storage without overflow or narrowing beyond the reader's
   normal, established rounding or truncation rule. Values outside it may still parse successfully.
   An endpoint is `Known` only with both a verified contract of the exact imported platform scanner,
@@ -178,17 +179,15 @@ for contexts and scope types.
   the float reader retains a typed numeric-conversion gap for that representation obstacle.
 - `ReaderKind::ScopedNumeric` identifies a shared reader whose destination can store an integer
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
-  storage. `Reader.scoped_operand` reports partial routing forms, successful literal preservation
-  of prior reference state, and representation selection conditional on an empty source location.
-  These properties do not claim a successful lookup or an evaluated number. Evaluated numbers
-  are live observations through `Game::observe_world`, recorded on the scoped numeric page.
-  Older recordings default the scoped operand property to unresolved.
-- `CommandGrammar.durations` groups child keys that set one duration count, by the code that
-  reads them and not by name. Each group gives each key's factor, the combination rule
-  (`ScaledAtRead`, or `SharedFactor` only when the execute body multiplies the operand by the
-  factor), the omitted count, and a proven consumer (`FlagCountdown`). It does not give an expiry
-  date or update frequency. A partial list proves no absence. Older recordings default the
-  property to unresolved.
+  storage. `Reader.scoped_operand` reports partial routing forms. These facts do not claim a
+  successful lookup or an evaluated number. Historical selection and evaluation findings remain
+  on the scoped numeric knowledge page.
+- `CommandGrammar.durations` groups child keys that set one duration count by their reader code.
+  Each group gives the keys, factors, combination rule (`ScaledAtRead` or `SharedFactor`), and
+  omitted count. Consumers, expiry dates and update frequency are outside the API.
+- All recorded answer properties must be present. Missing properties are a malformed recording,
+  never a `Complete` answer with silently unresolved properties. Reads validate the build identity,
+  not the method revision.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
 - Constructor-bound root modifier fields expose `FieldMembers::ModifierBlock`: fixed keys with
   reader kinds and numeric or static-modifier-reference entry forms. Each property may be partial
@@ -227,23 +226,18 @@ observation worker.
   session that the caller ended with no read error; otherwise it is kept. The error from
   `start_game` or `close` names the kept directory, and `Game::work_directory` gives it after a
   read error.
-- A world request uses a private copy of a save (at most 16 MiB), with installed content and no
-  mods. It cannot share a startup fixture or loaded-modifier pause. Readiness is `PausedInWorld`
-  only after the world gate and complete prepared observation. Startup and prepared calls share
-  the configured startup deadline. A rejected effect gives a partial initial observation and no
-  daily updates; runtime failure enters cleanup. A variable name is read as the engine reads a
-  variable operand in the country scope; a `local_` name belongs to the prepared scope. The route
-  evaluates nothing itself: a numeric operand is evaluated only by the prepared effect, and the
-  caller reads the flag or variable that the effect writes.
+- Startup is configurable from 1 to 180 seconds. The idle timeout is 180 seconds. Readiness and
+  cancellation stay internal. The retired world route and restore instructions are preserved on
+  [ready-world observations](../native/ready-world.md).
 - No blind retry of an operation whose completion is uncertain.
 
-**Agreed G2, 2026-09-24 (implementation: SDK-569):** registry selection is validated against the
-bound build's discovered registries, not a fixed registry count. The supervisor derives or verifies
-that information from the installation it opens; a caller-supplied count is not authoritative.
-Duplicate and unknown selections remain invalid, and transport message-size limits remain.
-Build-specific tests explicitly assert 164 registries for M45-release, alongside expected names;
-a synthetic build with more than 164 valid registries must pass session admission. Test constants
-are regression expectations and are allowed by the locality gate.
+**Agreed G2, amended 2026-10-02:** Native selects the registries required by the session and
+always includes the fixture registry. Internal registry selection is validated against the bound
+build's discovery, without a fixed count. The supervisor verifies it from the installation.
+Duplicate and unknown internal selections remain invalid; transport limits remain. Build-specific
+counts are test expectations and remain allowed by the locality gate. This supersedes the
+Milestone 2 review's requirement to keep public `registry_items`; bounded internal observations
+remain available for SDK-552's loader-rule controls.
 
 ### 5. Shared native methods
 
@@ -267,7 +261,7 @@ states the rule and its measurement (amended 2026-09-23).
 | What happens when fields are omitted, repeated, malformed, or conditional? | Observe stages, storage, diagnostics, conditions | Structural and conditional claims |
 | Which definitions do references select? | Lookup and owner relationships, with conditional outcomes | Reference categories |
 | Which shared numeric, command, modifier, or weight reader is used? | Reader behavior and unresolved paths | Reusable rule definitions |
-| Which script contexts are available? | Actual scope type and availability | Scope constraints |
+| Which scopes does the engine supply to a block? | Declared read entry scope and static root/from/prev bindings | Scope typing and completion |
 | Which files and duplicate definitions were used? | Mounted selection, loader phases, duplicates | Naming and loading relationships |
 
 Atlas owns fixture meaning. Native owns mounting, isolation, and execution. Native does not ship
@@ -289,8 +283,9 @@ full releases, so a full release is the only target worth keeping. The beta ARM6
 stays in `.local/executables` as a knowledge source.
 
 **Amendment, 2026-09-29:** the user supplied a clean 4.5.1 save after the hotfix. Native adds the
-exact 4.5.1 target and its world recipe, while retaining 4.5.0 startup support. World behavior is
-verified only on the new build; addresses do not transfer by a version label.
+exact 4.5.1 target, while retaining 4.5.0 startup support. The world recipe is retired by the
+2026-10-02 review; the target remains for fixtures and script checks. The historical world
+findings remain specific to that build. SDK-674 removes 4.5.0 after the relevant API cuts.
 
 **Amendment, 2026-09-19 (Jackson):** Windows x64 is deferred. Atlas publishes platform-independent
 snapshots, so one platform is sufficient for rule coverage. Windows returns with the separate
@@ -306,7 +301,9 @@ repairs separately. No numeric maintenance guarantee is accepted.
 Recorded answers are JSON files of `Result<Answer<T>, Error>`. `record_answers_to` writes them
 during a real run. `from_recorded_answers` serves them for static and live questions and starts no
 process. A question with no recorded answer returns `Error::NotRecorded`. Each recorded answer
-carries `Basis::Recorded`. Failure cases can be written by hand.
+carries `Basis::Recorded`. Failure cases can be written by hand. Recorded `supports` checks
+whether the directory contains an answer for the operation; it does not claim support for
+operations with no recording.
 
 Each directory has a `build.json` containing the original serialized `BuildId` (a JSON string).
 Opening a recorded directory returns `Result<Native, Error>` and requires valid build metadata.
@@ -350,8 +347,11 @@ supervision failures that the public API cannot cause safely.
    inside the sweep. A locality gate (SDK-569) checks that method, session and operation code
    has no registry, command or build branch (amended 2026-09-23).
 9. **Atlas integration:** carry a tradition field through Native answers, Atlas claims, a
-   snapshot, and an offline consumer. Include invalid input and an absent answer.
-10. **Update portability:** run the frozen Atlas flow on a second Apple Silicon executable.
+   schema-valid snapshot, and an end-to-end offline test that reads the snapshot itself. Include
+   invalid input and an absent answer. No demo consumer is required. The first release covers one
+   catalogued build with passing tests; a correction is a new snapshot version.
+10. **Update portability:** run the unchanged Atlas flow on the next patch after 4.5.1. The live
+    run credits no recorded answer. This rehearsal is not a first-release gate.
 
 ### Milestone 4 shared-reader acceptance
 
@@ -369,17 +369,18 @@ all ten fields. The following facts must be established without a typed gap:
 | `modifier` | Accepted member family | SDK-542 |
 | `ai_weight` | Accepted keys, the reader kind of each, and nesting of `modifier` entries | SDK-545 |
 
-Passing this static test does not satisfy the method tickets' fixture criteria. Every criterion
-in SDK-541 to SDK-550 remains required unless Jackson explicitly amends it. SDK-544 owns numeric
-storage decoding; SDK-598 supplies runtime weight observations for SDK-545; SDK-599 supplies
-scope-availability observations for SDK-549. SDK-542 and SDK-550 include any diagnostic hooks
-needed for their accepted/rejected nesting and expansion fixtures. Missing capability is an unmet
-criterion, not a gap that permits the ticket to close. Existing SDK-547 runtime/application bounds
-and SDK-550 script-expansion bounds are accepted exclusions. Jackson amended SDK-544 twice: AC4
-(2026-10-01) excludes six integer readers with no exposed field from the live fixture requirement,
-and AC3 (2026-10-02) requires parser facts for durations, not consumer meaning. The
-[numeric conversion](../native/numeric-conversion.md) and [duration](../native/durations.md) pages
-record the accepted limits.
+Passing this static test does not replace the method tickets' parser controls. The agreed
+2026-10-02 amendments cancel SDK-598 and SDK-599. SDK-545 uses one additive/multiplicative weight
+parse with no diagnostic and a source-located negative control; it makes no runtime weight claim.
+SDK-549 uses a fixture diagnostic to check the tradition read entry scope (`this`), including the
+supplied scope in the wrong-scope message. `check_script` cannot establish that scope because its
+caller supplies it. SDK-608 and SDK-677 own static `root`, `from` and `prev` contexts and block
+SDK-600 through SDK-677. Their explicit self-link assumption is checked against hand-read call
+sites and independent vanilla/config expectations; disagreement or absent evidence keeps a gap.
+SDK-547 owns modifier nodes and container category masks; the application rule is a typed gap by
+design. SDK-542 and SDK-550 retain their parsing and diagnostic controls. The SDK-544 AC4 and AC3
+amendments retain numeric storage controls and duration parser facts. See the
+[numeric conversion](../native/numeric-conversion.md) and [duration](../native/durations.md) pages.
 
 Each method runs unchanged over its full discovered registry or command inventory, with complete,
 partial and failed counts and distinct failure shapes on the method's page in `docs/native/`
@@ -396,6 +397,7 @@ and source revisions recorded; recorded answers support reproduction.
 
 ## Out of Scope
 
+- Runtime values, scope availability, weight evaluation and modifier application.
 - Atlas rule extraction, snapshot assembly, or consumer diagnostic policy inside Native.
 - Replay of retained captures, evidence archives, and qualification records.
 - Game or mod catalogues, and config-derived fallback answers.
@@ -444,7 +446,7 @@ count; a shared-factor group gives its `ScopedNumeric` operand and the signed 32
 Children are classified by receiver; command names in the text only nominate receivers, at most
 64 per check. `Known` means every child was classified, its receiver's static duration list is
 `Known`, and every group was read; otherwise the property is `Partial` with an
-`IncompleteObservation` gap. Recordings made before `check-script/v2` read as `Unresolved`.
+`IncompleteObservation` gap. Recordings without this property are rejected.
 Stored values are parser storage, not evaluated or executed durations.
 
 Atlas owns conclusions drawn from these observations. Checks do not alter static answers,

@@ -30,8 +30,7 @@ impl Population {
             .all(|unit| matches!(unit.factor, GrammarProperty::Known(_)));
         let status = match (&duration.combination, factors_known) {
             (GrammarProperty::Known(_), true)
-                if matches!(duration.consumption, GrammarProperty::Known(_))
-                    && matches!(duration.omitted_count, GrammarProperty::Known(_)) =>
+                if matches!(duration.omitted_count, GrammarProperty::Known(_)) =>
             {
                 "complete"
             }

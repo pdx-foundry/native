@@ -6,8 +6,7 @@
 //! the pause, and the supervisor's monotonic phase clock. No answer, outcome or cleanup depends on
 //! it. Lists are cut to a few samples, so a failed session stays readable at a glance.
 use crate::{
-    Completeness, DiagnosticCoverage, FixtureObservation, FixtureParsing, FixtureRuntime,
-    FixtureStorage,
+    Completeness, DiagnosticCoverage, FixtureObservation, FixtureParsing, FixtureStorage,
     answer::Disposal,
     engine::operations::{
         event_stream::{self, Hook, WorkerEvent, WorkerRecord},
@@ -661,7 +660,7 @@ impl FixtureSummary {
     }
 }
 
-/// The four dimensions of one field question, each reported on its own.
+/// The three dimensions of one field question, each reported on its own.
 #[derive(Debug, Clone, Serialize)]
 struct QuestionSummary {
     question: String,
@@ -669,7 +668,6 @@ struct QuestionSummary {
     storage: StorageSummary,
     /// The question's joined diagnostics, counted by the engine stage that reported them.
     validation: BTreeMap<String, usize>,
-    runtime: FixtureRuntime,
 }
 
 impl QuestionSummary {
@@ -693,7 +691,6 @@ impl QuestionSummary {
             parsing: ParsingSummary::new(&outcome.parsing),
             storage: StorageSummary::new(&outcome.storage),
             validation,
-            runtime: outcome.runtime.clone(),
         }
     }
 }
@@ -1071,7 +1068,6 @@ mod tests {
         parsing: FixtureParsing,
         storage: FixtureStorage,
         diagnostics: Vec<usize>,
-        runtime: FixtureRuntime,
     ) -> FixtureFieldOutcome {
         FixtureFieldOutcome {
             question: FixtureFieldQuestion::new("common/tradition_categories", "atlas", field),
@@ -1088,7 +1084,6 @@ mod tests {
             parsing,
             storage,
             diagnostics,
-            runtime,
         }
     }
 
@@ -1114,7 +1109,6 @@ mod tests {
             },
             FixtureStorage::Unavailable("no storage decoder".into()),
             vec![0, 1],
-            FixtureRuntime::NotRequested,
         );
         let stored = outcome(
             "traditions",
@@ -1129,13 +1123,10 @@ mod tests {
                 completeness: Completeness::Complete,
             },
             vec![],
-            FixtureRuntime::Unavailable("outside the initial load".into()),
         );
 
         Answer {
             value: FixtureObservation {
-                registration_entries: vec![],
-                field_reads: vec![],
                 field_outcomes: vec![parsed, stored],
                 diagnostics: vec![
                     diagnostic("engine-parser-log"),
@@ -1172,13 +1163,11 @@ mod tests {
                     {"question":"common/tradition_categories/atlas.tree_template",
                      "parsing":{"observed":{"entries":2,"unmatched_entries":1,"completeness":"Partial"}},
                      "storage":{"unavailable":"no storage decoder"},
-                     "validation":{"engine-parser-log":1,"engine-validation-log":1},
-                     "runtime":"NotRequested"},
+                     "validation":{"engine-parser-log":1,"engine-validation-log":1}},
                     {"question":"common/tradition_categories/atlas.traditions",
                      "parsing":"not-requested",
                      "storage":{"observed":{"occurrences":1,"completeness":"Complete"}},
-                     "validation":{},
-                     "runtime":{"Unavailable":"outside the initial load"}}]}})
+                     "validation":{}}]}})
         );
     }
 

@@ -24,7 +24,6 @@ mod scoped_numeric;
 mod script;
 mod session;
 mod work_directory;
-mod world;
 
 pub mod supervisor;
 
@@ -40,23 +39,21 @@ pub use answer::{
     Support,
 };
 pub use api::OpenError;
-pub use duration::{Duration, DurationCombination, DurationConsumption, DurationUnit};
+pub use duration::{Duration, DurationCombination, DurationUnit};
 pub use dynamic_name::{
     CommandReference, DynamicNameForm, DynamicNameKind, DynamicNamespace, DynamicNamespaceId,
     NamespaceOwner,
 };
-pub use engine::operations::registry_items::GameReadiness;
+pub(crate) use engine::operations::registry_items::GameReadiness;
 pub use field::{
-    EmptyKey, FieldCondition, FieldDefault, FieldDomain, FieldMembers, FieldReadAlternative,
-    FieldReadOutcome, FieldReference, FieldShape, FieldUse, FieldUseId, KeyMatch, LookupStage,
-    MissingResult, ModifierBlock, ModifierEntry, ReferenceLookup, ReferenceTarget, RepeatBehavior,
-    ValueShape,
+    EmptyKey, FieldCondition, FieldDomain, FieldMembers, FieldReadAlternative, FieldReadOutcome,
+    FieldReference, FieldShape, FieldUse, FieldUseId, KeyMatch, LookupStage, MissingResult,
+    ModifierBlock, ModifierEntry, ReferenceLookup, ReferenceTarget, RepeatBehavior, ValueShape,
 };
 pub use fixture::{
-    DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRead, FixtureDiagnostic,
-    FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureObservationKind,
-    FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureRuntime, FixtureStorage, FixtureValue,
-    FixtureWindow, ParsedFieldOccurrence, ProcessingStage, RegistrationEntry, ScopedNumericLiteral,
+    DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureDiagnostic, FixtureFieldOutcome,
+    FixtureFieldQuestion, FixtureObservation, FixtureOwnerId, FixtureParsing, FixtureRequest,
+    FixtureStorage, FixtureValue, FixtureWindow, ParsedFieldOccurrence, ScopedNumericLiteral,
     ScopedNumericStorage, StoredFieldOccurrence,
 };
 pub use game::{Game, GameOptions};
@@ -68,18 +65,12 @@ pub use numeric::{
     NumericBound, NumericConversion, NumericLiteralSyntax, NumericRange, NumericRepresentation,
     NumericSignedness,
 };
-pub use scoped_numeric::{
-    ScopedLiteralCondition, ScopedOperand, ScopedOperandForm, ScopedOperandSelection,
-    ScopedReferenceKind,
-};
+pub use scoped_numeric::{ScopedOperand, ScopedOperandForm, ScopedReferenceKind};
 pub use script::{
     ForeignScriptDiagnostic, ScriptCheck, ScriptDiagnostic, ScriptObservation, ScriptStage,
     StoredDuration,
 };
 pub use session::Native;
-pub use world::{
-    WorldFixedPoint, WorldFlag, WorldObservation, WorldRequest, WorldSample, WorldVariable,
-};
 
 pub(crate) use api::UnavailableReason;
 pub(crate) use engine::analysis::AnalysisError;
@@ -96,7 +87,7 @@ pub mod internals {
     pub use crate::engine::analysis::grammar::METHOD as COMMAND_GRAMMAR_METHOD;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::{
-        command_grammar_stops, duration_groups, dynamic_name_commands, numeric_readers,
-        reference_readers, registry_field_stops, target_getters,
+        check_registry_load, command_grammar_stops, duration_groups, dynamic_name_commands,
+        numeric_readers, reference_readers, registry_field_stops, target_getters,
     };
 }

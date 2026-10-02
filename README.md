@@ -2,7 +2,8 @@
 
 A standard Rust API to ask Stellaris questions, the same on each platform and game build.
 Native identifies the exact build, answers from the executable or from a supervised game, and
-says how complete each answer is. Atlas is its first consumer.
+says how complete each answer is. Atlas is its only consumer. Native supplies static facts that
+a compiler uses to accept, reject, type or complete script, plus small live checks of those facts.
 
 Native is one Cargo package with no optional features. The
 [simplification decision](docs/design/simplification.md) records how it got there.
@@ -64,7 +65,7 @@ return their example values, documentation or defaults.
 
 The consumer decides when a game runs. Native starts it, pauses it after its registries load,
 and removes it. The consumer supplies the supervisor process: its own executable, started in a
-dedicated role that calls `supervisor::serve`. See `examples/registry-items.rs`.
+dedicated role that calls `supervisor::serve`. See `examples/loaded-modifiers.rs`.
 
 ```rust
 use pdx_native::{GameOptions, Native};
@@ -81,9 +82,9 @@ supervisor.arg("--supervisor");
 
 let native = Native::open("/path/to/Stellaris")?;
 let mut game = native.start_game(
-    GameOptions::new(supervisor).registries(["common/traditions", "common/ascension_perks"])
+    GameOptions::new(supervisor).loaded_modifiers()
 ).await?;
-let items = game.registry_items("common/traditions").await?;  // Answer<Vec<String>>
+let loaded = game.loaded_modifiers().await;                  // Result<Answer<LoadedModifiers>, Error>
 let disposal = game.close().await?;                           // Disposal::Confirmed
 ```
 
@@ -91,17 +92,13 @@ Always call `close`, also after a question fails. After a failed question, `clos
 session's work directory for inspection; `game.work_directory()` gives its path.
 `native.supports(operation)` checks the build and host method without starting a game;
 `start_game` checks the selected content.
-`GameOptions::registries` selects the directories to observe before launch. Without it, the
-M45 session observes traditions and tradition categories. A listed but unselected registry
-returns `Unsupported`; a selected loader that does not run before the pause gives a precise
-`Unsupported` reason. When using a fixture, include its registry in the selection. See
-`examples/registry-items-report.rs` for a report over all discovered
-registries.
+Native selects the observed registries and includes the prepared fixture's registry.
+`startup_seconds` bounds startup; an idle session closes after 180 seconds.
 
 ## The loaded modifier inventory
 
 `GameOptions::loaded_modifiers` runs the game on until all content has loaded and pauses it where
-the engine documents its modifiers (`GameReadiness::PausedAfterContentLoad`). See
+the engine documents its modifiers. See
 `examples/loaded-modifiers.rs`.
 
 ```rust
@@ -114,19 +111,21 @@ Each `LoadedModifier` has its loaded category tags, by the rule of `Native::modi
 the executable declares its name, and each `modifier_families` family and loaded item whose
 generated name it is. A name that is neither declared nor generated is unexplained; a gap counts
 those names. `registry_items` holds the loaded keys that the families were applied to, and
-`content` states what the game loaded. The selected registries are still observed. On M45-release
-the table has 45,578 entries: 571 declared, 987 generated and 44,020 unexplained.
+`content` states what the game loaded. On M45-release
+the table has 45,578 entries: 571 declared, 5,432 generated and 39,576 unexplained.
 
 ## Prepared fixtures
 
 Prepare the files and observation request before launching. See `examples/observe-fixture.rs`.
 
 ```rust
-use pdx_native::{FixtureRequest, GameOptions};
+use pdx_native::{FixtureFieldQuestion, FixtureRequest, GameOptions};
 
-let fixture = FixtureRequest::new(
+let fixture = FixtureRequest::field_outcomes(
     "common/tradition_categories/atlas.txt",
     "atlas = {\n tree_template = \"template\"\n traditions = {}\n}\n",
+    ["tree_template", "traditions"].map(|field|
+        FixtureFieldQuestion::new("common/tradition_categories", "atlas", field).with_parsing()),
 );
 let mut game = native.start_game(GameOptions::new(supervisor).fixture(fixture)).await?;
 let observed = game.observe_fixture().await; // Answer<FixtureObservation>, or an error
@@ -134,19 +133,13 @@ let disposal = game.close().await?;          // Also close after an observation 
 let observed = observed?;
 ```
 
-The initial window covers three registration entries and up to two field-reader entries for
-`tree_template` and `traditions`. `FixtureObservation` has separate `registration_entries` and
-`field_reads` lists. Each field read names its file, source line, opaque owner and processing
-stage. These are entry observations; they establish no stored value, validation or gameplay rule.
-
 Supply one `.txt` file in a supported registry, at most 64 KiB. Its filename uses letters, digits,
-underscores or hyphens. The fixture replaces that private registry directory; registry queries
-describe this mounted content. Other observed registry content remains pinned. Unsupported
-paths, observation selections and budgets fail before game launch. Script parsing remains the
+underscores or hyphens. The fixture replaces that private registry directory. Other observed registry content remains
+pinned. Invalid paths, questions and startup budgets fail before game launch. Script parsing remains the
 engine's responsibility; an unobserved file or a read outside the bounded window cannot give a
 complete answer.
 
-For parser outcomes, use `FixtureRequest::field_outcomes` with one or more
+Use `FixtureRequest::field_outcomes` with one to 32
 `FixtureFieldQuestion` values. The file may be in a discovered registry whose loader and owner boundaries are verified. Each outcome keeps these dimensions separate:
 
 - `FixtureParsing` contains source-located entry/return occurrences when `.with_parsing()` is
@@ -163,26 +156,17 @@ For parser outcomes, use `FixtureRequest::field_outcomes` with one or more
   `.through_validation()` extends field outcomes through the bound post-read validation point,
   including source-correlated engine-log errors. `NotRequested` remains distinct from unsupported
   or incomplete collection. Neither window claims runtime validation.
-- `FixtureRuntime` distinguishes `NotRequested` from `Unavailable`. Runtime is outside this
-  initial-load method, so a runtime request makes the answer partial with an `OutsideMethod` gap.
 
 Unknown fields and readers without a bound storage decoder return explicit unavailable storage.
 Native does not infer validity or runtime success from storage, a diagnostic list, or a loader
 return.
 
-Choose either or both `FixtureObservationKind` values for the category entry question. It uses
-`FixtureWindow::InitialCategoryLoad`; field outcomes use `FixtureWindow::InitialFileLoad`.
-`InitialCategoryLoad` and `CategoryFieldReads` require `common/tradition_categories`. Registration
-entries may accompany that category window, or accompany an `InitialFileLoad` field-outcome request
-in either supported registry. Tradition field outcomes can capture malformed and unexpected-field
-parser diagnostics. Category field outcomes report parser diagnostics and storage unavailable
-because this build has no outcome binding for that registry.
-`deadline_seconds` defaults to 180 and must be 1–180; the
-smaller of it and `GameOptions::startup_seconds` bounds startup observation. Repeated questions
-read the same startup results and refresh the idle timeout. A different fixture needs a new session.
+Field outcomes use `InitialFileLoad`, or `InitialFileLoadAndValidation` when requested.
+Repeated questions read the same startup results and refresh the idle timeout.
+A different fixture needs a new session.
 
 Recorded sessions also take the prepared request. File hashes include relative paths and exact
-contents; the request hash distinguishes observation selections and windows, but not deadlines.
+contents; the request hash distinguishes field questions and windows.
 `Basis::Recorded` is the only change to a saved successful answer.
 
 ## Answers
@@ -210,6 +194,9 @@ context and scope subjects also have an `id`. Older recordings with a string sub
 updated to this format.
 `build.json` holds the original serialized `BuildId`, including for error-only recordings.
 `native.build()` returns that identity; answers from another build return `Error::Recorded`.
+Every answer property must be present. Older records with missing properties must be recorded
+again; they cannot silently become complete answers with unresolved properties. `supports`
+reports only operations with a recording present; a particular subject can still be absent.
 
 ```text
 build.json
@@ -227,15 +214,15 @@ localization_declarations.json
 on_actions.json
 game_rules.json
 defines.json
-registry_items/common/traditions.json
 observe_fixture/<files-hash>/<request-hash>.json
 loaded_modifiers.json
 ```
 
 ## Supported build
 
-The target catalogue has one build: the exact M45-release ARM64 executable (Stellaris
-Cygnus v4.5.0 (8697), the full 4.5 release, Apple Silicon). An unknown build is refused; it never inherits the recipe of a different build.
+The catalogue binds the exact M45-release (4.5.0) and M451-hotfix (4.5.1) ARM64 executables.
+Both support fixtures and script checks. An unknown build is refused; it never inherits another
+build's recipe. See [targets](docs/native/targets.md) for exact identities.
 
 ## One-time setup for live games (Apple Silicon macOS)
 
@@ -261,7 +248,6 @@ cargo test --workspace
 ATLAS_CALLER_PATH=/path/to/pdx-atlas cargo test --test consumer_boundary -- --ignored
 STELLARIS_PATH=/path/to/Stellaris cargo parity
 STELLARIS_PATH=/path/to/Stellaris cargo live
-cargo run --release --example registry-items-report -- /path/to/Stellaris
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 ```
 

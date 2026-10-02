@@ -188,13 +188,7 @@ pub(super) async fn matrix() -> Outcome {
         ),
     ] {
         let request = fixture(registry, fields, nested, inputs)?;
-        let mut game = native
-            .start_game(
-                options()
-                    .registries([if nested { TRADITIONS } else { registry }])
-                    .fixture(request),
-            )
-            .await?;
+        let mut game = native.start_game(options().fixture(request)).await?;
         let mut result = async {
             let answer = game.observe_fixture().await?;
             let observations = checked_observations(

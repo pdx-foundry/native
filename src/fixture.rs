@@ -1,24 +1,12 @@
-//! Consumer-authored fixture inputs and normalized read-entry observations.
+//! Consumer-authored fixture inputs and parser outcomes.
 use crate::Error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The engine events requested from a fixture session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum FixtureObservationKind {
-    /// The first three calls to the initial effect-registration entry point.
-    RegistrationEntries,
-    /// Category reads of `tree_template` and `traditions`, before storage or validation.
-    CategoryFieldReads,
-}
-
 /// A bounded part of engine initialization. No world is loaded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FixtureWindow {
-    /// Initial registration through the supplied category file's loader return.
-    /// At most three registration entries and two category field reads are observed.
-    InitialCategoryLoad,
     /// Initial parsing of the supplied file, ending at its verified file-load boundary.
     InitialFileLoad,
     /// Initial parsing and subsequent validation, ending at the bound content-loaded point.
@@ -46,12 +34,10 @@ pub struct FixtureFieldQuestion {
     pub parsing: bool,
     /// Whether parser diagnostics from the file-load window are requested.
     pub diagnostics: bool,
-    /// Whether a runtime outcome is requested. This initial-load method reports it unavailable.
-    pub runtime: bool,
 }
 
 impl FixtureFieldQuestion {
-    /// Request parser storage and diagnostics for one field. Runtime is not requested.
+    /// Request parser storage and diagnostics for one field.
     pub fn new(
         registry: impl Into<String>,
         definition: impl Into<String>,
@@ -64,14 +50,13 @@ impl FixtureFieldQuestion {
             parent_field: None,
             parsing: false,
             diagnostics: true,
-            runtime: false,
         }
     }
 
     /// Select a field inside an embedded block of the named definition.
     ///
     /// The M45-release binding supports `common/special_projects` in an initial file-load
-    /// field-outcome request. Registration and validation observations are not supported
+    /// field-outcome request. Validation observations are not supported
     /// for this loader. Other parent or leaf shapes report unavailable when not proven.
     ///
     /// ```
@@ -94,12 +79,6 @@ impl FixtureFieldQuestion {
         self.parsing = true;
         self
     }
-
-    /// Also request the runtime dimension, which is outside the initial-load method.
-    pub fn with_runtime(mut self) -> Self {
-        self.runtime = true;
-        self
-    }
 }
 
 /// Files and questions fixed before `Native::start_game` launches its process.
@@ -109,39 +88,16 @@ pub struct FixtureRequest {
     /// One UTF-8 `.txt` file under a bounded relative registry path, at most 64 KiB.
     /// Paths are relative to the game content root; values are the exact file contents.
     pub files: BTreeMap<String, String>,
-    /// A nonempty set of the requested event kinds, with no duplicates.
-    pub observations: Vec<FixtureObservationKind>,
-    /// At most 32 field-outcome questions, sorted in ascending `Ord` order. Each
+    /// One to 32 field-outcome questions, sorted in ascending `Ord` order. Each
     /// `(registry, definition, parent_field, field)` identity must be unique. `field_outcomes` sorts its
     /// questions.
     pub field_questions: Vec<FixtureFieldQuestion>,
     /// The engine phase in which to observe the fixture.
     pub window: FixtureWindow,
-    /// Startup observation budget in seconds, 1–180. The smaller startup budget wins.
-    pub deadline_seconds: u64,
 }
 
 impl FixtureRequest {
-    /// Request both category observation kinds through the initial category load, with a
-    /// 180-second deadline. The file must be under `common/tradition_categories`.
-    /// `start_game` validates the path and contents before launching anything.
-    pub fn new(path: impl Into<String>, text: impl Into<String>) -> Self {
-        Self {
-            files: BTreeMap::from([(path.into(), text.into())]),
-            observations: vec![
-                FixtureObservationKind::RegistrationEntries,
-                FixtureObservationKind::CategoryFieldReads,
-            ],
-            field_questions: Vec::new(),
-            window: FixtureWindow::InitialCategoryLoad,
-            deadline_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
-        }
-    }
-
-    /// Request field outcomes for one registry file. The questions are sorted into the
-    /// canonical order that validation requires. Existing registration and category-read
-    /// selections are not added; callers may add registration entries, while category field
-    /// reads require tradition categories.
+    /// Request field outcomes for one registry file, sorting questions into canonical order.
     pub fn field_outcomes(
         path: impl Into<String>,
         text: impl Into<String>,
@@ -151,10 +107,8 @@ impl FixtureRequest {
         field_questions.sort();
         Self {
             files: BTreeMap::from([(path.into(), text.into())]),
-            observations: Vec::new(),
             field_questions,
             window: FixtureWindow::InitialFileLoad,
-            deadline_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
         }
     }
 
@@ -192,12 +146,8 @@ impl FixtureRequest {
                 "Fixture text must be nonempty UTF-8 without NUL, at most 64 KiB",
             ));
         }
-        if (self.observations.is_empty() && self.field_questions.is_empty())
-            || self.observations.iter().collect::<BTreeSet<_>>().len() != self.observations.len()
-        {
-            return Err(reject(
-                "Request at least one observation kind, without duplicates",
-            ));
+        if self.field_questions.is_empty() {
+            return Err(reject("Request at least one field outcome"));
         }
         let identities = self
             .field_questions
@@ -243,12 +193,6 @@ impl FixtureRequest {
                 ));
             }
         }
-        if self.field_questions.is_empty() && self.window != FixtureWindow::InitialCategoryLoad {
-            return Err(reject("Read-entry observations use InitialCategoryLoad"));
-        }
-        if !self.field_questions.is_empty() && self.window == FixtureWindow::InitialCategoryLoad {
-            return Err(reject("Field outcomes require a file-load window"));
-        }
         if self.window == FixtureWindow::InitialFileLoadAndValidation
             && !self
                 .field_questions
@@ -258,25 +202,6 @@ impl FixtureRequest {
             return Err(reject(
                 "Validation observation requires a diagnostic question",
             ));
-        }
-        if self.window == FixtureWindow::InitialCategoryLoad
-            && registry != "common/tradition_categories"
-        {
-            return Err(reject(
-                "InitialCategoryLoad requires a common/tradition_categories fixture",
-            ));
-        }
-        if registry != "common/tradition_categories"
-            && self
-                .observations
-                .contains(&FixtureObservationKind::CategoryFieldReads)
-        {
-            return Err(reject(
-                "CategoryFieldReads requires a common/tradition_categories fixture",
-            ));
-        }
-        if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&self.deadline_seconds) {
-            return Err(reject("Fixture deadline must be 1 to 180 seconds"));
         }
         Ok(())
     }
@@ -289,12 +214,7 @@ impl FixtureRequest {
         self.file().rsplit_once('/').expect("validated fixture").0
     }
 
-    pub(crate) fn requests(&self, kind: FixtureObservationKind) -> bool {
-        self.observations.contains(&kind)
-    }
-
-    /// Files select the recording directory. The question selects a file within it; deadlines
-    /// do not change the question, and recorded errors remain errors regardless of the budget.
+    /// Files select the recording directory. The question selects a file within it.
     pub(crate) fn recorded_subject(&self) -> String {
         let mut files = Sha256::new();
         for (path, contents) in &self.files {
@@ -303,10 +223,8 @@ impl FixtureRequest {
                 files.update(part);
             }
         }
-        let observations: BTreeSet<_> = self.observations.iter().collect();
         let questions: BTreeSet<_> = self.field_questions.iter().collect();
-        let question = serde_json::to_vec(&(observations, questions, self.window))
-            .expect("fixture serializes");
+        let question = serde_json::to_vec(&(questions, self.window)).expect("fixture serializes");
         format!("{:x}/{:x}", files.finalize(), Sha256::digest(question))
     }
 }
@@ -320,44 +238,10 @@ fn is_path_component(part: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
-/// What happened at an engine entry point. Neither stage establishes successful storage,
-/// validation, or gameplay behavior.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ProcessingStage {
-    /// Entry to an initial effect-registration call, before it returns.
-    RegistrationEntry,
-    /// Entry to a category field reader, before it stores or validates a value.
-    FieldReadEntry,
-}
-
 /// Opaque owner identity within one fixture observation. Equal identities mean the same owner;
 /// identities from different sessions are not comparable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureOwnerId(pub(crate) u64);
-
-/// One initial registration entry. The entry does not establish the registered command's name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RegistrationEntry {
-    /// One-based position within the initial three-entry window.
-    pub ordinal: u64,
-    /// The observed processing stage.
-    pub stage: ProcessingStage,
-}
-
-/// One source-correlated entry to the category field reader.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FieldRead {
-    /// Fixture-relative content path.
-    pub file: String,
-    /// One-based source line reported by the engine.
-    pub line: u64,
-    /// Field key as the engine spells it.
-    pub field: String,
-    /// Session-local identity of the engine object receiving the read.
-    pub owner: FixtureOwnerId,
-    /// The observed processing stage.
-    pub stage: ProcessingStage,
-}
 
 /// An exact value read from the definition's storage, independently of parser diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -476,15 +360,6 @@ pub enum FixtureParsing {
     },
 }
 
-/// Runtime state for a requested field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FixtureRuntime {
-    /// The caller did not request this dimension.
-    NotRequested,
-    /// Runtime is outside this initial-file-load method.
-    Unavailable(String),
-}
-
 /// Source correlation for one engine diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiagnosticJoin {
@@ -540,7 +415,7 @@ pub enum DiagnosticWindow {
     FixtureFileLoadAndValidation,
 }
 
-/// Parser and runtime outcomes for one requested definition field.
+/// Parser outcomes for one requested definition field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureFieldOutcome {
     /// The original bounded question.
@@ -554,23 +429,16 @@ pub struct FixtureFieldOutcome {
     /// Shared reader established by Native's static method.
     pub reader: crate::Reader,
     /// Parser entries and returns; independent of stored values and diagnostic coverage.
-    #[serde(default)]
     pub parsing: FixtureParsing,
     /// Independently observed parser storage.
     pub storage: FixtureStorage,
     /// Indices into `FixtureObservation::diagnostics`.
     pub diagnostics: Vec<usize>,
-    /// Requested runtime dimension.
-    pub runtime: FixtureRuntime,
 }
 
-/// Established entries from the requested fixture window, in each kind's observation order.
+/// Outcomes and diagnostics from the requested fixture window.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureObservation {
-    /// Initial registration entries; not a complete command registry.
-    pub registration_entries: Vec<RegistrationEntry>,
-    /// Field-reader entries; not stored values or validation results.
-    pub field_reads: Vec<FieldRead>,
     /// Outcomes for each requested field, in canonical question order.
     pub field_outcomes: Vec<FixtureFieldOutcome>,
     /// Engine diagnostics from the fixture file load, including diagnostics without a field join.
@@ -613,11 +481,28 @@ mod tests {
 
     use super::*;
 
+    fn request_for(path: impl Into<String>, text: impl Into<String>) -> FixtureRequest {
+        FixtureRequest::field_outcomes(
+            path,
+            text,
+            [
+                FixtureFieldQuestion::new(
+                    "common/tradition_categories",
+                    "category",
+                    "tree_template",
+                )
+                .with_parsing(),
+                FixtureFieldQuestion::new("common/tradition_categories", "category", "traditions")
+                    .with_parsing(),
+            ],
+        )
+    }
+
     const FILE: &str = "common/tradition_categories/example.txt";
 
     #[test]
     fn only_bounded_relative_fixture_files_and_unique_questions_are_accepted() {
-        let request = FixtureRequest::new(FILE, "category = {}\n");
+        let request = request_for(FILE, "category = {}\n");
         assert!(request.validate().is_ok());
         for path in [
             "/tmp/x.txt",
@@ -631,31 +516,20 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    FixtureRequest::new(path, "x").validate(),
+                    request_for(path, "x").validate(),
                     Err(Error::FixtureRequest { .. })
                 ),
                 "{path:?}"
             );
         }
         for text in [String::new(), "\0".into(), "x".repeat(65537)] {
-            assert!(FixtureRequest::new(FILE, text).validate().is_err());
+            assert!(request_for(FILE, text).validate().is_err());
         }
-        assert!(
-            FixtureRequest::new(FILE, "x".repeat(65536))
-                .validate()
-                .is_ok()
-        );
-        for seconds in [0, 181, u64::MAX] {
-            let mut invalid = request.clone();
-            invalid.deadline_seconds = seconds;
-            assert!(invalid.validate().is_err());
-        }
-        for observations in [vec![], vec![FixtureObservationKind::RegistrationEntries; 2]] {
-            let mut invalid = request.clone();
-            invalid.observations = observations;
-            assert!(invalid.validate().is_err());
-        }
+        assert!(request_for(FILE, "x".repeat(65536)).validate().is_ok());
         let mut invalid = request.clone();
+        invalid.field_questions.clear();
+        assert!(invalid.validate().is_err());
+        invalid = request.clone();
         invalid.files.clear();
         assert!(invalid.validate().is_err());
         invalid = request.clone();
@@ -703,10 +577,6 @@ mod tests {
             invalid.files = BTreeMap::from([(path.into(), "sample = {}\n".into())]);
             assert!(invalid.validate().is_err(), "{path:?}");
         }
-        let mut tradition_outcome_with_registration = outcome.clone();
-        tradition_outcome_with_registration.observations =
-            vec![FixtureObservationKind::RegistrationEntries];
-        assert!(tradition_outcome_with_registration.validate().is_ok());
         let mut wrong_registry = outcome.clone();
         wrong_registry.field_questions[0].registry = "common/tradition_categories".into();
         assert!(wrong_registry.validate().is_err());
@@ -736,7 +606,6 @@ mod tests {
         assert_eq!(sorted.recorded_subject(), reordered.recorded_subject());
         let mut duplicate = question.clone();
         duplicate.diagnostics = false;
-        duplicate.runtime = true;
         assert!(
             FixtureRequest::field_outcomes(
                 "common/traditions/x.txt",
@@ -747,14 +616,10 @@ mod tests {
             .is_err()
         );
         assert!(
-            FixtureRequest::new("common/traditions/x.txt", "sample = {}\n")
+            request_for("common/traditions/x.txt", "sample = {}\n")
                 .validate()
                 .is_err()
         );
-        let mut tradition_registration =
-            FixtureRequest::new("common/traditions/x.txt", "sample = {}\n");
-        tradition_registration.observations = vec![FixtureObservationKind::RegistrationEntries];
-        assert!(tradition_registration.validate().is_err());
         for property in ["window", "observations"] {
             let mut serialized = serde_json::to_value(&request).unwrap();
             serialized[property] = if property == "window" {
@@ -767,23 +632,22 @@ mod tests {
     }
 
     #[test]
-    fn recording_keys_distinguish_files_and_questions_but_not_order_or_deadline() {
-        let request = FixtureRequest::new(FILE, "a");
+    fn recording_keys_distinguish_files_and_questions_but_not_order() {
+        let request = request_for(FILE, "a");
         let key = request.recorded_subject();
         let mut same = request.clone();
-        same.observations.reverse();
-        same.deadline_seconds = 1;
+        same.field_questions.reverse();
         assert_eq!(same.recorded_subject(), key);
         let mut different = request.clone();
-        different.observations.pop();
+        different.field_questions[0].parsing = false;
         assert_ne!(different.recorded_subject(), key);
         assert_eq!(
             different.recorded_subject().split('/').next(),
             key.split('/').next()
         );
-        assert_ne!(FixtureRequest::new(FILE, "b").recorded_subject(), key);
+        assert_ne!(request_for(FILE, "b").recorded_subject(), key);
         assert_ne!(
-            FixtureRequest::new("common/tradition_categories/renamed.txt", "a").recorded_subject(),
+            request_for("common/tradition_categories/renamed.txt", "a").recorded_subject(),
             key
         );
     }
@@ -794,17 +658,10 @@ mod tests {
             Answer, Basis, BuildId, Completeness, Disposal, GameOptions, Gap, GapKind, GapSubject,
             Native, Operation, Source, Support,
         };
-        let request = FixtureRequest::new(FILE, "category = {}\n");
+        let request = request_for(FILE, "category = {}\n");
         let build = BuildId("authored-build".into());
         let complete = Answer {
-            value: FixtureObservation {
-                registration_entries: vec![RegistrationEntry {
-                    ordinal: 1,
-                    stage: ProcessingStage::RegistrationEntry,
-                }],
-                field_reads: vec![],
-                ..FixtureObservation::default()
-            },
+            value: FixtureObservation::default(),
             completeness: Completeness::Complete,
             gaps: vec![],
             source: Source::new(build.clone(), "authored/v1", Basis::LiveObservation),
@@ -853,9 +710,9 @@ mod tests {
                 absent.observe_fixture().await,
                 Err(Error::FixtureRequest { .. })
             ));
-            for changed in [FixtureRequest::new(FILE, "different"), {
+            for changed in [request_for(FILE, "different"), {
                 let mut changed = request.clone();
-                changed.observations.pop();
+                changed.field_questions[0].parsing = false;
                 changed
             }] {
                 let mut game = native.start_game(options().fixture(changed)).await.unwrap();
@@ -866,7 +723,7 @@ mod tests {
             }
             assert!(matches!(
                 native
-                    .start_game(options().fixture(FixtureRequest::new("../escape", "x")))
+                    .start_game(options().fixture(request_for("../escape", "x")))
                     .await,
                 Err(Error::FixtureRequest { .. })
             ));

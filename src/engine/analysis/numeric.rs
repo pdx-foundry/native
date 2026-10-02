@@ -197,7 +197,6 @@ fn incomplete_path(mut conversion: NumericConversion) -> NumericConversion {
     conversion.signedness = partial(conversion.signedness);
     conversion.scale = partial(conversion.scale);
     conversion.accepted_range = GrammarProperty::Unresolved;
-    conversion.clamp = GrammarProperty::Unresolved;
     conversion
 }
 
@@ -387,7 +386,6 @@ impl Form {
             accepted_range,
             // Every matched path has no explicit bound comparison/select on the converted
             // value. Scanner overflow and fcvtzs behavior are separate unresolved properties.
-            clamp: Known(None),
         })
     }
 }

@@ -198,8 +198,8 @@ mod tests {
     use crate::engine::analysis::numeric::NumericReader;
     use crate::engine::analysis::stop::Unresolved;
     use crate::{
-        CommandValue, FieldCondition, FieldDefault, FieldDomain, FieldReadAlternative,
-        FieldReference, FieldShape, NumericConversion, RepeatBehavior, ValueShape,
+        CommandValue, FieldCondition, FieldDomain, FieldReadAlternative, FieldReference,
+        FieldShape, NumericConversion, RepeatBehavior, ValueShape,
     };
 
     fn numeric_field(reader: Reader) -> Field {
@@ -217,7 +217,7 @@ mod tests {
             }],
             members: FieldMembers::None,
             domain: FieldDomain::Unknown,
-            default: FieldDefault::Unknown,
+
             uses: Vec::new(),
             reference: FieldReference::NotEstablished,
         }
