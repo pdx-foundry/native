@@ -2,8 +2,11 @@
 //!
 //! Commands with a key named `days`, `months` or `years` that no group covers are listed
 //! separately: the method identifies groups by mechanism, and these names are only a census.
-use pdx_native::internals::{command_grammar_stops, duration_groups};
-use pdx_native::{DeclarationKind, Duration, Gap, GrammarProperty, Native};
+#[path = "support/population_filter.rs"]
+mod population_filter;
+
+use pdx_native::internals::duration_groups;
+use pdx_native::{Duration, Gap, GrammarProperty, Native};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -78,6 +81,12 @@ fn unit_keys(fixed_keys: &GrammarProperty<Vec<pdx_native::Field>>) -> Vec<String
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args == ["--help"] {
+        println!("{}", population_filter::USAGE);
+        return Ok(());
+    }
+    let selection = population_filter::Selection::parse(args)?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").ok_or("set STELLARIS_PATH")?)?;
     let mut population = Population::default();
     let mut failed_questions = Vec::new();
@@ -87,72 +96,75 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         population.counts.insert(state, 0);
     }
 
-    for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
-        command_grammar_stops::population(&native, kind, |name, run| {
-            let name = format!("{kind:?}/{name}");
-            let answer = run.answer;
-            let groups = match &answer.value.durations {
-                GrammarProperty::Known(groups) | GrammarProperty::Partial(groups) => groups.clone(),
-                GrammarProperty::Unresolved => Vec::new(),
-            };
-            let covered: Vec<_> = groups
-                .iter()
-                .flat_map(|group| group.units.iter().map(|unit| unit.key.clone()))
-                .collect();
-            let uncovered: Vec<_> = unit_keys(&answer.value.fixed_keys)
-                .into_iter()
-                .filter(|key| !covered.contains(key))
-                .collect();
+    selection.visit_commands(&native, |name, run| {
+        let answer = run.answer;
+        let groups = match &answer.value.durations {
+            GrammarProperty::Known(groups) | GrammarProperty::Partial(groups) => groups.clone(),
+            GrammarProperty::Unresolved => Vec::new(),
+        };
+        let covered: Vec<_> = groups
+            .iter()
+            .flat_map(|group| group.units.iter().map(|unit| unit.key.clone()))
+            .collect();
+        let uncovered: Vec<_> = unit_keys(&answer.value.fixed_keys)
+            .into_iter()
+            .filter(|key| !covered.contains(key))
+            .collect();
 
-            commands += 1;
+        commands += 1;
 
-            let inventory = match &answer.value.durations {
-                GrammarProperty::Known(_) => "known",
-                GrammarProperty::Partial(_) => "partial",
-                GrammarProperty::Unresolved => "unresolved",
-            };
-            *population.inventories.entry(inventory).or_default() += 1;
+        let inventory = match &answer.value.durations {
+            GrammarProperty::Known(_) => "known",
+            GrammarProperty::Partial(_) => "partial",
+            GrammarProperty::Unresolved => "unresolved",
+        };
+        *population.inventories.entry(inventory).or_default() += 1;
 
-            for gap in answer
-                .gaps
-                .iter()
-                .filter(|gap| gap.detail.starts_with("The code after a key's reader"))
-            {
-                *population
-                    .unclassified
-                    .entry(gap.detail.clone())
-                    .or_default() += 1;
-            }
+        for gap in answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.detail.starts_with("The code after a key's reader"))
+        {
+            *population
+                .unclassified
+                .entry(gap.detail.clone())
+                .or_default() += 1;
+        }
 
-            for group in &groups {
-                population.group(&name, group, &answer.gaps);
-            }
+        for group in &groups {
+            population.group(&name, group, &answer.gaps);
+        }
 
-            if !uncovered.is_empty() {
-                population.unidentified.push(json!({
-                    "command": name, "keys": uncovered, "durations": answer.value.durations,
-                }));
-            }
-        })?;
-    }
+        if !uncovered.is_empty() {
+            population.unidentified.push(json!({
+                "command": name, "keys": uncovered, "durations": answer.value.durations,
+            }));
+        }
+    })?;
 
     let registries = native.registries()?;
     let mut registry_groups = Vec::new();
     let mut registry_unresolved = Vec::new();
 
-    for registry in &registries.value {
-        match duration_groups::registry(&native, &registry.name) {
+    let selected_registries = selection.registries(
+        registries
+            .value
+            .iter()
+            .map(|registry| registry.name.as_str()),
+    )?;
+    for registry in &selected_registries {
+        match duration_groups::registry(&native, registry) {
             Ok(owners) => {
                 for owner in owners {
                     for stop in &owner.inventory.unresolved {
                         registry_unresolved.push(json!({
-                            "registry": registry.name, "path": owner.path, "reason": stop.reason,
+                            "registry": registry, "path": owner.path, "reason": stop.reason,
                         }));
                     }
 
                     registry_groups.extend(owner.inventory.groups.iter().map(|group| {
                         json!({
-                            "registry": registry.name,
+                            "registry": registry,
                             "path": owner.path,
                             "units": group.units.iter().map(|unit| json!({
                                 "key": unit.key, "factor": format!("{:?}", unit.factor),
@@ -163,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(error) => {
-                failed_questions.push(json!({"registry": registry.name, "error": error}));
+                failed_questions.push(json!({"registry": registry, "error": error}));
             }
         }
     }
@@ -173,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_string_pretty(&json!({
             "build": native.build(),
             "commands": commands,
-            "registries": registries.value.len(),
+            "registries": selected_registries.len(),
             "counts": population.counts,
             "duration_lists": population.inventories,
             "unclassified_candidates": population.unclassified,

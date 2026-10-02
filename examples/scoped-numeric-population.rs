@@ -1,9 +1,12 @@
 //! Measure scoped numeric answers over every discovered registry field and every argument of
 //! every registered command.
-use pdx_native::internals::{command_grammar_stops, registry_field_stops};
+#[path = "support/population_filter.rs"]
+mod population_filter;
+
+use pdx_native::internals::registry_field_stops;
 use pdx_native::{
-    CommandForm, CommandGrammar, DeclarationKind, Field, FieldMembers, FieldReadOutcome, Gap,
-    GapSubject, GrammarProperty, Native, Reader, ReaderKind,
+    CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapSubject,
+    GrammarProperty, Native, Reader, ReaderKind,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -129,33 +132,42 @@ impl Population {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args == ["--help"] {
+        println!("{}", population_filter::USAGE);
+        return Ok(());
+    }
+    let selection = population_filter::Selection::parse(args)?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").ok_or("set STELLARIS_PATH")?)?;
     let registries = native.registries()?;
     let mut fields = Population::new();
     let mut failed_questions = Vec::new();
 
-    for registry in &registries.value {
-        match registry_field_stops::run(&native, &registry.name) {
-            Ok(run) => fields.fields(&registry.name, &run.answer.value, &[], &run.answer.gaps),
-            Err(error) => failed_questions.push(json!({"registry":registry.name,"error":error})),
+    let selected_registries = selection.registries(
+        registries
+            .value
+            .iter()
+            .map(|registry| registry.name.as_str()),
+    )?;
+    for registry in &selected_registries {
+        match registry_field_stops::run(&native, registry) {
+            Ok(run) => fields.fields(registry, &run.answer.value, &[], &run.answer.gaps),
+            Err(error) => failed_questions.push(json!({"registry":registry,"error":error})),
         }
     }
 
     let mut arguments = Population::new();
     let mut commands = 0;
 
-    for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
-        command_grammar_stops::population(&native, kind, |name, run| {
-            let owner = format!("{kind:?}/{name}");
-            commands += 1;
-            arguments.command(&owner, &run.answer.value, &run.answer.gaps);
-        })?;
-    }
+    selection.visit_commands(&native, |owner, run| {
+        commands += 1;
+        arguments.command(&owner, &run.answer.value, &run.answer.gaps);
+    })?;
 
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
-            "build":native.build(),"registries":registries.value.len(),
+            "build":native.build(),"registries":selected_registries.len(),
             "registry_completeness":registries.completeness,"commands":commands,
             "fields":fields.report(),"arguments":arguments.report(),
             "failed_questions":failed_questions
