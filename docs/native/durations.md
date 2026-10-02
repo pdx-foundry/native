@@ -79,19 +79,38 @@ outside this method.
 ## Constructor state on M451-hotfix
 
 The exact build is the M451-hotfix executable in [targets](targets.md). Constructor owner
-derivation is shared with [scoped operands](scoped-numeric.md#owner-derivation-sdk-658). A
+derivation is shared with [scoped operands](scoped-numeric.md#owner-derivation-sdk-658-sdk-660). A
 constructor-written byte is claimed only when every returning path agrees on it after every later
 write that may change it; old observed values do not initialize the method's byte map.
 
 The compiler-summary path establishes initial factor 1 for the 27 ordinary timed flags and
 `add_timed_trait`. Entered constructor bodies establish the relation flag's initial factor 1 and
-an omitted count of 0 for `set_timed_relation_flag` and `add_timed_trait`. The other 49 effect
-groups lose their count word to a later `CEventTarget` member: first at `CStaticLexer::GetString`
-`0x1004f6f10` and last at `CEventTarget::PopulateTokenString` `0x1004f6f44`, after the owner escaped
-(see the [remaining constructor obstacles](scoped-numeric.md#remaining-constructor-obstacles)).
-`has_passed_resolution`'s `months`/`years` group has no entered constructor body: its factory,
-`NTrigger::Create<CHasPassedResolutionTrigger>` `0x1021e95b4`, calls `_bzero`, `CTrigger::CTrigger()`
-and two `CIntVariableValue::CIntVariableValue()` by summary only (`0x1021e95d4`-`0x1021e9618`).
+the omitted count of all 52 groups, under the
+[member-confined rule](scoped-numeric.md#assumption-code-changes-only-the-object-that-it-is-given)
+(SDK-660):
+
+| Groups | Omitted count |
+| --- | ---: |
+| The 27 ordinary timed flags, `set_timed_relation_flag`, `add_timed_trait` | 0 |
+| The 20 event effects' `months`/`years` literal word | 0 |
+| `has_passed_resolution`'s `months`/`years` literal word | 0 |
+| `add_modifier`, `add_stage_modifier` | -1 |
+
+A later `CEventTarget` member calls `CStaticLexer::GetString` `0x1004f6f10` with only a token id,
+and `CEventTarget::PopulateTokenString` `0x1004f6f44` with the event target's own address. Neither
+is given an earlier member's address, so the count word survives. Under SDK-658's escape rule,
+these calls lost the count word of 49 groups (see the
+[superseded obstacle table](scoped-numeric.md#constructor-obstacles-under-the-escape-rule-superseded-by-sdk-660)).
+`has_passed_resolution`'s factory, `NTrigger::Create<CHasPassedResolutionTrigger>` `0x1021e95b4`,
+builds both operands with `CIntVariableValue::CIntVariableValue()` `0x100d1cc74`, at owner `+0x68`
+and `+0x270`. That constructor stores 0 at operand `+0x200` (`0x100d1ccc4`) after it builds its
+`CEventTarget` member. Under the escape rule, the trace named the factory's `_bzero`,
+`CTrigger::CTrigger()` and both operand constructor calls (`0x1021e95d4`-`0x1021e9618`) as places
+that lost the word at `+0x470`.
+
+The modifier operands `mult` and `multiplier` are signed 64-bit at scale 100000 in both
+`add_modifier` and `add_stage_modifier`. Their literal words do not overlap the duration count, so
+neither group has the `duration-scoped-literal` gap.
 
 ## Stack and execute facts on M451-hotfix (SDK-657)
 
@@ -103,10 +122,10 @@ ARM64 slice `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
 - `CFireEventEffect::ReadMember` starts at `0x101d27360`. The 20 event effects read `months`
   at `0x101d277b0` and `years` at `0x101d277cc`, through `sp+0x1c0`. They scale by 30 and 360,
   respectively, then store at owner `+0x2d8` (`0x101d277dc`). These keys form one scaled-at-read
-  literal group per command. Its omitted literal is unresolved.
+  literal group per command. Its omitted literal is 0 (see [constructor state](#constructor-state-on-m451-hotfix)).
 - `CHasPassedResolutionTrigger::ReadMember` starts at `0x102224708`. `years` reads at
   `0x102224768` through `sp+8`, and `months` at `0x102224794` through `sp+0xc`. Their factors
-  are 360 and 30; both store at owner `+0x470`. Its omitted literal is unresolved.
+  are 360 and 30; both store at owner `+0x470`. Its omitted literal is 0.
 - These stores overlap the **shared numeric scoped layout**, rather than proved independent
   scalar duration members.
   The event `days` path reads the operand at `+0xd8`; the shared numeric layout places a literal
@@ -165,38 +184,37 @@ The population covers all 2,170 commands and all 164 registries, with no failed 
 
 | Population | Groups | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Commands | 52 | 1 | 51 | 0 |
+| Commands | 52 | 28 | 24 | 0 |
 | Registry fields and nested collections | 0 | 0 | 0 | 0 |
 
-Unit factors and read combinations are known for all 52 groups. Omitted counts of 0 are
-established for `set_timed_relation_flag`, which is the complete group, and `add_timed_trait`.
-Failure shapes count groups and can overlap:
+Unit factors, read combinations and omitted counts are known for all 52 groups. The 28 complete
+groups are the 27 ordinary timed flags and `set_timed_relation_flag`. Failure shapes count groups
+and can overlap:
 
-- 50 explicit omitted-count gaps;
 - 28 static flag-update-frequency limits;
 - 24 consumption limits;
-- 23 possible mixed scoped/literal-selection gaps (`duration-scoped-literal`).
+- 21 possible mixed scoped/literal-selection gaps (`duration-scoped-literal`).
 
-Duration lists are 625 known, 516 partial and 1,029 unresolved. No command or registry candidate
-has an unclassified prefix or continuation. **26 commands have uncovered unit-named keys**:
-21 have the scoped `days` mix above, and five have `days` without a factor sibling. The 21 groups
-cover 42 `months` and `years` keys. These gaps do not amend SDK-544.
-Before/after counts are in the
-[discovery index](discovery.md#owner-derivation-sdk-658).
-Run `cargo run --release --example duration-population` with `STELLARIS_PATH`;
-`.local/sdk-658/now-duration.json` holds each answer.
+Duration lists are 627 known, 517 partial and 1,026 unresolved. `add_modifier` and
+`add_stage_modifier` became known, and one other list became partial. No command or registry
+candidate has an unclassified prefix or continuation. **26 commands have uncovered unit-named
+keys**: 21 have the scoped `days` mix above, and five have `days` without a factor sibling. The 21
+groups cover 42 `months` and `years` keys. These gaps do not amend SDK-544. Before/after counts are
+in the [discovery index](discovery.md#member-confined-calls-sdk-660). Run
+`cargo run --release --example duration-population` with `STELLARIS_PATH`;
+`.local/sdk-660/after/duration.json` holds each answer.
 
 ## Live parser observations
 
 `Game::check_script` reports `stored_durations` for each top-level child after reading, before
 validation. Nothing is executed. `tests/live/durations.rs` runs one session with effect and trigger
-checks in country and leader scopes. `tests/expected/duration-m45/live.json` holds the reviewed
-results. Every case classifies one child. The 26 cases with decoded counts agree with the static
-storage proofs. The relation case `months = 2 days = 3` stores count 3 with factor 30: the later
-`days` replaces the count but keeps the factor. Omitted live values do not establish static
-constructor bytes. The `add_modifier` answers are partial because its other scoped operands lack proved
-literal widths; their disjointness from the duration word is unresolved. The
-`set_timed_country_flag` lists are partial,
+checks in country, leader and astral rift scopes. `tests/expected/duration-m45/live.json` holds the
+reviewed results. Every case classifies one child. The 29 cases with decoded counts agree with the
+static storage proofs. Each `omitted` case must store exactly one count, and the test fails unless
+it equals the static omitted count of the same group. The relation case `months = 2 days = 3`
+stores count 3 with factor 30: the later `days` replaces the count but keeps the factor. Omitted
+live values confirm the static constructor counts; they do not establish them. The `add_modifier`
+and `add_stage_modifier` answers are complete. The `set_timed_country_flag` lists are partial,
 because the static list is partial: its `flag` key has no reader join, so the method cannot rule
 out another group.
 
@@ -231,7 +249,7 @@ The observations separate storage from acceptance:
 - The direct integer reader keeps 7 and reports `Malformed token`.
 - A fraction is truncated silently by both readers.
 
-The M451-hotfix live table also covers these four shapes:
+The M451-hotfix live table also covers these seven shapes:
 
 | Input shape | Observed storage | Diagnostics |
 | --- | --- | --- |
@@ -239,6 +257,9 @@ The M451-hotfix live table also covers these four shapes:
 | `has_passed_resolution`, `months = 2 years = 1` | literal word 360, partial group list | none |
 | `set_timed_relation_flag`, `months = 2 days = 3` | partial empty duration list; initial factor unproved | none |
 | `add_timed_trait`, `months = 2 days = 3` | scoped literal 3, factor 30, known group list | none |
+| `country_event`, omitted | literal word 0, the static omitted count | validation: deliberately missing event |
+| `add_stage_modifier`, omitted, astral rift scope | count -1, the static omitted count, known group list | none |
+| `has_passed_resolution`, omitted | literal word 0, the static omitted count | none |
 
 The stack cases observe literal storage only; they do not establish scoped selection or execute
 an event or trigger. The trait case reads in leader scope. No new runtime meaning is inferred.
@@ -256,19 +277,10 @@ an event or trigger. The trait case reads in leader scope. No new runtime meanin
   overlap remains conservative. Their `days` unit and mixed selection behavior are not
   reported as established. Removal needs a shared whole-operand proof and an approved public
   representation, or Jackson's amendment of the parent criterion.
-- **Two unproved literal-width bounds:** `add_modifier` and `add_stage_modifier` have `mult` and
-  `multiplier` operands whose storage is lost to the later `CEventTarget` member. Their duration
-  lists retain `duration-scoped-literal` until byte disjointness can be proved; otherwise Jackson
-  must amend the parent criterion.
 - **24 consumption limits:** the 21 stack-literal groups, `add_modifier`, `add_stage_modifier`
   and `add_timed_trait` do not have a proved duration consumer in this method. Scaled-count
   consumption, `time_multiplier` and event delays are outside this ticket. Trait execution
   reaches `CLeader::AddTimedTrait`; its storage and update behavior are not a flag countdown.
-- **Omitted state for 50 groups:** no count or literal is proved. For 49, a later `CEventTarget`
-  member's lexer calls may write any owner byte, the last at `PopulateTokenString` `0x1004f6f44`;
-  `has_passed_resolution` has only summary constructors. Recovery needs a bounded model of those calls;
-  otherwise Jackson must amend the parent criterion. Observed values do not substitute for
-  constructor evidence.
 - **28 flag consumers:** the static method does not establish update frequency or expiry
   dates outside the country observation. The [SDK-650 live run](ready-world.md) closes the country
   expiry gap on 4.5.1 for its five cases; it does not establish relation or other owner frequencies.

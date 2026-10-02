@@ -350,15 +350,7 @@
     "completeness": "Partial",
     "gaps": [
       {
-        "detail": "value-acceptance: PostValidate: path limit",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "set_country_flag"
-        }
-      },
-      {
-        "detail": "form-path-limit",
+        "detail": "value-acceptance: Read: mixed paths or unknown reader kind",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -423,15 +415,7 @@
     "completeness": "Partial",
     "gaps": [
       {
-        "detail": "value-acceptance: PostValidate: path limit",
-        "kind": "UnresolvedPath",
-        "subject": {
-          "kind": "answer_item",
-          "name": "remove_country_flag"
-        }
-      },
-      {
-        "detail": "form-path-limit",
+        "detail": "value-acceptance: Read: mixed paths or unknown reader kind",
         "kind": "UnresolvedPath",
         "subject": {
           "kind": "answer_item",
@@ -598,14 +582,6 @@
           "kind": "answer_item",
           "name": "set_timed_country_flag"
         }
-      },
-      {
-        "detail": "Duration keys days, months, years: the omitted count is not established.",
-        "kind": "ReaderSemantics",
-        "subject": {
-          "kind": "answer_item",
-          "name": "set_timed_country_flag"
-        }
       }
     ],
     "source": {
@@ -629,7 +605,9 @@
             "consumption": {
               "Known": "FlagCountdown"
             },
-            "omitted_count": "Unresolved",
+            "omitted_count": {
+              "Known": 0
+            },
             "units": [
               {
                 "factor": {

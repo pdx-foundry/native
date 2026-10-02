@@ -137,7 +137,7 @@ fn evaluate_factory(
                 return Err(Unresolved::new("allocation-bound"));
             }
             if enter_constructors {
-                // The allocator runs code that may reach memory, including an escaped owner.
+                // The allocator runs code that may write memory outside a tracked owner.
                 machine.opaque_call_effects();
             }
             let object = machine.reserve(size);
@@ -148,11 +148,11 @@ fn evaluate_factory(
             if owner && enter_constructors {
                 return Ok(machine.return_allocated_owner(object, object + size));
             }
-            // The result is not a tracked owner, but the allocator may leave one in any register
-            // that it does not preserve.
+            // The result is not a tracked owner. An allocator given no owner address returns none
+            // in the registers it does not preserve.
             let taint = ReturnTaint {
                 returned: false,
-                clobbered: true,
+                ..machine.given_call_taint()
             };
             return Ok(machine.return_with_taint(Some(object), taint));
         }

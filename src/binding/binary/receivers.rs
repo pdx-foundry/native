@@ -1,6 +1,10 @@
 //! Constructor summaries shared with the nested-object reader method.
 use crate::AnalysisError;
-use crate::engine::analysis::{declarations::Function, decode::decode_arm64, discovery::Symbol};
+use crate::engine::analysis::{
+    declarations::{Function, branch_alias},
+    decode::decode_arm64,
+    discovery::Symbol,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 // Bound decoded constructor input to avoid unbounded analysis of oversized bodies.
@@ -163,8 +167,7 @@ pub(super) fn persistent(
     let full_entries: BTreeSet<_> = bodies
         .iter()
         .filter(|body| {
-            decode_arm64(&body.code, body.address)
-                .is_ok_and(|rows| rows.len() != 1 || rows[0].operation != "b")
+            decode_arm64(&body.code, body.address).is_ok_and(|rows| branch_alias(&rows).is_none())
         })
         .map(|body| body.address)
         .collect();
@@ -172,11 +175,8 @@ pub(super) fn persistent(
         let Ok(rows) = decode_arm64(&body.code, body.address) else {
             return true;
         };
-        // A one-instruction tail branch delegates every input unchanged to a proved full ctor.
-        !(rows.len() == 1
-            && rows[0].operation == "b"
-            && crate::engine::analysis::declarations::number(&rows[0].operands)
-                .is_some_and(|target| full_entries.contains(&target)))
+        // An alias delegates every input unchanged to a proved full constructor.
+        !branch_alias(&rows).is_some_and(|target| full_entries.contains(&target))
     });
     let roots: Vec<_> = bodies.iter().collect();
     let summaries = constructors(bytes, symbols, pointers, bound_slots, &roots)?;

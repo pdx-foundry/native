@@ -1815,7 +1815,7 @@ impl<'a> Machine<'a> {
                         self.restore_inputs(value_inputs);
                         self.store_bytes(address, *bytes, value);
                     }
-                    None => self.store_to_unknown(&halves(value), value_inputs.owner),
+                    None => self.store_to_unknown(&halves(value), memory),
                 }
             }
             (
@@ -1879,8 +1879,7 @@ impl<'a> Machine<'a> {
                     None => {
                         let mut values = halves(first).to_vec();
                         values.extend(halves(second));
-                        let derived = first_inputs.owner || second_inputs.owner;
-                        self.store_to_unknown(&values, derived);
+                        self.store_to_unknown(&values, memory);
                     }
                 }
             }
@@ -1922,7 +1921,7 @@ impl<'a> Machine<'a> {
                         self.restore_inputs(value_inputs);
                         self.store(address, width, value);
                     }
-                    None => self.store_to_unknown(&[value], value_inputs.owner),
+                    None => self.store_to_unknown(&[value], memory),
                 }
             }
             ("stp", [first, second, Operand::Memory(memory), rest @ ..]) => {
@@ -1938,10 +1937,7 @@ impl<'a> Machine<'a> {
                         self.restore_inputs(second_inputs);
                         self.store(address + width, width, second);
                     }
-                    None => {
-                        let derived = first_inputs.owner || second_inputs.owner;
-                        self.store_to_unknown(&[first, second], derived);
-                    }
+                    None => self.store_to_unknown(&[first, second], memory),
                 }
             }
             _ => return Ok(false),
@@ -2073,16 +2069,22 @@ impl<'a> Machine<'a> {
     }
 
     fn read_register(&self, register: Register) -> Option<u64> {
+        if let Name::General(index) = register.name {
+            self.read_owner_register(index);
+            if self.registers[index].is_none() {
+                self.read_unknown_register(index);
+            }
+        }
+
+        self.register_value(register)
+    }
+
+    /// The value of `register`, without recording it as an input of the present instruction.
+    fn register_value(&self, register: Register) -> Option<u64> {
         let value = match register.name {
             Name::Zero => Some(0),
             Name::StackPointer => Some(self.stack_pointer),
-            Name::General(index) => {
-                self.read_owner_register(index);
-                if self.registers[index].is_none() {
-                    self.read_unknown_register(index);
-                }
-                self.registers[index]
-            }
+            Name::General(index) => self.registers[index],
             Name::Vector(_) => None,
         };
         value.map(|value| truncate(value, register.wide))
@@ -2174,12 +2176,16 @@ impl<'a> Machine<'a> {
     }
 
     /// A store to an unknown address may overwrite any byte, so no written byte stays known,
-    /// except in a protected range, or in a tracked owner that the address cannot point into. A
-    /// known value stored there is kept in `unknown_stores`.
-    fn store_to_unknown(&mut self, values: &[Option<u64>], derived: bool) {
+    /// except in a protected range, or in the part of a tracked owner that the address cannot
+    /// reach. A known value stored there is kept in `unknown_stores`.
+    ///
+    /// The address is unknown only through its base or its register index. With a known base,
+    /// the base register is not written back, so its value is the base of this store.
+    fn store_to_unknown(&mut self, values: &[Option<u64>], memory: &Memory) {
         self.unknown_stores.extend(values.iter().flatten());
         let protected_before = self.protected.len();
-        let disjoint_owner = self.store_owner_unknown(derived);
+        let base = self.register_value(memory.base);
+        let disjoint_owner = self.store_owner_unknown(base);
         self.protected.extend(disjoint_owner);
         let protected = &self.protected;
         let tracing = self.traces.is_some();
@@ -2975,7 +2981,18 @@ mod tests {
         let command = machine.reserve(16);
         machine.write(command + 4, 4, 7);
         machine.watch_reads(command, 16);
-        machine.store_to_unknown(&[None], false);
+        let unknown_base = super::Memory {
+            base: super::Register {
+                name: super::Name::General(1),
+                wide: true,
+                bytes: 8,
+                lane: 8,
+            },
+            index: None,
+            offset: 0,
+            write_back: false,
+        };
+        machine.store_to_unknown(&[None], &unknown_base);
         machine.load(command + 4, 4);
         assert!(machine.receiver_reads().is_empty());
     }

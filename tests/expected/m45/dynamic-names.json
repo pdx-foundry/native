@@ -1,6 +1,6 @@
 {
   "count": 31,
-  "gaps": { "OutsideMethod": 3, "ReaderSemantics": 37, "UnresolvedReader": 15 },
+  "gaps": { "OutsideMethod": 3, "ReaderSemantics": 37, "UnresolvedReader": 12 },
   "namespaces": [
     {
       "owner": "global",

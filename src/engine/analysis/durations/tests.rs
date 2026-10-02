@@ -973,7 +973,7 @@ fn m45_duration_stack_and_presence_parity() {
             ],
             "{name}"
         );
-        assert_eq!(group.omitted_count, GrammarProperty::Unresolved, "{name}");
+        assert_eq!(group.omitted_count, GrammarProperty::Known(0), "{name}");
     }
     for name in ["transfer_resources_to_empire", "while"] {
         let answer = native

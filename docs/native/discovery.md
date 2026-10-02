@@ -128,8 +128,7 @@ are seven short and three float fields. Scoped storage is two integer and five f
 fields, and 123 integer, 144 fixed-point and 35 unresolved command arguments, after the
 [owner-derivation recovery](#owner-derivation-sdk-658). Every destination without established
 storage has `Reader.numeric: Unresolved`, so none retains a range. The
-[remaining constructor obstacles](scoped-numeric.md#remaining-constructor-obstacles) explain the
-unresolved command storage.
+[member-confined calls](#member-confined-calls-sdk-660) later establish the other 35.
 
 Failure shapes, counting each affected destination once per shape:
 
@@ -252,7 +251,7 @@ arguments) was not supported by that proof; its report remains a comparison arti
 ## Owner derivation (SDK-658)
 
 Entered constructor bodies now add bytes that no later write may change, using the owner-derivation
-proof on [scoped numeric](scoped-numeric.md#owner-derivation-sdk-658). The M451-hotfix populations
+proof on [scoped numeric](scoped-numeric.md#owner-derivation-sdk-658-sdk-660). The M451-hotfix populations
 cover all 2,170 commands and 164 registries, with no failed question. `.local/sdk-658/compare.py`
 compares them field by field with `main` (`34841c4`): no answer decreases, 134 command arguments
 and two duration groups gain facts. Each recovered storage agrees with the unconfined SDK-654
@@ -272,7 +271,7 @@ it and `add_timed_trait` gain omitted count 0.
 
 The 35 failed arguments have one failure shape, `UnresolvedStorage: Scoped destination vtable is
 not established`. SDK-667 traced each to its first and latest loss; the
-[obstacle table](scoped-numeric.md#remaining-constructor-obstacles) supersedes the SDK-658
+[obstacle table](scoped-numeric.md#constructor-obstacles-under-the-escape-rule-superseded-by-sdk-660) supersedes the SDK-658
 attribution by walk-completion order. By latest loss: 25 `CEventTarget::PopulateTokenString`
 (the 20 event `days`, `add_modifier` and `add_stage_modifier` `mult` / `multiplier`,
 `set_saved_date.days_from_present`), 6 `CTrigger` registration, 2 `CEffect` registration, 1 static
@@ -313,6 +312,70 @@ Reports are `.local/sdk-659/{scoped,commands,registries}.json`. Reproduce with
 `registry-field-sweep "$STELLARIS_PATH"`, each through `cargo run --release --example`.
 `cargo test`, `cargo parity`, the ignored exact-build constructor test,
 `cargo live fixture_scoped_numeric_matrix` and `cargo live world_numeric_stored` pass.
+
+## Member-confined calls (SDK-660)
+
+Constructor walks assume that code changes only the object it is given; the
+[rule](scoped-numeric.md#assumption-code-changes-only-the-object-that-it-is-given) replaces
+SDK-658's escape rule. Nested member readers also follow a `ReadMember` that is one `b` to another
+function ([command grammar](command-grammar.md#member-ledgers-and-recursive-coverage)). The
+M451-hotfix populations cover all 2,170 commands and 164 registries, with no failed question.
+
+| Population | `main` (`d2b08ea`) | SDK-660 |
+| --- | --- | --- |
+| Scoped command arguments, complete / partial / failed | 0 / 267 / 35 | 0 / 302 / 0 |
+| Scoped registry destinations, complete / partial / failed | 0 / 7 / 0 | 0 / 7 / 0 |
+| Duration groups, complete / partial / failed | 1 / 51 / 0 | 28 / 24 / 0 |
+| Established omitted counts | 2 | 52 |
+| Duration lists, known / partial / unresolved | 625 / 516 / 1,029 | 627 / 517 / 1,026 |
+| Effect answers, complete / partial / failed | 248 / 816 / 10 | 248 / 819 / 7 |
+| Trigger answers, complete / partial / failed | 119 / 975 / 2 | 119 / 975 / 2 |
+| Registry sweep, complete / partial / failed queries | 8 / 156 / 0 | 8 / 156 / 0 |
+
+The 35 recovered arguments are the 20 event `days`, `set_saved_date.days_from_present`,
+`closest_system.min_steps` / `max_steps` (effect and trigger) and
+`num_neighbor_systems.min_distance` / `max_distance` (signed 32-bit, scale 1), and
+`add_modifier` / `add_stage_modifier` `mult` / `multiplier`, `create_pop_group.size`,
+`effect_on_blob.owned_planets_percentage`, `spawn_megastructure.orbit_distance` and
+`release_vivarium_fauna_count.count` (signed 64-bit, scale 100000). Each has the storage, forms
+and range of a sibling that `main` already proved. The 50 new omitted counts are 0 for the 27
+ordinary timed flags, the 20 event effects and `has_passed_resolution`, and -1 for `add_modifier`
+and `add_stage_modifier`. Scoped storage is now 150 integer and 152 fixed-point arguments, all
+with known ranges. The failure shapes are the 302 conversion-boundary and outside-method limits;
+duration shapes are 28 flag-update limits, 24 consumption limits and 21 mixed scoped/literal
+gaps. `command-population --trace` finds no remaining constructor state obstacle.
+
+The whole-inventory comparison with `main` (`command-population --diff`) changes 137 command
+answers. No answer that `main` resolves changes or becomes unresolved; every value change is a
+gain. The gap changes fall into these classes:
+
+| Commands | Gap change | Cause |
+| ---: | --- | --- |
+| 29 | `Scoped destination vtable is not established` removed; conversion-boundary and outside-method limits added | The 35 recovered arguments; a resolved argument carries the same limits as every other |
+| 50 | `the omitted count is not established` removed | The 50 counts: 29 `days`/`months`/`years` groups and 21 `months`/`years` groups |
+| 2 | `duration-scoped-literal` removed | `add_modifier` and `add_stage_modifier` operand widths are disjoint from the count; their duration lists are now known |
+| 62 | `form-path-limit` and `value-acceptance: PostValidate: path limit` replaced by `value-acceptance: Read: mixed paths or unknown reader kind` | Flag `set_*`/`remove_*` commands: with fewer unknown owner bytes, the value walk passes `PostValidate` and stops at the next stage |
+| 9 | `nested-member-vtable` removed; the nested member's own `reader-routing`, `instruction` or initializer gaps added | The nested member's vtable is now known (`create_*fleet.settings`, the `name` / `army_name` / `adjective` key members, `create_cosmic_storm_influence_field.radius`, `create_species.flags` / `variables`) |
+| 3 | `command-vtable` removed; `unknown-key-reader`, child-dispatch and `reader-routing` gaps added | `clone_leader`, `create_leader` and `create_saved_leader` now have a command vtable and a `Block` reader with fixed keys |
+| 5 | `loop-limit` added beside the existing path limits | `add_building`, `disable_building`, `remove_building`, `repair_building`, `ruin_building`: one more value path reaches the loop limit; no value changed |
+| 1 | `receiver-state` removed | `set_origin` |
+
+The nested `settings` member reads 31 fleet-setting keys, including `spawn_debris`, through the
+alias from `TFleetSettings::ReadMember` `0x101034738` to `ReadBackwardsCompatible` `0x10103473c`.
+Without the alias, it would publish `Fields: []` with only a routing gap.
+`create_species.flags` and `variables` publish `Fields: []` with a `reader-routing` gap: they
+are read with `CReader::ReadUniform<CString>`, a list of strings with no named fields. The
+registry sweep changes one field: `common/missions/missions#ai_weight` gains the reader identity
+of its 64 sibling weight fields. The dynamic-name population examines 3 more effects
+(`clone_leader`, `create_leader`, `create_saved_leader`, now non-flag commands), so its
+`UnresolvedReader` gaps fall from 15 to 12.
+
+Reports are in `.local/sdk-660/{before,after}/`, with the comparisons `compare.txt` and
+`cmd-diff.json`. Reproduce with `scoped-numeric-population`, `duration-population`,
+`command-population "$STELLARIS_PATH"`, `registry-field-sweep "$STELLARIS_PATH"` and
+`dynamic-name-population "$STELLARIS_PATH"`, each through `cargo run --release --example`.
+`cargo test`, `cargo parity`, the ignored exact-build constructor tests and the live duration,
+scoped fixture and stored-world numeric cases pass.
 
 ## Stack duration keys and execute bodies (SDK-657)
 
@@ -402,7 +465,7 @@ The original non-duration comparisons are retained as
 `.local/sdk-657/{scoped,numeric,registry,command}-{parent,current}.json`, with full diffs in
 `registry-answer-diff.json` and `command-non-duration-diff.json`. They establish zero registry
 answer changes and 21 command answer changes for the shared join on the pre-rebase constructor
-baseline. The current scoped population is the [SDK-658](#owner-derivation-sdk-658) one.
+baseline. The current scoped population is the [SDK-660](#member-confined-calls-sdk-660) one.
 
 ## Float and short fixture storage (SDK-656)
 

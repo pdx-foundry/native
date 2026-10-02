@@ -2053,7 +2053,7 @@ fn a_registry_writable_slot_has_no_established_target() {
         if shape == "store" {
             body.address(8, 0xd000);
             arm64!(body; str x8, [x0, #8]);
-            body.load(3, SLOT); // may hold the owner, which may have escaped before construction
+            body.load(3, SLOT); // an unknown target, but no owner address was stored there
             arm64!(body; str xzr, [x3]; ret);
             binding.pointers.insert(SLOT, 0x90000);
         } else {
@@ -2072,9 +2072,10 @@ fn a_registry_writable_slot_has_no_established_target() {
         if writable {
             binding.writable_slots.insert(SLOT);
         }
+        let established = shape == "store" || !writable;
         assert_eq!(
             derive(input).scoped_destinations.get(&0x48),
-            (!writable).then_some(&0xd000),
+            established.then_some(&0xd000),
             "{shape}"
         );
     }
