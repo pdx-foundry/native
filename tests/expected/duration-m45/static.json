@@ -7,13 +7,15 @@
   },
   "effect/add_modifier": {
     "durations": {
-      "Partial": [
+      "Known": [
         {
           "combination": {
             "Known": "ScaledAtRead"
           },
           "consumption": "Unresolved",
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": -1
+          },
           "units": [
             {
               "factor": {
@@ -38,20 +40,20 @@
       ]
     },
     "gaps": [
-      "ReaderSemantics: Duration keys days, months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
-      "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method."
     ]
   },
   "effect/add_stage_modifier": {
     "durations": {
-      "Partial": [
+      "Known": [
         {
           "combination": {
             "Known": "ScaledAtRead"
           },
           "consumption": "Unresolved",
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": -1
+          },
           "units": [
             {
               "factor": {
@@ -76,9 +78,7 @@
       ]
     },
     "gaps": [
-      "ReaderSemantics: Duration keys days, months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
-      "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: what consumes the count is outside this method."
     ]
   },
   "effect/add_timed_trait": {
@@ -131,7 +131,9 @@
             "Known": "ScaledAtRead"
           },
           "consumption": "Unresolved",
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -151,8 +153,7 @@
     },
     "gaps": [
       "ReaderSemantics: Duration keys months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
-      "OutsideMethod: Duration keys months, years: what consumes the count is outside this method.",
-      "ReaderSemantics: Duration keys months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys months, years: what consumes the count is outside this method."
     ]
   },
   "effect/set_timed_agreement_flag": {
@@ -169,7 +170,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -194,8 +197,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_ambient_object_flag": {
@@ -212,7 +214,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -237,8 +241,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_archaeology_flag": {
@@ -255,7 +258,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -280,8 +285,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_army_flag": {
@@ -298,7 +302,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -323,8 +329,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_carrier_flag": {
@@ -341,7 +346,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -366,8 +373,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_country_flag": {
@@ -384,7 +390,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -409,8 +417,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_deposit_flag": {
@@ -427,7 +434,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -452,8 +461,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_espionage_asset_flag": {
@@ -470,7 +478,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -495,8 +505,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_espionage_operation_flag": {
@@ -513,7 +522,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -538,8 +549,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_federation_flag": {
@@ -556,7 +566,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -581,8 +593,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_first_contact_flag": {
@@ -599,7 +610,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -624,8 +637,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_fleet_flag": {
@@ -642,7 +654,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -667,8 +681,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_global_flag": {
@@ -685,7 +698,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -710,8 +725,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_leader_flag": {
@@ -728,7 +742,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -753,8 +769,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_megastructure_flag": {
@@ -771,7 +786,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -796,8 +813,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_planet_flag": {
@@ -814,7 +830,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -839,8 +857,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_pop_faction_flag": {
@@ -857,7 +874,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -882,8 +901,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_pop_flag": {
@@ -900,7 +918,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -925,8 +945,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_pop_group_flag": {
@@ -943,7 +962,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -968,8 +989,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_relation_flag": {
@@ -1030,7 +1050,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1055,8 +1077,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_ship_flag": {
@@ -1073,7 +1094,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1098,8 +1121,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_situation_flag": {
@@ -1116,7 +1138,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1141,8 +1165,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_species_flag": {
@@ -1159,7 +1182,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1184,8 +1209,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_spynetwork_flag": {
@@ -1202,7 +1226,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1227,8 +1253,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_star_flag": {
@@ -1245,7 +1270,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1270,8 +1297,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_starbase_flag": {
@@ -1288,7 +1314,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1313,8 +1341,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "effect/set_timed_war_flag": {
@@ -1331,7 +1358,9 @@
           "consumption": {
             "Known": "FlagCountdown"
           },
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1356,8 +1385,7 @@
       ]
     },
     "gaps": [
-      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-      "ReaderSemantics: Duration keys days, months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically."
     ]
   },
   "trigger/has_passed_resolution": {
@@ -1368,7 +1396,9 @@
             "Known": "ScaledAtRead"
           },
           "consumption": "Unresolved",
-          "omitted_count": "Unresolved",
+          "omitted_count": {
+            "Known": 0
+          },
           "units": [
             {
               "factor": {
@@ -1388,8 +1418,7 @@
     },
     "gaps": [
       "ReaderSemantics: Duration keys months, years: a scoped operand may share the count's literal slot; mixing its selection rules with scaled integer reads is not established (duration-scoped-literal).",
-      "OutsideMethod: Duration keys months, years: what consumes the count is outside this method.",
-      "ReaderSemantics: Duration keys months, years: the omitted count is not established."
+      "OutsideMethod: Duration keys months, years: what consumes the count is outside this method."
     ]
   }
 }

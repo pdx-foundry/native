@@ -140,14 +140,12 @@ struct InitialState {
     bytes: BTreeMap<u64, u8>,
     /// Why each other owner byte is unknown, by offset, while tracing causes.
     traces: BTreeMap<u64, Trace>,
-    /// Owner offsets whose bytes may hold an owner-derived value on some returning path.
+    /// Bytes, by address, that may hold an owner-derived value on some returning path.
     tainted: BTreeSet<u64>,
     /// The value agreed for x0 at every normal return.
     returned: Option<u64>,
     /// Whether x0 may point into the owner on some returning path.
     returned_owner_derived: bool,
-    /// Whether some path left an owner-derived value where other code can find it.
-    escaped: bool,
     /// Whether some path wrote memory outside the owner and its private stack frame.
     clobbers_outside: bool,
 }
@@ -157,10 +155,9 @@ impl InitialState {
         Self {
             bytes: machine.known_bytes(owner, end - owner),
             traces: machine.unknown_byte_traces(owner, end - owner),
-            tainted: machine.owner_derived_bytes(),
+            tainted: machine.owner_derived_memory(),
             returned: machine.register(0),
             returned_owner_derived: machine.owner_derived(0),
-            escaped: machine.owner_escaped(),
             clobbers_outside: machine.clobbers_outside_owner(),
         }
     }
@@ -180,7 +177,6 @@ impl InitialState {
             self.returned = None;
         }
         self.returned_owner_derived |= other.returned_owner_derived;
-        self.escaped |= other.escaped;
         self.clobbers_outside |= other.clobbers_outside;
         self
     }
@@ -333,12 +329,9 @@ impl Constructors<'_> {
             machine.write(self.owner + offset, 1, byte.into());
         }
         machine.set_byte_traces(self.owner, &state.traces);
-        machine.set_owner_derived_bytes(&state.tainted);
+        machine.install_owner_derived_memory(&state.tainted);
         if state.clobbers_outside {
             machine.forget_memory_outside_owner();
-        }
-        if state.escaped {
-            machine.escape_owner();
         }
 
         machine.return_with_taint(
@@ -478,7 +471,43 @@ mod tests {
         caller.write(0x80000, 4, 7);
         let constructors = BTreeMap::from([(0x1000, BTreeMap::new()), (0x2000, BTreeMap::new())]);
         let state = walk(&code, &data, &constructors, &caller, owner, owner + 128).unwrap();
-        assert!(state.escaped);
+        assert_eq!(word(&state.bytes, 32), None);
+    }
+
+    #[test]
+    fn a_member_that_moves_the_stack_pointer_before_a_call_adds_no_facts() {
+        let mut parent = Arm64::at(0x1000);
+        parent.prologue();
+        arm64!(parent;
+            mov x19, x0;
+            mov w8, #7;
+            str w8, [x19, #16];
+            add x0, x19, #32
+        );
+        parent.call(0x2000);
+        arm64!(parent; mov x0, x19);
+        parent.epilogue();
+        arm64!(parent; ret);
+        let mut child = Arm64::at(0x2000);
+        arm64!(child;
+            mov x20, sp;
+            mov x1, #0x80000;
+            mov sp, x1; // far below the frame
+            bl extern UNBOUND as usize; // given the member in x0
+            mov sp, x20;
+            ret
+        );
+        let parent_bytes = parent.bytes();
+        let child_bytes = child.bytes();
+        let code = Code::decode(&[(0x1000, &parent_bytes), (0x2000, &child_bytes)]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut caller = Machine::new(&code, &data);
+        let owner = caller.reserve(64);
+        caller.set_register(0, owner);
+        let constructors = BTreeMap::from([(0x1000, BTreeMap::new()), (0x2000, BTreeMap::new())]);
+        let state = walk(&code, &data, &constructors, &caller, owner, owner + 64).unwrap();
+        // The member's walk is rejected and handled as a call given the member.
+        assert_eq!(word(&state.bytes, 16), Some(7));
         assert_eq!(word(&state.bytes, 32), None);
     }
 
@@ -601,7 +630,6 @@ mod tests {
             caller.set_register(0, owner);
             let summaries = BTreeMap::from([(0x1000, BTreeMap::new()), (0x2000, BTreeMap::new())]);
             let state = walk(&code, &data, &summaries, &caller, owner, owner + 64).unwrap();
-            assert!(state.escaped);
             assert_eq!(word(&state.bytes, 16), None);
         }
     }
@@ -687,7 +715,6 @@ mod tests {
         assert_eq!(traced.bytes, untraced.bytes);
         assert_eq!(traced.tainted, untraced.tainted);
         assert_eq!(traced.returned, untraced.returned);
-        assert_eq!(traced.escaped, untraced.escaped);
         assert_eq!(traced.clobbers_outside, untraced.clobbers_outside);
         assert!(untraced.traces.is_empty());
 
@@ -1136,6 +1163,9 @@ mod string_tests {
             inline_capacity: u64,
             text_offset: u64,
             source_is_string_object: bool,
+            /// Whether the long path's allocator is given the member, so that it may return an
+            /// owner address that a later call is given with an unknown value.
+            allocator_given_the_member: bool,
         }
         // Both ABI entries are checked: the complete-object entry forwards to the base entry.
         for case in [
@@ -1145,6 +1175,7 @@ mod string_tests {
                 inline_capacity: 23,
                 text_offset: 0,
                 source_is_string_object: false,
+                allocator_given_the_member: true,
             },
             ConstructorCase {
                 entries: [0x1025bc848, 0x1025bca48],
@@ -1152,6 +1183,7 @@ mod string_tests {
                 inline_capacity: 256,
                 text_offset: 32,
                 source_is_string_object: true,
+                allocator_given_the_member: false,
             },
         ] {
             let mut bodies: Vec<_> = case
@@ -1215,10 +1247,17 @@ mod string_tests {
                         for offset in 0..length {
                             assert_eq!(state.bytes.get(&(text_offset + offset)), Some(&b'a'));
                         }
-                    } else {
+                    } else if let Some(state) = state {
+                        // The text is not copied into the inline buffer. The earlier member
+                        // survives unless a later call is given an unknown owner address.
+                        let earlier = (!case.allocator_given_the_member).then_some(&42);
+                        assert_eq!(state.bytes.get(&0), earlier, "{entry:#x}, {length}");
+                        let text_offset = 64 + case.text_offset;
                         assert!(
-                            state.is_none_or(|state| !state.bytes.contains_key(&0)),
-                            "unproved allocation path retained earlier bytes"
+                            (0..length).all(|offset| {
+                                state.bytes.get(&(text_offset + offset)) != Some(&b'a')
+                            }),
+                            "{entry:#x}, {length}"
                         );
                     }
                 }

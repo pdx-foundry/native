@@ -38,11 +38,12 @@ impl ConstructorCalls {
                 .register(0)
                 .and_then(|source| text_length(machine, source));
             // strlen writes no memory, even when its result cannot be established.
+            let taint = machine.given_call_taint();
             return Some(machine.return_with_taint(
                 length,
                 ReturnTaint {
-                    returned: length.is_none(),
-                    clobbered: true,
+                    returned: taint.returned && length.is_none(),
+                    ..taint
                 },
             ));
         }
@@ -59,15 +60,10 @@ impl ConstructorCalls {
             if !moves && length != 0 && destination < source_end && source < destination_end {
                 return None;
             }
-            let returned = machine.owner_derived(0);
+            let taint = machine.given_call_taint();
+            let returned = taint.returned && machine.owner_derived(0);
             machine.copy_bytes(destination, source, length);
-            Some(machine.return_with_taint(
-                Some(destination),
-                ReturnTaint {
-                    returned,
-                    clobbered: true,
-                },
-            ))
+            Some(machine.return_with_taint(Some(destination), ReturnTaint { returned, ..taint }))
         })();
         Some(copied.unwrap_or_else(|| machine.opaque_call()))
     }
@@ -116,7 +112,6 @@ mod tests {
         machine.set_register(0, OWNER + 8);
         machine.set_register(1, SOURCE);
         machine.set_register(2, 3);
-        assert!(machine.owner_escaped());
         assert!(matches!(
             calls().call(Some(COPY), &mut machine),
             Some(Call::Return(Some(_)))
@@ -126,27 +121,30 @@ mod tests {
     }
 
     #[test]
-    fn missing_copy_arguments_and_overflow_invalidate_an_escaped_owner() {
-        for (destination, source, length) in [
-            (None, Some(SOURCE), Some(3)),
-            (Some(OWNER + 8), None, Some(3)),
-            (Some(OWNER + 8), Some(SOURCE), None),
-            (Some(OWNER + 8), Some(SOURCE), Some(BYTE_LIMIT + 1)),
-            (Some(u64::MAX), Some(SOURCE), Some(3)),
-            (Some(OWNER + 8), Some(u64::MAX), Some(3)),
+    fn missing_copy_arguments_and_overflow_invalidate_the_owner_from_the_destination() {
+        for (destination, source, length, kept) in [
+            (None, Some(SOURCE), Some(3), false),
+            (Some(OWNER + 8), None, Some(3), true),
+            (Some(OWNER + 8), Some(SOURCE), None, true),
+            (Some(OWNER + 8), Some(SOURCE), Some(BYTE_LIMIT + 1), true),
+            (Some(u64::MAX), Some(SOURCE), Some(3), true),
+            (Some(OWNER + 8), Some(u64::MAX), Some(3), true),
         ] {
             let code = Code::default();
             let data = ReadOnlyData::default();
             let mut machine = Machine::new(&code, &data);
             machine.track_owner(OWNER, OWNER + 32);
             machine.write(OWNER, 8, 42);
+            machine.write(OWNER + 8, 8, 99);
             for (index, value) in [destination, source, length].into_iter().enumerate() {
                 if let Some(value) = value {
                     machine.set_register(index, value);
                 }
             }
             calls().call(Some(COPY), &mut machine).unwrap();
-            assert_eq!(machine.read(OWNER, 8), None);
+            assert_eq!(machine.read(OWNER, 8), kept.then_some(42));
+            let given = destination.is_none_or(|at| (OWNER..OWNER + 32).contains(&at));
+            assert_eq!(machine.read(OWNER + 8, 8), (!given).then_some(99));
         }
     }
 
@@ -170,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_source_bytes_forget_only_the_destination_and_keep_derivation() {
+    fn unknown_source_bytes_forget_only_the_destination_and_carry_their_derivation() {
         let code = Code::default();
         let data = ReadOnlyData::default();
         let mut machine = Machine::new(&code, &data);
@@ -183,7 +181,8 @@ mod tests {
         calls().call(Some(COPY), &mut machine).unwrap();
         assert_eq!(machine.read(OWNER, 8), Some(42));
         assert_eq!(machine.read(OWNER + 8, 4), None);
-        assert!((8..12).all(|offset| machine.owner_derived_bytes().contains(&offset)));
+        let derived = machine.owner_derived_memory();
+        assert!((OWNER + 8..OWNER + 12).all(|at| !derived.contains(&at)));
     }
 
     #[test]
@@ -193,13 +192,14 @@ mod tests {
         let mut machine = Machine::new(&code, &data);
         machine.track_owner(OWNER, OWNER + 32);
         machine.write(OWNER, 8, OWNER + 24);
-        machine.set_owner_derived_bytes(&(0..8).collect());
+        machine.install_owner_derived_memory(&(OWNER..OWNER + 8).collect());
         machine.set_register(0, OWNER + 8);
         machine.set_register(1, OWNER);
         machine.set_register(2, 8);
         calls().call(Some(COPY), &mut machine).unwrap();
         assert_eq!(machine.read(OWNER + 8, 8), Some(OWNER + 24));
-        assert!((8..16).all(|offset| machine.owner_derived_bytes().contains(&offset)));
+        let derived = machine.owner_derived_memory();
+        assert!((OWNER + 8..OWNER + 16).all(|at| derived.contains(&at)));
     }
 
     #[test]
@@ -216,6 +216,69 @@ mod tests {
                 Some(Call::Return((text.len() == 4).then_some(3)))
             );
             assert_eq!(machine.read(OWNER, 8), Some(42));
+        }
+    }
+
+    /// Run `body` at 0x1000 with the owner in x19, an unrelated buffer in x20 and `SOURCE` in
+    /// x21, and every unbound call opaque. Returns the owner's word at +8, which is 7 before.
+    fn owner_word_after_calls(body: &[u8]) -> Option<u64> {
+        let code = Code::decode(&[(0x1000, body)]).unwrap();
+        let data = ReadOnlyData::new(vec![(SOURCE, b"abc".to_vec())]);
+        let mut machine = Machine::new(&code, &data);
+        machine.track_private_owner(OWNER, OWNER + 32);
+        machine.write(OWNER + 8, 4, 7);
+        machine.set_register(19, OWNER);
+        machine.derive_from_owner(19);
+        machine.set_register(20, 0x30000);
+        machine.set_register(21, SOURCE);
+        let paths = machine.run_paths(0x1000, &mut |target, machine| {
+            Ok(calls()
+                .call(target, machine)
+                .unwrap_or_else(|| machine.opaque_call()))
+        });
+        assert_eq!(paths.len(), 1);
+        assert!(matches!(paths[0].end, Ok(Exit::Returned)));
+
+        paths[0].machine.read(OWNER + 8, 4)
+    }
+
+    #[test]
+    fn modeled_calls_return_owner_addresses_only_when_given_one() {
+        let unrelated_length = arm64!(at 0x1000;
+            mov x0, x21; // text without a known terminator, outside the owner
+            bl extern LENGTH as usize;
+            str wzr, [x0];
+            str wzr, [x1];
+            ret
+        );
+        let disjoint_copy = arm64!(at 0x1000;
+            mov x0, x20;
+            mov x1, x21;
+            mov x2, #2;
+            bl extern COPY as usize;
+            str wzr, [x1];
+            ret
+        );
+        for body in [unrelated_length, disjoint_copy] {
+            assert_eq!(owner_word_after_calls(&body), Some(7));
+        }
+
+        let owner_length = arm64!(at 0x1000;
+            add x0, x19, #16; // unknown text in the owner
+            bl extern LENGTH as usize;
+            str wzr, [x1];
+            ret
+        );
+        let owner_copy = arm64!(at 0x1000;
+            add x0, x19, #16;
+            mov x1, x21;
+            mov x2, #2;
+            bl extern COPY as usize;
+            str wzr, [x1];
+            ret
+        );
+        for body in [owner_length, owner_copy] {
+            assert_eq!(owner_word_after_calls(&body), None);
         }
     }
 
@@ -309,8 +372,9 @@ mod tests {
             assert!(!paths.is_empty());
             for path in paths {
                 assert!(matches!(path.end, Ok(Exit::Returned)));
+                // Every path writes the owner from the destination on, never before it.
                 let bounded = length.is_some_and(|length| length < 4);
-                assert_eq!(path.machine.read(OWNER, 8), bounded.then_some(42));
+                assert_eq!(path.machine.read(OWNER, 8), Some(42));
                 assert_eq!(path.machine.read(OWNER + 12, 4), bounded.then_some(99));
                 if bounded {
                     assert_eq!(path.machine.read(OWNER + 8 + length.unwrap(), 1), Some(0));

@@ -1,17 +1,27 @@
 //! Which values may point into a freshly allocated owner, and which writes may reach it.
 //!
-//! A pointer that existed before the owner's allocation, or that was loaded from memory that no
-//! owner-derived value can have reached, cannot point into the owner. A store through it is
-//! disjoint from the owner. A value derived from the owner through registers, vectors, memory,
-//! calls or path joins may point anywhere into it, and so may a value that a call returns when
-//! the owner was within that call's reach.
+//! A pointer that existed before the owner's allocation, or that was loaded from a byte that no
+//! owner-derived value was stored to, cannot point into the owner. A store through it is disjoint
+//! from the owner. A value derived from the owner through registers, vectors, tainted memory,
+//! calls or path joins may point anywhere into it.
 //!
 //! A byte's taint is cleared only by a store of an underived value to its known address. A store
 //! to an unknown address and a forgotten byte keep their taint, since the byte may still hold its
 //! earlier value.
 //!
-//! Tracking assumes nothing: the owner has escaped and every value may derive from it. The one
-//! narrowing is an allocator's return, before which no value can point into the new owner.
+//! The method assumes that code changes only the object it is given. Members are built in address
+//! order, so a later call or store leaves the members before its object intact:
+//!
+//! - A call that this machine does not run may write the owner only from the lowest owner address
+//!   it is given in `x0` to `x8`, or the whole owner when `x0` is derived with an unknown value.
+//!   A call that is given no owner address writes no owner byte and returns no derived value.
+//! - A store to an unknown address whose base register holds a known owner address writes only
+//!   from that base on.
+//! - An owner address that went to memory outside this machine's tracking, such as a registration
+//!   array, is not found again by later loads. Only tainted bytes yield derived values.
+//!
+//! Tracking starts with every held value derived from the owner. The one narrowing is an
+//! allocator's return, before which no value can point into the new owner.
 use std::cell::Cell;
 use std::collections::BTreeSet;
 
@@ -60,8 +70,6 @@ pub(super) struct OwnerTaint {
     registers: u32,
     vectors: u32,
     memory: BTreeSet<u64>,
-    /// An owner-derived value went where code that this machine does not run can find it.
-    escaped: bool,
     /// This machine wrote memory outside the owner and its private stack frame.
     clobbers_outside: bool,
     /// The stack pointer moved by an unknown amount, so the private frame is not established.
@@ -117,7 +125,6 @@ impl OwnerTaint {
             && (limit <= self.start || address >= self.end);
         if !self.contains(address, limit) && !private {
             self.clobbers_outside = true;
-            self.escaped |= derived;
         }
 
         for at in address..limit {
@@ -127,15 +134,6 @@ impl OwnerTaint {
                 self.memory.remove(&at);
             }
         }
-    }
-
-    /// Whether a call may write the owner: it may read every argument, every preserved
-    /// register, every stack byte, and every place where an owner-derived value escaped.
-    fn reaches_call(&self, stack_pointer: u64) -> bool {
-        self.escaped
-            || self.registers & REACHABLE_REGISTERS != 0
-            || self.vectors & REACHABLE_VECTORS != 0
-            || self.memory.range(stack_pointer..STACK_TOP).next().is_some()
     }
 
     fn returned(&mut self, taint: ReturnTaint) {
@@ -157,13 +155,11 @@ impl OwnerTaint {
         let covered = self.registers & !kept.registers == 0
             && self.vectors & !kept.vectors == 0
             && self.memory.is_subset(&kept.memory)
-            && (!self.escaped || kept.escaped)
             && (!self.clobbers_outside || kept.clobbers_outside)
             && (!self.stack_lost || kept.stack_lost);
         self.registers |= kept.registers;
         self.vectors |= kept.vectors;
         self.memory.extend(&kept.memory);
-        self.escaped |= kept.escaped;
         self.clobbers_outside |= kept.clobbers_outside;
         self.stack_lost |= kept.stack_lost;
 
@@ -181,8 +177,8 @@ fn set_bit(bits: &mut u32, index: usize, set: bool) {
 
 impl<'a> Machine<'a> {
     /// Track which values may point into the owner at `start..end`. Nothing is known about where
-    /// its address went: the owner has escaped, and every register, vector and byte that this
-    /// machine holds may point into it. The whole stack is this machine's private frame.
+    /// its address went: every register, vector and byte that this machine holds may point into
+    /// it. The whole stack is this machine's private frame.
     pub fn track_owner(&mut self, start: u64, end: u64) {
         self.owner = Some(Box::new(OwnerTaint {
             start,
@@ -191,7 +187,6 @@ impl<'a> Machine<'a> {
             registers: u32::MAX,
             vectors: u32::MAX,
             memory: self.memory.keys().copied().collect(),
-            escaped: true,
             clobbers_outside: false,
             stack_lost: false,
             inputs: Cell::new(false),
@@ -201,8 +196,7 @@ impl<'a> Machine<'a> {
 
     /// Track the owner at `start..end` that the allocator call being handled returns, and return
     /// it. Every value that this machine holds was computed before the allocation, so none points
-    /// into the owner. The allocator may still have published the owner, and may leave it in any
-    /// register that the call does not preserve.
+    /// into the owner. The allocator may leave it in any register that the call does not preserve.
     pub fn return_allocated_owner(&mut self, start: u64, end: u64) -> Call {
         self.track_owner(start, end);
         if let Some(owner) = &mut self.owner {
@@ -212,14 +206,12 @@ impl<'a> Machine<'a> {
         self.return_with_taint(Some(start), ReturnTaint::REACHING)
     }
 
-    /// Track an owner at `start..end` that has not escaped and from which no value derives, as
-    /// an authored test arranges.
+    /// Track an owner at `start..end` from which no value derives, as an authored test arranges.
     #[cfg(test)]
     pub fn track_private_owner(&mut self, start: u64, end: u64) {
         self.track_owner(start, end);
         if let Some(owner) = &mut self.owner {
             owner.underive_held_values();
-            owner.escaped = false;
         }
     }
 
@@ -243,41 +235,24 @@ impl<'a> Machine<'a> {
             .is_some_and(|owner| owner.registers & 1 << index != 0)
     }
 
-    /// The offsets in the owner whose bytes may hold an owner-derived value.
-    pub fn owner_derived_bytes(&self) -> BTreeSet<u64> {
-        let Some(owner) = &self.owner else {
-            return BTreeSet::new();
-        };
-        owner
-            .memory
-            .range(owner.start..owner.end)
-            .map(|at| at - owner.start)
-            .collect()
+    /// Every byte, by address, that may hold an owner-derived value, inside the owner or not.
+    pub fn owner_derived_memory(&self) -> BTreeSet<u64> {
+        self.owner
+            .as_ref()
+            .map(|owner| owner.memory.clone())
+            .unwrap_or_default()
     }
 
-    /// Replace which owner bytes may hold an owner-derived value with `offsets`.
-    pub fn set_owner_derived_bytes(&mut self, offsets: &BTreeSet<u64>) {
+    /// Install the owner-derived bytes that a constructor left, as by
+    /// [`Machine::owner_derived_memory`]. They replace this machine's taint in the owner, whose
+    /// state the constructor reports in full. Outside the owner they add to it.
+    pub fn install_owner_derived_memory(&mut self, addresses: &BTreeSet<u64>) {
         let Some(owner) = &mut self.owner else {
             return;
         };
         let (start, end) = (owner.start, owner.end);
         owner.memory.retain(|at| !(start..end).contains(at));
-        owner
-            .memory
-            .extend(offsets.iter().map(|offset| start + offset));
-    }
-
-    /// Whether an owner-derived value went where code that this machine does not run can find
-    /// it.
-    pub fn owner_escaped(&self) -> bool {
-        self.owner.as_ref().is_some_and(|owner| owner.escaped)
-    }
-
-    /// Record that an owner-derived value escaped, such as through a separately evaluated call.
-    pub fn escape_owner(&mut self) {
-        if let Some(owner) = &mut self.owner {
-            owner.escaped = true;
-        }
+        owner.memory.extend(addresses);
     }
 
     /// Whether this machine wrote memory outside the owner and its private stack frame.
@@ -310,10 +285,28 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// Make every known owner byte unknown, for the reason `kind`.
-    fn forget_owner(&mut self, kind: CauseKind) {
-        if let Some((start, end)) = self.owner_range() {
-            self.forget_known_bytes_for(start, end - start, kind);
+    /// The lowest owner address that the call being handled is given: a known owner address
+    /// in `x0` to `x8`, or the owner's start when `x0` is owner-derived with an unknown value.
+    /// `None` when the call is given no owner address, so it cannot change the owner.
+    ///
+    /// Other derived registers are ignored: their values may be left over from earlier code, and
+    /// the callee's arity is not known.
+    pub fn given_owner_address(&self) -> Option<u64> {
+        let owner = self.owner.as_ref()?;
+        let unknown_receiver = owner.registers & 1 != 0 && self.register(0).is_none();
+        let known = (0..=8)
+            .filter_map(|index| self.register(index))
+            .filter(|value| (owner.start..owner.end).contains(value));
+
+        known.chain(unknown_receiver.then_some(owner.start)).min()
+    }
+
+    /// The taint of the registers that the call being handled does not preserve: a call that is
+    /// given an owner address may return one in any of them.
+    pub fn given_call_taint(&self) -> ReturnTaint {
+        match self.given_owner_address() {
+            Some(_) => ReturnTaint::REACHING,
+            None => ReturnTaint::DISJOINT,
         }
     }
 
@@ -341,28 +334,69 @@ impl<'a> Machine<'a> {
     }
 
     /// Apply the effects of the call being handled when this machine does not run its code. It
-    /// may write any memory outside the owner. When the owner is within its reach, it may also
-    /// write any owner byte, keep the owner where later code finds it, and return owner-derived
-    /// values. A handler that knows the call's result, such as an allocation, returns it with
-    /// [`Machine::return_with_taint`] afterwards.
+    /// may write any memory outside the owner, and the owner from the lowest owner address that it
+    /// is given (see [`Machine::given_owner_address`]). A call given an owner address may return
+    /// owner-derived values and leave them in any byte that it may write. A handler that knows the call's result, such as an allocation,
+    /// returns it with [`Machine::return_with_taint`] afterwards.
     pub fn opaque_call_effects(&mut self) {
         self.opaque_call_effects_for(CauseKind::Invalidated);
     }
 
     fn opaque_call_effects_for(&mut self, kind: CauseKind) {
-        let reaches = self
-            .owner
-            .as_ref()
-            .is_none_or(|owner| owner.reaches_call(self.stack_pointer));
+        let given = self.given_owner_address();
         self.forget_memory_outside_owner();
-        if !reaches {
+        let (Some(from), Some((_, end))) = (given, self.owner_range()) else {
             self.return_with_taint(None, ReturnTaint::DISJOINT);
             return;
+        };
+
+        self.forget_known_bytes_for(from, end - from, kind);
+        self.derive_bytes_a_call_may_write(from);
+        self.return_with_taint(None, ReturnTaint::REACHING);
+    }
+
+    /// A call given the owner address `from` may store an owner address in the objects that it is
+    /// given: the owner from `from` on, and each object outside the owner whose address is in `x0`
+    /// to `x8`, such as a stack out-parameter. An object outside the owner has an unknown size. On
+    /// the stack it may reach the end of the frame that holds it. Elsewhere it is taken as a
+    /// pointer-sized slot and any run of held bytes that continues it; memory that this machine
+    /// does not hold falls under the method's assumption about escaped owner addresses.
+    fn derive_bytes_a_call_may_write(&mut self, from: u64) {
+        let Some(owner) = &self.owner else {
+            return;
+        };
+        let (start, end, frame_end) = (owner.start, owner.end, owner.frame_end);
+        // A moved stack pointer gives no frame to bound a stack object.
+        let stack = (!owner.stack_lost).then_some(self.stack_pointer..STACK_TOP);
+        let given_outside: Vec<u64> = (0..=8)
+            .filter_map(|index| self.register(index))
+            .filter(|address| !(start..end).contains(address))
+            .collect();
+        let mut written: Vec<u64> = (from..end).collect();
+        for address in given_outside {
+            let object_end = match &stack {
+                Some(stack) if stack.contains(&address) && address < frame_end => frame_end,
+                Some(stack) if stack.contains(&address) => STACK_TOP,
+                _ => self.held_object_end(address),
+            };
+            written.extend(address..object_end);
+        }
+        if let Some(owner) = &mut self.owner {
+            owner.memory.extend(written);
+        }
+    }
+
+    /// The end of a pointer-sized slot at `address` and the run of held bytes that continues it.
+    fn held_object_end(&self, address: u64) -> u64 {
+        let mut object_end = address.saturating_add(8);
+        for &held in self.memory.range(object_end..).map(|(at, _)| at) {
+            if held != object_end {
+                break;
+            }
+            object_end = held.saturating_add(1);
         }
 
-        self.forget_owner(kind);
-        self.escape_owner();
-        self.return_with_taint(None, ReturnTaint::REACHING);
+        object_end
     }
 
     /// A call returned. Without a taint from the call's handler, every register that the call
@@ -379,7 +413,8 @@ impl<'a> Machine<'a> {
 
     /// Give `callee` every owner-derived value that it can read. The values of preserved
     /// registers are unknown to the callee, but their taint stays, because the callee may read or
-    /// spill them.
+    /// spill them. A callee of a machine whose stack pointer moved by an unknown amount has no
+    /// established frame either.
     pub(super) fn copy_owner_taint_to_callee(&self, callee: &mut Self) {
         let Some(owner) = &self.owner else {
             return;
@@ -389,7 +424,6 @@ impl<'a> Machine<'a> {
             registers: owner.registers & REACHABLE_REGISTERS,
             vectors: owner.vectors & REACHABLE_VECTORS,
             clobbers_outside: false,
-            stack_lost: false,
             inputs: Cell::new(false),
             returning: None,
             ..(**owner).clone()
@@ -437,19 +471,23 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// A store to an unknown address, of an owner-derived value or not. The present
-    /// instruction's inputs are those of the address. Returns the owner's range when the store
-    /// cannot reach it.
-    pub(super) fn store_owner_unknown(&mut self, derived: bool) -> Option<(u64, u64)> {
+    /// A store to an unknown address whose base register holds `base`. The present
+    /// instruction's inputs are those of the address. Returns the part of the owner that the
+    /// store cannot reach: the whole owner when the address is underived, and the bytes before
+    /// `base` when `base` is a known owner address.
+    pub(super) fn store_owner_unknown(&mut self, base: Option<u64>) -> Option<(u64, u64)> {
         let owner = self.owner.as_mut()?;
         owner.clobbers_outside = true;
-        owner.escaped |= derived;
+        if !owner.inputs.get() {
+            return Some((owner.start, owner.end));
+        }
 
-        (!owner.inputs.get()).then_some((owner.start, owner.end))
+        base.filter(|base| (owner.start..owner.end).contains(base))
+            .map(|base| (owner.start, base))
     }
 
-    /// Whether a load of `width` bytes may read an owner-derived value. An unknown address may
-    /// select any byte that its own inputs reach.
+    /// Whether a load of `width` bytes may read an owner-derived value: a tainted byte, or any
+    /// byte that an unknown address's own inputs reach.
     pub(super) fn loaded_owner(
         &self,
         address_derived: bool,
@@ -460,9 +498,10 @@ impl<'a> Machine<'a> {
             return false;
         };
         match address {
-            None => address_derived || owner.escaped || owner.tainted_outside(),
-            Some(address) => (address..address.saturating_add(width))
-                .any(|at| owner.memory.contains(&at) || (owner.escaped && self.byte(at).is_none())),
+            None => address_derived || owner.tainted_outside(),
+            Some(address) => {
+                (address..address.saturating_add(width)).any(|at| owner.memory.contains(&at))
+            }
         }
     }
 
@@ -497,15 +536,18 @@ mod tests {
         (machine, owner)
     }
 
-    /// Run `bytes` at 0x100, with every call opaque, and return the owner's word at +8.
-    fn owner_word_after(bytes: &[u8]) -> Option<u64> {
+    /// Run `bytes` at 0x100, with every call opaque, and return the owner's words at `offsets`.
+    fn owner_words_after(bytes: &[u8], offsets: &[u64]) -> Vec<Option<u64>> {
         let code = Code::decode(&[(0x100, bytes)]).unwrap();
         let data = ReadOnlyData::default();
         let (mut machine, owner) = tracked(&code, &data);
         let exit = machine.run(0x100, &mut |_, machine| Ok(machine.opaque_call()));
         assert_eq!(exit, Ok(Exit::Returned));
 
-        machine.read(owner + 8, 4)
+        offsets
+            .iter()
+            .map(|offset| machine.read(owner + offset, 4))
+            .collect()
     }
 
     #[test]
@@ -525,7 +567,6 @@ mod tests {
         machine.set_register(0, owner);
         machine.write(machine.stack_pointer(), 8, GLOBAL);
         machine.track_owner(owner, owner + 64);
-        assert!(machine.owner_escaped());
         assert!((0..=30).all(|index| machine.owner_derived(index)));
 
         let exit = machine.run(0x100, &mut |_, machine| Ok(machine.opaque_call()));
@@ -561,7 +602,6 @@ mod tests {
         let code = Code::decode(&[(0x100, bytes.as_slice())]).unwrap();
         let data = ReadOnlyData::default();
         let (machine, _) = allocated(&code, &data);
-        assert!(machine.owner_escaped());
         for index in 0..=30 {
             assert_eq!(
                 machine.owner_derived(index),
@@ -600,36 +640,85 @@ mod tests {
             str xzr, [x3];
             ret
         );
-        assert_eq!(owner_word_after(&bytes), Some(7));
+        assert_eq!(owner_words_after(&bytes, &[8]), [Some(7)]);
     }
 
     #[test]
-    fn a_store_at_an_unknown_offset_from_the_owner_forgets_it() {
-        let bytes = arm64!(at 0x100;
+    fn a_store_at_an_unknown_offset_writes_the_owner_from_its_base() {
+        let known_base = arm64!(at 0x100;
             mov w8, #7;
             str w8, [x0, #8];
+            str w8, [x0, #0x20];
             ldr x22, [x9];
             add x20, x0, #0x20;
             strb wzr, [x20, x22];
             ret
         );
-        assert_eq!(owner_word_after(&bytes), None);
+        assert_eq!(owner_words_after(&known_base, &[8, 0x20]), [Some(7), None]);
+
+        let unknown_base = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            ldr x22, [x9];
+            add x20, x0, x22; // derived from the owner, with an unknown value
+            strb wzr, [x20];
+            ret
+        );
+        assert_eq!(owner_words_after(&unknown_base, &[8]), [None]);
     }
 
     #[test]
-    fn a_call_reaches_the_owner_through_arguments_preserved_registers_and_the_stack() {
-        let unreachable = arm64!(at 0x100;
+    fn a_call_writes_the_owner_from_the_lowest_address_it_is_given() {
+        let receiver = arm64!(at 0x100;
             mov w8, #7;
             str w8, [x0, #8];
+            str w8, [x0, #0x20];
+            add x0, x0, #0x20;
+            bl extern 0x200;
+            ret
+        );
+        let argument = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            str w8, [x0, #0x20];
+            add x3, x0, #0x20;
             mov x0, #0;
             bl extern 0x200;
             ret
         );
-        assert_eq!(owner_word_after(&unreachable), Some(7));
+        for bytes in [receiver, argument] {
+            assert_eq!(owner_words_after(&bytes, &[8, 0x20]), [Some(7), None]);
+        }
 
-        let argument = arm64!(at 0x100;
+        let lowest = arm64!(at 0x100;
             mov w8, #7;
             str w8, [x0, #8];
+            str w8, [x0, #0x20];
+            add x3, x0, #8;
+            add x0, x0, #0x20;
+            bl extern 0x200;
+            ret
+        );
+        let unknown_receiver = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            str w8, [x0, #0x20];
+            ldr x22, [x9];
+            add x0, x0, x22;
+            bl extern 0x200;
+            ret
+        );
+        for bytes in [lowest, unknown_receiver] {
+            assert_eq!(owner_words_after(&bytes, &[8, 0x20]), [None, None]);
+        }
+    }
+
+    #[test]
+    fn a_call_given_no_owner_address_keeps_the_owner() {
+        let unreachable = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            mov x0, #0;
             bl extern 0x200;
             ret
         );
@@ -646,30 +735,162 @@ mod tests {
             str w8, [x0, #8];
             str x0, [sp, #-16]!; // the owner's address in a stacked argument
             mov x0, #0;
-            bl extern 0x200;
-            ret
-        );
-        let slot = arm64!(at 0x100;
-            mov w8, #7;
-            str w8, [x0, #8];
-            str x0, [sp, #-16]!;
-            mov x0, #0;
             mov x2, sp; // a pointer to the slot that holds the owner's address
             bl extern 0x200;
             ret
         );
-        let escaped = arm64!(at 0x100;
+        let stale_arguments = arm64!(at 0x100;
             mov w8, #7;
             str w8, [x0, #8];
-            ldr x5, [x9];
-            str x0, [x5]; // registers the owner where any later call can find it
+            ldr x22, [x9];
+            add x1, x0, x22; // derived, with an unknown value left from earlier code
             mov x0, #0;
             bl extern 0x200;
             ret
         );
-        for bytes in [argument, preserved, stacked, slot, escaped] {
-            assert_eq!(owner_word_after(&bytes), None);
+        let derived_elsewhere = arm64!(at 0x100;
+            mov x19, x0;
+            mov w8, #7;
+            str w8, [x19, #8];
+            sub x0, x19, x19; // derived from the owner, but a known address outside it
+            bl extern 0x200;
+            ret
+        );
+        let registered = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            ldr x5, [x9];
+            str x0, [x5]; // registers the owner where a later call can find it
+            mov x0, #0;
+            bl extern 0x200;
+            ret
+        );
+        for bytes in [
+            unreachable,
+            preserved,
+            stacked,
+            stale_arguments,
+            derived_elsewhere,
+            registered,
+        ] {
+            assert_eq!(owner_words_after(&bytes, &[8]), [Some(7)]);
         }
+    }
+
+    #[test]
+    fn a_call_given_an_owner_address_may_leave_one_in_what_it_writes() {
+        let member = arm64!(at 0x100;
+            mov x19, x0;
+            add x0, x19, #32;
+            bl extern 0x200;
+            mov w8, #7;
+            str w8, [x19, #8];
+            ldr x3, [x19, #32]; // the call may have stored an owner address here
+            str wzr, [x3];
+            ret
+        );
+        let out_parameter = arm64!(at 0x100;
+            mov x19, x0;
+            sub sp, sp, #16;
+            add x0, x19, #32;
+            mov x1, sp; // a fresh stack slot that the call may write
+            bl extern 0x200;
+            mov w8, #7;
+            str w8, [x19, #8];
+            ldr x3, [sp];
+            str wzr, [x3];
+            ret
+        );
+        let later_field = arm64!(at 0x100;
+            mov x19, x0;
+            sub sp, sp, #16;
+            add x0, x19, #32;
+            mov x1, sp; // a fresh 16-byte object that the call may write
+            bl extern 0x200;
+            mov w8, #7;
+            str w8, [x19, #8];
+            ldr x3, [sp, #8];
+            str wzr, [x3];
+            ret
+        );
+        let held_object = arm64!(at 0x100;
+            mov x19, x0;
+            mov x1, x9; // a known object outside the stack
+            str xzr, [x1];
+            str xzr, [x1, #8];
+            add x0, x19, #32;
+            bl extern 0x200;
+            mov w8, #7;
+            str w8, [x19, #8];
+            ldr x3, [x9, #8];
+            str wzr, [x3];
+            ret
+        );
+        for bytes in [member, out_parameter, later_field, held_object] {
+            assert_eq!(owner_words_after(&bytes, &[8]), [None]);
+        }
+
+        let given_nothing = arm64!(at 0x100;
+            mov x19, x0;
+            str xzr, [sp, #-16]!;
+            mov x0, #0;
+            mov x1, sp;
+            bl extern 0x200;
+            mov w8, #7;
+            str w8, [x19, #8];
+            ldr x3, [sp];
+            str wzr, [x3];
+            ret
+        );
+        assert_eq!(owner_words_after(&given_nothing, &[8]), [Some(7)]);
+    }
+
+    #[test]
+    fn a_moved_stack_pointer_bounds_no_stack_object() {
+        let bytes = arm64!(at 0x100;
+            mov x19, x0;
+            mov w8, #7;
+            str w8, [x19, #8];
+            mov x1, #0x80000;
+            mov sp, x1; // far below the frame
+            add x0, x19, #32;
+            bl extern 0x200;
+            ret
+        );
+        let code = Code::decode(&[(0x100, bytes.as_slice())]).unwrap();
+        let data = ReadOnlyData::default();
+        let (mut machine, owner) = tracked(&code, &data);
+        let exit = machine.run(0x100, &mut |_, machine| Ok(machine.opaque_call()));
+        assert_eq!(exit, Ok(Exit::Returned));
+        assert!(machine.owner_stack_lost());
+        assert_eq!(machine.read(owner + 8, 4), Some(7));
+
+        let callee = machine.fresh_callee(&code, &data);
+        assert!(callee.owner_stack_lost());
+    }
+
+    #[test]
+    fn only_a_call_given_an_owner_address_returns_one() {
+        let given_nothing = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            mov x0, #0;
+            bl extern 0x200;
+            str wzr, [x0];
+            str wzr, [x1];
+            ret
+        );
+        assert_eq!(owner_words_after(&given_nothing, &[8]), [Some(7)]);
+
+        let given_a_member = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            add x0, x0, #0x20;
+            bl extern 0x200;
+            str wzr, [x1];
+            ret
+        );
+        assert_eq!(owner_words_after(&given_a_member, &[8]), [None]);
     }
 
     #[test]
@@ -681,7 +902,7 @@ mod tests {
             str w8, [x19, #8];
             ret
         );
-        assert_eq!(owner_word_after(&bytes), Some(7));
+        assert_eq!(owner_words_after(&bytes, &[8]), [Some(7)]);
     }
 
     #[test]
@@ -718,13 +939,23 @@ mod tests {
             str wzr, [x12];
             ret
         );
-        for bytes in [general, vector, selected] {
-            assert_eq!(owner_word_after(&bytes), None);
+        let global = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            str x0, [x9]; // the owner's address at a known global
+            ldr x5, [x10];
+            str xzr, [x5];
+            ldr x3, [x9];
+            str wzr, [x3];
+            ret
+        );
+        for bytes in [general, vector, selected, global] {
+            assert_eq!(owner_words_after(&bytes, &[8]), [None]);
         }
     }
 
     #[test]
-    fn a_load_after_an_escape_may_read_the_owner_address() {
+    fn a_load_of_untainted_memory_is_not_the_owner_address() {
         let known = arm64!(at 0x100;
             ldr x5, [x9];
             str x0, [x5]; // registers the owner at an unknown place
@@ -744,7 +975,7 @@ mod tests {
             ret
         );
         for bytes in [known, unknown] {
-            assert_eq!(owner_word_after(&bytes), None);
+            assert_eq!(owner_words_after(&bytes, &[8]), [Some(7)]);
         }
     }
 
@@ -761,7 +992,7 @@ mod tests {
             str wzr, [x3];
             ret
         );
-        assert_eq!(owner_word_after(&bytes), None);
+        assert_eq!(owner_words_after(&bytes, &[8]), [None]);
     }
 
     #[test]
@@ -819,19 +1050,20 @@ mod tests {
     }
 
     #[test]
-    fn a_loop_head_join_keeps_a_path_that_only_escaped() {
-        // The loop leaves at its head, so only a later arrival there can leave after the escape.
+    fn a_loop_head_join_keeps_a_path_that_only_stored_the_owner() {
+        // The loop leaves after its head, so only a later arrival there can leave after the store.
         let bytes = arm64!(at 0x100;
             mov w8, #7;
             str w8, [x0, #8];
+            sub x11, sp, #16;
             ldr x6, [x9];
             str xzr, [x6]; // every arrival has written outside the owner
             ldr x5, [x9]; // the loop head
-            str xzr, [x5];
-            cbz x10, extern 0x124;
-            str x0, [x5]; // lets the owner escape
-            b extern 0x110;
-            ldr x3, [x9];
+            str xzr, [x5]; // forgets the slot's value but not its derivation
+            cbz x10, extern 0x128;
+            str x0, [x11];
+            b extern 0x114;
+            ldr x3, [x11];
             str wzr, [x3];
             ret
         );

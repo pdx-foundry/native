@@ -253,6 +253,37 @@ fn target(row: &Instruction) -> Option<u64> {
     number(row.operands.as_str())
 }
 
+/// How many one-instruction aliases [`alias_target`] follows.
+const ALIAS_LIMIT: usize = 4;
+
+/// The target of a body whose only instruction is `b`. Such a body is an alias of its target: it
+/// passes every argument and the return address unchanged.
+pub(crate) fn branch_alias(rows: &[Instruction]) -> Option<u64> {
+    match rows {
+        [row] if row.operation == "b" => target(row),
+        _ => None,
+    }
+}
+
+/// The function that `address` names after following up to [`ALIAS_LIMIT`] aliases (see
+/// [`branch_alias`]) to other functions in `functions`.
+pub(crate) fn alias_target(functions: &BTreeMap<u64, Function>, address: u64) -> u64 {
+    let mut address = address;
+    for _ in 0..ALIAS_LIMIT {
+        let aliased = functions
+            .get(&address)
+            .and_then(|function| decode(function).ok())
+            .and_then(|rows| branch_alias(&rows))
+            .filter(|target| functions.contains_key(target));
+        let Some(target) = aliased else {
+            break;
+        };
+        address = target;
+    }
+
+    address
+}
+
 pub(crate) fn number(text: &str) -> Option<u64> {
     let text = text.strip_prefix('#').unwrap_or(text);
     if let Some(negative) = text.strip_prefix('-') {

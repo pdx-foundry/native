@@ -75,8 +75,12 @@ A block field has an established family or a covered member node. Delegated, con
 and numeric children must also be covered. Missing member vtables, cycles, cut bodies and the
 eight-level nesting bound leave coverage unresolved. The factory contributes only allocation
 bytes that agree on every returning path; eight agreed bytes at a member destination supply
-its vtable. The persistent read and member slots then join its own ledger. Constructed fixed
-children use the same allocation/constructor/virtual-read proof as numeric children.
+its vtable. The persistent read and member slots then join its own ledger. A member slot whose
+function is one `b` to another function is an alias: the branch passes every argument unchanged,
+so the member is read through the target (`declarations::alias_target`, at most four aliases).
+`TFleetSettings::ReadMember` `0x101034738` is such an alias of `ReadBackwardsCompatible`
+`0x10103473c`, which reads the fleet `settings` keys. Constructed fixed children use the same
+allocation/constructor/virtual-read proof as numeric children.
 
 One internal coverage function governs fixed keys, child families and ordering. The normalizer
 does not infer completeness from public fields. A known numeric child additionally needs every
@@ -215,6 +219,10 @@ or a gap, with an authored test.
   gives the same gap as the top-level one, at the member's key path.
 - **A tail call does not return.** A compound helper reached through `b` ends the path with
   `compound-reader-return`; the walker never continues at the next instruction.
+- **A one-instruction member is not a reader.** A nested `ReadMember` that is only `b` to another
+  function reads nothing itself. Walking it gives `reader-routing` and `Fields: []`. Follow the
+  alias instead. A thunk that also changes an argument (`mov x1, x3; b …`) is not an alias and
+  stays a routing gap.
 - **One key, one construction.** A second, different construction of a fixed key's child is the
   stop `ambiguous-constructed-child`. `numeric::constructed` already refuses a construction
   after a branch, so no authored case reaches this guard; it is a defence.

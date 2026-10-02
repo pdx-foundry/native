@@ -130,32 +130,61 @@ Compiler vtable-group summaries are an independent baseline. Command factories a
 owners evaluate that summary-only path separately from the path that enters constructor bodies.
 The baseline's established points and bytes take precedence; an entered body only adds facts.
 
-### Owner derivation (SDK-658)
+### Owner derivation (SDK-658, SDK-660)
 
 The entered path tracks which values may point into the fresh owner (`evaluate/owner.rs`). The
 owner starts at the factory's `operator new` and at the registry owner's first argument. Tracking
-starts conservative: the owner has escaped, and every register, vector and held byte may hold it.
-A registry constructor's caller is not analysed, so its run keeps this state. The one narrowing is
-an allocator's return (`Machine::return_allocated_owner`): a value held before the allocation is
-underived, but nothing proves that the allocator kept the owner private, so it stays escaped. A
-pointer loaded from constant image data is underived; one loaded from memory with unknown content
-is not. A value
-is owner-derived when it is computed from a derived register, vector or memory byte, or when a
-call that could reach the owner returns it. A store or call is judged by these rules:
+starts conservative: every register, vector and held byte may hold the owner's address. A registry
+constructor's caller is not analysed, so its run keeps this state. The one narrowing is an
+allocator's return (`Machine::return_allocated_owner`): a value held before the allocation is
+underived. A pointer loaded from constant image data is underived. A value is owner-derived when it
+is computed from a derived register, vector or tainted memory byte, or when a call that is given an
+owner address returns it.
+
+#### Assumption: code changes only the object that it is given
+
+The method assumes that a call or store changes only the object that it is given. C++ builds
+members in address order, so a later member's code leaves the members before it intact. The
+assumption replaces SDK-658's escape rule, under which any call after `CEffect` registration could
+write any owner byte. It is a named assumption, not a proof. Jackson approved it on 2026-10-01
+after the [SDK-671 investigation](#global-lexer-string-sdk-671-investigation) showed that a proof
+needs a whole-program invariant. It applies the same way on every build and has no branch on a
+class, command or build.
+
+A call that is not entered is **given** the owner addresses that it receives:
+
+- each known value in `x0` to `x8` that lies inside the owner;
+- the owner's start, when `x0` is owner-derived and its value is unknown.
+
+`Machine::given_owner_address` returns the lowest. Other registers are ignored. A derived register
+with an unknown value can be left over from earlier code, and a call's arity is not known. A
+derived register with a known value outside the owner names another object. A store or call is
+judged by these rules:
 
 | Write | Effect on owner bytes | Other effects |
 | --- | --- | --- |
-| Known address | Exact, including earlier members | Outside the owner and private frame: caller memory is forgotten after return; a derived value escapes |
-| Unknown, underived address | Kept: a pointer that existed before the owner cannot point into it | Every other byte becomes unknown; a derived value escapes |
-| Unknown, derived address | Every owner byte becomes unknown | Every other byte becomes unknown |
-| Call that is not entered | Unknown when the call may reach the owner | Every byte outside the owner becomes unknown |
+| Known address | Exact, including earlier members | Outside the owner and private frame: caller memory is forgotten after return |
+| Unknown, underived address | Kept: a pointer that existed before the owner cannot point into it | Every other byte becomes unknown |
+| Unknown address, base register a known owner address | Bytes before the base are kept; bytes from it on become unknown | Every other byte becomes unknown |
+| Unknown, other derived address | Every owner byte becomes unknown | Every other byte becomes unknown |
+| Call that is not entered, given an owner address | Bytes from the lowest given address to the owner's end become unknown and derived | Every byte outside the owner becomes unknown; the object at each other address in `x0` to `x8` becomes derived; every register that the call does not preserve may be derived |
+| Call that is not entered, given no owner address | Kept | Every byte outside the owner becomes unknown; no returned register is derived |
 
-A call may reach the owner when the owner escaped, or when an argument register (`x0`-`x8`,
-`v0`-`v7`), a preserved register (`x19`-`x29`, `v8`-`v15`) or any stack byte is derived. A
-reaching call makes the owner escape and derives every register it does not preserve. After an
-escape, a load of an unknown byte is derived. Only a store of an underived value to a known address
-clears a byte's derivation; a forgotten byte may keep its earlier value. Loop-head joins and
-returning paths take the union of derivations and escapes.
+The modeled C calls follow the same return rule. `strlen` and a bounded `memcpy` or `memmove`
+keep their exact memory effects, but their returns are derived only when they are given an owner
+address. An allocation is given only its size, so a non-owner allocation returns nothing derived.
+
+A call given an owner address may store one in the objects that it is given, such as a member's
+self pointer or a stack out-parameter, so those bytes are tainted. An object outside the owner has
+an unknown size. On the stack, it is taken to reach the end of the frame that holds it; after the
+stack pointer moved by an unknown amount, no frame bounds it and the walk adds no facts. Elsewhere,
+it is a pointer-sized slot and any run of held bytes that continues it; memory that the machine
+does not hold falls under the escaped-address pitfall below. A load is derived when its address is derived
+or when it reads a tainted byte. Only a store of an
+underived value to a known address clears a byte's taint; a forgotten byte may keep its earlier
+value. Loop-head joins and returning paths take the union of derivations. An entered constructor
+returns its taint outside the owner as well as inside it (`Machine::install_owner_derived_memory`),
+so a member that stores `this` at a known global leaves that global derived for its caller.
 
 An owner byte is claimed when every returning path agrees on it after every later write that may
 change it. An unknown write therefore does not withdraw the walk: a later store to a known
@@ -170,12 +199,11 @@ position, argument values and established memory with their derivations. Preserv
 keep their derivation but not their values. A callee's write to a caller stack argument makes the
 caller forget its memory. While the entered path runs, a factory or registry call that is not
 entered also forgets caller memory, so a changed stack slot cannot reach a constructor as stale
-evidence. An allocation is such a call: the allocator may reach an escaped owner, although its
-result is a fresh object. A rebased pointer slot outside `__DATA_CONST` and the read-only sections
-is writable. Earlier code may have replaced its target, so the entered path reads it as unknown.
-A factory or registry run whose stack pointer moved by an unknown amount adds no facts. Both
-routes take these rules from `receivers.rs`: `ConstructorImage` gives each run its image, and
-`accept_entered_path` applies the stack rule.
+evidence. A rebased pointer slot outside `__DATA_CONST` and the read-only sections is writable.
+Earlier code may have replaced its target, so the entered path reads it as unknown. A factory or
+registry run whose stack pointer moved by an unknown amount adds no facts. Both routes take these
+rules from `receivers.rs`: `ConstructorImage` gives each run its image, and `accept_entered_path`
+applies the stack rule.
 
 Command and registry constructor tail branches use the same join as direct calls, even when the
 callee's code is decoded. Summary points are checked and completed at the constructor's receiver
@@ -184,25 +212,42 @@ cannot borrow a point from metadata. Partly written points are never completed f
 Reserved objects have no read-only backing; the method assumes neither zeroed allocation nor
 `_bzero` behavior.
 
-The [current population](discovery.md#owner-derivation-sdk-658) records storage, known ranges and
-failure shapes. The comparison with `main` finds no decreased answer; 134 command arguments gain
-storage, and every recovered storage agrees with the earlier unconfined run. Reports and the
-field-by-field comparison are in `.local/sdk-658/`.
+#### Pitfalls
 
-### Remaining constructor obstacles
+- **An owner address stored at an unknown address is lost.** The store taints no byte, so a later
+  load of it is underived. Registration arrays are the intended case. Code that stores `this` at an
+  unknown place and then reads it back to write an earlier member would leave a stale byte.
+- **Out-parameters are counted only in `x0` to `x8`.** A call that writes an earlier member through
+  a pointer in a stack argument or in a preserved register is not seen.
+- **An unknown derived `x0` loses the whole owner.** The long path of
+  `CString::CString(char const*)` gives the string member to `CPdxCommonStringAllocator::allocate`.
+  The allocator's return is then derived, and the later copy into it loses every owner byte. The
+  long `CToken` path calls `operator new[]` with a size only and keeps earlier members.
+- **Do not taint every byte that a call may forget.** A call forgets all memory outside the owner,
+  including the caller's saved-register slots. Tainting them makes the epilogue restore `x19` and
+  `x20` as derived unknown values, and the next member call then loses the whole owner. This lost
+  the six `closest_system` and `num_neighbor_systems` arguments to `CTriggerDatabase::AddTrigger`
+  `0x100d061ac`, which is given only the database and the new trigger.
+- **Compiler summary disagreement still rejects a walk.** Every recovered point agrees with the
+  vtable summary and with the [constructor table](#constructor-state-on-m451-hotfix-sdk-654).
+- Live observations confirm the static answers; they do not initialize constructor state.
 
-Most factories call `_bzero` on the new owner, and every effect owner's `CEffect::CEffect()`
-passes the address of a stack slot that holds `this` to `CPdxArray::InsertAtEmplace`
-(`0x10045691c`). Both calls may reach the owner, so the owner has escaped before the derived
-constructor's members are built. Every later call that is not entered may then write any owner
-byte. An operand is established only when its member's bytes are written after the last such
-call.
+The [current population](discovery.md#member-confined-calls-sdk-660) records storage, known ranges
+and failure shapes.
 
-`command-population --trace` names, for each of the remaining 35 arguments, every place that may
-have overwritten its bytes after they were written (see [method authoring](method-authoring.md)).
-A recovery must repair each of them, through the latest. The traces correct two attributions that
-SDK-658 made from walk-completion order: the event `days` are not lost to a later `CToken` alone,
-and `effect_on_blob.owned_planets_percentage` is not lost to `CTrigger` alone.
+### Constructor obstacles under the escape rule (superseded by SDK-660)
+
+This section records where SDK-658's escape rule lost the last 35 arguments. The
+[member-confined rule](#assumption-code-changes-only-the-object-that-it-is-given) recovers all of
+them, because none of these calls is given the lost member's address. The table names the calls
+that a method without that assumption would have to model.
+
+Under the escape rule, most factories call `_bzero` on the new owner, and every effect owner's
+`CEffect::CEffect()` passes the address of a stack slot that holds `this` to
+`CPdxArray::InsertAtEmplace` (`0x10045691c`). Both calls made the owner escape before the derived
+constructor's members were built, and every later call that was not entered could then write any
+owner byte. `command-population --trace` names every place that may have overwritten a lost
+member's bytes (see [method authoring](method-authoring.md)).
 
 | First loss | Latest loss | Lost destinations |
 | --- | --- | --- |
@@ -220,10 +265,7 @@ index each lose the same bytes again. A trace keeps four causes, so the populati
 three and the latest; the full list comes from `inspect --effect-grammar country_event --trace`
 with a larger `CAUSE_LIMIT` in a local build.
 
-The `ldaprb` at `0x101e16bcc` is evaluated as a byte load; the guard calls are the obstacle.
-Recovery needs a bounded model of these calls' writes, such as a copy length proved below the
-token's capacity, not a subtype name or a cached initial byte. These destinations remain an unmet
-parent criterion; only Jackson can amend it.
+The `ldaprb` at `0x101e16bcc` is evaluated as a byte load; the guard calls were the obstacle.
 
 ### Bounded string and token construction (SDK-659 prerequisite)
 
@@ -238,33 +280,298 @@ Copies require known source, destination and length, checked end addresses and a
 Byte values, loss traces and owner derivation move together. Unknown source bytes invalidate the corresponding
 destination bytes. Missing arguments, overflowing spans and unsupported copies retain opaque-call
 invalidation. A bounded write can overwrite an earlier member; only bytes outside its span survive.
-The terminator is a separate executed store. Neither an escaped owner nor an unknown source value
-licenses assuming that a constructor writes only its own member.
+The terminator is a separate executed store. A copy that is not bounded is an opaque call: under
+the member-confined rule it loses the owner from its lowest given address on.
 
 The exact-build controls execute both ABI entries of each constructor. With established source
-state, `CString(char const*)` retains earlier owner bytes for lengths 0, 3 and 22; length 23 reaches
-an unproved allocator and does not retain them. `CToken(int, CString const&)` retains earlier bytes
-for lengths 0, 3 and 255, and writes a terminator within its 256-byte inline buffer. Length 256
-reaches an unproved allocating path. Capacity and destination follow from executed initialization,
-loads and branches, not from the class name. Unknown lengths do not establish this bounded path.
-These token controls are independent of `CEventTarget` and its global lexer source.
+state, `CString(char const*)` and `CToken(int, CString const&)` retain earlier owner bytes for
+lengths 0, 3 and 22 and for 0, 3 and 255, and write their text and terminator within the inline
+buffer. The long paths are not bounded and do not claim inline text. Length 23 gives the string
+member to `CPdxCommonStringAllocator::allocate`, whose derived return makes the later copy lose
+every owner byte. Length 256 calls `operator new[]` with only a size, so the earlier member
+survives under the [member-confined rule](#assumption-code-changes-only-the-object-that-it-is-given).
+Capacity and destination follow from executed initialization, loads and branches, not from the
+class name. Unknown lengths do not establish the bounded path. These controls are independent of
+`CEventTarget` and its global lexer source.
 
-This method does **not** recover the two arguments originally assigned to SDK-659. Jackson
-approved closing SDK-659 on these bounded effects and moving both complete recoveries to SDK-661,
-which depends on SDK-660. The parent SDK-544 requirements are unchanged. In
-`CCreatePopGroupEffect`, the size operand is followed by an embedded effect constructor at
-`0x101e69ee4` and an event-target constructor at `0x101e69f08`, before the final literal string
-constructor at `0x101e69f6c`. The final string contains `GROWTH_CAT_OTHER` and now has bounded
-effects, but the earlier registration and event-target calls have already lost the operand.
-Its latest remaining loss is `PopulateTokenString` at `0x1004f6f44`.
-`spawn_megastructure.orbit_distance` still ends at later effect registration. Both complete
-recoveries belong to SDK-661 and require the shared event-target/registration proofs; the 20 event `days` are also
-still unresolved. The earlier obstacle table records the baseline before this prerequisite.
+These bounded effects alone recovered no destination. With the SDK-660 rule, the later
+event-target and registration calls keep earlier members, so all 35 arguments, including
+`create_pop_group.size` and `spawn_megastructure.orbit_distance`, have storage.
 
-The [population result](discovery.md#bounded-constructor-copies-sdk-659-prerequisite) is unchanged.
-The ignored `exact_build_string_and_token_constructor_effects` test checks these isolated effects;
-`cargo parity` and the existing scoped fixture and stored-world numeric live cases pass. No new
-live recovery is claimed.
+### Global lexer string (SDK-671 investigation)
+
+`CEventTarget::CEventTarget()` (`0x1004f6ed0`) gets its token text from
+`CStaticLexer::GetString(0x165)` (`0x1004f6f10`). Its other ABI entry, `0x1004f71c8`, is one `b`
+to `0x1004f6ed0` and has 784 direct callers. The facts below are from the M451-hotfix executable
+and ARM64 slice in [targets](targets.md). The inspector (`--function`, `--callers`, `--symbols`)
+read each body. A whole-image `llvm-objdump` pass found the address and call-site lists. The
+results that the executable does not state are named as such. No method code reads these facts
+yet.
+
+#### Lexer storage
+
+The lexer is a function-static object at `0x103796d08` (`L`). Its guard byte is `0x103796d00`.
+Every accessor checks the guard with `ldaprb` and, on first use, calls `___cxa_guard_acquire`,
+`CStaticLexer::CStaticLexer()` (`0x1025abe18`), `___cxa_atexit` and `___cxa_guard_release`.
+`__GLOBAL__sub_I_lexer.cpp` (`0x1025af854`) does the same, and `__TEXT,__init_offsets` lists it
+(entry 8256 of 8337). `__GLOBAL__sub_I_tokens.cpp` (`0x100de2918`, entry 2311) tail-calls
+`GetTokenArray()`. These initializers run before `main`. A code walk cannot prove that a factory
+runs after them, so the first-use path stays reachable for the method.
+
+| Address | Field | Writers |
+| --- | --- | --- |
+| `L+0x0`, `L+0x8` | `CTokenTreeContainer` vtable, ternary-tree root | Constructor; `CTernary::Add`; `DestroyTokens` |
+| `L+0x48` | Tokens initialized (byte) | `InitTokens` sets it; `DestroyTokens` clears it |
+| `L+0x50`, `L+0x58`, `L+0x64` (`0x103796d6c`) | Dynamic `CPdxArray<CToken*>`: vtable, data, count | Constructor; `InsertAtEmplace` (`0x1025af640`) sets count to old + 1; `DestroyTokens` sets 0 |
+| `L+0x68`, `L+0x70` (`0x103796d78`), `L+0x7c` (`0x103796d84`) | Lookup `CPdxArray<CString>`: vtable, data, size | Constructor; `RebuildLookup` through `SetSizeAndEmplace` (`0x1000b8cd8`) |
+| `L+0x80` (`0x103796d88`) | Token count: highest id + 1 | `InitTokens` (max + 1); `AddDynamicToken` (new id + 1) |
+| `L+0x84` (`0x103796d8c`) | Highest static id | `InitTokens` only |
+
+The constructor zeroes `L+0x78` to `L+0x88` and then calls `InitTokens` (`0x1025ac9b4`).
+`InitTokens` stores the highest static id, `0x4a04`, and the count, `0x4a05`. It also adds each
+static text to the ternary tree.
+
+`GetString(id)` (`0x1025ac638`) compares the size at `L+0x7c` with the count at `L+0x80`. It calls
+`RebuildLookup` (`0x1025ac0e4`) when they differ. Then it returns `[L+0x70] + id * 0x28` with
+`smaddl`. There is no bounds check.
+
+#### Q1: the id-to-text relation
+
+`GetTokenArray()` (`0x100d9e2a8`) has one guard and then 9,994 straight-line calls of
+`CToken::CToken(int, char const*)` (`0x1025bc774`). Each call forms its receiver from
+`0x10333d380` with constant `adrp`, `add`, `add …, lsl #12` or `mov` + `add` steps. Each id is a
+`mov w1, #imm`, and each text is an `adrp` + `add` pair to a `__cstring` literal. The body has no
+other branch. The census shows:
+
+- Positions 0 to 9,993 each occur once at stride `0x120`.
+- Ids are distinct and range from `0xb` to `0x4a04`. No position equals its id: position 0 has
+  id `0xb` (`"id"`).
+- Id `0x165` occurs once, at position 583 (`0x100da22c4`), with `"none"` at `0x102dcead9`.
+- The longest text is 66 bytes. 2,433 texts are longer than 22 bytes.
+
+`CToken(int, char const*)` stores the id at `+0x0` and points `+0x10` to its 256-byte inline
+buffer at `+0x20`. It copies the text with `strlen` and `memcpy`, and adds a terminator.
+`GetTokenType(i)` (`0x100d9e278`) returns `0x10333d380 + i * 0x120`, so it indexes by
+**position**.
+
+`RebuildLookup` fills the table in this order:
+
+1. It calls `CString::Clear` on each existing entry. A short entry gets byte 0 and byte `0x17`
+   set to zero. A long entry keeps its heap buffer and gets size 0.
+2. It calls `SetSizeAndEmplace(count)`. When the array grows, this function moves the entries
+   bitwise into a new `new[]` block, frees the old block through vtable slot `+0x20`, and zeroes
+   the new entries.
+3. For each position `i` below `GetNoOfTokenTypes()` (`0x270a`), it sets
+   `table[GetTokenType(i)->id]` to `GetTokenType(i)->text` with `strlen` and
+   `__assign_external`. The table index is the **id**.
+4. For each dynamic token, it sets `table[token->id]` to `token->text`.
+5. It stores 16 fixed texts.
+
+The fixed texts in step 5 replace whatever steps 3 and 4 wrote:
+
+| Id | Text | Static text it replaces |
+| --- | --- | --- |
+| 1, 2, 3, 4, 5, 6 | `=` `"` `{` `}` `(` `)` | none: not a static id |
+| 8, 9, 16, 17, 18 | `,` `#` `\n` `\t` space | none: not a static id |
+| `0x1d3`, `0x1d4` | `>` `<` | `greater_than`, `less_than` |
+| `0x3cb`, `0x3cc` | `>=` `<=` | `greater_eq_than`, `less_eq_than` |
+| `0x427` | `!=` | `not_eq` |
+
+The relation can be derived without a branch on a class, command or build. Run the
+`GetTokenArray` call sequence, then apply the `RebuildLookup` override stores. `0x165` is not an
+override, so its text is `"none"`.
+
+#### Q2: dynamic ids
+
+`AddDynamicToken` (`0x1025acf9c`) returns the existing id when the ternary tree already has the
+text. Otherwise it computes the new id as `[L+0x64] + [L+0x84] + 1` (`0x1025ad194`-`0x1025ad1a8`),
+which is the dynamic count + `0x4a04` + 1. Then it allocates a `0x120`-byte token with
+`operator new`, constructs it with that id, inserts it at the end of the dynamic array and stores
+`id + 1` in `L+0x80`. The count starts at zero and grows by one for each insertion. The two
+additions (`0x1025ad1a4`, `0x1025ad1a8`) are 32-bit, so the sum overflows before the count does:
+count `0x7fffb5fb` gives id `0x80000000`, which is negative. A dynamic id is at least `0x4a05`
+only while the count is below `0x7fffb5fb`. The executable has no check that enforces this. It is
+a condition, not a derived bound, although it needs about 2.1 billion dynamic tokens. `IsDynamic`
+(`0x1025ac914`) tests `L+0x84 < id < L+0x80` and agrees with this range.
+
+`DestroyTokens` (`0x1025ad3fc`) runs only from the lexer destructor, which `___cxa_atexit` calls.
+It sets the dynamic count to zero and clears the tree and the initialized flag. It does not change
+`L+0x80` or `L+0x84`.
+
+The identified writers of the lookup table and of the dynamic array are the lexer functions above.
+The whole-image scan for code that forms an address in `0x103796d00`-`0x103796d97` found 14
+functions:
+
+- the 11 `CStaticLexer` functions;
+- `CLexer::FindTok`;
+- `__GLOBAL__sub_I_lexer.cpp`;
+- `CStaticLexer::GetLookUpArray` (`0x1025aeea0`).
+
+`GetLookUpArray` returns `L+0x68`. Its only direct caller, `CBinLexer::GetTok`, reads the size and
+then copies a `GetString` result. `AccessStaticLexer` and `GetStaticLexer` return `L` and have no
+direct callers. Calls through a register and pointer slots in data were not scanned. The scan
+finds an address formed with `adrp` on page `0x103796000` and then `add` or a load offset; it
+does not find an address formed from another page.
+
+#### Q3: stores that the `GetString` call tree can make
+
+| Path | Stores |
+| --- | --- |
+| Guard set, size equals count | None. Loads `L+0x7c`, `L+0x80` and `L+0x70` |
+| Guard set, size differs | `RebuildLookup`: `CString::Clear` on entries; `SetSizeAndEmplace` (`operator new[]`, bitwise moves, an indirect free through `[L+0x68]+0x20`, and zeroing); `__assign_external` (`0x100010be4`) into each entry; `CPdxCommonStringAllocator::allocate` / `deallocate` for the 2,433 long texts; `GetTokenType` → `GetTokenArray` (guarded first use: 9,994 stores into `0x10333d380`) |
+| Guard not set | `___cxa_guard_acquire`; the constructor's stores to `L`; `InitTokens` (stack `CString`, `operator new(4)`, `CTernary::Add` node allocation and stores through tree pointers, `CTernary::Unlock`); `___cxa_atexit`; `___cxa_guard_release`; and then the rebuild |
+
+The rebuild path is live during content loading. Many readers and defines call
+`AddDynamicToken` (563 direct call sites). Each new token makes the size differ from the count, so
+the next `GetString` call does a rebuild.
+
+All stores except the fast path go through pointers loaded from lexer memory: `[L+0x70]`, tree
+nodes, and dynamic token pointers. The SDK-658 rules derive each such pointer from the escaped
+owner, so the current walk cannot keep earlier owner bytes. The proof that is necessary is a
+**confinement invariant** about the program, not a fact about the body of one function:
+
+1. Every instruction that forms an address in the lexer object is in a known set of functions,
+   and so is every pointer slot to it.
+2. Those functions store into lexer-reachable memory only constants, results of their own
+   allocations, values loaded from lexer memory, and copied text bytes. They never store a
+   pointer from an argument or from outside the lexer.
+3. Each interior pointer that leaves the lexer is used only to read. These are the `GetString`
+   result, `GetLookUpArray`, `GetTokenType`, the tree values and the indirect calls through
+   `L+0x0`, `L+0x50` and `L+0x68`.
+4. The allocators, the C++ runtime guards and `___cxa_atexit` write only their own state and the
+   block that they return. `CPdxCommonStringAllocator::allocate` (`0x1025127ec`) uses its pool
+   (a spin lock and an indirect call) only when the mode word at the string's `+0x18` is 1 and
+   the pool pointer at `+0x20` is not null. Otherwise it tail-calls `operator new`.
+   `SetSizeAndEmplace` zeroes each new entry, so with intact lexer storage a table entry takes the
+   `operator new` path. The ordinary allocator and runtime contracts are still necessary.
+
+From items 1 to 4, no lexer pointer can hold an owner address, because only the factory's
+allocation creates that address. Then the call tree cannot write owner bytes. The scan agrees
+with item 1 but does not prove it: it misses addresses formed from another page, indirect
+references and pointer slots. The lexer bodies above agree with item 2. For item 3,
+`GetString` has 2,244 direct call sites: 2,239 `bl` and 5 tail `b`. The tail calls, such as
+`TokenToString` (`0x1006c257c`) and the enum-name helpers (`0x1002fd9f0`, `0x1006c3238`,
+`0x1006c3240`), return the pointer to their own callers, so their callers' uses count too. A use
+classification of 2,238 sites sorts the result as follows:
+
+| Use | Sites |
+| --- | ---: |
+| A load of byte `0x17` (inlined `GetTCharPtr` or `GetSize`) | 1,508 |
+| A move to an argument register | 696 (`x2`: 653, `x1`: 41, `x3`: 2) |
+| A move to a preserved register | 27 |
+| The receiver of `CString::Find` | 2 |
+| Not classified | 5 |
+
+This census is incomplete: it does not include 6 sites (`PostReadInit` bodies and
+`CPatronType::ParseCountryEventID`) or the callers of the tail wrappers. It is also not a proof
+that every site only reads. Item 4 is outside the executable's local code. No current Native
+mechanism proves any of the four items.
+
+The derived table is the text that a **completed** rebuild writes. The text that a later call
+returns also needs these conditions, which the executable does not establish:
+
+- **Intact lexer storage.** No writer outside the census changes the table, the counters or the
+  dynamic tokens (items 1 and 3). The lexer is alive: its destructor, which `___cxa_atexit`
+  calls, has not run.
+- **No retained incomplete rebuild.** `SetSizeAndEmplace` stores the new size
+  (`0x1000b8db4`) before the static loop assigns texts with allocating calls (`0x1025ac198`). If
+  an exception leaves a rebuild and execution continues, the size equals the count. Later calls
+  then take the fast path, and entry `0x165` can stay `""` from the `Clear` pass. This can occur
+  with sequential execution.
+- **Sequential execution.** `RebuildLookup` has no lock. A concurrent reader can see an entry
+  between `Clear` and its new assignment. It can also hold a pointer into a block that
+  `SetSizeAndEmplace` moved and freed (`0x1000b8d4c`-`0x1000b8d80`).
+
+#### Q4: the returned object
+
+`__assign_external` writes a short string when the entry is short and the length is 22 or less.
+It copies the text to entry `+0x0`, stores the length in byte `+0x17` and writes a terminator at
+`+length`. A long entry keeps its heap buffer: the pointer is at `+0x0`, the size at `+0x8` and
+the capacity at `+0x10`, with the high bit set. A `Clear` does not make a long entry short. Entry
+`0x165` starts zeroed (short). With intact lexer storage it only receives `"none"`, so it stays
+short.
+
+For entry `0x165`, the evaluator therefore needs 0x28 bytes outside the owner with:
+
+- `"none"` at `+0x0`;
+- a zero byte at `+0x4`;
+- the value 4 at `+0x17`.
+
+The other bytes can stay unknown. `CString::GetTCharPtr` (`0x102523e94`) and `CString::GetSize`
+(`0x102524808`) then run unchanged: byte `+0x17` is not negative, so they return the entry address
+and 4. The returned pointer must be **underived**, the same as a pointer from constant image data,
+so that the `CToken` copy does not count as an owner escape. `PopulateTokenString` then runs
+`strlen` on the token's own buffer and calls `__assign_external` into its short `CString` at
+`+0x28`. The constructor stored null at `+0x178`, so the parent loop does not run.
+
+#### Q5: other users
+
+Of the 2,238 classified `GetString` call sites, 669 pass a constant id (60 distinct ids) and 1,569
+pass a computed id. Id `0x165` occurs at 72 sites: `CEventTarget::CEventTarget()`, four enum-name
+helpers and 67 `TPdxRefDatabase<…>::WriteMembers`.
+
+Command construction reaches the lexer through two event-target routes:
+
+- **`CEventTarget::CEventTarget()`, id `0x165`.** A reverse walk of direct calls, to depth 6,
+  finds 89 `C…Effect` or `C…Trigger` constructors that reach it. In the traced population
+  (`command-population --trace`, `state_obstacles`), this constructor is the first loss of:
+  - the 20 event `days` and `months/years` groups;
+  - the 27 timed-flag `days/months/years` groups;
+  - `add_modifier` and `add_stage_modifier` (`mult`, `multiplier` and the duration group);
+  - `set_saved_date.days_from_present`, `effect_on_blob.owned_planets_percentage`,
+    `spawn_megastructure.orbit_distance`, `release_vivarium_fauna_count.count`,
+    `closest_system.min_steps` and `num_neighbor_systems.min_distance`.
+
+  It is also the latest loss of `create_pop_group.size`, whose first loss is `CEffect::CEffect()`.
+- **`CEventTarget::CreateFromToken(int)` → `CEventTarget::CEventTarget(int)` (`0x1004f8e88`).**
+  The id is an argument. Effect and trigger factories pass these ids:
+
+| Id | Text |
+| --- | --- |
+| `0x2c91` | `this` |
+| `0x2c92` | `root` |
+| `0x2c9b` | `random` |
+| `0x346` | `default` |
+| `0x2a2` | `auto` |
+| `0x165` | `none` (`CCreateSpecies`) |
+| `0x6b` | `target` |
+| A computed id | Unknown (`CMemberOfFactionTrigger::PostInit` loads it from `+0xc0`) |
+
+  This route then calls `ParseForSpecialValues`, which the `CEventTarget()` route does not call.
+
+Every constant id above is a static id that is not an override, and each text is 22 bytes or
+shorter. A table model therefore serves all of them. A computed id stays opaque.
+
+#### Pitfalls
+
+- The array position is not the token id. A table indexed by `GetTokenArray` position gives the
+  wrong text for every id.
+- A table derived only from `GetTokenArray` is wrong for `0x1d3`, `0x1d4`, `0x3cb`, `0x3cc` and
+  `0x427`. `RebuildLookup` replaces them with operator text.
+- `GetString` has no bounds check. An id at or above the count reads outside the table.
+- `GetLookUpArray` returns the array object at `L+0x68`. It does not return the data pointer at
+  `L+0x70`.
+- `CStaticLexer::CStaticLexer()` has two bodies, `0x1025abe18` and `0x1025ad568`. Both call
+  `InitTokens`. Only `0x1025abe18` has direct callers.
+- A live read of the lexer confirms a static finding. It does not establish the state at the time
+  of a factory call.
+
+#### Outcome: the member-confined rule (SDK-660)
+
+The investigation's designs needed either a lexer model with a recorded exception or a
+whole-program write analysis. SDK-660 uses neither. It adopts the
+[member-confined rule](#assumption-code-changes-only-the-object-that-it-is-given): `GetString` is
+given only the token id in `w0`, so it cannot change the owner, and its return is underived. The
+lexer facts above are not used by any method. They remain the reference for a future method that
+must prove the lexer's text.
+
+A throwaway experiment tested the rule first; its patch and outputs are in `.local/sdk-671/`. It
+counted only `x0` in part 1, ignored callee taint outside the owner, left the modeled C calls and
+the allocator handler unchanged, and did not taint what a reaching call writes. The delivered
+method also counts known owner addresses in `x1` to `x8`, returns a callee's outside taint,
+applies the return rule to every handler and taints the objects that a reaching call is given.
+These stricter parts lose no destination: the 35 arguments and 50 omitted counts are the same as
+the experiment's. They change fewer other answers: 137 commands instead of 347.
 
 ## World evaluation on M451-hotfix (SDK-647)
 

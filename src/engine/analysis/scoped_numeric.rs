@@ -622,10 +622,8 @@ mod constructor_parity {
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
     fn m45_constructor_initial_storage_parity() {
         let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-        let field = |command: &str, key: &str| {
-            let answer = native
-                .command_grammar(DeclarationKind::Effect, command)
-                .unwrap();
+        let field = |kind: DeclarationKind, command: &str, key: &str| {
+            let answer = native.command_grammar(kind, command).unwrap();
             let (GrammarProperty::Known(fields) | GrammarProperty::Partial(fields)) =
                 answer.value.fixed_keys
             else {
@@ -650,7 +648,7 @@ mod constructor_parity {
             ("steal_planet_output", "percentage", 64, 100000),
             ("create_ambient_object", "scripted_scale", 64, 100000),
         ] {
-            let (field, _) = field(command, key);
+            let (field, _) = field(DeclarationKind::Effect, command, key);
             let GrammarProperty::Partial(Some(numeric)) = &field.reader.numeric else {
                 panic!("{command}.{key}: {:?}", field.reader.numeric);
             };
@@ -669,30 +667,69 @@ mod constructor_parity {
                 "{command}.{key}"
             );
         }
-        // A later member constructor calls code that may write any owner byte: token and
-        // string copies, event-target lexing, trigger registration and a static guard.
-        for (command, key) in [
-            ("country_event", "days"),
-            ("add_modifier", "mult"),
-            ("add_modifier", "multiplier"),
-            ("closest_system", "min_steps"),
-            ("create_pop_group", "size"),
-            ("release_vivarium_fauna_count", "count"),
-        ] {
-            let (field, gaps) = field(command, key);
+        // Each destination after a later member's calls has the storage of a proved sibling.
+        let int32 = field(DeclarationKind::Effect, "country_event", "random").0;
+        let fixed64 = field(DeclarationKind::Effect, "add_modifier", "time_multiplier").0;
+        let integer_destinations = EVENTS
+            .iter()
+            .map(|event| (DeclarationKind::Effect, *event, "days"))
+            .chain([
+                (
+                    DeclarationKind::Effect,
+                    "set_saved_date",
+                    "days_from_present",
+                ),
+                (DeclarationKind::Effect, "closest_system", "min_steps"),
+                (DeclarationKind::Effect, "closest_system", "max_steps"),
+                (DeclarationKind::Trigger, "closest_system", "min_steps"),
+                (DeclarationKind::Trigger, "closest_system", "max_steps"),
+                (
+                    DeclarationKind::Trigger,
+                    "num_neighbor_systems",
+                    "min_distance",
+                ),
+                (
+                    DeclarationKind::Trigger,
+                    "num_neighbor_systems",
+                    "max_distance",
+                ),
+            ]);
+        let fixed_point_destinations = [
+            (DeclarationKind::Effect, "add_modifier", "mult"),
+            (DeclarationKind::Effect, "add_modifier", "multiplier"),
+            (DeclarationKind::Effect, "add_stage_modifier", "mult"),
+            (DeclarationKind::Effect, "add_stage_modifier", "multiplier"),
+            (DeclarationKind::Effect, "create_pop_group", "size"),
+            (
+                DeclarationKind::Effect,
+                "effect_on_blob",
+                "owned_planets_percentage",
+            ),
+            (
+                DeclarationKind::Effect,
+                "spawn_megastructure",
+                "orbit_distance",
+            ),
+            (
+                DeclarationKind::Effect,
+                "release_vivarium_fauna_count",
+                "count",
+            ),
+        ];
+        let destinations: Vec<_> = integer_destinations
+            .map(|destination| (destination, &int32))
+            .chain(fixed_point_destinations.map(|destination| (destination, &fixed64)))
+            .collect();
+        assert_eq!(destinations.len(), 35);
+        for ((kind, command, key), sibling) in destinations {
+            let (field, _) = field(kind, command, key);
             assert_eq!(
-                field.reader.numeric,
-                GrammarProperty::Unresolved,
-                "{command}.{key}"
+                field.reader.numeric, sibling.reader.numeric,
+                "{kind:?} {command}.{key}"
             );
             assert_eq!(
-                field.reader.scoped_operand,
-                GrammarProperty::Unresolved,
-                "{command}.{key}"
-            );
-            assert!(
-                gaps.iter()
-                    .any(|gap| gap.kind == crate::GapKind::UnresolvedStorage)
+                field.reader.scoped_operand, sibling.reader.scoped_operand,
+                "{kind:?} {command}.{key}"
             );
         }
         let purges = native
@@ -709,23 +746,99 @@ mod constructor_parity {
         assert_eq!(numeric.width_bits, GrammarProperty::Known(64));
         assert_eq!(numeric.scale, GrammarProperty::Known(Some(100000)));
 
-        for (command, omitted) in [
-            ("set_timed_country_flag", GrammarProperty::Unresolved),
-            ("add_modifier", GrammarProperty::Unresolved),
-            ("add_stage_modifier", GrammarProperty::Unresolved),
-            ("set_timed_relation_flag", GrammarProperty::Known(0)),
-            ("add_timed_trait", GrammarProperty::Known(0)),
-        ] {
-            let answer = native
-                .command_grammar(DeclarationKind::Effect, command)
-                .unwrap();
+        let omitted_counts = TIMED_FLAGS
+            .iter()
+            .chain(&EVENTS)
+            .map(|command| (DeclarationKind::Effect, *command, 0))
+            .chain([
+                (DeclarationKind::Effect, "add_modifier", -1),
+                (DeclarationKind::Effect, "add_stage_modifier", -1),
+                (DeclarationKind::Trigger, "has_passed_resolution", 0),
+                (DeclarationKind::Effect, "set_timed_relation_flag", 0),
+                (DeclarationKind::Effect, "add_timed_trait", 0),
+            ]);
+        for (kind, command, omitted) in omitted_counts {
+            let answer = native.command_grammar(kind, command).unwrap();
             let (GrammarProperty::Known(groups) | GrammarProperty::Partial(groups)) =
                 answer.value.durations
             else {
                 panic!("{command}: {:?}", answer.gaps);
             };
             assert_eq!(groups.len(), 1, "{command}");
-            assert_eq!(groups[0].omitted_count, omitted, "{command}");
+            assert_eq!(
+                groups[0].omitted_count,
+                GrammarProperty::Known(omitted),
+                "{command}"
+            );
+        }
+        // The modifier operands' literal widths keep their storage apart from the count.
+        for command in ["add_modifier", "add_stage_modifier"] {
+            let answer = native
+                .command_grammar(DeclarationKind::Effect, command)
+                .unwrap();
+            assert!(
+                answer
+                    .gaps
+                    .iter()
+                    .all(|gap| !gap.detail.contains("duration-scoped-literal")),
+                "{command}: {:?}",
+                answer.gaps
+            );
         }
     }
+
+    /// The 20 effects that fire an event, each with a scoped `days` operand.
+    const EVENTS: [&str; 20] = [
+        "agreement_event",
+        "astral_rift_event",
+        "bypass_event",
+        "carrier_event",
+        "colony_event",
+        "cosmic_storm_event",
+        "cosmic_storm_influence_field_event",
+        "country_event",
+        "espionage_operation_event",
+        "first_contact_event",
+        "fleet_event",
+        "leader_event",
+        "observer_event",
+        "planet_event",
+        "pop_faction_event",
+        "pop_group_event",
+        "ship_event",
+        "situation_event",
+        "starbase_event",
+        "system_event",
+    ];
+
+    /// The ordinary timed flag effects.
+    const TIMED_FLAGS: [&str; 27] = [
+        "set_timed_agreement_flag",
+        "set_timed_ambient_object_flag",
+        "set_timed_archaeology_flag",
+        "set_timed_army_flag",
+        "set_timed_carrier_flag",
+        "set_timed_country_flag",
+        "set_timed_deposit_flag",
+        "set_timed_espionage_asset_flag",
+        "set_timed_espionage_operation_flag",
+        "set_timed_federation_flag",
+        "set_timed_first_contact_flag",
+        "set_timed_fleet_flag",
+        "set_timed_global_flag",
+        "set_timed_leader_flag",
+        "set_timed_megastructure_flag",
+        "set_timed_planet_flag",
+        "set_timed_pop_faction_flag",
+        "set_timed_pop_flag",
+        "set_timed_pop_group_flag",
+        "set_timed_sector_flag",
+        "set_timed_ship_flag",
+        "set_timed_situation_flag",
+        "set_timed_species_flag",
+        "set_timed_spynetwork_flag",
+        "set_timed_star_flag",
+        "set_timed_starbase_flag",
+        "set_timed_war_flag",
+    ];
 }

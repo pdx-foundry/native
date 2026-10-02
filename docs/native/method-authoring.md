@@ -3,7 +3,9 @@
 Write one method in one task: explore the executable, record the findings, then deliver the
 method with authored tests, parity output and a run over its whole population. Do not start a
 separate throwaway prototype. The [development policy](../development-policy.md#write-a-method-in-one-task)
-sets this workflow; the [method index](discovery.md) locates the operations and their code.
+sets this workflow; the [method index](discovery.md) locates the operations and their code. The
+policy permits a [separate investigation](../development-policy.md#investigate-separately-when-the-result-decides-the-design)
+only when its result decides the design.
 
 Always run examples with `cargo run --release --example NAME -- …`, never by invoking
 `target/release/examples/NAME` directly. Cargo rebuilds the example when its source changes;

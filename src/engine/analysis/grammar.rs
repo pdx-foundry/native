@@ -706,10 +706,11 @@ fn nested_reader(
             .copied()
             .ok_or(Unresolved::new("nested-member-slot"))
     };
+    let member = slot(input.persistent_slots[1])?;
     Ok(CommandReader {
         vtable,
         read: slot(input.persistent_slots[0])?,
-        member: slot(input.persistent_slots[1])?,
+        member: declarations::alias_target(&input.declarations.functions, member),
     })
 }
 
@@ -1256,6 +1257,14 @@ mod tests {
         input
     }
 
+    /// Give `result` and every nested result the authored initializer `initializer`.
+    fn set_initializers(result: &mut GrammarResult) {
+        result.initializer = Ok("initializer".into());
+        for child in result.nested.values_mut() {
+            set_initializers(child);
+        }
+    }
+
     fn normalize_block(mut result: GrammarResult) -> crate::Answer<crate::CommandGrammar> {
         let forms = std::sync::Arc::make_mut(result.forms.as_mut().unwrap());
         forms.complete = true;
@@ -1528,12 +1537,6 @@ mod tests {
         forms.block = true;
         forms.stops.clear();
         let mut references = crate::engine::analysis::references::ReferenceFacts::default();
-        fn set_initializers(result: &mut GrammarResult) {
-            result.initializer = Ok("initializer".into());
-            for child in result.nested.values_mut() {
-                set_initializers(child);
-            }
-        }
         set_initializers(&mut result);
         references.initializers.insert(
             "initializer".into(),
@@ -1575,6 +1578,106 @@ mod tests {
             result.nested["parent"].nested["child"].fields.fields[0].name,
             "value"
         );
+    }
+
+    /// [`nested_input`] whose grandchild `ReadMember` at 0xc100 is `thunk`, which branches to the
+    /// grandchild's reader at 0xc000.
+    fn aliased_grandchild_input(thunk: Vec<u8>) -> GrammarInput {
+        let mut input = nested_input();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == 0xc000)
+            .unwrap()
+            .name = "CGrandchild::ReadBackwardsCompatible(CReader&, int)".into();
+        input.symbols.push(Symbol {
+            address: 0xc100,
+            name: "CGrandchild::ReadMember(CReader&, int)".into(),
+        });
+        input.declarations.functions.insert(
+            0xc100,
+            Body {
+                address: 0xc100,
+                code: thunk,
+            },
+        );
+        input.declarations.pointers.insert(0x13028, 0xc100);
+        input
+    }
+
+    /// The published members of `parent.child`, and the answer's gaps at that key path.
+    fn published_grandchild(input: &GrammarInput) -> (crate::FieldMembers, Vec<crate::Gap>) {
+        let mut result = analyze(input, FACTORY).unwrap();
+        set_initializers(&mut result);
+        let answer = normalize_block(result);
+        let (crate::GrammarProperty::Known(keys) | crate::GrammarProperty::Partial(keys)) =
+            answer.value.fixed_keys
+        else {
+            panic!("fixed keys: {:?}", answer.value.fixed_keys);
+        };
+        let field = |fields: &[crate::Field], name: &str| {
+            fields
+                .iter()
+                .find(|field| field.name == name)
+                .unwrap()
+                .clone()
+        };
+        let crate::FieldMembers::Fields(children) = field(&keys, "parent").members else {
+            panic!("parent members");
+        };
+        let path = crate::GapSubject::key_path(vec!["parent".into(), "child".into()]);
+        let gaps = answer
+            .gaps
+            .into_iter()
+            .filter(|gap| gap.subject == Some(path.clone()))
+            .collect();
+
+        (field(&children, "child").members, gaps)
+    }
+
+    #[test]
+    fn a_nested_member_reader_that_is_one_branch_is_read_through_its_target() {
+        let alias = arm64!(at 0xc100; b extern 0xc000);
+        let (members, gaps) = published_grandchild(&aliased_grandchild_input(alias));
+        let crate::FieldMembers::Fields(fields) = members else {
+            panic!("{members:?}");
+        };
+        assert_eq!(fields[0].name, "value");
+        assert_eq!(gaps, []);
+
+        let changed_argument = arm64!(at 0xc100; mov x1, x3; b extern 0xc000);
+        let undecoded = arm64!(at 0xc100; b extern 0xc800);
+        let mut chain = aliased_grandchild_input(arm64!(at 0xc100; b extern 0xc104));
+        for (address, target) in [(0xc104, 0xc108), (0xc108, 0xc10c), (0xc10c, 0xc110)] {
+            chain.declarations.functions.insert(
+                address,
+                Body {
+                    address,
+                    code: arm64!(at address; b extern target),
+                },
+            );
+        }
+        chain.declarations.functions.insert(
+            0xc110,
+            Body {
+                address: 0xc110,
+                code: arm64!(at 0xc110; b extern 0xc000),
+            },
+        );
+        // An empty member list is published only with the gap that keeps it partial.
+        for (input, gap) in [
+            (aliased_grandchild_input(changed_argument), "reader-routing"),
+            (aliased_grandchild_input(undecoded), "callee"),
+            (chain, "command-member-name"),
+        ] {
+            let (members, gaps) = published_grandchild(&input);
+            assert!(
+                matches!(&members, crate::FieldMembers::Unresolved)
+                    || matches!(&members, crate::FieldMembers::Fields(fields) if fields.is_empty()),
+                "{members:?}"
+            );
+            assert!(gaps.iter().any(|found| found.detail == gap), "{gaps:?}");
+        }
     }
 
     #[test]

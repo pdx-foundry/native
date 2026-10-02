@@ -70,6 +70,23 @@ the method's page in `docs/native/`, and deliver the method with its authored te
 output. This replaces the prototype-then-port split (2026-09-24). Untracked work in `.local/` still
 holds acquired knowledge until its findings are recorded; preserve it as the next section says.
 
+### Investigate separately when the result decides the design
+
+A separate investigation session is permitted before the method's task in two cases only
+(2026-10-01):
+
+- the result selects between designs, so the plan cannot be written without it;
+- the result can show that the ticket's criteria cannot be met.
+
+The investigation has its own ticket, a child of the method ticket, and blocks it. It uses the
+inspector and reads the code. It does not write method code or a prototype of the method. Its
+output is the findings and failed shapes on the method's page in `docs/native/`, and a
+recommendation on the ticket: the design to use, or the criterion to amend. The maintainer decides
+before the method's task starts.
+
+All other exploration stays in the method's own task. A question whose answer does not change the
+design, or that depends on the method's own repairs, is not a reason for a separate session.
+
 ## Preserve acquired knowledge
 
 The valuable asset is the knowledge from prototypes and probes. It includes untracked source,
