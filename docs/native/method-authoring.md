@@ -244,6 +244,111 @@ Tests and the generator share [`tests/parity/`](../../tests/parity/mod.rs); layo
 all tracked files without a game, and the installed-build test also changes one recorded answer
 to check that only the corresponding file and entry change.
 
+## Iterate on selected commands and registries
+
+The scoped numeric and duration examples accept repeatable exact-name filters:
+
+```sh
+cargo run --release --example scoped-numeric-population -- --command Effect/country_event
+cargo run --release --example duration-population -- --command Effect/country_event --command Trigger/has_country_flag
+cargo run --release --example scoped-numeric-population -- --registry common/megastructures
+```
+
+Use `STELLARIS_PATH` for the installation. With no filters, both examples measure the full
+population. With filters, they measure only the union of the requested commands and registries.
+A command-only run skips registry methods; a registry-only run skips command methods. Names are
+case-sensitive; duplicate requests count once and invalid or unknown names fail. `--help` shows
+usage without opening an installation. Filters run the existing single-command method, so unrelated
+command grammars are not analyzed. Each query still checks executable integrity.
+
+Filtered output has the full report shape, including empty sections. `commands` and `registries`
+count selected subjects, and result counters count their entries. `registry_completeness` still
+reports the completeness of discovery. A command that has no relevant numeric or duration entries
+still contributes to `commands`. Use the same selection on both sides of a focused comparison.
+
+While iterating, measure the affected commands and registries. Before delivery, freeze the final
+source and run the full populations once, then compare with `main`. Review fixes can use focused
+runs until the final source is ready for another full measurement.
+
+### Capture a stable main and branch pair
+
+Commit the candidate changes first. Resolve `main` (or a freshly fetched `origin/main`) to a commit,
+and use separate detached worktrees for both captures. Do not edit either capture worktree or the
+installation during the run. Separate worktrees prevent an edit between examples from silently
+rebuilding only the remaining examples from different source. Cargo's separate target directories
+also keep the two builds independent.
+
+Run this from the candidate checkout, with `STELLARIS_PATH` exported:
+
+```sh
+set -e
+capture_root=$(mktemp -d "${TMPDIR:-/tmp}/native-population.XXXXXX")
+main_commit=$(git rev-parse main)
+candidate_commit=$(git rev-parse HEAD)
+git worktree add --detach "$capture_root/main-tree" "$main_commit"
+git worktree add --detach "$capture_root/candidate-tree" "$candidate_commit"
+printf '%s\n' "$main_commit" > "$capture_root/main-commit.txt"
+printf '%s\n' "$candidate_commit" > "$capture_root/candidate-commit.txt"
+for side in main candidate; do
+    mkdir "$capture_root/$side"
+    for example in scoped-numeric-population duration-population command-population; do
+        (
+            cd "$capture_root/$side-tree"
+            if [ "$example" = command-population ]; then
+                cargo run --release --example "$example" -- "$STELLARIS_PATH"
+            else
+                cargo run --release --example "$example"
+            fi
+        ) > "$capture_root/$side/$example.json.tmp"
+        mv "$capture_root/$side/$example.json.tmp" "$capture_root/$side/$example.json"
+    done
+done
+for example in scoped-numeric-population duration-population command-population; do
+    python3 tools/population/compare.py \
+        "$capture_root/main/$example.json" "$capture_root/candidate/$example.json" \
+        > "$capture_root/$example-comparison.json"
+done
+```
+
+Keep the reports and commit files until delivery. Remove the two clean capture worktrees with
+`git worktree remove` when finished. Run long captures through the repository's run-and-queue
+workflow. A focused capture can use the same isolated checkouts once both revisions support filters.
+
+### Compare existing population reports
+
+[`tools/population/compare.py`](../../tools/population/compare.py) reads two reports without a game:
+
+```sh
+python3 tools/population/compare.py before.json after.json > comparison.json
+```
+
+It recognizes scoped numeric, duration, and command reports, including compact command baselines.
+The two inputs must have the same report type and exact build. Exit status is 0 with no regressions,
+1 with regressions, and 2 for invalid input. Output contains every regression with its path and
+before/after values, changed entries, change counts, and before/after population counts.
+
+A regression is a removed entry, a lost `Known` or `Partial` property, `Known` downgraded to
+`Partial`, or a changed established value inside either property. Stronger properties must preserve
+the facts already present. Named fields and units match by name or key. Alternatives match one-to-one by preserved facts,
+including when a new alternative is inserted; duplicate counts remain checked. Semantic sequences
+such as reference priority and key paths retain their order and length. Duration groups can gain
+units within the same owner and path without losing their identity. New entries and new facts are gains. Duplicate named
+identities are rejected instead of silently overwriting a row. Unresolved markers (`Unresolved`,
+`Unknown`, `NotEstablished`, and an absent reader identity) can gain facts. `Known(null)` is an
+established absence and cannot change without failing the comparison.
+
+Command comparisons include answer gaps as changes, but only lost or changed facts, weaker
+completeness/status, or increased inventory uncertainty fail the floor. Method/version stamps,
+timings and internal diagnostics are ignored; source build and basis remain checked. Numeric
+reports also fail on reduced command/registry counts or new failed questions. Registry duration
+groups are compared as well as command duration groups. Their debug-formatted `Err` values mean
+unresolved facts, so changing an error diagnostic is not a regression; `Ok` values remain checked. The tool does not synthesize serde defaults
+for older report schemas; inspect such changes with `command-population --diff` when needed.
+
+The retained SDK-658 reports give zero regressions, 134 changed arguments and two changed duration
+groups. SDK-660's command reports give zero regressions and 137 changed commands. These local
+reports remain reproduction inputs; the tracked tests use small authored cases and need no game.
+
 ## Run over the whole population
 
 Follow [Measuring method transfer](../development-policy.md#measuring-method-transfer). Run the
@@ -334,6 +439,7 @@ Before delivery, run the default Rust suite and the worker tests as CI does:
 ```sh
 cargo test --workspace --locked
 python -m unittest discover -s tools/observation -p 'test_*.py'
+python -m unittest discover -s tools/population -p 'test_*.py'
 ```
 
 The default suite includes locality checks but skips the installed-build parity and live cases.

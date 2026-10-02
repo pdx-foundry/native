@@ -56,3 +56,12 @@ test = true
 [[example]]
 name = "inspect"
 test = true
+
+# Population filters are checked without opening an installation.
+[[example]]
+name = "scoped-numeric-population"
+test = true
+
+[[example]]
+name = "duration-population"
+test = true
