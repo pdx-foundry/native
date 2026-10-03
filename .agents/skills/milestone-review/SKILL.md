@@ -23,7 +23,10 @@ config writes by hand. The user's own statement of the core in the prompt replac
 ## Steps
 
 1. **Read the authorities.** `docs/specs/native.md`, `docs/design/architecture.md`,
-   `docs/roadmap.md`, and each earlier `docs/design/milestone-*-review.md`. In the Linear project
+   `docs/roadmap.md`, and each earlier milestone review. A review is deleted once its work lands,
+   so read earlier ones from Git history: `git log --diff-filter=D --name-only --oneline --
+   'docs/design/milestone-*-review.md'` finds them, and `git show <commit>^:<path>` reads one.
+   In the Linear project
    "Atlas": the milestone, its exit gate, and each of its tickets with status.
    Done when you can state the exit gate, which tickets are open, and which items of the last
    review's order of work are still not done.
@@ -41,7 +44,8 @@ config writes by hand. The user's own statement of the core in the prompt replac
    Say what is solid. Stop here; the user decides if a report follows.
 
 5. **Write the report** to `docs/design/milestone-<n>-review.md` in Native, with the structure
-   in [REPORT.md](REPORT.md). Leave it uncommitted.
+   in [REPORT.md](REPORT.md). Leave it uncommitted. Delete the report once its cuts and repairs
+   have landed; Git keeps it for the next review.
    Done when each cut and each repair has a reason, a condition, and a place in the order of work.
 
 6. **Second opinion.** When the user brings another reviewer's response: check each factual

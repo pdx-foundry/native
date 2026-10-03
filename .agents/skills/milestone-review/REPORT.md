@@ -1,7 +1,7 @@
 # Report structure
 
-The model is [milestone-2-review.md](../../../docs/design/milestone-2-review.md). Sections, in
-order:
+The model is the Milestone 2 review, deleted after its work landed; read it with
+`git show 921517d:docs/design/milestone-2-review.md`. Sections, in order:
 
 1. **Status line.** Recommendation or agreed recommendation; date; the commit reviewed; what was
    checked in the source and what was not run again.
