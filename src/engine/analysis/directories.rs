@@ -14,6 +14,8 @@
 //! A call clears the caller-saved registers, and any other instruction clears the register that
 //! it may write. It does not follow branches, so a value that arrives on another path is unknown.
 //! It stops at a return or an unconditional branch, since the next word is not reached from it.
+//! When a base-constructor call follows such a jump, the arguments found before it are not a
+//! proof: the call that the scan did not read may pass another directory.
 //! Exactly one distinct directory over all constructor bodies names the registry. None or several
 //! is a gap; the method never selects one of several.
 //!
@@ -110,6 +112,9 @@ struct Scan {
     passed: Vec<Passed>,
     /// What the first argument holds at each file-enumeration call.
     enumerated: Vec<Value>,
+    /// Whether a base-constructor call follows the jump that ended the scan, so the scan did not
+    /// read its argument.
+    unread_base_call: bool,
 }
 
 /// Linear scan of one function.
@@ -119,7 +124,8 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
     // earlier one, and any other call that receives the object forgets it.
     let mut objects: Vec<(Value, u64)> = Vec::new();
     let mut found = Scan::default();
-    for (index, word) in function.code.as_chunks::<4>().0.iter().enumerate() {
+    let words = function.code.as_chunks::<4>().0;
+    for (index, word) in words.iter().enumerate() {
         let word = u32::from_le_bytes(*word);
         let address = function.address + index as u64 * 4;
         if let Some((destination, page)) = adrp(word, address) {
@@ -166,7 +172,13 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
             registers[..=18].fill(Value::Unknown);
         } else if let Some(transfer) = unconditional_branch(word) {
             match transfer {
-                Transfer::Stop => break,
+                Transfer::Return => break,
+                Transfer::Jump => {
+                    let rest = &words[index + 1..];
+                    found.unread_base_call =
+                        calls_any(rest, address + 4, &anchors.base_constructors);
+                    break;
+                }
                 // The callee is unknown, so it may receive or change any object.
                 Transfer::IndirectCall => {
                     objects.clear();
@@ -201,10 +213,22 @@ fn branch_with_link(word: u32, address: u64) -> Option<u64> {
     Some((address as i64).wrapping_add(offset) as u64)
 }
 
+/// Whether any `bl` in `words`, which start at `address`, calls one of `targets`.
+fn calls_any(words: &[[u8; 4]], address: u64, targets: &BTreeSet<u64>) -> bool {
+    words.iter().enumerate().any(|(index, word)| {
+        let address = address + index as u64 * 4;
+        branch_with_link(u32::from_le_bytes(*word), address)
+            .is_some_and(|target| targets.contains(&target))
+    })
+}
+
 /// What an unconditional branch does to the scan.
 enum Transfer {
-    /// `b`, `br`, `ret` or another register branch without link: the scan ends.
-    Stop,
+    /// `ret` or an authenticated return: the function ends.
+    Return,
+    /// `b`, `br` or another register branch without link: the scan ends, but code after it may
+    /// still run.
+    Jump,
     /// `blr` or an authenticated form: the scan continues after an unknown call.
     IndirectCall,
 }
@@ -212,18 +236,18 @@ enum Transfer {
 /// The transfer of an unconditional immediate or register branch word.
 fn unconditional_branch(word: u32) -> Option<Transfer> {
     if word & 0xfc00_0000 == 0x1400_0000 {
-        return Some(Transfer::Stop);
+        return Some(Transfer::Jump);
     }
     if word & 0xfe00_0000 != 0xd600_0000 {
         return None;
     }
 
-    // Bits 21 to 23 of the register-branch opcode are 001 for `blr` and its authenticated forms.
-    let links = word >> 21 & 0b111 == 0b001;
-    Some(if links {
-        Transfer::IndirectCall
-    } else {
-        Transfer::Stop
+    // Bits 21 to 23 of the register-branch opcode are 001 for `blr` and 010 for `ret`, with
+    // their authenticated forms.
+    Some(match word >> 21 & 0b111 {
+        0b001 => Transfer::IndirectCall,
+        0b010 => Transfer::Return,
+        _ => Transfer::Jump,
     })
 }
 
@@ -247,8 +271,11 @@ pub fn arguments(
     anchors: &Anchors,
     strings: &BTreeMap<u64, String>,
 ) -> Vec<Argument> {
-    scan(constructor, anchors)
-        .passed
+    let scan = scan(constructor, anchors);
+    // Arguments read before a jump do not prove the directory when the code after it, which the
+    // scan did not follow, calls the base constructor again.
+    let unread = (scan.unread_base_call && !scan.passed.is_empty()).then_some(Argument::Unknown);
+    scan.passed
         .into_iter()
         .map(|passed| match passed {
             Passed::Built(literal) => {
@@ -257,6 +284,7 @@ pub fn arguments(
             Passed::Other(Value::Constant(global)) => Argument::Global(global),
             Passed::Other(_) => Argument::Unknown,
         })
+        .chain(unread)
         .collect()
 }
 
@@ -522,6 +550,45 @@ mod tests {
         assert_eq!(
             resolve(&[function(&words)], &BTreeMap::new()),
             Directory::Missing
+        );
+    }
+
+    #[test]
+    fn a_base_constructor_call_after_a_jump_leaves_the_earlier_argument_unproven() {
+        let complete = temporary(0x10).code;
+        let skipped_call = [
+            ADRP_X1,
+            add_x1(0x20),
+            ADD_X0_SP_8,
+            bl(11, STRING),
+            NOP,
+            ADD_X1_SP_8,
+            bl(14, BASE),
+        ];
+        let ends = |end: u32, rest: &[u32]| {
+            let mut code = complete.clone();
+            code.extend(
+                std::iter::once(end)
+                    .chain(rest.iter().copied())
+                    .flat_map(u32::to_le_bytes),
+            );
+            Constructor {
+                address: 0x1000,
+                code,
+            }
+        };
+
+        assert_eq!(
+            resolve(&[ends(B_AHEAD, &skipped_call)], &BTreeMap::new()),
+            Directory::Missing
+        );
+        assert_eq!(
+            resolve(&[ends(RET, &skipped_call)], &BTreeMap::new()),
+            Directory::Named("common/examples".into())
+        );
+        assert_eq!(
+            resolve(&[ends(B_AHEAD, &[NOP])], &BTreeMap::new()),
+            Directory::Named("common/examples".into())
         );
     }
 
