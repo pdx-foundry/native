@@ -500,7 +500,16 @@ fn normalized_gaps(
                 detail,
             });
         }
-        let classification = readers::classify(&field.readers);
+        // A wider token path that also reads the field joins its shared reader claim.
+        let applicable: Vec<_> = super::fields::read_alternatives(field, &result.paths)
+            .into_iter()
+            .filter_map(|(_, outcome)| match outcome {
+                PathOutcome::Reader(join) => Some(join),
+                PathOutcome::Gap(unresolved) => Some(fields::ReaderJoin::Missing(unresolved)),
+                PathOutcome::Rejected => None,
+            })
+            .collect();
+        let classification = readers::classify(&applicable);
         let (kind, detail) = if classification.callee.is_none() {
             (
                 GapKind::UnresolvedReader,
@@ -730,7 +739,7 @@ mod declaration_tests {
 mod field_gap_tests {
     use super::*;
     use crate::engine::analysis::fields::{FieldGap, ReaderJoin, RootField, TokenPath};
-    use crate::engine::analysis::stop::{Obstacle, Unknown};
+    use crate::engine::analysis::stop::{Obstacle, Unknown, Unresolved};
     use std::collections::BTreeMap;
 
     const REGISTRY: &str = "common/examples";
@@ -801,6 +810,27 @@ mod field_gap_tests {
             assert_eq!(on_field[0].kind, public, "{kind:?}");
             assert_eq!(on_field[0].subject, Some(GapSubject::field("known")));
         }
+    }
+
+    #[test]
+    fn a_wide_unresolved_path_through_a_field_is_a_reader_gap_of_that_field() {
+        let mut result = result(vec![]);
+        result.paths.push(TokenPath {
+            domain: [6, 8],
+            conditions: vec![],
+            instructions: vec![0x1004],
+            terminal: 0x1004,
+            outcome: PathOutcome::Gap(Unresolved::new("wide-path")),
+        });
+
+        let public = normalized_gaps(&result, REGISTRY, &ReferenceFacts::default());
+
+        assert!(
+            public
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnresolvedReader
+                    && gap.subject == Some(GapSubject::field("known")))
+        );
     }
 
     #[test]

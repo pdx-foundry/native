@@ -237,6 +237,12 @@ repair.
 
 ## Members and shared readers
 
+A field's reader identity, kind and family come from every token path whose interval holds the
+field's token, not only from its singleton paths. A wider path that is unresolved, or reads with
+another reader, leaves the shared claim unknown; each read alternative keeps its own reader.
+Rejected paths do not change the claim. A condition on a nested field, on its reference lookup or
+on a modifier-block fixed key names the full field path from the root field or command key.
+
 ### Read conditions and use-time inheritance (SDK-541)
 
 Inspected on M45-release: executable SHA-256

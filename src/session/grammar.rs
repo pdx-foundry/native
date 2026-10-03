@@ -294,7 +294,9 @@ pub(crate) fn normalize(
                 );
                 for key in &mut keys {
                     if let Some(child) = result.nested.get(&key.name) {
-                        key.members = crate::FieldMembers::Fields(nested_fields(child, references));
+                        key.members = crate::FieldMembers::Fields(nested_fields(
+                            child, references, &key.name,
+                        ));
                     }
                 }
                 key_gaps = reference_gaps(result, references, lookup);
@@ -450,10 +452,12 @@ pub(crate) fn normalize(
     }
 }
 
-/// Normalize nested field values without inferring coverage from those public values.
+/// Normalize the fields nested in the key `parent` without inferring coverage from those public
+/// values. Their conditions name field paths from `parent`.
 fn nested_fields(
     result: &grammar::GrammarResult,
     references: &ReferenceFacts,
+    parent: &str,
 ) -> Vec<crate::Field> {
     let lookup = result
         .initializer
@@ -472,9 +476,13 @@ fn nested_fields(
     );
     for field in &mut fields {
         if let Some(child) = result.nested.get(&field.name) {
-            field.members = crate::FieldMembers::Fields(nested_fields(child, references));
+            field.members =
+                crate::FieldMembers::Fields(nested_fields(child, references, &field.name));
         }
+
+        super::fields::prefix_conditions(field, parent);
     }
+
     fields
 }
 
@@ -897,6 +905,62 @@ mod tests {
             }])
         );
         assert!(!joins_no_key(&answer));
+    }
+
+    #[test]
+    fn a_nested_key_condition_names_the_path_from_its_enclosing_key() {
+        use crate::engine::analysis::fields::{Condition, ReaderJoin, RootField, Value};
+        use crate::{FieldCondition, FieldMembers, FieldReference};
+
+        let mut nested = keyed(Ok(INITIALIZER.into()));
+        nested.fields.fields.insert(
+            0,
+            RootField {
+                name: "flag".into(),
+                token: 3,
+                constructor: 0,
+                paths: vec![],
+                readers: vec![ReaderJoin::Joined {
+                    callee: "CReader::Read(bool&)".into(),
+                    arguments: [("x1".into(), Value::Owner(8))].into(),
+                    tail: true,
+                }],
+            },
+        );
+        nested.fields.paths[0].conditions = vec![Condition {
+            at: 4,
+            value: Some(Value::Load(Box::new(Value::Owner(8)), 1)),
+            zero: true,
+        }];
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result.nested = [("district_type".to_owned(), Box::new(nested))].into();
+
+        let answer = normalize(
+            Ok(&result),
+            "add_district",
+            crate::BuildId("authored".into()),
+            &facts(scan_at(0xa8)),
+        );
+
+        let GrammarProperty::Partial(keys) = &answer.value.fixed_keys else {
+            panic!("no fixed keys");
+        };
+        let FieldMembers::Fields(children) = &keys[0].members else {
+            panic!("{:?}", keys[0].members);
+        };
+        let FieldReference::Lookups(lookups) = &children[1].reference else {
+            panic!("{:?}", children[1].reference);
+        };
+        let expected = FieldCondition::FieldZero {
+            path: vec!["district_type".into(), "flag".into()],
+            zero: true,
+        };
+        assert!(matches!(
+            children[1].read[0].outcome,
+            crate::FieldReadOutcome::Read { .. }
+        ));
+        assert_eq!(children[1].read[0].condition, expected);
+        assert_eq!(lookups[0].condition, expected);
     }
 
     #[test]
