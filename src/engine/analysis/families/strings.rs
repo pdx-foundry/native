@@ -503,18 +503,27 @@ fn allocation(machine: &mut Machine, size: Option<u64>) -> Option<u64> {
 
 /// The length of the known text at `address`, when every byte up to its end is known.
 fn text_length(machine: &Machine, address: u64) -> Option<u64> {
+    known_text(machine, address).map(|text| text.len() as u64)
+}
+
+/// The bytes of the text at `address` before its terminator, when every one is known.
+fn known_text(machine: &Machine, address: u64) -> Option<Vec<u8>> {
+    let mut text = Vec::new();
     for offset in 0..TEXT_LIMIT {
-        let byte = machine.read(address + offset, 1)?;
+        let byte = machine.read(address.checked_add(offset)?, 1)?;
         if byte == 0 {
-            return Some(offset);
+            return Some(text);
         }
+        text.push(byte as u8);
     }
 
     None
 }
 
-/// `memmove` and `memcpy` copy each byte, known or not, and the source's label. `false` when the
-/// copy's extent is unknown, so any string that it receives may have changed.
+/// `memmove` and `memcpy` copy each byte, known or not. The destination takes the source's
+/// label only when the copy included the source's whole text, or the destination then holds that
+/// text. Code often copies a text without its terminator and stores the terminator next. `false`
+/// when the copy's extent is unknown, so any string that it receives may have changed.
 fn copy(machine: &mut Machine) -> bool {
     let (Some(destination), Some(source), Some(length)) = (
         machine.register(0),
@@ -523,17 +532,25 @@ fn copy(machine: &mut Machine) -> bool {
     ) else {
         return false;
     };
-    if length > TEXT_LIMIT {
+    let in_bounds =
+        destination.checked_add(length).is_some() && source.checked_add(length).is_some();
+    if length > TEXT_LIMIT || !in_bounds {
         return false;
     }
-
-    for offset in 0..length {
-        match machine.read(source + offset, 1) {
-            Some(byte) => machine.write(destination + offset, 1, byte),
-            None => machine.forget(destination + offset, 1),
-        }
+    if length == 0 {
+        return true;
     }
-    match machine.labelled(source) {
+
+    let label = machine.labelled(source);
+    let source_text = known_text(machine, source);
+    machine.copy_bytes(destination, source, length);
+
+    let copies_whole_text = source_text
+        .as_ref()
+        .is_some_and(|text| length >= text.len() as u64);
+    let holds_source_text =
+        source_text.is_some() && known_text(machine, destination) == source_text;
+    match label.filter(|_| copies_whole_text || holds_source_text) {
         Some(node) => machine.label(destination, node),
         None => machine.unlabel(destination),
     }
@@ -548,6 +565,7 @@ mod tests {
     const APPEND_VIEW: u64 = 0x10;
     const APPEND_CHARACTER: u64 = 0x14;
     const ASSIGN: u64 = 0x18;
+    const COPY: u64 = 0x1c;
     const LITERAL: u64 = 0x5000;
 
     fn functions() -> StringFunctions {
@@ -555,6 +573,7 @@ mod tests {
             append_view: [APPEND_VIEW].into(),
             append_character: [APPEND_CHARACTER].into(),
             assigns: [ASSIGN].into(),
+            copies: [COPY].into(),
             ..StringFunctions::default()
         }
     }
@@ -628,5 +647,91 @@ mod tests {
         let assign = [Some(copy), Some(LITERAL), Some(3)];
         let node = call(&model, &mut machine, &mut arena, ASSIGN, assign, copy);
         assert_eq!(node.parts, [Part::Literal("pop".into())]);
+    }
+
+    /// Fresh memory that holds `text` and its terminator, labelled with a new literal node.
+    fn labelled_text(machine: &mut Machine, arena: &mut Arena, text: &str) -> (u64, u64) {
+        let address = machine.allocate(text.len() as u64 + 1);
+        for (offset, byte) in text.bytes().enumerate() {
+            machine.write(address + offset as u64, 1, u64::from(byte));
+        }
+        let node = arena.add(Node::literal(text.into()));
+        machine.label(address, node);
+        (address, node)
+    }
+
+    /// `memmove(destination, source, length)` through the model.
+    fn copy_call(model: &Model, machine: &mut Machine, arena: &mut Arena, arguments: [u64; 3]) {
+        for (index, value) in arguments.into_iter().enumerate() {
+            machine.set_register(index, value);
+        }
+        assert!(matches!(
+            model.call(Some(COPY), machine, arena),
+            Ok(Effect::Followed(_))
+        ));
+    }
+
+    #[test]
+    fn a_copy_labels_its_destination_only_when_it_carries_the_whole_source_text() {
+        let code = Code::default();
+        let data = ReadOnlyData::default();
+        let functions = functions();
+        let model = Model {
+            functions: &functions,
+            layout: StringLayout { flag_byte: 0x17 },
+            data: &data,
+            key: "key",
+        };
+        let mut machine = Machine::new(&code, &data);
+        let mut arena = Arena::default();
+        let (source, node) = labelled_text(&mut machine, &mut arena, "pop");
+
+        let (untouched, untouched_node) = labelled_text(&mut machine, &mut arena, "war");
+        copy_call(&model, &mut machine, &mut arena, [untouched, source, 0]);
+        assert_eq!(machine.labelled(untouched), Some(untouched_node));
+        assert_eq!(known_text(&machine, untouched), Some(b"war".to_vec()));
+
+        let (prefix, _) = labelled_text(&mut machine, &mut arena, "war");
+        copy_call(&model, &mut machine, &mut arena, [prefix, source, 2]);
+        assert_eq!(known_text(&machine, prefix), Some(b"por".to_vec()));
+        assert_eq!(machine.labelled(prefix), None);
+
+        let (rest_held, _) = labelled_text(&mut machine, &mut arena, "pip");
+        copy_call(&model, &mut machine, &mut arena, [rest_held, source, 2]);
+        assert_eq!(machine.labelled(rest_held), Some(node));
+
+        let without_terminator = machine.reserve(8);
+        copy_call(
+            &model,
+            &mut machine,
+            &mut arena,
+            [without_terminator, source, 3],
+        );
+        assert_eq!(machine.labelled(without_terminator), Some(node));
+
+        let full = machine.allocate(8);
+        copy_call(&model, &mut machine, &mut arena, [full, source, 4]);
+        assert_eq!(machine.labelled(full), Some(node));
+        assert_eq!(known_text(&machine, full), Some(b"pop".to_vec()));
+    }
+
+    #[test]
+    fn an_overlapping_copy_moves_the_source_bytes_before_it_overwrites_them() {
+        let code = Code::default();
+        let data = ReadOnlyData::default();
+        let functions = functions();
+        let model = Model {
+            functions: &functions,
+            layout: StringLayout { flag_byte: 0x17 },
+            data: &data,
+            key: "key",
+        };
+        let mut machine = Machine::new(&code, &data);
+        let mut arena = Arena::default();
+        let (source, node) = labelled_text(&mut machine, &mut arena, "abcd");
+
+        copy_call(&model, &mut machine, &mut arena, [source + 1, source, 5]);
+        assert_eq!(known_text(&machine, source + 1), Some(b"abcd".to_vec()));
+        assert_eq!(machine.labelled(source + 1), Some(node));
     }
 }
