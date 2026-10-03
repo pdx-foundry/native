@@ -26,7 +26,7 @@
 //!
 //! The fault cases use the hidden `GameOptions::fault`. A fault applies to one registry; the
 //! other registry must stay complete. The tests stop only their own unrelated sentinel process. They check that every
-//! game and supervisor process that a case started is gone when the case ends.
+//! game, supervisor and worker-group process that a case started is gone when the case ends.
 use pdx_native::internals::{ObservationControl as Fault, ObservationTarget};
 use pdx_native::{
     Answer, Basis, Completeness, Disposal, Error, Game, GameOptions, GapKind, Native,
@@ -112,6 +112,11 @@ fn main() {
             std::process::exit(1);
         }
         println!("work directory retention ... ok");
+        if let Err(error) = cleanup_gate_checks() {
+            println!("cleanup gate ... FAILED: {error}");
+            std::process::exit(1);
+        }
+        println!("cleanup gate ... ok");
         return;
     }
     let installation = std::env::var_os("STELLARIS_PATH")
@@ -124,7 +129,7 @@ fn main() {
     let mut failed = Vec::new();
     println!("running {} live cases, one at a time", cases.len());
     for (name, case) in cases {
-        let before = game_processes();
+        let before = game_processes(&processes().expect("process inventory"));
         if !before.is_empty() {
             // Never start a second game, and never touch a game that is not ours.
             println!("test {name} ... not run: Stellaris already runs {before:?}");
@@ -137,7 +142,7 @@ fn main() {
             Isolation::begin().expect("ordinary profile and unrelated process baseline");
         let outcome = runtime.block_on(run(&native, &case));
         let isolation_result = isolation.finish();
-        let cleanup = processes_are_gone(&before);
+        let cleanup = processes_are_gone(&before, &earlier_work);
         let result = outcome
             .and(isolation_result)
             .and(cleanup)
@@ -152,7 +157,7 @@ fn main() {
                 }
                 failed.push(name);
                 // A later case cannot start while a process of this one remains.
-                if processes_are_gone(&before).is_err() {
+                if processes_are_gone(&before, &earlier_work).is_err() {
                     break;
                 }
             }
@@ -2499,29 +2504,108 @@ async fn startup_timeout(native: &Native) -> Outcome {
 /// The caller forgets to close. The supervisor sees its control input end and reaps the game.
 async fn drop_without_close(native: &Native) -> Outcome {
     let game = native.start_game(options()).await?;
-    if game_processes().is_empty() {
+    if game_processes(&processes()?).is_empty() {
         return Err("no game process after start".into());
     }
     drop(game);
     Ok(())
 }
 
-/// Wait until every game process that started after `before`, and every child of this process,
-/// is gone. This only looks; it never signals a process.
-fn processes_are_gone(before: &BTreeSet<u32>) -> Outcome {
+/// Wait until every game process that started after `before`, every child of this process, and
+/// every process that a session of this case recorded as its game or in its worker's process
+/// group is gone. A worker or `debugserver` that outlives its supervisor is no longer a child of
+/// this process. This only looks; it never signals a process.
+fn processes_are_gone(
+    before: &BTreeSet<u32>,
+    earlier_work: &BTreeSet<std::path::PathBuf>,
+) -> Outcome {
     let deadline = Instant::now() + Duration::from_secs(90);
     loop {
-        let games: Vec<_> = game_processes().difference(before).copied().collect();
-        let children = child_processes();
-        if games.is_empty() && children.is_empty() {
+        // The supervisor writes the game's identity when its session ends, so read it each time.
+        let owned = owned_identities(earlier_work)?;
+        let inventory = processes()?;
+        let games: Vec<_> = game_processes(&inventory)
+            .difference(before)
+            .copied()
+            .collect();
+        let children = child_processes(&inventory);
+        let sessions = owned_processes(&inventory, &owned);
+        if games.is_empty() && children.is_empty() && sessions.is_empty() {
             break;
         }
         if Instant::now() >= deadline {
-            return Err(format!("still running: games {games:?}, children {children:?}").into());
+            return Err(format!(
+                "still running: games {games:?}, children {children:?}, session processes {sessions:?}"
+            )
+            .into());
         }
         std::thread::sleep(Duration::from_millis(200));
     }
     Ok(())
+}
+
+/// The game PIDs and worker process groups that the sessions of a case recorded in their work
+/// directories. A session that did not reach its game or its worker has no record of it.
+#[derive(Default)]
+struct OwnedIdentities {
+    games: BTreeSet<u32>,
+    worker_groups: BTreeSet<u32>,
+}
+
+/// Read `owner.json` and `worker-owned.json` of each work directory made after `earlier`.
+fn owned_identities(
+    earlier: &BTreeSet<std::path::PathBuf>,
+) -> Result<OwnedIdentities, Box<dyn std::error::Error>> {
+    let mut owned = OwnedIdentities::default();
+    for work in work_directories()?.difference(earlier) {
+        let session = work.join("session");
+        if let Some(owner) = optional_json(&session.join("owner.json"))? {
+            match &owner["game"] {
+                serde_json::Value::Null => {}
+                game => {
+                    owned
+                        .games
+                        .insert(identity_pid(game).ok_or("owner.json: invalid game")?);
+                }
+            }
+        }
+        if let Some(worker) = optional_json(&session.join("worker-owned.json"))? {
+            owned
+                .worker_groups
+                .insert(identity_pid(&worker).ok_or("worker-owned.json: invalid pid")?);
+        }
+    }
+    Ok(owned)
+}
+
+fn identity_pid(identity: &serde_json::Value) -> Option<u32> {
+    identity["pid"].as_u64()?.try_into().ok()
+}
+
+/// The JSON file at `path`, or `None` when the session did not write it.
+fn optional_json(
+    path: &std::path::Path,
+) -> Result<Option<serde_json::Value>, Box<dyn std::error::Error>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(
+            serde_json::from_slice(&bytes)
+                .map_err(|error| format!("{}: {error}", path.display()))?,
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("{}: {error}", path.display()).into()),
+    }
+}
+
+/// The processes that are a recorded game, or members of a recorded worker's process group. The
+/// worker leads its own group, and the `debugserver` launcher joins it.
+fn owned_processes(inventory: &[Process], owned: &OwnedIdentities) -> Vec<u32> {
+    inventory
+        .iter()
+        .filter(|process| {
+            owned.games.contains(&process.pid) || owned.worker_groups.contains(&process.group)
+        })
+        .map(|process| process.pid)
+        .collect()
 }
 
 /// Every live session keeps its work directory, and Native also keeps it after a failed start or
@@ -2654,6 +2738,111 @@ fn failed_cases_keep_their_work_directories() -> Outcome {
     Ok(())
 }
 
+/// A failed or incomplete process inventory fails the gate, and a process left in a recorded
+/// worker's group, or recorded as the game, is found after its parent has exited and it is no
+/// longer a child of this process. Uses a stand-in work directory and a compiled stub, because
+/// macOS kills a copied Apple binary; starts no game.
+fn cleanup_gate_checks() -> Outcome {
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
+    let ps = |status: i32, stdout: &str| std::process::Output {
+        status: std::process::ExitStatus::from_raw(status),
+        stdout: stdout.into(),
+        stderr: Vec::new(),
+    };
+    if process_inventory(&ps(1 << 8, "    1     0     1 /sbin/launchd\n")).is_ok() {
+        return Err("a failed process inventory was accepted".into());
+    }
+    for row in [
+        "    1     0 /sbin/launchd",
+        "    1     0     x /sbin/launchd",
+        "    1     0     1",
+    ] {
+        if process_inventory(&ps(0, &format!("{row}\n"))).is_ok() {
+            return Err(format!("a malformed inventory row was accepted: {row:?}").into());
+        }
+    }
+    // The supervisor's own platform is macOS; elsewhere only the inventory rules apply.
+    if !cfg!(target_os = "macos") {
+        return Ok(());
+    }
+
+    let tools = tempfile::tempdir()?;
+    let source = tools.path().join("stub.c");
+    let stub = tools.path().join("stub");
+    // The child closes its copy of the output, so that reading its PID does not wait for it. It
+    // ends itself after a minute if this check stops before it kills the child.
+    std::fs::write(
+        &source,
+        "#include <stdio.h>\n#include <unistd.h>\n\
+         int main(void) {\n\
+             pid_t child = fork();\n\
+             if (child == 0) { close(STDOUT_FILENO); sleep(60); return 0; }\n\
+             printf(\"%d\\n\", child);\n\
+             return child < 0;\n\
+         }\n",
+    )?;
+    let compiled = Command::new("cc")
+        .arg(&source)
+        .arg("-o")
+        .arg(&stub)
+        .status()?;
+    if !compiled.success() {
+        return Err(format!("stub compilation failed: {compiled}").into());
+    }
+    let leader = Command::new(&stub)
+        .process_group(0)
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+    let worker = leader.id();
+    let output = leader.wait_with_output()?;
+    let left: u32 = String::from_utf8(output.stdout)?.trim().parse()?;
+    let _left = KillOnDrop(left);
+
+    let run = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let earlier = work_directories()?;
+    let work = std::env::temp_dir().join(format!(
+        "pdx-native-{}-cleanup-gate-{run}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(work.join("session"))?;
+    let detected = |file: &str, record: String| -> Result<bool, Box<dyn std::error::Error>> {
+        std::fs::write(work.join("session").join(file), record)?;
+        let inventory = processes()?;
+        let found = owned_processes(&inventory, &owned_identities(&earlier)?) == [left]
+            && !child_processes(&inventory).contains(&left);
+        std::fs::remove_file(work.join("session").join(file))?;
+        Ok(found)
+    };
+    let worker_group = detected(
+        "worker-owned.json",
+        format!(r#"{{"pid":{worker},"started_seconds":0,"started_microseconds":0}}"#),
+    );
+    let game = detected(
+        "owner.json",
+        format!(r#"{{"game":{{"pid":{left},"started_seconds":0,"started_microseconds":0}}}}"#),
+    );
+    std::fs::remove_dir_all(&work)?;
+    if !worker_group? {
+        return Err("a process left in a recorded worker group was not found".into());
+    }
+    if !game? {
+        return Err("a process recorded as the game was not found".into());
+    }
+    Ok(())
+}
+
+/// Kill the process with this PID when dropped. Only for a process that this file started.
+struct KillOnDrop(u32);
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = Command::new("kill")
+            .args(["-KILL", &self.0.to_string()])
+            .status();
+    }
+}
+
 /// Keep a failed case's diagnostics when a later case succeeds.
 fn work_directories() -> std::io::Result<BTreeSet<std::path::PathBuf>> {
     let prefix = format!("pdx-native-{}-", std::process::id());
@@ -2668,46 +2857,82 @@ fn work_directories() -> std::io::Result<BTreeSet<std::path::PathBuf>> {
         .collect()
 }
 
-/// Every process on the host with `(pid, parent pid, executable path)`.
-fn processes() -> Vec<(u32, u32, String)> {
+/// One row of the host's process inventory.
+struct Process {
+    pid: u32,
+    parent: u32,
+    group: u32,
+    /// The executable path.
+    command: String,
+}
+
+/// Every process on the host.
+fn processes() -> Result<Vec<Process>, Box<dyn std::error::Error>> {
     let output = Command::new("ps")
-        .args(["-axo", "pid=,ppid=,comm="])
-        .output()
-        .expect("ps");
+        .args(["-axo", "pid=,ppid=,pgid=,comm="])
+        .output()?;
+    Ok(process_inventory(&output)?)
+}
+
+/// A failed `ps` or an incomplete row fails the inventory, so that it never reads as "nothing
+/// running".
+fn process_inventory(output: &std::process::Output) -> Result<Vec<Process>, String> {
+    if !output.status.success() {
+        return Err(format!("process inventory failed: {}", output.status));
+    }
     String::from_utf8_lossy(&output.stdout)
         .lines()
-        .filter_map(|line| {
-            let (pid, rest) = line.trim_start().split_once(char::is_whitespace)?;
-            let (parent, command) = rest.trim_start().split_once(char::is_whitespace)?;
-            Some((
-                pid.parse().ok()?,
-                parent.parse().ok()?,
-                command.trim().to_owned(),
-            ))
-        })
+        .map(process_row)
         .collect()
 }
 
+fn process_row(line: &str) -> Result<Process, String> {
+    let malformed = || format!("malformed process inventory row {line:?}");
+    let mut rest = line;
+    let mut number = || -> Result<u32, String> {
+        let (field, after) = rest
+            .trim_start()
+            .split_once(char::is_whitespace)
+            .ok_or_else(malformed)?;
+        rest = after;
+        field.parse().map_err(|_| malformed())
+    };
+    let pid = number()?;
+    let parent = number()?;
+    let group = number()?;
+    let command = rest.trim();
+    if command.is_empty() {
+        return Err(malformed());
+    }
+
+    Ok(Process {
+        pid,
+        parent,
+        group,
+        command: command.to_owned(),
+    })
+}
+
 /// Processes whose executable is the game.
-fn game_processes() -> BTreeSet<u32> {
-    processes()
-        .into_iter()
-        .filter(|(_, _, command)| {
-            std::path::Path::new(command)
+fn game_processes(inventory: &[Process]) -> BTreeSet<u32> {
+    inventory
+        .iter()
+        .filter(|process| {
+            std::path::Path::new(&process.command)
                 .file_name()
                 .is_some_and(|name| name.eq_ignore_ascii_case("stellaris"))
         })
-        .map(|(pid, _, _)| pid)
+        .map(|process| process.pid)
         .collect()
 }
 
 /// Children of this process: the supervisors. `ps` itself has exited when its output is read.
-fn child_processes() -> Vec<u32> {
+fn child_processes(inventory: &[Process]) -> Vec<u32> {
     let this = std::process::id();
-    processes()
-        .into_iter()
-        .filter(|(_, parent, command)| *parent == this && !command.ends_with("ps"))
-        .map(|(pid, _, _)| pid)
+    inventory
+        .iter()
+        .filter(|process| process.parent == this && !process.command.ends_with("ps"))
+        .map(|process| process.pid)
         .collect()
 }
 
