@@ -8,7 +8,7 @@ FieldDefault was removed on 2026-10-02: only Unknown had been established. Field
 loader alternatives, nested object fields and local stored-value selections. `Native::registries()` gives the registries. The module
 comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` describe the methods.
 This page holds the current sweep, the engine facts, the gaps and the prototype findings. The
-[discovery index](discovery.md) lists the other method pages.
+[engine knowledge index](../engine-knowledge.md) lists the other pages.
 
 ## What complete means
 
@@ -233,16 +233,13 @@ which tail-calls `CPersistent::ReadMember`, the verified base rejection. The `b.
 by unsigned intervals of `token - base`, and it holds more direct comparisons
 (`dismantle_cost`, `ai_weight`).
 
-**The default case.** Every token has a name, so a default slot that reaches a call other than
-the rejection, such as an inherited reader, would give false fields. "The most frequent target is
-the default" is wrong. `CMissionType::ReadMember` has a table for tokens 11653–11656 with no
-default slot, and `on_fail` and `on_cancel` share one case that reads the same effect member
-(`+0x430`). That case ties for the most frequent target. The rule that holds: the switch's default
-block also serves the wide token intervals that no case handles, so a case whose address a wide
-interval also reaches is the default, and it may only reject. When a wide interval that leaves
-through the table's guard does not end at the rejection, the default may be past its end, so a
-case is kept only when it joins a known reader. No table on M45-release gives a `JumpTable` gap:
-each default reaches the rejection, or the table has no default slot.
+**The default case.** The rule is in the module comment of `fields.rs`. Pitfall: "the most
+frequent target is the default" is wrong. `CMissionType::ReadMember` has a table for tokens
+11653–11656 with no default slot, and `on_fail` and `on_cancel` share one case that reads the same
+effect member (`+0x430`); that case ties for the most frequent target. When a wide interval that
+leaves through the table's guard does not end at the rejection, the default may be past its end,
+so a case is kept only when it joins a known reader. No table on M45-release gives a `JumpTable`
+gap: each default reaches the rejection, or the table has no default slot.
 
 **Bit fields.** Boolean bit fields such as `tooltip_show_star_resources`,
 `place_entity_on_planet_plane`, `use_planet_resource`, `can_prevent_crisis_terraformation`,
@@ -261,11 +258,40 @@ another reader, leaves the shared claim unknown; each read alternative keeps its
 Rejected paths do not change the claim. A condition on a nested field, on its reference lookup or
 on a modifier-block fixed key names the full field path from the root field or command key.
 
+### Reader identities and kinds
+
+`registry_fields` reports one opaque identity for fields that share a joined reader, and one
+conservative broad value kind. The kinds promise no complete grammar, valid ranges, occurrence
+rules, reference ownership, nested behavior or runtime behavior, so a known identity can still
+have kind `Unknown`. A missing identity means that the paths did not establish one shared reader.
+`Reader.family` identifies the child family separately. Conditional read alternatives keep their
+own families; conflicting or unresolved alternatives cannot establish an unconditional family.
+Constructor joins refine generic persistent reader identities. Modifier fields carry
+[modifier blocks](modifier-blocks.md); conversion facts are on
+[numeric conversion](numeric-conversion.md).
+
+A reader ID is the first 16 hexadecimal digits of the SHA-256 of the demangled callee name
+(`ReaderId::from_callee`). So the same callee gives the same ID on every build: the
+`registry-fields/v2` sweep on M45-observe and the `registry-fields/v3` run on M45-release found the
+same 19 IDs. The hashed name of each `NParserUtil` template keeps its `void ` return type.
+`cargo run --release --example reader-kinds -- "$STELLARIS_PATH" [REGISTRY…]` counts fields by
+kind; the default registries are traditions, tradition categories and council agendas.
+
+Pitfalls:
+
+- **Identity does not establish value kind.** A command reader proves the constructor-installed
+  virtual `Read` and `ReadMember` targets. It does not prove what the `Read` override accepts, so
+  marking every such receiver `Block` adds an unsupported fact.
+- **An outer reader's family is not the set of its child families.** `random_list` is an effect
+  reader whose outer numeric keys lead to a separate effect-child grammar.
+- **The family checks answer different questions.** Shared reader-entry classification gives the
+  broad value of established helper signatures; constructor joins refine a generic persistent
+  destination; conditional normalization also accounts for unresolved and rejected paths. Do not
+  merge them: removing the last check promotes conditional facts.
+
 ### Read conditions and use-time inheritance (SDK-541)
 
-Inspected on M45-release: executable SHA-256
-`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`, ARM64 slice
-`a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+Inspected on the exact M45-release build in [targets](targets.md).
 
 - `CCouncilAgenda::ReadMember` at `0x10020bfa8` tests presence bytes at `+0x6d0`
   and `+0x6d8`. Both sides reach `CReader::Read(int&)`, after clearing the value at
@@ -405,8 +431,7 @@ conflict.
 Native had a static scheduler method. No supported operation used it, and SDK-602 removed it. The
 code is at `git show 8d9a073:src/engine/analysis/discovery/scheduler.rs`, with its join in
 `discovery.rs` and its tests in `tests_discovery.rs` at the same commit. The facts below are for
-M45-release: executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`,
-ARM64 slice `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+the exact M45-release build in [targets](targets.md).
 
 - **Where.** The table is filled with literal values in
   `NNullObjAndDatabaseInitUtil::SetupDatabases(CPdxArray<SDatabaseObjectFunctions, int>&, ...)`.

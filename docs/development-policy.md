@@ -47,10 +47,10 @@ removal route.
 ### Measuring method transfer
 
 A method ticket ends with one run of the method over every discovered registry, or over the whole
-command inventory when the method reads commands. Record on the method's page in `docs/native/`
-(the [discovery index](native/discovery.md) lists them) the counts of complete, partial and failed
-answers, each failure shape, and any distinct finding the run produced. Repairs that the run
-prompts land in the shared module; the next ticket's run reflects them. Do not record routine run
+command inventory when the method reads commands. Record on the method's page in `docs/native/` (the
+[engine knowledge index](engine-knowledge.md) lists them) the counts of complete, partial and failed
+answers, each failure shape, and any distinct finding the run produced. Repairs that the run prompts
+land in the shared module; the next ticket's run reflects them. Do not record routine run
 chronology.
 
 There is no freeze commit, no commit-per-repair rule and no held-out selection. A method with no

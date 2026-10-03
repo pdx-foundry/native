@@ -12,13 +12,8 @@ content boundary matched. The fixture remained the retained category containing
 
 ## Current pause and fault ownership
 
-`worker.py::decide_pause` makes the session's pause decision from observed progress. Activation
-selects the latest active boundary: modifier documentation return when that hook is active,
-otherwise the returns of all active registry loaders. A fixture never owns the pause. No active
-owner means no resume. A failed callback before its boundary stops without a safe-pause witness;
-a failed snapshot after a witnessed return can still reach the selected pause. The decision waits
-for a callback to finish before publishing its boundary. A confirmed deadline stop is a separate
-pause cause and cannot replace a completed boundary or failed callback.
+`worker.py::decide_pause` makes the session's pause decision from observed progress; its code
+states the order of the causes. A fixture never owns the pause.
 
 The private request carries one fault with an observation target and a control kind. The hidden
 `GameOptions::fault` selects a registry, the fixture or the modifier table. Session validation
@@ -55,9 +50,9 @@ resume ordering, missing-hook cause and raw preservation hashes. The final `tria
 adds the required raw witnesses and passes all strengthened checks. The earlier captures are
 not rewritten or presented as proof of the new checks.
 
-There were zero new debugger-access approvals and zero manual cleanup actions. The earlier
-SDK-483 debugger permission intervention remains a prerequisite inherited from this host.
-Review findings and corrections are linked from the new bundle's `review.json`.
+There were zero manual cleanup actions. Debugger access needs the approval in
+[lifecycle](lifecycle.md#findings-from-the-rust-supervisor-m45-observe-macos). Review findings and
+corrections are linked from the new bundle's `review.json`.
 
 ## Identities and preservation
 

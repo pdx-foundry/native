@@ -81,13 +81,10 @@ coverage by evidence, not by agreement with the config.
 
 Coverage grows with each **shared method**, not with each file. The known risk is method transfer:
 the reference matcher failed on both unfamiliar resolver shapes, and five shared-reader contracts
-block the council agenda completeness result. A method has no branch on a registry, a command or a
-build; an unfamiliar shape is a typed gap, and a repair lands in the shared module. Each method
-ticket ends with one run over every discovered registry and records its counts and failure shapes.
-The registry sweep runs the method set unchanged at a recorded commit and measures the automatic
-rate; its failures return as new reader shapes, not as handwritten answers. The
-[development policy](development-policy.md#keep-engine-knowledge-in-its-home) states the rule
-(amended 2026-09-23; it replaces the per-ticket freeze and held-out tests).
+block the council agenda completeness result. The
+[development policy](development-policy.md#keep-engine-knowledge-in-its-home) states the method
+rule and how transfer is measured; the registry sweep's failures return as new reader shapes, not
+as handwritten answers.
 
 ## Decisions taken with this roadmap
 
@@ -123,7 +120,7 @@ rate; its failures return as new reader shapes, not as handwritten answers. The
 - **A method is written in one task (2026-09-24).** The inspector (SDK-579), stop diagnostics
   and the sweep report (both SDK-581, which absorbed SDK-588 on 2026-09-24) replace the
   throwaway prototype. One task explores with the inspector, records findings and failed shapes
-  on the method's page in `docs/native/` (indexed by `discovery.md`), and delivers the method with
+  on the method's page in `docs/native/` (indexed by `engine-knowledge.md`), and delivers the method with
   its authored tests. The open prototype children of SDK-470 are closed. Their unique
   cases moved into the production tickets; four remainders became SDK-607 to SDK-610.
 
@@ -172,9 +169,10 @@ Milestone 4 completes only when all of these hold:
    effect family and entry scopes for `effect` and `init_effect`; the content-directory target of
    `finish_modifier`; the member family of `modifier`; and `ai_weight` keys, reader kinds and
    nested `modifier` entries. The test uses the public API and the exact supported executable.
-2. **Fixture criteria:** the 2026-10-02 amendments in the simplification review govern SDK-541
-   to SDK-550. SDK-544 retains numeric storage controls. SDK-545 checks weight parsing and
-   source-located diagnostics; SDK-549 checks read entry scope (`this`) with a fixture diagnostic.
+2. **Fixture criteria:** the dated 2026-10-02 amendments on the Linear tickets govern SDK-541 to
+   SDK-550. SDK-544 retains numeric storage controls. SDK-545 checks weight parsing and
+   source-located diagnostics; SDK-549 checks read entry scope (`this`) with a fixture diagnostic;
+   `check_script` cannot, because its caller supplies the scope.
    Runtime weights and scope availability are out of scope. SDK-542 and SDK-550 own required parser
    diagnostic hooks. SDK-547's application rule is a typed gap by design. SDK-608 and SDK-677 check
    static entry bindings against hand-read call sites and independent scope expectations.
@@ -192,8 +190,6 @@ Milestone 4 completes only when all of these hold:
    parser fixture conclusions and a fresh M451-hotfix recording. SDK-626 measures failure shapes
    after that pin move and creates tickets only for compiler-relevant shapes with a dependent
    config claim. Other shapes receive “out of scope, vision 2026-10-02”.
-
-The [specification](specs/native.md#milestone-4-shared-reader-acceptance) records the same contract.
 
 **SDK-541 dependency audit, 2026-09-25:** tradition inheritance affects the names and icons
 selected at use time, although the parser reads the fields without those tests. SDK-541 retains

@@ -95,59 +95,11 @@ created by its own case, keeping failed-run evidence intact.
 ## Live-run summary
 
 Every session that owns a work directory ends with `session/run-summary.json`, written by the
-supervisor after `owner.json` and `report.json`, so it states the final outcome. It is a developer aid; its failure is
-printed on the supervisor's standard error and never changes the outcome or `close`. The live
-harness (`tests/live.rs`) sets the hidden `GameOptions::keep_work_directory`, so `close` keeps
-the directory. A passing case removes it; a failing case keeps it and prints
-`kept <dir>; run summary <dir>/session/run-summary.json: outcome …, last completed phase …, reason …`,
-also when a check fails after a clean `close`. The same directory holds `raw-trace.jsonl`,
-`owner-events.jsonl`, worker and game output, and the private profile's engine logs.
-
-What the summary says, and what it does not:
-
-- **Timing.** One supervisor monotonic clock, from the host reservation to the end of cleanup.
-  It excludes plan admission, the caller's handshake and the worker's own time. The session
-  phases are `setup`, `worker-start`, `awaiting-pause` and `paused`; each is `completed`,
-  `interrupted` (running when the session ended) or `not-reached`. Cleanup is timed apart. Worker
-  `worker.last_record` gives the last record the worker wrote.
-- **Engine calls.** `worker_diagnostics` keeps a compact reason, checkpoint context and an
-  explicit unavailability reason when the checkpoint cannot be read. The worker atomically
-  replaces `session/worker-diagnostics.json` before blocking operations and after verified calls.
-  It records phase, script-check number, owned thread, current operation, separate
-  last attempted/completed calls with ordinals, hook samples and debugger details. Completion
-  requires the return stop and exact register restoration. Elapsed time and deadline are
-  milliseconds from worker diagnostic initialization on its monotonic clock; they are not
-  supervisor phase times. The deadline is absent at the held pause and after a successful script
-  check. Native exceptions identify the faulting engine thread and its stack, including job
-  threads other than the owned call thread. Allocation reports include size, actual address and debugger status;
-  return failures include actual/expected breakpoint, thread, PC and SP; register failures name
-  the register and expected/actual bytes. The first reported failure survives later exit handling.
-  A lost worker without a failure report has an unavailable cause and a last witnessed operation,
-  never an inferred debugger failure. Each checkpoint is at most 16 KiB, with eight hook samples,
-  sixteen detail entries and text cut to 240 characters. Failure to write diagnostics cannot
-  change calls, deadlines, answers or cleanup. No call history or replay data is retained.
-  The live `script_access_failure` control uses the hidden script-check fault target and the
-  existing access-failure control to attempt a debugger write at LLDB's invalid address. It
-  records the actual debugger error and count, then requires confirmed disposal and the original
-  failure from `close`; it does not execute a script.
-  SDK-652 validation on the exact M451-hotfix image passed all eight cases of the
-  [retired world route](ready-world.md), which also checked the summary after disposal. The
-  script argument and
-  attribution cases passed; the deep-nesting case passed at 681 trigger levels and 254 effect
-  levels in 43 seconds. The script access-failure case passed in 40 seconds: its retained summary
-  reported the failed write at `0xffffffffffffffff`, actual count zero, check 1, no completed
-  engine call and confirmed disposal. These are whole-case times, not isolated reporting costs.
-- **Hooks.** `requested` comes from the worker's `hooks-requested` record, the states from
-  `hooks-active-before-resume`. A missing hook is `absent`, `disabled` (the late-hook control),
-  `unresolved` or `hit-before-resume`. When no requested hook is active, the worker stops before
-  its hook state record, so the states are `unavailable` and only `requested` is listed.
-- **Stream.** Holes are read from the stream as written, before a damaged stream loses its
-  terminals. A hole gives the expected and found sequence numbers, never a count of lost
-  records.
-- **Observations.** The reducers' own results at the pause, projected: each registry's observed
-  state, item count and diagnostics; the fixture's gaps, diagnostic window, and for each question
-  its parsing, storage, validation (diagnostics by engine stage) and runtime; the modifier table's
-  entry count. Before the pause they are `unavailable`; an observation the session did not
-  request is `not-requested`. The summary decides nothing that an answer does not.
-
-Lists keep eight samples with a count of the rest, and each text keeps 240 characters.
+supervisor after `owner.json` and `report.json`, so it states the final outcome.
+`src/execution/run_summary.rs` defines its content: phase times on one supervisor monotonic
+clock, hook states, stream holes, the reducers' results at the pause and the worker's last
+diagnostic checkpoint. The worker replaces `session/worker-diagnostics.json` atomically before
+blocking operations and after verified calls; a lost worker without a failure report has an
+unavailable cause and a last witnessed operation, never an inferred debugger failure. Neither file
+changes an answer, an outcome or cleanup. How the live harness keeps and reports the directory is
+in [method authoring](method-authoring.md#live-cases).

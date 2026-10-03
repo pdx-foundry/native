@@ -245,13 +245,10 @@ Decoding, value provenance, bounded control-flow analysis, owner joins, and read
 inside Native. Do not build a handwritten answer table for each command or field.
 
 An unfamiliar instruction shape, unresolved callee, clobbered value, or unproved owner narrows or
-stops an answer and becomes a gap. Engine-only discovery runs without config or a field list. A
-method has no branch on a registry, a command or a build: a fact the executable states is derived,
-a per-build fact lives in the binding authority, and a fact no method reaches is a manual exception.
-A manual exception records its claim, conditions, obstacle, and removal route; it is never
-presented as automatic extraction. Transfer is measured by running a method over every registry,
-not by freezing it; the [development policy](../development-policy.md#keep-engine-knowledge-in-its-home)
-states the rule and its measurement (amended 2026-09-23).
+stops an answer and becomes a gap. Engine-only discovery runs without config or a field list. The
+[development policy](../development-policy.md#keep-engine-knowledge-in-its-home) states where each
+engine fact lives and how method transfer is measured. A manual exception records its claim,
+conditions, obstacle, and removal route; it is never presented as automatic extraction.
 
 ### 6. Atlas's first consumer path
 
@@ -273,7 +270,7 @@ A build is supported when its exact executable identity is in the target catalog
 prove the support. There are no separate qualification records. A new patch does not inherit
 support; it needs a target record and passing tests.
 
-The catalogue holds two Apple Silicon full releases: Cygnus v4.5.0 (8697) and the v4.5.1 hotfix.
+[Targets](../native/targets.md) lists the catalogued builds: two Apple Silicon full releases.
 Static methods and their parity tests need the exact executable. Native keeps full-release targets
 only: Steam offers old full releases for download, but not old open betas. The earlier 4.5 beta
 ARM64 executable stays in `.local/executables` as a knowledge source. The 4.5.1 world recipe is
@@ -337,11 +334,8 @@ supervision failures that the public API cannot cause safely.
    require the live game.
 7. **Recorded answers:** a recorded run gives the same answers as the real run apart from `Basis`;
    a missing record gives `NotRecorded`; no process starts.
-8. **Shared-method transfer:** a method ticket ends with one run over every discovered registry,
-   recording complete, partial and failed counts and each failure shape. The registry sweep runs
-   the method set unchanged at a recorded commit; its failures become follow-up tickets, not fixes
-   inside the sweep. A locality gate (SDK-569) checks that method, session and operation code
-   has no registry, command or build branch (amended 2026-09-23).
+8. **Shared-method transfer:** the population run and the locality gate of the
+   [development policy](../development-policy.md#measuring-method-transfer).
 9. **Atlas integration:** carry a tradition field through Native answers, Atlas claims, a
    schema-valid snapshot, and an end-to-end offline test that reads the snapshot itself. Include
    invalid input and an absent answer. No demo consumer is required. The first release covers one
@@ -351,45 +345,9 @@ supervision failures that the public API cannot cause safely.
 
 ### Milestone 4 shared-reader acceptance
 
-SDK-600 owns one ignored parity test through the public API. On the supported executable,
-`registry_fields("common/council_agendas")` must be `Complete` with established reader kinds for
-all ten fields. The following facts must be established without a typed gap:
-
-| Fields | Required facts | Method tickets |
-| --- | --- | --- |
-| `agenda_cost` | Numeric storage kind and scale; whether a script value is accepted | SDK-544 |
-| `agenda_cooldown`, `agenda_finish_modifier_duration` | Normalized conditions under which each is read | SDK-541 |
-| `potential`, `allow` | Trigger block family and entry scope types | SDK-542, SDK-549 |
-| `effect`, `init_effect` | Effect block family and entry scope types | SDK-542, SDK-549 |
-| `finish_modifier` | Target registry named by content directory | SDK-543 |
-| `modifier` | Accepted member family | SDK-542 |
-| `ai_weight` | Accepted keys, the reader kind of each, and nesting of `modifier` entries | SDK-545 |
-
-Passing this static test does not replace the method tickets' parser controls. The agreed
-2026-10-02 amendments cancel SDK-598 and SDK-599. SDK-545 uses one additive/multiplicative weight
-parse with no diagnostic and a source-located negative control; it makes no runtime weight claim.
-SDK-549 uses a fixture diagnostic to check the tradition read entry scope (`this`), including the
-supplied scope in the wrong-scope message. `check_script` cannot establish that scope because its
-caller supplies it. SDK-608 and SDK-677 own static `root`, `from` and `prev` contexts and block
-SDK-600 through SDK-677. Their explicit self-link assumption is checked against hand-read call
-sites and independent vanilla/config expectations; disagreement or absent evidence keeps a gap.
-SDK-547 owns modifier nodes and container category masks; the application rule is a typed gap by
-design. SDK-542 and SDK-550 retain their parsing and diagnostic controls. The SDK-544 AC4 and AC3
-amendments retain numeric storage controls and duration parser facts. See the
-[numeric conversion](../native/numeric-conversion.md) and [duration](../native/durations.md) pages.
-
-Each method runs unchanged over its full discovered registry or command inventory, with complete,
-partial and failed counts and distinct failure shapes on the method's page in `docs/native/`
-(indexed by `docs/native/discovery.md`). SDK-569 must pass. Per-ticket freeze commits and
-held-out selection are not required.
-
-SDK-597 and SDK-625 own Atlas integration (split 2026-09-25): two established conditional
-branches and one unresolved branch must survive assembly, verification, comparison and coverage;
-an established argument must not credit an unresolved sibling. Claims use typed subjects.
-Directories mapped to several CWT types are joined to each applicable type or kept as explicit,
-counted gaps. SDK-597 delivers the first slice after SDK-541 and SDK-542; SDK-625 delivers the
-remaining claim types and the final live run. Credited rates come from that live run with build
-and source revisions recorded; recorded answers support reproduction.
+The [roadmap](../roadmap.md#milestone-4-acceptance-and-start-order) owns the Milestone 4
+acceptance contract: the SDK-600 council agenda test, the method fixture criteria, method
+transfer and Atlas integration.
 
 ## Out of Scope
 

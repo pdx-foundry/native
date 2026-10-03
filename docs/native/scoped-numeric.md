@@ -40,6 +40,16 @@ The retained SDK-493 binding controls map to the authored routing and subtype co
 the M45 exact-build parity test. The case map and reviewed live output are tracked under
 `tests/expected/scoped-numeric-m45/`. The original prototype bundle remains preserved.
 
+## Current result on M451-hotfix
+
+At `main` `6f643a1`, `scoped-numeric-population` covers all 164 registries and 2,170 commands
+with no failed question. Registry destinations: 7, **0 complete, 7 partial, 0 failed**. Command
+arguments: 302, **0 complete, 302 partial, 0 failed**: 150 signed 32-bit integer and 152 signed
+64-bit fixed point at scale 100000, all with a known range. Every partial answer keeps the
+scoped-literal conversion-boundary gap and the outside-method limit for qualified scopes,
+parameters, lookup outcomes and evaluation; the registry answers also keep the repeat and
+nested-field limit.
+
 ## Live fixture adaptation
 
 The retained M45-observe run has 62 case identities. `tests/expected/scoped-numeric-m45/cases.json`
@@ -136,85 +146,45 @@ The baseline's established points and bytes take precedence; an entered body onl
 
 ### Owner derivation (SDK-658, SDK-660)
 
-The entered path tracks which values may point into the fresh owner (`evaluate/owner.rs`). The
-owner starts at the factory's `operator new` and at the registry owner's first argument. Tracking
-starts conservative: every register, vector and held byte may hold the owner's address. A registry
-constructor's caller is not analysed, so its run keeps this state. The one narrowing is an
-allocator's return (`Machine::return_allocated_owner`): a value held before the allocation is
-underived. A pointer loaded from constant image data is underived. A value is owner-derived when it
-is computed from a derived register, vector or tainted memory byte, or when a call that is given an
-owner address returns it.
+The entered path tracks which values may point into the fresh owner. The module comment of
+`evaluate/owner.rs` states the derivation and write rules. The owner starts at the factory's
+`operator new` and at the registry owner's first argument; a registry constructor's caller is
+not analysed, so its run keeps the conservative start. A pointer loaded from constant image data
+is underived.
 
 #### Assumption: code changes only the object that it is given
 
-The method assumes that a call or store changes only the object that it is given. C++ builds
-members in address order, so a later member's code leaves the members before it intact. The
-assumption replaces SDK-658's escape rule, under which any call after `CEffect` registration could
-write any owner byte. It is a named assumption, not a proof. Jackson approved it on 2026-10-01
-after the [SDK-671 investigation](#global-lexer-string-sdk-671-investigation) showed that a proof
-needs a whole-program invariant. It applies the same way on every build and has no branch on a
-class, command or build.
+This is a named assumption, not a proof. It replaces SDK-658's escape rule, under which any call
+after `CEffect` registration could write any owner byte. Jackson approved it on 2026-10-01 after
+the [SDK-671 investigation](#global-lexer-string-sdk-671-investigation) showed that a proof needs
+a whole-program invariant. It applies the same way on every build and has no branch on a class,
+command or build.
 
-A call that is not entered is **given** the owner addresses that it receives:
+Rules that the module comment does not state:
 
-- each known value in `x0` to `x8` that lies inside the owner;
-- the owner's start, when `x0` is owner-derived and its value is unknown.
-
-`Machine::given_owner_address` returns the lowest. Other registers are ignored. A derived register
-with an unknown value can be left over from earlier code, and a call's arity is not known. A
-derived register with a known value outside the owner names another object. A store or call is
-judged by these rules:
-
-| Write | Effect on owner bytes | Other effects |
-| --- | --- | --- |
-| Known address | Exact, including earlier members | Outside the owner and private frame: caller memory is forgotten after return |
-| Unknown, underived address | Kept: a pointer that existed before the owner cannot point into it | Every other byte becomes unknown |
-| Unknown address, base register a known owner address | Bytes before the base are kept; bytes from it on become unknown | Every other byte becomes unknown |
-| Unknown, other derived address | Every owner byte becomes unknown | Every other byte becomes unknown |
-| Call that is not entered, given an owner address | Bytes from the lowest given address to the owner's end become unknown and derived | Every byte outside the owner becomes unknown; the object at each other address in `x0` to `x8` becomes derived; every register that the call does not preserve may be derived |
-| Call that is not entered, given no owner address | Kept | Every byte outside the owner becomes unknown; no returned register is derived |
-
-The modeled C calls follow the same return rule. `strlen` and a bounded `memcpy` or `memmove`
-keep their exact memory effects, but their returns are derived only when they are given an owner
-address. An allocation is given only its size, so a non-owner allocation returns nothing derived.
-
-A call given an owner address may store one in the objects that it is given, such as a member's
-self pointer or a stack out-parameter, so those bytes are tainted. An object outside the owner has
-an unknown size. On the stack, it is taken to reach the end of the frame that holds it; after the
-stack pointer moved by an unknown amount, no frame bounds it and the walk adds no facts. Elsewhere,
-it is a pointer-sized slot and any run of held bytes that continues it; memory that the machine
-does not hold falls under the escaped-address pitfall below. A load is derived when its address is derived
-or when it reads a tainted byte. Only a store of an
-underived value to a known address clears a byte's taint; a forgotten byte may keep its earlier
-value. Loop-head joins and returning paths take the union of derivations. An entered constructor
-returns its taint outside the owner as well as inside it (`Machine::install_owner_derived_memory`),
-so a member that stores `this` at a known global leaves that global derived for its caller.
-
-An owner byte is claimed when every returning path agrees on it after every later write that may
-change it. An unknown write therefore does not withdraw the walk: a later store to a known
-address establishes its bytes again. A walk with a path that does not return, a stack pointer
-moved by an unknown amount, a receiver outside the owner or a summary point that disagrees with a
-constructor-written word is not followed. Its call is treated as one that is not entered, and the
-compiler summary is installed.
-
-Entered constructors report the whole owner, so a write to an earlier member through another
-argument gives the new value, never a stale one. Callee machines inherit the caller's stack
-position, argument values and established memory with their derivations. Preserved registers
-keep their derivation but not their values. A callee's write to a caller stack argument makes the
-caller forget its memory. While the entered path runs, a factory or registry call that is not
-entered also forgets caller memory, so a changed stack slot cannot reach a constructor as stale
-evidence. A rebased pointer slot outside `__DATA_CONST` and the read-only sections is writable.
-Earlier code may have replaced its target, so the entered path reads it as unknown. A factory or
-registry run whose stack pointer moved by an unknown amount adds no facts. Both routes take these
-rules from `receivers.rs`: `ConstructorImage` gives each run its image, and `accept_entered_path`
-applies the stack rule.
-
-Command and registry constructor tail branches use the same join as direct calls, even when the
-callee's code is decoded. Summary points are checked and completed at the constructor's receiver
-offset in the owner. New embedded points require constructor-written words; missing nested code
-cannot borrow a point from metadata. Partly written points are never completed from metadata.
-Reserved objects have no read-only backing; the method assumes neither zeroed allocation nor
-`_bzero` behavior.
+- The modeled C calls follow the same return rule. `strlen` and a bounded `memcpy` or `memmove`
+  keep their exact memory effects, but their returns are derived only when they are given an
+  owner address. An allocation is given only its size, so a non-owner allocation returns nothing
+  derived.
+- An object outside the owner has an unknown size. On the stack, it reaches the end of the frame
+  that holds it; after the stack pointer moved by an unknown amount, no frame bounds it and the
+  walk adds no facts. Elsewhere, it is a pointer-sized slot and any run of held bytes that
+  continues it.
+- An owner byte is claimed when every returning path agrees on it after every later write that
+  may change it, so a later store to a known address establishes its bytes again. A walk with a
+  path that does not return, a stack pointer moved by an unknown amount, a receiver outside the
+  owner or a summary point that disagrees with a constructor-written word is not followed; its
+  call is treated as not entered, and the compiler summary is installed.
+- An entered constructor returns its taint outside the owner as well as inside it
+  (`Machine::install_owner_derived_memory`), so a member that stores `this` at a known global
+  leaves that global derived for its caller. A callee's write to a caller stack argument makes
+  the caller forget its memory.
+- A rebased pointer slot outside `__DATA_CONST` and the read-only sections is writable; the
+  entered path reads it as unknown.
+- Command and registry constructor tail branches use the same join as direct calls, even when the
+  callee's code is decoded. New embedded summary points require constructor-written words;
+  partly written points are never completed from metadata. Reserved objects have no read-only
+  backing; the method assumes neither zeroed allocation nor `_bzero` behavior.
 
 #### Pitfalls
 
@@ -236,8 +206,8 @@ Reserved objects have no read-only backing; the method assumes neither zeroed al
   vtable summary and with the [constructor table](#constructor-state-on-m451-hotfix-sdk-654).
 - Live observations confirm the static answers; they do not initialize constructor state.
 
-The [current population](discovery.md#member-confined-calls-sdk-660) records storage, known ranges
-and failure shapes.
+The [current result](#current-result-on-m451-hotfix) records storage, known ranges and failure
+shapes.
 
 ### Constructor obstacles under the escape rule (superseded by SDK-660)
 
@@ -742,8 +712,8 @@ Scoped numeric attachment copies `Reader.numeric` from the shared token-reader f
 when constructor evidence establishes the concrete literal storage. Those literals inherit the
 int or direct fixed-point range in [numeric conversion](numeric-conversion.md#faithful-storage-and-endpoint-requirements).
 Destinations with unresolved storage retain `Reader.numeric: Unresolved` and have no range.
-The [current population](discovery.md#numeric-boundary-evidence-sdk-655) records the known-range
-counts separately from overall answer completeness.
+The [current result](#current-result-on-m451-hotfix) records the known-range counts separately
+from overall answer completeness.
 
 The live matrix has 88 cases, including twelve boundary additions to the earlier 76 cases.
 `overclock_cooldown` and `cycle_length_in_days` each cover the inward neighbor, endpoint and

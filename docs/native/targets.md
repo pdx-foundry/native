@@ -83,27 +83,8 @@ the scripted-trigger stream call is `0x10212388c`. The tradition reader return i
 `0x100ce3054`, immediately after its reader call. Trigger writes retain the `CAndTrigger`
 address point `0x103095ee8` and the child-array address point `0x103000458`.
 
-The world pins below belong to the [retired world route](ready-world.md). For SDK-650 world
-preparation, `CInGameIdler::UpdateInternal(bool)` is `0x10086de60`.
-The pause is at `+4`, after its first `sub sp, sp, #0xe0`. A pause at the entry carried
-a branch-type status bit that the debugger could not restore; one ordinary instruction
-clears that transient state. The full register check stays in force.
-The expected caller chain remains `CGameIdler::Idle(bool)`, then
-`CApplication::UpdateOneFrame(bool)`. `GetGameDateIfPossible()` is `0x100707da4` and reads
-`g_CurrentGameState` at `0x1032e9450`, readiness at `+0x98`, and date at `+0xb8`.
-The in-game idler global remains `0x1032e9438`; `JumpToNextDay` reads its pause byte at `+0x584`.
-`CHuman::AccessSelectedCountry` reads the selected country ID at `+0x54` and checks country IDs
-at `+0x20`. `SetCountry` writes scope type 4 at `+8`, ID at `+0x10`, and clears the cached
-object at `+0x1c`. The scope constructor still fits the allocated `0x180` bytes.
-Flag lookup uses 16-bit IDs at array `+0x10`, count `+0x1c`; signed counts use array `+0x40`
-and count `+0x4c`. These are static layout checks, not a live world result.
-
-For SDK-647 variable reads, `GetVariablePointer(CEventScope const&, CString const&)` is
-`0x100d0d704`, `CVariables::VariableIsSet(CString const&) const` is `0x100d1e7b8` and
-`CVariables::GetVariable(CString const&) const` is `0x100d1e784`. `GetVariable` looks up the map at
-`+8` and loads the 64-bit value at entry `+0x30`, or the engine's zero constant for a missing
-entry. The stored scale is 100000. The retired [live cases](ready-world.md#variables) verified
-these reads.
+The world pins of this port are on [ready-world
+observations](ready-world.md#world-pins-on-m451-hotfix).
 
 Raw symbol tables, every pinned function's disassembly, vtable slots, the old-to-new address map,
 and the capture scripts are retained under `.local/sdk-650/hotfix/`. No game process was launched
@@ -120,6 +101,11 @@ also carries the new build hash and additional gaps. Candidate recordings and st
 are retained under `.local/sdk-650/hotfix/`; tracked expectations were not changed.
 The shared scoped-number analysis needs further adaptation. This port does not establish full
 static parity or successful live world behavior.
+
+Five ignored exact-build tests in `src/binding/analysis/tests.rs` fail on M451-hotfix:
+four assert M45-release addresses, and `repeated_public_and_binding_queries_agree` compares the
+public field answer with an internal path that does not apply numeric and scoped facts. SDK-674
+owns them.
 
 The shared scoped-body matcher was repaired for changed compiler source paths and relocated
 local ADR bases; its complete instruction checks remain. See [scoped numeric](scoped-numeric.md).

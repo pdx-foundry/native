@@ -1,10 +1,9 @@
 # Diagnostic-channel survey, 2026-09-28
 
-The bounded generated-fixture spike completed on M45-release. Exact executable SHA-256:
-`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`; ARM64 slice:
-`a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-Findings do not transfer to other builds without checks. Native method `observe-fixture/v4`
-provided all observations. No worker, hook, supervisor, public operation or decoder was added.
+The bounded generated-fixture spike completed on the exact M45-release build in
+[targets](targets.md). Findings do not transfer to other builds without checks. Native method
+`observe-fixture/v4` provided all observations. No worker, hook, supervisor, public operation or
+decoder was added.
 
 Atlas owns the fixtures, question matrix, inference scores and rule conclusions. The retained
 experiment is `/Users/jackson/Developer/pdx-foundry/atlas/docs/prototypes/generated-fixture-spike/`:
@@ -147,13 +146,12 @@ disposal. Atlas owns the frozen 89-claim matrix and decisions in
 `docs/prototypes/config-test-spike/REPORT.md`. Preserve its raw logs and scripts; the checked
 second copy is `.local/evidence/config-test-spike-2026-09-28/`.
 
-Three route details affect diagnostic interpretation:
+Route details that affect diagnostic interpretation; the whitespace, scope-width and
+sustained-session facts are in [engine calls](engine-calls.md#config-test-spike-pause-and-token-controls):
 
-- Memory text without trailing whitespace can leave `yes`/`no` text at EOF token 19. Appending
-  a newline restores their Boolean token IDs. A positive control must exercise tokenization,
-  not just a string reader that happened to accept the last text.
-- A wrong-scope message and quiet control can cover all 42 engine bits when scope arguments
-  are 64-bit. The old `pop` bit is still accepted by `has_citizenship_rights`, `member_of_faction`
+- A positive control must exercise tokenization, not just a string reader that happened to accept
+  the last text.
+- The old `pop` bit is still accepted by `has_citizenship_rights`, `member_of_faction`
   and `is_on_galaxy_map`. Their static declarations agree. Acceptance of a bit does not establish
   that a current authoring context can supply that scope.
 - Validation can reject a surrounding object before a field property is controlled.
@@ -164,15 +162,12 @@ Three route details affect diagnostic interpretation:
   scopes. `add_tradition` did not supply the required unknown-item rejection. No silence was
   credited on these routes.
 
-The frozen scorer found 31 refutations among 3,409 probes. One fresh session repeated those
-claims in separate requests, including 528 extra corrected controls: every refutation survived
-and every added correction was quiet with a parsed child. This bounds request interference;
-it does not prove arbitrary long-lived database isolation. Line-distinct snippets still provide
-the ordinary-log join and avoid identical-message suppression. Repeated cardinality probes
-remain No comment: parse/validation says nothing about overwrite, requiredness or execution.
+Line-distinct snippets provide the ordinary-log join and avoid identical-message suppression.
+Repeated cardinality probes remain No comment: parse and validation say nothing about overwrite,
+requiredness or execution.
 
-Documentation dumps also have boundaries. The actual scripting-documentation routine fills
-all five files at the pause; the named console handler does not. Effect/trigger names, available
-scopes, and all 45,578 loaded modifier names/tags agree with Native. The dumps omit Native-known
-scope links and localization entries; `scopes.log` is not the scope-type inventory. See the Atlas
+The documentation dumps that `PrintScriptingDocumentation` writes agree with Native on effect
+and trigger names, available scopes, and all 45,578 loaded modifier names and tags. The dumps
+omit Native-known scope links and localization entries; `scopes.log` is not the scope-type
+inventory. See the Atlas
 both-direction comparison before treating any missing dump entry as engine absence.

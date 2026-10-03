@@ -18,12 +18,8 @@ The normal trace records three registration call entries during startup initiali
 
 The fixture is a category with a template string and empty traditions list. No save/world is loaded. These are **read-entry observations**, not stored values, successful registration returns, validation or gameplay. The three observed registration tokens do not establish a complete command registry.
 
-| Retained final run | Observation outcome | Independent disposal |
-| --- | --- | --- |
-| `20260917-002215-none-d8a910` | Complete, ordering and continuous sequence, two fields, terminal count | Confirmed and reaped |
-| `20260917-002242-missing-66363a` | Missing field hook, explicit unavailable capability | Confirmed and reaped |
-| `20260917-002307-incomplete-ef5140` | Dropped record 11; sequence/count mismatch, incomplete | Confirmed and reaped |
-| `20260917-002334-worker-loss-e2cab9` | Worker SIGKILL while callback stopped the game; no terminal completion | Parent killed and reaped game |
+The four controls (normal, missing hook, dropped record, worker loss) gave the same outcomes as
+the later [worker trial](loader-entry-worker.md#final-matrix), and every game was reaped.
 
 Worker and owner monotonic timestamps have different clock domains. Use trace sequence for producer order; do not compare those timestamps as one clock.
 
@@ -33,7 +29,8 @@ Worker and owner monotonic timestamps have different clock domains. Use trace se
 
 The accepted final mechanism is the debugger observer. A fallback launch-inserted dylib recorded registration but failed to reach parsing. Its private in-process hooks/trampoline are not qualified by the final result, and missing constructor witnesses cannot prove database construction order.
 
-Initial `task_for_pid` failed. One human intervention enabled debugger access. A presentation guard crashed in `objc_retain` because an ARC function used an object signature for a BOOL; a no-argument selector also needed the correct signature. Both were corrected. Failed raw runs and `evidence/development-failures.json` remain. The old debugger-owned disposal failure remains explicit; final ownership is the independent direct parent.
+Initial `task_for_pid` failed until debugger access was approved; see
+[debugger authorization](lifecycle.md#findings-from-the-rust-supervisor-m45-observe-macos). A presentation guard crashed in `objc_retain` because an ARC function used an object signature for a BOOL; a no-argument selector also needed the correct signature. Both were corrected. Failed raw runs and `evidence/development-failures.json` remain. The old debugger-owned disposal failure remains explicit; final ownership is the independent direct parent.
 
 ## Reuse and limits
 
@@ -49,12 +46,24 @@ No production adapter, Windows timing, database-constructor order, late/hot relo
 
 ## Registry items (Rust supervisor, M45-observe)
 
+The public item query was retired on 2026-10-02 and is in Git at `d8f9d8a`.
+`internals::check_registry_load` keeps one bounded live observation of one registry, with an
+optional fixture, for the SDK-552 loader-rule controls; `engine/operations/registry_items.rs`
+states its witness chain.
+
 - **Where to read the items.** The worker reads item keys from the engine objects when the initial collection loader returns. The collection is full at that point, and later validation has not run. A first attempt waited for entry to the later post-read phase; the game did not reach it in 180 seconds.
 - **Inputs.** The engine reads private copies of the registry directories. On M45-observe the result is 234 traditions and 33 tradition categories, from one paused process, in about 35 to 45 seconds.
-- **SDK-529 extension.** Static discovery now supplies initial loader entries for selected
-  registry directories. The same return-boundary witness gave 49 ascension perks, 17 ethics,
-  171 edicts, 358 civics from a nested directory, and 10 galaxy definitions from `map/galaxy`
-  in an M45 live probe. See [registry items](registry-items.md) for report status and limits.
+- **Every registry.** Static discovery supplies the initial loader entry of each registry. The
+  same return-boundary witness gave 49 ascension perks, 17 ethics, 171 edicts, 358 civics from a
+  nested directory, and 10 galaxy definitions from `map/galaxy`. A full M45-observe report over
+  164 registries gave 161 complete answers. `common/bypass` and `common/map_modes` were
+  unsupported because their key layout was not yet established (see
+  [item keys](modifier-families.md#item-keys)), and `common/game_scenarios` because its initial
+  loader did not run before the startup deadline.
+- **Pause at the deadline.** Without a returned loader, a registry session pauses only at the
+  worker's deadline, 170 seconds of the 180-second startup budget, and the registry is
+  `NotLoaded`. One M45-release session paused at the deadline before any of the six generator
+  registries loaded; why it did not reach them is not known.
 - **Launch flag.** The launch uses `-debug_mode`, as the prototype did. One early batch omitted the flag and still reached the fixture, so the flag is not known to be necessary.
 - **Missing debugger.** To test a missing debugger without a change to the host, set `DEVELOPER_DIR` to a directory that does not exist.
 
@@ -175,11 +184,8 @@ The fixture cases are `fixture_numeric_megastructures` and `fixture_numeric_armi
 `tests/live.rs`. Each supplies boundary, fractional and malformed inputs. The malformed definition
 first stores `7`, then reads `not_a_number`; both occurrences remain source-correlated.
 
-| Field | Boundary input and stored value | Fractional input and member-return value | Malformed input after `7` |
-| --- | --- | --- | --- |
-| `common/megastructures#sensor_range` | `2147483647` → `2147483647` | `-1.234567` → `-1` | Retains `7`; separate `Malformed token` diagnostic |
-| `common/megastructures#build_time` | `92233720368547.75807` → raw `9223372036854775807` | `-1.234567` → raw `-123456` | Retains raw `700000`; separate diagnostic |
-| `common/armies#war_exhaustion` | Same fixed-point boundary | Same fixed-point fraction | Same retained value and separate diagnostic |
+The observed values are in `tests/expected/numeric-m45/live.json`; [numeric
+conversion](numeric-conversion.md#live-observations) interprets them.
 
 Both numeric live cases passed, along with all 12 existing field-outcome cases and both string
 transfer cases (16 live cases total). The full default Rust suite and all 42 worker/codec tests
@@ -231,9 +237,7 @@ is outside this initial-load method; [duration keys](durations.md) owns duration
 
 ## Nested template numeric storage (SDK-648, M45-release)
 
-SDK-648 closes the template-reader gap above on the same verified M45-release executable
-(`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`, ARM64 slice
-`a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`).
+SDK-648 closes the template-reader gap above on the same verified M45-release executable.
 `FixtureFieldQuestion::with_parent_field` selects one embedded parent. The method stamp is
 `observe-fixture/v4`. The first supported inline loader is `common/special_projects`; it remains
 outside the template registry inventory. Its exact-build recipe binds the file reader's
@@ -254,16 +258,11 @@ return hooks also check the entry stack pointer: the first live attempt showed t
 `CPersistent` reads share a return address, so an address-only hook fired before the parent
 returned. File-final values are read again at reader destruction, before directory postprocessing.
 
-| Input | Value after member return | Value at file completion |
-| --- | --- | --- |
-| `-281474976710656.0` | raw `-9223372036854775808` | same |
-| `-1.25` | raw `-40960` | same |
-| `7`, then `not_a_number` | raw `229376`, then raw `0` | raw `0` |
-
-Every value has scale 32,768. The live run completed with all owner, source, parser-return and
-file-terminal joins intact. Diagnostic coverage completed with no diagnostics for these inputs,
-including `not_a_number`. This differs from the direct `CFixedPoint` observation; neither result
-establishes a general validity or conversion rule. Recorded answers round-trip these typed values.
+The values, at scale 32,768, are in `tests/expected/numeric-m45/live.json`. The live run completed
+with all owner, source, parser-return and file-terminal joins intact. Diagnostic coverage completed
+with no diagnostics for these inputs, including `not_a_number`. This differs from the direct
+`CFixedPoint` observation; neither result establishes a general validity or conversion rule.
+Recorded answers round-trip these typed values.
 
 Only initial file-load field outcomes are supported for the inline loader. Validation, world
 state and runtime evaluation are outside this method. Unproven parents, receivers, destinations
@@ -284,7 +283,7 @@ cases explicitly select the traditions registry while the inline fixture loads i
 
 ## Float and short storage (SDK-656, M451-hotfix)
 
-The exact executable is `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`.
+The exact executable is M451-hotfix in [targets](targets.md).
 The fixture binding joins `CReader::Read(float&)` to binary32 storage and
 `CReader::Read(short&)` to 16-bit storage. The worker reads four or two bytes respectively,
 without interpreting the short's signedness. Unknown callees, ambiguous token paths, missing
@@ -312,16 +311,15 @@ path proves the token and the float destination. Require the path's singleton to
 domain and unconditional reader/owner join instead. These compiler shapes also transfer to
 storm, astral-action and sector fields without a registry or field branch.
 
+`common/ship_sizes/max_speed` transforms its stored value after the reader. Its final value is
+not a shared-reader rule.
+
 ### Live isolation obstacle
 
-Do not run the default Rust suite alongside a live fixture. Its process-inventory control
-briefly starts a harmless executable named `stellaris`, which the live supervisor correctly
-treats as an external game. The retained `fixture_numeric_conversion_matrix` failure reports
-`External game invalidated isolation` during its nested-project session, before the pause;
-disposal is confirmed. Its case, `raw-trace.jsonl` and `session/run-summary.json` remain under
-`/var/folders/kd/4s9l1qz1055d4cq25nz2xddh0000gn/T/pdx-native-48790-1790796165663864000`.
-The full case output is `.local/sdk-656/live-first.log`. Static analysis can run alongside a
-live session; controls that start processes must run separately.
+Do not run the default Rust suite alongside a live fixture: see the ordinary game conflict in
+[lifecycle](lifecycle.md#findings-from-the-rust-supervisor-m45-observe-macos). A run that broke
+this rule reported `External game invalidated isolation` before the pause, with confirmed
+disposal. Static analysis can run alongside a live session.
 
 The reviewed numeric matrix has 110 cases and 124 stored occurrences, including nine float
 cases across three fields and 21 short cases across seven fields. All ten fields have verified

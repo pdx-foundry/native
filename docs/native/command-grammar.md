@@ -79,7 +79,9 @@ its vtable. The persistent read and member slots then join its own ledger. A mem
 function is one `b` to another function is an alias: the branch passes every argument unchanged,
 so the member is read through the target (`declarations::alias_target`, at most four aliases).
 `TFleetSettings::ReadMember` `0x101034738` is such an alias of `ReadBackwardsCompatible`
-`0x10103473c`, which reads the fleet `settings` keys. Constructed fixed children use the same
+`0x10103473c`, which reads the fleet `settings` keys. `create_species.flags` and `variables`
+are read with `CReader::ReadUniform<CString>`, a list of strings with no named fields, so they
+publish `Fields: []` with a `reader-routing` gap. Constructed fixed children use the same
 allocation/constructor/virtual-read proof as numeric children.
 
 One internal coverage function governs fixed keys, child families and ordering. The normalizer
@@ -276,10 +278,9 @@ log and `CReader::ReportUnexpected` are hooked. The `CLogger::Log` stream route 
 
 ## Engine facts on M45-release
 
-Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
-ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-These engine facts were recorded at `command-grammar/v9`, with `dynamic-names/v2` and
-`registry-fields/v8`. They do not establish complete value grammars or target-scope answers.
+These engine facts apply to the exact M45-release build in [targets](targets.md). They were
+recorded at `command-grammar/v9`, with `dynamic-names/v2` and `registry-fields/v8`. They do not
+establish complete value grammars or target-scope answers.
 
 ### F1. The family dispatch always calls `Read`
 
@@ -803,16 +804,18 @@ Milestone 4 gate or the later Atlas composition and live coverage run.
 
 ## Verification
 
-Formatting, Clippy across all targets with warnings denied, rustdoc with warnings denied,
-`cargo test --workspace --locked` (415 unit tests plus integration, example and documentation
-tests), 36 Python worker tests, and all 21 installed M45 parity tests passed on the final revision. The required LARP style review found two duplicated responsibilities: log-source
-interpretation mixed with emission, and concrete read/member identity construction in three
-normalizers. Both were separated without changing the observed facts or serialized identities.
-The final regression suite, Python tests and parity passed after the PR and architecture repairs.
-All six trigger/effect validation probes passed again, followed by the repeated block parser case.
-An earlier overlapping unit/live run invalidated two live sessions; the final run serialized
-these checks and passed. The architecture review and follow-up style finding were verified before
-repair; the retained reader-family boundaries are pitfalls on [reader kinds](reader-kinds.md).
+Formatting, Clippy across all targets with warnings denied, rustdoc with warnings denied, `cargo
+test --workspace --locked` (415 unit tests plus integration, example and documentation tests), 36
+Python worker tests, and all 21 installed M45 parity tests passed on the final revision. The
+required LARP style review found two duplicated responsibilities: log-source interpretation mixed
+with emission, and concrete read/member identity construction in three normalizers. Both were
+separated without changing the observed facts or serialized identities. The final regression suite,
+Python tests and parity passed after the PR and architecture repairs. All six trigger/effect
+validation probes passed again, followed by the repeated block parser case. An earlier overlapping
+unit/live run invalidated two live sessions; the final run serialized these checks and passed. The
+architecture review and follow-up style finding were verified before repair; the retained
+reader-family boundaries are pitfalls on [registry
+fields](registry-fields.md#reader-identities-and-kinds).
 
 ## PR review repairs
 
@@ -838,7 +841,7 @@ measurements. See [method authoring](method-authoring.md#command-inspection-and-
 for commands, denominator rules and diff behavior. The original SDK-542 test remains a historical
 measurement check; this tool adds no extraction claims or parser validation.
 
-Two unfiltered runs on M45-release (`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`)
+Two unfiltered runs on M45-release
 produced identical normalized reports. The second run took 287 seconds. Counts reconcile with
 SDK-542's delivered population above:
 
@@ -966,27 +969,11 @@ and 11 triggers that cease to be complete retain their prior forms and child pro
 new target constraints are unresolved. Numeric children of `random_list` and
 `locked_random_list` have unresolved target lists with no identified target arguments.
 
-The SDK-568 slot comparison has these disagreements. Thirteen unions are unresolved. The other three
-(`is_background_planet`, `is_being_integrated_by`, `is_default_species`) are empty because no
-accepted target alternative was established; their target lists remain unresolved. Thus a
-disagreement does not establish a different accepted set. Conversion routes can explain a difference between
-a getter's result type and input scopes, but no such route is assumed here.
-
-| Kind | Command | Slot mask | Unfinished target check |
-| --- | --- | ---: | --- |
-| Effect | `steal_planet_output` | 12 | Getter and execution indirect calls |
-| Effect | `transfer_galactic_defense_force_fleets` | 4 | Unclassified getter call |
-| Effect | `transfer_resource_stockpile` | 12 | Unclassified execution call |
-| Effect | `transfer_resources_to_empire` | 4 | Unclassified execution call |
-| Trigger | `can_afford_special_offer` | 4 | Unclassified execution call |
-| Trigger | `has_attitude_behavior` | 4 | Unclassified execution call |
-| Trigger | `has_casus_belli` | 4 | Unclassified execution call |
-| Trigger | `has_intel` | 4 | Unclassified execution call |
-| Trigger | `has_intel_level` | 4 | Unclassified execution call |
-| Trigger | `has_intel_report` | 4 | Unclassified execution call |
-| Trigger | `has_stale_intel` | 4 | Unclassified execution call |
-| Trigger | `intel` | 4 | Unclassified execution call |
-| Trigger | `is_background_planet` | 1099511627778 | No accepted target alternative; forms unresolved |
-| Trigger | `is_being_integrated_by` | 4 | No accepted target alternative; forms unresolved |
-| Trigger | `is_default_species` | 2048 | No accepted target alternative; forms unresolved |
-| Trigger | `is_offer_terms_actual` | 4 | Unclassified execution call |
+The 16 slot overrides of the
+[target getters](engine-commands.md#target-getters-are-not-target-sets) do not agree with an
+established target list. Thirteen have unresolved target lists: they stop at an unclassified
+getter or execution call, or at an indirect call. `is_background_planet`,
+`is_being_integrated_by` and `is_default_species` have no accepted target alternative, so their
+lists are also unresolved. A disagreement does not establish a different accepted set.
+Conversion routes can explain a difference between a getter's result type and its input scopes,
+but no such route is assumed here.

@@ -26,8 +26,7 @@ unclassified when the code around its reader call cannot be followed. The live t
 
 ## Engine facts on M45-release
 
-These facts are from executable `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`
-(ARM64 slice `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`). The canonical
+These facts are from the exact M45-release build in [targets](targets.md). The canonical
 lines of the three consumption bodies are retained in `.local/sdk-646/canonical-lines.txt`.
 
 ### Shared factor: timed flags
@@ -118,8 +117,7 @@ neither group has the `duration-scoped-literal` gap.
 
 ## Stack and execute facts on M451-hotfix (SDK-657)
 
-These facts apply to executable `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`,
-ARM64 slice `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
+These facts apply to the exact M451-hotfix build in [targets](targets.md).
 
 ### Stack temporaries and scoped literals
 
@@ -207,8 +205,7 @@ Duration lists are 627 known, 517 partial and 1,026 unresolved. `add_modifier` a
 candidate has an unclassified prefix or continuation. **26 commands have uncovered unit-named
 keys**: 21 have the scoped `days` mix above, and five have `days` without a factor sibling. The 21
 groups cover 42 `months` and `years` keys. The SDK-544 AC3 amendment accepts these limits; see
-[gaps](#gaps). Before/after counts are
-in the [discovery index](discovery.md#member-confined-calls-sdk-660). Run
+[gaps](#gaps). Run
 `cargo run --release --example duration-population` with `STELLARIS_PATH`;
 `.local/sdk-660/after/duration.json` holds each answer.
 
