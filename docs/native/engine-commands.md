@@ -241,28 +241,74 @@ The engine has no documentation dump for either.
   `PerformEvent(COnActionList const*, …)`.
 - **Scopes.** A `CEventScope` has its type, one `EScopeType` bit, at `+0x08`, and root, from and
   prev links at `+0x30`, `+0x38` and `+0x40`. The fresh constructors write type 0 and point every
-  link back to the scope itself; `IsFromFromSet` tests the type of the linked scope, not the
-  pointer. Typed setters, such as `CScopeObjectReference::SetCountry`, write one type constant.
+  link back to the scope itself. Typed setters, such as `CScopeObjectReference::SetCountry`, write
+  one type constant. The answer keeps a self-link as `SelfLink`.
 - **Game rules.** A game rule is a member of the rule set: `CGameRules::CanColonizePlanet` builds
   a scope and calls `CScriptedRule::Evaluate(this + 20 * 0xc0, scope, …)`. Weighted rules start at
   `this + 0x9cc0`, `0x40` apart. `__GLOBAL__sub_I_game_rules.cpp` fills the rule declaration
   tables, and `FindRuleDeclarationByEnum` returns the row, with its token, for a rule's
   enumeration.
 
-**Result on M45-release.** 294 on_actions; 281 have at least one context
-and 207 have at least one context with no unresolved scope. 18 names keep several contexts: for
-example, a fleet enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an
-astral rift as from. 223 game rules (209 scripted, 14 weighted); 220 have a context and 204 a
-context with no unresolved scope. These call sites were checked by hand in the disassembly:
-`on_game_start` and `on_monthly_pulse` (a new scope with no type), `on_leader_level_up` (country,
-from leader), `on_planet_returned` (planet, from country, fromfrom country),
-`can_colonize_planet` (planet, root country), `can_orbital_bombard` (fleet, from planet) and
-`leader_election_weight` (weighted, leader).
+**How script reads a link.** `CEventTarget::GetScope(CEventScope&, char const*)` (`0x1004f9860` on
+M451-hotfix) resolves the `root`, `from` and `prev` tokens (`0x2c92`, `0x2c78`, `0x2c93`). The
+self-link rule below is an assumption, checked by hand at these cases and by the comparisons
+below; Atlas applies it to the raw answer.
 
-The engine fires some names that the CWT config lacks, such as `on_leaving_system_fleet`,
+- `root` (`0x1004fa8f8`) copies the root link with no check, so a self-linked root is the scope
+  itself, with the type of `this`.
+- `from` (`0x1004fa8e8`) and `prev` (`0x1004fa900`) give no scope when the link is the scope
+  itself.
+- `fromfrom` (`0x1004faba4`) is guarded by `IsFromFromSet`, which tests the types of `from` and
+  `from.from`, not the pointers. So a self-link later in the `from` chain is the scope that holds
+  it, and a typed scope whose `from` links to itself has itself as `fromfrom` although its `from`
+  is no scope. A `from` chain ends at its first scope with no type.
+- `prevprev` (token `0x2cfa`, `0x1004fabb8`) follows two links and compares the end with the entry
+  scope only. So the `prev` chain passes a scope with no type, and a later self-link is the scope
+  that holds it.
+
+The `EEffectUserDataKey` map that the firing functions take is not visible to script; its named
+reader is `NAIUtil::GetSpecialOfferData`.
+
+**Result on M451-hotfix.** 294 on_actions; 281 have at least one context and 207 have at least
+one context with no unresolved scope. 13 names keep several contexts with no unresolved scope: for
+example, a fleet enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an
+astral rift as from. Three name a typed prev: `on_modification_complete`,
+`on_subspecies_integration_step` and `on_subspecies_integration_complete` link the colony as prev.
+223 game rules (209 scripted, 14 weighted); 220 have a context and 204 a context with no unresolved
+scope. These call sites were checked by hand in the disassembly:
+
+- `on_game_start` and `on_monthly_pulse`: a new scope with no type.
+- `on_leader_level_up`: country, from leader.
+- `on_planet_returned`: planet, from country, fromfrom country.
+- `on_modification_complete`: country, from and fromfrom species, prev colony.
+- `can_colonize_planet`: planet, root country.
+- `can_add_claim`: galactic object, root country.
+- `can_orbital_bombard`: fleet, from planet.
+- `leader_election_weight`: weighted, leader.
+
+**Comparison with independent sources.** Read through the self-link rule:
+
+- 184 of 294 on_actions agree with the vanilla scope comments in `common/on_actions`.
+- 181 of 223 game rules agree with the config's `replace_scopes`.
+
+Each disagreement was read by hand, and the engine agrees with Native in every case. Use these
+shapes when a source and the answer differ:
+
+- The config gives 9 rules a `from` of the `this` type, for example `is_mercenary`. The engine
+  builds one fresh scope, so `from` self-links and script sees no `from`; vanilla never reads
+  `from` in them.
+- The config writes `planet` where the engine passes `colony` (`can_ai_assign_governor`), and
+  `carrier` where it passes `colony` or `planet`. `dismiss_leader_cost` is evaluated on a leader,
+  not a country.
+- A comment names an object that the engine never sets (`on_rebels_take_planet` has no war;
+  `on_specialist_subject_conversion_aborted` passes the agreement's target country). A comment
+  says fleet where the engine passes a ship (`on_system_survey`).
+- A comment describes the call site whose scope the method cannot follow (`on_ship_built`), or a
+  branch past the path limit (`on_ship_quantum_catapult`).
+
+The engine fires some names that the config lacks, such as `on_leaving_system_fleet`,
 `on_colony_transfer`, `on_fleet_went_mia`, `on_waystation_lost`, and the rules `can_jump_drive`
-and `can_scavenge_debris`. The config writes `carrier` where the engine passes a `colony` or
-`planet` scope type. Most on_actions that only the config has are fired by script content
+and `can_scavenge_debris`. Most on_actions that only the config has are fired by script content
 (`fire_on_action`) or at a site whose name the method cannot recover.
 
 **Gaps.**
@@ -271,18 +317,19 @@ and `can_scavenge_debris`. The config writes `carrier` where the engine passes a
   (`on_add_to_imperial_council` or `on_remove_from_imperial_council`), a name that a wrapper that
   is not pinned receives (`CArmy::PerformBuildingOnAction`), or a name built at run time
   (`_queued`). One list site fires a list that an object holds.
-- 13 on_actions have no context: 10 reach the path limit (including
-  `on_war_participant_leaves_early`), 2 are not reached from their function entry, and
-  `on_press_begin`'s command builds its own scope.
-- 50 on_actions have only unresolved contexts. Most reuse one scope for several firing calls: the
+- 13 on_actions have no context: 9 reach the path limit (including
+  `on_war_participant_leaves_early`), 2 are not reached from their function entry, 1 stops at an
+  instruction that the method cannot follow, and `on_press_begin`'s command builds its own scope.
+- 74 on_actions have only unresolved contexts. Most reuse one scope for several firing calls: the
   first call receives the scope, and the method cannot show that the event system leaves its type
   and links unchanged, so the later sites are unresolved (the pulse lists after
   `on_yearly_pulse`, `on_leader_death`, `on_planet_surveyed`). Some fill the scope with a helper
-  whose type depends on a run-time value (`CDepositHolderRefCaster::FillEventScope`).
-- 3 declared rules have no call site that the method follows, and 11 have only unresolved
-  contexts.
-- What the event system does with a self-linked root or from, the prev chain, events and their
-  `push_scope`, pre_triggers, and on_actions that content defines are not tested (SDK-608).
+  whose type depends on a run-time value (`CDepositHolderRefCaster::FillEventScope`,
+  `CFleetOrbitalSlotHandle::SetupScopeObject`).
+- 3 declared rules have no call site that the method follows, 16 have only unresolved contexts, and
+  2 rule sites pass a rule object that is not a constant.
+- On_actions that content defines are an `OutsideMethod` gap. Events and their `push_scope` are
+  SDK-702; pre_trigger key sets are SDK-703.
 
 ## Defines
 

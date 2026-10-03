@@ -1042,6 +1042,10 @@ pub struct EntryContext {
     /// `from`, `fromfrom` and so on, in order. The chain ends after the first entry that is not
     /// [`EntryScope::Scope`].
     pub from: Vec<EntryScope>,
+    /// `prev`, `prevprev` and so on, in order. The engine follows `prev` links through a scope
+    /// with no type, so the chain passes [`EntryScope::NotSet`]. It ends after any other entry
+    /// that is not [`EntryScope::Scope`].
+    pub prev: Vec<EntryScope>,
 }
 
 /// One scope that a call site supplies.
@@ -1052,8 +1056,13 @@ pub enum EntryScope {
     Scope(ScopeReference),
     /// A scope object with no scope type.
     NotSet,
-    /// The link points back to the scope that holds it. This is the engine's default link; what
-    /// script sees through it is outside this answer.
+    /// The link points back to the scope that holds it, which is the engine's default link.
+    ///
+    /// Script reads it as follows. This is an assumption, checked by hand on the supported build:
+    /// a self-linked `root` is the scope itself; a self-linked first `from` or `prev` is no scope;
+    /// a self-link later in a chain is the scope that holds it. A later link can still name a
+    /// scope after a first self-link: when a typed scope's `from` links to itself, `fromfrom` is
+    /// that scope.
     SelfLink,
     /// The scope could not be established.
     Unresolved,

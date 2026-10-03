@@ -219,10 +219,19 @@ fn entries(
     let entries: Vec<EntryContext> = findings
         .contexts
         .iter()
-        .map(|Context { this, root, from }| EntryContext {
-            this: scopes.entry_scope(*this),
-            root: scopes.entry_scope(*root),
-            from: from.iter().map(|from| scopes.entry_scope(*from)).collect(),
+        .map(|context| EntryContext {
+            this: scopes.entry_scope(context.this),
+            root: scopes.entry_scope(context.root),
+            from: context
+                .from
+                .iter()
+                .map(|from| scopes.entry_scope(*from))
+                .collect(),
+            prev: context
+                .prev
+                .iter()
+                .map(|prev| scopes.entry_scope(*prev))
+                .collect(),
         })
         .collect();
 
@@ -267,6 +276,7 @@ fn slots(context: &Context) -> impl Iterator<Item = &Slot> {
     std::iter::once(&context.this)
         .chain([&context.root])
         .chain(&context.from)
+        .chain(&context.prev)
 }
 
 /// One gap for each reason that some call sites could not be named, with their number.
@@ -351,6 +361,7 @@ mod tests {
                 this: Slot::Scope(2),
                 root: Slot::SelfLink,
                 from: vec![Slot::SelfLink],
+                prev: vec![Slot::SelfLink],
             }]),
             unresolved: BTreeSet::new(),
         };
@@ -361,6 +372,7 @@ mod tests {
         let entry = &answer.value[0].entries[0];
         assert!(matches!(&entry.this, EntryScope::Scope(scope) if scope.name == "country"));
         assert_eq!(entry.from, [EntryScope::SelfLink]);
+        assert_eq!(entry.prev, [EntryScope::SelfLink]);
     }
 
     #[test]
@@ -384,6 +396,7 @@ mod tests {
                 this: Slot::Scope(1),
                 root: Slot::SelfLink,
                 from: vec![Slot::SelfLink],
+                prev: vec![Slot::SelfLink],
             }]),
             unresolved: BTreeSet::new(),
         };
@@ -396,6 +409,52 @@ mod tests {
                 .iter()
                 .any(|gap| gap.kind == GapKind::UnreadableInput
                     && gap.subject.as_ref().map(|subject| subject.name()) == Some("on_test"))
+        );
+    }
+
+    #[test]
+    fn a_prev_scope_bit_without_a_name_is_unresolved_with_a_gap() {
+        let findings = Findings {
+            contexts: BTreeSet::from([Context {
+                this: Slot::Scope(2),
+                root: Slot::SelfLink,
+                from: vec![Slot::SelfLink],
+                prev: vec![Slot::NotSet, Slot::Scope(1), Slot::SelfLink],
+            }]),
+            unresolved: BTreeSet::new(),
+        };
+        let answer = normalized_on_actions(&result(findings), &names(), build());
+
+        assert_eq!(
+            answer.value[0].entries[0].prev,
+            [
+                EntryScope::NotSet,
+                EntryScope::Unresolved,
+                EntryScope::SelfLink
+            ]
+        );
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnreadableInput
+                    && gap.subject.as_ref().map(|subject| subject.name()) == Some("on_test"))
+        );
+    }
+
+    #[test]
+    fn on_actions_that_script_fires_are_outside_the_answer() {
+        let mut result = result(Findings::default());
+        result.script_fired_sites = 1;
+        let answer = normalized_on_actions(&result, &names(), build());
+
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::OutsideMethod
+                    && gap.subject.is_none()
+                    && gap.detail.contains("fire_on_action"))
         );
     }
 
@@ -419,5 +478,6 @@ mod tests {
             .collect();
         assert_eq!(unnamed.len(), 1);
         assert!(unnamed[0].starts_with("2 call sites"));
+        assert!(unnamed[0].contains("built at run time"));
     }
 }

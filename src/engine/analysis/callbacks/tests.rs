@@ -200,11 +200,13 @@ const FIRE: SiteCall = SiteCall::Fire {
     scope: SiteScope::Register(2),
 };
 
+/// A context whose `prev` links to its own scope, as a fresh scope's does.
 fn context(this: Slot, root: Slot, from: &[Slot]) -> Context {
     Context {
         this,
         root,
         from: from.to_vec(),
+        prev: vec![Slot::SelfLink],
     }
 }
 
@@ -313,6 +315,126 @@ fn from_links_form_a_chain_that_ends_at_a_self_link() {
 }
 
 #[test]
+fn prev_links_form_a_chain_that_ends_at_a_self_link() {
+    let result = fire_country(&[
+        (0x1020, "add", "x0,sp,#0x180"),
+        (0x1024, "bl", "#0x8000"),
+        (0x1028, "add", "x0,sp,#0x180"),
+        (0x102c, "bl", "#0x8200"),
+        (0x1030, "add", "x8,sp,#0x180"),
+        (0x1034, "str", "x8,[sp,#0x140]"),
+    ]);
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [Context {
+            prev: vec![LEADER, Slot::SelfLink],
+            ..context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])
+        }]
+    );
+}
+
+#[test]
+fn a_prev_chain_passes_a_scope_with_no_type_and_a_from_chain_stops_there() {
+    let result = fire_country(&[
+        (0x1020, "add", "x0,sp,#0x180"),
+        (0x1024, "bl", "#0x8000"),
+        (0x1028, "add", "x0,sp,#0x40"),
+        (0x102c, "bl", "#0x8000"),
+        (0x1030, "add", "x0,sp,#0x40"),
+        (0x1034, "bl", "#0x8200"),
+        (0x1038, "add", "x8,sp,#0x180"),
+        (0x103c, "str", "x8,[sp,#0x138]"),
+        (0x1040, "str", "x8,[sp,#0x140]"),
+        (0x1044, "add", "x8,sp,#0x40"),
+        (0x1048, "str", "x8,[sp,#0x1b8]"),
+        (0x104c, "str", "x8,[sp,#0x1c0]"),
+    ]);
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [Context {
+            prev: vec![Slot::NotSet, LEADER, Slot::SelfLink],
+            ..context(COUNTRY, Slot::SelfLink, &[Slot::NotSet])
+        }]
+    );
+}
+
+#[test]
+fn a_prev_link_back_into_the_chain_is_unresolved() {
+    let result = fire_country(&[
+        (0x1020, "add", "x0,sp,#0x180"),
+        (0x1024, "bl", "#0x8000"),
+        (0x1028, "add", "x0,sp,#0x180"),
+        (0x102c, "bl", "#0x8200"),
+        (0x1030, "add", "x8,sp,#0x180"),
+        (0x1034, "str", "x8,[sp,#0x140]"),
+        (0x1038, "add", "x8,sp,#0x100"),
+        (0x103c, "str", "x8,[sp,#0x1c0]"),
+    ]);
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [Context {
+            prev: vec![LEADER, Slot::Unresolved],
+            ..context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])
+        }]
+    );
+}
+
+#[test]
+fn a_prev_scope_that_escapes_is_unresolved() {
+    let result = fire_country(&[
+        (0x1020, "add", "x0,sp,#0x180"),
+        (0x1024, "bl", "#0x8000"),
+        (0x1028, "add", "x0,sp,#0x180"),
+        (0x102c, "bl", "#0x8200"),
+        (0x1030, "add", "x8,sp,#0x180"),
+        (0x1034, "str", "x8,[sp,#0x140]"),
+        (0x1038, "add", "x0,sp,#0x180"),
+        (0x103c, "bl", "#0x9900"),
+    ]);
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [Context {
+            prev: vec![Slot::Unresolved],
+            ..context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])
+        }]
+    );
+}
+
+#[test]
+fn paths_that_differ_only_in_prev_give_two_contexts_and_equal_ones_merge() {
+    let run = |other_path_links_prev: bool| {
+        let (operation, operands) = if other_path_links_prev {
+            ("str", "x8,[sp,#0x140]")
+        } else {
+            ("nop", "")
+        };
+        fire_country(&[
+            (0x1020, "add", "x0,sp,#0x180"),
+            (0x1024, "bl", "#0x8000"),
+            (0x1028, "add", "x0,sp,#0x180"),
+            (0x102c, "bl", "#0x8200"),
+            (0x1030, "add", "x8,sp,#0x180"),
+            (0x1034, "cbz", "x19,#0x1040"),
+            (0x1038, "str", "x8,[sp,#0x140]"),
+            (0x103c, "b", "#0x1044"),
+            (0x1040, operation, operands),
+        ])
+    };
+    let fresh = context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink]);
+    let linked = Context {
+        prev: vec![LEADER, Slot::SelfLink],
+        ..fresh.clone()
+    };
+
+    assert_eq!(contexts(&run(false), "on_test"), [linked.clone(), fresh]);
+    assert_eq!(contexts(&run(true), "on_test"), [linked]);
+}
+
+#[test]
 fn clearing_the_links_keeps_the_type() {
     let result = fire_country(&[
         (0x1020, "add", "x0,sp,#0x180"),
@@ -374,7 +496,12 @@ fn different_setters_on_two_paths_give_two_contexts_and_equal_ones_merge() {
 }
 
 fn unresolved() -> Context {
-    context(Slot::Unresolved, Slot::Unresolved, &[Slot::Unresolved])
+    Context {
+        this: Slot::Unresolved,
+        root: Slot::Unresolved,
+        from: vec![Slot::Unresolved],
+        prev: vec![Slot::Unresolved],
+    }
 }
 
 #[test]

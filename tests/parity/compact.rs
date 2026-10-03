@@ -109,11 +109,13 @@ pub fn entry(context: &EntryContext) -> String {
         other => format!("{other:?}"),
     };
     let from: Vec<_> = context.from.iter().map(scope).collect();
+    let prev: Vec<_> = context.prev.iter().map(scope).collect();
     format!(
-        "this={} root={} from=[{}]",
+        "this={} root={} from=[{}] prev=[{}]",
         scope(&context.this),
         scope(&context.root),
-        from.join(",")
+        from.join(","),
+        prev.join(",")
     )
 }
 

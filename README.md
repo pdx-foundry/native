@@ -53,10 +53,11 @@ as `Country` or `Dead Fleet`), the commands and links that each context declares
 output context, and the scope types that select each context; a context that no scope type selects
 is `Missing`, and its commands stay in the answer. Join context references by their
 `LocalizationContextId`. `on_actions` and `game_rules` give the callbacks that the engine calls by
-name, each with the scopes that its call sites supply for `this`, `root` and the `from` chain. A
-name that different call sites fire with different scopes keeps each `EntryContext`; a link that
-points back to its own scope, the engine's default, is `SelfLink`; a name whose call sites could
-not be followed has no entries and a gap. See `examples/declarations.rs`.
+name, each with the scopes that its call sites supply for `this`, `root`, the `from` chain and the
+`prev` chain. A name that different call sites fire with different scopes keeps each
+`EntryContext`; a link that points back to its own scope, the engine's default, is `SelfLink`, and
+its documentation says how script reads it; a name whose call sites could not be followed has no
+entries and a gap. See `examples/declarations.rs`.
 `defines` reports the namespace, name and value type of each resolved executable read helper.
 Custom table searches that cannot be followed are named gaps. It does not read define files or
 return their example values, documentation or defaults.
