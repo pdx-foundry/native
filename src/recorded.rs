@@ -15,11 +15,13 @@
 //! The loaded modifier inventory uses `loaded_modifiers.json`, or
 //! `loaded_modifiers/<files-hash>/<request-hash>.json` for a session with a fixture.
 //!
-//! Each file is written to `<file>.tmp` and then renamed, so a reader never sees a partial file.
-//! One recorder writes to a directory at a time.
+//! Each write goes to its own `<file>.<process>.<count>.tmp` and is then renamed, so a reader never
+//! sees a partial file, even while two queries record at once. One recorder writes to a directory
+//! at a time.
 use crate::answer::{Answer, Basis, BuildId, Error};
 use serde::{Serialize, de::DeserializeOwned};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// One recorded build. Every successful answer must have the same original identity.
 #[derive(Debug)]
@@ -87,16 +89,18 @@ fn record_build(root: &Path, build: &BuildId) -> Result<(), Error> {
     publish(&path, &bytes)
 }
 
-/// Write `bytes` to `<path>.tmp` and rename it to `path`, so that an interrupted write leaves
-/// no partial file under the name that readers open.
+/// Write `bytes` to a temporary file that no other write uses, and rename it to `path`, so that
+/// an interrupted write leaves no partial file under the name that readers open.
 fn publish(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+    static WRITES: AtomicU64 = AtomicU64::new(0);
     let failed = |error: std::io::Error| Error::Recorded(format!("{}: {error}", path.display()));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(failed)?;
     }
 
+    let write = WRITES.fetch_add(1, Ordering::Relaxed);
     let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
+    temporary.push(format!(".{}.{write}.tmp", std::process::id()));
     std::fs::write(&temporary, bytes).map_err(failed)?;
     std::fs::rename(&temporary, path).map_err(failed)
 }
@@ -231,8 +235,8 @@ mod tests {
     fn an_interrupted_write_leaves_no_file_under_its_final_name() {
         let root = tempfile::tempdir().unwrap();
         let build = BuildId("original".into());
-        std::fs::write(root.path().join("build.json.tmp"), "\"orig").unwrap();
-        std::fs::write(root.path().join("registries.json.tmp"), "{\"Ok\":").unwrap();
+        std::fs::write(root.path().join("build.json.1.0.tmp"), "\"orig").unwrap();
+        std::fs::write(root.path().join("registries.json.1.1.tmp"), "{\"Ok\":").unwrap();
         assert!(matches!(
             Answers::open(root.path().into()),
             Err(Error::Recorded(_))
@@ -247,8 +251,36 @@ mod tests {
             recorded.read::<Vec<String>>("registries", None),
             Err(Error::NotRecorded { .. })
         ));
-        assert!(!root.path().join("build.json.tmp").exists());
-        assert!(!root.path().join("scopes.json.tmp").exists());
+        let left_over: Vec<_> = std::fs::read_dir(root.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name.to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert_eq!(left_over.len(), 2, "{left_over:?}");
+    }
+
+    #[test]
+    fn two_threads_record_into_one_directory_at_once() {
+        let root = tempfile::tempdir().unwrap();
+        let build = BuildId("original".into());
+        let answer: Result<Answer<Vec<String>>, Error> = Err(Error::BuildChanged);
+        std::thread::scope(|scope| {
+            for _ in 0..2 {
+                scope.spawn(|| {
+                    for _ in 0..50 {
+                        for question in ["registries", "scopes"] {
+                            write(root.path(), &build, question, None, &answer).unwrap();
+                        }
+                    }
+                });
+            }
+        });
+
+        let recorded = Answers::open(root.path().into()).unwrap();
+        assert_eq!(recorded.build, build);
+        for question in ["registries", "scopes"] {
+            assert_eq!(recorded.read::<Vec<String>>(question, None), answer);
+        }
     }
 
     #[test]
