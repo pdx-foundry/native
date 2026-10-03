@@ -783,6 +783,10 @@ an unresolved sibling unconditional. Preserve nested SDK-541 paths and `All(Unre
 conditions. Reader identities are opaque within a build and may refine when a concrete receiver
 is established; they are not command names or permanent schema identifiers.
 
+Never combine the condition of one read alternative with the reader or shape of another. A
+partial list keeps its established items, and a missing item proves no absence. `limit` is a
+child key, not a registered command. Only a `Complete` grammar can drive a validation rule.
+
 SDK-625 consumes each `GrammarProperty` independently. An established key or numeric child gives
 no credit to unresolved siblings. `ChildOrderRule` describes parser routing using the stored child
 collection, not a runtime ordering requirement. Parser acceptance requires a witnessed, complete
@@ -808,7 +812,7 @@ The final regression suite, Python tests and parity passed after the PR and arch
 All six trigger/effect validation probes passed again, followed by the repeated block parser case.
 An earlier overlapping unit/live run invalidated two live sessions; the final run serialized
 these checks and passed. The architecture review and follow-up style finding were verified before
-repair; see the [finding dispositions](command-grammar-review.md).
+repair; the retained reader-family boundaries are pitfalls on [reader kinds](reader-kinds.md).
 
 ## PR review repairs
 

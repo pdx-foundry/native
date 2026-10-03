@@ -67,6 +67,12 @@ Authoritative experimental source: `sdk-testing/sdk-testing/prototype/compatibil
   `--setsid`, and executes the selected LLDB installation's stub. The unreaped worker reserves
   that group identity until cleanup confirms no live members remain. No process-name kill is
   used. Pause ownership, hooks and answers are unchanged.
+- **Session transport.** Session files are temporary and are not recovered, so the supervisor
+  does not `fsync` them. Atomic publication, bounded reads, session identity, stream continuity
+  and the hashes of the copied worker files protect answer integrity; keep them. The worker still
+  calls `fsync` for its atomic control messages and appended trace records.
+- **Worker-loss cases.** Worker loss before hook activation and after the first registry entry
+  test different cleanup guarantees; keep both live cases.
 - **Process inventory.** The one-second process inventory deadline expired one time after activation. Twenty later runs of the same command took 0.03 seconds each. The cause is not known; the deadline was not relaxed.
 
 A real LLDB attach against a deliberately blocked stub reaches its deadline, records the attach

@@ -175,7 +175,11 @@ items, and how many of the names that the template gives for them are loaded.
 other three registries; they return no family (see the gaps below). The five build-speed and
 windup templates of buildings, districts and bypass also equal all 680 registrations that the
 SDK-498 prototype hooks observed in two live runs. That control does not cover the district and
-building maximum families.
+building maximum families. The hooked sites on M45-release are `0x1000df770` (buildings),
+`0x100431bdc` (districts), and `0x1000fefec`, `0x1000ff05c` and `0x1000ff0c4` (bypass); the final
+name was read at `CModifier::LogDefinitions()+584`, before `CLogStream::operator<<(CString const&)`.
+`config/modifiers.cwt:728-737` at config commit `8574760` agrees with these five templates and
+their tags. The prototype and its runs are in `.local/sdk-498/`.
 
 Tags come from the category mask of the registration. Economic categories and scripted modifiers
 pass a mask from an item field (for economic categories `+0x128`, the content's

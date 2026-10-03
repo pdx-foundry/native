@@ -27,7 +27,6 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Engine commands and scopes | [Engine commands](native/engine-commands.md) | Engine documentation commands, target getters, modifier, category, scope and link declarations, localization tables, on_action and game rule call sites |
 | References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, database directories, owner initializers, identifier grammar, flag stores and namespaces |
 | Generated modifiers | [Modifier families](native/modifier-families.md) | Modifier families from database generators, the loaded modifier table, post-read code and shared helpers, the per-item post-read call |
-| Modifier generation and shared readers | [Modifier prototype brief](native/modifier-family-prototype.md) | Five release-build templates, two live content mutations, implementation seams and explicit grammar gaps |
 | Builds and adaptation between them | [Targets](native/targets.md) | Exact executable hashes, Mac and Windows adaptation results |
 
 A finding is **demonstrated** on its original build only. A **candidate** lacks a required join or a

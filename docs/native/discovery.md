@@ -1,6 +1,6 @@
 # Discovery methods
 
-The 2026-10-02 [simplification review](../design/simplification-review.md) retires world
+The 2026-10-02 [simplification review](../design/simplification.md) retires world
 execution, duration consumption and public scoped selection. Historical experiment counts below
 retain their original meaning. Current answers contain compiler facts; the retained live checks
 observe parsing, storage and diagnostics. See [ready-world](ready-world.md) to retrieve the retired
@@ -108,9 +108,6 @@ The method classifies the target of each direct `GetValue`, `GetArrayValue` or
 named value from a namespace table. Shipped define entries, defaults, comments, bounds and uses
 are not established here. SDK-610 owns the broader extraction question, and Atlas owns the
 comparison with shipped content and config.
-
-The [SDK-542 architecture review verification](command-grammar-review.md) records confirmed
-repairs and the evidence for retained reader, family and observation boundaries.
 
 ## Direct numeric conversion (SDK-644)
 

@@ -90,8 +90,18 @@ a changed reference kind and conflicting blocks under one identity.
 Root fields without persistent joins, nested `tradition_swap.modifier`, command fixed-key grammar
 and triggered modifier clauses (SDK-673) are unchanged. This answer does not establish repeat or
 duplicate behavior, icon post-read validation, deferred completion, localisation-key existence,
-authored-entry storage, or runtime effects (SDK-547). Historical findings remain on the
-[prototype page](modifier-family-prototype.md).
+authored-entry storage, or runtime effects (SDK-547).
+
+Findings of the SDK-498 prototype that the method does not report:
+
+- **Inherited keys.** On M45-release, `CPdxModifier::TryReadMember` handles token 27 (`name`)
+  through a polymorphic name reader and token 240 (`data`) through an integer reader.
+- **Icon check after read.** `InitPostRead` checks a nonempty icon. A `GFX_` prefix bypasses the
+  file check; any other string calls `VFSExists` and can log a missing-icon diagnostic.
+- **Repeated blocks.** A blanket "last block wins" rule is wrong. In a council agenda probe on
+  M45-observe, a repeated graphical block reset its numeric entries, but omitted tooltip and flag
+  metadata persisted. The evidence is `prototype/council-agenda-reconstruction/review.md` and run
+  `20260917-023136` in the `atlas-discovery` bundle. It was not repeated on a release build.
 
 ## Reproduce
 
