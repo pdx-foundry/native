@@ -13,6 +13,7 @@
 //! The scan is linear and bounded. It tracks only constants, stack addresses and register copies.
 //! A call clears the caller-saved registers, and any other instruction clears the register that
 //! it may write. It does not follow branches, so a value that arrives on another path is unknown.
+//! It stops at a return or an unconditional branch, since the next word is not reached from it.
 //! Exactly one distinct directory over all constructor bodies names the registry. None or several
 //! is a gap; the method never selects one of several.
 //!
@@ -162,7 +163,16 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
                     });
                 }
             }
-            registers[..18].fill(Value::Unknown);
+            registers[..=18].fill(Value::Unknown);
+        } else if let Some(transfer) = unconditional_branch(word) {
+            match transfer {
+                Transfer::Stop => break,
+                // The callee is unknown, so it may receive or change any object.
+                Transfer::IndirectCall => {
+                    objects.clear();
+                    registers[..=18].fill(Value::Unknown);
+                }
+            }
         } else {
             // Any other instruction may write its low register field, and a load or store with
             // writeback also writes its base register.
@@ -189,6 +199,32 @@ fn branch_with_link(word: u32, address: u64) -> Option<u64> {
     }
     let offset = ((word & 0x03ff_ffff) as i64) << 38 >> 36;
     Some((address as i64).wrapping_add(offset) as u64)
+}
+
+/// What an unconditional branch does to the scan.
+enum Transfer {
+    /// `b`, `br`, `ret` or another register branch without link: the scan ends.
+    Stop,
+    /// `blr` or an authenticated form: the scan continues after an unknown call.
+    IndirectCall,
+}
+
+/// The transfer of an unconditional immediate or register branch word.
+fn unconditional_branch(word: u32) -> Option<Transfer> {
+    if word & 0xfc00_0000 == 0x1400_0000 {
+        return Some(Transfer::Stop);
+    }
+    if word & 0xfe00_0000 != 0xd600_0000 {
+        return None;
+    }
+
+    // Bits 21 to 23 of the register-branch opcode are 001 for `blr` and its authenticated forms.
+    let links = word >> 21 & 0b111 == 0b001;
+    Some(if links {
+        Transfer::IndirectCall
+    } else {
+        Transfer::Stop
+    })
 }
 
 /// The base register of a pre- or post-indexed load or store of one register or a pair, which
@@ -303,6 +339,11 @@ mod tests {
     const ADD_X0_SP_8: u32 = 0x9100_23e0;
     const ADD_X1_SP_8: u32 = 0x9100_23e1;
     const MOV_X0_X22: u32 = 0xaa16_03e0;
+    const RET: u32 = 0xd65f_03c0;
+    const BR_X8: u32 = 0xd61f_0100;
+    const BLR_X8: u32 = 0xd63f_0100;
+    // b to 0x100 bytes ahead.
+    const B_AHEAD: u32 = 0x1400_0040;
 
     fn add_x1(immediate: u32) -> u32 {
         0x9100_0021 | immediate << 10
@@ -465,5 +506,41 @@ mod tests {
             resolve(&[function(&words)], &BTreeMap::new()),
             Directory::Missing
         );
+    }
+
+    #[test]
+    fn an_indirect_call_forgets_every_built_object() {
+        let words = [
+            ADRP_X1,
+            add_x1(0x10),
+            ADD_X0_SP_8,
+            bl(3, STRING),
+            BLR_X8,
+            ADD_X1_SP_8,
+            bl(6, BASE),
+        ];
+        assert_eq!(
+            resolve(&[function(&words)], &BTreeMap::new()),
+            Directory::Missing
+        );
+    }
+
+    #[test]
+    fn a_return_or_unconditional_branch_ends_the_scan() {
+        for stop in [RET, BR_X8, B_AHEAD] {
+            let words = [
+                stop,
+                ADRP_X1,
+                add_x1(0x10),
+                ADD_X0_SP_8,
+                bl(4, STRING),
+                ADD_X1_SP_8,
+                bl(6, BASE),
+            ];
+            assert_eq!(
+                resolve(&[function(&words)], &BTreeMap::new()),
+                Directory::Missing
+            );
+        }
     }
 }
