@@ -20,6 +20,7 @@ def scoped(reader):
 def duration(value):
     return {"build": "build", "commands": 1, "registries": 0,
             "failed_questions": [], "counts": {"partial": 1}, "registry_groups": [],
+            "duration_lists": {"known": 1}, "registry_unresolved_candidates": [],
             "groups": [{"command": "Effect/test", "duration": value}]}
 
 
@@ -194,6 +195,20 @@ class ComparisonTests(unittest.TestCase):
         self.assertTrue(compare(after, changed)["regressions"])
         changed["registry_groups"][0]["units"][0]["factor"] = "Ok(None)"
         self.assertTrue(compare(after, changed)["regressions"])
+
+    def test_duration_lists_and_registry_stops_cannot_lose_evidence(self):
+        before = duration({"units": []})
+        before["groups"] = []
+        for lists in ({"unresolved": 1}, {"partial": 1}):
+            after = copy.deepcopy(before)
+            after["duration_lists"] = lists
+            self.assertTrue(compare(before, after)["regressions"], lists)
+            self.assertFalse(compare(after, before)["regressions"], lists)
+        after = copy.deepcopy(before)
+        after["registry_unresolved_candidates"] = [{"registry": "common/test", "path": ["x"], "reason": "call"}]
+        self.assertTrue(compare(before, after)["regressions"])
+        self.assertFalse(compare(after, before)["regressions"])
+        self.assertFalse(compare(before, copy.deepcopy(before))["regressions"])
 
     def test_cli_exit_codes_and_machine_readable_report(self):
         with tempfile.TemporaryDirectory() as directory:

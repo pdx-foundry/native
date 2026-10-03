@@ -341,7 +341,9 @@ Command comparisons include answer gaps as changes, but only lost or changed fac
 completeness/status, or increased inventory uncertainty fail the floor. Method/version stamps,
 timings and internal diagnostics are ignored; source build and basis remain checked. Numeric
 reports also fail on reduced command/registry counts or new failed questions. Registry duration
-groups are compared as well as command duration groups. Their debug-formatted `Err` values mean
+groups are compared as well as command duration groups. Duration reports also fail when fewer
+command duration lists are `known`, more are `unresolved`, or a registry gains an unresolved
+candidate. The debug-formatted `Err` values of registry groups mean
 unresolved facts, so changing an error diagnostic is not a regression; `Ok` values remain checked. The tool does not synthesize serde defaults
 for older report schemas; inspect such changes with `command-population --diff` when needed.
 
