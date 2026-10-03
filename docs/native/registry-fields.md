@@ -17,6 +17,10 @@ The v8 sweep covers **164 registries: 11 complete, 153 partial, 0 failed**, with
 FixedPoint 88, Integer 93, Reference 28, String 245 and Unknown 569. Six root fields
 accumulate entries. The sweep takes about 200 seconds on the development host.
 
+On M45, no registry carries a token-partition gap. The check projects token paths to their
+intervals and needs one contiguous chain, so a state branch before token discrimination
+would give a false registry-wide `UnresolvedPath` gap. No M45 loader has that shape.
+
 The shared dispatch walker follows three compound shapes: a copied value token constructed
 as an event target and moved to an owner destination; a CString array emplace followed by
 a shared string reader at the new element; and an optional CString set from token text.
