@@ -56,6 +56,8 @@ pub struct ScopeInput {
     pub tokens: BTreeMap<u64, String>,
     /// Scope names indexed by scope-type bit, or `None` when the table was not read.
     pub scope_names: Option<Vec<String>>,
+    /// Bits that the scope-name table tests but whose name was not read.
+    pub unread_scope_bits: BTreeSet<usize>,
     pub functions: ScopeFunctions,
     /// Offset of the token in an event target object.
     pub token_offset: u64,
@@ -74,6 +76,9 @@ pub struct ScopeResult {
     pub groups: Vec<(String, ScopeOutcome)>,
     /// Scope types that keywords map to but the name table does not name.
     pub unnamed_types: usize,
+    /// Scope types, by bit, that the name table tests but whose name was not read. Such a type
+    /// is missing from `scopes` whether or not a keyword maps to it.
+    pub unread_types: Vec<usize>,
     /// Token values that map to a scope type but have no literal name.
     pub unnamed_keywords: usize,
     /// Token values whose scope type could not be evaluated.
@@ -156,6 +161,7 @@ pub fn scopes(input: &ScopeInput) -> Result<ScopeResult, InputError> {
         scopes,
         groups,
         unnamed_types: unnamed.len(),
+        unread_types: input.unread_scope_bits.iter().copied().collect(),
         unnamed_keywords,
         unresolved_tokens,
         table_missing: input.scope_names.is_none(),
@@ -400,34 +406,106 @@ fn returned_value(machine: &Machine, exit: Exit) -> Result<u64, Unresolved> {
     machine.known_register(0, "result")
 }
 
-/// Literal strings that end with `:` and that the special-value parser loads.
+/// Literal strings that end with `:` and that the special-value parser loads. A page register
+/// that the code writes again no longer holds its page, unless a branch came between them: the
+/// write can be in code that the branch skips, and a missed prefix costs more than a false one.
 fn data_prefixes(input: &ScopeInput) -> Vec<String> {
-    let mut pages = BTreeMap::<&str, u64>::new();
+    let mut pages = BTreeMap::<String, Page>::new();
     let mut prefixes = BTreeSet::new();
     for row in &input.special_values {
         let arguments: Vec<_> = row.operands.split(',').collect();
         match (row.operation.as_str(), arguments.as_slice()) {
             ("adrp", [register, page]) => {
-                if let Some(page) = number(page) {
-                    pages.insert(register, page);
+                pages.remove(*register);
+                if let Some(address) = number(page) {
+                    let page = Page {
+                        address,
+                        crossed_branch: false,
+                    };
+                    pages.insert(register.to_string(), page);
                 }
             }
-            ("add", [_, base, offset]) => {
+            ("add", [destination, base, offset]) => {
                 let address = pages
-                    .get(base)
+                    .get(*base)
                     .zip(number(offset))
-                    .map(|(page, offset)| page + offset);
+                    .map(|(page, offset)| page.address + offset);
                 if let Some(text) = address.and_then(|address| input.data.string(address))
                     && text.len() > 1
                     && text.ends_with(':')
                 {
                     prefixes.insert(text);
                 }
+                clear(&mut pages, &wide(destination));
+            }
+            ("bl" | "blr", _) => pages.retain(|register, _| !caller_saved(register)),
+            (operation, _) if branches(operation) => {
+                for page in pages.values_mut() {
+                    page.crossed_branch = true;
+                }
+            }
+            (operation, [first, rest @ ..]) if writes_first_operand(operation) => {
+                let pair = rest.first().filter(|_| operation.starts_with("ldp"));
+                for register in std::iter::once(first).chain(pair) {
+                    clear(&mut pages, &wide(register));
+                }
             }
             _ => {}
         }
     }
     prefixes.into_iter().collect()
+}
+
+/// A page address that `adrp` loaded into a register.
+struct Page {
+    address: u64,
+    /// Whether a branch followed the `adrp`, so a later write may be in skipped code.
+    crossed_branch: bool,
+}
+
+/// Forgets the page in `register` after a write, unless a branch may skip that write.
+fn clear(pages: &mut BTreeMap<String, Page>, register: &str) {
+    if pages.get(register).is_some_and(|page| !page.crossed_branch) {
+        pages.remove(register);
+    }
+}
+
+/// The 64-bit name of a general register, such as `x1` for `w1`.
+fn wide(register: &str) -> String {
+    register.replacen('w', "x", 1)
+}
+
+/// Whether a call may change `register`.
+fn caller_saved(register: &str) -> bool {
+    register
+        .strip_prefix('x')
+        .and_then(|index| index.parse::<u8>().ok())
+        .is_some_and(|index| index <= 18)
+}
+
+/// Whether `operation` is a jump or a return, which can skip the instructions that follow it.
+fn branches(operation: &str) -> bool {
+    operation.starts_with("b.")
+        || matches!(
+            operation,
+            "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
+        )
+}
+
+/// Whether `operation` writes the register in its first operand. Stores, compares, branches and
+/// returns do not, but an exclusive store writes its status register there.
+fn writes_first_operand(operation: &str) -> bool {
+    let control = branches(operation) || matches!(operation, "brk" | "nop");
+    let compare = matches!(
+        operation,
+        "cmp" | "cmn" | "tst" | "ccmp" | "ccmn" | "fcmp" | "fccmp"
+    );
+    let exclusive_store = ["stxr", "stlxr", "stxp", "stlxp"]
+        .iter()
+        .any(|prefix| operation.starts_with(prefix));
+    let store = operation.starts_with("st") && !exclusive_store;
+
+    !control && !compare && !store && operation != "prfm"
 }
 
 #[cfg(test)]
@@ -511,6 +589,7 @@ mod tests {
                 "country".into(),
                 "ship".into(),
             ]),
+            unread_scope_bits: BTreeSet::new(),
             functions: ScopeFunctions {
                 scope_of_token: 0x0f8,
                 link_documentation: 0x200,
@@ -554,6 +633,16 @@ mod tests {
         );
         assert_eq!(result.unnamed_types, 0);
         assert_eq!(result.unresolved_tokens, 0);
+    }
+
+    #[test]
+    fn an_unread_scope_name_is_reported_with_the_scope_types() {
+        let mut input = input();
+        input.unread_scope_bits = BTreeSet::from([4]);
+
+        let result = scopes(&input).unwrap();
+        assert_eq!(result.scopes.len(), 3);
+        assert_eq!(result.unread_types, [4]);
     }
 
     #[test]
@@ -619,6 +708,84 @@ mod tests {
             event_target.output,
             Output::Unresolved(Unresolved::new("literal-prefix"))
         );
+    }
+
+    /// The prefixes that the special-value parser `rows` load, with `event_target:` at 0x1010
+    /// and `other:` at 0x1020.
+    fn prefixes(rows: Vec<Instruction>) -> Vec<String> {
+        let mut input = input();
+        input.special_values = rows;
+        input.data = ReadOnlyData::new(vec![(0x1010, b"event_target:\0\0\0other:\0".to_vec())]);
+        data_prefixes(&input)
+    }
+
+    #[test]
+    fn a_page_register_written_again_loads_no_prefix() {
+        for clobber in [
+            row(0x504, "mov", "x1,x0"),
+            row(0x504, "ldr", "w1,[x0]"),
+            row(0x504, "bl", "#0x900"),
+        ] {
+            let rows = vec![
+                row(0x500, "adrp", "x1,#0x1000"),
+                clobber.clone(),
+                row(0x508, "add", "x1,x1,#0x10"),
+            ];
+            assert_eq!(prefixes(rows), Vec::<String>::new(), "{clobber:?}");
+        }
+
+        let preserved = vec![
+            row(0x500, "adrp", "x19,#0x1000"),
+            row(0x504, "bl", "#0x900"),
+            row(0x508, "add", "x1,x19,#0x10"),
+        ];
+        assert_eq!(prefixes(preserved), ["event_target:"]);
+    }
+
+    #[test]
+    fn a_write_that_a_branch_may_skip_keeps_the_page() {
+        let rows = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "b", "#0x50c"),
+            row(0x508, "mov", "x1,x0"),
+            row(0x50c, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(rows), ["event_target:"]);
+
+        let recorded_after_the_branch = vec![
+            row(0x500, "cbz", "x0,#0x510"),
+            row(0x504, "adrp", "x1,#0x1000"),
+            row(0x508, "mov", "x1,x0"),
+            row(0x50c, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(recorded_after_the_branch), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_exclusive_store_writes_its_status_register() {
+        let rows = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "stlxr", "w1,x8,[x0]"),
+            row(0x508, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(rows), Vec::<String>::new());
+
+        let plain_store = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "str", "x1,[x0]"),
+            row(0x508, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(plain_store), ["event_target:"]);
+    }
+
+    #[test]
+    fn an_address_formed_from_an_earlier_address_is_not_a_page() {
+        let rows = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "add", "x1,x1,#0x10"),
+            row(0x508, "add", "x1,x1,#0x20"),
+        ];
+        assert_eq!(prefixes(rows), ["event_target:"]);
     }
 
     #[test]

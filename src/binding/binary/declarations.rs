@@ -4,7 +4,7 @@ use object::{Object, ObjectSection, SectionKind};
 
 use crate::engine::analysis::{
     declarations::{CALLER_DEPTH, Composition, DeclarationInput, Function, ScopeSlots},
-    decode::decode_arm64,
+    decode::{Instruction, decode_arm64},
     discovery::Symbol,
     evaluate::ReadOnlyData,
     families::StringLayout,
@@ -43,7 +43,7 @@ pub(in crate::binding) fn read(
     let operator_new = operator_new(symbols)?;
     let text = Text::read(bytes, symbols)?;
     let tokens = text.token_names(symbols, strings)?;
-    let scope_names = text.scope_names(symbols, strings);
+    let scope_names = text.scope_names(symbols, strings).map(|table| table.names);
     let entry_calls: Vec<u64> = text
         .calls_into(&BTreeSet::from([register_entry]))
         .into_iter()
@@ -387,48 +387,99 @@ impl<'a> Text<'a> {
         literal_token_names(code, start, symbols, strings).map_err(AnalysisError::Input)
     }
 
-    /// Scope names indexed by scope-type bit, from the engine's scope-name function.
+    /// The engine's scope-name table, from its scope-name function. `None` when the function
+    /// is missing or the country and colony sentinels are not where the build puts them.
     pub fn scope_names(
         &self,
         symbols: &[Symbol],
         strings: &BTreeMap<u64, String>,
-    ) -> Option<Vec<String>> {
+    ) -> Option<ScopeNameTable> {
         let start = unique(symbols, "NEventScope::GetScopeName(EScopeType, bool)").ok()?;
         let code = self.bytes(start, self.function_length(start)).ok()?;
         let rows = decode_arm64(code, start).ok()?;
+        let table = scope_type_rows(&rows)?;
         let mut names = BTreeMap::new();
-        for window in rows.windows(3) {
-            let [test, page, offset] = window else {
-                continue;
-            };
+        let mut unread = BTreeSet::new();
+        for (index, test) in table.iter().enumerate() {
             if test.operation != "tbz"
                 || !(test.operands.starts_with("w21,#") || test.operands.starts_with("x21,#"))
-                || page.operation != "adrp"
-                || offset.operation != "add"
-                || !page.operands.starts_with("x1,")
-                || !offset.operands.starts_with("x1,x1,")
             {
                 continue;
             }
+
             let bit = test.operands.split(',').nth(1).and_then(parse_number)? as usize;
-            let page = page.operands.split(',').nth(1).and_then(parse_number)?;
-            let offset = offset.operands.split(',').nth(2).and_then(parse_number)?;
-            if let Some(name) = strings.get(&(page + offset)) {
+            if let Some(name) = tested_name(&table[index + 1..], strings) {
                 names.insert(bit, name.clone());
+            } else {
+                unread.insert(bit);
             }
         }
+
         if names.get(&2).map(String::as_str) != Some("country")
             || names.get(&40).map(String::as_str) != Some("colony")
         {
             return None;
         }
         let last = *names.keys().max()?;
-        Some(
-            (0..=last)
+        Some(ScopeNameTable {
+            names: (0..=last)
                 .map(|bit| names.get(&bit).cloned().unwrap_or_default())
                 .collect(),
-        )
+            unread,
+        })
     }
+}
+
+/// The engine's scope-name table.
+pub(in crate::binding) struct ScopeNameTable {
+    /// Names indexed by scope-type bit. A bit that the table does not test has `""`.
+    pub names: Vec<String>,
+    /// Bits that the table tests but whose name could not be read.
+    pub unread: BTreeSet<usize>,
+}
+
+/// The rows in which `x21` holds the scope type: after the function copies its argument there
+/// and before the code writes `x21` again. A later test of `x21` tests another value.
+fn scope_type_rows(rows: &[Instruction]) -> Option<&[Instruction]> {
+    let copy = rows
+        .iter()
+        .position(|row| row.operation == "mov" && row.operands == "x21,x0")?;
+    let rows = &rows[copy + 1..];
+    let end = rows.iter().position(writes_x21).unwrap_or(rows.len());
+    Some(&rows[..end])
+}
+
+/// Whether `row` writes `x21`: as its first operand, or as the second register of a pair load.
+/// Stores, tests and compares only read it.
+fn writes_x21(row: &Instruction) -> bool {
+    let operands: Vec<_> = row.operands.split(',').collect();
+    let reads_only = row.operation.starts_with("st")
+        || matches!(
+            row.operation.as_str(),
+            "tbz" | "tbnz" | "cbz" | "cbnz" | "cmp" | "cmn" | "tst" | "ccmp" | "ccmn"
+        );
+    let first = !reads_only && matches!(operands.first(), Some(&("x21" | "w21")));
+    let pair = row.operation == "ldp" && matches!(operands.get(1), Some(&("x21" | "w21")));
+
+    first || pair
+}
+
+/// The name that the rows after a scope bit test load into `x1`: `adrp x1` then `add x1,x1`.
+fn tested_name<'a>(rows: &[Instruction], strings: &'a BTreeMap<u64, String>) -> Option<&'a String> {
+    let [page, offset, ..] = rows else {
+        return None;
+    };
+    if page.operation != "adrp"
+        || offset.operation != "add"
+        || !page.operands.starts_with("x1,")
+        || !offset.operands.starts_with("x1,x1,")
+    {
+        return None;
+    }
+
+    let page = page.operands.split(',').nth(1).and_then(parse_number)?;
+    let offset = offset.operands.split(',').nth(2).and_then(parse_number)?;
+    strings.get(&(page + offset))
 }
 
 /// Read-only data that switch code loads: jump tables and string literals.
@@ -462,5 +513,50 @@ mod tests {
         assert!(text.function(0x2000).is_err());
         assert!(text.function(0xff0).is_err());
         assert_eq!(text.function(0x1000).unwrap().1.len(), 16);
+    }
+
+    #[test]
+    fn a_scope_bit_whose_name_is_not_read_is_kept_as_unread() {
+        use crate::engine::analysis::assembler::{Arm64, arm64};
+        const START: u64 = 0x1000;
+        const COUNTRY: u64 = 0x8000;
+        const COLONY: u64 = 0x8010;
+        const MISSING: u64 = 0x8020;
+
+        let mut code = Arm64::at(START);
+        arm64!(code; mov x21, x0); // the scope type
+        for (bit, name) in [(2u32, COUNTRY), (5, MISSING), (40, COLONY)] {
+            let next = code.here() + 12;
+            arm64!(code; tbz x21, #bit, extern next as usize);
+            code.address(1, name);
+        }
+        let next = code.here() + 12;
+        arm64!(code; tbz x21, #41, extern next as usize); // a name that the table loads another way
+        code.load(1, COUNTRY);
+        let next = code.here() + 8;
+        arm64!(code;
+            mov x21, x0; // a returned flag, no longer the scope type
+            tbz w21, #0, extern next as usize;
+            ret
+        );
+        let code = code.bytes();
+
+        let text = Text {
+            address: START,
+            code: &code,
+            starts: BTreeSet::from([START]),
+        };
+        let symbols = [Symbol {
+            name: "NEventScope::GetScopeName(EScopeType, bool)".into(),
+            address: START,
+        }];
+        let strings = BTreeMap::from([(COUNTRY, "country".into()), (COLONY, "colony".into())]);
+
+        let table = text.scope_names(&symbols, &strings).unwrap();
+        assert_eq!(table.names.len(), 41);
+        assert_eq!(table.names[2], "country");
+        assert_eq!(table.names[5], "");
+        assert_eq!(table.names[40], "colony");
+        assert_eq!(table.unread, BTreeSet::from([5, 41]));
     }
 }

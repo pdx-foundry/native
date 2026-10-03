@@ -310,6 +310,17 @@ pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<
             ),
         ));
     }
+    if !result.unread_types.is_empty() {
+        let bits: Vec<_> = result.unread_types.iter().map(usize::to_string).collect();
+        gaps.push(gap(
+            GapKind::UnresolvedPath,
+            None,
+            format!(
+                "the scope name table tests bits {} but their names could not be read",
+                bits.join(", ")
+            ),
+        ));
+    }
     if result.unnamed_keywords > 0 {
         gaps.push(gap(
             GapKind::UnnamedDeclaration,
@@ -499,6 +510,37 @@ mod tests {
     }
 
     #[test]
+    fn an_unread_keywordless_scope_type_leaves_the_inventory_partial() {
+        let mut result = ScopeResult {
+            scopes: vec![
+                (scope(2, "country"), vec!["country".into()]),
+                (scope(40, "colony"), vec!["colony".into()]),
+            ],
+            groups: Vec::new(),
+            unnamed_types: 0,
+            unread_types: Vec::new(),
+            unnamed_keywords: 0,
+            unresolved_tokens: 0,
+            table_missing: false,
+        };
+        let complete = normalized_scopes(&result, BuildId("test".into()));
+        assert_eq!(complete.completeness, Completeness::Complete);
+
+        result.unread_types = vec![41];
+        let answer = normalized_scopes(&result, BuildId("test".into()));
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert_eq!(answer.value.types.len(), 2);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnresolvedPath
+                    && gap.detail
+                        == "the scope name table tests bits 41 but their names could not be read")
+        );
+    }
+
+    #[test]
     fn scope_types_keep_their_identity_when_names_repeat() {
         let result = ScopeResult {
             scopes: vec![
@@ -518,6 +560,7 @@ mod tests {
                 ),
             ],
             unnamed_types: 0,
+            unread_types: Vec::new(),
             unnamed_keywords: 0,
             unresolved_tokens: 0,
             table_missing: false,
