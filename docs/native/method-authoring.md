@@ -1,11 +1,9 @@
 # Write a discovery method
 
-Write one method in one task: explore the executable, record the findings, then deliver the
-method with authored tests, parity output and a run over its whole population. Do not start a
-separate throwaway prototype. The [development policy](../development-policy.md#write-a-method-in-one-task)
-sets this workflow; the [method index](discovery.md) locates the operations and their code. The
-policy permits a [separate investigation](../development-policy.md#investigate-separately-when-the-result-decides-the-design)
-only when its result decides the design.
+Write one method in one task: explore the executable, record the findings, then deliver the method
+with authored tests, parity output and a run over its whole population
+([development policy](../development-policy.md#write-a-method-in-one-task)). The
+[method index](discovery.md) locates the operations and their code.
 
 Always run examples with `cargo run --release --example NAME -- …`, never by invoking
 `target/release/examples/NAME` directly. Cargo rebuilds the example when its source changes;
@@ -22,15 +20,9 @@ its image modes also work on uncatalogued builds. `--image PATH` overrides the e
 cargo run --release --example inspect -- --lookup-census 'NParserUtil::ReadKeyReference<'
 ```
 
-The census reads every matching text body in one process, excludes outlined cold clones, and
-prints counts, an example and every member of each group. Symbol aliases at the same address
-count once, using the first matching name. It uses the reference matcher's canonical
-lines, normalizing template arguments and their occurrences in instantiated return/parameter types.
-`--normalize-field-offsets` additionally ignores immediate displacements inside memory operands
-based on object registers; stack/frame offsets, constants and branches remain exact. This is a
-research grouping, not a proof that the functions have the same semantics.
-
-[Reference shapes](references.md#lookup-shapes) records the reference census.
+The census groups every matching body (cold clones excluded, aliases counted once) by the reference
+matcher's canonical lines; `--normalize-field-offsets` also ignores object-register displacements. A
+group is a research grouping, not proof of equal semantics.
 
 Derive a draft from exact symbol names or addresses selected from the census:
 
@@ -38,12 +30,9 @@ Derive a draft from exact symbol names or addresses selected from the census:
 cargo run --release --example inspect -- --derive-shape 'NAME1' 'NAME2' 'NAME3' > draft.shape
 ```
 
-The draft keeps strict canonical lines, replacing differing tokens or target names with numbered
-placeholders. Equal columns of differences share a placeholder. Bodies of different lengths fail
-with their lengths instead of emitting a truncated shape. Equal lengths mean positional alignment
-only: review control flow, name the placeholders, and add the semantics before committing a shape.
-Three ordinary deferred readers produce `deferred.shape` with one placeholder, up to its name and
-header. Identity and alignment diagnostics are shape comments, so stdout can be saved directly.
+The draft replaces differing tokens or targets with numbered placeholders; bodies of different
+lengths fail. Equal lengths mean positional alignment only: review control flow, name the
+placeholders and add the semantics before committing a shape.
 
 Use `--symbols TEXT` to find names, `--function NAME` to inspect instructions, `--callers NAME` for
 direct calls, `--strings TEXT` for literal address references, `--slots NAME --count N` for fixed-up
@@ -204,30 +193,14 @@ cargo run --release --example expected -- --out /tmp/native-expected-candidate
 cargo run --release --example expected -- --compare tests/expected/m45 /tmp/native-expected-candidate --build BUILD_ID
 ```
 
-`STELLARIS_PATH` must be set. The output directory must be new, its parent must exist, and it
-must be outside `tests/expected/`, including through symlinks. The command never overwrites a
-file. If generation fails, the output can be incomplete; use a new directory for the next run.
-The comparison is fully offline: it reads existing files and never opens the installation,
-extracts answers or launches a game. Pass the exact candidate build ID from `Native::build()` or
-the [target catalogue](targets.md), without JSON quotes. This supplied ID checks candidate stamps;
-it does not independently verify an executable. Exit status is 0 for passing parity, 1 for parity
-failures and 2 for invalid arguments, unreadable inputs, malformed JSON or malformed comparison
-shapes. Missing or extra static files fail parity.
-
-Reports identify the file and JSON pointer, with reviewed and candidate values (`<absent>` differs
-from `null`). `Answer` differences fail, including facts, roles, counts, duplicate rows,
-completeness and gaps. `Provenance` differences also fail, except for an explicitly permitted
-build change after the candidate stamp is checked. `Ordering` notices permit only moves of complete
-dynamic-namespace rows; duplicates and order inside each row remain checked. Other static files
-retain byte equality, so `Layout` differences fail even when parsed values match. `Historical`
-notices explicitly skip SDK-533 evidence on a different exact build. A skip establishes nothing
-about that build. Missing or invalid current stamps fail even if the two files are identical.
-
-Terminal output is limited to 80 lines of 240 characters. If any output is clipped or omitted,
-the final line gives the absolute path of a fresh complete report under `.local/parity/`. Open
-that file to inspect every difference and full value. Report-writing failures remain errors.
-The command never accepts candidates or overwrites inputs or tracked expectations. Parity tests
-use the same rules and bounded failure reports.
+The output directory must be new and outside `tests/expected/`; the command never overwrites a
+file, and the comparison is offline. Pass the exact candidate build ID from `Native::build()` or
+the [target catalogue](targets.md), without JSON quotes. Exit status is 0 for parity, 1 for parity
+failures, 2 for invalid input. `Answer` and `Provenance` differences fail (a permitted build change
+is checked against the candidate stamp); `Ordering` permits only moves of complete
+dynamic-namespace rows; other files keep byte equality (`Layout`); `Historical` skips SDK-533
+evidence on another build and establishes nothing about it. A clipped terminal report ends with the
+path of the full report under `.local/parity/`.
 
 Stored-duration behavior can be compared against an existing fresh live report without repeating
 the session:
@@ -236,10 +209,8 @@ the session:
 cargo run --release --example expected -- --compare-durations tests/expected/duration-m45/live.json .local/durations/live.json --build BUILD_ID
 ```
 
-The duration mode checks the candidate build and compares `cases`, including diagnostic and stored
-count order. A permitted build difference describes fresh behavior against retained cases; the
-historical live observations do not apply to the current exact build. The live test also checks
-each observation's current-build and live-basis stamps before selecting its duration cases.
+The duration mode compares `cases`, including diagnostic and stored count order, after checking the
+candidate build.
 
 The generator is not verification. Review each changed answer against the method's tests and
 engine evidence. Copy only reviewed files back, then run `cargo parity`, for example:
@@ -249,14 +220,10 @@ cp /tmp/native-expected-candidate/fields-traditions.json tests/expected/m45/fiel
 cargo parity
 ```
 
-The tracked files supply sample keys, not replacement answers. A missing selected item appears
-as `null` in the candidate. Full inventories include new items. The historical live observation
-`field-storage-sdk533.json` is copied unchanged; its independent storage checks apply only to the recorded exact build,
-with an explicit skip on other builds. Generating static answers does not repeat that live
-experiment. Descriptive mechanism labels in declaration samples are also retained for review.
-Tests and the generator share [`tests/parity/`](../../tests/parity/mod.rs); layout tests check
-all tracked files without a game, and the installed-build test also changes one recorded answer
-to check that only the corresponding file and entry change.
+The tracked files supply sample keys, not replacement answers: a missing selected item appears as
+`null`, and full inventories include new items. `field-storage-sdk533.json` is copied unchanged and
+applies only to its recorded build. Tests and the generator share
+[`tests/parity/`](../../tests/parity/mod.rs).
 
 ## Iterate on selected commands and registries
 
@@ -268,17 +235,9 @@ cargo run --release --example duration-population -- --command Effect/country_ev
 cargo run --release --example scoped-numeric-population -- --registry common/megastructures
 ```
 
-Use `STELLARIS_PATH` for the installation. With no filters, both examples measure the full
-population. With filters, they measure only the union of the requested commands and registries.
-A command-only run skips registry methods; a registry-only run skips command methods. Names are
-case-sensitive; duplicate requests count once and invalid or unknown names fail. `--help` shows
-usage without opening an installation. Filters run the existing single-command method, so unrelated
-command grammars are not analyzed. Each query still checks executable integrity.
-
-Filtered output has the full report shape, including empty sections. `commands` and `registries`
-count selected subjects, and result counters count their entries. `registry_completeness` still
-reports the completeness of discovery. A command that has no relevant numeric or duration entries
-still contributes to `commands`. Use the same selection on both sides of a focused comparison.
+With no filters, both examples measure the full population; with filters, only the union of the
+requested commands and registries, in the full report shape. Names are case-sensitive, and unknown
+names fail. Use the same selection on both sides of a focused comparison.
 
 While iterating, measure the affected commands and registries. Before delivery, freeze the final
 source and run the full populations once, then compare with `main`. Review fixes can use focused
@@ -336,34 +295,16 @@ workflow. A focused capture can use the same isolated checkouts once both revisi
 python3 tools/population/compare.py before.json after.json > comparison.json
 ```
 
-It recognizes scoped numeric, duration, and command reports, including compact command baselines.
-The two inputs must have the same report type and exact build. Exit status is 0 with no regressions,
-1 with regressions, and 2 for invalid input. Output contains every regression with its path and
-before/after values, changed entries, change counts, and before/after population counts.
-
-A regression is a removed entry, a lost `Known` or `Partial` property, `Known` downgraded to
-`Partial`, or a changed established value inside either property. Stronger properties must preserve
-the facts already present. Named fields and units match by name or key. Alternatives match one-to-one by preserved facts,
-including when a new alternative is inserted; duplicate counts remain checked. Semantic sequences
-such as reference priority and key paths retain their order and length. Duration groups can gain
-units within the same owner and path without losing their identity. New entries and new facts are gains. Duplicate named
-identities are rejected instead of silently overwriting a row. Unresolved markers (`Unresolved`,
-`Unknown`, `NotEstablished`, and an absent reader identity) can gain facts. `Known(null)` is an
-established absence and cannot change without failing the comparison.
-
-Command comparisons include answer gaps as changes, but only lost or changed facts, weaker
-completeness/status, or increased inventory uncertainty fail the floor. Method/version stamps,
-timings and internal diagnostics are ignored; source build and basis remain checked. Numeric
-reports also fail on reduced command/registry counts or new failed questions. Registry duration
-groups are compared as well as command duration groups. Duration reports also fail when fewer
-command duration lists are `known`, more are `unresolved`, or a registry gains an unresolved
-candidate. The debug-formatted `Err` values of registry groups mean
-unresolved facts, so changing an error diagnostic is not a regression; `Ok` values remain checked. The tool does not synthesize serde defaults
-for older report schemas; inspect such changes with `command-population --diff` when needed.
-
-The retained SDK-658 reports give zero regressions, 134 changed arguments and two changed duration
-groups. SDK-660's command reports give zero regressions and 137 changed commands. These local
-reports remain reproduction inputs; the tracked tests use small authored cases and need no game.
+It reads scoped numeric, duration and command reports, including compact command baselines, of the
+same type and exact build. Exit status is 0 with no regressions, 1 with regressions and 2 for
+invalid input. A regression is a removed entry, a lost `Known` or `Partial` property, `Known`
+downgraded to `Partial`, or a changed established value; `Known(null)` is an established absence.
+Alternatives match one-to-one by preserved facts; semantic sequences keep their order. Unresolved
+markers can gain facts. Command comparisons count gap changes, but only lost or changed facts,
+weaker completeness or increased inventory uncertainty fail; stamps, timings and internal
+diagnostics are ignored. The debug-formatted `Err` values of registry duration groups are
+unresolved facts, so a changed error diagnostic is not a regression. The tool does not synthesize
+serde defaults for older report schemas; use `command-population --diff` for those.
 
 ## Run over the whole population
 
@@ -377,12 +318,9 @@ cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > .local
 cargo run --release --example registry-field-sweep -- --diff tests/population/m45-release/registry-field-sweep.json .local/population/fields.json
 ```
 
-The tracked [M45-release population reports](../../tests/population/m45-release/) are the baseline;
-no second checkout or build of `main` is needed. The diff compares normalized answers and reports
-once which absent members matched their serde defaults. Non-default additions, required removals
-and unknown JSON members remain changes. Answers that the current types cannot deserialize receive
-no default-member pruning. Method and Native version stamps are excluded from comparison; build and basis
-remain compared. The report also groups stops by instruction kind, obstacle and function.
+The tracked [M45-release population reports](../../tests/population/m45-release/) are the
+baseline. The diff compares normalized answers, ignoring method and Native version stamps but not
+build and basis, and reports once which absent members matched their serde defaults.
 
 For command grammars, run and compare the whole population:
 
@@ -398,11 +336,9 @@ cargo run --release --example registry-field-sweep -- --baseline "$STELLARIS_PAT
 cargo run --release --example command-population -- --baseline "$STELLARIS_PATH" > tests/population/m45-release/command-population.json
 ```
 
-`--baseline` stores only comparison inputs, with one subject per line: answers, errors and status,
-plus command inventory uncertainty. It omits diagnostic groups, counters and timings. Full reports
-are generated into the ignored `.local/population/` directory. The baseline includes the exact build;
-use a separate directory for each supported build. An unchanged method gives zero changed answers,
-and repeated baseline generation is byte-identical.
+`--baseline` stores only comparison inputs (answers, errors, status, inventory uncertainty), one
+subject per line, with the exact build; use a separate directory for each supported build.
+Repeated baseline generation is byte-identical.
 
 To record every command grammar of an installation as recorded answers, then check the record
 against a new static run apart from `Basis`:
@@ -412,9 +348,8 @@ cargo run --release --example record-command-grammars -- "$STELLARIS_PATH"
 cargo run --release --example record-command-grammars -- --verify .local/sdk-548/recorded-answers "$STELLARIS_PATH"
 ```
 
-Each question reads and hashes the whole executable once. On M45 that integrity check costs
-about 0.4 s of the 0.58 s per grammar, so a full recording takes about 21 minutes. Do not skip
-the check to save time.
+Each question reads and hashes the whole executable, so a full recording takes about 21 minutes;
+do not skip the check (SDK-640).
 
 For commands, [`declaration-list.rs`](../../examples/declaration-list.rs) prints both full
 inventories and their gaps when no name filter is supplied:
@@ -424,12 +359,8 @@ cargo run --release --example declaration-list -- "$STELLARIS_PATH" > declaratio
 ```
 
 For another inventory, run its operation over all entries, including those that return no result
-or fail. Record the exact build, operation, population and reproducible invocation on its method
-page, with complete, partial and failed counts, each failure shape and each distinct finding.
-State whether counts refer to operation answers, inventory entries or paths. Keep unresolved
-entries in the denominator. Fix shared mechanisms that the run exposes and rerun the affected
-method. The separate SDK-553 registry sweep is a gate at a recorded commit; its failures become
-follow-up tickets rather than repairs inside that sweep.
+or fail, and keep unresolved entries in the denominator. State whether counts refer to operation
+answers, inventory entries or paths.
 
 ## Keep the knowledge in its home
 
@@ -444,11 +375,9 @@ For new method material, use this order:
 4. Gaps and the tickets that own them.
 5. Pitfalls: failed shapes and the findings that prevent their recurrence.
 
-Keep run chronology out of the page, and keep method explanations in module comments rather
-than copying them here. Preserve unique prototype sources and observations until their findings
-have a usable retained home, as the [preservation policy](../development-policy.md#preserve-acquired-knowledge)
-requires. Native owns platform and build methods; Atlas owns extraction fixtures, rule conclusions
-and coverage.
+Keep run chronology, counts that tracked data holds and method explanations that module comments
+hold out of the page. Preserve unique prototype sources until their findings have a retained home
+([preservation policy](../development-policy.md#preserve-acquired-knowledge)).
 
 Before delivery, run the default Rust suite and the worker tests as CI does:
 
@@ -501,25 +430,11 @@ cargo run --release --example command-population -- "$STELLARIS_PATH" > after.js
 cargo run --release --example command-population -- --diff before.json after.json
 ```
 
-Totals count one operation answer per unique `(family, name)`, including runtime-composed names
-and named unreadable registrations. They do not count registration observations or token paths.
-`complete`, `partial` and `failed` describe operation outcomes. A failed receiver join still
-produces a partial public answer; `receiver_join_failed` counts these separately without dropping
-them from `named_commands`. This count uses the retained receiver and reader-slot/body join,
-not the normalized reader identity: a later grammar symbol failure is not a failed receiver join. An input-construction failure aborts the report rather than inventing
-an inventory denominator. Unknown registration observations and input-wide inventory gaps are
-listed separately. An unknown observation can stand for several commands or overlap another
-observation; its count is never added to the named denominator. `full_denominator_known` is false
-when either uncertainty remains.
+Totals count one operation answer per unique `(family, name)`. A failed receiver join still gives a
+partial public answer; `receiver_join_failed` counts it separately. Unknown registration
+observations and input-wide gaps are listed separately and never added to the named denominator;
+`full_denominator_known` is false when either remains. The diff compares statuses, normalized
+answers and inventory uncertainty, and ignores timings and addresses.
 
-Each case keeps the full normalized answer and its source stamp, plus developer chain and stop
-diagnostics. Public gap groups and internal stop groups list each affected command once per
-shape; one command can occur in several groups. Internal shapes use reason, instruction kind,
-obstacle and function. The diff compares statuses, normalized answers (including gaps and source),
-and inventory uncertainty. It ignores timings and internal addresses. An unchanged report has
-`changed: 0`; changed subjects show both old and new values.
-
-The hidden `internals::command_grammar_stops::population` wrapper visits each named command in
-order and lets the caller release its raw analysis before visiting the next command. It shares
-lookup, receiver analysis and normalization with the existing methods. These tools do not extend
-argument grammar extraction, establish parser acceptance or measure Atlas rule coverage.
+`internals::command_grammar_stops::population` visits each named command in order and lets the
+caller release its raw analysis before the next.

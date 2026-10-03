@@ -1,33 +1,23 @@
-# Decision: a simple engine API, scoped by compiler need
+# Decision: a simple engine API for config parity
 
-Status: approved by Jackson on 2026-09-19 and implemented on 2026-09-20. The compiler-need review
-of 2026-10-02, agreed with Jackson and implemented the same day, narrowed the scope. The
-[specification](../specs/native.md) holds the current API; the
-[technical design](architecture.md) holds the layout. The earlier API sketch, work order and
-review tables are in Git history.
+Approved by Jackson on 2026-09-19 and narrowed by the compiler-need review of 2026-10-02. The
+[specification](../specs/native.md) holds the current API; Git history holds the earlier API
+sketch, work order and review tables.
 
-## Purpose of Native
+## Vision
 
-Native is a standard API to ask Stellaris questions, the same on each platform and game build.
-It is not an evidence archive. A caller gets an answer, a statement of how complete the answer is,
-and a small stamp that says which build and method gave it. To check an answer, run the question
-again. Tests use small recorded answers when no game is available.
-
-## Vision: scope by compiler need
-
-Native gives Atlas the static engine facts that a PDXScript compiler and language service would
-use to accept, reject, type or complete script, plus the smallest live check that shows a static
-answer is true. Runtime values are out of scope. Proven facts that pass this test stay; new depth
-is built only when the config replacement needs it.
-
-- **Customer:** the Atlas developer. Atlas is the only consumer.
-- **The test for a fact:** it changes what a compiler accepts, rejects, types or completes. "A
-  `.cwt` rule cannot express it" is not a reason to cut; the product is the JSON snapshot.
-- **Static facts only.** Evaluated values, game state and consumer meaning do not pass the test.
+- **Config parity is the goal.** Native supplies what a cwtools config replacement needs, and
+  must reach parity with the config.
+- **Additional compiler facts are allowed, and scrutinized.** A static fact beyond parity must pass
+  the compiler-need test: it changes what a PDXScript compiler or language service accepts,
+  rejects, types or completes. It must also pass the overbuild check: a low cost or a real consumer
+  need. "A `.cwt` rule cannot express it" is not a reason to cut.
+- **Static facts only**, plus the smallest live check that shows a static answer is true. Runtime
+  values, game state and consumer meaning are out of scope.
 - **Keeping and building differ.** A proven fact that passes the test stays. New depth needs a
   config-replacement need or a low cost.
-- **Later projects do not justify a feature now.** The typed PDXScript language consumes Atlas
-  output only. The end-to-end test framework will need its own design.
+- **Consumers.** Atlas is the first consumer and, today, the only one. A later project will also use
+  Native, but **later projects do not justify a feature now**.
 
 ## What stays
 

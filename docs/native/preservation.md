@@ -1,16 +1,18 @@
-# Evidence preservation and migration limits
+# Evidence preservation
 
-The current [development policy](../development-policy.md) protects unique prototype and probe
-knowledge while permitting cleanup of disposable development artifacts. The migration history below
-records what was preserved; its older remote-preservation gate is not a routine cleanup approval gate.
+The [development policy](../development-policy.md) sets the rule: preserve unique prototype and
+probe knowledge, and treat routine captures and build outputs as disposable.
 
 The canonical authored Native knowledge is in this repository's tracked `docs/`. Private identified bundles and full file manifests are in `.local/evidence/bundles/`. A retained second local copy is `/Users/jackson/Documents/PDX/evidence/native-2026-09-18/`, outside scratch/worktree/temp paths. Archive and manifest hashes were compared after copying; a representative owner capsule was restored from that second copy and its written files verified.
 
-The accepted SDK-479 policy calls for manifests and bulk release assets in a private evidence repository plus a second local copy. The connected GitHub account can see `pdx-foundry/native` and `pdx-foundry/atlas`, both public. No accessible `pdx-foundry/pdx-evidence` destination was established; organization listing returned only those two repositories. This migration creates no remote and publishes no mixed evidence. **Private remote preservation remains outstanding.** SDK-486 stays open; local success does not satisfy its remote completion gate.
+There is no private remote copy; SDK-486 owns remote preservation.
 
-## Source inventory
+## Bundles
 
-[source-inventory.json](source-inventory.json) gives each bundle's identity, full archive hash, original root, portable archive root, Git HEAD, omissions, size and file-manifest location. Per-file manifests preserve original absolute paths, relative paths, sizes/hashes and links. Original license notices were retained; copied game/native observations and source archives do not acquire a blanket SDK license.
+[source-inventory.json](source-inventory.json) gives each bundle's identity, archive hash, original
+root, portable root, Git HEAD, omissions, size and manifest location. Per-file manifests keep the
+original absolute paths, sizes, hashes and links. [Retrieval](retrieval.md) says how to verify and
+restore a bundle.
 
 | Bundle | Imported source |
 | --- | --- |
@@ -27,70 +29,42 @@ The accepted SDK-479 policy calls for manifests and bulk release assets in a pri
 | linear-supplement | Additional lifecycle, recursive event, locator, scripts/stockpiles/shared-suite/harness resolutions and archives; duplicate assets point to linear-records |
 | sdk-515-loader-entry | Initial Native debugger-worker candidate: two retained four-control batches and source/tool identities |
 | sdk-517-observations | Rust-owned candidate observations: five retained batches, generated worker protocol, failure controls and replay artifacts |
-| sdk-515-loader-entry-review | Final candidate rerun after PR review: strengthened joins and raw preservation hashes; see [result](loader-entry-worker.md) |
+| sdk-515-loader-entry-review | Final debugger-worker trial with raw preservation hashes; see [retrieval](retrieval.md#debugger-worker-trial-bundle) |
 
-No `sdk-atlas` directory exists in the supplied Developer directory; the verified source was `pdx-atlas`, now `/Users/jackson/Developer/pdx-foundry/atlas`. Its local planning/glossary and consumer conclusions stay Atlas-owned. Full mixed historical capsules are privately retained here to keep native provenance and replay intact, not promoted into a Native rule database.
+Frozen source and report files inside capsules are the authority for their original run;
+changing them breaks their hashes. Consumer-specific conclusions stay in Atlas.
 
-## Dependencies and recoverability
+## What a bundle does not hold
 
-- Sibling prototype helper trees are included in each Atlas capsule import. Offline dispatch/scheduler/shared-reader replay passes after relocation. Native capture still needs exact host/game/toolchain/debugger prerequisites and original-path adjustments.
-- M45-observe's 85,044,680-byte ARM64 thin executable is actually retained privately at the spike's `reference-observation-prototype/evidence/stellaris-arm64.local` and discovery helpers. Its hash matches the recorded slice. This is not a complete runnable game installation. The current installed universal executable was read and verified as M45-observe during migration; it was not copied or launched.
-- M45-old, W45 and W446 complete installations/executables are not established as retained by this import. Windows raw archives contain game-produced source fixtures/settings, native sources/binaries/vendor materials and successful/failed captures, but no `stellaris.exe`. Runtime/DLC/library inputs remain external. Exact content manifests do not themselves preserve those content bytes.
-- Older Mac probes reference Mythos, ordinary template profiles, source saves, installed SDK distributions and helper paths. Captured private profiles/source snapshots preserve parts of those inputs; the import does not certify closure for every historical fresh run. Use each original script/report's dependency list before attempting capture. Original archives intentionally exclude some saves/account/cache/full dependency material.
-- Two initial signed-asset requests returned HTTP 401. Native event-selection raw bytes are retained through the local `native-bridge-probe` archive even though that old remote locator was unavailable. The shared harness asset was recovered with a fresh SDK-446 attachment URL in `linear-supplement`; its earlier unsuccessful retrieval remains recorded. No gap is silently converted into game uncertainty.
-- The temporary spike handoff exists and is retained as `external-research/handoff.md`. Standalone/worktree native research is retained locally. Historical Git bundles contain complete histories for selected refs; untracked working evidence is separately archived.
+- No complete game installation. The M45-observe ARM64 slice (85,044,680 bytes) is the only
+  retained executable, also at `.local/executables/stellaris-m45-observe-arm64`; its hash is the
+  slice identity in [targets](targets.md). M45-old, W45 and W446 executables, DLC and runtime
+  libraries are external.
+- Older Mac probes reference Mythos, template profiles, source saves, SDK distributions and helper
+  paths that are only partly captured. Use each original script's dependency list before a fresh
+  capture.
+- Bundles exclude `.git` contents, `node_modules`, `__pycache__` and `.DS_Store`; `source-git`
+  holds the selected Git histories. Restoration skips symlinks and keeps their targets in the
+  manifest.
 
-Bundle creation excludes `.git` directory contents, `node_modules`, `__pycache__` and `.DS_Store`. Selected Git histories are preserved in `source-git`. External Node dependencies must be reinstalled or supplied from recorded lock/source inputs where needed. Raw capture/manifests and experiment sources are preserved; derived cache binaries elsewhere can remain in historical archives. Restoration skips symlinks while retaining their original targets in the manifest.
-
-## Canonical location and cleanup
-
-Native-only discovery pointers in Atlas and source-root forwarding documents now direct future agents here. Historical experiment sources, capsules, replay paths and Git evidence remain unchanged. Consumer-specific conclusions stay in Atlas. Frozen source/report files embedded in capsules remain historical authorities for the original run; changing them would break their hashes.
-
-No original raw evidence was deleted during this migration. Before cleaning a historical source,
-verify that a usable copy preserves its unique knowledge and dependencies. A verified retained copy
-permits removal of redundant scratch/worktree/temp files under the development policy; remote
-preservation is not a prerequisite for routine development. Routine captures may be discarded once
-their useful findings are preserved. Published capability claims still need matching implementation
-and verification; migration or a candidate address alone does not establish support.
-
-## Simplification cleanup, 2026-09-20
+## Other retained copies
 
 Every bundle passed `tools/knowledge_bundles.py`, and each archive and manifest has a byte-identical copy
-in `~/Documents/PDX/evidence/native-2026-09-18/`. Duplicate restores, staging and verification
-copies and obsolete SDK run outputs were then removed. Generated large method inputs and routine
-private profiles are disposable; static parity tests now derive their input from the executable.
+in `~/Documents/PDX/evidence/native-2026-09-18/`.
 
-Additional source, notes and small observations absent from those manifests remain under
-`.local/preserved-development/`, with their former `.local` paths. These 1,780 files have a verified
-second copy in `native-2026-09-18/simplification-development-notes.tar.gz`. The preserved sources
-include the reservation investigation and bundle-import helpers. Existing bundles retain the
-historical prototype dependencies and raw findings.
-
-The exact 85,044,680-byte M45-observe ARM64 executable is also available without restoring a bundle
-at `.local/executables/stellaris-m45-observe-arm64`; its SHA-256 is the slice identity in
-[targets](targets.md). This is still only an executable, not the installation backup of SDK-522.
+`.local/preserved-development/` holds source, notes and small observations that are absent from
+the bundle manifests, under their former `.local` paths. These 1,780 files have a verified
+second copy in `native-2026-09-18/simplification-development-notes.tar.gz`.
 
 The Atlas caller before migration, including its old freeze and synthetic files, is preserved in
-`native-2026-09-18/atlas-native-consumer-before-simplification.tar.gz`. Atlas now calls Native
-from its own crate at a pinned Native commit; the `prototypes/native-registry` directory is gone.
+`native-2026-09-18/atlas-native-consumer-before-simplification.tar.gz`.
 
-## Config-test spike, 2026-09-28
+The config-test spike experiment is in Atlas at
+`/Users/jackson/Developer/pdx-foundry/atlas/docs/prototypes/config-test-spike/` (ignored by Atlas
+Git). A checked copy is `.local/evidence/config-test-spike-2026-09-28/`: the experiment archive,
+its inventory and verification, the config inputs and `native-source.bundle`. Atlas
+`preservation.json` records their paths and hashes. Absolute paths in the private runner need
+adjustment after relocation.
 
-Atlas owns the experiment at
-`/Users/jackson/Developer/pdx-foundry/atlas/docs/prototypes/config-test-spike/`. It includes six
-retained sessions, all five engine dumps, frozen claims and probe plans, raw observations,
-scoring scripts/results, disassembly, Native inventories, and the private Rust caller. The
-report records 89 calibrated claims and the limits on each rule conclusion.
-
-A second checked copy is kept under the primary Native checkout's
-`.local/evidence/config-test-spike-2026-09-28/`: `atlas-experiment.tar.gz`, its per-file inventory
-and verification, config/overlay source inputs, and `native-source.bundle`. The archive excludes
-only rebuildable runner binaries and Python caches. Its symlinks are retained as links, not
-followed; the full installed game and platform tools remain external dependencies. Absolute
-source paths in the private runner need adjustment after relocation. These are local copies,
-not a remote backup. Atlas `preservation.json` records their paths and hashes.
-
-Native's strict paused-register patch and engine notes from `spike/in-process-probe` are merged
-into `main` (`1a564ce`); `Game::check_script` grew from them. The bundle preserves that branch's
-history. Verify the retained copy
-before cleaning either source tree. No experiment source or session was deleted by this spike.
+Before you clean a source tree, verify that a usable copy keeps its unique knowledge and
+dependencies.

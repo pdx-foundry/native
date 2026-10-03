@@ -1,85 +1,56 @@
-# Ready-world observations, retired (SDK-650, SDK-647)
+# Ready-world observations (retired route)
 
-## Retired route, 2026-10-02
+The world API and the M451-hotfix world recipe were retired on 2026-10-02. Keep this page complete
+enough to restore the world pause if the entry-context self-link assumption fails (SDK-677).
 
-The world API and M451-hotfix world recipe are retired by the
-[simplification review](../design/simplification.md). The M451-hotfix target remains for
-fixture outcomes and `check_script`. All findings below are historical exact-build observations.
+## Restore
 
-Commit `2d930e4` contains both `tests/fixtures/world-m451/fixture.sav` and
-`tests/expected/world-numeric-m451/cases.json`, plus their world tests. The save was first added in
-`9ad2938`; the numeric cases followed in `2d930e4`. The last complete pre-cut implementation is
-`d8f9d8ab337d10c9e920caeb02fc651f53b78042`, including the world recipe, worker, protocol and controls.
-Use `git show <commit>:<path>` to retrieve a file or create a separate checkout at that commit to
-restore the complete route. Match the exact executable identity in [targets](targets.md) first.
-The private `.local/sdk-650/` and `.local/sdk-647/` findings remain in place.
+`d8f9d8a` is the last complete implementation: world recipe, worker, protocol, controls
+(`tests/live/world.rs`, `tests/live/world_numeric.rs`) and expected data. `2d930e4` holds
+`tests/fixtures/world-m451/fixture.sav` (first added in `9ad2938`) and
+`tests/expected/world-numeric-m451/cases.json` with the evaluated operand results. Use
+`git show <commit>:<path>` or a separate checkout, and match the exact M451-hotfix identity in
+[targets](targets.md) first; the 4.5.0 target never had a world recipe. Private findings are in
+`.local/sdk-650/` and `.local/sdk-647/`. The non-world operand controls stay in
+`tests/live/script_numeric.rs` (`cargo live script_numeric`).
 
-The non-world operand controls now live in `tests/live/script_numeric.rs`, with only parser
-expectations in `tests/expected/script-numeric-m451/cases.json`. Run `cargo live script_numeric`.
-Keep this page complete so the route can be restored if the entry-context self-link assumption fails.
+## How the route worked
 
-## Historical verified route
-
-This section describes the route as it was at `d8f9d8a`. It was verified on the exact
-M451-hotfix ARM64 executable in [targets](targets.md). The 4.5.0 target had no world recipe.
-Addresses and layouts were held only in the target recipe. The save was
-`tests/fixtures/world-m451/fixture.sav` at that commit, created on 4.5.1 without mods.
-Native copies it into an isolated profile and loads installed content with no mods enabled.
-The original save is never written.
-
-`GameOptions::world(WorldRequest)` selects this pause instead of a registry, fixture or modifier
-pause. The request names the displayed local human country, one prepared effect, at most 120
-engine days, at most 32 flag names and at most 32 variable names. Effect text is limited to
-4 KiB; the save to 16 MiB. Startup's configured deadline covers loading and the whole prepared
-observation. There is no second deadline or open-ended execution loop. The numeric operand
-results that this route gives are in [scoped numeric](scoped-numeric.md#world-evaluation-on-m451-hotfix-sdk-647).
-
-The readiness gate checks the actual game-state readiness byte, paused idler, main-thread
-receiver and the normal `UpdateInternal` / `Idle` / `UpdateOneFrame` stack. A startup or loading
-stack does not pass. The observer resolves the actual local human and country, checks the full
-country ID against the human reference, and compares its displayed name with the request.
-Country identity and readiness are checked again after each day.
-
-The worker returns a completed result before reporting `PausedInWorld`. The supervisor joins
-that result to the session, owned game, activated hook and main thread. `Game::observe_world`
-reads this fixed result and refreshes the idle timeout; repeated reads do not execute again.
-The result distinguishes effect execution, diagnostics and the date/flags after each day.
-An invalid effect gives a partial answer with the initial sample and advances no time.
-Recorded answers select the world by save contents, country, effect, day count and ordered flag
-names. A live recording uses the loaded private save, even if the caller replaces the source.
-Reading a different request or save requires its own recorded answer.
-
-## Calls, dates and flags
-
-The worker uses the existing ARM64 register-call method on the OS-guarded main-thread stack.
-Other threads can run because daily updates may wait on engine jobs. A return breakpoint checks
-both the main thread and the call's stack pointer: a nested normal update cannot end the call.
-Every saved scalar and vector register is checked after restoration. Calls share the startup
-deadline; a fault ends the session and enters owned-process cleanup.
-
-The pause is one instruction after `UpdateInternal` begins, after its stack adjustment. At entry,
-the processor status carried a transient branch-type bit. LLDB reported successful restoration
-but discarded that bit. A retained small local program confirmed that write behavior. Advancing
-the pause past the first ordinary instruction preserves exact register checking. An earlier
-executable scratch allocation also returned an invalid address despite a success status; no
-executable allocation is used now, and all allocations reject invalid addresses.
-
-The effect uses the established memory parser and validation route, then `CEffect::Execute` in a
-constructed country scope. The finite diagnostic window covers reading, validation and execution.
-Its logger hook is restricted to the main thread that executes the prepared calls, so concurrent
-engine-job messages cannot reject an effect or consume its capture bound. Any message on that
-thread before execution prevents the call, including engine errors that omit a source name.
-The window closes before daily simulation;
-ordinary queued-command messages are outside that prepared effect's diagnostics.
-
-`FastForward(1, false)` advances one engine day per call. Each sample reads the engine date and
-requires its raw value to advance by exactly 24. Flag IDs and signed counts come from the actual
-country store; matching array lengths and bounded names are required. Interned names are cached
-within the observation. Absence is `None`; zero and negative stored counts remain distinct.
+- **Request.** `GameOptions::world(WorldRequest)` named the displayed local human country, one
+  prepared effect, at most 120 engine days, 32 flag names and 32 variable names; effect text at
+  most 4 KiB, the save at most 16 MiB. Native copied the save (made on 4.5.1 without mods) into an
+  isolated profile and loaded installed content with no mods. The startup deadline covered
+  loading and the whole observation.
+- **Readiness gate.** The game-state readiness byte, the paused idler, the main-thread receiver and
+  the normal `UpdateInternal` / `Idle` / `UpdateOneFrame` stack; a startup or loading stack does not
+  pass. The observer resolved the local human and country, checked the full country ID and the
+  displayed name, and checked identity and readiness again after each day.
+- **Result.** The worker returned a completed result before reporting `PausedInWorld`; repeated
+  reads did not execute again. An invalid effect gave a partial answer with the initial sample
+  and no time advance. Recorded answers were keyed by save contents, country, effect, day count,
+  and ordered flag and variable names (stamp `observe-world/v2`).
+- **Calls.** The register-call method on the OS-guarded main-thread stack, with other threads
+  running because daily updates wait on engine jobs. A return breakpoint checked the main thread
+  and the call's stack pointer, so a nested update cannot end the call. Every saved scalar and
+  vector register was checked after restoration; a fault ended the session.
+- **Effect.** The memory parser and validation route, then `CEffect::Execute` in a constructed
+  country scope. The diagnostic window covered reading, validation and execution, with the logger
+  hook restricted to the executing main thread; any message there before execution prevented the
+  call. The window closed before daily simulation.
+- **Days and flags.** `FastForward(1, false)` advances one engine day per call; the raw date must
+  advance by exactly 24. Flag IDs and signed counts came from the country store; absence is `None`,
+  and zero and negative counts stay distinct.
+- **Variables.** `GetVariablePointer(CEventScope const&, CString const&)` (`0x100d0d704`) selects
+  the store: a `local_` name uses the scope-local store (`CEventScope::GetVariables`), any other
+  name the country's own store (`CEventScope::GetSavedVariables`). `CVariables::VariableIsSet`
+  (`0x100d1e7b8`) and `CVariables::GetVariable` (`0x100d1e784`) read the map; `GetVariable` returns
+  the raw `CFixedPoint` in `x0` at scale 100000. A null store means "not set": the scope-local
+  store does not exist until an effect creates it. Each name costs two or three engine calls per
+  sample. To read another engine number, export it to a country variable
+  (`export_resource_stockpile_to_variable`, `export_modifier_to_variable`,
+  `export_trigger_value_to_variable`) or copy it with a qualified operand.
 
 ## World pins on M451-hotfix
-
-These static pins came from the M45-release to M451-hotfix port in [targets](targets.md).
 
 - `CInGameIdler::UpdateInternal(bool)` is `0x10086de60`. The pause is at `+4`, after its first
   `sub sp, sp, #0xe0`; the expected caller chain is `CGameIdler::Idle(bool)`, then
@@ -95,60 +66,32 @@ These static pins came from the M45-release to M451-hotfix port in [targets](tar
 - `GetVariable` looks up the map at `+8` and loads the 64-bit value at entry `+0x30`, or the
   engine's zero constant for a missing entry.
 
-## Variables
+## Observed country-flag countdown
 
-Each sample also gives the requested variables, in request order. A set variable gives its raw
-signed 64-bit value and the scale 100000; an unset one gives `None`. The source stamp is
-`observe-world/v2`, and the recording key includes the variable names.
+The five SDK-646 durations agreed with the [flag store countdown](durations.md#flag-store-countdown-m45-release)
+over 90 days: one decrement per engine day; `days = 0` becomes -1 on day 1 and stays; negative
+counts stay; `years = 5965233` wraps to -2147483416 and stays. This is country-flag behavior on
+this build and fixture, not the update frequency of every flag owner.
 
-The worker reads a name as the engine reads a variable operand:
+## Pitfalls
 
-- `GetVariablePointer(CEventScope const&, CString const&)` (`0x100d0d704`) selects the store. A
-  name that starts with `local_` uses the scope-local store of the prepared scope
-  (`CEventScope::GetVariables`). Any other name uses the country's own store
-  (`CEventScope::GetSavedVariables`).
-- `CVariables::VariableIsSet` (`0x100d1e7b8`) and `CVariables::GetVariable` (`0x100d1e784`) read
-  the map. `GetVariable` returns the raw `CFixedPoint` in `x0`.
-- The scale is a recipe value. The supervisor refuses a result that carries another scale.
-
-A null store means "not set", not a failure: the scope-local store does not exist until an effect
-creates it. `world_ready` asked for one unset name of each kind and got `None` for both. A failed
-call or memory read still ends the session. A literal case (`set_variable` with `2.75`, raw
-275000) shows that the read and the scale are correct before any reference case depends on them.
-
-Each name costs two or three engine calls in every sample. The numeric cases use `days = 0`;
-a request with many names and many days uses more of the startup deadline.
-
-A variable is the way to read other engine numbers. An effect such as
-`export_resource_stockpile_to_variable`, `export_modifier_to_variable` or
-`export_trigger_value_to_variable` writes the number to a country variable, and the request names
-that variable. A value of another scope is copied through a qualified operand, such as
-`set_variable = { which = V value = capital_scope.planet_variable }`.
-
-## Live result, 2026-09-29
-
-The empty baseline passed in 32 seconds: United Nations of Earth, paused at 2200.01.01, no effect
-execution, one sample and a complete answer. A second run executed the five SDK-646 effects and
-passed every sample from day 0 to day 90 in 43 seconds. Day 90 was 2200.04.01.
-
-| Prepared duration | Day 0 count | Removal or retained behavior |
-| --- | ---: | --- |
-| `months = 2 days = 3` | 90 | Decrements once per engine day; absent on day 90 |
-| `days = 1` | 1 | Absent on day 1 |
-| `days = 0` | 0 | Becomes -1 on day 1; present through day 90 |
-| `days = -1` | -1 | Present with -1 through day 90 |
-| `years = 5965233` | -2147483416 | The signed 32-bit product wraps; unchanged and present through day 90 |
-
-These observations agree with the [flag store countdown](durations.md#flag-store-countdown).
-They establish country-flag behavior on this build
-and fixture, not the update frequency of every flag owner. The source save was unchanged.
-Missing-hook, worker-loss, access-failure and cancellation controls all passed with confirmed
-disposal. The rejected-effect control also preserved day zero and left the flag absent;
-the wrong-country control refused startup with confirmed disposal. The eight `world_*` live
-cases that made these checks are in `tests/live/world.rs` at `d8f9d8a`.
-
-The old beta fixture did not establish a world on 4.5.0. Failed profile experiments found that
-both save directories must exist and `continue_game.json` must contain all three string fields
-(`title`, `desc`, `date`); omitting `date` crashed the engine. A frequent startup-input hook was
-also unsuitable for the world gate. Those probes, the status-register control, raw disassembly,
-full successful observations and disposal summaries are retained under `.local/sdk-650/`.
+- **Pause one instruction after entry.** At `UpdateInternal` entry the processor status carried a
+  transient branch-type bit that LLDB reported restoring but discarded. Pausing past the first
+  ordinary instruction keeps exact register checks.
+- **Executable allocations can fail silently.** A scratch allocation returned an invalid address
+  with a success status; use no executable allocation and reject invalid addresses.
+- **Profile setup.** Both save directories must exist, and `continue_game.json` needs all three
+  string fields (`title`, `desc`, `date`); omitting `date` crashed the engine. A frequent
+  startup-input hook is unsuitable for the world gate. The old beta fixture did not establish a
+  world on 4.5.0.
+- **One rejected statement stops the whole prepared effect.** Read every statement with
+  `check_script` first.
+- **A quiet read is not a valid reference.** An unknown prefix, an unknown modifier and an absent
+  saved target all read quietly and fail only when the effect executes.
+- **Equality at zero proves nothing about a modifier:** an absent modifier also gives zero. Use a
+  nonzero value that a content definition gives.
+- **A modifier added by `add_modifier` is not visible to `modifier:` in the next statement.** It
+  became visible after a later `random_country` statement; do not read a rule from this.
+- **Trigger names change between builds.** `num_pops` is not a trigger on M451-hotfix.
+- **A plain country flag has count -1**; a timed flag whose operand evaluates to zero has count 0
+  on day zero.
