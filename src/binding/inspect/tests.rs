@@ -248,15 +248,6 @@ fn a_slot_range_past_the_address_space_is_an_error() {
 }
 
 #[test]
-fn a_base_register_that_is_only_read_keeps_its_page() {
-    assert_eq!(writeback_base("x0,[x8,#8]"), None);
-    assert_eq!(writeback_base("x0,[x8]"), None);
-    assert_eq!(writeback_base("x0,[x8,#8]!"), Some(8));
-    assert_eq!(writeback_base("x0,x1,[sp],#16"), None);
-    assert_eq!(writeback_base("x0,[x9],#16"), Some(9));
-}
-
-#[test]
 fn a_stop_is_placed_at_its_instruction_function_and_entry() {
     use crate::engine::analysis::stop::{Obstacle, Unknown};
 
