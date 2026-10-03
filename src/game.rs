@@ -509,12 +509,13 @@ impl Game {
     }
     /// Close the session and wait until the supervisor reports whether the game is gone.
     ///
-    /// Repeated calls give the same result. Cleanup continues if this future is dropped after it
-    /// was polled. Failed session cleanup returns `Error::Cleanup`, with the witnessed disposal.
-    /// The temporary work directory is removed only after a clean, confirmed disposal of a
-    /// session that the caller ended, with no read error. An error from `close` names the kept
-    /// directory; after a read error, `work_directory` gives it. When its removal fails, `close`
-    /// returns `Error::Cleanup` and a later `close` tries again.
+    /// Repeated calls give the same result, except after a failed work-directory removal.
+    /// Cleanup continues if this future is dropped after it was polled. Failed session cleanup
+    /// returns `Error::Cleanup`, with the witnessed disposal. The temporary work directory is
+    /// removed only after a clean, confirmed disposal of a session that the caller ended, with no
+    /// read error. An error from `close` names the kept directory; after a read error,
+    /// `work_directory` gives it. When its removal fails, `close` returns `Error::Cleanup` and a
+    /// later `close` tries the removal again, so it can return `Confirmed`.
     pub async fn close(&mut self) -> Result<Disposal, Error> {
         if matches!(self.backend, GameBackend::Recorded(_)) {
             self.closing = true;
@@ -1092,19 +1093,15 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_removal_names_the_work_directory_and_a_later_close_retries_it() {
-        use std::os::unix::fs::PermissionsExt;
         let (mut game, _commands, state) = game();
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("session");
-        std::fs::create_dir(&work).unwrap();
+        // Directory removal fails on a regular file for every user, unlike a permission denial.
+        std::fs::write(&work, b"").unwrap();
         game.work = Some(work.clone());
         state.send_modify(|state| state.finished = Some(Ok(finished())));
-        let set_mode =
-            |mode| std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(mode));
 
-        set_mode(0o555).unwrap();
         let error = game.close().await.unwrap_err();
-        set_mode(0o755).unwrap();
 
         let kept = format!("; work directory kept at {}", work.display());
         assert!(matches!(
@@ -1117,6 +1114,8 @@ mod tests {
         assert!(work.exists());
         assert_eq!(game.work_directory(), Some(work.as_path()));
 
+        std::fs::remove_file(&work).unwrap();
+        std::fs::create_dir(&work).unwrap();
         assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
         assert!(!work.exists());
         assert_eq!(game.work_directory(), None);
