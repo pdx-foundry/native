@@ -98,9 +98,8 @@ belongs to SDK-549.
 
 ### Modifiers
 
-Each built-in modifier is one direct call to `CPdxModifier<…>::AddDefinition`, with the token in
-`w0` and the category mask at `[sp,#4]` (recipe `modifier_category_offset`). M45-release has 586
-direct calls:
+Each built-in modifier is one direct call to `CPdxModifier<…>::AddDefinition`; its arguments are
+under [generation calls](modifier-families.md#generation-calls). M45-release has 586 direct calls:
 
 - 571 give distinct literal names. They equal the first 571 entries of the loaded modifier table.
 - Four give a name a second time with the same tags: `bonus_automated_workforce_mult`,
@@ -110,10 +109,9 @@ direct calls:
 
 The 11 calls and the other sites that generate modifiers at run time are `UnnamedDeclaration` gaps
 here. The [modifier families](modifier-families.md#generation-calls) page lists them and joins
-them to registries. Five declared names have
-other tags in the loaded table, because content registers the same name again (for example
-`common/economic_categories` `terraforming` has `generate_mult_modifiers` and
-`modifier_category = planet`). The static answer keeps the executable's declaration.
+them to registries. Five declared names have other tags in the
+[loaded table](modifier-families.md#result-on-m45-release), because content registers the same
+name again. The static answer keeps the executable's declaration.
 
 ### Categories
 
@@ -297,6 +295,19 @@ and `can_scavenge_debris`. The config writes `carrier` where the engine passes a
   contexts.
 - What the event system does with a self-linked root or from, the prev chain, events and their
   `push_scope`, pre_triggers, and on_actions that content defines are not tested (SDK-608).
+
+## Defines
+
+On M45-release, `Native::defines()` finds 2,385 compiled `NDefines` and `NUncheckedDefines`
+`ReadDefine` helpers and follows 2,305 of them to a literal namespace, a literal name and a typed
+engine reader; `tests/expected/m45/defines.json` holds the counts by type. The other 80 named
+helpers use a table-search loop that exceeds the path search; they are `UnresolvedReader` gaps,
+including `NGraphics.ORBIT_HSV` (SDK-610). No helper fails or is unnamed.
+
+The method classifies the target of each direct `GetValue`, `GetArrayValue` or
+`ReadDefinesValue` call. `GetValue` takes namespace and name arguments; `GetArrayValue` reads a
+named value from a namespace table. Shipped define entries, defaults, comments, bounds and uses
+are not established. Atlas owns the comparison with shipped content and config.
 
 ## Pitfalls
 

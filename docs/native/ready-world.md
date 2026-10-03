@@ -77,6 +77,24 @@ requires its raw value to advance by exactly 24. Flag IDs and signed counts come
 country store; matching array lengths and bounded names are required. Interned names are cached
 within the observation. Absence is `None`; zero and negative stored counts remain distinct.
 
+## World pins on M451-hotfix
+
+These static pins came from the M45-release to M451-hotfix port in [targets](targets.md).
+
+- `CInGameIdler::UpdateInternal(bool)` is `0x10086de60`. The pause is at `+4`, after its first
+  `sub sp, sp, #0xe0`; the expected caller chain is `CGameIdler::Idle(bool)`, then
+  `CApplication::UpdateOneFrame(bool)`.
+- `GetGameDateIfPossible()` is `0x100707da4` and reads `g_CurrentGameState` at `0x1032e9450`,
+  readiness at `+0x98`, and date at `+0xb8`. The in-game idler global is `0x1032e9438`;
+  `JumpToNextDay` reads its pause byte at `+0x584`.
+- `CHuman::AccessSelectedCountry` reads the selected country ID at `+0x54` and checks country IDs
+  at `+0x20`. `SetCountry` writes scope type 4 at `+8`, ID at `+0x10`, and clears the cached
+  object at `+0x1c`. The scope constructor fits the allocated `0x180` bytes.
+- Flag lookup uses 16-bit IDs at array `+0x10`, count `+0x1c`; signed counts use array `+0x40`
+  and count `+0x4c`.
+- `GetVariable` looks up the map at `+8` and loads the 64-bit value at entry `+0x30`, or the
+  engine's zero constant for a missing entry.
+
 ## Variables
 
 Each sample also gives the requested variables, in request order. A set variable gives its raw

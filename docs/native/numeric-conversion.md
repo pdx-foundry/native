@@ -10,10 +10,24 @@ unchanged. `Known(None)` means an established nonnumeric reader; `Unresolved` me
 answer; `Partial(Some(...))` keeps independent known properties. A recording without the property
 is refused with `Error::Recorded` (2026-10-02). No separate public operation is added.
 
+## Current result on M451-hotfix
+
+At `main` `6f643a1`, the numeric population covers all 164 registries with no failed question.
+Numeric root fields: 184 in 63 registries, **0 complete, 184 partial, 0 failed**; 174 have a
+known faithful-storage range. The other 10 are seven short and three float fields. Every root
+field keeps `numeric-overflow`, `numeric-lexical-boundary`, `numeric-trailing-text` and
+`numeric-external-library-conversion`; the 88 fixed-point fields also keep
+`numeric-raw-value-mode`, and the three float fields keep `numeric-float-bound-representation`.
+Narrow integer signedness is unresolved. In the command inventory, 1,221 of 1,225 numeric reader
+positions have known facts. The other four are the command-level readers of
+`set_ai_armor_ratio`, `set_ai_shields_ratio`, `set_ai_starbase_armor_ratio` and
+`set_ai_starbase_shields_ratio`: their numeric property is unresolved, but each value form joins
+the shared fixed-point reader with complete facts. Reproduce with
+`cargo run --release --example numeric-population`.
+
 ## Method and limits
 
-The exact executable is M45-release (`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`),
-with ARM64 slice `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+The exact executable is M45-release in [targets](targets.md).
 `binding/binary/numeric.rs` binds reader and token bodies, their imports, and format strings.
 `engine/analysis/numeric.rs` matches complete canonical instruction sequences. Register allocation
 and address relocation can vary; changed calls, stores, branches or unsupported shapes produce
@@ -101,7 +115,7 @@ named gap. The world observations came from the retired world route on M451-hotf
 | `add_resource` resource amounts | None. `CAddResourceEffect::ReadMember` gives every other key to `CFixedResourceTable::CSerializer::ReadMember`, and the command grammar does not route that member (`reader-routing`, `unknown-key-reader`) | World: `energy = 10` adds raw 1000000, `0.5` adds raw 50000, `-3` removes raw 300000 | The static reader of resource-named keys. Owner: the command grammar gaps of SDK-625 and SDK-626 |
 | Additive naval capacity, `country_naval_cap_add` | A modifier entry joins the direct fixed-point reader: signed 64-bit, scale 100000 (`tests/expected/numeric-m45/modifier-entry.json`) | The direct fixed-point cases above. World: after `add_modifier` of `fallen_empire_base` (entry value 1000), `modifier:country_naval_cap_add` gives raw 100000000 and integer 1000, from 0 before | Storage of an entry from authored text is not observed: a world loads no mod content, and the fixture route does not decode modifier entries. Grammar: [modifier blocks](modifier-blocks.md). Application and propagation: SDK-547 |
 | Multiplicative naval capacity, `country_naval_cap_mult` | The same entry reader | World: after `add_modifier` of `community_champion_counselor` (entry value 0.1), `modifier:country_naval_cap_mult` gives raw 10000 and integer 0, from 0 before | The same |
-| Literal values | The table of reader shapes above | The live matrix above; the world literal cases | The conversion gap shapes in the [discovery index](discovery.md#numeric-boundary-evidence-sdk-655) |
+| Literal values | The table of reader shapes above | The live matrix above; the world literal cases | The conversion gap shapes in the [current result](#current-result-on-m451-hotfix) |
 
 Both naval-capacity results equal `export_modifier_to_variable` for the same modifier. The
 integer 0 for 0.1 is the truncation of a fixed-point result in an integer destination.
@@ -127,11 +141,11 @@ cargo run --release --example numeric-population > .local/sdk-644/numeric-popula
 ```
 
 Exact-build commands use `STELLARIS_PATH`. The population counts and failure shapes are in the
-[discovery index](discovery.md#direct-numeric-conversion-sdk-644).
+[current result](#current-result-on-m451-hotfix).
 
 ## Float and short fixture storage on M451-hotfix (SDK-656)
 
-The exact build is `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`.
+The exact build is M451-hotfix.
 `FixtureValue::Float { bits }` preserves the IEEE binary32 pattern; callers use `f32::from_bits`
 to obtain its value. `FixtureValue::Integer16 { bits }` preserves the short reader's stored
 16 bits. No signedness is inferred from these bits, and `Eq` remains available on fixture values
@@ -172,8 +186,7 @@ The other six shared integer readers have no live cases. Each is unavailable wit
 M451-hotfix population: 0 of 1,564 root fields and 0 of 38 exposed nested fields. This applies
 separately to `signed char`, `unsigned char`, `unsigned short`, `unsigned int`, `long long` and
 `unsigned long long`. The search cannot reach 982 unresolved member descriptions and does not
-establish universal absence. The [discovery population](discovery.md#float-and-short-fixture-storage-sdk-656)
-records the counts and reproducible commands.
+establish universal absence.
 
 The [SDK-544 AC4 amendment](https://linear.app/unnamed-system/issue/SDK-544) of 2026-10-01 excludes
 these six readers from the live fixture requirement on M451-hotfix, on this bounded search. They
@@ -196,9 +209,7 @@ differs from the observed storage.
 
 ## Boundary evidence on M451-hotfix (SDK-655)
 
-These findings apply to executable
-`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`, ARM64 slice
-`2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
+These findings apply to the exact M451-hotfix build in [targets](targets.md).
 The existing whole-function shapes match all 11 shared readers. SDK-655 adds authored controls
 for the scanner pointer, scanner return check, narrowing loads/stores, and both fixed wrappers'
 raw paths. Removing or changing required instructions loses the proof. Numeric storage facts
@@ -254,12 +265,12 @@ ordinary numeric literal conversion; they do not resolve lexer acceptance, malfo
 raw-value mode selection or later field adjustments. Missing conversion paths or an unproved
 scale cannot inherit these ranges. `NumericBound` is unchanged.
 
-Scoped literals inherit these token-reader facts only when their concrete storage is
-established. Unresolved constructor destinations have no range; a known shared token conversion
-cannot supply the missing destination proof. The [population table](discovery.md#numeric-boundary-evidence-sdk-655)
-records the current range counts, and [scoped literal ranges](scoped-numeric.md#shared-literal-ranges-sdk-655)
-records the corresponding live boundary cases. Outward wrapped values remain observations and
-do not close the scoped literal conversion gap.
+Scoped literals inherit these token-reader facts only when their concrete storage is established.
+Unresolved constructor destinations have no range; a known shared token conversion cannot supply the
+missing destination proof. The [current result](#current-result-on-m451-hotfix) records the range
+counts, and [scoped literal ranges](scoped-numeric.md#shared-literal-ranges-sdk-655) records the
+corresponding live boundary cases. Outward wrapped values remain observations and do not close the
+scoped literal conversion gap.
 
 ### Engine boundary, suffixes and narrow storage
 

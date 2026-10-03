@@ -16,10 +16,7 @@ trials were stopped. They do not justify a live optimization claim.
 - Apple M4, 10 CPU cores, 32 GiB memory; macOS 26.6.2 (25G83).
 - Rust 1.98.1 (`48a229cea`, LLVM 22.1.8), `aarch64-apple-darwin`.
 - Baseline source: `3d3810bf75f5a4beb030a2d1a3e157f6375c5c3b` (SDK-529).
-- Installed M45-observe universal executable: 162,737,608 bytes;
-  SHA-256 `3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216`.
-- ARM64 slice SHA-256:
-  `1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623`.
+- The installed M45-observe executable in [targets](targets.md).
 - Installation: the Steam installation at `$STELLARIS_PATH`.
 
 The runner measures whole subprocess wall time with a monotonic clock. It builds first and
@@ -241,8 +238,7 @@ observation budget. Sharing that session with ordinary cases would change what i
 
 ## Run-summary overhead (SDK-630)
 
-Measured on 2026-09-26 on M45-release (executable SHA-256
-`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`), Apple M5 Pro, macOS 27.0
+Measured on 2026-09-26 on M45-release, Apple M5 Pro, macOS 27.0
 (26A428), Rust 1.98.1, release build. Temporary monotonic spans (not committed) timed the two
 places where the supervisor builds the [run summary](lifecycle.md#live-run-summary), over 14
 live control cases (registry and fixture faults, normal sessions, a parser-rejection control and

@@ -145,9 +145,8 @@ results, refresh loop, ordinary logs and disposal summaries. The worker patch wa
 
 ### Config-test spike: documentation, effects and full scope width
 
-All following addresses and layouts apply only to M45-release, executable SHA-256
-`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`, ARM64 slice
-`a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
+All following addresses and layouts apply only to the exact M45-release build in
+[targets](targets.md).
 
 **Documentation call.** `OnExecute_PrintTriggerDocumentation` at `0x101337204` builds a console
 result and reads the argument count; it does not call a documentation writer. The E1 control

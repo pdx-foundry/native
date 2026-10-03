@@ -30,9 +30,7 @@ lines, normalizing template arguments and their occurrences in instantiated retu
 based on object registers; stack/frame offsets, constants and branches remain exact. This is a
 research grouping, not a proof that the functions have the same semantics.
 
-On M45-release the command gives 87 functions in 7 groups, the largest with 77. SDK-543's wider
-census covered 188 reference readers (about 20 shapes) and 151 lookup initializers (59 groups);
-see [reference shapes](references.md#lookup-shapes) for the population breakdown.
+[Reference shapes](references.md#lookup-shapes) records the reference census.
 
 Derive a draft from exact symbol names or addresses selected from the census:
 
@@ -49,9 +47,18 @@ header. Identity and alignment diagnostics are shape comments, so stdout can be 
 
 Use `--symbols TEXT` to find names, `--function NAME` to inspect instructions, `--callers NAME` for
 direct calls, `--strings TEXT` for literal address references, `--slots NAME --count N` for fixed-up
-pointer slots, and `--lookup-lines NAME` for strict canonical lines. The inspector prints image
-identity and pointer-resolution status; symbol-inferred ends and unresolved indirect branches
-limit what the output establishes. See [inspection limits](../engine-knowledge.md#inspecting-an-executable).
+pointer slots, and `--lookup-lines NAME` for strict canonical lines.
+
+Limits of the inspector output:
+
+- Each run first prints the image hashes and whether chained fixups were read. Without them, no
+  data slot is resolved, and the run prints why.
+- Function extents come from symbols, so every end is an inferred boundary. Indirect branches stay
+  unresolved, and a jump table shows only the addresses that the code forms.
+- Callers are direct `bl` and `b` only. A string reference is `adr`, or `adrp` then `add` in one
+  function with no branch or write between them.
+- The inspector reads ARM64 images only. Its entry, `pdx_native::internals::inspect`, is not a
+  consumer API.
 
 On a catalogued build, inspect a field method's stopped token paths with:
 
@@ -65,6 +72,13 @@ instructions, followed by the internal gaps before normalization. `--trigger-gra
 obstruction when the command's receiver join stops, and list each child key whose initial owner
 storage the factory does not establish: a scoped destination's vtable point or a duration group's
 omitted count. Record new engine facts and failed shapes on the method page as you find them.
+
+The internal results of registry fields, scopes, scope links, localization, modifiers and
+modifier families keep the stop diagnostic of `src/engine/analysis/stop.rs`. Callbacks and
+defines keep only the reason word, because they combine reasons across paths. Declaration scopes
+are read without a walk, so they have no stop.
+`pdx_native::internals::registry_field_stops::run` runs the registry field method once and
+returns its internal result with the public answer derived from it.
 
 Add `--trace` to learn where a needed value may have been lost:
 
@@ -420,7 +434,7 @@ follow-up tickets rather than repairs inside that sweep.
 ## Keep the knowledge in its home
 
 Update the subject's page in `docs/native/`; a new subject gets a new page linked from the
-[method index](discovery.md). Use [registry fields](registry-fields.md),
+[engine knowledge index](../engine-knowledge.md). Use [registry fields](registry-fields.md),
 [engine commands](engine-commands.md) and [modifier families](modifier-families.md) as the models.
 For new method material, use this order:
 
@@ -448,6 +462,14 @@ The default suite includes locality checks but skips the installed-build parity 
 Run parity explicitly for static method changes; live observation changes also need the relevant
 `cargo live` cases. The [README checks](../../README.md#checks) list formatting, lint and
 documentation checks.
+
+### Live cases
+
+The live harness (`tests/live.rs`) sets the hidden `GameOptions::keep_work_directory`, so
+`close` keeps the work directory. A passing case removes it; a failing case keeps it and prints
+`kept <dir>; run summary <dir>/session/run-summary.json: outcome …, last completed phase …, reason …`,
+also when a check fails after a clean `close`. The directory also holds `raw-trace.jsonl`,
+`owner-events.jsonl`, worker and game output, and the private profile's engine logs.
 
 A live observation has separate checks in the worker and in the reducer. The reducer must reject
 an incoherent or misplaced observation even when the normal worker would not send it, so keep

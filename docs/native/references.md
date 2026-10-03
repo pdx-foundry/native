@@ -114,24 +114,6 @@ constructor argument; `registries()` already joins them. Custom loaders do not:
 `VFSGetEnumeratedFiles(char const*, CPdxArray<CString, int>&, char const*, char const*, int)`, and
 `RunGame` pre-enumerates `"common/planet_classes"`.
 
-### Flags
-
-- `CFlagEffect::Assign` and `CFlagTrigger::Assign` call `ReadAsDynamicFlag(CString const&,
-  CString&, CEventTarget&, EScopeType, CString const&)`. It splits `name@target` at `@`. For a
-  static name the caller stores `CPdxIntegerFlags::CreateFlagIndex(CString)` as a 16-bit index:
-  the effect at `+0xa8`, the trigger at `+0x1f8`. `CSetTimedFlagEffect::ReadMember` does the same
-  and stores at `+0x2b4`.
-- `CreateFlagIndex` interns into one global `CPdxIntegerFlags::_AllFlags` map, keyed by the exact
-  string, for every flag kind and for saved event targets.
-- Setter `AccessFlags` implementations forward to `CEventScope::AccessFlags()`, which tail-calls
-  `CEventScope::GetFlags() const`; `CHasFlagTrigger::GetFlags` forwards to the same function.
-  Global flag commands instead return `_g_CurrentGameState + 0x478` in both roles.
-- `CHasFlagTrigger::ActualEvaluate` reads the store through its virtual getter, then scans the
-  16-bit indexes inline.
-- Scope sets differ between roles: `CSetStarFlagEffect::GetSupportedScopes` returns `0x80`,
-  `CHasStarFlagTrigger::GetSupportedScopes` returns `0x08000080`.
-- Variables use `CVariables`, a string-keyed map that does not intern names.
-
 ## Result on M45-release
 
 The executable has 188 reference readers. With the method's nine shapes, 159 establish every
@@ -282,6 +264,21 @@ cargo run --release --example dynamic-name-population -- "$STELLARIS_PATH"
 
 ### Flag stores on M45-release
 
+- `CFlagEffect::Assign` and `CFlagTrigger::Assign` call `ReadAsDynamicFlag(CString const&,
+  CString&, CEventTarget&, EScopeType, CString const&)`, which splits `name@target` at `@`. For a
+  static name the caller stores `CPdxIntegerFlags::CreateFlagIndex(CString)` as a 16-bit index:
+  the effect at `+0xa8`, the trigger at `+0x1f8`. `CSetTimedFlagEffect::ReadMember` does the same
+  and stores at `+0x2b4`.
+- `CreateFlagIndex` interns into one global `CPdxIntegerFlags::_AllFlags` map, keyed by the exact
+  string, for every flag kind and for saved event targets. Variables use `CVariables`, a
+  string-keyed map that does not intern names.
+- Setter `AccessFlags` implementations forward to `CEventScope::AccessFlags()`, which tail-calls
+  `CEventScope::GetFlags() const`; `CHasFlagTrigger::GetFlags` forwards to the same function.
+  Global flag commands return `_g_CurrentGameState + 0x478` in both roles.
+  `CHasFlagTrigger::ActualEvaluate` reads the store through its virtual getter, then scans the
+  16-bit indexes inline.
+- Scope sets differ between roles: `CSetStarFlagEffect::GetSupportedScopes` returns `0x80`,
+  `CHasStarFlagTrigger::GetSupportedScopes` returns `0x08000080`.
 - Slots from a command's vtable address point: effects `Assign` `+0x20`, `ExecuteActual`
   `+0x50`, `AccessFlags` `+0xe8`; triggers `ActualEvaluate` `+0x20`, `Assign` `+0x28`,
   `GetFlags` `+0xf8`.

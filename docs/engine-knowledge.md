@@ -13,76 +13,30 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 
 | Subject | Page | What it holds |
 | --- | --- | --- |
-| Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, background launch, process disposal on macOS and Windows, debugger shutdown |
-| Load a world and observe prepared effects (retired route) | [Ready-world observations](native/ready-world.md) | The retired world route and how to restore it from `d8f9d8a`: private save loading, main-thread world pause, bounded daily updates, country flag expiry and variable reads |
-| Observe the game before it parses content | [Early observations](native/early-observations.md) | ARM64 loader-entry attachment, registration and field reads, where to read registry items |
-| The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
-| Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |
-| Discovery method index | [Discovery methods](native/discovery.md) | Operations, source stamps, owning modules and knowledge sections; define read helpers |
-| Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope, Boolean, key, target and reference messages; generic reader errors; ordinary-log/source-filter gaps; config-test route limits |
-| Write a method | [Method authoring](native/method-authoring.md) | Inspector, stop diagnostics, authored tests, parity and whole-inventory runs |
-| Registry fields and scheduling | [Registry fields](native/registry-fields.md) | The current field sweep and its stops, compiler jump tables and bit fields, token paths, members and shared readers, scheduler table, owner joins |
-| Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, routing forms, owner derivation, retired world evaluation results and remaining limits |
-| Duration keys | [Duration keys](native/durations.md) | Unit factors, shared-factor and scaled-at-read combination, the flag-store countdown, modifier and trait consumers, and unidentified keys |
-| Engine commands and scopes | [Engine commands](native/engine-commands.md) | Engine documentation commands, target getters, modifier, category, scope and link declarations, localization tables, on_action and game rule call sites |
-| References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, database directories, owner initializers, identifier grammar, flag stores and namespaces |
-| Generated modifiers | [Modifier families](native/modifier-families.md) | Modifier families from database generators, the loaded modifier table, post-read code and shared helpers, the per-item post-read call |
-| Builds and adaptation between them | [Targets](native/targets.md) | Exact executable hashes, Mac and Windows adaptation results |
+| Write a method | [Method authoring](native/method-authoring.md) | The inspector and its limits, stop diagnostics, authored tests, parity, population runs and baselines |
+| Operations and their code | [Discovery methods](native/discovery.md) | Each operation's source stamp, owning modules and knowledge page |
+| Registry fields | [Registry fields](native/registry-fields.md) | What complete means, the field sweep, compiler jump tables and bit fields, reader identities and kinds, read conditions, registry names, the scheduler table and owner joins |
+| Nested command grammar | [Command grammar](native/command-grammar.md) | Forms and stage chains, member ledgers, target arguments, parser observations, population results and the consumer boundary |
+| Engine commands and scopes | [Engine commands](native/engine-commands.md) | Declarations, target getters, modifiers, categories, scopes and links, localization tables, on_action and game rule call sites, defines |
+| References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, owner initializers, identifier grammar, flag stores and namespaces |
+| Numeric conversion | [Numeric conversion](native/numeric-conversion.md) | Reader shapes, scanner formats, faithful-storage ranges, live boundary samples and the current numeric result |
+| Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, routing forms, owner derivation, the lexer string investigation and retired world evaluation results |
+| Duration keys | [Duration keys](native/durations.md) | Unit factors, combination rules, omitted counts, the flag-store countdown and the modifier and trait consumers |
+| Modifier blocks | [Modifier blocks](native/modifier-blocks.md) | Shared fixed keys, entry forms, reader gaps and prototype findings on modifier fields |
+| Generated modifiers | [Modifier families](native/modifier-families.md) | Generation calls and roots, item keys, the per-item post-read call and the loaded modifier table |
+| Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope, Boolean, key, target and reference messages; ordinary-log and source-filter gaps |
+| Observe the game before it parses content | [Early observations](native/early-observations.md) | Loader-entry attachment, registry items at loader return, fixture parsing and storage, loader and destination pitfalls |
+| Call engine functions in a paused game | [Engine calls and memory](native/engine-calls.md) | Script-check calls and capture, calling conventions, M45-old time, resources, events and object lifetimes |
+| Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, launch, disposal on macOS and Windows, debugger shutdown and approval, the run summary |
+| The debugger worker trial | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
+| Load a world and observe prepared effects (retired route) | [Ready-world observations](native/ready-world.md) | The retired world route and how to restore it from `d8f9d8a`: world pins, daily updates, flag expiry and variable reads |
+| Builds and adaptation between them | [Targets](native/targets.md) | Exact executable identities, ports between builds and Windows adaptation results |
+| Static analysis cost | [Performance](native/performance.md) | Dev-profile settings, hashing cost and the static-query invariant |
+| Private prototype bundles | [Preservation](native/preservation.md), [Retrieval](native/retrieval.md), [inventory](native/source-inventory.json) | What each bundle holds, how to verify and restore it, and each bundle's identity |
 
 A finding is **demonstrated** on its original build only. A **candidate** lacks a required join or a
 behavior check. An unsupported or untested build gets no inferred result. A failed method stays
 on its page, with the correction that replaced it.
-
-## Inspecting an executable
-
-`examples/inspect.rs` looks inside any ARM64 executable, catalogued or not, with no game and no
-target record. Use it in place of a Python dump before you write a method:
-
-```sh
-cargo run --release --example inspect -- --function 'CMegaStructureType::ReadMember'
-```
-
-The image is `--image PATH` or `STELLARIS_PATH`. The other commands are `--symbols TEXT`,
-`--callers NAME`, `--strings TEXT` and `--slots NAME --count N`. On a catalogued build,
-`--registry-fields`, `--trigger-grammar` and `--effect-grammar` show a method's stops. Add
-`--trace` for the causes of unknown values; [method authoring](native/method-authoring.md#inspect-the-exact-build)
-gives the limits. Each run first prints the image
-hashes and whether chained fixups were read. Without them, no data slot is resolved and the run
-prints why. Function extents come from symbols, so every end is an inferred boundary. Indirect
-branches stay unresolved, and jump tables are shown only as the addresses the code forms.
-Callers are direct `bl` and `b` only; a string reference is `adr`, or `adrp` then `add` in one
-function with no branch or write between them. The inspector reads ARM64 images only. The entry
-is `pdx_native::internals::inspect`, which is not a consumer API.
-
-### Where a method stopped
-
-On a catalogued build, `--registry-fields DIRECTORY` runs the registry field method and prints
-each token path that stopped: the reason, the obstacle (an unknown register or flags, a spent
-bound, an unsupported instruction, code outside the read function, a cycle, or a call that was not
-followed), the stop instruction with its symbol and offset, where the walk entered code, and the
-path's last instructions. Then it prints every internal gap before normalization.
-
-```sh
-cargo run --release --example inspect -- --registry-fields common/megastructures
-```
-
-The static methods locate their stops with one diagnostic (`Unresolved` and `Stop` in
-`src/engine/analysis/stop.rs`). The internal results of registry fields, scopes, scope links,
-localization, modifiers and modifier families keep it. Callbacks and defines keep only the reason word,
-since they combine reasons across paths. Declaration scopes are read without a walk, so they have
-no stop.
-Public answers quote only the reason word; no address reaches them. `pdx_native::internals::registry_field_stops::run` runs the registry field
-method once and returns its internal result with the public answer derived from it, as
-`Native::registry_fields` derives it; it is not a consumer API.
-
-`examples/registry-field-sweep.rs` runs every registry and groups the internal gaps by stop
-instruction kind and obstacle, then by function. `--diff BEFORE AFTER` lists the registries whose
-normalized answer changed between two reports; two runs on the same build give an empty diff.
-
-```sh
-cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > after.json
-cargo run --release --example registry-field-sweep -- --diff before.json after.json
-```
 
 ## Private prototype bundles
 

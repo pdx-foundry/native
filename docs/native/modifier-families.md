@@ -6,7 +6,7 @@ the modifier table after all content loads, and joins each entry to a declaratio
 The module comments of `engine/analysis/families.rs`, `families/joins.rs`, `families/loading.rs`,
 `families/strings.rs` and `session/loaded_modifiers.rs` describe the methods. This page holds the
 engine facts, the M45-release result, the gaps and the pitfalls. The
-[discovery index](discovery.md) lists the other method pages.
+[engine knowledge index](../engine-knowledge.md) lists the other pages.
 
 ## Engine code (M45-release)
 
@@ -16,8 +16,8 @@ engine facts, the M45-release result, the gaps and the pitfalls. The
   (recipe `dynamic_modifier_category_offset`). `CModifier::AddDynamicModifier` is the other
   dynamic call.
 - `CPdxModifier<…>::AddDefinition` receives the token in `w0`, the `ModifierType&` in `w1` and
-  the mask at `[sp,#4]`. It writes the new type into its `ModifierType&` argument. Before the
-  call, the engine leaves the sentinel `0x23b` there.
+  the mask at `[sp,#4]` (recipe `modifier_category_offset`). It writes the new type into its
+  `ModifierType&` argument. Before the call, the engine leaves the sentinel `0x23b` there.
 - `CModifierGeneratorBase::GenerateFrom(base, prefix, key, suffix)` reads the flags and the
   category mask of `_Definitions[base]` (mask at `+0x84`). `base` is a constant, for example
   `0x83` for the district `max_add` family.
@@ -88,6 +88,14 @@ megastructures, situations and zones store the key at `+0x10`. Bypass stores its
 and the key at `+0x18`; `map_modes` also uses `+0x18`. The constructor probe establishes 156 of
 164 named registries on M45-release. Four have no matching constructor, and four constructor
 runs do not establish the key. `espionage_operation_categories` has no constructor symbol.
+The worker refuses an item read for those eight; it never reads a key from an unestablished
+offset. It also checks key uniqueness, nonempty keys and control characters.
+
+The live case `loaded_modifier_key_layouts` checks the loaded keys of the six generator
+registries (buildings, bypass, districts, megastructures, situations and zones) in one
+loaded-modifier session, and compares the `common/bypass` keys with its source keys. Their
+loaders run on the launch thread. An earlier control found the eight `common/map_modes` keys equal
+to its top-level source keys.
 
 The engine branches on the key's form: a long key is in a buffer, and a short key is in place in
 the string object. Constructors and generators copy string objects through `q` registers from
