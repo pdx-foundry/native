@@ -76,15 +76,19 @@ pub(crate) fn reduce(
     {
         return Err("The modifier table witnesses disagree".into());
     }
-    let continuous = records
+    let terminal = records
         .iter()
-        .take_while(|record| record.seq <= end.seq)
+        .position(|record| matches!(record.event, WorkerEvent::ModifierTableEnd { .. }))
+        .expect("selected by kind");
+    let before_terminal = &records[..=terminal];
+    let continuous = before_terminal
+        .iter()
         .enumerate()
         .all(|(index, record)| record.seq == index as u64 + 1);
     if !continuous {
         return Err("Worker records before the modifier terminal are missing".into());
     }
-    if records[..end.seq as usize].iter().any(|record| {
+    if before_terminal.iter().any(|record| {
         matches!(
             record.event,
             WorkerEvent::CallbackError { .. } | WorkerEvent::NativeException { .. }
@@ -240,6 +244,46 @@ mod tests {
         let mut foreign = stream(&file);
         foreign[3] = foreign[3].replace("\"run\":\"a\"", "\"run\":\"b\"");
         assert!(observe(&foreign, Some(&file)).is_err());
+    }
+
+    /// Give the records `sequences` in order, with the terminal's producer sequence equal to its
+    /// own.
+    fn renumbered(lines: &[String], sequences: &[u64]) -> Vec<String> {
+        lines
+            .iter()
+            .zip(sequences)
+            .map(|(line, sequence)| {
+                let (_, rest) = line.split_once(',').unwrap();
+                format!(r#"{{"seq":{sequence},{rest}"#).replace(
+                    r#""producerLastSequence":7"#,
+                    &format!(r#""producerLastSequence":{sequence}"#),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_disordered_sequence_before_the_terminal_gives_no_table() {
+        let file = table();
+        let lines = stream(&file);
+        let mut extra = lines.clone();
+        extra.insert(
+            6,
+            r#"{"seq":7,"run":"a","kind":"registry-load-returned","name":"common/buildings","owner":"x"}"#
+                .into(),
+        );
+        for (lines, sequences) in [
+            (&extra, &[1, 2, 3, 4, 5, 6, 8, 7, 9][..]),
+            (&lines, &[1, 1, 3, 4, 5, 6, 7, 8]),
+            (&lines, &[1, 2, 3, 4, 5, 6, 12, 13]),
+            (&extra, &[1, 2, 3, 4, 5, 6, 900, 12, 13]),
+        ] {
+            let disordered = renumbered(lines, sequences);
+            assert_eq!(
+                observe(&disordered, Some(&file)).unwrap_err(),
+                "Worker records before the modifier terminal are missing"
+            );
+        }
     }
 
     #[test]
