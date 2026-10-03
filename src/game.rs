@@ -513,7 +513,8 @@ impl Game {
     /// was polled. Failed session cleanup returns `Error::Cleanup`, with the witnessed disposal.
     /// The temporary work directory is removed only after a clean, confirmed disposal of a
     /// session that the caller ended, with no read error. An error from `close` names the kept
-    /// directory; after a read error, `work_directory` gives it.
+    /// directory; after a read error, `work_directory` gives it. When its removal fails, `close`
+    /// returns `Error::Cleanup` and a later `close` tries again.
     pub async fn close(&mut self) -> Result<Disposal, Error> {
         if matches!(self.backend, GameBackend::Recorded(_)) {
             self.closing = true;
@@ -564,9 +565,13 @@ impl Game {
             && caller_ended
             && !self.read_failed
             && !self.keep_work
-            && let Some(work) = self.work.take()
+            && let Some(work) = &self.work
         {
-            let _ = std::fs::remove_dir_all(work);
+            std::fs::remove_dir_all(work).map_err(|error| Error::Cleanup {
+                reason: format!("work directory not removed: {error}"),
+                disposal: Disposal::Confirmed,
+            })?;
+            self.work = None;
         }
         Ok(finished.disposal)
     }
@@ -1083,6 +1088,38 @@ mod tests {
         state.send_modify(|state| state.finished = Some(Ok(finished())));
         assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
         assert!(!work.exists());
+    }
+
+    #[tokio::test]
+    async fn a_failed_removal_names_the_work_directory_and_a_later_close_retries_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let (mut game, _commands, state) = game();
+        let root = tempfile::tempdir().unwrap();
+        let work = root.path().join("session");
+        std::fs::create_dir(&work).unwrap();
+        game.work = Some(work.clone());
+        state.send_modify(|state| state.finished = Some(Ok(finished())));
+        let set_mode =
+            |mode| std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(mode));
+
+        set_mode(0o555).unwrap();
+        let error = game.close().await.unwrap_err();
+        set_mode(0o755).unwrap();
+
+        let kept = format!("; work directory kept at {}", work.display());
+        assert!(matches!(
+            &error,
+            Error::Cleanup {
+                disposal: Disposal::Confirmed,
+                reason,
+            } if reason.starts_with("work directory not removed: ") && reason.ends_with(&kept)
+        ));
+        assert!(work.exists());
+        assert_eq!(game.work_directory(), Some(work.as_path()));
+
+        assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
+        assert!(!work.exists());
+        assert_eq!(game.work_directory(), None);
     }
 
     #[tokio::test]

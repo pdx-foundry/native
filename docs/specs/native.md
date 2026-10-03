@@ -225,7 +225,8 @@ observation worker.
 - A `Game` uses a temporary work directory. `close` deletes it only after a clean, confirmed
   session that the caller ended with no read error; otherwise it is kept. The error from
   `start_game` or `close` names the kept directory, and `Game::work_directory` gives it after a
-  read error.
+  read error. A failed deletion is a cleanup error with confirmed disposal; a later `close` tries
+  it again.
 - Startup is configurable from 1 to 180 seconds. The idle timeout is 180 seconds. Readiness and
   cancellation stay internal. The retired world route and restore instructions are preserved on
   [ready-world observations](../native/ready-world.md).
