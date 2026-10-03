@@ -18,7 +18,7 @@ use std::path::Path;
 use object::{Architecture, Object};
 
 use super::binary::declarations::Text;
-use super::binary::families::{register, written_registers};
+use super::binary::families::written_registers;
 use super::binary::fixups::{self, FixupDiagnostic, Fixups};
 use super::binary::inventory::{self, Inventory};
 use crate::engine::analysis::decode::{Instruction, add_immediate, adrp, decode_arm64};
@@ -662,7 +662,7 @@ impl<'a> Image<'a> {
         let loaded_slot = load_unsigned_offset(word)
             .and_then(|(source, offset)| Some(values.get(&source)? + offset));
 
-        for register in destinations(instruction) {
+        for register in written_registers(&instruction.operation, &instruction.operands) {
             values.remove(&register);
         }
 
@@ -786,37 +786,6 @@ fn is_indirect_branch(operation: &str) -> bool {
 
 fn is_control_flow(operation: &str) -> bool {
     is_direct_branch(operation) || is_indirect_branch(operation) || operation.starts_with("ret")
-}
-
-/// The general registers an instruction writes. `written_registers` reads every mnemonic that
-/// starts with `b` as a branch; branches are handled before this, so the rest, such as `bic`
-/// and `bfi`, write their first operand. A pre- or post-index access also writes its base.
-fn destinations(instruction: &Instruction) -> Vec<usize> {
-    let operands: Vec<&str> = instruction.operands.split(',').collect();
-    let mut written = if instruction.operation.starts_with('b') {
-        operands
-            .first()
-            .and_then(|operand| register(operand))
-            .into_iter()
-            .collect()
-    } else {
-        written_registers(&instruction.operation, &operands)
-    };
-
-    written.extend(writeback_base(&instruction.operands));
-    written
-}
-
-/// The base register of a pre-index (`[x8,#8]!`) or post-index (`[x8],#8`) operand.
-fn writeback_base(operands: &str) -> Option<usize> {
-    let (_, address) = operands.split_once('[')?;
-    let (inside, after) = address.split_once(']')?;
-    let writes_back = after.starts_with('!') || after.starts_with(',');
-    if !writes_back {
-        return None;
-    }
-
-    register(inside.split(',').next()?)
 }
 
 /// The destination register and address of an `adr` word at `address`.

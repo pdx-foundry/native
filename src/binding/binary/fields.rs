@@ -310,22 +310,11 @@ fn array_pointer_offsets(
             && parts.len() == 2
             && parts[0].starts_with('x')
             && receiver.contains(parts[1]);
-        for register in super::families::written_registers(&row.operation, &parts) {
+        for register in super::families::written_registers(&row.operation, &row.operands) {
             receiver.remove(&format!("x{register}"));
         }
         if copied {
             receiver.insert(parts[0].into());
-        }
-        if matches!(row.operation.as_str(), "bl" | "blr") {
-            for register in 0..19 {
-                receiver.remove(&format!("x{register}"));
-            }
-        }
-        if (row.operands.contains("]!") || row.operands.contains("],#"))
-            && let Some(memory) = row.operands.split('[').nth(1)
-            && let Some(base) = memory.split([',', ']']).next()
-        {
-            receiver.remove(base);
         }
         let mut next = Vec::new();
         if !matches!(row.operation.as_str(), "ret" | "brk" | "b") && pc + 1 < rows.len() {
@@ -466,6 +455,41 @@ mod tests {
             array_pointer_offsets(&decode_arm64(&proven, 0x1000).unwrap()),
             Some(BTreeSet::from([8]))
         );
+    }
+    #[test]
+    fn collection_buffer_forgets_a_receiver_copy_that_an_instruction_writes() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let inserted = arm64!(at 0x1000;
+            mov x19, x0;
+            bfi x19, x8, #0, #8;
+            ldr x9, [x19, #8];
+            ret
+        );
+        let pre_index = arm64!(at 0x1000;
+            mov x19, x0;
+            ldr x9, [x19, #16]!;
+            ldr x10, [x19, #8];
+            ret
+        );
+        let post_index = arm64!(at 0x1000;
+            mov x19, x0;
+            ldr x9, [x19], #16;
+            ldr x10, [x19, #8];
+            ret
+        );
+        let kept = arm64!(at 0x1000;
+            mov x19, x0;
+            ldr x9, [x0, #16];
+            ldr x10, [x19, #8];
+            ret
+        );
+        let offsets = |code: Vec<u8>| array_pointer_offsets(&decode_arm64(&code, 0x1000).unwrap());
+
+        assert_eq!(offsets(inserted), Some(BTreeSet::new()));
+        assert_eq!(offsets(pre_index), Some(BTreeSet::new()));
+        assert_eq!(offsets(post_index), Some(BTreeSet::new()));
+        assert_eq!(offsets(kept), Some(BTreeSet::from([8, 16])));
     }
     #[test]
     fn collection_buffer_is_unresolved_when_a_branch_leaves_the_function() {
