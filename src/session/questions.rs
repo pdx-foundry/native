@@ -510,7 +510,14 @@ fn normalized_gaps(
             })
             .collect();
         let classification = readers::classify(&applicable);
-        let (kind, detail) = if classification.callee.is_none() {
+        // One shared callee can still reach persistent readers of different concrete
+        // identities. Alternatives that all lack an identity are a separate, known hole.
+        let identities: Vec<_> = applicable
+            .iter()
+            .map(|join| super::fields::alternative_reader(join, &result.persistent).id)
+            .collect();
+        let identities_disagree = identities.iter().any(|id| *id != identities[0]);
+        let (kind, detail) = if classification.callee.is_none() || identities_disagree {
             (
                 GapKind::UnresolvedReader,
                 "The field's alternatives do not establish one shared reader.",
@@ -831,6 +838,54 @@ mod field_gap_tests {
                 .any(|gap| gap.kind == GapKind::UnresolvedReader
                     && gap.subject == Some(GapSubject::field("known")))
         );
+    }
+
+    #[test]
+    fn persistent_reads_of_different_destinations_are_a_reader_gap_of_that_field() {
+        use crate::engine::analysis::fields::{ConcreteReader, Value};
+
+        let persistent = |destination: i64| ReaderJoin::Joined {
+            callee: "CReader::Read(CPersistent&)".into(),
+            arguments: [("x1".into(), Value::Owner(destination))].into(),
+            tail: true,
+        };
+        let concrete = |member: &str| ConcreteReader {
+            read: "CPersistent::Read(CReader&)".into(),
+            member: member.into(),
+            family: crate::BlockFamily::Unknown,
+        };
+        let with_wide_path = |destination: i64| {
+            let mut result = result(vec![]);
+            result.persistent = [(0x10, concrete("A::Read")), (0x20, concrete("B::Read"))].into();
+            result.fields[0].readers = vec![persistent(0x10)];
+            result.paths[0].outcome = PathOutcome::Reader(persistent(0x10));
+            result.paths.push(TokenPath {
+                domain: [6, 8],
+                conditions: vec![],
+                instructions: vec![0x1004],
+                terminal: 0x1004,
+                outcome: PathOutcome::Reader(persistent(destination)),
+            });
+            result
+        };
+        let reader_gap = |result: &RegistryFieldResult| {
+            normalized_gaps(result, REGISTRY, &ReferenceFacts::default())
+                .iter()
+                .any(|gap| {
+                    gap.kind == GapKind::UnresolvedReader
+                        && gap.subject == Some(GapSubject::field("known"))
+                })
+        };
+
+        let disagreeing = with_wide_path(0x20);
+        let field = &normalized_fields(&disagreeing, &ReferenceFacts::default())[0];
+        assert_eq!(field.reader.id, None);
+        assert!(reader_gap(&disagreeing));
+
+        let agreeing = with_wide_path(0x10);
+        let field = &normalized_fields(&agreeing, &ReferenceFacts::default())[0];
+        assert!(field.reader.id.is_some());
+        assert!(!reader_gap(&agreeing));
     }
 
     #[test]

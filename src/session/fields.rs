@@ -32,22 +32,31 @@ pub(super) fn concrete_reader_id(read: &str, member: &str) -> ReaderId {
     ReaderId(format!("{digest:x}")[..16].into())
 }
 
-fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>) -> Reader {
-    let mut alternatives = Vec::new();
-    for join in joins {
-        let mut selected = reader(std::slice::from_ref(join));
-        if matches!(join, ReaderJoin::Joined { callee, .. } if callee == "CReader::Read(CPersistent&)" )
+/// The reader of one path. A persistent read takes the concrete identity of its destination, or
+/// none when the destination has no known reader.
+pub(super) fn alternative_reader(
+    join: &ReaderJoin,
+    persistent: &BTreeMap<i64, ConcreteReader>,
+) -> Reader {
+    let mut selected = reader(std::slice::from_ref(join));
+    if matches!(join, ReaderJoin::Joined { callee, .. } if callee == "CReader::Read(CPersistent&)" )
+    {
+        selected.id = None;
+        if let Some(concrete) =
+            readers::destination(join).and_then(|offset| persistent.get(&offset))
         {
-            selected.id = None;
-            if let Some(concrete) =
-                readers::destination(join).and_then(|offset| persistent.get(&offset))
-            {
-                selected.id = Some(concrete_reader_id(&concrete.read, &concrete.member));
-                selected.family = concrete.family;
-            }
+            selected.id = Some(concrete_reader_id(&concrete.read, &concrete.member));
+            selected.family = concrete.family;
         }
-        alternatives.push(selected);
     }
+    selected
+}
+
+fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>) -> Reader {
+    let alternatives: Vec<_> = joins
+        .iter()
+        .map(|join| alternative_reader(join, persistent))
+        .collect();
     let mut joined = reader(joins);
     if let Some(first) = alternatives.first() {
         joined.id = alternatives
