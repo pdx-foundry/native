@@ -56,6 +56,8 @@ pub struct ScopeInput {
     pub tokens: BTreeMap<u64, String>,
     /// Scope names indexed by scope-type bit, or `None` when the table was not read.
     pub scope_names: Option<Vec<String>>,
+    /// Bits that the scope-name table tests but whose name was not read.
+    pub unread_scope_bits: BTreeSet<usize>,
     pub functions: ScopeFunctions,
     /// Offset of the token in an event target object.
     pub token_offset: u64,
@@ -74,6 +76,9 @@ pub struct ScopeResult {
     pub groups: Vec<(String, ScopeOutcome)>,
     /// Scope types that keywords map to but the name table does not name.
     pub unnamed_types: usize,
+    /// Scope types, by bit, that the name table tests but whose name was not read. Such a type
+    /// is missing from `scopes` whether or not a keyword maps to it.
+    pub unread_types: Vec<usize>,
     /// Token values that map to a scope type but have no literal name.
     pub unnamed_keywords: usize,
     /// Token values whose scope type could not be evaluated.
@@ -156,6 +161,7 @@ pub fn scopes(input: &ScopeInput) -> Result<ScopeResult, InputError> {
         scopes,
         groups,
         unnamed_types: unnamed.len(),
+        unread_types: input.unread_scope_bits.iter().copied().collect(),
         unnamed_keywords,
         unresolved_tokens,
         table_missing: input.scope_names.is_none(),
@@ -511,6 +517,7 @@ mod tests {
                 "country".into(),
                 "ship".into(),
             ]),
+            unread_scope_bits: BTreeSet::new(),
             functions: ScopeFunctions {
                 scope_of_token: 0x0f8,
                 link_documentation: 0x200,
@@ -554,6 +561,16 @@ mod tests {
         );
         assert_eq!(result.unnamed_types, 0);
         assert_eq!(result.unresolved_tokens, 0);
+    }
+
+    #[test]
+    fn an_unread_scope_name_is_reported_with_the_scope_types() {
+        let mut input = input();
+        input.unread_scope_bits = BTreeSet::from([4]);
+
+        let result = scopes(&input).unwrap();
+        assert_eq!(result.scopes.len(), 3);
+        assert_eq!(result.unread_types, [4]);
     }
 
     #[test]

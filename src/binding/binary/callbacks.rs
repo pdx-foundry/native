@@ -217,7 +217,7 @@ pub(in crate::binding) fn callbacks(
             finders,
         },
         tokens: text.token_names(symbols, strings)?,
-        scope_names: text.scope_names(symbols, strings),
+        scope_names: text.scope_names(symbols, strings).map(|table| table.names),
         data: read_only_data(bytes)?,
         layout: recipe.callbacks,
     })

@@ -107,9 +107,14 @@ pub(in crate::binding) fn scopes(
     let special_rows =
         decode_arm64(special_code, address).map_err(|_| AnalysisError::InvalidRange)?;
 
+    let scope_names = text.scope_names(symbols, strings);
     Ok(ScopeInput {
         tokens: text.token_names(symbols, strings)?,
-        scope_names: text.scope_names(symbols, strings),
+        unread_scope_bits: scope_names
+            .as_ref()
+            .map(|table| table.unread.clone())
+            .unwrap_or_default(),
+        scope_names: scope_names.map(|table| table.names),
         code: code(
             &text,
             &[
@@ -228,7 +233,7 @@ pub(in crate::binding) fn localization(
         scope_object_code,
         data,
         rows,
-        scope_names: text.scope_names(symbols, strings),
+        scope_names: text.scope_names(symbols, strings).map(|table| table.names),
     })
 }
 
