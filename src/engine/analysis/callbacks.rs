@@ -38,7 +38,7 @@ use contexts::{Runner, SiteContexts, Subject};
 use names::{Fact, State};
 
 /// Name and revision of this static method.
-pub const METHOD: &str = "callbacks/v1";
+pub const METHOD: &str = "callbacks/v2";
 
 /// A value that no rule enumeration reaches, for the probe of a rule forwarder.
 const PROBE: u64 = 7;
