@@ -69,7 +69,7 @@ def main():
         event = json.loads(line)
         if event.get("reason") == "compiler-artifact" and event.get("executable"):
             executables[event["target"]["name"]] = event["executable"]
-    parity = "binding::analysis::tests::every_m45_named_candidate_has_one_initial_loader_entry"
+    parity = "binding::analysis::tests::every_named_candidate_has_one_initial_loader_entry"
     jobs = [
         ("registries", [executables["registries"], installation]),
         ("loader-parity", [executables["pdx_native"], "--ignored", "--exact", parity, "--nocapture"]),

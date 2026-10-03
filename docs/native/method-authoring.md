@@ -176,7 +176,7 @@ authored tests independent of an installed game.
 
 Keep reviewed expected output in [`tests/expected/m451/`](../../tests/expected/m451/), and check it
 in [`tests/static_questions.rs`](../../tests/static_questions.rs). Those ignored tests read the
-exact M45 executable and start no game:
+exact M451-hotfix executable and start no game:
 
 ```sh
 cargo test --release --test static_questions -- --ignored
