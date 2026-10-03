@@ -2,7 +2,7 @@
 #[path = "report.rs"]
 mod report;
 
-use pdx_native::{Basis, BuildId, Source};
+use pdx_native::{BuildId, Source};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -12,7 +12,6 @@ pub enum Category {
     Answer,
     Provenance,
     Ordering,
-    Historical,
     Layout,
     Files,
     Input,
@@ -23,7 +22,6 @@ pub enum Category {
 pub enum Status {
     Pass,
     Fail,
-    Skip,
 }
 
 /// One difference or applicability notice. `None` means absent, not JSON null.
@@ -143,28 +141,6 @@ pub fn compare_static(build: &BuildId, file: &str, reviewed: &[u8], candidate: &
                 Some(&candidate_value),
             );
         }
-        "field-storage-sdk533.json" => {
-            report.extend(historical_storage_report(build, &reviewed_value));
-            if let Err(error) = historical_storage_source(&candidate_value) {
-                report.notice(
-                    file,
-                    "/source",
-                    source_error_category(error.as_ref()),
-                    Status::Fail,
-                    reviewed_value.get("source"),
-                    candidate_value.get("source"),
-                    &format!("candidate: {error}"),
-                );
-            }
-            compare_bytes(
-                &mut report,
-                file,
-                reviewed,
-                candidate,
-                &reviewed_value,
-                &candidate_value,
-            );
-        }
         _ => compare_bytes(
             &mut report,
             file,
@@ -172,58 +148,6 @@ pub fn compare_static(build: &BuildId, file: &str, reviewed: &[u8], candidate: &
             candidate,
             &reviewed_value,
             &candidate_value,
-        ),
-    }
-    report
-}
-
-/// Validate retained storage provenance without claiming it applies to a current build.
-pub fn historical_storage_source(observed: &Value) -> Result<Source, Box<dyn std::error::Error>> {
-    let source: Source = serde_json::from_value(observed["source"].clone())?;
-    if source.basis != Basis::LiveObservation {
-        return Err("SDK-533 storage must retain its live observation provenance".into());
-    }
-    Ok(source)
-}
-
-/// Historical live storage applies only to its recorded exact build.
-pub fn historical_storage_applies(
-    build: &BuildId,
-    observed: &Value,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    Ok(&historical_storage_source(observed)?.build == build)
-}
-
-/// Report whether retained SDK-533 evidence applies, without comparing it with a fresh answer.
-pub fn historical_storage_report(build: &BuildId, observed: &Value) -> Report {
-    let mut report = Report::default();
-    let file = "field-storage-sdk533.json";
-    match historical_storage_applies(build, observed) {
-        Ok(false) => {
-            let note = format!(
-                "SDK-533 live storage is inapplicable to current exact build {}; \
-                no current-build evidence established",
-                serde_json::json!(build)
-            );
-            report.notice(
-                file,
-                "/source/build",
-                Category::Historical,
-                Status::Skip,
-                observed.pointer("/source/build"),
-                observed.pointer("/source/build"),
-                &note,
-            );
-        }
-        Ok(true) => {}
-        Err(error) => report.notice(
-            file,
-            "/source",
-            source_error_category(error.as_ref()),
-            Status::Fail,
-            observed.get("source"),
-            observed.get("source"),
-            &error.to_string(),
         ),
     }
     report

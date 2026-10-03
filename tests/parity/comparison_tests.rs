@@ -255,46 +255,10 @@ fn malformed_json_and_missing_shapes_are_input_errors() {
     assert!(!file_difference("missing.json", true, false, "missing candidate").passes());
 }
 
-#[test]
-fn historical_storage_skip_is_exact_build_only_and_never_hides_edits() {
-    let observed = json!({"source": {"build": "release", "native_version": "0.1.0", "method": "observe-fixture/v1", "basis": "LiveObservation"}, "stored": 7});
-    let report = compare("field-storage-sdk533.json", &observed, &observed);
-    assert!(report.passes());
-    assert_eq!(report.differences[0].status, Status::Skip);
-    assert!(report.full_text().contains("inapplicable"));
-    let bytes = serde_json::to_vec(&observed).unwrap();
-    assert!(
-        compare_static(
-            &build("release"),
-            "field-storage-sdk533.json",
-            &bytes,
-            &bytes
-        )
-        .differences
-        .is_empty()
-    );
-    let mut changed = observed.clone();
-    changed["stored"] = json!(8);
-    assert!(!compare("field-storage-sdk533.json", &observed, &changed).passes());
-    changed["source"]["basis"] = json!("StaticAnalysis");
-    let report = compare("field-storage-sdk533.json", &changed, &changed);
-    assert!(!report.passes());
-    assert!(!report.has_input_errors());
-    for source in [json!([]), json!({"build": "release"}), Value::Null] {
-        let mut malformed = observed.clone();
-        malformed["source"] = source;
-        for (reviewed, candidate) in [(&malformed, &observed), (&observed, &malformed)] {
-            let report = compare("field-storage-sdk533.json", reviewed, candidate);
-            assert!(!report.passes());
-            assert!(report.has_input_errors());
-        }
-    }
-}
-
 fn duration_report(reviewed: &Value, candidate: &Value) -> Report {
     compare_durations(
         &build("hotfix"),
-        "duration-m45/live.json",
+        "duration-m451/live.json",
         &serde_json::to_vec(reviewed).unwrap(),
         &serde_json::to_vec(candidate).unwrap(),
     )

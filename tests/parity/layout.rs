@@ -196,9 +196,6 @@ mod tests {
     #[test]
     fn every_tracked_layout_round_trips_byte_for_byte() {
         for name in super::super::FILES {
-            if *name == "field-storage-sdk533.json" {
-                continue;
-            }
             let bytes = std::fs::read(super::super::expected_directory().join(name)).unwrap();
             let value = serde_json::from_slice(&bytes).unwrap();
             let rendered = render(name, &value, &bytes).unwrap();

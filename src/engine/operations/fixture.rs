@@ -1215,7 +1215,7 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
 
-    /// The category field tokens of the M45-release fixture binding.
+    /// Parse authored worker events as worker records.
     fn records(events: Vec<Value>) -> Vec<WorkerRecord> {
         events
             .into_iter()

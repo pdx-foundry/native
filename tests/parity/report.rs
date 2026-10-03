@@ -16,20 +16,13 @@ impl Report {
             .iter()
             .filter(|entry| entry.status == Status::Fail)
             .count();
-        let skips = self
-            .differences
-            .iter()
-            .filter(|entry| entry.status == Status::Skip)
-            .count();
-        let permitted = self.differences.len() - failures - skips;
-        let mut text = format!(
-            "Parity: {failures} failing differences, {permitted} permitted differences, {skips} skips\n"
-        );
+        let permitted = self.differences.len() - failures;
+        let mut text =
+            format!("Parity: {failures} failing differences, {permitted} permitted differences\n");
         for entry in &self.differences {
             let status = match entry.status {
                 Status::Pass => "PASS",
                 Status::Fail => "FAIL",
-                Status::Skip => "SKIP",
             };
             let path = if entry.path.is_empty() {
                 "(root)"

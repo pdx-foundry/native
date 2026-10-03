@@ -2,7 +2,7 @@ use super::*;
 use std::fs;
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = native.bound().analysis.as_ref().unwrap();
@@ -22,21 +22,21 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     assert_eq!(
         analysis.fixture_loader("common/traditions").unwrap(),
         Some(FixtureLoader {
-            load_entry: 0x100ce381c,
-            reader_entry: 0x100ce4afc,
-            reader_return: 0x100ce388c,
-            constructor_entry: 0x100cdc930,
-            member_entry: 0x100cdcf38,
+            load_entry: 0x100ce2fe4,
+            reader_entry: 0x100ce42c4,
+            reader_return: 0x100ce3054,
+            constructor_entry: 0x100cdc0f8,
+            member_entry: 0x100cdc700,
         })
     );
     assert_eq!(
         analysis.fixture_loader("common/relics").unwrap(),
         Some(FixtureLoader {
-            load_entry: 0x100ae4494,
-            reader_entry: 0x100ae6860,
-            reader_return: 0x100ae4504,
-            constructor_entry: 0x100ae26d8,
-            member_entry: 0x100ae2950,
+            load_entry: 0x100ae3b10,
+            reader_entry: 0x100ae5edc,
+            reader_return: 0x100ae3b80,
+            constructor_entry: 0x100ae1d54,
+            member_entry: 0x100ae1fcc,
         })
     );
     let relic_fields = analysis.fixture_fields("common/relics").unwrap();
@@ -65,7 +65,7 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
     use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
     use crate::protocol::session::SessionRequest;
 
-    // More registries than M45-release declares: the count is a property of the build.
+    // More registries than the catalogued build declares: the count is a property of the build.
     let names: Vec<String> = (0..200)
         .map(|index| format!("common/synthetic_{index}"))
         .collect();
@@ -165,8 +165,8 @@ fn static_support_checks_the_pinned_executable_without_requiring_content() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn every_m45_named_candidate_has_one_initial_loader_entry() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn every_named_candidate_has_one_initial_loader_entry() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
@@ -181,13 +181,13 @@ fn every_m45_named_candidate_has_one_initial_loader_entry() {
     let known = binding
         .registry_bindings(&binding.default_registries())
         .unwrap();
-    assert_eq!(known["common/traditions"].load_entry, 0x100ce3384);
-    assert_eq!(known["common/tradition_categories"].load_entry, 0x100cdac80);
+    assert_eq!(known["common/traditions"].load_entry, 0x100ce2b4c);
+    assert_eq!(known["common/tradition_categories"].load_entry, 0x100cda448);
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn m45_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn m451_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
@@ -212,7 +212,7 @@ fn m45_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
         );
     }
     let table = binding.modifier_table_binding(&registries).unwrap();
-    assert_eq!(table.documentation_entry, 0x100972384);
+    assert_eq!(table.documentation_entry, 0x100971a00);
     assert_eq!(table.definitions, 0x10329da80);
     assert_eq!(table.array_data_offset, 0x8);
     assert_eq!(table.array_count_offset, 0x14);
@@ -233,8 +233,8 @@ fn m45_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn m45_registry_keys_follow_their_item_constructors() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn m451_registry_keys_follow_their_item_constructors() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
@@ -245,8 +245,8 @@ fn m45_registry_keys_follow_their_item_constructors() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn m45_registry_key_storage_sweep() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn m451_registry_key_storage_sweep() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
@@ -279,7 +279,7 @@ fn m45_registry_key_storage_sweep() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn repeated_public_and_binding_queries_agree() {
     use crate::Native;
     let installation =
@@ -290,6 +290,21 @@ fn repeated_public_and_binding_queries_agree() {
     for registry in ["common/traditions", "common/tradition_categories"] {
         let fields = native.registry_fields(registry).unwrap();
         assert_eq!(native.registry_fields(registry).unwrap(), fields);
+        // Fixture setup reads only these reader facts; the public answer adds numeric and scoped
+        // facts on top.
+        let readers = |fields: &[crate::Field]| -> Vec<_> {
+            fields
+                .iter()
+                .map(|field| {
+                    (
+                        field.name.clone(),
+                        field.reader.id.clone(),
+                        field.reader.kind,
+                        field.reader.family,
+                    )
+                })
+                .collect()
+        };
         let fixture_fields = native
             .bound()
             .analysis
@@ -298,7 +313,7 @@ fn repeated_public_and_binding_queries_agree() {
             .registry_fields(registry)
             .unwrap()
             .unwrap();
-        assert_eq!(fixture_fields, fields.value);
+        assert_eq!(readers(&fixture_fields), readers(&fields.value));
     }
     let selected = [
         "common/traditions".into(),
@@ -313,7 +328,7 @@ fn repeated_public_and_binding_queries_agree() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn cached_static_answers_refuse_changed_or_missing_executables() {
     use crate::{Error, Native};
     let installed =
@@ -504,8 +519,8 @@ fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn m45_persistent_field_families() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn m451_persistent_field_families() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let verified = native
         .bound()
@@ -537,8 +552,8 @@ fn m45_persistent_field_families() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn m45_command_grammar_foundations_resolve_and_reuse_inputs() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn m451_command_grammar_foundations_resolve_and_reuse_inputs() {
     use crate::DeclarationKind::{Effect, Trigger};
 
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
@@ -1022,7 +1037,7 @@ fn numeric_fixture_storage_population() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = native.bound().analysis.as_ref().unwrap();
@@ -1034,22 +1049,23 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
                 .with_parent_field("requirements"),
         ],
     );
-    let base =
-        super::super::groups::fixture(&[super::super::targets::BindingGroupId::M45CategoryFixture])
-            .unwrap()
-            .outcome_registries
-            .remove(0);
+    let base = super::super::groups::fixture(&[
+        super::super::targets::BindingGroupId::M451CategoryFixture,
+    ])
+    .unwrap()
+    .outcome_registries
+    .remove(0);
     let (binding, questions) = analysis.inline_fixture(&request, &base).unwrap().unwrap();
     assert_eq!(binding.inline.unwrap().key_storage.offset, 8);
-    assert_eq!(binding.load_entry, 0x100b9cf30);
-    assert_eq!(binding.reader_entry, 0x100b9cfa0);
-    assert_eq!(binding.reader_return, 0x100b9ce78);
+    assert_eq!(binding.load_entry, 0x100b9c62c);
+    assert_eq!(binding.reader_entry, 0x100b9c69c);
+    assert_eq!(binding.reader_return, 0x100b9c574);
     let question = &questions[0];
     assert_eq!(question.storage_unavailable, None);
     assert_eq!(question.token, Some(18424));
     let nested = question.nested.as_ref().unwrap();
     assert_eq!(nested.owner_offset, 0x5a0);
-    assert_eq!(nested.member_entry, 0x100b9558c);
+    assert_eq!(nested.member_entry, 0x100b94c88);
     let storage = question.storage.unwrap();
     assert_eq!(storage.offset, 0x5d8);
     assert_eq!(
@@ -1059,7 +1075,7 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
 }
 
 #[test]
-#[ignore = "requires exact M45 through STELLARIS_PATH"]
+#[ignore = "requires exact M451-hotfix through STELLARIS_PATH"]
 fn scoped_fixture_destinations() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = native.bound().analysis.as_ref().unwrap();

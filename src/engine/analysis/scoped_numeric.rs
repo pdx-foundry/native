@@ -309,7 +309,7 @@ mod tests {
 
     fn expected() -> serde_json::Value {
         serde_json::from_str(include_str!(
-            "../../../tests/expected/scoped-numeric-m45/static.json"
+            "../../../tests/expected/scoped-numeric-m451/static.json"
         ))
         .unwrap()
     }
@@ -444,7 +444,7 @@ mod tests {
     }
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-    fn m45_scoped_numeric_shared_proofs() {
+    fn m451_scoped_numeric_shared_proofs() {
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         let input = native
             .bound()
@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-    fn m45_scoped_numeric_static_parity() {
+    fn m451_scoped_numeric_static_parity() {
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         let agenda = native.registry_fields("common/council_agendas").unwrap();
         let cost = agenda
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-    fn m45_scoped_numeric_command_parity() {
+    fn m451_scoped_numeric_command_parity() {
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         let answer = native
             .command_grammar(crate::DeclarationKind::Effect, "set_timed_country_flag")
@@ -611,7 +611,7 @@ mod constructor_parity {
 
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-    fn m45_constructor_initial_storage_parity() {
+    fn m451_constructor_initial_storage_parity() {
         let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         let field = |kind: DeclarationKind, command: &str, key: &str| {
             let answer = native.command_grammar(kind, command).unwrap();

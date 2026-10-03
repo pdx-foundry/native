@@ -36,7 +36,7 @@ Stored-representation rules (not evaluated results):
 Literals inherit the int or direct fixed-point range in
 [numeric conversion](numeric-conversion.md#faithful-storage-and-endpoints) only when
 constructor evidence establishes the concrete storage; unresolved destinations keep
-`Reader.numeric: Unresolved`. The live matrix (`tests/expected/scoped-numeric-m45/`) checks the
+`Reader.numeric: Unresolved`. The live matrix (`tests/expected/scoped-numeric-m451/`) checks the
 inherited range at `overclock_cooldown` and `cycle_length_in_days`.
 
 ## Current result on M451-hotfix
@@ -55,7 +55,7 @@ nested-field limit.
   reader stores `{` as variable text and disrupts parsing after it. Run inline-block cases alone.
 - **`agenda_cooldown` has conditional storage routing** outside the fixture binding; its contrast
   inputs use `sensor_range`. Timed-flag operands use `agenda_cost` and `add_trust.amount` operands
-  use `cycle_length_in_days` (`tests/expected/scoped-numeric-m45/cases.json` maps each case).
+  use `cycle_length_in_days` (`tests/expected/scoped-numeric-m451/cases.json` maps each case).
 - An incomplete diagnostic source join is not complete coverage.
 
 ## Transfer to the 4.5.1 hotfix

@@ -1737,8 +1737,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires the exact installed M45 executable"]
-    fn m45_control_grammar_reader_join() {
+    #[ignore = "requires the exact installed M451-hotfix executable"]
+    fn m451_control_grammar_reader_join() {
         let path = std::env::var("STELLARIS_PATH").expect("set STELLARIS_PATH");
         let native = crate::Native::open(path).unwrap();
         let mut failures = Vec::new();

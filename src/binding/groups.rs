@@ -1,57 +1,16 @@
 //! Typed engine bindings: the addresses and layouts that one binding group declares.
 use super::targets::BindingGroupId;
 
-/// SDK-483/517 read-entry and source joins, found on the M45-observe beta slice and moved to the
-/// exact M45-release ARM64 slice by symbol name. The retained implementation is in Git at
-/// dd33300; these bindings authorize observation only.
+/// SDK-483/517 read-entry and source joins, found on the M45-observe beta slice and ported to each
+/// exact build by symbol name. The retained implementation is in Git at dd33300; these bindings
+/// authorize observation only.
 pub(super) fn fixture(
     groups: &[BindingGroupId],
 ) -> Option<crate::protocol::observation::FixtureBinding> {
-    if groups
-        .iter()
-        .any(|group| matches!(group, BindingGroupId::M451CategoryFixture))
-    {
-        return Some(m451_fixture());
-    }
     groups
         .iter()
-        .any(|group| matches!(group, BindingGroupId::M45CategoryFixture))
-        .then(|| crate::protocol::observation::FixtureBinding {
-            reader_lexer_offset: 0x30,
-            lexer_file_offset: 8,
-            file_name_offset: 0x20,
-            string_tag_offset: M45_TEMPLATE_LAYOUT.string_tag_offset,
-            file_line_offset: 8,
-            validation: Some(crate::protocol::observation::FixtureValidationBinding {
-                log_entry: 0x10250896c,
-                log_text_register: "x4".into(),
-                unformatted_log_entry: 0x102508a40,
-                stream_log_entry: 0x102123a14,
-                stream_log_text_register: "x1".into(),
-                sourced_log_entry: 0x101d222b8,
-                sourced_log_text_register: "x1".into(),
-                sourced_log_owner_register: "x0".into(),
-                sourced_log_source_offset: 0x28,
-                complete_entry: 0x100972384,
-                source_file_prefix: "file: ".into(),
-                source_line_prefix: " line: ".into(),
-            }),
-
-            outcome_registries: vec![
-                crate::protocol::observation::FixtureOutcomeRegistryBinding {
-                    registry: "common/traditions".into(),
-                    load_entry: 0x100ce381c,
-                    reader_entry: 0x100ce4afc,
-                    reader_return: 0x100ce388c,
-                    constructor_entry: 0x100cdc930,
-                    member_entry: 0x100cdcf38,
-                    malformed_entry: 0x1025b274c,
-                    unexpected_entry: 0x1025b24d4,
-                    fields: Vec::new(),
-                    inline: None,
-                },
-            ],
-        })
+        .any(|group| matches!(group, BindingGroupId::M451CategoryFixture))
+        .then(m451_fixture)
 }
 
 /// Fresh fixture pins for the exact 4.5.1 ARM64 slice.

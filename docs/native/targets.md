@@ -6,16 +6,18 @@
 | --- | --- | --- |
 | M45-old | `408a5700a202837f16041bf14b5da34ff4a9d939b98e62a8240dc68dd602ddf7` | Native ARM64 macOS 26.6.2 / 25G83, Apple Silicon; older Cygnus 4.5 beta ready-world experiments |
 | M45-observe | `3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216` | ARM64 macOS, Cygnus 4.5.0 (1434); reference, early observation, Atlas discovery/grammar experiments |
-| M45-release | `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd` | ARM64 macOS, Cygnus v4.5.0 (8697), the full 4.5 release from Steam; the catalogued target since 2026-09-22 |
-| M451-hotfix | `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38` | ARM64 macOS, Cygnus v4.5.1; exact hotfix target added 2026-09-29 |
+| M45-release | `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd` | ARM64 macOS, Cygnus v4.5.0 (8697), the full 4.5 release from Steam; catalogued from 2026-09-22 until SDK-674 removed it |
+| M451-hotfix | `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38` | ARM64 macOS, Cygnus v4.5.1; exact hotfix target added 2026-09-29; the only catalogued target |
 | W45 | `bd86b8c8187bd23b793b6680cc979945e696f97c0a6aa89b5ca4199a5739535f` | Windows 11 Home 10.0.26200 x64, Cygnus 4.5.0 (9e73), Steam build 25085736 |
 | W446 | `bc451c72d9654c8901f1bb0bee1dd78d76f415465c2fbf746e9f98ade333173a` | Same Windows host, Pegasus 4.4.6 (fdde), public build 24109497; 46,418,552-byte AMD64 PE |
 
 M45-observe ARM64 slice SHA-256 is `1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623`. M45-release ARM64 slice SHA-256 is `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9` (85,076,200 bytes). M451-hotfix ARM64 slice SHA-256 is `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`. Universal-image identity alone does not select process architecture; mixed image/slice identities are unsupported. Per-run manifests in the bundles keep OS, LLDB, fixture and content identities. Intel and ARM64 observations are not interchangeable.
 
-M45-release and M451-hotfix are catalogued. Native keeps full-release targets only, and a patch is
-not admitted automatically; SDK-557 is the update rehearsal on the next build, and SDK-674 drops
-4.5.0.
+M451-hotfix is the only catalogued build. Native keeps full-release targets only, and a patch is
+not admitted automatically; SDK-557 is the update rehearsal on the next build. Steam no longer
+offers 4.5.0, so SDK-674 removed the M45-release record, recipe and fixture and script-check pins;
+they are in Git at `b9dd059`. The ignored exact-build tests and the `tests/expected/*m451` directories check
+M451-hotfix.
 
 ## Port from M45-observe to M45-release
 
@@ -49,10 +51,12 @@ Pitfalls of this port:
   bases; see [scoped numeric](scoped-numeric.md#transfer-to-the-451-hotfix).
 - Relocated store IDs change row order: static parity compares dynamic-namespace rows without
   assuming order, and checks current source stamps apart from the reviewed build's provenance.
-- SDK-533 field storage applies only to its exact 4.5.0 build.
-- Five ignored exact-build tests in `src/binding/analysis/tests.rs` fail on M451-hotfix: four
-  assert M45-release addresses, and `repeated_public_and_binding_queries_agree` compares the public
-  field answer with an internal path that does not apply numeric and scoped facts (SDK-674).
+- The SDK-533 live storage record (`tests/expected/m45/field-storage-sdk533.json` at `b9dd059`)
+  was observed on M45-release only. The live fixture cases for omitted and repeated
+  `unlocks_agenda` check the same storage on M451-hotfix.
+- Fixture-loader and inline-fixture addresses moved, but field tokens, owner offsets and storage
+  offsets did not: `custom_tooltip` `+0x1c0`, `unlocks_agenda` `+0x5a0`, special-project
+  `fleet_power` `+0x5d8` (fixed point, scale 32768) in requirements at `+0x5a0`.
 
 ## Windows adaptation (W45, W446)
 

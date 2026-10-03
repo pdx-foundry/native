@@ -1,7 +1,7 @@
-# M45-release population baselines
+# M451-hotfix population baselines
 
 These compact answer baselines cover executable SHA-256
-`07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`.
+`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`.
 Generate and review updates with the commands in
 [method authoring](../../../docs/native/method-authoring.md#run-over-the-whole-population).
 Update the affected baseline in the same PR that changes method answers. Each subject occupies
@@ -11,13 +11,14 @@ Two runs of each baseline produced identical bytes and zero changed answers. The
 grammar baseline takes about 80 seconds.
 
 `command-fixture-sample.json` is the SDK-548 live fixture sample, fixed before the final
-population run: the ordering rule, the eligible commands of each kind, and the 20 chosen.
-`cargo live fixture_argument` checks them.
+population run: the ordering rule, the eligible commands of each kind, and the 20 chosen. It was
+selected on M45-release and keeps that build stamp; `cargo live fixture_argument` checks the same
+20 commands on M451-hotfix.
 
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Registry fields | 164 registries | 11 | 153 | 0 |
-| Effect grammars | 1,074 named commands | 248 | 816 | 10 |
+| Registry fields | 164 registries | 8 | 156 | 0 |
+| Effect grammars | 1,074 named commands | 248 | 819 | 7 |
 | Trigger grammars | 1,096 named commands | 119 | 975 | 2 |
 
 ## Historical comparison control
