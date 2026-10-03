@@ -410,7 +410,10 @@ fn flag(outcome: &NameOutcome) -> &FlagCommand {
     }
 }
 
-fn routes(flag: &FlagCommand) -> Vec<(Role, usize, Result<Route, Unresolved>)> {
+/// A role with the mask bit of its scope type and the route of its store.
+type RoleRoute = (Role, usize, Result<Route, Unresolved>);
+
+fn routes(flag: &FlagCommand) -> Vec<RoleRoute> {
     flag.uses
         .iter()
         .map(|role_use| (role_use.role, role_use.scope.bit, role_use.route.clone()))
@@ -860,4 +863,63 @@ fn an_assign_reader_without_a_body_leaves_the_command_unresolved() {
 #[test]
 fn an_undecodable_assign_reader_leaves_the_command_unresolved() {
     assert_broken_assign_stops(BrokenAssign::Undecodable, "reader-code");
+}
+
+/// The five hops of a forwarding chain that ends at the scope's own flag accessor.
+const HOPS: [u64; 5] = [0x4800, 0x4c00, 0x5000, 0x5400, 0x5800];
+
+/// The routes of two setters whose accessors enter the chain at its first and its third hop.
+/// Commands run in name order, so `first_entry` and `third_entry` select which entry runs first.
+fn chain_routes(first_entry: &'static str, third_entry: &'static str) -> [Vec<RoleRoute>; 2] {
+    let mut bodies = vec![
+        assign(INDEX),
+        execute(EXECUTE, INDEX, SETTER, Store::Accessor),
+        forwarding(ACCESSOR, HOPS[0]),
+        forwarding(OTHER_ACCESSOR, HOPS[2]),
+        scope_flags(),
+    ];
+    let next_hops = HOPS[1..].iter().chain([&SCOPE_FLAGS]);
+    for (&hop, &next) in HOPS.iter().zip(next_hops) {
+        let mut code = Arm64::at(hop);
+        code.tail_call(next);
+        bodies.push(code);
+    }
+    let effects = family(
+        DeclarationKind::Effect,
+        vec![
+            command(first_entry, &[COUNTRY], &flag_slots(EXECUTE, ACCESSOR)),
+            command(
+                third_entry,
+                &[COUNTRY],
+                &flag_slots(EXECUTE, OTHER_ACCESSOR),
+            ),
+        ],
+        bodies,
+    );
+    let outcomes = analyzed(vec![effects]);
+
+    [
+        routes(flag(&outcomes[first_entry])),
+        routes(flag(&outcomes[third_entry])),
+    ]
+}
+
+#[test]
+fn a_forwarding_chain_gives_the_same_routes_in_either_command_order() {
+    let first_runs_first = chain_routes("set_early", "set_late");
+    let third_runs_first = chain_routes("set_late", "set_early");
+
+    assert_eq!(first_runs_first, third_runs_first);
+    // Each entry follows the chain for the same number of hops from where it enters.
+    let ends_at = |terminal| {
+        [(
+            Role::Defines,
+            COUNTRY,
+            Ok(Route::Scope {
+                terminal,
+                offset: 0,
+            }),
+        )]
+    };
+    assert_eq!(first_runs_first, [ends_at(HOPS[3]), ends_at(SCOPE_FLAGS)]);
 }
