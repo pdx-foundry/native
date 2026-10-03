@@ -1,7 +1,8 @@
 # Launch, isolation, process lifetime, and cleanup
 
-The current 4.5.1 route is in [ready-world observations](ready-world.md). The experiments below
-retain their original build limits.
+The current macOS launch is `src/binding/platform/macos/lifecycle.rs`. The retired 4.5.1 world
+route is in [ready-world observations](ready-world.md). The experiments below retain their
+original build limits.
 
 ## macOS ready-world operations
 
@@ -106,7 +107,7 @@ What the summary says, and what it does not:
 - **Engine calls.** `worker_diagnostics` keeps a compact reason, checkpoint context and an
   explicit unavailability reason when the checkpoint cannot be read. The worker atomically
   replaces `session/worker-diagnostics.json` before blocking operations and after verified calls.
-  It records phase, world day or script-check number, owned thread, current operation, separate
+  It records phase, script-check number, owned thread, current operation, separate
   last attempted/completed calls with ordinals, hook samples and debugger details. Completion
   requires the return stop and exact register restoration. Elapsed time and deadline are
   milliseconds from worker diagnostic initialization on its monotonic clock; they are not
@@ -122,11 +123,10 @@ What the summary says, and what it does not:
   The live `script_access_failure` control uses the hidden script-check fault target and the
   existing access-failure control to attempt a debugger write at LLDB's invalid address. It
   records the actual debugger error and count, then requires confirmed disposal and the original
-  failure from `close`; it does not execute a script. Missing-world-hook, worker-loss and world
-  access-failure controls also check the summary after disposal.
-  SDK-652 validation on the exact M451-hotfix image passed all eight world cases (readiness,
-  90-day expiry, rejected effect, wrong country, missing hook, worker loss, access failure and
-  cancellation). World readiness took 33 seconds and expiry 42 seconds. The script argument and
+  failure from `close`; it does not execute a script.
+  SDK-652 validation on the exact M451-hotfix image passed all eight cases of the
+  [retired world route](ready-world.md), which also checked the summary after disposal. The
+  script argument and
   attribution cases passed; the deep-nesting case passed at 681 trigger levels and 254 effect
   levels in 43 seconds. The script access-failure case passed in 40 seconds: its retained summary
   reported the failed write at `0xffffffffffffffff`, actual count zero, check 1, no completed

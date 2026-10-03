@@ -98,7 +98,7 @@ temporaries that are not fully written, so a copied flag byte can be unknown.
 - **Where to read it.** `CGameApplication::InitGame` calls `CModifier::LogDefinitions()`
   unconditionally (`0x1005e96ec`). It runs after the trigger, effect and event post-inits, and
   before `PrintScriptingDocumentation`. The worker hooks its entry on the launch thread and reads
-  the table when it returns. The session pauses there (`GameReadiness::PausedAfterContentLoad`)
+  the table when it returns. The session pauses there (`GameReadiness::AfterContentLoad`)
   about 20 seconds after launch. The read takes about 0.4 seconds.
 - **Layout.** `LogDefinitions` walks `CPdxModifier<…>::_Definitions`, a `CPdxArray` with its data
   at `+0x8` and its count at `+0x14`. Each definition is 0x98 bytes, with the lexer token at
@@ -132,7 +132,9 @@ temporaries that are not fully written, so a copied flag byte can be unknown.
 The loaded table has 45,578 entries. The names, their order and every tag list equal the
 `modifiers.log` that the engine writes in the same session. The table has 571 declared names
 (they join `Native::modifiers`), 5,432 names that a returned family generates for a loaded item,
-and 39,576 unexplained names. No name has two families. The answer is `Partial`: the unjoined
+and 39,576 unexplained names. `terraforming_cost_mult` is both declared and generated (by the
+`terraforming` item of `common/economic_categories`), so the three counts overlap by one. No name
+has two families. The answer is `Partial`: the unjoined
 generation sites and the unexplained names are gaps. The layout derivation gives one complete
 table layout, with no partial layout and no failure. Five declared names have other tags in
 the loaded table, because content registers them again: `terraforming_cost_mult` has Planets and

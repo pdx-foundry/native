@@ -2,7 +2,7 @@
 
 ## Simplification, 2026-10-02
 
-The public numeric clamp property was removed on 2026-10-02. All complete reader shapes established no explicit clamp; the preserved findings below distinguish that result from overflow behavior. The remaining numeric conversion properties stay in the API. The property, its evaluator (`src/engine/analysis/numeric.rs`) and its expected output (`tests/expected/numeric-m45/readers.json`) are in Git at `d8f9d8a`.
+The public numeric clamp property was removed on 2026-10-02. All complete reader shapes established no explicit clamp; the preserved findings below distinguish that result from overflow behavior. The remaining numeric conversion properties stay in the API. The property, and the versions of its evaluator (`src/engine/analysis/numeric.rs`) and expected output (`tests/expected/numeric-m45/readers.json`) that produce it, are in Git at `d8f9d8a`.
 
 SDK-644 adds conversion facts to `Reader.numeric` in registry fields, conditional read
 alternatives, command values, fixed keys and ordering-selected readers. The shared identity is
@@ -92,8 +92,8 @@ without a bound field in the exposed population.
 
 The first Atlas release names three numeric uses: resource changes, additive and multiplicative
 naval capacity, and literal values. Each has a shared reader result and an observation, or a
-named gap. The world observations are on M451-hotfix; see
-[world evaluation](scoped-numeric.md#world-evaluation-on-m451-hotfix-sdk-647).
+named gap. The world observations came from the retired world route on M451-hotfix (in Git at
+`d8f9d8a`); see [world evaluation](scoped-numeric.md#world-evaluation-on-m451-hotfix-sdk-647).
 
 | Form | Reader result | Observation | Gap and owner |
 | --- | --- | --- | --- |

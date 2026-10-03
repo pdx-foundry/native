@@ -69,12 +69,13 @@ its only member is still exiting. Cleanup now waits for that exit within its one
 The installed Stellaris 4.5.1 universal image is
 `29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`; its ARM64 slice is
 `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`.
-The catalogue keeps the 4.5.0 release and adds this exact hotfix identity. World bindings apply
-only to the hotfix: the 4.5.0 route had disassembly inspection but no successful live world check.
+The catalogue keeps the 4.5.0 release and adds this exact hotfix identity. World bindings were
+added only to the hotfix, because the 4.5.0 route had disassembly inspection but no successful live
+world check. The world route was retired on 2026-10-02; its bindings are in Git at `d8f9d8a`.
 Mixed image/slice
 identities remain unsupported. No version fallback or uniform address slide is used.
 
-Fresh symbol and disassembly inspection establishes separate fixture, script-check and world
+Fresh symbol and disassembly inspection established separate fixture, script-check and world
 pins. The shared declaration layouts remain the M45 layouts. The special-project inline loader
 still calls the reader at `Init()+0x160`, reads its root at `+0x1d0`, and ends the file at `+0xa8`.
 The logger's formatted and unformatted virtual calls are now `0x1025087e4` and `0x1025088b8`;
@@ -82,7 +83,8 @@ the scripted-trigger stream call is `0x10212388c`. The tradition reader return i
 `0x100ce3054`, immediately after its reader call. Trigger writes retain the `CAndTrigger`
 address point `0x103095ee8` and the child-array address point `0x103000458`.
 
-For SDK-650 world preparation, `CInGameIdler::UpdateInternal(bool)` is `0x10086de60`.
+The world pins below belong to the [retired world route](ready-world.md). For SDK-650 world
+preparation, `CInGameIdler::UpdateInternal(bool)` is `0x10086de60`.
 The pause is at `+4`, after its first `sub sp, sp, #0xe0`. A pause at the entry carried
 a branch-type status bit that the debugger could not restore; one ordinary instruction
 clears that transient state. The full register check stays in force.
@@ -100,7 +102,8 @@ For SDK-647 variable reads, `GetVariablePointer(CEventScope const&, CString cons
 `0x100d0d704`, `CVariables::VariableIsSet(CString const&) const` is `0x100d1e7b8` and
 `CVariables::GetVariable(CString const&) const` is `0x100d1e784`. `GetVariable` looks up the map at
 `+8` and loads the 64-bit value at entry `+0x30`, or the engine's zero constant for a missing
-entry. The stored scale is 100000. The [live cases](ready-world.md#variables) verify these reads.
+entry. The stored scale is 100000. The retired [live cases](ready-world.md#variables) verified
+these reads.
 
 Raw symbol tables, every pinned function's disassembly, vtable slots, the old-to-new address map,
 and the capture scripts are retained under `.local/sdk-650/hotfix/`. No game process was launched
@@ -124,4 +127,5 @@ Static parity compares full dynamic-namespace rows without assuming order from r
 IDs, and checks current source stamps separately from the reviewed build's provenance.
 Historical SDK-533 storage remains applicable only to its exact 4.5.0 build. Fresh 4.5.1 live
 checks matched all 22 stored-duration cases and the script argument matrix. The
-[ready-world baseline, expiry matrix and failure controls](ready-world.md) passed on 4.5.1.
+[ready-world baseline, expiry matrix and failure controls](ready-world.md) of the retired world
+route passed on 4.5.1.

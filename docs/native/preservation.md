@@ -29,7 +29,7 @@ The accepted SDK-479 policy calls for manifests and bulk release assets in a pri
 | sdk-517-observations | Rust-owned candidate observations: five retained batches, generated worker protocol, failure controls and replay artifacts |
 | sdk-515-loader-entry-review | Final candidate rerun after PR review: strengthened joins and raw preservation hashes; see [result](loader-entry-worker.md) |
 
-No `sdk-atlas` directory exists in the supplied Developer directory; the verified source is `pdx-atlas`. Its local planning/glossary and consumer conclusions stay Atlas-owned. Full mixed historical capsules are privately retained here to keep native provenance and replay intact, not promoted into a Native rule database.
+No `sdk-atlas` directory exists in the supplied Developer directory; the verified source was `pdx-atlas`, now `/Users/jackson/Developer/pdx-foundry/atlas`. Its local planning/glossary and consumer conclusions stay Atlas-owned. Full mixed historical capsules are privately retained here to keep native provenance and replay intact, not promoted into a Native rule database.
 
 ## Dependencies and recoverability
 
@@ -71,8 +71,8 @@ at `.local/executables/stellaris-m45-observe-arm64`; its SHA-256 is the slice id
 [targets](targets.md). This is still only an executable, not the installation backup of SDK-522.
 
 The Atlas caller before migration, including its old freeze and synthetic files, is preserved in
-`native-2026-09-18/atlas-native-consumer-before-simplification.tar.gz`. The migrated caller stays
-local in Atlas's ignored `prototypes/native-registry` directory.
+`native-2026-09-18/atlas-native-consumer-before-simplification.tar.gz`. Atlas now calls Native
+from its own crate at a pinned Native commit; the `prototypes/native-registry` directory is gone.
 
 ## Config-test spike, 2026-09-28
 
@@ -90,6 +90,7 @@ followed; the full installed game and platform tools remain external dependencie
 source paths in the private runner need adjustment after relocation. These are local copies,
 not a remote backup. Atlas `preservation.json` records their paths and hashes.
 
-Native's strict paused-register patch and engine notes stay on `spike/in-process-probe`; the
-public API is unchanged. The bundle preserves that branch's history. Verify the retained copy
+Native's strict paused-register patch and engine notes from `spike/in-process-probe` are merged
+into `main` (`1a564ce`); `Game::check_script` grew from them. The bundle preserves that branch's
+history. Verify the retained copy
 before cleaning either source tree. No experiment source or session was deleted by this spike.

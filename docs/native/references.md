@@ -5,8 +5,8 @@ collection. A dynamic name is a name that script both defines and reads, such as
 SDK-543 owns both methods. This page holds their engine facts on M45-release, the results, the gaps
 and the pitfalls. The [discovery index](discovery.md) lists the operations.
 
-`Field.reference` in `Native::registry_fields` (`registry-fields/v8`) and in the fixed keys of
-`Native::command_grammar` (`command-grammar/v3`) gives each lookup of a field's value: the target
+`Field.reference` in `Native::registry_fields` (`registry-fields/v12`) and in the fixed keys of
+`Native::command_grammar` (`command-grammar/v13`) gives each lookup of a field's value: the target
 registry by content directory, the stage, the key match, whether an empty key is looked up, and
 what a missing key yields. The method is `engine/analysis/references.rs`, with owner
 initializers in `references/initialization.rs` and the shapes in `references/shapes/`;

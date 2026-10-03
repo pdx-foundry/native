@@ -73,8 +73,8 @@ Each tested claim gets exactly one result:
 These facts come from one bounded trial on M45-release (five launches, all with confirmed
 disposal). The worker patch, the knowledge note and the scripts are retained:
 
-- Branch `spike/in-process-probe`, commit `7b4c8ad`: the worker patch and the section
-  "In-process parse probes" in `docs/native/engine-calls.md`.
+- Branch `spike/in-process-probe`, commit `7b4c8ad`, since merged into `main` (`1a564ce`): the
+  worker patch and the section "In-process parse probes" in `docs/native/engine-calls.md`.
 - `.local/evidence/in-process-probe-2026-09-28/`: `scripts/helpers.py`, the probe scripts,
   the Rust runner, `worker.diff` and all five sessions' results and error logs.
 

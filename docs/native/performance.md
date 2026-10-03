@@ -20,7 +20,7 @@ trials were stopped. They do not justify a live optimization claim.
   SHA-256 `3d4c8a7046d87175ce7e3b513b1a2ce589050d654d332744518a49d13ac82216`.
 - ARM64 slice SHA-256:
   `1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623`.
-- Installation: `/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris`.
+- Installation: the Steam installation at `$STELLARIS_PATH`.
 
 The runner measures whole subprocess wall time with a monotonic clock. It builds first and
 records compilation separately. The explicit `cargo run` measurements below include Cargo;
@@ -64,7 +64,7 @@ folder did not find it or its archives. The bundles in `.local/evidence/bundles/
 
 ```sh
 cargo run --package pdx-native --example registries \
-  "/Users/jackson/Library/Application Support/Steam/steamapps/common/Stellaris/stellaris.app/Contents/MacOS/stellaris"
+  "$STELLARIS_PATH/stellaris.app/Contents/MacOS/stellaris"
 ```
 
 | Baseline workload | First run | Second run |
@@ -99,7 +99,8 @@ small fraction of the total. These enclosing spans also include path checks and 
 the remainder is an upper bound on file-read time, not a separate disk benchmark.
 The default content snapshot costs about 0.01 seconds in dev.
 
-There are nine large hashes before the first answer:
+Before SDK-560 and SDK-561, there were nine large hashes before the first answer. The rows name
+the functions of that time; `named_candidates` is no longer public:
 
 | Call path | Full executable hashes | Slice hashes |
 | --- | ---: | ---: |
@@ -121,11 +122,11 @@ with the current default features. Its ARM64 hardware path is gated by the depen
 implementation; it does not switch hash algorithms or add a feature. Source inspected:
 `sha2-0.10.9/src/sha256.rs` and its Cargo manifest in the local Cargo registry.
 
-Discovery has a second repeated-work boundary. Public registry questions share
-`Native.candidates`. `Binding::registry_bindings` and `BoundAnalysis::registry_fields` call
-`BoundAnalysis::named_candidates` directly, while `field_input` decodes the binary inventory
-again. The parity test deliberately exercises both discovery and bindings, so it discovers
-all candidates twice. On release, each inventory rebuild costs roughly 0.6–0.7 seconds before
+Before SDK-561, discovery had a second repeated-work boundary. Public registry questions shared
+`Native.candidates`. `Binding::registry_bindings` and `BoundAnalysis::registry_fields` called
+`BoundAnalysis::named_candidates` directly, while `field_input` decoded the binary inventory
+again. The parity test deliberately exercised both discovery and bindings, so it discovered
+all candidates twice. On release, each inventory rebuild cost roughly 0.6–0.7 seconds before
 constructor processing and apart from executable verification.
 
 ## The small change applied here
@@ -159,7 +160,7 @@ remove the original delay:
 | Second `registries()` | 14.87 s | 0.72 s |
 | Third `registries()` | 14.85 s | 0.74 s |
 
-The existing cache works. Its mandatory integrity read still performs three large hashes
+The cache worked. Before SDK-560, its mandatory integrity read performed three large hashes
 on each hit. Separate processes do not share that cache.
 
 ## Verification of the applied settings
@@ -264,12 +265,12 @@ batching rule is in [command grammar](command-grammar.md).
 
 ## Reproduce and verify
 
-From the repository root, set `STELLARIS_PATH` to the exact preserved installation or executable.
+Run from the repository root, with `STELLARIS_PATH` set to the exact preserved installation or
+executable.
 The runner builds once, stores command logs and timings in a new output directory, then runs
 the prebuilt registry example and loader-parity test twice. It starts no game by default.
 
 ```sh
-export STELLARIS_PATH="/path/to/Stellaris"
 python3 tools/profiling/measure.py .local/perf-dev
 python3 tools/profiling/measure.py .local/perf-release --release
 ```

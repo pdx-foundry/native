@@ -6,8 +6,8 @@ Duration consumers are retired from the API. Factors, combination and omitted co
 
 `CommandGrammar.durations` groups the child keys of a command that set one duration count, such
 as `days`, `months` and `years`. It gives each key's factor, how later keys combine with earlier
-ones, the count when no key is written, and what consumes the count. The source stamp is
-`command-grammar/v12`. The method is `src/engine/analysis/durations.rs`, bound by
+ones, and the count when no key is written. The source stamp is
+`command-grammar/v13`. The method is `src/engine/analysis/durations.rs`, bound by
 `src/binding/binary/durations.rs` and normalized by `src/session/durations.rs`. Registry field
 answers do not report durations; `pdx_native::internals::duration_groups` runs the same grouping
 over registry fields for the population run.
@@ -50,7 +50,7 @@ the SDK-493 trace (literal 3, multiplier 30). A later key replaces the operand o
 location.
 
 `add_timed_trait` has the same read shape, but its execute body passes the product to
-`CLeader::AddTimedTrait` rather than the flag store. Its M451-hotfix offsets and consumption limit
+`CLeader::AddTimedTrait` rather than the flag store. Its M451-hotfix offsets
 are given under [remaining execute bodies](#remaining-execute-bodies).
 
 ### Flag store countdown
@@ -67,9 +67,9 @@ factor 1, whose product is permanent under this countdown. The static omitted co
 [constructor state](#constructor-state-on-m451-hotfix).
 The expiry date also depends on how often each owner's update runs. `UpdateFlags` is called from
 `CGameState::DailyUpdate` lambdas and from many owner `UpdateFlags` methods, and the method does
-not establish that frequency. [SDK-650](https://linear.app/unnamed-system/issue/SDK-650) owns the
-world route that runs a flag to expiry. Its [4.5.1 country observations](ready-world.md)
-confirmed one countdown update per engine day for the five tested cases.
+not establish that frequency. The retired [SDK-650](https://linear.app/unnamed-system/issue/SDK-650)
+world route ran a flag to expiry. Its [4.5.1 country observations](ready-world.md) confirmed one
+countdown update per engine day for the five tested cases.
 
 ### Scaled at read
 
@@ -157,14 +157,14 @@ Both bodies match complete canonical shapes, including their validity guards and
 - `CSetTimedRelationFlagEffect::ExecuteActual` resolves `who`, creates or accesses the country
   relation, and checks its validity. It evaluates operand `+0x3f8`, loads factor `+0x600`, and
   passes their wrapping signed 32-bit product to `CPdxIntegerFlags::SetFlag` in mode zero.
-  Its flag consumer is `FlagCountdown`. Its initial factor is 1 and its omitted count is 0 (see
+  Its consumer is the flag store countdown. Its initial factor is 1 and its omitted count is 0 (see
   [constructor state](#constructor-state-on-m451-hotfix)). Relation update frequency is outside
   the static method.
 - `CAddTimedTraitEffect::ExecuteActual` accesses and checks a leader, evaluates operand `+0xa8`,
   loads factor `+0x2e0`, and passes their wrapping signed 32-bit product to
   `CLeader::AddTimedTrait(CTrait const*, int)`. Its combination is the same shared-factor form
-  with initial factor 1; its omitted count is 0. This is not a flag store. Trait
-  consumption remains an `OutsideMethod` limit; no flag-countdown claim is made. The trait
+  with initial factor 1; its omitted count is 0. This is not a flag store. No method
+  reports trait consumption; no flag-countdown claim is made. The trait
   consumer is recorded under [modifier and trait consumers](#modifier-and-trait-consumers-on-m451-hotfix-sdk-672).
 
 ### Candidates without a group
@@ -185,7 +185,9 @@ remain recorded during grouping: an overlap with a sibling's factor or count wor
 
 ### Population on M451-hotfix
 
-The population covers all 2,170 commands and all 164 registries, with no failed question.
+This run was measured at `command-grammar/v12`, before consumers left the API; `v13` no longer
+reports the flag-update and consumption limits below. The population covers all 2,170 commands and
+all 164 registries, with no failed question.
 
 | Population | Groups | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
@@ -273,7 +275,7 @@ an event or trigger. The trait case reads in leader scope. No new runtime meanin
 ## Modifier and trait consumers on M451-hotfix (SDK-672)
 
 These are static findings on the M451-hotfix executable. No method reports them; the public
-answer keeps an `OutsideMethod` consumption limit for these three groups. They are recorded as
+answer has no consumer property. They are recorded as
 documentation and as input for later lint rules. None of them is the flag countdown.
 
 | Shape | Reached by | Form | Count behavior |
@@ -375,7 +377,8 @@ small negatives expire on the first update, -178956968 adds 64 date units and su
 when `CIntVariableValue::IsSet` (`0x100d1cdb8`) is false. That is true for an omitted count and
 for a literal 0 with no variable, so `days = 0` and `months = 0` log. A negative count does not. The
 result does not stop execution: the effect-database validation loop ignores it (`0x100456128`).
-The ready-world route rejects any diagnostic before execution, so it would refuse those cases.
+The retired ready-world route rejected any diagnostic before execution, so it would have refused
+those cases.
 
 ## Gaps
 
@@ -394,15 +397,12 @@ truncation and wrap. Consumer meaning is required only where a shared method pro
   `duration-scoped-literal` gap above. The `days` storage is known, but its unit and the mixed
   selection behavior are not reported as established. Removal needs a shared whole-operand proof and a public
   representation of the mixed selection.
-- **24 consumption limits:** the 21 stack-literal groups, `add_modifier`, `add_stage_modifier`
-  and `add_timed_trait` keep `OutsideMethod` consumption. The modifier and trait consumers are
-  described [above](#modifier-and-trait-consumers-on-m451-hotfix-sdk-672); event delays were not
-  investigated. Reporting a consumer needs a representation for scope-dependent consumers
-  (`add_modifier` differs in astral rift scope) and a live route that reads them. The ready-world
-  route reads only country flags and variables.
-- **28 flag consumers:** the static method does not establish update frequency or expiry
-  dates outside the country observation. The [SDK-650 live run](ready-world.md) closes the country
-  expiry gap on 4.5.1 for its five cases; it does not establish relation or other owner frequencies.
+- **Consumers:** consumers left the API on 2026-10-02, so answers carry no consumption or
+  flag-update limit. The modifier and trait consumers are described
+  [above](#modifier-and-trait-consumers-on-m451-hotfix-sdk-672); event delays were not
+  investigated. The static method does not establish flag update frequency or expiry dates. The
+  retired [SDK-650 live run](ready-world.md) observed country-flag expiry on 4.5.1 for its five
+  cases; it does not establish relation or other owner frequencies.
 - Duration-list completeness still follows unknown child dispatch, reader joins and nested blocks.
   Accepted ranges and the live numeric widths are on [numeric conversion](numeric-conversion.md).
   These are typed limits of the method; AC3 does not require complete duration lists.

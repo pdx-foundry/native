@@ -10,35 +10,12 @@ control and the full initial-loader report remain in Git at `d8f9d8a`.
 
 `internals::check_registry_load` retains one bounded, live-only registry observation for
 SDK-552 loader-rule controls. It owns launch and close, accepts an optional fixture in that same
-registry, and returns no persistent game. The collection bounds, hook/terminal joins and cleanup
-checks remain. The details below preserve the original discovery and controls.
-
-
-`Game::registry_items(name)` reads a selected registry's collection when its initial loader
-returns. `Complete` means that every slot, key, owner, thread, sequence and terminal witness
-agrees at that boundary. It says nothing about later validation or gameplay. A loader that has
-not returned before the pause gives `Unsupported`, even when it was the only selected registry.
-The session pauses when every selected loader with an active hook has returned, or at the
-worker's deadline (the startup budget less a margin) when a loader is not reached in time; the
-`Unsupported` reason says which (SDK-573).
-A registry whose key layout cannot be read
-also gives `Unsupported`; it never gives an empty complete answer for that failure.
-
-Select content directories from `Native::registries()` with `GameOptions::registries` before
-`start_game`. The default M45 selection is the two tradition registries. The selection bounds
-the worker's four MiB trace and the private content copy. A recorded-answer game reads the same
-names from `registry_items/<name>.json` without starting a process.
-
-Run the complete report on the exact M45 installation:
-
-```sh
-cargo run --release --example registry-items-report -- '/path/to/Stellaris' --batch 16
-```
-
-`--limit M` limits attempted names; names after the options select a subset. Every discovered
-registry still gets a row, with `not attempted` for names outside the selection. Set
-`RECORD_ANSWERS_TO` to record each live answer. The reporter closes each session and prints a
-batch startup error once if that batch cannot run.
+registry, and returns no persistent game. It reads the registry's collection when its initial
+loader returns. `Complete` means that every slot, key, owner, thread, sequence and terminal
+witness agrees at that boundary. It says nothing about later validation or gameplay. A registry
+whose key layout cannot be read gives `Unsupported`; it never gives an empty complete answer for
+that failure. The public item query, `GameOptions::registries` and the `registry-items-report`
+example that produced the measured result below are in Git at `d8f9d8a`.
 
 ## Measured result
 
@@ -63,14 +40,15 @@ These are M45-observe results. On M45-release, the worker reads keys at the offs
 constructor establishes before the session starts (see [modifier
 families](modifier-families.md#item-keys)): 156 of 164 named registries. The other eight refuse an
 item read with a reason; no key is read from an unestablished offset. `common/bypass` and
-`common/map_modes` have keys at `+0x18`. The live case `nonstandard_key` requires the eight
-`common/map_modes` keys, which equal its top-level source keys, about 22 seconds after launch. The
-live case `generator_registries` requires the six generator registries (`common/buildings`,
+`common/map_modes` have keys at `+0x18`. The former `map_modes` control found its eight keys equal
+to its top-level source keys about 22 seconds after launch. The live case
+`loaded_modifier_key_layouts` requires the six generator registries (`common/buildings`,
 `common/bypass`, `common/districts`, `common/megastructures`, `common/situations`,
-`common/zones`) to return 498, 10, 147, 164, 90 and 146 complete items in one session. Their
-loaders run on the launch thread, and the session pauses after registry initialization about 24
-seconds after launch. The worker also checks key uniqueness, nonempty keys and control characters.
-SDK-551 covers custom, nested-definition and late loaders outside this template method.
+`common/zones`) to give 498, 10, 147, 164, 90 and 146 keys in one loaded-modifier session, and
+compares the `common/bypass` keys with its source keys. Their loaders run on the launch thread;
+a registry session paused after their registry initialization about 24 seconds after launch. The
+worker also checks key uniqueness, nonempty keys and control characters. SDK-551 covers custom,
+nested-definition and late loaders outside this template method.
 
 **Pause cause.** A registry session pauses when every registry with an active hook has returned
 from its initial loader, or at the worker's deadline (170 seconds of the default 180-second

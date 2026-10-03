@@ -45,7 +45,7 @@ Carry **activation**, **observation completion**, and **confirmed disposal** as 
 
 Fresh capture requires the exact M45-observe installation/content, ARM64 host, Xcode/LLDB and debugger access. The original `replay.py --scenario all` **builds a guard and launches games**; its name does not mean offline replay. This consolidation did not run it. The offline migration check reads manifests, source hashes, traces and final ownership records, described in [retrieval](retrieval.md).
 
-No production adapter, Windows timing, database-constructor order, late/hot reload, arbitrary parser stage, owner-loss recovery or low maintenance cost is established. Atlas's accepted consumer clarification is retained at `/Users/jackson/Developer/pdx-atlas/docs/prototypes/early-observation.md`. Local Linear acceptance is `linear-records/linear/SDK-483-comments.json`; the review summary's earlier pending label remains historical.
+No production adapter, Windows timing, database-constructor order, late/hot reload, arbitrary parser stage, owner-loss recovery or low maintenance cost is established. Atlas's accepted consumer clarification is the "Early observation review" section of `/Users/jackson/Developer/pdx-foundry/atlas/docs/planning/extraction-architecture.md`. Local Linear acceptance is `linear-records/linear/SDK-483-comments.json`; the review summary's earlier pending label remains historical.
 
 ## Registry items (Rust supervisor, M45-observe)
 
