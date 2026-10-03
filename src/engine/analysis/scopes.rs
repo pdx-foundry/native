@@ -407,16 +407,21 @@ fn returned_value(machine: &Machine, exit: Exit) -> Result<u64, Unresolved> {
 }
 
 /// Literal strings that end with `:` and that the special-value parser loads. A page register
-/// that the code writes again no longer holds its page.
+/// that the code writes again no longer holds its page, unless a branch came between them: the
+/// write can be in code that the branch skips, and a missed prefix costs more than a false one.
 fn data_prefixes(input: &ScopeInput) -> Vec<String> {
-    let mut pages = BTreeMap::<String, u64>::new();
+    let mut pages = BTreeMap::<String, Page>::new();
     let mut prefixes = BTreeSet::new();
     for row in &input.special_values {
         let arguments: Vec<_> = row.operands.split(',').collect();
         match (row.operation.as_str(), arguments.as_slice()) {
             ("adrp", [register, page]) => {
                 pages.remove(*register);
-                if let Some(page) = number(page) {
+                if let Some(address) = number(page) {
+                    let page = Page {
+                        address,
+                        crossed_branch: false,
+                    };
                     pages.insert(register.to_string(), page);
                 }
             }
@@ -424,26 +429,45 @@ fn data_prefixes(input: &ScopeInput) -> Vec<String> {
                 let address = pages
                     .get(*base)
                     .zip(number(offset))
-                    .map(|(page, offset)| page + offset);
+                    .map(|(page, offset)| page.address + offset);
                 if let Some(text) = address.and_then(|address| input.data.string(address))
                     && text.len() > 1
                     && text.ends_with(':')
                 {
                     prefixes.insert(text);
                 }
-                pages.remove(&wide(destination));
+                clear(&mut pages, &wide(destination));
             }
             ("bl" | "blr", _) => pages.retain(|register, _| !caller_saved(register)),
+            (operation, _) if branches(operation) => {
+                for page in pages.values_mut() {
+                    page.crossed_branch = true;
+                }
+            }
             (operation, [first, rest @ ..]) if writes_first_operand(operation) => {
                 let pair = rest.first().filter(|_| operation.starts_with("ldp"));
                 for register in std::iter::once(first).chain(pair) {
-                    pages.remove(&wide(register));
+                    clear(&mut pages, &wide(register));
                 }
             }
             _ => {}
         }
     }
     prefixes.into_iter().collect()
+}
+
+/// A page address that `adrp` loaded into a register.
+struct Page {
+    address: u64,
+    /// Whether a branch followed the `adrp`, so a later write may be in skipped code.
+    crossed_branch: bool,
+}
+
+/// Forgets the page in `register` after a write, unless a branch may skip that write.
+fn clear(pages: &mut BTreeMap<String, Page>, register: &str) {
+    if pages.get(register).is_some_and(|page| !page.crossed_branch) {
+        pages.remove(register);
+    }
 }
 
 /// The 64-bit name of a general register, such as `x1` for `w1`.
@@ -459,20 +483,29 @@ fn caller_saved(register: &str) -> bool {
         .is_some_and(|index| index <= 18)
 }
 
-/// Whether `operation` writes the register in its first operand. Stores, compares, branches and
-/// returns do not.
-fn writes_first_operand(operation: &str) -> bool {
-    let control = operation.starts_with("b.")
+/// Whether `operation` is a jump or a return, which can skip the instructions that follow it.
+fn branches(operation: &str) -> bool {
+    operation.starts_with("b.")
         || matches!(
             operation,
-            "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz" | "brk" | "nop"
-        );
+            "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
+        )
+}
+
+/// Whether `operation` writes the register in its first operand. Stores, compares, branches and
+/// returns do not, but an exclusive store writes its status register there.
+fn writes_first_operand(operation: &str) -> bool {
+    let control = branches(operation) || matches!(operation, "brk" | "nop");
     let compare = matches!(
         operation,
         "cmp" | "cmn" | "tst" | "ccmp" | "ccmn" | "fcmp" | "fccmp"
     );
+    let exclusive_store = ["stxr", "stlxr", "stxp", "stlxp"]
+        .iter()
+        .any(|prefix| operation.starts_with(prefix));
+    let store = operation.starts_with("st") && !exclusive_store;
 
-    !control && !compare && !operation.starts_with("st") && operation != "prfm"
+    !control && !compare && !store && operation != "prfm"
 }
 
 #[cfg(test)]
@@ -707,6 +740,42 @@ mod tests {
             row(0x508, "add", "x1,x19,#0x10"),
         ];
         assert_eq!(prefixes(preserved), ["event_target:"]);
+    }
+
+    #[test]
+    fn a_write_that_a_branch_may_skip_keeps_the_page() {
+        let rows = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "b", "#0x50c"),
+            row(0x508, "mov", "x1,x0"),
+            row(0x50c, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(rows), ["event_target:"]);
+
+        let recorded_after_the_branch = vec![
+            row(0x500, "cbz", "x0,#0x510"),
+            row(0x504, "adrp", "x1,#0x1000"),
+            row(0x508, "mov", "x1,x0"),
+            row(0x50c, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(recorded_after_the_branch), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_exclusive_store_writes_its_status_register() {
+        let rows = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "stlxr", "w1,x8,[x0]"),
+            row(0x508, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(rows), Vec::<String>::new());
+
+        let plain_store = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "str", "x1,[x0]"),
+            row(0x508, "add", "x1,x1,#0x10"),
+        ];
+        assert_eq!(prefixes(plain_store), ["event_target:"]);
     }
 
     #[test]
