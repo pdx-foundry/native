@@ -1,8 +1,8 @@
 # Nested command grammar
 
 These findings apply only to M45-release and its ARM64 slice, identified in
-[targets](targets.md). The method is `command-grammar/v9`; field families use
-`registry-fields/v8`, and parser observations use `observe-fixture/v2`. The method includes
+[targets](targets.md). The method is `command-grammar/v13`; field families use
+`registry-fields/v12`, and parser observations use `observe-fixture/v6`. The method includes
 [reference lookups](references.md), receiver initializer lookups and out-of-line factories.
 The current forms counts are below; the retained child-reader measurements appear in their
 original sections.
@@ -126,8 +126,11 @@ No audit condition fails.
 | Effect | 256 | 808 | 10 | 2 | 271 |
 | Trigger | 120 | 974 | 2 | 1 | 713 |
 
-These are the final `command-grammar/v9` totals, target checks included. Two baseline runs give
-identical bytes in about 80 seconds each. Failure shapes, as commands per shape outside the
+These are the final `command-grammar/v9` totals, target checks included. The tracked baseline,
+recorded at `command-grammar/v12`, gives 248 complete, 816 partial and 10 failed effects, and
+119, 975 and 2 triggers; [its README](../../tests/population/m45-release/README.md) holds the
+current counts. The shape counts below are the `v9` measurement. Failure shapes, as commands per
+shape outside the
 `OutsideMethod` boundary (a command can have several):
 
 | Shape | Effects | Triggers | Meaning |
@@ -275,7 +278,7 @@ log and `CReader::ReportUnexpected` are hooked. The `CLogger::Log` stream route 
 
 Executable SHA-256 `07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd`;
 ARM64 slice SHA-256 `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9`.
-These are current engine facts for `command-grammar/v9`, with `dynamic-names/v2` and
+These engine facts were recorded at `command-grammar/v9`, with `dynamic-names/v2` and
 `registry-fields/v8`. They do not establish complete value grammars or target-scope answers.
 
 ### F1. The family dispatch always calls `Read`
@@ -629,8 +632,10 @@ the pointer and can enter a Robin Hood hash-table insertion; effect insertion in
 reallocation, copies, an indirect virtual call on the array, and element-moving loops. Existing
 database paths also retain unknown counts. The proposed escape rule must additionally account
 for an unknown address derived directly from a fresh pointer before publication; such a write can
-affect the allocation even when it has not escaped. No relaxation of unknown writes has been
-implemented. The inspected instructions are retained in `.local/sdk-542/receiver-registration-paths.txt`.
+affect the allocation even when it has not escaped. This method relaxes no unknown write.
+Fresh-owner tracking was later implemented in `evaluate/owner.rs`; see
+[owner derivation](scoped-numeric.md#owner-derivation-sdk-658-sdk-660). The inspected
+instructions are retained in `.local/sdk-542/receiver-registration-paths.txt`.
 
 The member walk reuses field token dispatch, follows inherited delegates to depth eight, and
 keeps missing routing and cycles unresolved. Authored cases cover inherited fixed keys, child
@@ -667,7 +672,9 @@ observed deferred engine-log source; its isolated rerun passed in 88 seconds.
 
 ## Population measurement
 
-After review repairs, the method ran on 2026-09-26 over both full declaration inventories in 265 seconds,
+This is the 2026-09-26 measurement of an earlier method revision; the current counts are in
+[current value-form results](#current-value-form-results). After review repairs, the method ran
+on 2026-09-26 over both full declaration inventories in 265 seconds,
 reusing one executable-derived input per inventory. No command or field name selects production
 behavior. The six target commands in each inventory are reported separately from all other
 commands. Unresolved entries remain in every denominator; neither inventory had unnamed entries.
@@ -736,10 +743,9 @@ its SDK-541 nested fields and use conditions. Categories has a trigger `potentia
 `ai_weight`. Council agendas has trigger `potential`/`allow`, effect `effect`/`init_effect`, a
 modifier family, and unknown `ai_weight`. Unknown weight grammar belongs to SDK-545.
 
-Reproduce the measurements on the verified installation:
+Reproduce the measurements on the verified installation, with `STELLARIS_PATH` set:
 
 ```sh
-export STELLARIS_PATH='/path/to/Stellaris'
 NATIVE_GRAMMAR_REPORT=/tmp/command-grammar.json cargo test --release --lib m45_command_grammar_population -- --ignored --nocapture
 cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > /tmp/field-families.json
 cargo parity

@@ -9,13 +9,13 @@ shared reader.
 `Reader.family` separately identifies trigger, effect, modifier, unknown, or not-applicable
 children. Conditional read alternatives retain their own families; conflicting or unresolved
 alternatives cannot establish an unconditional family. Constructor joins refine generic persistent
-reader identities. See [nested command grammar](command-grammar.md) for the current v6 counts,
+reader identities. See [nested command grammar](command-grammar.md) for the counts,
 all block-field families in the three samples, parser checks, and population measurements.
 
 Run the report against an installation, application bundle, or executable:
 
 ```sh
-cargo run --example reader-kinds -- '/path/to/Stellaris'
+cargo run --example reader-kinds -- "$STELLARIS_PATH"
 ```
 
 The default report covers `common/traditions`, `common/tradition_categories`, and

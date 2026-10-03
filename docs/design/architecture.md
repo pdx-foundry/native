@@ -29,85 +29,30 @@ The public API is the primary test seam.
 One Cargo package, one library, no optional features. Consumers supply the supervisor executable.
 
 ```text
-Cargo.toml                         pdx-native package
-build.rs                           compiles the presentation guard; writes the build stamp
+Cargo.toml, build.rs      one package; build.rs compiles the presentation guard and writes the build stamp
+rust-toolchain.toml       the pinned toolchain
+.cargo/config.toml        the `cargo parity` and `cargo live` aliases
 src/
-  lib.rs                           explicit exports of the public API
-  answer.rs                        Answer, Source, Gap, Error, Disposal, normalized value types
-  api.rs                           OpenError; the private reasons that block an answer
-  session.rs                       Native: a pinned installation, or recorded answers
-  session/                         Native's questions, one file for each group
-    questions.rs                   build, support, declarations, registries, registry fields
-    language.rs                    modifiers, modifier categories, scopes, scope links
-    localization.rs                localization contexts, commands and links
-    callbacks.rs                   on_actions and game rules
-    defines.rs                     the define inventory
-    families.rs                    the modifier families that a registry generates
-    loaded_modifiers.rs            the live loaded modifier table, joined with static answers
-  game.rs                          Game: live session or recorded back end
-  game/driver.rs                   the thread that talks to the supervisor process
-  fixture.rs                       consumer fixture request and normalized observation types
-  grammar.rs                       partial child grammar and conditional routing types
-  recorded.rs                      recorded answers: read, write, NotRecorded
-  supervisor.rs                    public consumer-hosted supervisor entry point
-  work_directory.rs                file rules of a session's work directory
-  protocol.rs                      caller/supervisor handshake, replies and framing
-  protocol/
-    session.rs                     session request, controls, final report, test faults
-    observation.rs                 supervisor/worker wire; generates the worker's Python schemas
-  binding.rs                       narrow bound interfaces; private composition subtree
-  binding/
-    compose.rs                     sole target implementation assembly point
-    analysis.rs                    static methods bound to one verified executable
-    installation.rs                installation location, pinned content, integrity
-    targets.rs                     catalogue lookup; no concrete host imports
-    targets/
-      records.rs                   exact-target data and recipe references
-      recipes.rs                   host-neutral identifiers for required implementations
-    groups.rs                      build-specific live addresses and layouts
-    platform.rs                    compile-time host selection; live strategy resolution
-    platform/
-      macos/                       macOS ownership/access, the LLDB strategy and its worker
-      unavailable/                 every other host: live operations are unsupported
-    binary.rs                      thin object-crate integration and identity capture
-    binary/                        executable readers for the static methods, including declarations.rs and language.rs
-      inventory.rs                 symbols and strings of any supported image; no target record
-      fixups.rs                    chained fixups, or a diagnostic that names the unread form
-      discovery.rs                 registry discovery input: inventory and required fixups
-    inspect.rs                     developer inspector, re-exported as the hidden internals::inspect
-    machine.rs                     decoder/call-mechanism resolution
-    machine/
-      arm64.rs                     ARM64 registers and spawn preference
-  engine/
-    analysis/                      bounded static methods; see the discovery method index below
-    operations/
-      event_stream.rs              worker and owner records; rules for reading the worker's stream
-      fixture.rs                   fixture observation reducer
-      loaded_modifiers.rs          stream and table file to the loaded modifier table
-      registry_items.rs            internal loader controls; readiness of the pause
-  execution/
-    supervisor.rs                  independent process/resource ownership; reduces at the pause
-    owner_events.rs                the supervisor's record of what it did
-    run_summary.rs                 run-summary.json: phases, hooks, stream and answer projections
-    instances.rs                   host lock and process-inventory admission
-tests/
-  (static method unit tests live beside engine/analysis source)
-  static_questions.rs              parity with tests/expected; ignored; needs STELLARIS_PATH
-  recorded_answers.rs              recorded answers through the public API
-  installation.rs                  installation identification errors
-  live.rs                          the real game; ignored; needs STELLARIS_PATH
-  consumer_boundary.rs             Atlas caller's source uses only the public API; ignored; needs ATLAS_CALLER_PATH
-  expected/                        small tracked expected output of the parity tests
-  support/                         synthetic Mach-O, fat and PE files for the installation tests
-tools/
-  knowledge_bundles.py             verify and restore the private knowledge bundles
-  observation/test_protocol.py     the worker's generated codec
-  profiling/                       SDK-559 timing runner and the script that instruments a source copy
-docs/
-  specs/native.md                  product behavior
-  design/                          this design and the simplification decision
-  native/                          engine knowledge pages
-  native/performance/              measurement records of SDK-559 to SDK-561
+  lib.rs                  explicit exports of the public API
+  answer.rs, api.rs       answers, source stamps, typed gaps and errors
+  field.rs, grammar.rs …  public value types of the answers, one file for each subject
+  session.rs, session/    Native: a pinned installation or recorded answers; one file for each question group
+  game.rs, game/          Game: a live session or a recorded back end, and the supervisor driver
+  recorded.rs             recorded answers: read and write
+  supervisor.rs           the public consumer-hosted supervisor entry point
+  execution/              the supervisor: process ownership, host lock, owner events, run summary
+  protocol.rs, protocol/  the caller/supervisor and supervisor/worker wires, hook names, script-check files
+  work_directory.rs       file rules of a session's work directory
+  binding.rs, binding/    the binding authority: target records and recipes, binding groups, composition,
+                          installation identity, executable readers, platform strategies, the inspector
+  engine/analysis/        bounded static methods
+  engine/operations/      reducers of the live worker stream
+tests/                    public-API tests; parity (static_questions.rs, parity/) and live (live.rs, live/)
+                          suites are ignored and need STELLARIS_PATH; expected/ and population/ hold the
+                          tracked expected output; locality.rs is the locality gate
+examples/                 the inspector, the field sweep and the population reporters
+tools/                    knowledge bundles, worker protocol tests, profiling and population comparison
+docs/                     specification, design, roadmap and engine knowledge pages
 ```
 
 The [discovery method index](../native/discovery.md) maps operations to their method owners.
@@ -234,32 +179,15 @@ Avoid adapter inheritance ("4.5 extends 4.4.6 except for these fields"). Prefer 
 groups referenced by a complete recipe. A recipe may reuse an unchanged group and replace a
 changed group.
 
-### M45-release data sketch
+### Target records
 
-Types and lookup boilerplate are abbreviated. The live layout lives in `binding/groups`;
-static discovery finds the initial loader symbol for each selected registry.
+[`src/binding/targets/records.rs`](../../src/binding/targets/records.rs) holds the exact target
+records, and `recipes.rs` beside it holds their recipes. A recipe names its binding groups and
+strategy; the live layouts are in `binding/groups.rs`.
 
-```rust
-const M45_RELEASE: TargetRecord = TargetRecord {
-    executable: "07988b4f1b865623becd7a61af1cae92e111be6515d341754af70f02107822cd",
-    slice: "a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9",
-    architecture: object::Architecture::Aarch64,
-    format: object::BinaryFormat::MachO,
-    recipe: &M45_RELEASE_RECIPE,
-};
-
-const M45_RELEASE_RECIPE: Recipe = Recipe {
-    groups: &[BindingGroupId::M45TemplateRegistryLayout],
-    default_registries: &["common/traditions", "common/tradition_categories"],
-    strategy: StrategyId::MacSuspendedChildLoaderEntry,
-    declarations: Some(&M45_DECLARATIONS),
-};
-```
-
-The registry group holds the shared M45 collection layout. Static discovery supplies each
-selected registry's initial loader entry. The content directory is its identity on the caller,
-supervisor and worker sides. The supervisor derives these bindings again from the executable;
-it does not trust addresses from the caller.
+Static discovery supplies each observed registry's initial loader entry. The content directory is
+its identity on the caller, supervisor and worker sides. The supervisor derives these bindings
+again from the executable; it does not trust addresses from the caller.
 
 ## Binding once, executing without target tests
 

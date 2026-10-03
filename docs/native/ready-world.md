@@ -1,4 +1,4 @@
-# Ready-world observations (SDK-650, SDK-647)
+# Ready-world observations, retired (SDK-650, SDK-647)
 
 ## Retired route, 2026-10-02
 
@@ -20,10 +20,10 @@ Keep this page complete so the route can be restored if the entry-context self-l
 
 ## Historical verified route
 
-The route is supported on the exact M451-hotfix ARM64 executable in [targets](targets.md).
-The 4.5.0 target keeps its startup operations; it has no world recipe. Addresses and layouts
-are held only in the target recipe. The tracked save is
-[world-m451/fixture.sav](../../tests/fixtures/world-m451/README.md), created on 4.5.1 without mods.
+This section describes the route as it was at `d8f9d8a`. It was verified on the exact
+M451-hotfix ARM64 executable in [targets](targets.md). The 4.5.0 target had no world recipe.
+Addresses and layouts were held only in the target recipe. The save was
+`tests/fixtures/world-m451/fixture.sav` at that commit, created on 4.5.1 without mods.
 Native copies it into an isolated profile and loads installed content with no mods enabled.
 The original save is never written.
 
@@ -94,7 +94,7 @@ The worker reads a name as the engine reads a variable operand:
 - The scale is a recipe value. The supervisor refuses a result that carries another scale.
 
 A null store means "not set", not a failure: the scope-local store does not exist until an effect
-creates it. `world_ready` asks for one unset name of each kind and gets `None` for both. A failed
+creates it. `world_ready` asked for one unset name of each kind and got `None` for both. A failed
 call or memory read still ends the session. A literal case (`set_variable` with `2.75`, raw
 275000) shows that the read and the scale are correct before any reference case depends on them.
 
@@ -121,15 +121,13 @@ passed every sample from day 0 to day 90 in 43 seconds. Day 90 was 2200.04.01.
 | `days = -1` | -1 | Present with -1 through day 90 |
 | `years = 5965233` | -2147483416 | The signed 32-bit product wraps; unchanged and present through day 90 |
 
-These observations agree with `FlagCountdown`. They establish country-flag behavior on this build
+These observations agree with the [flag store countdown](durations.md#flag-store-countdown).
+They establish country-flag behavior on this build
 and fixture, not the update frequency of every flag owner. The source save was unchanged.
 Missing-hook, worker-loss, access-failure and cancellation controls all passed with confirmed
 disposal. The rejected-effect control also preserved day zero and left the flag absent;
-the wrong-country control refused startup with confirmed disposal. Production tests are
-`cargo live world_ready`, `cargo live world_expiry`,
-`cargo live world_missing_hook`, `cargo live world_worker_loss`, `cargo live world_access_failure`,
-`cargo live world_cancel`, `cargo live world_rejected` and `cargo live world_wrong_country`,
-with `STELLARIS_PATH` set.
+the wrong-country control refused startup with confirmed disposal. The eight `world_*` live
+cases that made these checks are in `tests/live/world.rs` at `d8f9d8a`.
 
 The old beta fixture did not establish a world on 4.5.0. Failed profile experiments found that
 both save directories must exist and `continue_game.json` must contain all three string fields

@@ -77,8 +77,9 @@ separate checks and are not established by these measurements.
 
 A spike on 2026-09-28 parsed trigger text inside the paused game, with no new launch per probe.
 It applies only to the M45-release executable in [targets](targets.md). The worker patch, probe
-scripts and results are in `.local/evidence/in-process-probe-2026-09-28/`; the patch is on branch
-`spike/in-process-probe`, not in `main`.
+scripts and results are in `.local/evidence/in-process-probe-2026-09-28/`. The spike branch
+`spike/in-process-probe` is merged into `main` (`1a564ce`), and `Game::check_script` is the
+supported route that grew from it; see the SDK-649 sections below.
 
 **Route.** The debug console's `trigger_file` and `effect` commands parse text through
 `ReadAndEvaluateTrigger` and `ReadAndExecuteEffect`. The probe repeats the trigger route up to
@@ -132,8 +133,9 @@ The in-process reader helper now appends a newline to every snippet. Without thi
 quiet string-based readers and failing token-based readers cannot establish value domains.
 
 Evidence: Atlas `docs/prototypes/config-test-spike/sessions/e0-{1,2}/`, including probe inputs,
-results, refresh loop, ordinary logs and disposal summaries. The worker patch remains on
-`spike/in-process-probe`; this is not a public Native operation.
+results, refresh loop, ordinary logs and disposal summaries. The worker patch was merged with
+`spike/in-process-probe` (`1a564ce`); the strict register check is the worker's
+`pause_registers`.
 
 ### Config-test spike: documentation, effects and full scope width
 

@@ -1,7 +1,8 @@
 # Atlas caller migration
 
-The SDK-519 prototype at `pdx-atlas/prototypes/native-registry` now uses the simplified Native API.
-It remains a local, ignored Atlas prototype. Its previous source and freeze are preserved privately;
+The SDK-519 prototype caller, first at `pdx-atlas/prototypes/native-registry`, moved into the
+Atlas crate at `/Users/jackson/Developer/pdx-foundry/atlas`, which depends on a pinned Native
+commit. Its previous source and freeze are preserved privately;
 see [preservation](../native/preservation.md). Atlas's published claim ledger is unchanged.
 
 ## API replacements
@@ -49,7 +50,7 @@ execution, field storage, validation, schema completeness or rule coverage.
 
 ## Field answer migration (SDK-541 / SDK-597)
 
-`registry_fields` still returns `Answer<Vec<Field>>`, with method `registry-fields/v8`.
+`registry_fields` still returns `Answer<Vec<Field>>`, with method `registry-fields/v12`.
 The former `Field.conditional` Boolean is replaced by paired `read` alternatives. Each
 alternative retains its `condition` and `outcome` (`Read`, `Rejected`, or `Unresolved`).
 Never combine the condition from one alternative with another's reader or shape.

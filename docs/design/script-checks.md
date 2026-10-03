@@ -1,6 +1,7 @@
 # Script checks in a paused game, and a proposed vanilla corpus check
 
-Status: Addition 1 accepted for SDK-649 on 2026-09-28. Addition 2 remains a proposal
+Status: Addition 1 accepted for SDK-649 on 2026-09-28 and implemented as `Game::check_script`;
+the `spike/in-process-probe` branch is merged into `main` (`1a564ce`). Addition 2 remains a proposal
 owned by Atlas and is outside SDK-649. The [specification](../specs/native.md) describes the
 implemented operation and its bounds.
 
@@ -35,8 +36,8 @@ Two spikes on 2026-09-28 measured the route. The first ran probes in the paused 
   is small, and three scope flags (the engine accepts the old `pop` bit) stay unresolved.
 
 The route, its pitfalls and all addresses are in `docs/native/engine-calls.md` and
-`docs/native/diagnostic-survey.md` on branch `spike/in-process-probe` (`db7d936`). Merge those
-knowledge notes into `main` first, whatever happens to this proposal.
+`docs/native/diagnostic-survey.md`, merged into `main` from branch `spike/in-process-probe`
+(`db7d936`).
 
 ## Problems
 
@@ -300,7 +301,7 @@ value. There are no evidence descriptors, replay paths or artifact hashes.
 
 ## Acceptance
 
-1. The knowledge notes from `spike/in-process-probe` are in `main`.
+1. The knowledge notes from `spike/in-process-probe` are in `main` (done, `1a564ce`).
 2. One capture route passes the five capture requirements on the known controls.
 3. The attribution orders give the same joined diagnostics and completeness as isolated checks in
    fresh sessions, with foreign and unjoined messages listed separately.

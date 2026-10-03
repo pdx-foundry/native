@@ -86,7 +86,7 @@ a rule.
 
 Dependencies run from Atlas extraction into Native's public API. Native does not import Atlas's
 rule model. Atlas does not import adapters, analysis helpers, or process control.
-The frozen Atlas caller is checked by `tests/consumer_boundary.rs` against this public boundary.
+Atlas's caller is checked by `tests/consumer_boundary.rs` against this public boundary.
 
 Native establishes what was read or observed. Atlas decides what that establishes about a rule.
 
@@ -101,19 +101,19 @@ the state after the simplification effort:
 | `supports` | Implemented | An `Operation` | `Support::Supported`, or `Support::Unsupported` with a reason |
 | `registries`, `registry_fields` | Implemented | A registry name for fields | Registries; fields with reader identity, broad kind, block family, conditional read alternatives and reference lookups (target registry by content directory, stage, key match, missing-key result), with explicit unknowns |
 | `start_game` | Implemented | Supervisor command, startup budget and optional fixture or loaded-modifier request | A `Game` paused at the internal boundary for its questions |
-| `Game::loaded_modifiers` | Implemented for M45-release | `GameOptions::loaded_modifiers` before launch | The modifier table after all content loads, read where the engine documents its modifiers: each name with its loaded category tags, whether the executable declares it, and each `modifier_families` family and loaded item that gives it; the loaded keys of each family registry; the loaded content. Unexplained names and unjoined generation sites are gaps. No config or log file is read. |
+| `Game::loaded_modifiers` | Implemented for M45-release and M451-hotfix | `GameOptions::loaded_modifiers` before launch | The modifier table after all content loads, read where the engine documents its modifiers: each name with its loaded category tags, whether the executable declares it, and each `modifier_families` family and loaded item that gives it; the loaded keys of each family registry; the loaded content. Unexplained names and unjoined generation sites are gaps. No config or log file is read. |
 | `Game::close` | Implemented | — | A disposal result; dropping the session or an active call also starts cleanup |
 | `from_recorded_answers`, `record_answers_to` | Implemented | A directory | Recorded answers in place of a game; a record of real questions |
 | `declarations` | Implemented for effects and triggers | A declaration kind | Engine name, description, usage, and declared scopes from every registration call and tail call in executable text, including registry helper constructors and names composed at run time through up to two callers; each chain of callers is one declaration. Registrations that cannot be followed, unreadable documentation, and scope getters that cannot be followed make the answer partial. Target arguments and their accepted scopes are in `command_grammar`. |
-| `command_grammar` | Implemented for M45-release effects and triggers | A declaration kind and registered command name | The accepted forms (value alternatives with their reader kind, a block, or both); target arguments with the scope types they accept and the stage that checks them; concrete shared reader identity, child families, fixed keys with their reference lookups (including the receiver initializer's lookup of a stored key), nested members, numeric child grammar, conditional reader ordering and duration key groups. The answer is `Complete` only when every property is established at every depth. Every property keeps unresolved evidence explicit; this is not runtime meaning. A missing registered command gives `UnknownCommand`. |
+| `command_grammar` | Implemented for effects and triggers on M45-release and M451-hotfix | A declaration kind and registered command name | The accepted forms (value alternatives with their reader kind, a block, or both); target arguments with the scope types they accept and the stage that checks them; concrete shared reader identity, child families, fixed keys with their reference lookups (including the receiver initializer's lookup of a stored key), nested members, numeric child grammar, conditional reader ordering and duration key groups. The answer is `Complete` only when every property is established at every depth. Every property keeps unresolved evidence explicit; this is not runtime meaning. A missing registered command gives `UnknownCommand`. |
 | `modifiers`, `modifier_categories` | Implemented | — | Built-in modifiers with their declared category tags, from every direct definition call; category names from the engine's category switch. Generated modifier families are gaps. Tags are intended-use tags, not application contexts. |
 | `modifier_families` | Implemented for database generators, post-read code and shared helpers | A registry name | Name templates that the registry's code registers for each item, with the item-key position, category tags, whether every item generates the family, and a name-length limit. Code that generates modifiers and is not joined to a registry is a gap, with its reason. |
 | `scopes`, `scope_links` | Implemented | — | Scope types with the keywords that the engine maps to each, and keywords that match several types (`carrier`); documented links and the link prefixes that take data, each with declared input and output scopes |
 | `localization_declarations` | Implemented | — | Localization contexts from the engine's text tables, each context's commands and links, each link's output context, and the scope types that select each context; a missing join keeps its commands; links that the method cannot follow are gaps |
 | `on_actions` | Implemented | — | On_action names that engine call sites fire, from every direct call to the firing functions, the deferred command and the checked forwarders, with the cached pulse lists; for each name, each distinct context of `this`, `root` and the `from` chain that a followed call site supplies. Names that script content fires, names built at run time and call sites that the method cannot follow are gaps. |
 | `game_rules` | Implemented | — | Game rules from the engine's rule declarations, scripted and weighted, with each distinct context that the rule set's call sites supply. A declared rule with no followed call site is a gap. |
-| `dynamic_names` | Implemented for M45-release integer flags | — | One namespace for each flag store that commands reach: its owner (a scope type, or one global store), the effects and triggers that define, remove and read names in it, and whether they accept `name@target`. Two commands share a namespace only when both reach the same store. Saved event targets and variables are outside it; commands and stores that the method cannot follow are gaps. |
-| `defines` | Implemented for M45-release | — | Define namespace, name and engine read type from compiled read helpers; unresolved helpers are gaps. No shipped define or config file is read. |
+| `dynamic_names` | Implemented for integer flags on M45-release and M451-hotfix | — | One namespace for each flag store that commands reach: its owner (a scope type, or one global store), the effects and triggers that define, remove and read names in it, and whether they accept `name@target`. Two commands share a namespace only when both reach the same store. Saved event targets and variables are outside it; commands and stores that the method cannot follow are gaps. |
+| `defines` | Implemented for M45-release and M451-hotfix | — | Define namespace, name and engine read type from compiled read helpers; unresolved helpers are gaps. No shipped define or config file is read. |
 | `Game::check_script` | M45-release and M451-hotfix at the loaded-modifier pause | Trigger or effect text and a scope ID from `Native::scopes` | Whether reading returned, top-level child count, current diagnostics with stage and optional line, prior-check diagnostics, unjoined messages, capture bounds, and stored duration counts of top-level children. No trigger evaluation or effect execution. |
 | `Game::observe_fixture`: field outcomes | M45-release and M451-hotfix; initial file load, optionally through bounded deferred validation, for a registry with verified boundaries | At most 32 named definition and field questions in one bounded relative text file | Separate parser entry/return occurrences, source-correlated diagnostics and typed string, integer or fixed-point storage where bound; other dimensions report unavailable. Lost observations cannot establish acceptance. |
 
@@ -263,7 +263,7 @@ states the rule and its measurement (amended 2026-09-23).
 | Which definitions do references select? | Lookup and owner relationships, with conditional outcomes | Reference categories |
 | Which shared numeric, command, modifier, or weight reader is used? | Reader behavior and unresolved paths | Reusable rule definitions |
 | Which scopes does the engine supply to a block? | Declared read entry scope and static root/from/prev bindings | Scope typing and completion |
-| Which files and duplicate definitions were used? | Mounted selection, loader phases, duplicates | Naming and loading relationships |
+| Which files and duplicate definitions were used? | File selection and duplicate-definition rules | Naming and loading relationships |
 
 Atlas owns fixture meaning. Native owns mounting, isolation, and execution. Native does not ship
 game catalogues or config-derived fallback answers.
@@ -274,19 +274,13 @@ A build is supported when its exact executable identity is in the target catalog
 prove the support. There are no separate qualification records. A new patch does not inherit
 support; it needs a target record and passing tests.
 
-Begin with the pinned Apple Silicon Stellaris 4.5 beta. Keep one copy of that executable
-(SDK-522); static methods and their parity tests need the exact file. Maintain one supported stable
-release at a time.
-
-**Amendment, 2026-09-22 (Jackson):** the 4.5 full release, Cygnus v4.5.0 (8697), replaces the
-beta in the catalogue. Steam does not offer old open betas for download, but it does offer old
-full releases, so a full release is the only target worth keeping. The beta ARM64 executable
-stays in `.local/executables` as a knowledge source.
-
-**Amendment, 2026-09-29:** the user supplied a clean 4.5.1 save after the hotfix. Native adds the
-exact 4.5.1 target, while retaining 4.5.0 startup support. The world recipe is retired by the
-2026-10-02 review; the target remains for fixtures and script checks. The historical world
-findings remain specific to that build. SDK-674 removes 4.5.0 after the relevant API cuts.
+The catalogue holds two Apple Silicon full releases: Cygnus v4.5.0 (8697) and the v4.5.1 hotfix.
+Static methods and their parity tests need the exact executable. Native keeps full-release targets
+only: Steam offers old full releases for download, but not old open betas. The earlier 4.5 beta
+ARM64 executable stays in `.local/executables` as a knowledge source. The 4.5.1 world recipe is
+retired by the 2026-10-02 review; that target remains for fixtures and script checks, and the
+historical world findings remain specific to it. The goal is one supported release at a time;
+SDK-674 removes 4.5.0 after the relevant API cuts.
 
 **Amendment, 2026-09-19 (Jackson):** Windows x64 is deferred. Atlas publishes platform-independent
 snapshots, so one platform is sufficient for rule coverage. Windows returns with the separate

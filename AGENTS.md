@@ -52,7 +52,7 @@ These are not accepted designs. Do not implement from them without an accepted d
 - [Method authoring](docs/native/method-authoring.md) Inspection, implementation, tests, parity and population runs.
 - [Registry fields](docs/native/registry-fields.md) Field discovery, stops, compiler shapes and owner joins.
 - [Reader kinds](docs/native/reader-kinds.md) Shared reader identities and broad value kinds.
-- [Scoped numeric](docs/native/scoped-numeric.md) Operand proofs, concrete storage and selection limits.
+- [Scoped numeric](docs/native/scoped-numeric.md) Operand proofs, routing forms, concrete storage and owner derivation.
 - [Duration keys](docs/native/durations.md) Unit factors, combination rules and the flag-store countdown.
 - [Registry items](docs/native/registry-items.md) Loaded collections and observation completeness.
 - [Engine commands](docs/native/engine-commands.md) Commands, scopes, localization, on_actions and game rules.

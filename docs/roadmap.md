@@ -11,16 +11,14 @@ remains the authority for decisions and open extraction questions. This document
 Atlas generates the data that `cwtools-stellaris-config` maintains by hand, and publishes it as
 platform-independent JSON snapshots. Native supplies every engine observation that Atlas needs.
 
-## Starting point
+## Current state
 
-Native exposes static `registries()` and `registry_fields(name)`, plus live item names for
-selected discovered registries on one exact Mac ARM64 executable. The default live session
-observes `common/traditions` and `common/tradition_categories`.
-Static analysis lives in `engine/analysis`; the live stream reducer lives in `engine/operations`.
-The API returns normalized answers with typed gaps and source stamps. The Atlas prototype caller
-uses the same questions for live and recorded answers; see the [migration](design/atlas-caller-migration.md).
-The remaining reader, reference, numeric-grammar and command-inventory methods exist as retained
-Python prototypes.
+The [specification's operation table](specs/native.md#2-public-api) lists what Native answers
+now: static registries, fields, declarations, command grammar, dynamic names, defines,
+on_actions, game rules and modifier families, plus live fixture outcomes, the loaded modifier
+table and script checks. The answers are normalized, with typed gaps and source stamps. Atlas
+asks the same questions for live and recorded answers. Linear holds the methods that are still
+open.
 
 ## The target, measured
 
@@ -159,14 +157,11 @@ an unresolved scope. See Atlas's [language snapshot measurement](https://github.
 
 ### Milestone 4 acceptance and start order
 
-The accepted [Milestone 3 review](design/milestone-3-review.md) defines the work order.
-SDK-596 owns preparation: align the contracts and tickets, repair duplicate modifier uncertainty,
-and measure the current M45-release field population before changing discovery. Milestone 3.5
-comes next: SDK-569's shortcut guard and SDK-563's jump-table repair block SDK-541, and SDK-574's
-single pause owner supports the parser observations. SDK-598 and SDK-599 are canceled by the
-2026-10-02 review. SDK-608 blocks SDK-677, which blocks SDK-600. SDK-597 delivers the first
-Atlas integration slice after SDK-541 and SDK-542; SDK-625 delivers the rest and the final live
-coverage run (split 2026-09-25, see below).
+The accepted [Milestone 3 review](design/milestone-3-review.md) set the work order. Its
+preparation (SDK-596) and Milestone 3.5 are complete. SDK-598 and SDK-599 are canceled by the
+2026-10-02 review. Linear is the authority for status and blocking order: for example, SDK-608
+blocks SDK-677, which blocks SDK-600. SDK-597 delivered the first Atlas integration slice;
+SDK-625 delivers the rest and the final live coverage run (split 2026-09-25, see above).
 
 Milestone 4 completes only when all of these hold:
 

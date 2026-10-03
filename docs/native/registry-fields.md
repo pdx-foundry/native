@@ -4,7 +4,7 @@
 
 FieldDefault was removed on 2026-10-02: only Unknown had been established. FieldDomain remains. SDK-627 now owns enum domains, repeat behavior and fields whose absence validation rejects; SDK-628 is canceled, while the established flag-to-field selections remain. The historical findings below are retained. `FieldDefault` (`src/field.rs`) and its expected output under `tests/expected/m45/` are in Git at `d8f9d8a`.
 
-`Native::registry_fields(registry)` (`registry-fields/v8`) gives root fields, reader and storage shapes,
+`Native::registry_fields(registry)` (`registry-fields/v12`) gives root fields, reader and storage shapes,
 loader alternatives, nested object fields and local stored-value selections. `Native::registries()` gives the registries. The module
 comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` describe the methods.
 This page holds the current sweep, the engine facts, the gaps and the prototype findings. The
@@ -12,7 +12,8 @@ This page holds the current sweep, the engine facts, the gaps and the prototype 
 
 ## Current M45 sweep
 
-The v8 sweep covers **164 registries: 11 complete, 153 partial, 0 failed**, with
+The tracked baseline, `tests/population/m45-release/registry-field-sweep.json`, was recorded at
+`registry-fields/v8`. It covers **164 registries: 11 complete, 153 partial, 0 failed**, with
 **1,564 root fields and 41 nested fields**. Root kinds are Block 409, Boolean 132,
 FixedPoint 88, Integer 93, Reference 28, String 245 and Unknown 569. Six root fields
 accumulate entries. The sweep takes about 200 seconds on the development host.

@@ -9,7 +9,7 @@ columns and a modifier-answer repair; neither changes this field population. Thi
 
 This page holds the starting population: totals, failure shapes, and per-registry and
 per-reader counts. It measures operation completeness, not Atlas claim coverage. The [registry
-field notes](registry-fields.md#sweep-on-m45-release) hold the current sweep.
+field notes](registry-fields.md#current-m45-sweep) hold the current sweep.
 
 ## Reproduce
 

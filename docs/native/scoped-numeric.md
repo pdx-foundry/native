@@ -2,7 +2,7 @@
 
 ## API scope, 2026-10-02
 
-`ScopedOperand` reports routing forms only. Representation selection and literal assignment preservation are retired public properties. Their findings below remain available. Internal layout proofs still support parser storage and duration overlap checks; they are not runtime results. The properties, their analysis (`src/engine/analysis/scoped_numeric.rs`, `src/session/scoped_numeric.rs`), their expected output (`tests/expected/m45/command-grammars.json`, `tests/expected/numeric-m45/readers.json`) and the world controls are in Git at `d8f9d8a`.
+`ScopedOperand` reports routing forms only. Representation selection and literal assignment preservation are retired public properties. Their findings below remain available. Internal layout proofs still support parser storage and duration overlap checks; they are not runtime results. The retired properties, the versions of `src/engine/analysis/scoped_numeric.rs`, `src/session/scoped_numeric.rs`, `tests/expected/m45/command-grammars.json` and `tests/expected/numeric-m45/readers.json` that produce them, and the world controls are in Git at `d8f9d8a`.
 
 On M45-release, `CVariableValue::Read` and `Assign` share an operand reader. A destination's
 constructor vtable point selects `CIntVariableValue`, `CFixedPointVariableValue`, or the base
@@ -579,9 +579,13 @@ the experiment's. They change fewer other answers: 137 commands instead of 347.
 
 ## World evaluation on M451-hotfix (SDK-647)
 
-The static method gives storage and selection. It gives no evaluated number. The numbers below
-come from the engine's own effect execution in a loaded world, read through
-[`Game::observe_world`](ready-world.md). Native does not call `GetValue` itself. The build is the
+The world route was retired on 2026-10-02. Its code, the case file and the `world_numeric` live
+cases are in Git at `d8f9d8a`; see [ready-world observations](ready-world.md) to restore them.
+The results below remain knowledge.
+
+The static method gave storage and selection. It gave no evaluated number. The numbers below
+came from the engine's own effect execution in a loaded world, read through the retired
+`Game::observe_world`. Native does not call `GetValue` itself. The build is the
 M451-hotfix executable in [targets](targets.md); the world is the tracked 4.5.1 save, with United
 Nations of Earth as the country scope on 2200.01.01.
 
@@ -627,9 +631,10 @@ agree with each line that they reach.
 
 ### Result
 
-`tests/expected/world-numeric-m451/cases.json` holds every case with its operand text, the parser
-storage of its integer operand, and both results. `cargo live world_numeric` runs it: one
-`check_script` session and five world sessions. Each case is evaluated in both destinations.
+`tests/expected/world-numeric-m451/cases.json` at `d8f9d8a` holds every case with its operand
+text, the parser storage of its integer operand, and both results. The `world_numeric` live cases
+ran it: one `check_script` session and five world sessions. Each case was evaluated in both
+destinations.
 
 | Group | Cases | Result |
 | --- | ---: | --- |
@@ -718,7 +723,7 @@ scope with the same results where the input is the same.
 ### Pitfalls
 
 - One rejected statement stops the whole prepared effect. Read every statement with
-  `check_script` first; `world_numeric_stored` does this for the table.
+  `check_script` first; the retired `world_numeric_stored` case did this for the table.
 - A quiet read is not a valid reference. An unknown prefix, an unknown modifier and an absent
   saved target all read quietly and fail only when the effect executes.
 - Equality at zero proves nothing about a modifier: an absent modifier also gives zero on both

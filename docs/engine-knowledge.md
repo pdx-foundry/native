@@ -3,7 +3,8 @@
 This page says where the knowledge about the game engine is kept. The knowledge comes from
 prototypes and probes (SDK testing, Atlas, Typed PDXScript) and from the Rust supervisor.
 The Rust code and its `//!` comments describe the present methods. These pages hold what the
-code cannot hold: experiments, failed approaches, and findings that are not yet ported.
+code cannot hold: experiments, failed approaches, and prototype findings that no Rust method uses,
+such as the Windows adapters and the M45-old engine calls, time, events and resources.
 
 ## Tracked knowledge pages
 
@@ -13,7 +14,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Subject | Page | What it holds |
 | --- | --- | --- |
 | Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, background launch, process disposal on macOS and Windows, debugger shutdown |
-| Load a world and observe prepared effects | [Ready-world observations](native/ready-world.md) | Private save loading, main-thread world pause, bounded daily updates, country flag expiry and variable reads |
+| Load a world and observe prepared effects (retired route) | [Ready-world observations](native/ready-world.md) | The retired world route and how to restore it from `d8f9d8a`: private save loading, main-thread world pause, bounded daily updates, country flag expiry and variable reads |
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | ARM64 loader-entry attachment, registration and field reads, where to read registry items |
 | The debugger worker | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
 | Call engine functions and find live objects | [Engine calls and memory](native/engine-calls.md) | Main-thread calls, calling conventions, time, resources, events, country and planet lifetimes |
@@ -21,7 +22,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope, Boolean, key, target and reference messages; generic reader errors; ordinary-log/source-filter gaps; config-test route limits |
 | Write a method | [Method authoring](native/method-authoring.md) | Inspector, stop diagnostics, authored tests, parity and whole-inventory runs |
 | Registry fields and scheduling | [Registry fields](native/registry-fields.md) | The current field sweep and its stops, compiler jump tables and bit fields, token paths, members and shared readers, scheduler table, owner joins |
-| Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, representation selection, world evaluation results and remaining limits |
+| Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, routing forms, owner derivation, retired world evaluation results and remaining limits |
 | Duration keys | [Duration keys](native/durations.md) | Unit factors, shared-factor and scaled-at-read combination, the flag-store countdown, modifier and trait consumers, and unidentified keys |
 | Engine commands and scopes | [Engine commands](native/engine-commands.md) | Engine documentation commands, target getters, modifier, category, scope and link declarations, localization tables, on_action and game rule call sites |
 | References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, database directories, owner initializers, identifier grammar, flag stores and namespaces |
@@ -94,13 +95,14 @@ Git. They are in `.local/evidence/bundles/`, which Git ignores. A second copy is
 - [Preservation](native/preservation.md) says what each bundle holds and what was not kept.
 - [Retrieval](native/retrieval.md) says how to verify and restore a bundle, and which prototype commands are safe to run without a game.
 
-Keep the bundles until the Python prototypes are ported. The
-[development policy](development-policy.md) has the rule on preserving this knowledge.
+Keep the bundles. The Windows adapters, the M45-old engine-call experiments and the raw
+captures exist only there. The [development policy](development-policy.md) has the rule on
+preserving this knowledge.
 
 ## Ownership
 
 Native owns the platform and build methods. Atlas owns authoring-rule conclusions, extraction
-fixtures and coverage; its pages are in `/Users/jackson/Developer/pdx-atlas/docs/prototypes/`.
+fixtures and coverage; its pages are in `/Users/jackson/Developer/pdx-foundry/atlas/docs/`.
 Linear is provenance only: the `linear-records` bundle holds the exported tickets, comments and
 attachments. For offsets and calling signatures, read the original adapter source in the bundles;
 do not keep a second offset table here.
