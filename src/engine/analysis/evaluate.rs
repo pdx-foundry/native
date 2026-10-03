@@ -2062,7 +2062,10 @@ impl<'a> Machine<'a> {
         let value = self.operand(operand)?;
         match rest {
             [] => Ok(value),
-            [Operand::Shift(kind, amount)] => Ok(value.map(|value| kind.apply(value, *amount))),
+            [Operand::Shift(kind, amount)] => {
+                let wide = operand.is_wide();
+                Ok(value.map(|value| kind.apply(value, *amount, wide)))
+            }
             [Operand::Extend(kind, amount)] => Ok(value.map(|value| extend(kind, value) << amount)),
             _ => Err(Halt::unsupported("operand")),
         }
@@ -2321,9 +2324,7 @@ fn binary(mnemonic: &str, left: u64, right: u64, wide: bool) -> u64 {
         "mul" => left.wrapping_mul(right),
         "lsl" => left.wrapping_shl((right % bits) as u32),
         "lsr" => truncate(left, wide) >> (right % bits),
-        "asr" => {
-            (sign_extend(truncate(left, wide), bits / 8, true) as i64 >> (right % bits)) as u64
-        }
+        "asr" => Shift::Arithmetic.apply(left, right % bits, wide),
         other => unreachable!("{other} is not a two-operand integer instruction"),
     }
 }
@@ -2823,11 +2824,16 @@ enum Shift {
 }
 
 impl Shift {
-    fn apply(self, value: u64, amount: u64) -> u64 {
+    /// `value` shifted as a register of the given width. An arithmetic shift copies the sign bit
+    /// of that width.
+    fn apply(self, value: u64, amount: u64, wide: bool) -> u64 {
         match self {
             Self::Left => value.wrapping_shl(amount as u32),
             Self::Right => value.wrapping_shr(amount as u32),
-            Self::Arithmetic => ((value as i64) >> amount) as u64,
+            Self::Arithmetic => {
+                let bytes = if wide { 8 } else { 4 };
+                (sign_extend(truncate(value, wide), bytes, true) as i64 >> amount) as u64
+            }
         }
     }
 }
@@ -3333,6 +3339,54 @@ mod tests {
         assert_eq!(machine.register(10), Some(0xf12f));
         assert_eq!(machine.register(14), Some(94));
         assert_eq!(machine.register(15), Some(91));
+    }
+
+    #[test]
+    fn an_arithmetic_shifted_operand_keeps_the_sign_of_its_register_width() {
+        let bytes = arm64!(at 0x100;
+            add w1, wzr, w0, asr #1;
+            asr w2, w0, #1;
+            add x3, xzr, x0, asr #1;
+            cmp wzr, w0, asr #1;
+            b.gt extern 0x11c;
+            mov x0, #1;
+            ret;
+            mov x0, #2; // at 0x11c: zero is greater than a negative w0
+            ret
+        );
+        let code = Code::decode(&[(0x100, &bytes)]).unwrap();
+        let data = ReadOnlyData::default();
+        let run = |input: u64| {
+            let mut machine = Machine::new(&code, &data);
+            machine.set_register(0, input);
+            machine
+                .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+                .unwrap();
+            [1, 2, 3, 0].map(|register| machine.register(register))
+        };
+
+        assert_eq!(
+            run(0x8000_0000),
+            [
+                Some(0xc000_0000),
+                Some(0xc000_0000),
+                Some(0x4000_0000),
+                Some(2)
+            ]
+        );
+        assert_eq!(
+            run(0x4000_0000),
+            [
+                Some(0x2000_0000),
+                Some(0x2000_0000),
+                Some(0x2000_0000),
+                Some(1)
+            ]
+        );
+        assert_eq!(
+            run(0x8000_0000_0000_0000),
+            [Some(0), Some(0), Some(0xc000_0000_0000_0000), Some(1)]
+        );
     }
 
     #[test]

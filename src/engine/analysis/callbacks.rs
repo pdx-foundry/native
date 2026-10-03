@@ -607,15 +607,15 @@ impl Assembly {
         let mut attributed: BTreeMap<String, BTreeSet<Context>> = BTreeMap::new();
         let mut unattributed = false;
         for (literal, context) in found.reached {
-            let proved = literal.and_then(|literal| input.data.string(literal));
-            let name = match proved {
-                Some(name) => {
-                    names.insert(name.clone());
-                    Some(name)
-                }
-                None => only.clone(),
-            };
-            match name {
+            // A path's literal counts only when the name pass did not prove other names: a
+            // string label can outlive a change to the string's text.
+            let proved = literal
+                .and_then(|literal| input.data.string(literal))
+                .filter(|name| !named || names.contains(name));
+            if let Some(name) = &proved {
+                names.insert(name.clone());
+            }
+            match proved.or_else(|| only.clone()) {
                 Some(name) => {
                     attributed.entry(name).or_default().insert(context);
                 }

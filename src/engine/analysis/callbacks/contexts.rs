@@ -179,8 +179,11 @@ impl Runner<'_> {
             }
         } else if scopes.readers.contains(&target) {
         } else if self.strings.from_literal.contains(&target) {
-            if let (Some(object), Some(literal)) = (object, machine.register(1)) {
-                machine.label(NAME | object, literal);
+            if let Some(object) = object {
+                match machine.register(1) {
+                    Some(literal) => machine.label(NAME | object, literal),
+                    None => machine.unlabel(NAME | object),
+                }
             }
         } else if self.strings.copy.contains(&target) {
             let source = machine
