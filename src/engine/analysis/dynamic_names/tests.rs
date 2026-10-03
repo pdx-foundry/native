@@ -779,3 +779,85 @@ fn a_name_that_only_an_unreadable_site_registers_is_not_examined() {
     );
     assert!(matches!(outcomes["set_flag"], NameOutcome::Flag(_)));
 }
+
+/// How a control breaks a command's assign reader.
+#[derive(Clone, Copy)]
+enum BrokenAssign {
+    NoSlot,
+    NoBody,
+    Undecodable,
+}
+
+/// The outcomes of `set_alone`, whose broken assign reader is its only flag reader, of
+/// `set_timed`, whose member reader is a valid flag reader, and of `unrelated`, whose readers
+/// name no flag.
+fn broken_assign_outcomes(broken: BrokenAssign) -> BTreeMap<String, NameOutcome> {
+    let assign_slot = match broken {
+        BrokenAssign::NoSlot => None,
+        BrokenAssign::NoBody | BrokenAssign::Undecodable => Some((SLOTS.assign, ASSIGN)),
+    };
+    let alone: Vec<(u64, u64)> = assign_slot
+        .into_iter()
+        .chain([(SLOTS.role, EXECUTE), (ACCESSOR_SLOT, ACCESSOR)])
+        .collect();
+    let mut timed = alone.clone();
+    timed.push((0x18, MEMBER));
+    let mut effects = family(
+        DeclarationKind::Effect,
+        vec![
+            command("set_alone", &[COUNTRY], &alone),
+            command("set_timed", &[COUNTRY], &timed),
+            command("unrelated", &[COUNTRY], &[(SLOTS.assign, STUB)]),
+        ],
+        vec![
+            timed_member(INDEX),
+            execute(EXECUTE, INDEX, SETTER, Store::Accessor),
+            forwarding(ACCESSOR, SCOPE_FLAGS),
+            scope_flags(),
+        ],
+    );
+    if let BrokenAssign::Undecodable = broken {
+        let partial_instruction = Function {
+            address: ASSIGN,
+            code: vec![0; 3],
+        };
+        effects
+            .declarations
+            .functions
+            .insert(ASSIGN, partial_instruction);
+    }
+
+    analyzed(vec![effects])
+}
+
+/// The broken assign reader leaves a stop with `reason` on each command that has it, and the
+/// unrelated command stays outside the answer.
+fn assert_broken_assign_stops(broken: BrokenAssign, reason: &'static str) {
+    let outcomes = broken_assign_outcomes(broken);
+
+    assert_eq!(
+        outcomes["set_alone"],
+        NameOutcome::Unresolved(Unresolved::new(reason))
+    );
+    let timed = flag(&outcomes["set_timed"]);
+    assert_eq!(routes(timed), [(Role::Defines, COUNTRY, Ok(SCOPE_ROUTE))]);
+    assert_eq!(timed.form, DynamicNameForm::Unresolved);
+    assert!(timed.stops.contains(&Unresolved::new(reason)));
+    assert!(timed.stops.contains(&Unresolved::new("dynamic-form")));
+    assert_eq!(outcomes["unrelated"], NameOutcome::NotFlag);
+}
+
+#[test]
+fn a_missing_assign_slot_leaves_the_command_unresolved() {
+    assert_broken_assign_stops(BrokenAssign::NoSlot, "assign-slot");
+}
+
+#[test]
+fn an_assign_reader_without_a_body_leaves_the_command_unresolved() {
+    assert_broken_assign_stops(BrokenAssign::NoBody, "reader-code");
+}
+
+#[test]
+fn an_undecodable_assign_reader_leaves_the_command_unresolved() {
+    assert_broken_assign_stops(BrokenAssign::Undecodable, "reader-code");
+}

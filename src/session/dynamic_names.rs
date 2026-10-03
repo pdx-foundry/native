@@ -267,6 +267,12 @@ fn obstacle(reason: &str) -> String {
             "calls the flag name reader or interner, but no stored flag index was established"
         }
         "index-stores" => "stores its interned flag index at more than one place",
+        "assign-slot" => {
+            "has no assign reader, so whether it stores a flag name was not established"
+        }
+        "reader-code" => {
+            "has an assign or member reader whose code was not read, so whether it stores a flag name was not established"
+        }
         "no-role" => "stores a flag name, but no define, remove or read role was established",
         "role-slot" | "role-code" => "has no readable execute or evaluate code",
         "role-store" => "passes a flag store that did not come from its flag accessor",
@@ -459,6 +465,41 @@ mod tests {
         assert_eq!(gap.kind, GapKind::ReaderSemantics);
         assert!(gap.detail.contains("effect set_global"));
         assert!(gap.detail.contains("trigger has_global"));
+        assert_eq!(answer.completeness, Completeness::Partial);
+    }
+
+    #[test]
+    fn an_unread_assign_reader_leaves_a_gap_for_its_command() {
+        let mut partial = flag_command(
+            DeclarationKind::Effect,
+            "set_timed",
+            Role::Defines,
+            vec![(scope(2, "country"), Ok(GLOBAL))],
+        );
+        if let NameOutcome::Flag(flag) = &mut partial.outcome {
+            flag.stops = vec![Unresolved::new("reader-code")];
+        }
+        let commands = [
+            CommandNames {
+                kind: DeclarationKind::Effect,
+                name: "set_alone".into(),
+                outcome: NameOutcome::Unresolved(Unresolved::new("assign-slot")),
+            },
+            partial,
+        ];
+        let answer = normalize(&commands, BuildId("build".into()));
+
+        let gap = |name: &str| {
+            answer
+                .gaps
+                .iter()
+                .find(|gap| gap.subject == Some(GapSubject::answer_item(name)))
+                .unwrap_or_else(|| panic!("a gap for {name}"))
+        };
+        assert_eq!(gap("set_alone").kind, GapKind::UnresolvedReader);
+        assert!(gap("set_alone").detail.contains("no assign reader"));
+        assert_eq!(gap("set_timed").kind, GapKind::ReaderSemantics);
+        assert!(gap("set_timed").detail.contains("code was not read"));
         assert_eq!(answer.completeness, Completeness::Partial);
     }
 }
