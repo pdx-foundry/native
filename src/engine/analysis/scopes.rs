@@ -406,21 +406,23 @@ fn returned_value(machine: &Machine, exit: Exit) -> Result<u64, Unresolved> {
     machine.known_register(0, "result")
 }
 
-/// Literal strings that end with `:` and that the special-value parser loads.
+/// Literal strings that end with `:` and that the special-value parser loads. A page register
+/// that the code writes again no longer holds its page.
 fn data_prefixes(input: &ScopeInput) -> Vec<String> {
-    let mut pages = BTreeMap::<&str, u64>::new();
+    let mut pages = BTreeMap::<String, u64>::new();
     let mut prefixes = BTreeSet::new();
     for row in &input.special_values {
         let arguments: Vec<_> = row.operands.split(',').collect();
         match (row.operation.as_str(), arguments.as_slice()) {
             ("adrp", [register, page]) => {
+                pages.remove(*register);
                 if let Some(page) = number(page) {
-                    pages.insert(register, page);
+                    pages.insert(register.to_string(), page);
                 }
             }
-            ("add", [_, base, offset]) => {
+            ("add", [destination, base, offset]) => {
                 let address = pages
-                    .get(base)
+                    .get(*base)
                     .zip(number(offset))
                     .map(|(page, offset)| page + offset);
                 if let Some(text) = address.and_then(|address| input.data.string(address))
@@ -429,11 +431,48 @@ fn data_prefixes(input: &ScopeInput) -> Vec<String> {
                 {
                     prefixes.insert(text);
                 }
+                pages.remove(&wide(destination));
+            }
+            ("bl" | "blr", _) => pages.retain(|register, _| !caller_saved(register)),
+            (operation, [first, rest @ ..]) if writes_first_operand(operation) => {
+                let pair = rest.first().filter(|_| operation.starts_with("ldp"));
+                for register in std::iter::once(first).chain(pair) {
+                    pages.remove(&wide(register));
+                }
             }
             _ => {}
         }
     }
     prefixes.into_iter().collect()
+}
+
+/// The 64-bit name of a general register, such as `x1` for `w1`.
+fn wide(register: &str) -> String {
+    register.replacen('w', "x", 1)
+}
+
+/// Whether a call may change `register`.
+fn caller_saved(register: &str) -> bool {
+    register
+        .strip_prefix('x')
+        .and_then(|index| index.parse::<u8>().ok())
+        .is_some_and(|index| index <= 18)
+}
+
+/// Whether `operation` writes the register in its first operand. Stores, compares, branches and
+/// returns do not.
+fn writes_first_operand(operation: &str) -> bool {
+    let control = operation.starts_with("b.")
+        || matches!(
+            operation,
+            "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz" | "brk" | "nop"
+        );
+    let compare = matches!(
+        operation,
+        "cmp" | "cmn" | "tst" | "ccmp" | "ccmn" | "fcmp" | "fccmp"
+    );
+
+    !control && !compare && !operation.starts_with("st") && operation != "prfm"
 }
 
 #[cfg(test)]
@@ -636,6 +675,48 @@ mod tests {
             event_target.output,
             Output::Unresolved(Unresolved::new("literal-prefix"))
         );
+    }
+
+    /// The prefixes that the special-value parser `rows` load, with `event_target:` at 0x1010
+    /// and `other:` at 0x1020.
+    fn prefixes(rows: Vec<Instruction>) -> Vec<String> {
+        let mut input = input();
+        input.special_values = rows;
+        input.data = ReadOnlyData::new(vec![(0x1010, b"event_target:\0\0\0other:\0".to_vec())]);
+        data_prefixes(&input)
+    }
+
+    #[test]
+    fn a_page_register_written_again_loads_no_prefix() {
+        for clobber in [
+            row(0x504, "mov", "x1,x0"),
+            row(0x504, "ldr", "w1,[x0]"),
+            row(0x504, "bl", "#0x900"),
+        ] {
+            let rows = vec![
+                row(0x500, "adrp", "x1,#0x1000"),
+                clobber.clone(),
+                row(0x508, "add", "x1,x1,#0x10"),
+            ];
+            assert_eq!(prefixes(rows), Vec::<String>::new(), "{clobber:?}");
+        }
+
+        let preserved = vec![
+            row(0x500, "adrp", "x19,#0x1000"),
+            row(0x504, "bl", "#0x900"),
+            row(0x508, "add", "x1,x19,#0x10"),
+        ];
+        assert_eq!(prefixes(preserved), ["event_target:"]);
+    }
+
+    #[test]
+    fn an_address_formed_from_an_earlier_address_is_not_a_page() {
+        let rows = vec![
+            row(0x500, "adrp", "x1,#0x1000"),
+            row(0x504, "add", "x1,x1,#0x10"),
+            row(0x508, "add", "x1,x1,#0x20"),
+        ];
+        assert_eq!(prefixes(rows), ["event_target:"]);
     }
 
     #[test]
