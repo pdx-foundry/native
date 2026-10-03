@@ -271,5 +271,4 @@ harmless process named `stellaris` to check that Native refuses an ordinary game
 - [Specification](docs/specs/native.md): what Native does.
 - [Technical design](docs/design/architecture.md): project layout and target composition.
 - [Roadmap](docs/roadmap.md): order of work.
-- [Atlas caller migration](docs/design/atlas-caller-migration.md): API replacements and recorded tests.
 - [Engine knowledge index](docs/engine-knowledge.md): findings from prototypes and probes.

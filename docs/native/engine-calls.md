@@ -116,6 +116,12 @@ rejected the other 29 tested bits. It did not test the whole scope universe: the
 - After an expression, a cached `SBThread` can report a stale frame 0. The registers did not
   change (`pc`, `sp`, `fp` and `lr` were equal before and after), but the worker's paused-frame
   check compared frame 0 and ended the session. Read the thread again, and compare registers.
+- The console route builds its top-level objects differently from file loading, and normal
+  loading resolves deferred references before the command stages. A check is not a file fixture:
+  keep a paired file-route control, with the same message identity, for each rule that a check
+  establishes.
+- An interrupted engine call can leave partial allocations or database entries even when LLDB
+  restores the registers. Never reuse a session after a failed call.
 
 ### Config-test spike: pause and token controls
 

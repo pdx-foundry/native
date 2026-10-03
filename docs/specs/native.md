@@ -4,7 +4,7 @@ Status: implementation specification, rewritten 2026-09-20 to agree with the app
 [simplification decision](../design/simplification.md). It replaces the evidence-producer
 specification of 2026-09-17. The earlier text is in Git history. The delivered operations agree
 with this document; the roadmap tracks the operations that are still planned. The agreed
-[2026-10-02 review](../design/simplification-review.md) narrows the product to static engine facts
+[2026-10-02 review](../design/simplification.md) narrows the product to static engine facts
 that a compiler uses to accept, reject, type or complete script, plus the smallest live check
 of a static answer. Runtime values are out of scope. Atlas is the only consumer.
 
@@ -92,8 +92,7 @@ Native establishes what was read or observed. Atlas decides what that establishe
 
 ### 2. Public API
 
-The [decision document](../design/simplification.md) holds the API sketch. Availability below is
-the state after the simplification effort:
+Availability below is the state after the simplification effort:
 
 | Operation | Availability | Atlas supplies | Native returns |
 | --- | --- | --- | --- |
@@ -407,7 +406,8 @@ and source revisions recorded; recorded answers support reproduction.
 
 ## Governing records
 
-- [Simplification decision](../design/simplification.md): purpose, API, removals, work order.
+- [Simplification decision](../design/simplification.md): purpose, compiler-need vision, what
+  stays and goes, and the decisions of 2026-10-02.
 - [Technical design](../design/architecture.md): project layout and target composition.
 - [Roadmap](../roadmap.md): order of work.
 - [Atlas map, SDK-470](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database):

@@ -449,6 +449,11 @@ Run parity explicitly for static method changes; live observation changes also n
 `cargo live` cases. The [README checks](../../README.md#checks) list formatting, lint and
 documentation checks.
 
+A live observation has separate checks in the worker and in the reducer. The reducer must reject
+an incoherent or misplaced observation even when the normal worker would not send it, so keep
+stage-window checks on both sides. The protocol owns the stage vocabulary; the worker does not
+decide whether an answer is complete.
+
 ## Command inspection and population reports
 
 Use the grammar inspector on an exact supported build:

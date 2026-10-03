@@ -12,6 +12,26 @@ alternatives cannot establish an unconditional family. Constructor joins refine 
 reader identities. See [nested command grammar](command-grammar.md) for the counts,
 all block-field families in the three samples, parser checks, and population measurements.
 
+Pitfalls:
+
+- **Identity does not establish value kind.** A command reader proves the constructor-installed
+  virtual `Read` and `ReadMember` targets. It does not prove what the `Read` override accepts, so
+  marking every such receiver `Block` adds an unsupported fact. On M45-release, 137 triggers and
+  463 effects had an established block kind at `command-grammar/v9`; the others kept `Unknown`.
+- **An outer reader's family is not the set of its child families.** `random_list` is an effect
+  reader whose outer numeric keys lead to a separate effect-child grammar.
+- **The family checks answer different questions.** Shared reader-entry classification gives the
+  broad value of established helper signatures; constructor joins refine a generic persistent
+  destination; conditional normalization also accounts for unresolved and rejected paths. Do not
+  merge them: removing the last check promotes conditional facts.
+
+## Reader identities
+
+A reader ID is the first 16 hexadecimal digits of the SHA-256 of the demangled callee name
+(`ReaderId::from_callee`). So the same callee gives the same ID on every build: the
+`registry-fields/v2` sweep on M45-observe and the `registry-fields/v3` run on M45-release found the
+same 19 IDs. The hashed name of each `NParserUtil` template keeps its `void ` return type.
+
 Run the report against an installation, application bundle, or executable:
 
 ```sh

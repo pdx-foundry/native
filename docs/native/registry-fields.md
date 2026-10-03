@@ -10,6 +10,18 @@ comments of `engine/analysis/fields.rs` and `engine/analysis/discovery.rs` descr
 This page holds the current sweep, the engine facts, the gaps and the prototype findings. The
 [discovery index](discovery.md) lists the other method pages.
 
+## What complete means
+
+Both static answers are bounded searches. `registries` searches the shared database-template
+candidates. It is complete when every candidate inside that boundary has one content directory;
+custom, nested and late loaders are outside the search. `registry_fields` searches the root reader
+paths of one such registry. It is complete when every path, field name and promised reader
+classification is resolved. An `OutsideMethod` gap states the boundary and can accompany
+`Complete`. Unnamed candidates, unresolved paths, unknown reader classifications and unreadable
+required input make the answer partial. These semantics date from `registry-directories/v3` and
+`registry-fields/v3`; the Milestone 2 sweep at `registry-fields/v2` reported every answer as
+partial.
+
 ## Current M45 sweep
 
 The tracked baseline, `tests/population/m45-release/registry-field-sweep.json`, was recorded at
@@ -123,9 +135,10 @@ cargo run --release --example registry-field-sweep -- --diff before.json report.
 ```
 
 Use `--diff` against an earlier report to count the registries that a change affects. The
-starting population, before SDK-563, is in the [Milestone 4 field
-baseline](milestone-4-field-baseline.md) (878 fields). SDK-563 changed the field lists of 38
-registries: 469 fields added and none removed, with no change in completeness.
+starting population, before SDK-563, was one `registry-fields/v3` run on M45-release: 28
+complete, 136 partial, 0 failed, with 878 fields. Its full table is in Git history. SDK-563
+changed the field lists of 38 registries: 469 fields added and none removed, with no change in
+completeness.
 
 **28 complete, 136 partial and 0 failed** answers, with **1,347 fields**:
 
@@ -368,6 +381,24 @@ commit `efba955e47897cf2b01773ade542ba3289151bd1`):
   to start in others. The first held-out transfer to the AI budget failed; the owner rule was
   revised before the economic-plan transfer. An engine exception before the end marker, with
   incomplete category fixtures, was not diagnosed.
+
+### Registry names
+
+`Native::registries` names each template registry by the content directory that its constructor
+passes to the shared base constructor; the module comment of `engine/analysis/directories.rs`
+gives the two compiled shapes. On M45 the method named all 164 template registries in about two
+seconds, and all 162 directories that the retained live run observed are in the result, with no
+conflict.
+
+- Seven template registries load from outside `common/`, such as `map/galaxy`,
+  `sound/advisor_voice_types`, `gfx/portraits/sprite_configurations` and
+  `interface/resource_groups`. So a registry name is the full content directory.
+- 59 more `common/` literals belong to loaders outside the template method, such as
+  `common/component_templates`, `common/agendas` and `common/static_modifiers`. They are inputs
+  for SDK-551.
+- Pitfall: the first version of the method took any directory-shaped literal in the constructor.
+  It missed the global `CString` shape of `common/ship_categories`, and it had no tie to the
+  meaning of the literal. The base-constructor call anchor replaced it.
 
 ### Scheduler table on M45-release
 

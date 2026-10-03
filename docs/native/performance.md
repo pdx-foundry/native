@@ -35,9 +35,8 @@ non-overlapping costs. The instrumented debug runs were 62.32 and 59.36 seconds;
 runs were 3.13 and 2.87 seconds. All static outputs, including source and gaps, equal the
 baseline answer: 164 names, `Partial`, with the existing outside-method gap.
 
-[Measurement results](performance/sdk-559.json) contain the commands, exit codes, machine,
-phase totals and repeated-query results. Raw logs and the temporary source copies are retained
-at `.local/sdk-559/`. These are investigation outputs, not a new Native result or evidence API.
+The raw logs, the measurement results and the temporary source copies are retained at
+`.local/sdk-559/`. These are investigation outputs, not a new Native result or evidence API.
 
 **Retention check, 2026-09-24 (SDK-590).** Keep `.local/sdk-559/`, `.local/sdk-560-*` and
 `.local/sdk-561-*`. The maintainer decides their removal with this check in hand. No other copy
@@ -48,9 +47,8 @@ them. The second local copy that the [preservation guide](preservation.md) names
 folder did not find it or its archives. The bundles in `.local/evidence/bundles/` still pass
 `tools/knowledge_bundles.py`. The retained directories hold:
 
-- **Measurements.** The tracked summaries are [sdk-559.json](performance/sdk-559.json),
-  [sdk-560.md](performance/sdk-560.md), [sdk-561.md](performance/sdk-561.md) and this page. The
-  raw logs and the phase files of each run are only in `.local`.
+- **Measurements.** This page is the tracked summary. The per-ticket SDK-559 to SDK-561 records
+  are in Git history. The raw logs and the phase files of each run are only in `.local`.
 - **Source.** The instrumented copies are Native source with the probes that
   `tools/profiling/instrument.py` and `span.rs` add. The SDK-559 baseline commit `3d3810bf` is in
   Git; the base commits of the other copies were not checked. The SDK-559 run drivers
@@ -185,14 +183,23 @@ both were corrected. No PR was created, as requested.
    machine, with byte-for-byte equal normalized answers. Verify the command above and the
    full default suite plus ignored static parity and invalidation cases.
 2. **[SDK-560: remove duplicate hashes within an operation](https://linear.app/unnamed-system/issue/SDK-560/avoid-repeated-hashing-within-one-static-binary-query) — applied.**
-   One verified buffer supplies each static query. The warmed release query fell from
-   2.97 to 1.77 seconds, and cached public queries make one full-file integrity hash.
-   See the [SDK-560 measurements](performance/sdk-560.md).
+   The warmed release query fell from 2.97 to 1.77 seconds.
 3. **[SDK-561: share immutable discovery at the analysis layer](https://linear.app/unnamed-system/issue/SDK-561/reuse-immutable-static-analysis-across-registry-queries-and-bindings) — applied.**
-   One candidate computation per `BoundAnalysis`, including public questions,
-   bindings, and fixture field setup. Repeated field queries reuse decoded symbols
-   and strings. The combined release probe fell from 8.38–8.57 to 4.39–4.48 seconds,
-   with no peak or sampled RSS increase. See the [SDK-561 measurements](performance/sdk-561.md).
+   The combined release probe fell from 8.38–8.57 to 4.39–4.48 seconds, with no peak or
+   sampled RSS increase.
+
+The invariant that these two changes keep:
+
+- Each public static query reads and hashes the executable once, and uses that one verified
+  buffer for discovery and field input. The full-file hash covers the ARM64 slice that `open`
+  selected and hashed, so a later read needs no second slice hash.
+- `BoundAnalysis` computes its catalog once: the named candidates, symbols and strings that
+  public questions, bindings and fixture field setup share. It keeps no executable buffer, and
+  every read still loads and hashes the executable before it uses the catalog.
+- A detected change, a missing file or a path retarget invalidates the `BoundAnalysis`
+  permanently, even if the original bytes return.
+- The supervisor builds its own `Binding` from the installation. It does not accept addresses
+  that the caller cached. Content, fixtures, game state and observations are not in the catalog.
 
 Keep fresh content-based executable checks at public operation boundaries. Preserve exact
 full-file identity, ARM64 slice selection, path-retarget checks, unavailable-file errors, and

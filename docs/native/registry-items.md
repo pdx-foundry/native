@@ -1,7 +1,7 @@
 # Registry items on M45
 
 The public item query and registry selection were retired by the 2026-10-02
-[simplification review](../design/simplification-review.md), which supersedes the Milestone 2
+[simplification review](../design/simplification.md), which supersedes the Milestone 2
 instruction to retain them. Native selects session registries and includes the fixture registry.
 `LoadedModifiers.registry_items` retains the keys needed for the modifier explanation join.
 The live `loaded_modifier_key_layouts` control covers the six generator registries, including

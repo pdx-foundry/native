@@ -112,8 +112,8 @@ rate; its failures return as new reader shapes, not as handwritten answers. The
   the [DX proposal](design/native-dx.md), Milestone 4 held its ten method tickets and about twenty
   repair and tooling tickets. Milestone 3.5 now holds the work that makes each method cheaper or
   safer to write, and the independent cleanup. Refactors that block no method (SDK-594, SDK-595)
-  are in neither milestone. This amends the review's rule that repairs do not gate Milestone 4
-  ([review, section 8.1](design/milestone-3-review.md#81-milestone-35-amendment-2026-09-24)).
+  are in neither milestone. This amends the Milestone 3 review's rule that repairs do not gate
+  Milestone 4. The review is in Git history.
 - **The Atlas integration ticket is split (2026-09-25).** SDK-597 stayed open across the whole
   milestone by design, the same shape as a gate ticket merged into its first method. It now holds
   only the first slice, delivered after SDK-541 and SDK-542. SDK-625 holds the later answer
@@ -131,9 +131,9 @@ rate; its failures return as new reader shapes, not as handwritten answers. The
 
 Linear works milestones in order, so the order below is the work order.
 
-**Simplification completed, 2026-09-20.** The [work order](design/simplification.md#work-order)
-records the API migration, analysis and live reducer moves, removal of replay and qualification,
-and private-directory cleanup. This work has no Linear tickets.
+**Simplification completed, 2026-09-20.** The [simplification decision](design/simplification.md)
+records what stayed and what went: the API migration, analysis and live reducer moves, removal of
+replay and qualification, and private-directory cleanup. This work has no Linear tickets.
 
 | # | Milestone | Work | Exit gate | Tickets |
 | --- | --- | --- | --- | --- |
@@ -157,7 +157,7 @@ an unresolved scope. See Atlas's [language snapshot measurement](https://github.
 
 ### Milestone 4 acceptance and start order
 
-The accepted [Milestone 3 review](design/milestone-3-review.md) set the work order. Its
+The accepted Milestone 3 review (in Git history) set the work order. Its
 preparation (SDK-596) and Milestone 3.5 are complete. SDK-598 and SDK-599 are canceled by the
 2026-10-02 review. Linear is the authority for status and blocking order: for example, SDK-608
 blocks SDK-677, which blocks SDK-600. SDK-597 delivered the first Atlas integration slice;

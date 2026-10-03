@@ -312,9 +312,9 @@ errors.
 
 ## Compiler scope amendment, 2026-10-02
 
-The [simplification review](simplification-review.md) retires the world execution route,
-fixture registration entries and category reads, runtime questions, public registry item queries,
-and public readiness/cancellation controls. Fixture outcomes retain parsing, storage and
+The 2026-10-02 review in the [simplification decision](simplification.md) retires the world
+execution route, fixture registration entries and category reads, runtime questions, public
+registry item queries, and public readiness/cancellation controls. Fixture outcomes retain parsing, storage and
 source-located diagnostics. Script checks retain the loaded-content pause. Native selects session
 registries; loaded modifier keys remain part of the explanation join. One internal
 `check_registry_load` control owns a bounded session for loader-rule tests. Historical world

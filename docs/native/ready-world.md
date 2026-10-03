@@ -3,7 +3,7 @@
 ## Retired route, 2026-10-02
 
 The world API and M451-hotfix world recipe are retired by the
-[simplification review](../design/simplification-review.md). The M451-hotfix target remains for
+[simplification review](../design/simplification.md). The M451-hotfix target remains for
 fixture outcomes and `check_script`. All findings below are historical exact-build observations.
 
 Commit `2d930e4` contains both `tests/fixtures/world-m451/fixture.sav` and

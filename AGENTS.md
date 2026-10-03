@@ -33,17 +33,15 @@ inspections (such as warnings and errors).
 - [Development policy](docs/development-policy.md) Autonomy, knowledge ownership and preservation rules.
 - [Native specification](docs/specs/native.md) Public operations, answers and behavior.
 - [Technical design](docs/design/architecture.md) Module boundaries and target composition.
-- [Simplification decision](docs/design/simplification.md) The approved API scope and removed mechanisms.
-- [Simplification review](docs/design/simplification-review.md) The compiler-need vision, proposed cuts and ticket changes of 2026-10-02.
+- [Simplification decision](docs/design/simplification.md) The compiler-need vision, the approved scope, removed mechanisms and the 2026-10-02 decisions.
 - [Roadmap](docs/roadmap.md) Milestones toward full config coverage.
-- [Development improvements](docs/design/native-dx.md) Proposed improvements for writing and adapting methods.
-- [Atlas caller migration](docs/design/atlas-caller-migration.md) Migration from the prototype to the simplified API.
+- [Development improvements](docs/design/native-dx.md) Open DX items for writing and adapting methods.
 
-### Spikes and proposals
+### Proposals
 
 These are not accepted designs. Do not implement from them without an accepted decision.
 
-- [Spikes and proposals](docs/spike/README.md) Experiments, their proposals and where their results live.
+- [Config checks](docs/design/config-checks.md) Atlas-owned oracle rules and the proposed vanilla corpus check.
 
 ### Methods and engine knowledge
 
@@ -67,18 +65,10 @@ These are not accepted designs. Do not implement from them without an accepted d
 - [Early observations](docs/native/early-observations.md) Injection and observation before content parsing.
 - [Loader-entry worker](docs/native/loader-entry-worker.md) The debugger worker trial and its controls.
 - [Engine calls and memory](docs/native/engine-calls.md) Calling conventions, layouts and live object identity.
-- [Modifier prototype](docs/native/modifier-family-prototype.md) Traced modifier templates and shared reader gaps.
 - [Preservation](docs/native/preservation.md) Retained evidence and migration limits.
 - [Prototype retrieval](docs/native/retrieval.md) Verify and restore local prototype bundles.
 - [Source inventory](docs/native/source-inventory.json) Bundle origins and archive identities.
 
-### Reviews and measurements
+### Measurements
 
-- [Milestone 2 review](docs/design/milestone-2-review.md) Agreed cuts and repairs across Native, Atlas and pdxscript-rs.
-- [Milestone 2 repairs](docs/native/milestone-2-repair-notes.md) Shared decisions and repair results.
-- [Milestone 2 field sweep](docs/native/milestone-2-registry-sweep.md) Historical v2 totals and their comparison with the Milestone 4 baseline.
-- [Milestone 3 review](docs/design/milestone-3-review.md) Exit-gate findings and preparation for Milestone 4.
-- [Milestone 4 field baseline](docs/native/milestone-4-field-baseline.md) Field and reader counts before Milestone 4 changes.
 - [Performance](docs/native/performance.md) Static analysis and live-test costs.
-- [Integrity hashing](docs/native/performance/sdk-560.md) Measurements for one integrity hash per query.
-- [Shared discovery](docs/native/performance/sdk-561.md) Measurements for reusing static discovery.

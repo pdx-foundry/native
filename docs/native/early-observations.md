@@ -1,7 +1,7 @@
 # Injection and observations before registration/parsing
 
 The registration-entry and category-read public route was retired by the 2026-10-02
-[simplification review](../design/simplification-review.md). The implementation and its live
+[simplification review](../design/simplification.md). The implementation and its live
 controls remain in Git at `d8f9d8ab337d10c9e920caeb02fc651f53b78042`. The findings below remain
 engine knowledge. The current category control requests field outcomes with parsing for
 `tree_template` and `traditions`, checking source lines, shared owner, entries and returns.
