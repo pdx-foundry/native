@@ -52,6 +52,22 @@ class CStringTests(unittest.TestCase):
         self.assertEqual((prefix, cut), ('é' * 2047, True))
         read.assert_called_once_with(0x2000, 4095)
 
+    def test_a_prefix_drops_only_the_character_that_the_cut_splits(self):
+        for text, limit, expected in [('ab✓', 4, 'ab'), ('ab✓', 3, 'ab'), ('abé', 3, 'ab')]:
+            with self.subTest(text=text, limit=limit):
+                encoded = text.encode('utf-8')
+                read = Mock(side_effect=lambda address, size: encoded[:size])
+                prefix = stored_values.cstring_prefix(
+                    long_cstring(0x2000, len(encoded)), TAG, read, limit)
+                self.assertEqual(prefix, (expected, True))
+
+    def test_a_prefix_rejects_malformed_bytes_inside_the_cut_text(self):
+        for malformed in [b'a\xffbcdef', b'abcde\xff', b'a\xe2\x9cbcdef']:
+            with self.subTest(malformed=malformed):
+                read = Mock(return_value=malformed)
+                with self.assertRaises(UnicodeDecodeError):
+                    stored_values.cstring_prefix(long_cstring(0x2000, 40), TAG, read, 6)
+
     def test_a_prefix_still_rejects_a_malformed_short_tag(self):
         storage = short_cstring('x')[:TAG] + bytes([TAG + 1])
         with self.assertRaisesRegex(RuntimeError, 'short string length outside bound'):

@@ -11,7 +11,8 @@ def cstring_prefix(storage, tag_offset, read, limit):
     `storage` holds the object's bytes, at least `tag_offset + 1` long. Bit 7 of the tag byte at
     `tag_offset` marks a long string: the object holds a pointer and a byte length, and
     `read(address, size)` gives its bytes. Otherwise the tag byte is the length of the characters
-    that precede it. A cut can split a character; that partial character is dropped."""
+    that precede it. A cut can split a character; that partial character is dropped, and any
+    other malformed UTF-8 raises."""
     tag = storage[tag_offset]
     if tag & 128:
         pointer = int.from_bytes(storage[:8], 'little')
@@ -24,7 +25,22 @@ def cstring_prefix(storage, tag_offset, read, limit):
         length = tag
         value = bytes(storage[:min(length, limit)])
     cut = length > limit
-    return value.decode('utf-8', 'ignore' if cut else 'strict'), cut
+    text = decode_cut(value) if cut else value.decode('utf-8')
+    return text, cut
+
+
+def decode_cut(value):
+    """UTF-8 `value` that was cut at an arbitrary byte, without the character that the cut split
+    at its end. Malformed bytes anywhere else raise `UnicodeDecodeError`."""
+    try:
+        return value.decode('utf-8')
+    except UnicodeDecodeError as error:
+        split_at_end = (error.reason == 'unexpected end of data'
+                        and error.end == len(value)
+                        and error.start >= len(value) - 3)
+        if not split_at_end:
+            raise
+        return value[:error.start].decode('utf-8')
 
 
 def cstring(storage, tag_offset, read):
