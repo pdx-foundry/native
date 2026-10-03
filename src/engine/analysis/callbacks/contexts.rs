@@ -36,8 +36,8 @@ const ESCAPED: u64 = 2;
 /// How deep the pass follows scope functions that call each other.
 const CALL_DEPTH: usize = 3;
 
-/// How many `from` links the pass reads.
-const FROM_DEPTH: usize = 4;
+/// How many `from` or `prev` links the pass reads.
+const CHAIN_DEPTH: usize = 4;
 
 /// Scratch size of a list that a lookup returns.
 const LIST_SIZE: u64 = 16;
@@ -375,6 +375,7 @@ impl Runner<'_> {
                 this: Slot::Unresolved,
                 root: Slot::Unresolved,
                 from: vec![Slot::Unresolved],
+                prev: vec![Slot::Unresolved],
             };
         };
 
@@ -386,35 +387,62 @@ impl Runner<'_> {
             Some(linked) if self.is_readable(machine, linked) => self.scope_type(machine, linked),
             Some(_) => Slot::Unresolved,
         };
+        // `fromfrom` requires `from` to have a type (`IsFromFromSet`), but `prevprev` follows the
+        // links without testing the scope between them.
+        let from = self.chain(machine, scope, layout.scope_from_offset, |slot| {
+            matches!(slot, Slot::Scope(_))
+        });
+        let prev = self.chain(machine, scope, layout.scope_prev_offset, |slot| {
+            matches!(slot, Slot::Scope(_) | Slot::NotSet)
+        });
 
-        let mut from = Vec::new();
-        let mut chain = vec![scope];
+        Context {
+            this,
+            root,
+            from,
+            prev,
+        }
+    }
+
+    /// The slots along the chain of links at `link_offset` from `scope`. The chain ends after the
+    /// first slot that `continues` rejects, and after [`CHAIN_DEPTH`] links; a link back into the
+    /// chain is unresolved.
+    fn chain(
+        &self,
+        machine: &Machine<'_>,
+        scope: u64,
+        link_offset: u64,
+        continues: fn(Slot) -> bool,
+    ) -> Vec<Slot> {
+        let mut slots = Vec::new();
+        let mut visited = vec![scope];
         let mut holder = scope;
         loop {
-            if from.len() == FROM_DEPTH {
-                from.push(Slot::Unresolved);
+            if slots.len() == CHAIN_DEPTH {
+                slots.push(Slot::Unresolved);
                 break;
             }
-            let link = machine.read(holder + layout.scope_from_offset, 8);
+
+            let link = machine.read(holder + link_offset, 8);
             let slot = match link {
                 None => Slot::Unresolved,
                 Some(linked) if linked == holder => Slot::SelfLink,
-                Some(linked) if chain.contains(&linked) => Slot::Unresolved,
+                Some(linked) if visited.contains(&linked) => Slot::Unresolved,
                 Some(linked) if self.is_readable(machine, linked) => {
                     self.scope_type(machine, linked)
                 }
                 Some(_) => Slot::Unresolved,
             };
-            let ends = !matches!(slot, Slot::Scope(_));
-            from.push(slot);
-            if ends {
+            slots.push(slot);
+            if !continues(slot) {
                 break;
             }
+
             holder = link.expect("a scope link");
-            chain.push(holder);
+            visited.push(holder);
         }
 
-        Context { this, root, from }
+        slots
     }
 
     /// Only a tracked object that has not escaped has slots that the pass can read.

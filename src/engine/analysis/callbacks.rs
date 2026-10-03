@@ -1,5 +1,6 @@
 //! Engine callbacks: the on_actions that the engine fires by name and the game rules that it
-//! evaluates, with the scope that each call site supplies for `this`, `root` and the `from` chain.
+//! evaluates, with the scope that each call site supplies for `this`, `root`, the `from` chain and
+//! the `prev` chain.
 //!
 //! The engine fires an on_action by passing a name string and a scope object to its on_action
 //! database, directly or through a command that fires later, and it evaluates a game rule by
@@ -205,6 +206,9 @@ pub struct Context {
     pub root: Slot,
     /// from, fromfrom, …; ends after the first slot that is not a scope.
     pub from: Vec<Slot>,
+    /// prev, prevprev, …; passes a scope of type 0 and ends after the first other slot that is
+    /// not a scope.
+    pub prev: Vec<Slot>,
 }
 
 /// What the method established for one name.

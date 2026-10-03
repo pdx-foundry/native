@@ -610,17 +610,18 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
     let country = json!({ "Scope": { "id": "country-id", "name": "country" } });
     let fleet = json!({ "Scope": { "id": "fleet-id", "name": "fleet" } });
     let planet = json!({ "Scope": { "id": "planet-id", "name": "planet" } });
+    let colony = json!({ "Scope": { "id": "colony-id", "name": "colony" } });
     write(
         root.path(),
         "on_actions.json",
         json!({ "Ok": {
             "value": [
                 { "name": "on_fleet_enter_orbit", "entries": [
-                    { "this": fleet, "root": "SelfLink", "from": [planet, "SelfLink"] },
-                    { "this": fleet, "root": "SelfLink", "from": ["Unresolved"] }
+                    { "this": fleet, "root": "SelfLink", "from": [planet, "SelfLink"], "prev": ["SelfLink"] },
+                    { "this": fleet, "root": "SelfLink", "from": ["Unresolved"], "prev": ["SelfLink"] }
                 ] },
                 { "name": "on_game_start", "entries": [
-                    { "this": "NotSet", "root": "SelfLink", "from": ["SelfLink"] }
+                    { "this": "NotSet", "root": "SelfLink", "from": ["SelfLink"], "prev": ["NotSet", colony, "SelfLink"] }
                 ] },
                 { "name": "on_press_begin", "entries": [] }
             ],
@@ -640,7 +641,7 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
         json!({ "Ok": {
             "value": [
                 { "name": "can_colonize_planet", "kind": "Scripted", "entries": [
-                    { "this": planet, "root": country, "from": ["SelfLink"] }
+                    { "this": planet, "root": country, "from": ["SelfLink"], "prev": ["SelfLink"] }
                 ] },
                 { "name": "leader_election_weight", "kind": "Weighted", "entries": [] }
             ],
@@ -670,6 +671,9 @@ fn callbacks_read_recorded_alternatives_candidates_and_gaps() {
             &EntryScope::SelfLink,
             &[EntryScope::SelfLink][..]
         )
+    );
+    assert!(
+        matches!(&start.prev[..], [EntryScope::NotSet, EntryScope::Scope(scope), EntryScope::SelfLink] if scope.name == "colony")
     );
     assert!(answer.value[2].entries.is_empty());
     assert_eq!(

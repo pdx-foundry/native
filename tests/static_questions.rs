@@ -369,8 +369,7 @@ fn localization_declarations_match_the_recorded_m451_inventory() {
     }
 }
 
-/// Call sites checked by hand in the M45-release disassembly, before the expected files were
-/// generated.
+/// Call sites checked by hand in the disassembly, before the expected files were generated.
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
@@ -383,7 +382,7 @@ fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
             .map(entry)
             .collect()
     };
-    let fresh = "this=NotSet root=SelfLink from=[SelfLink]";
+    let fresh = "this=NotSet root=SelfLink from=[SelfLink] prev=[SelfLink]";
 
     // CGameState::OnNewGameStarted passes a new scope with nothing set.
     assert_eq!(entries("on_game_start"), [fresh]);
@@ -392,17 +391,22 @@ fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
     // CLeader::LevelUp links the leader as from of a country scope.
     assert!(
         entries("on_leader_level_up")
-            .contains(&"this=country root=SelfLink from=[leader,SelfLink]".into())
+            .contains(&"this=country root=SelfLink from=[leader,SelfLink] prev=[SelfLink]".into())
     );
     // CPlanet::SetController links two country scopes as from and fromfrom.
-    assert!(
-        entries("on_planet_returned")
-            .contains(&"this=planet root=SelfLink from=[country,country,SelfLink]".into())
+    assert!(entries("on_planet_returned").contains(
+        &"this=planet root=SelfLink from=[country,country,SelfLink] prev=[SelfLink]".into()
+    ));
+    // CSpecialProjectInstance::OnSuccessSpeciesModification links two species as from and
+    // fromfrom, and the colony as prev.
+    assert_eq!(
+        entries("on_modification_complete"),
+        ["this=country root=SelfLink from=[species,species,SelfLink] prev=[colony,SelfLink]"]
     );
     // The fleet enters orbit of different objects; each stays its own context.
     let orbit = entries("on_fleet_enter_orbit");
     for from in ["megastructure", "planet", "starbase"] {
-        let context = format!("this=fleet root=SelfLink from=[{from},SelfLink]");
+        let context = format!("this=fleet root=SelfLink from=[{from},SelfLink] prev=[SelfLink]");
         assert!(orbit.contains(&context), "{context}");
     }
     // CWar::OnEnd loads the name long before the call.
@@ -438,22 +442,27 @@ fn game_rules_supply_the_scopes_that_hand_checked_call_sites_build() {
     assert_eq!(colonize.kind, RuleKind::Scripted);
     assert_eq!(
         colonize.entries.iter().map(entry).collect::<Vec<_>>(),
-        ["this=planet root=country from=[SelfLink]"]
+        ["this=planet root=country from=[SelfLink] prev=[SelfLink]"]
     );
-    // CGameRules::CanOrbitalBombard links the planet as from of the fleet.
-    assert!(
-        rule("can_orbital_bombard")
+    // CGameRules::CanAddClaim sets the claiming country as root and the system as this.
+    assert_eq!(
+        rule("can_add_claim")
             .entries
             .iter()
             .map(entry)
-            .any(|context| context == "this=fleet root=SelfLink from=[planet,SelfLink]")
+            .collect::<Vec<_>>(),
+        ["this=galactic_object root=country from=[SelfLink] prev=[SelfLink]"]
     );
+    // CGameRules::CanOrbitalBombard links the planet as from of the fleet.
+    assert!(rule("can_orbital_bombard").entries.iter().map(entry).any(
+        |context| context == "this=fleet root=SelfLink from=[planet,SelfLink] prev=[SelfLink]"
+    ));
     // A weighted rule lives in its own array of the rule set.
     let election = rule("leader_election_weight");
     assert_eq!(election.kind, RuleKind::Weighted);
     assert_eq!(
         election.entries.iter().map(entry).collect::<Vec<_>>(),
-        ["this=leader root=SelfLink from=[SelfLink]"]
+        ["this=leader root=SelfLink from=[SelfLink] prev=[SelfLink]"]
     );
 }
 
@@ -488,6 +497,7 @@ fn callbacks_match_the_recorded_m451_inventory() {
         for scope in std::iter::once(&context.this)
             .chain([&context.root])
             .chain(&context.from)
+            .chain(&context.prev)
         {
             if let EntryScope::Scope(reference) = scope {
                 let declared = scopes
