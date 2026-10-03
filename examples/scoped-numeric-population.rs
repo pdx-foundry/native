@@ -62,8 +62,7 @@ impl Population {
         }
         let state = match (&reader.numeric, &reader.scoped_operand) {
             (GrammarProperty::Known(Some(_)), GrammarProperty::Known(Some(operand)))
-                if matches!(operand.forms, GrammarProperty::Known(_))
-                    && matches!(operand.selection, GrammarProperty::Known(_)) =>
+                if matches!(operand.forms, GrammarProperty::Known(_)) =>
             {
                 "complete"
             }

@@ -1,10 +1,14 @@
 # Shared numeric conversion
 
+## Simplification, 2026-10-02
+
+The public numeric clamp property was removed on 2026-10-02. All complete reader shapes established no explicit clamp; the preserved findings below distinguish that result from overflow behavior. The remaining numeric conversion properties stay in the API. The property, its evaluator (`src/engine/analysis/numeric.rs`) and its expected output (`tests/expected/numeric-m45/readers.json`) are in Git at `d8f9d8a`.
+
 SDK-644 adds conversion facts to `Reader.numeric` in registry fields, conditional read
 alternatives, command values, fixed keys and ordering-selected readers. The shared identity is
 unchanged. `Known(None)` means an established nonnumeric reader; `Unresolved` means no numeric
-answer; `Partial(Some(...))` keeps independent known properties. Older recordings default to
-unresolved. No separate public operation is added.
+answer; `Partial(Some(...))` keeps independent known properties. A recording without the property
+is refused with `Error::Recorded` (2026-10-02). No separate public operation is added.
 
 ## Method and limits
 

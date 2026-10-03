@@ -46,7 +46,6 @@ src/
     loaded_modifiers.rs            the live loaded modifier table, joined with static answers
   game.rs                          Game: live session or recorded back end
   game/driver.rs                   the thread that talks to the supervisor process
-  world.rs                         prepared world request and normalized daily observations
   fixture.rs                       consumer fixture request and normalized observation types
   grammar.rs                       partial child grammar and conditional routing types
   recorded.rs                      recorded answers: read, write, NotRecorded
@@ -55,7 +54,6 @@ src/
   protocol.rs                      caller/supervisor handshake, replies and framing
   protocol/
     session.rs                     session request, controls, final report, test faults
-    world.rs                       private world recipe and session result
     observation.rs                 supervisor/worker wire; generates the worker's Python schemas
   binding.rs                       narrow bound interfaces; private composition subtree
   binding/
@@ -86,8 +84,7 @@ src/
       event_stream.rs              worker and owner records; rules for reading the worker's stream
       fixture.rs                   fixture observation reducer
       loaded_modifiers.rs          stream and table file to the loaded modifier table
-      world.rs                     prepared result identity, bounds and normalized answer
-      registry_items.rs            stream to registry items; readiness of the pause
+      registry_items.rs            internal loader controls; readiness of the pause
   execution/
     supervisor.rs                  independent process/resource ownership; reduces at the pause
     owner_events.rs                the supervisor's record of what it did
@@ -383,3 +380,14 @@ errors.
   [simplification decision](simplification.md). An answer is checked by running the question again.
 - **A distributed Native supervisor executable:** consumers supply the process and call the
   library entry point.
+
+
+## Compiler scope amendment, 2026-10-02
+
+The [simplification review](simplification-review.md) retires the world execution route,
+fixture registration entries and category reads, runtime questions, public registry item queries,
+and public readiness/cancellation controls. Fixture outcomes retain parsing, storage and
+source-located diagnostics. Script checks retain the loaded-content pause. Native selects session
+registries; loaded modifier keys remain part of the explanation join. One internal
+`check_registry_load` control owns a bounded session for loader-rule tests. Historical world
+findings and retrieval commits remain in [ready-world](../native/ready-world.md).

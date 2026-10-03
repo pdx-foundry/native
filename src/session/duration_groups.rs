@@ -18,7 +18,7 @@ use crate::engine::analysis::fields::RegistryFieldResult;
 use crate::engine::analysis::stop::Unresolved;
 use crate::{Error, Operation};
 
-pub use crate::engine::analysis::durations::{Combination, Consumption, Group, Inventory, Unit};
+pub use crate::engine::analysis::durations::{Combination, Group, Inventory, Unit};
 
 /// The duration inventory of one owner and its field path: empty for the registry item itself.
 #[derive(Debug, Clone)]
@@ -64,8 +64,6 @@ fn collect(
     storage: &BTreeMap<u64, Result<u64, Unresolved>>,
     groups: &mut Vec<RegistryGroup>,
 ) {
-    let no_countdown = Err(Unresolved::new("duration-execute-body"));
-
     let scoped_storage = result
         .scoped_destinations
         .iter()
@@ -79,7 +77,6 @@ fn collect(
             code,
             &BTreeMap::new(),
             None,
-            &no_countdown,
             &scoped_storage,
         ),
     });

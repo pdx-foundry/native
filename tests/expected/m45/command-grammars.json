@@ -94,7 +94,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -163,7 +163,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -224,7 +224,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -285,7 +285,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -385,7 +385,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -450,7 +450,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -574,20 +574,12 @@
           "kind": "field",
           "name": "years"
         }
-      },
-      {
-        "detail": "Duration keys days, months, years: how often the flag store updates, and so the expiry date, is not established statically.",
-        "kind": "OutsideMethod",
-        "subject": {
-          "kind": "answer_item",
-          "name": "set_timed_country_flag"
-        }
       }
     ],
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -601,9 +593,6 @@
                   "initial_factor": 1
                 }
               }
-            },
-            "consumption": {
-              "Known": "FlagCountdown"
             },
             "omitted_count": {
               "Known": 0
@@ -634,7 +623,6 @@
       "fixed_keys": {
         "Partial": [
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "Unresolved",
             "name": "flag",
@@ -659,7 +647,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "days",
@@ -688,9 +675,6 @@
                               }
                             }
                           },
-                          "clamp": {
-                            "Known": null
-                          },
                           "literal_syntax": {
                             "Partial": [
                               "DecimalInteger",
@@ -736,20 +720,6 @@
                               },
                               "Variable"
                             ]
-                          },
-                          "literal_assignment_preserves_reference_state": {
-                            "Known": true
-                          },
-                          "selection": {
-                            "Known": {
-                              "literal_condition": "EmptySourceLocation",
-                              "reference_priority": [
-                                "Trigger",
-                                "ScriptValue",
-                                "Modifier",
-                                "Variable"
-                              ]
-                            }
                           }
                         }
                       }
@@ -781,9 +751,6 @@
                         }
                       }
                     }
-                  },
-                  "clamp": {
-                    "Known": null
                   },
                   "literal_syntax": {
                     "Partial": [
@@ -830,20 +797,6 @@
                       },
                       "Variable"
                     ]
-                  },
-                  "literal_assignment_preserves_reference_state": {
-                    "Known": true
-                  },
-                  "selection": {
-                    "Known": {
-                      "literal_condition": "EmptySourceLocation",
-                      "reference_priority": [
-                        "Trigger",
-                        "ScriptValue",
-                        "Modifier",
-                        "Variable"
-                      ]
-                    }
                   }
                 }
               }
@@ -856,7 +809,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "months",
@@ -885,9 +837,6 @@
                               }
                             }
                           },
-                          "clamp": {
-                            "Known": null
-                          },
                           "literal_syntax": {
                             "Partial": [
                               "DecimalInteger",
@@ -933,20 +882,6 @@
                               },
                               "Variable"
                             ]
-                          },
-                          "literal_assignment_preserves_reference_state": {
-                            "Known": true
-                          },
-                          "selection": {
-                            "Known": {
-                              "literal_condition": "EmptySourceLocation",
-                              "reference_priority": [
-                                "Trigger",
-                                "ScriptValue",
-                                "Modifier",
-                                "Variable"
-                              ]
-                            }
                           }
                         }
                       }
@@ -978,9 +913,6 @@
                         }
                       }
                     }
-                  },
-                  "clamp": {
-                    "Known": null
                   },
                   "literal_syntax": {
                     "Partial": [
@@ -1027,20 +959,6 @@
                       },
                       "Variable"
                     ]
-                  },
-                  "literal_assignment_preserves_reference_state": {
-                    "Known": true
-                  },
-                  "selection": {
-                    "Known": {
-                      "literal_condition": "EmptySourceLocation",
-                      "reference_priority": [
-                        "Trigger",
-                        "ScriptValue",
-                        "Modifier",
-                        "Variable"
-                      ]
-                    }
                   }
                 }
               }
@@ -1053,7 +971,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "years",
@@ -1082,9 +999,6 @@
                               }
                             }
                           },
-                          "clamp": {
-                            "Known": null
-                          },
                           "literal_syntax": {
                             "Partial": [
                               "DecimalInteger",
@@ -1130,20 +1044,6 @@
                               },
                               "Variable"
                             ]
-                          },
-                          "literal_assignment_preserves_reference_state": {
-                            "Known": true
-                          },
-                          "selection": {
-                            "Known": {
-                              "literal_condition": "EmptySourceLocation",
-                              "reference_priority": [
-                                "Trigger",
-                                "ScriptValue",
-                                "Modifier",
-                                "Variable"
-                              ]
-                            }
                           }
                         }
                       }
@@ -1175,9 +1075,6 @@
                         }
                       }
                     }
-                  },
-                  "clamp": {
-                    "Known": null
                   },
                   "literal_syntax": {
                     "Partial": [
@@ -1224,20 +1121,6 @@
                       },
                       "Variable"
                     ]
-                  },
-                  "literal_assignment_preserves_reference_state": {
-                    "Known": true
-                  },
-                  "selection": {
-                    "Known": {
-                      "literal_condition": "EmptySourceLocation",
-                      "reference_priority": [
-                        "Trigger",
-                        "ScriptValue",
-                        "Modifier",
-                        "Variable"
-                      ]
-                    }
                   }
                 }
               }
@@ -1351,7 +1234,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1362,7 +1245,6 @@
       "fixed_keys": {
         "Partial": [
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "multiplier",
@@ -1397,9 +1279,6 @@
                               }
                             }
                           },
-                          "clamp": {
-                            "Known": null
-                          },
                           "literal_syntax": {
                             "Partial": [
                               "DecimalInteger",
@@ -1446,20 +1325,6 @@
                               },
                               "Variable"
                             ]
-                          },
-                          "literal_assignment_preserves_reference_state": {
-                            "Known": true
-                          },
-                          "selection": {
-                            "Known": {
-                              "literal_condition": "EmptySourceLocation",
-                              "reference_priority": [
-                                "Trigger",
-                                "ScriptValue",
-                                "Modifier",
-                                "Variable"
-                              ]
-                            }
                           }
                         }
                       }
@@ -1497,9 +1362,6 @@
                         }
                       }
                     }
-                  },
-                  "clamp": {
-                    "Known": null
                   },
                   "literal_syntax": {
                     "Partial": [
@@ -1547,20 +1409,6 @@
                       },
                       "Variable"
                     ]
-                  },
-                  "literal_assignment_preserves_reference_state": {
-                    "Known": true
-                  },
-                  "selection": {
-                    "Known": {
-                      "literal_condition": "EmptySourceLocation",
-                      "reference_priority": [
-                        "Trigger",
-                        "ScriptValue",
-                        "Modifier",
-                        "Variable"
-                      ]
-                    }
                   }
                 }
               }
@@ -1573,7 +1421,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "mult",
@@ -1608,9 +1455,6 @@
                               }
                             }
                           },
-                          "clamp": {
-                            "Known": null
-                          },
                           "literal_syntax": {
                             "Partial": [
                               "DecimalInteger",
@@ -1657,20 +1501,6 @@
                               },
                               "Variable"
                             ]
-                          },
-                          "literal_assignment_preserves_reference_state": {
-                            "Known": true
-                          },
-                          "selection": {
-                            "Known": {
-                              "literal_condition": "EmptySourceLocation",
-                              "reference_priority": [
-                                "Trigger",
-                                "ScriptValue",
-                                "Modifier",
-                                "Variable"
-                              ]
-                            }
                           }
                         }
                       }
@@ -1708,9 +1538,6 @@
                         }
                       }
                     }
-                  },
-                  "clamp": {
-                    "Known": null
                   },
                   "literal_syntax": {
                     "Partial": [
@@ -1758,20 +1585,6 @@
                       },
                       "Variable"
                     ]
-                  },
-                  "literal_assignment_preserves_reference_state": {
-                    "Known": true
-                  },
-                  "selection": {
-                    "Known": {
-                      "literal_condition": "EmptySourceLocation",
-                      "reference_priority": [
-                        "Trigger",
-                        "ScriptValue",
-                        "Modifier",
-                        "Variable"
-                      ]
-                    }
                   }
                 }
               }
@@ -1821,7 +1634,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -1836,7 +1649,6 @@
       "fixed_keys": {
         "Known": [
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "id",
@@ -1883,7 +1695,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "Unresolved",
             "name": "limit",
@@ -2013,7 +1824,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -2028,7 +1839,6 @@
       "fixed_keys": {
         "Partial": [
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "Unresolved",
             "name": "limit",
@@ -2075,7 +1885,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "Unresolved",
             "name": "else",
@@ -2311,7 +2120,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -2324,7 +2133,6 @@
       "fixed_keys": {
         "Known": [
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "size",
@@ -2371,7 +2179,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "Unresolved",
             "name": "effect",
@@ -2418,7 +2225,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "building",
@@ -2465,7 +2271,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "design",
@@ -2512,7 +2317,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "owner",
@@ -2613,7 +2417,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "module",
@@ -2745,7 +2548,7 @@
     "source": {
       "basis": "StaticAnalysis",
       "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
-      "method": "command-grammar/v12",
+      "method": "command-grammar/v13",
       "native_version": "0.1.0"
     },
     "value": {
@@ -2756,7 +2559,6 @@
       "fixed_keys": {
         "Partial": [
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "district_type",
@@ -2818,7 +2620,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "ignore_cap",
@@ -2865,7 +2666,6 @@
             "uses": []
           },
           {
-            "default": "Unknown",
             "domain": "Unknown",
             "members": "None",
             "name": "type_conversion",

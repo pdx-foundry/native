@@ -2,7 +2,7 @@
 //!
 //! An independent thread (`driver`) talks to the supervisor process, so no async runtime owns
 //! the game. The supervisor sends the answers once, when the game is paused; every
-//! `registry_items` call returns from them.
+//! fixture and modifier query returns from them.
 use crate::{
     Disposal, Error, GameReadiness,
     engine::operations::registry_items::{Observed, RegistryItems},
@@ -27,15 +27,11 @@ pub struct GameOptions {
     pub(crate) supervisor: Command,
     /// Seconds allowed for the game to reach its pause, 1 to 180. The default is 180.
     pub startup_seconds: u64,
-    /// Seconds that a paused game may stay idle, 1 to 180. Each answer restarts it. The default
-    /// is 180.
-    pub idle_seconds: u64,
     /// A deliberate fault and the observation that receives it.
     pub(crate) fault: Option<Fault>,
     pub(crate) fixture: Option<crate::FixtureRequest>,
-    pub(crate) registries: Option<Vec<String>>,
+    pub(crate) loader_registry: Option<String>,
     pub(crate) loaded_modifiers: bool,
-    pub(crate) world: Option<crate::WorldRequest>,
     pub(crate) keep_work_directory: bool,
 }
 impl GameOptions {
@@ -45,12 +41,10 @@ impl GameOptions {
         Self {
             supervisor,
             startup_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
-            idle_seconds: crate::protocol::session::MAX_SESSION_SECONDS,
             fault: None,
             fixture: None,
-            registries: None,
+            loader_registry: None,
             loaded_modifiers: false,
-            world: None,
             keep_work_directory: false,
         }
     }
@@ -62,36 +56,9 @@ impl GameOptions {
         self.loaded_modifiers = true;
         self
     }
-    /// Load a copied save, execute the prepared country effect, and sample flags through
-    /// bounded engine days. The world is held on its normal main-thread update stack.
-    /// This selects a world pause and cannot share a fixture or loaded-modifier pause.
-    /// Read the result with `Game::observe_world`; calls return the same prepared observation.
-    pub fn world(mut self, request: crate::WorldRequest) -> Self {
-        self.world = Some(request);
-        self
-    }
-    /// Prepare one fixed fixture before launch. Registry queries observe this mounted content.
+    /// Prepare one fixed fixture before launch. Its registry is observed automatically.
     pub fn fixture(mut self, request: crate::FixtureRequest) -> Self {
         self.fixture = Some(request);
-        self
-    }
-    /// Select the content directories whose initial loads this session observes. Use names from
-    /// `Native::registries`. Choose one or more unique names before `start_game`; an empty,
-    /// duplicate or unknown selection is refused. Include the fixture's registry when it is
-    /// returned by `Native::registries`. A fixture with a separately bound inline loader, such
-    /// as M45-release `common/special_projects`, is observed independently: do not add that
-    /// directory to this selection. Without a selection, the build's defaults are observed.
-    pub fn registries<I, S>(mut self, names: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.registries = Some(
-            names
-                .into_iter()
-                .map(|name| name.into().trim_end_matches('/').into())
-                .collect(),
-        );
         self
     }
     /// Inject a fault into a selected observation for Native's live tests. Fixture faults
@@ -128,7 +95,6 @@ pub(crate) struct Session {
     /// `close` never removes `work`; the caller does.
     pub keep_work: bool,
     pub fixture: Option<crate::FixtureRequest>,
-    pub world: Option<crate::WorldRequest>,
     /// The static side of the loaded modifier join, when the session reads the table.
     pub modifiers: Option<crate::session::ModifierJoin>,
     /// The installation whose static analysis names the duration receivers of each script check.
@@ -139,7 +105,6 @@ pub(crate) struct Session {
 #[derive(Debug, Clone)]
 struct Paused {
     readiness: GameReadiness,
-    world: Option<crate::Answer<crate::WorldObservation>>,
     /// By internal registry name.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
@@ -163,7 +128,6 @@ struct State {
     finished: Option<Result<Finished, Error>>,
 }
 enum ReadQuestion {
-    World,
     Registry(String),
     Fixture,
     Modifiers,
@@ -201,7 +165,7 @@ enum GameBackend {
 }
 
 /// An owned process paused at registry initialization, or after content loads with
-/// `GameOptions::loaded_modifiers`, or in a loaded world with `GameOptions::world`.
+/// `GameOptions::loaded_modifiers`.
 /// Drop requests cleanup. Await close for independently confirmed disposal.
 #[derive(Debug)]
 pub struct Game {
@@ -224,60 +188,10 @@ pub struct Game {
     /// The caller removes the work directory (`GameOptions::keep_work_directory`).
     keep_work: bool,
     fixture: Option<crate::FixtureRequest>,
-    world: Option<crate::WorldRequest>,
     /// The joined loaded modifier answer, when the session reads the table.
     modifiers: Option<Result<crate::Answer<crate::LoadedModifiers>, Error>>,
 }
 impl Game {
-    /// Return the fixed world observation prepared by `GameOptions::world`. This reads the
-    /// stored result and restarts the idle timeout; it executes nothing again.
-    pub async fn observe_world(&mut self) -> Result<crate::Answer<crate::WorldObservation>, Error> {
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
-        let subject = match self.world_recorded_subject() {
-            Ok(subject) => subject,
-            Err(error) => return self.keep_on_error(Err(error)),
-        };
-        let result = self
-            .answer("observe_world", subject.as_deref(), async |game| {
-                let observation = game
-                    .paused
-                    .world
-                    .clone()
-                    .ok_or_else(|| Error::Unsupported {
-                        operation: crate::Operation::ObserveWorld,
-                        reason: "prepare a WorldRequest with GameOptions::world before start_game"
-                            .into(),
-                    })?;
-                game.restart_idle_time(ReadQuestion::World).await?;
-                Ok(observation)
-            })
-            .await;
-        self.keep_on_error(result)
-    }
-
-    fn world_recorded_subject(&self) -> Result<Option<String>, Error> {
-        let request = self.world.as_ref().ok_or_else(|| Error::Unsupported {
-            operation: crate::Operation::ObserveWorld,
-            reason: "prepare a WorldRequest with GameOptions::world before start_game".into(),
-        })?;
-        let save = match &self.backend {
-            GameBackend::Recorded(_) => request.save.clone(),
-            GameBackend::Live { recorder: None, .. } => return Ok(None),
-            GameBackend::Live {
-                recorder: Some(_), ..
-            } => self
-                .work
-                .as_ref()
-                .ok_or_else(|| Error::Recorded("world session has no private save".into()))?
-                .join("session/profile/save games/native_world/fixture.sav"),
-        };
-        // The recording must identify the loaded copy even if the caller later replaces its source.
-        let contents = crate::work_directory::read_bounded(&save, 16 * 1024 * 1024)
-            .map_err(|error| Error::Recorded(format!("world save: {error}")))?;
-        Ok(Some(request.recorded_subject(&contents)))
-    }
     /// Read and validate one trigger or effect snippet at the loaded-content pause.
     ///
     /// Start with `GameOptions::loaded_modifiers` and use a scope from `Native::scopes`.
@@ -321,7 +235,7 @@ impl Game {
         let subject = input.recorded_subject(&self.script_history);
         let result = self
             .answer("check_script", Some(&subject), async |game| {
-                if game.paused.readiness != GameReadiness::PausedAfterContentLoad {
+                if game.paused.readiness != GameReadiness::AfterContentLoad {
                     return Err(Error::ScriptRequest {
                         reason: "script checks require a confirmed content-loaded pause".into(),
                     });
@@ -424,7 +338,7 @@ impl Game {
         answer
     }
 
-    /// Return the prepared fixture's read-entry observations. Every call uses the same startup
+    /// Return the prepared fixture's parser outcomes. Every call uses the same startup
     /// observation and refreshes the idle timeout; it never resumes the game. Set the fixture
     /// with `GameOptions::fixture` before calling `Native::start_game`.
     pub async fn observe_fixture(
@@ -467,15 +381,9 @@ impl Game {
     pub(crate) fn recorded(
         directory: Arc<crate::recorded::Answers>,
         fixture: Option<crate::FixtureRequest>,
-        world: Option<crate::WorldRequest>,
     ) -> Self {
         let paused = Paused {
-            readiness: if world.is_some() {
-                GameReadiness::PausedInWorld
-            } else {
-                GameReadiness::PausedAfterRegistryInitialization
-            },
-            world: None,
+            readiness: GameReadiness::AfterRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -495,37 +403,17 @@ impl Game {
             read_failed: false,
             keep_work: false,
             fixture,
-            world,
             modifiers: None,
         }
     }
 
-    /// List the item names of one registry, as the engine holds them after its initial load.
-    ///
-    /// The registry is named by its content directory, such as `common/traditions`. Every call
-    /// returns the same startup observation; the game is never resumed. Cancelling this future
-    /// leaves the session alive. Select names from `Native::registries()` with
-    /// `GameOptions::registries` before starting a live game. A name not selected for this session,
-    /// or one whose initial loader did not run before the pause, returns `Error::Unsupported`.
-    pub async fn registry_items(
+    /// One internal loader check. The caller owns closing the session after this read.
+    pub(crate) async fn loader_items(
         &mut self,
         registry: &str,
     ) -> Result<crate::Answer<Vec<String>>, Error> {
-        let result = self.answer_registry_items(registry).await;
+        let result = self.registry_items_from_game(registry).await;
         self.keep_on_error(result)
-    }
-
-    async fn answer_registry_items(
-        &mut self,
-        registry: &str,
-    ) -> Result<crate::Answer<Vec<String>>, Error> {
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
-        self.answer("registry_items", Some(registry), async |game| {
-            game.registry_items_from_game(registry).await
-        })
-        .await
     }
 
     /// Answer from recorded files when they are the back end; otherwise read the live session,
@@ -554,9 +442,9 @@ impl Game {
         let directory = registry.trim_end_matches('/');
         if !self.observed.contains(directory) {
             return Err(Error::Unsupported {
-                operation: crate::Operation::RegistryItems,
+                operation: crate::Operation::Registries,
                 reason: format!(
-                    "this session does not observe {directory}; name it in GameOptions::registries before start_game"
+                    "this session does not observe {directory}; use the internal loader check"
                 ),
             });
         }
@@ -609,13 +497,9 @@ impl Game {
             .map_err(|_| Error::Supervisor("Observation read acknowledgement lost".into()))?
     }
 
-    /// Where the game is paused: after selected registries, after content loads, or in a
-    /// loaded world after the prepared observation requested with `GameOptions::world`.
-    pub fn readiness(&self) -> GameReadiness {
-        self.paused.readiness
-    }
     /// Request cancellation. `close` still waits for the supervisor and returns the disposal.
-    pub fn cancel(&mut self) {
+    #[cfg(test)]
+    fn cancel(&mut self) {
         if !self.closing {
             self.closing = true;
             let _ = self
@@ -701,7 +585,7 @@ fn registry_items_answer(
     build: &crate::BuildId,
 ) -> Result<crate::Answer<Vec<String>>, Error> {
     use crate::{Answer, Basis, Completeness, Gap, GapKind, GapSubject, Operation, Source};
-    let operation = Operation::RegistryItems;
+    let operation = Operation::Registries;
     let Some(observed) = observation.filter(|items| items.observed != Observed::Unavailable) else {
         return Err(Error::Observation {
             operation,
@@ -849,7 +733,6 @@ async fn start_until_paused(
                 read_failed: false,
                 keep_work: session.keep_work,
                 fixture: session.fixture,
-                world: session.world,
                 modifiers,
             });
         }
@@ -865,125 +748,19 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn recorded_world_answers_require_the_matching_prepared_world() {
-        let root = tempfile::tempdir().unwrap();
-        let save = root.path().join("fixture.sav");
-        std::fs::write(&save, b"original save").unwrap();
-        let first = crate::WorldRequest {
-            save: save.clone(),
-            country: "Earth".into(),
-            effect: String::new(),
-            days: 0,
-            flags: vec![],
-            variables: vec![],
-        };
-        let mut second = first.clone();
-        second.effect = "set_country_flag = other".into();
-        let build = crate::BuildId("test".into());
-        for request in [&first, &second] {
-            let answer = Ok(crate::Answer {
-                value: crate::WorldObservation {
-                    country: request.country.clone(),
-                    initial_date: "2200.01.01".into(),
-                    executed: !request.effect.is_empty(),
-                    diagnostics: vec![],
-                    samples: vec![],
-                },
-                completeness: crate::Completeness::Complete,
-                gaps: vec![],
-                source: crate::Source::new(
-                    build.clone(),
-                    "observe-world/v2",
-                    crate::Basis::LiveObservation,
-                ),
-            });
-            crate::recorded::write(
-                root.path(),
-                &build,
-                "observe_world",
-                Some(&request.recorded_subject(b"original save")),
-                &answer,
-            )
-            .unwrap();
-        }
-        let native = crate::Native::from_recorded_answers(root.path()).unwrap();
-        for request in [&first, &second] {
-            let mut game = native
-                .start_game(GameOptions::new(Command::new("must-not-start")).world(request.clone()))
-                .await
-                .unwrap();
-            assert_eq!(game.readiness(), GameReadiness::PausedInWorld);
-            assert_eq!(
-                game.observe_world().await.unwrap().value.executed,
-                !request.effect.is_empty()
-            );
-            assert_eq!(game.close().await.unwrap(), Disposal::NotApplicable);
-        }
-        let mut absent = native
-            .start_game(GameOptions::new(Command::new("must-not-start")))
-            .await
-            .unwrap();
-        assert!(matches!(
-            absent.observe_world().await,
-            Err(Error::Unsupported { .. })
-        ));
-        let mut wrong = first.clone();
-        wrong.flags.push("other".into());
-        let mut game = native
-            .start_game(GameOptions::new(Command::new("must-not-start")).world(wrong))
-            .await
-            .unwrap();
-        assert!(matches!(
-            game.observe_world().await,
-            Err(Error::NotRecorded { .. })
-        ));
-        std::fs::write(save, b"replacement save").unwrap();
-        let mut game = native
-            .start_game(GameOptions::new(Command::new("must-not-start")).world(first))
-            .await
-            .unwrap();
-        assert!(matches!(
-            game.observe_world().await,
-            Err(Error::NotRecorded { .. })
-        ));
-    }
-
-    #[test]
-    fn world_recordings_use_the_loaded_private_save_after_source_replacement() {
-        let root = tempfile::tempdir().unwrap();
-        let private_save = root
-            .path()
-            .join("session/profile/save games/native_world/fixture.sav");
-        std::fs::create_dir_all(private_save.parent().unwrap()).unwrap();
-        std::fs::write(private_save, b"loaded save").unwrap();
-        let source = root.path().join("source.sav");
-        std::fs::write(&source, b"replacement save").unwrap();
-        let request = crate::WorldRequest {
-            save: source,
-            country: "Earth".into(),
-            effect: String::new(),
-            days: 0,
-            flags: vec![],
-            variables: vec![],
-        };
-        let (mut game, _, _) = game();
-        game.backend = GameBackend::Live {
-            recorder: Some(Arc::new(root.path().join("recordings"))),
-            binding: None,
-        };
-        game.work = Some(root.path().into());
-        game.world = Some(request.clone());
-        assert_eq!(
-            game.world_recorded_subject().unwrap(),
-            Some(request.recorded_subject(b"loaded save"))
-        );
-    }
-
-    #[tokio::test]
     async fn fixture_acknowledgement_loss_is_recorded_as_the_returned_error() {
         let (mut game, commands, _state) = game();
         let fixture =
-            crate::FixtureRequest::new("common/tradition_categories/test.txt", "test = {}\n");
+            crate::FixtureRequest::field_outcomes(
+                "common/tradition_categories/test.txt",
+                "test = {}\n",
+                [crate::FixtureFieldQuestion::new(
+                    "common/tradition_categories",
+                    "test",
+                    "traditions",
+                )
+                .with_parsing()],
+            );
         let subject = fixture.recorded_subject();
         game.fixture = Some(fixture);
         game.paused.fixture = Some(Ok(crate::Answer {
@@ -1026,7 +803,16 @@ mod tests {
         ));
         assert!(commands.try_recv().is_err());
         let fixture =
-            crate::FixtureRequest::new("common/tradition_categories/test.txt", "test = {}\n");
+            crate::FixtureRequest::field_outcomes(
+                "common/tradition_categories/test.txt",
+                "test = {}\n",
+                [crate::FixtureFieldQuestion::new(
+                    "common/tradition_categories",
+                    "test",
+                    "traditions",
+                )
+                .with_parsing()],
+            );
         let subject = fixture.recorded_subject();
         game.fixture = Some(fixture);
         let error = Error::Observation {
@@ -1063,7 +849,7 @@ mod tests {
     #[tokio::test]
     async fn cancelling_a_check_future_ends_the_session_before_reuse() {
         let (mut game, commands, state) = game();
-        game.paused.readiness = GameReadiness::PausedAfterContentLoad;
+        game.paused.readiness = GameReadiness::AfterContentLoad;
         let input = crate::ScriptCheck {
             kind: crate::DeclarationKind::Trigger,
             scope: crate::ScopeId("scope".into()),
@@ -1109,7 +895,7 @@ mod tests {
     #[tokio::test]
     async fn recording_failure_preserves_completed_check_history() {
         let (mut game, commands, state) = game();
-        game.paused.readiness = GameReadiness::PausedAfterContentLoad;
+        game.paused.readiness = GameReadiness::AfterContentLoad;
         let root = tempfile::tempdir().unwrap();
         let recording = root.path().join("recording");
         std::fs::write(&recording, "block directory creation").unwrap();
@@ -1181,8 +967,7 @@ mod tests {
     }
     fn game() -> (Game, mpsc::Receiver<DriverCommand>, watch::Sender<State>) {
         let paused = Paused {
-            readiness: GameReadiness::PausedDuringRegistryInitialization,
-            world: None,
+            readiness: GameReadiness::DuringRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -1210,7 +995,6 @@ mod tests {
                 read_failed: false,
                 keep_work: false,
                 fixture: None,
-                world: None,
                 modifiers: None,
             },
             receive,
@@ -1327,16 +1111,31 @@ mod tests {
             recorder: Some(Arc::new(recording.clone())),
             binding: None,
         };
-        game.paused.registries.insert(
-            "common/traditions".into(),
-            RegistryItems {
-                items: Vec::new(),
-                observed: Observed::Unavailable,
-                diagnostics: vec!["access failed".into()],
-            },
+        let fixture = crate::FixtureRequest::field_outcomes(
+            "common/traditions/sample.txt",
+            "sample = {}",
+            [crate::FixtureFieldQuestion::new(
+                "common/traditions",
+                "sample",
+                "icon",
+            )],
         );
+        let subject = fixture.recorded_subject();
+        game.fixture = Some(fixture);
+        game.paused.fixture = Some(Err(Error::Observation {
+            operation: crate::Operation::ObserveFixture,
+            reason: "access failed".into(),
+        }));
+        let read = game.observe_fixture();
+        let acknowledge = async {
+            let DriverCommand::Read { reply, .. } = commands.recv().unwrap() else {
+                panic!("fixture read")
+            };
+            reply.send(Ok(())).unwrap();
+        };
+        let (answer, ()) = tokio::join!(read, acknowledge);
         assert!(matches!(
-            game.registry_items("common/traditions").await,
+            answer,
             Err(Error::Observation { reason, .. }) if reason == "access failed"
         ));
         assert!(commands.try_recv().is_err());
@@ -1344,7 +1143,7 @@ mod tests {
         // The recorded answer replays the same error.
         let recorded = crate::recorded::Answers::open(recording).unwrap();
         assert!(matches!(
-            recorded.read::<Vec<String>>("registry_items", Some("common/traditions")),
+            recorded.read::<crate::FixtureObservation>("observe_fixture", Some(&subject)),
             Err(Error::Observation { reason, .. }) if reason == "access failed"
         ));
         state.send_modify(|state| state.finished = Some(Ok(finished())));
@@ -1367,7 +1166,7 @@ mod tests {
             };
             state.send_modify(|state| state.finished = Some(Ok(report)));
             assert_eq!(
-                game.registry_items("common/traditions").await,
+                game.loader_items("common/traditions").await,
                 Err(Error::Closed)
             );
             assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
@@ -1384,7 +1183,7 @@ mod tests {
         game.work = Some(work.clone());
         game.cancel();
         assert_eq!(
-            game.registry_items("common/traditions").await,
+            game.loader_items("common/traditions").await,
             Err(Error::Closed)
         );
         state.send_modify(|state| state.finished = Some(Ok(finished())));
@@ -1424,12 +1223,13 @@ mod tests {
     async fn a_read_after_close_does_not_overwrite_a_recorded_answer() {
         let (mut game, _commands, _state) = game();
         let root = tempfile::tempdir().unwrap();
-        let original: Result<crate::Answer<Vec<String>>, Error> = Err(Error::BuildChanged);
+        let original: Result<crate::Answer<crate::LoadedModifiers>, Error> =
+            Err(Error::BuildChanged);
         crate::recorded::write(
             root.path(),
             &game.build,
-            "registry_items",
-            Some("common/traditions"),
+            "loaded_modifiers",
+            None,
             &original,
         )
         .unwrap();
@@ -1438,13 +1238,10 @@ mod tests {
             binding: None,
         };
         game.closing = true;
-        assert!(matches!(
-            game.registry_items("common/traditions").await,
-            Err(Error::Closed)
-        ));
+        assert!(matches!(game.loaded_modifiers().await, Err(Error::Closed)));
         let recorded = crate::recorded::Answers::open(root.path().into()).unwrap();
         assert_eq!(
-            recorded.read::<Vec<String>>("registry_items", Some("common/traditions")),
+            recorded.read::<crate::LoadedModifiers>("loaded_modifiers", None),
             original
         );
     }
@@ -1459,7 +1256,7 @@ mod tests {
         );
         assert_eq!(game.stop.load(Ordering::SeqCst), 1);
         assert!(matches!(
-            game.registry_items("common/traditions").await,
+            game.loader_items("common/traditions").await,
             Err(Error::Closed)
         ));
         state.send_modify(|state| state.finished = Some(Ok(finished())));
@@ -1493,7 +1290,7 @@ mod tests {
     async fn a_registry_without_an_observation_gives_an_error_and_sends_no_read() {
         let (mut game, commands, _state) = game();
         assert!(matches!(
-            game.registry_items("common/traditions").await,
+            game.loader_items("common/traditions").await,
             Err(Error::Observation { .. })
         ));
         game.paused.registries.insert(
@@ -1505,7 +1302,7 @@ mod tests {
             },
         );
         assert!(matches!(
-            game.registry_items("common/traditions").await,
+            game.loader_items("common/traditions").await,
             Err(Error::Observation { reason, .. }) if reason == "access failed"
         ));
         assert!(matches!(
@@ -1526,7 +1323,7 @@ mod tests {
                 },
             );
             assert!(matches!(
-                game.registry_items("common/traditions").await,
+                game.loader_items("common/traditions").await,
                 Err(Error::Unsupported { .. })
             ));
         }
@@ -1540,7 +1337,7 @@ mod tests {
         let (mut game, commands, _state) = game();
         for unknown in ["traditions", "common/nothing"] {
             assert!(matches!(
-                game.registry_items(unknown).await,
+                game.loader_items(unknown).await,
                 Err(Error::Unsupported { .. })
             ));
         }
@@ -1550,7 +1347,7 @@ mod tests {
         ));
         game.cancel();
         assert!(matches!(
-            game.registry_items("common/traditions").await,
+            game.loader_items("common/traditions").await,
             Err(Error::Closed)
         ));
     }

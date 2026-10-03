@@ -20,11 +20,9 @@ pub struct CommandGrammar {
     /// Concrete shared parser identity, including its member reader.
     pub reader: Reader,
     /// Each way to write the command's value. `Known` lists every accepted form.
-    #[serde(default)]
     pub forms: GrammarProperty<Vec<CommandForm>>,
     /// Each argument that the reader stores as an event target. A known empty list means that
     /// the command takes no target argument. A partial or unresolved list proves no absence.
-    #[serde(default)]
     pub targets: GrammarProperty<Vec<TargetArgument>>,
     /// Command families that the block can dispatch to.
     pub child_families: GrammarProperty<Vec<BlockFamily>>,
@@ -35,7 +33,6 @@ pub struct CommandGrammar {
     /// Established reader selections that depend on preceding children.
     pub ordering: GrammarProperty<Vec<ChildOrderRule>>,
     /// Groups of child keys that set one duration count. A partial list proves no absence.
-    #[serde(default)]
     pub durations: GrammarProperty<Vec<crate::Duration>>,
 }
 

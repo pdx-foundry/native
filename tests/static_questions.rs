@@ -1064,7 +1064,7 @@ fn control_grammar_preserves_shared_readers_and_covered_properties() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M45 build"]
 fn field_shapes_agree_with_sdk533_omitted_and_repeated_storage() {
-    use pdx_native::{FieldDefault, FieldMembers, RepeatBehavior, ValueShape};
+    use pdx_native::{FieldMembers, RepeatBehavior, ValueShape};
     let native = native();
     let observed: Value = expected("field-storage-sdk533.json");
     if !parity::historical_storage_applies(&native.build(), &observed).unwrap() {
@@ -1088,7 +1088,6 @@ fn field_shapes_agree_with_sdk533_omitted_and_repeated_storage() {
         assert_eq!(field.shape.value, ValueShape::Scalar);
         if occurrences.is_empty() {
             omitted += 1;
-            assert_eq!(field.default, FieldDefault::Unknown);
             assert_eq!(storage["final_value"], "");
         } else {
             repeated += 1;

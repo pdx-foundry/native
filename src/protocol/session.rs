@@ -32,8 +32,6 @@ pub(crate) struct SessionRequest {
     /// Read the loaded modifier table, and the item keys of these registries, where the engine
     /// documents its modifiers; the session pauses there.
     pub loaded_modifiers: Option<Vec<String>>,
-    /// Fixed save, effect and flag observation at a loaded-world pause.
-    pub world: Option<crate::WorldRequest>,
 }
 
 /// A deliberate fault and the observation that receives it.
@@ -55,24 +53,12 @@ pub enum ObservationTarget {
     Fixture,
     /// The requested loaded modifier table.
     Modifiers,
-    /// The requested world observation.
-    World,
     /// A command check at the loaded-content pause.
     ScriptChecks,
 }
 
 impl SessionRequest {
     pub(crate) fn validate(&self) -> Result<(), SupervisorError> {
-        if let Some(world) = &self.world {
-            world
-                .validate()
-                .map_err(|error| SupervisorError(error.to_string()))?;
-            if self.loaded_modifiers.is_some() || self.fixture.is_some() {
-                return Err(SupervisorError(
-                    "world observation cannot share a startup fixture or modifier pause".into(),
-                ));
-            }
-        }
         if let Some(fixture) = &self.fixture {
             fixture
                 .validate()
@@ -125,15 +111,6 @@ impl SessionRequest {
                 && match &fault.target {
                     ObservationTarget::Registry(registry) => self.registries.contains(registry),
                     ObservationTarget::Fixture => self.fixture.is_some(),
-                    ObservationTarget::World => {
-                        self.world.is_some()
-                            && matches!(
-                                fault.control,
-                                ObservationControl::WorkerLoss
-                                    | ObservationControl::MissingHook
-                                    | ObservationControl::AccessFailure
-                            )
-                    }
                     ObservationTarget::ScriptChecks => {
                         self.loaded_modifiers.is_some()
                             && fault.control == ObservationControl::AccessFailure
@@ -165,8 +142,6 @@ pub(crate) enum Control {
     },
     /// End the session because the caller cancelled.
     Cancel,
-    /// The caller read its prepared world observation.
-    ReadWorld { request: u64 },
     /// End the session in order.
     Close,
     /// The caller answered a question about this registry, so the idle time starts again.
@@ -249,7 +224,6 @@ impl SessionRequest {
             fault: None,
             fixture: None,
             loaded_modifiers: None,
-            world: None,
         }
     }
 }
@@ -326,9 +300,15 @@ mod tests {
                         request
                             .registries
                             .push("common/tradition_categories".into());
-                        request.fixture = Some(crate::FixtureRequest::new(
+                        request.fixture = Some(crate::FixtureRequest::field_outcomes(
                             "common/tradition_categories/atlas.txt",
                             "atlas = {}",
+                            [crate::FixtureFieldQuestion::new(
+                                "common/tradition_categories",
+                                "example",
+                                "traditions",
+                            )
+                            .with_parsing()],
                         ));
                         request.loaded_modifiers = Some(Vec::new());
                     }
@@ -337,7 +317,6 @@ mod tests {
                         control,
                     });
                     let expected = match &target {
-                        ObservationTarget::World => false,
                         ObservationTarget::Registry(registry) => {
                             request.registries.contains(registry)
                                 && control != ObservationControl::Normal

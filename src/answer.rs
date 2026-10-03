@@ -274,8 +274,6 @@ impl Source {
 pub enum Operation {
     /// Reading and validating trigger or effect text in a paused game.
     CheckScript,
-    /// Executing a prepared country effect and observing flags through engine days.
-    ObserveWorld,
     /// Whether this build can return define names and engine read types.
     Defines,
     /// `Native::registries`
@@ -302,8 +300,6 @@ pub enum Operation {
     OnActions,
     /// `Native::game_rules`
     GameRules,
-    /// `Game::registry_items`
-    RegistryItems,
     /// `Game::observe_fixture`
     ObserveFixture,
     /// `Game::loaded_modifiers`
@@ -351,7 +347,6 @@ impl Operation {
     /// Every operation once, in declaration order.
     pub const ALL: &'static [Operation] = &[
         Self::CheckScript,
-        Self::ObserveWorld,
         Self::Defines,
         Self::Registries,
         Self::RegistryFields,
@@ -365,7 +360,6 @@ impl Operation {
         Self::LocalizationDeclarations,
         Self::OnActions,
         Self::GameRules,
-        Self::RegistryItems,
         Self::ObserveFixture,
         Self::LoadedModifiers,
         Self::DynamicNames,
@@ -375,7 +369,6 @@ impl Operation {
     pub fn name(self) -> &'static str {
         match self {
             Self::CheckScript => "check_script",
-            Self::ObserveWorld => "observe_world",
             Self::Defines => "defines",
             Self::Registries => "registries",
             Self::RegistryFields => "registry_fields",
@@ -389,7 +382,6 @@ impl Operation {
             Self::LocalizationDeclarations => "localization_declarations",
             Self::OnActions => "on_actions",
             Self::GameRules => "game_rules",
-            Self::RegistryItems => "registry_items",
             Self::ObserveFixture => "observe_fixture",
             Self::LoadedModifiers => "loaded_modifiers",
             Self::DynamicNames => "dynamic_names",
@@ -443,12 +435,10 @@ mod operation_tests {
             | Operation::LocalizationDeclarations
             | Operation::OnActions
             | Operation::GameRules
-            | Operation::RegistryItems
             | Operation::ObserveFixture
             | Operation::LoadedModifiers
             | Operation::DynamicNames
-            | Operation::CheckScript
-            | Operation::ObserveWorld => 19,
+            | Operation::CheckScript => 17,
         }
     }
 
@@ -553,7 +543,7 @@ pub enum Error {
     Closed,
     /// Recorded answers hold no file for this question. Never an empty answer.
     NotRecorded {
-        /// The question and its subject, such as `registry_items/common/traditions`.
+        /// The question and its subject, such as `registry_fields/common/traditions`.
         question: String,
     },
     /// A recorded answer could not be read or written.
@@ -620,12 +610,9 @@ pub struct Field {
     pub members: crate::FieldMembers,
     /// Exhaustive accepted spellings, or an explicit unknown.
     pub domain: crate::FieldDomain,
-    /// Behavior on omission, established separately from parser reads.
-    pub default: crate::FieldDefault,
     /// Use-time selections that the method reached. An empty list does not prove no conditions.
     pub uses: Vec<crate::FieldUse>,
     /// The lookups that the engine makes with the field's value as a key.
-    #[serde(default)]
     pub reference: crate::FieldReference,
 }
 
@@ -1075,18 +1062,15 @@ pub enum EntryScope {
 /// The shared reader behind a field. Two fields with one reader report the same `id`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reader {
-    /// Numeric conversion facts; absent older recordings remain unresolved.
-    #[serde(default)]
+    /// Numeric conversion facts, with unresolved evidence stated explicitly.
     pub numeric: crate::GrammarProperty<Option<crate::NumericConversion>>,
-    /// Scoped operand rules for this destination; absent older recordings remain unresolved.
-    #[serde(default)]
+    /// Scoped operand forms for this destination.
     pub scoped_operand: crate::GrammarProperty<Option<crate::ScopedOperand>>,
     /// Opaque reader identity within one build, or `None` when no reader is established.
     pub id: Option<ReaderId>,
     /// Value form that the reader accepts.
     pub kind: ReaderKind,
     /// Command family accepted by a block reader, independently of its full grammar.
-    #[serde(default)]
     pub family: BlockFamily,
 }
 

@@ -1,6 +1,5 @@
 [
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "entity",
@@ -47,7 +46,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "custom_tooltip",
@@ -94,7 +92,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "victory_score",
@@ -147,9 +144,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -209,9 +203,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -227,7 +218,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "custom_tooltip_with_modifiers",
@@ -274,7 +264,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "custom_tooltip_requirements",
@@ -321,7 +310,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "is_ruined_orbital_ring",
@@ -346,7 +334,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "prerequisites",
@@ -371,7 +358,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "potential",
@@ -418,7 +404,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "sensor_range",
@@ -464,9 +449,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -519,9 +501,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -537,7 +516,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "ModifierBlock": "ba5f8cddeba0d833"
@@ -586,7 +564,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "possible",
@@ -633,7 +610,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "rotate_to_center",
@@ -658,7 +634,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "scale_offset",
@@ -683,7 +658,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "ModifierBlock": "ba5f8cddeba0d833"
@@ -732,7 +706,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "generate_borders",
@@ -757,7 +730,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "ModifierBlock": "ba5f8cddeba0d833"
@@ -806,7 +778,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "ModifierBlock": "ba5f8cddeba0d833"
@@ -855,7 +826,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "build_time",
@@ -908,9 +878,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -970,9 +937,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -988,7 +952,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "dismantle_time",
@@ -1041,9 +1004,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -1103,9 +1063,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -1121,7 +1078,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "dismantle_cost",
@@ -1146,7 +1102,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "ai_weight",
@@ -1193,7 +1148,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "entity_offset",
@@ -1232,7 +1186,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "plane_offset",
@@ -1285,9 +1238,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -1347,9 +1297,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -1365,7 +1312,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "construction_scale",
@@ -1418,9 +1364,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -1480,9 +1423,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -1498,7 +1438,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_build_queued",
@@ -1545,7 +1484,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_build_unqueued",
@@ -1592,7 +1530,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_build_start",
@@ -1639,7 +1576,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_build_cancel",
@@ -1686,7 +1622,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_build_complete",
@@ -1733,7 +1668,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_dismantle_start",
@@ -1780,7 +1714,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_dismantle_cancel",
@@ -1827,7 +1760,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_dismantle_complete",
@@ -1874,7 +1806,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "build_megastructure_no_cost_localization_key",
@@ -1921,7 +1852,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "build_system_tooltip",
@@ -1968,7 +1898,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "tooltip_system_score",
@@ -2015,7 +1944,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "tooltip_system_score_low_threshold",
@@ -2061,9 +1989,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -2116,9 +2041,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -2134,7 +2056,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "tooltip_system_score_high_threshold",
@@ -2180,9 +2101,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -2235,9 +2153,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -2253,7 +2168,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "tooltip_best_systems_header",
@@ -2300,7 +2214,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "tooltip_system_filter",
@@ -2347,7 +2260,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "tooltip_show_star_resources",
@@ -2372,7 +2284,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "upgrade_from",
@@ -2397,7 +2308,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "construction_entity",
@@ -2444,7 +2354,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "placement_rules",
@@ -2491,7 +2400,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "place_entity_on_planet_plane",
@@ -2516,7 +2424,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "use_planet_resource",
@@ -2541,7 +2448,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "scripted_action",
@@ -2603,7 +2509,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "upgrade_desc",
@@ -2646,7 +2551,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "starbase",
@@ -2708,7 +2612,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "ModifierBlock": "ba5f8cddeba0d833"
@@ -2757,7 +2660,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "show_galactic_map_icon",
@@ -2782,7 +2684,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "hide_name",
@@ -2807,7 +2708,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "bypass_type",
@@ -2869,7 +2769,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "triggered_country_modifier",
@@ -2894,7 +2793,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "show_in_outliner",
@@ -2919,7 +2817,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "outliner_trigger",
@@ -2966,7 +2863,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "hyperlane_range",
@@ -3012,9 +2908,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -3067,9 +2960,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -3085,7 +2975,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "starbase_capacity_used",
@@ -3138,9 +3027,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -3200,9 +3086,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -3218,7 +3101,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "show_prereqs",
@@ -3243,7 +3125,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "prereq_name",
@@ -3290,7 +3171,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "scales_with_planet",
@@ -3315,7 +3195,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "resources",
@@ -3340,7 +3219,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "portrait",
@@ -3387,7 +3265,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "overlord_can_upgrade",
@@ -3412,7 +3289,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "is_grand_archive",
@@ -3437,7 +3313,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "must_select_ship_design",
@@ -3462,7 +3337,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "is_shroud_seal",
@@ -3487,7 +3361,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "can_be_dismantled_by_non_owner",
@@ -3512,7 +3385,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "overclock_types",
@@ -3574,7 +3446,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_cycle_complete",
@@ -3621,7 +3492,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "cycle_length_in_days",
@@ -3674,9 +3544,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -3705,20 +3572,6 @@
            },
            "Variable"
           ]
-         },
-         "literal_assignment_preserves_reference_state": {
-          "Known": true
-         },
-         "selection": {
-          "Known": {
-           "literal_condition": "EmptySourceLocation",
-           "reference_priority": [
-            "Trigger",
-            "ScriptValue",
-            "Modifier",
-            "Variable"
-           ]
-          }
          }
         }
        }
@@ -3775,9 +3628,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -3806,20 +3656,6 @@
        },
        "Variable"
       ]
-     },
-     "literal_assignment_preserves_reference_state": {
-      "Known": true
-     },
-     "selection": {
-      "Known": {
-       "literal_condition": "EmptySourceLocation",
-       "reference_priority": [
-        "Trigger",
-        "ScriptValue",
-        "Modifier",
-        "Variable"
-       ]
-      }
      }
     }
    }
@@ -3832,7 +3668,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "cycle_title",
@@ -3879,7 +3714,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "cycle_desc",
@@ -3926,7 +3760,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "cycle_icon",
@@ -3973,7 +3806,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "order_icon",
@@ -4020,7 +3852,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "can_prevent_crisis_terraformation",
@@ -4045,7 +3876,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "context_menu_potential",
@@ -4092,7 +3922,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "build_menu_potential",
@@ -4139,7 +3968,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "nomad_reactivatable",
@@ -4164,7 +3992,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "overclock_loc_key",
@@ -4211,7 +4038,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "overclock_cooldown",
@@ -4257,9 +4083,6 @@
             }
            }
           }
-         },
-         "clamp": {
-          "Known": null
          }
         }
        },
@@ -4288,20 +4111,6 @@
            },
            "Variable"
           ]
-         },
-         "literal_assignment_preserves_reference_state": {
-          "Known": true
-         },
-         "selection": {
-          "Known": {
-           "literal_condition": "EmptySourceLocation",
-           "reference_priority": [
-            "Trigger",
-            "ScriptValue",
-            "Modifier",
-            "Variable"
-           ]
-          }
          }
         }
        }
@@ -4351,9 +4160,6 @@
         }
        }
       }
-     },
-     "clamp": {
-      "Known": null
      }
     }
    },
@@ -4382,20 +4188,6 @@
        },
        "Variable"
       ]
-     },
-     "literal_assignment_preserves_reference_state": {
-      "Known": true
-     },
-     "selection": {
-      "Known": {
-       "literal_condition": "EmptySourceLocation",
-       "reference_priority": [
-        "Trigger",
-        "ScriptValue",
-        "Modifier",
-        "Variable"
-       ]
-      }
      }
     }
    }
@@ -4408,7 +4200,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "dismantle_possible",
@@ -4455,7 +4246,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "dismantle_potential",
@@ -4502,7 +4292,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "should_ai_dismantle",

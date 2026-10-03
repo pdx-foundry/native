@@ -9,8 +9,7 @@ use crate::engine::analysis::{
 };
 use crate::{
     CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
-    GrammarProperty, Reader, ReaderKind, ScopedLiteralCondition, ScopedOperand, ScopedOperandForm,
-    ScopedOperandSelection, ScopedReferenceKind,
+    GrammarProperty, Reader, ReaderKind, ScopedOperand, ScopedOperandForm, ScopedReferenceKind,
 };
 use std::collections::BTreeMap;
 
@@ -386,44 +385,7 @@ fn attach(
             GrammarProperty::Unresolved
         }
     };
-    let preservation = match facts.shared.literal_preserves_references {
-        Ok(value) if literal => GrammarProperty::Known(value),
-        Ok(_) => GrammarProperty::Known(false),
-        Err(_) => {
-            gap(
-                gaps,
-                GapKind::ReaderSemantics,
-                subject,
-                "Scoped literal assignment behavior is not established.",
-            );
-            GrammarProperty::Unresolved
-        }
-    };
-    let selection = match &facts.shared.selection {
-        Ok(_) if literal => GrammarProperty::Known(ScopedOperandSelection {
-            literal_condition: ScopedLiteralCondition::EmptySourceLocation,
-            reference_priority: vec![
-                ScopedReferenceKind::Trigger,
-                ScopedReferenceKind::ScriptValue,
-                ScopedReferenceKind::Modifier,
-                ScopedReferenceKind::Variable,
-            ],
-        }),
-        _ => {
-            gap(
-                gaps,
-                GapKind::ReaderSemantics,
-                subject,
-                "Scoped representation selection is not established.",
-            );
-            GrammarProperty::Unresolved
-        }
-    };
-    reader.scoped_operand = GrammarProperty::Known(Some(ScopedOperand {
-        forms,
-        literal_assignment_preserves_reference_state: preservation,
-        selection,
-    }));
+    reader.scoped_operand = GrammarProperty::Known(Some(ScopedOperand { forms }));
     gap(
         gaps,
         GapKind::OutsideMethod,
@@ -472,7 +434,7 @@ mod tests {
                     prefixes: ["trigger".into(), "modifier".into(), "value".into()],
                     separator: ":".into(),
                 }),
-                literal_preserves_references: Ok(true),
+
                 selection: Ok(Layout {
                     literal: 0x200,
                     location: 0x1d8,
@@ -527,20 +489,9 @@ mod tests {
         let GrammarProperty::Known(Some(operand)) = reader.scoped_operand else {
             panic!("missing operand");
         };
-        assert_eq!(
-            operand.literal_assignment_preserves_reference_state,
-            GrammarProperty::Known(true)
-        );
         assert!(
             matches!(operand.forms, GrammarProperty::Partial(ref forms) if forms.contains(&ScopedOperandForm::Literal))
         );
-        assert!(matches!(
-            operand.selection,
-            GrammarProperty::Known(ScopedOperandSelection {
-                literal_condition: ScopedLiteralCondition::EmptySourceLocation,
-                ..
-            })
-        ));
         assert!(
             gaps.iter()
                 .any(|gap| gap.kind == GapKind::NumericConversion)
@@ -581,8 +532,7 @@ mod tests {
         let GrammarProperty::Known(Some(operand)) = base.scoped_operand else {
             panic!("missing base operand");
         };
-        assert_eq!(operand.selection, GrammarProperty::Unresolved);
-        assert!(gaps.iter().any(|gap| gap.kind == GapKind::ReaderSemantics));
+        assert!(!gaps.iter().any(|gap| gap.kind == GapKind::ReaderSemantics));
         assert!(
             matches!(operand.forms, GrammarProperty::Partial(ref forms) if !forms.contains(&ScopedOperandForm::Literal))
         );

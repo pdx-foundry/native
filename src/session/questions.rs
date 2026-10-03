@@ -79,20 +79,22 @@ impl Native {
 
     /// Whether this build and host can answer an operation. This never starts a game; for a live
     /// operation it checks that the supervisor's tools can be found. Selected content is checked
-    /// when `start_game` is called. With recorded answers every operation is `Supported`; this
-    /// does not check that an answer file exists, so a question can still return
-    /// `Error::NotRecorded`.
+    /// when `start_game` is called. A recorded operation is supported when at least one answer
+    /// file exists. Individual subjects can still be absent or have malformed recordings.
     pub fn supports(&self, operation: Operation) -> Support {
         match &self.backend {
-            Backend::Recorded(_) => Support::Supported,
+            Backend::Recorded(answers) => {
+                if answers.contains(operation) {
+                    Support::Supported
+                } else {
+                    Support::Unsupported(format!("no recorded answer for {}", operation.name()))
+                }
+            }
             Backend::Live { binding, .. } => self.live_support(binding, operation),
         }
     }
 
     fn live_support(&self, binding: &Binding, operation: Operation) -> Support {
-        if operation == Operation::ObserveWorld && !binding.has_world_method() {
-            return Support::Unsupported("this build has no ready world observation recipe".into());
-        }
         if operation == Operation::CheckScript && !binding.has_script_check_method() {
             return Support::Unsupported("this build has no script-check recipe".into());
         }
@@ -126,14 +128,12 @@ impl Native {
             Operation::LoadedModifiers if !binding.has_modifier_table_method() => {
                 Support::Unsupported("this build has no loaded modifier table recipe".into())
             }
-            Operation::RegistryItems
-            | Operation::ObserveFixture
-            | Operation::LoadedModifiers
-            | Operation::CheckScript
-            | Operation::ObserveWorld => match self.selected_blocking_reasons(binding) {
-                reasons if reasons.is_empty() => Support::Supported,
-                reasons => Support::Unsupported(format!("{reasons:?}")),
-            },
+            Operation::ObserveFixture | Operation::LoadedModifiers | Operation::CheckScript => {
+                match self.selected_blocking_reasons(binding) {
+                    reasons if reasons.is_empty() => Support::Supported,
+                    reasons => Support::Unsupported(format!("{reasons:?}")),
+                }
+            }
         }
     }
 

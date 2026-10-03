@@ -80,7 +80,6 @@ fn direct_scan_proves_storage_and_partial_syntax_without_universal_acceptance() 
                 Unresolved
             }
         );
-        assert_eq!(fact.clamp, Known(None));
     }
 }
 
@@ -136,9 +135,15 @@ fn conflicting_and_unresolved_paths_cannot_inherit_scan_properties() {
 }
 
 #[test]
-fn old_reader_answers_default_to_unknown_and_exact_bounds_round_trip() {
-    let reader: crate::Reader = serde_json::from_str(r#"{"id":null,"kind":"Integer"}"#).unwrap();
-    assert_eq!(reader.numeric, Unresolved);
+fn numeric_recordings_require_properties_and_exact_bounds_round_trip() {
+    assert!(serde_json::from_str::<crate::Reader>(r#"{"id":null,"kind":"Integer"}"#).is_err());
+    let reader = crate::Reader {
+        id: None,
+        kind: crate::ReaderKind::Integer,
+        family: crate::BlockFamily::NotApplicable,
+        numeric: Unresolved,
+        scoped_operand: GrammarProperty::Known(None),
+    };
     for bound in [
         crate::NumericBound::Signed(i64::MIN),
         crate::NumericBound::Unsigned(u64::MAX),
@@ -201,7 +206,6 @@ fn m45_numeric_reader_static_parity() {
                     conversion.scale,
                     conversion.literal_syntax,
                     conversion.accepted_range,
-                    conversion.clamp,
                     reader.gaps.iter().map(|gap| gap.reason).collect::<Vec<_>>()
                 ]),
             )
@@ -566,7 +570,6 @@ fn scanner_formats_prove_only_partial_literal_families() {
                 Unresolved
             }
         );
-        assert_eq!(fact.clamp, Known(None));
     }
     let (rows, names) = binary_rows();
     let fact = token_conversion(&rows, &names, 0x10).unwrap();
@@ -593,7 +596,7 @@ fn raw_value_mode_adds_its_scanner_forms_without_replacing_fixed_point_scale() {
 }
 
 #[test]
-fn an_unproved_raw_path_keeps_partial_storage_and_syntax_but_cannot_prove_no_clamp() {
+fn an_unproved_raw_path_keeps_partial_storage_and_syntax() {
     let (rows, names) = decimal_rows();
     let ordinary = token_conversion(&rows, &names, 0x10).unwrap();
     let forms = ordinary.literal_syntax.clone();
@@ -602,7 +605,7 @@ fn an_unproved_raw_path_keeps_partial_storage_and_syntax_but_cannot_prove_no_cla
     assert_eq!(gap, Some("numeric-raw-conversion"));
     assert_eq!(combined.width_bits, GrammarProperty::Partial(64));
     assert_eq!(combined.literal_syntax, forms);
-    assert_eq!(combined.clamp, Unresolved);
+
     let raw = token_conversion(&scan_rows(), &self::names("%lld"), 0x10).unwrap();
     let (combined, gap) = fixed_paths(None, Some(raw));
     let combined = combined.unwrap();
@@ -624,7 +627,6 @@ fn an_incompatible_raw_conversion_cannot_add_literal_forms() {
     let combined = combined.unwrap();
     assert_eq!(gap, Some("numeric-raw-storage"));
     assert_eq!(combined.literal_syntax, forms);
-    assert_eq!(combined.clamp, Unresolved);
 }
 
 fn signed_32_range() -> GrammarProperty<Box<NumericRange>> {

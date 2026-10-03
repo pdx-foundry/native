@@ -1,5 +1,13 @@
 # Injection and observations before registration/parsing
 
+The registration-entry and category-read public route was retired by the 2026-10-02
+[simplification review](../design/simplification-review.md). The implementation and its live
+controls remain in Git at `d8f9d8ab337d10c9e920caeb02fc651f53b78042`. The findings below remain
+engine knowledge. The current category control requests field outcomes with parsing for
+`tree_template` and `traditions`, checking source lines, shared owner, entries and returns.
+The generic field-outcome method replaces the fixed category tokens and locality exception.
+
+
 SDK-483 was accepted on 2026-09-17 for M45-observe. The experiment is `4188faf564b8609fde747da09bd4b8db8045b315`, branch `prototype/sdk-483-early-observations`. The retained source and evidence are in `typed-extraction/typed-extraction/early-observation-prototype/`.
 
 ## Qualified sequence
@@ -125,9 +133,9 @@ constructor, and member-reader boundaries are unique. Its obstacle is deriving t
 object and source layouts on other builds. A future binding must replace or reverify
 them; the method reports unsupported fields and registries as unavailable.
 
-### Manual category read-entry exception
+### Manual category read-entry exception (historical)
 
-`InitialCategoryLoad` and `CategoryFieldReads` remain public, category-specific names.
+This section describes the state before 2026-10-02. `InitialCategoryLoad` and `CategoryFieldReads` were public, category-specific names.
 The M45 binding retains the `tree_template` and `traditions` token values for
 `common/tradition_categories`. This exception claims only that those two reader entries
 occur in the initial category-load window; it says nothing about storage or validation.
@@ -137,7 +145,7 @@ The root-field analysis does not yet derive the read-entry hook and token select
 one general operation. Replace these names and token constants when that operation can
 select a field from the exact-build binding and pass an unfamiliar-category transfer.
 
-This is the only entry in the locality gate's exception list (`tests/locality.rs`). It covers
+This was the only entry in the locality gate's exception list (`tests/locality.rs`); the list is empty since 2026-10-02. It covers
 the registry check in `src/fixture.rs`. Since SDK-569, the fixture reducer takes the category
 field names and their count from the binding's `FixtureBinding.fields`, not from its own
 constants. The reducer's three registration entries are part of the same window and are

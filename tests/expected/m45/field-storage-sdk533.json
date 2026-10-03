@@ -12,8 +12,7 @@
         "registry": "common/traditions",
         "definition": "atlas_omitted",
         "field": "unlocks_agenda",
-        "diagnostics": true,
-        "runtime": false
+        "diagnostics": true
       },
       "file": "common/traditions/atlas_frozen.txt",
       "owner": 2,
@@ -29,16 +28,14 @@
           "completeness": "Complete"
         }
       },
-      "diagnostics": [],
-      "runtime": "NotRequested"
+      "diagnostics": []
     },
     {
       "question": {
         "registry": "common/traditions",
         "definition": "atlas_repeated",
         "field": "unlocks_agenda",
-        "diagnostics": true,
-        "runtime": false
+        "diagnostics": true
       },
       "file": "common/traditions/atlas_frozen.txt",
       "owner": 3,
@@ -65,8 +62,7 @@
           "completeness": "Complete"
         }
       },
-      "diagnostics": [],
-      "runtime": "NotRequested"
+      "diagnostics": []
     }
   ]
 }

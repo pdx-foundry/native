@@ -3,7 +3,7 @@
     "entries": {
       "Known": [
         {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
-        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
       ]
     },
     "fixed_keys": {
@@ -85,7 +85,7 @@
     "entries": {
       "Known": [
         {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
-        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
       ]
     },
     "fixed_keys": {
@@ -132,7 +132,7 @@
     "entries": {
       "Known": [
         {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
-        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
       ]
     },
     "fixed_keys": {
@@ -192,7 +192,7 @@
     "entries": {
       "Known": [
         {"Reference": {"target": {"Registry": {"name": "common/static_modifiers"}}, "value": "FixedPoint"}},
-        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "clamp": {"Known": null}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
+        {"Numeric": {"value": {"id": "a9818fec780f8313", "kind": "FixedPoint", "family": "NotApplicable", "numeric": {"Partial": {"accepted_range": {"Known": {"maximum": {"Known": {"Rational": {"denominator": 100000, "numerator": 9223372036854775807}}}, "minimum": {"Known": {"Rational": {"denominator": 100000, "numerator": -9223372036854775808}}}}}, "literal_syntax": {"Partial": ["DecimalInteger", "DecimalFraction", "RadixPrefixedInteger"]}, "representation": {"Known": "Integer"}, "scale": {"Known": 100000}, "signedness": {"Known": "Signed"}, "width_bits": {"Known": 64}}}, "scoped_operand": {"Known": null}}}}
       ]
     },
     "fixed_keys": {

@@ -17,9 +17,6 @@ pub(super) fn fixture(
         .iter()
         .any(|group| matches!(group, BindingGroupId::M45CategoryFixture))
         .then(|| crate::protocol::observation::FixtureBinding {
-            registration_entry: 0x100456d24,
-            load_entry: 0x100cdb168,
-            field_entry: 0x100cd8e3c,
             reader_lexer_offset: 0x30,
             lexer_file_offset: 8,
             file_name_offset: 0x20,
@@ -39,15 +36,7 @@ pub(super) fn fixture(
                 source_file_prefix: "file: ".into(),
                 source_line_prefix: " line: ".into(),
             }),
-            fields: [(16793, "tree_template"), (14263, "traditions")]
-                .into_iter()
-                .map(
-                    |(token, name)| crate::protocol::observation::FixtureFieldBinding {
-                        token,
-                        name: name.into(),
-                    },
-                )
-                .collect(),
+
             outcome_registries: vec![
                 crate::protocol::observation::FixtureOutcomeRegistryBinding {
                     registry: "common/traditions".into(),
@@ -68,9 +57,6 @@ pub(super) fn fixture(
 /// Fresh fixture pins for the exact 4.5.1 ARM64 slice.
 fn m451_fixture() -> crate::protocol::observation::FixtureBinding {
     crate::protocol::observation::FixtureBinding {
-        registration_entry: 0x100456380,
-        load_entry: 0x100cda930,
-        field_entry: 0x100cd8604,
         reader_lexer_offset: 0x30,
         lexer_file_offset: 8,
         file_name_offset: 0x20,
@@ -90,15 +76,7 @@ fn m451_fixture() -> crate::protocol::observation::FixtureBinding {
             source_file_prefix: "file: ".into(),
             source_line_prefix: " line: ".into(),
         }),
-        fields: [(16793, "tree_template"), (14263, "traditions")]
-            .into_iter()
-            .map(
-                |(token, name)| crate::protocol::observation::FixtureFieldBinding {
-                    token,
-                    name: name.into(),
-                },
-            )
-            .collect(),
+
         outcome_registries: vec![
             crate::protocol::observation::FixtureOutcomeRegistryBinding {
                 registry: "common/traditions".into(),

@@ -7,6 +7,10 @@ with it.
 Naming rule: public names prefer clarity to brevity. A method name says its subject
 (`registry_fields`, not `fields`).
 
+The [2026-10-02 review](simplification-review.md) supersedes the historical API examples below
+where they include registry-item queries, fixture entry reads, defaults or runtime outcomes.
+The current API is in the [specification](../specs/native.md).
+
 ## Purpose of Native
 
 Native is a standard API to ask Stellaris questions, the same on each platform and game build.

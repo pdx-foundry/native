@@ -145,14 +145,6 @@ pub enum ModifierEntry {
     },
 }
 
-/// A scalar default established independently of input acceptance and occurrence rules.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum FieldDefault {
-    /// The omitted-field result is not established.
-    Unknown,
-}
-
 /// An exhaustive set of accepted spellings, independently of fallback or recovery behavior.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]

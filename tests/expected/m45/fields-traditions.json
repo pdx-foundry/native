@@ -1,6 +1,5 @@
 [
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "custom_tooltip",
@@ -65,7 +64,6 @@
   ]
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "custom_tooltip_with_modifiers",
@@ -130,7 +128,6 @@
   ]
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "potential",
@@ -177,7 +174,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "possible",
@@ -224,7 +220,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_enabled",
@@ -306,7 +301,6 @@
   ]
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "on_disabled",
@@ -371,7 +365,6 @@
   ]
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "triggered_modifier",
@@ -396,7 +389,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "ai_weight",
@@ -443,7 +435,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "unlocks_agenda",
@@ -490,12 +481,10 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "Fields": [
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "None",
      "name": "name",
@@ -577,7 +566,6 @@
      ]
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "Unresolved",
      "name": "weight",
@@ -624,7 +612,6 @@
      "uses": []
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "None",
      "name": "custom_tooltip",
@@ -689,7 +676,6 @@
      ]
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "None",
      "name": "custom_tooltip_with_modifiers",
@@ -754,7 +740,6 @@
      ]
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "Unresolved",
      "name": "trigger",
@@ -801,7 +786,6 @@
      "uses": []
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "Unresolved",
      "name": "on_enabled",
@@ -883,7 +867,6 @@
      ]
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "Unresolved",
      "name": "on_disabled",
@@ -948,7 +931,6 @@
      ]
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "Unresolved",
      "name": "triggered_modifier",
@@ -973,7 +955,6 @@
      "uses": []
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "None",
      "name": "unlocks_agenda",
@@ -1020,7 +1001,6 @@
      "uses": []
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "None",
      "name": "inherit_effects",
@@ -1067,7 +1047,6 @@
      "uses": []
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "None",
      "name": "inherit_name",
@@ -1114,7 +1093,6 @@
      "uses": []
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "None",
      "name": "inherit_icon",
@@ -1161,7 +1139,6 @@
      "uses": []
     },
     {
-     "default": "Unknown",
      "domain": "Unknown",
      "members": "Unresolved",
      "name": "modifier",
@@ -1253,7 +1230,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": {
    "ModifierBlock": "1c2988588f7e8eaa"

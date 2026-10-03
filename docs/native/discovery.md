@@ -1,5 +1,12 @@
 # Discovery methods
 
+The 2026-10-02 [simplification review](../design/simplification-review.md) retires world
+execution, duration consumption and public scoped selection. Historical experiment counts below
+retain their original meaning. Current answers contain compiler facts; the retained live checks
+observe parsing, storage and diagnostics. See [ready-world](ready-world.md) to retrieve the retired
+route. The SDK-488 parser-scope findings remain in this index and its linked knowledge pages.
+
+
 Each method records its engine facts, current result, gaps and pitfalls on the page for
 its subject. Add a page when a method starts a new subject. The code and its module comments
 describe the methods; these pages hold what the code cannot.
@@ -8,7 +15,7 @@ Use the [method-authoring guide](method-authoring.md) to explore, implement and 
 one task. Each row below is one method source stamp; the two callback operations share a method.
 Module paths are relative to `src/engine/analysis/` unless a full `src/` path is shown. The table
 names the method owners, not every shared decoder or evaluator they use. It covers the static
-methods, their live loaded-modifier join and the world observation; other live observations are
+methods and their live loaded-modifier join; fixture observations are
 in [early observations](early-observations.md).
 
 The SDK-542 extraction, parser checks, population counts and consumer contract are in
@@ -17,15 +24,14 @@ The SDK-542 extraction, parser checks, population counts and consumer contract a
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v11` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v11`, `command-grammar/v12` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v11`, `command-grammar/v12` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v11`, `command-grammar/v12` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
-| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v11` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
-| `Game::observe_world` | `observe-world/v2` | `src/engine/operations/world.rs`, `src/world.rs`, the world recipe in `src/binding/targets/recipes.rs` | [Ready-world observations](ready-world.md) |
-| `CommandGrammar.durations` | `command-grammar/v12` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
+| `Native::registry_fields` | `registry-fields/v12` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v12`, `command-grammar/v13` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v12`, `command-grammar/v13` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v12`, `command-grammar/v13` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v12` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
+| `CommandGrammar.durations` | `command-grammar/v13` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v12` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v13` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -238,7 +244,8 @@ Nine resource changes and both naval-capacity modifiers are observed in a fifth 
 is complete. The results, the gaps and the map of the 41 SDK-493 evaluations are on
 [scoped numeric](scoped-numeric.md#world-evaluation-on-m451-hotfix-sdk-647); the first-release
 accounting is on [numeric conversion](numeric-conversion.md#first-release-numeric-forms-sdk-544).
-Run `cargo run --release --example scoped-numeric-population` and `cargo live world_numeric`
+The retired evaluated matrix is preserved at `d8f9d8a`; the retained parser control is
+`cargo live script_numeric`. Run `cargo run --release --example scoped-numeric-population`
 with `STELLARIS_PATH` to reproduce; `.local/sdk-647/scoped-population.json` lists every
 destination and gap.
 
@@ -336,7 +343,7 @@ Reports are `.local/sdk-659/{scoped,commands,registries}.json`. Reproduce with
 `scoped-numeric-population`, `command-population --trace "$STELLARIS_PATH"` and
 `registry-field-sweep "$STELLARIS_PATH"`, each through `cargo run --release --example`.
 `cargo test`, `cargo parity`, the ignored exact-build constructor test,
-`cargo live fixture_scoped_numeric_matrix` and `cargo live world_numeric_stored` pass.
+`cargo live fixture_scoped_numeric_matrix` and `cargo live script_numeric` pass.
 
 ## Member-confined calls (SDK-660)
 

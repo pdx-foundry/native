@@ -1,6 +1,5 @@
 [
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "desc",
@@ -25,7 +24,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "potential",
@@ -72,7 +70,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "ai_weight",
@@ -119,7 +116,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "traditions",
@@ -144,7 +140,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "adoption_bonus",
@@ -169,7 +164,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "Unresolved",
   "name": "finish_bonus",
@@ -194,7 +188,6 @@
   "uses": []
  },
  {
-  "default": "Unknown",
   "domain": "Unknown",
   "members": "None",
   "name": "tree_template",

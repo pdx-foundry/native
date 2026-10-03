@@ -1,4 +1,4 @@
-//! Static duration keys of a command: how unit keys set one count, and what consumes it.
+//! Static duration keys of a command: how unit keys set one count.
 use serde::{Deserialize, Serialize};
 
 use crate::GrammarProperty;
@@ -15,8 +15,6 @@ pub struct Duration {
     pub combination: GrammarProperty<DurationCombination>,
     /// The count when no key of the group is written.
     pub omitted_count: GrammarProperty<i64>,
-    /// What consumes the count after reading.
-    pub consumption: GrammarProperty<DurationConsumption>,
 }
 
 /// One key of a duration group.
@@ -44,15 +42,4 @@ pub enum DurationCombination {
         /// The factor before any key is read.
         initial_factor: i64,
     },
-}
-
-/// What consumes a duration count.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum DurationConsumption {
-    /// A flag store keeps the count, replacing an existing flag's count. Each update decrements a
-    /// nonnegative count and removes the flag when the result is zero, so a positive count is
-    /// removed on its count-th update. Zero becomes -1, and negative counts are never removed.
-    /// How often updates run is not established.
-    FlagCountdown,
 }

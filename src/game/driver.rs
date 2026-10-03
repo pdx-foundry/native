@@ -153,7 +153,6 @@ fn connect(
                             name,
                             request: sequence,
                         },
-                        ReadQuestion::World => Control::ReadWorld { request: sequence },
                         ReadQuestion::Fixture => Control::ReadFixture { request: sequence },
                         ReadQuestion::Modifiers => Control::ReadModifiers { request: sequence },
                     },
@@ -204,7 +203,6 @@ fn connect(
             }
             Reply::Paused {
                 readiness,
-                world,
                 registries,
                 fixture,
                 modifiers,
@@ -215,7 +213,6 @@ fn connect(
                 state.send_modify(|state| {
                     state.paused = Some(Paused {
                         readiness,
-                        world: *world,
                         registries,
                         fixture: *fixture,
                         modifiers: *modifiers,

@@ -1,8 +1,8 @@
 //! Observe a category fixture prepared before launch.
 //!
-//! usage: observe-fixture <installation-or-recordings> <category.txt>
+//! usage: observe-fixture <installation-or-recordings> <category.txt> <definition>
 //! `RECORDED=1` reads recorded answers; `RECORD_ANSWERS_TO` saves live answers.
-use pdx_native::{FixtureRequest, GameOptions, Native};
+use pdx_native::{FixtureFieldQuestion, FixtureRequest, GameOptions, Native};
 use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,12 +11,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pdx_native::supervisor::serve(std::io::stdin(), std::io::stdout())?;
         return Ok(());
     }
-    let [installation, file] = args.as_slice() else {
-        return Err("usage: observe-fixture <installation-or-recordings> <category.txt>".into());
+    let [installation, file, definition] = args.as_slice() else {
+        return Err(
+            "usage: observe-fixture <installation-or-recordings> <category.txt> <definition>"
+                .into(),
+        );
     };
-    let fixture = FixtureRequest::new(
+    let fixture = FixtureRequest::field_outcomes(
         "common/tradition_categories/atlas.txt",
         std::fs::read_to_string(file)?,
+        ["tree_template", "traditions"].map(|field| {
+            FixtureFieldQuestion::new("common/tradition_categories", definition, field)
+                .with_parsing()
+        }),
     );
     let native = if std::env::var_os("RECORDED").is_some() {
         Native::from_recorded_answers(installation)?

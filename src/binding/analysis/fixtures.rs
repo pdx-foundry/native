@@ -37,9 +37,6 @@ impl BoundAnalysis {
         if request.window != crate::FixtureWindow::InitialFileLoad {
             return Err("Inline fixture loaders support the initial file-load window only".into());
         }
-        if !request.observations.is_empty() {
-            return Err("Inline fixture loaders support field outcomes only".into());
-        }
         let verified = self.verified().map_err(|error| error.to_string())?;
         let loader = verified.verify_inline_loader(recipe)?;
         let input = verified.fixture_owner_input(recipe.owner, recipe)?;
@@ -77,7 +74,7 @@ impl BoundAnalysis {
                 parent_field: question.parent_field.clone(),
                 parsing: question.parsing,
                 diagnostics: question.diagnostics,
-                runtime: question.runtime,
+
                 reader_id: None,
                 reader_kind: crate::ReaderKind::Unknown,
                 reader_family: crate::BlockFamily::Unknown,

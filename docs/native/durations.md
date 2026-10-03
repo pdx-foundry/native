@@ -1,5 +1,9 @@
 # Duration keys (SDK-646)
 
+## API scope, 2026-10-02
+
+Duration consumers are retired from the API. Factors, combination and omitted count remain. The countdown findings below are retained knowledge; the removed matcher and controls can be retrieved from commit `d8f9d8ab337d10c9e920caeb02fc651f53b78042`.
+
 `CommandGrammar.durations` groups the child keys of a command that set one duration count, such
 as `days`, `months` and `years`. It gives each key's factor, how later keys combine with earlier
 ones, the count when no key is written, and what consumes the count. The source stamp is

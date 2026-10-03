@@ -113,7 +113,7 @@ fn both_fixed_wrappers_prove_unscaled_raw_storage_but_not_mode_selection() {
             panic!("unproved wrapper: {:?}", reader.gaps);
         };
         assert_eq!(conversion.scale, Known(Some(scale)));
-        assert_eq!(conversion.clamp, Known(None));
+
         assert_eq!(conversion.accepted_range, fixed_point_range(scale));
         assert_eq!(
             reader.gaps.iter().map(|gap| gap.reason).collect::<Vec<_>>(),
@@ -150,7 +150,7 @@ fn changed_raw_store_or_selector_cannot_inherit_wrapper_facts() {
         panic!("ordinary path was lost");
     };
     assert_eq!(conversion.width_bits, GrammarProperty::Partial(64));
-    assert_eq!(conversion.clamp, Unresolved);
+
     assert_eq!(conversion.accepted_range, Unresolved);
     assert!(
         reader

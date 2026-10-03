@@ -40,18 +40,16 @@ class ProtocolTests(unittest.TestCase):
                        malformed_entry=16464, unexpected_entry=16480,
                        fields=[dict(token=10001, name='custom_tooltip',
                        storage=dict(offset=448, decoder="String"))])
-        fixture = dict(file='common/tradition_categories/atlas.txt', registration_entries=True,
-                       field_reads=True, validation=False, questions=[], bindings=dict(validation=None, registration_entry=4096, load_entry=8192,
-                       field_entry=12288, reader_lexer_offset=48, lexer_file_offset=8,
+        fixture = dict(file='common/traditions/atlas.txt', validation=False, questions=[],
+                       bindings=dict(validation=None, reader_lexer_offset=48, lexer_file_offset=8,
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,
-                       fields=[dict(token=16793, name='tree_template'), dict(token=14263, name='traditions')],
                        outcome_registries=[outcome]))
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
                        registries={}, fault=None, deadline_seconds=180,
                        fixture=fixture, modifiers=None, script_checks=None)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
-        fixture['bindings']['fields'][0]['token'] = 'not an integer'
+        outcome['fields'][0]['token'] = 'not an integer'
         with self.assertRaises(ValueError):
             wire.encode('request', request)
 
@@ -115,14 +113,14 @@ class ProtocolTests(unittest.TestCase):
         self.assertLess(len(wire.encode('modifier_table', large, wire.MAX_MODIFIER_TABLE)), wire.MAX_MODIFIER_TABLE)
 
     def test_fixture_records_keep_typed_source_and_terminal_counts(self):
-        event = dict(kind='field-read', file='common/tradition_categories/atlas.txt',
-                     line=2, field='tree_template', owner='0x2000', ordinal=1)
+        event = dict(kind='field-parse', question=0, file='common/tradition_categories/atlas.txt',
+                     line=2, definition='atlas', field='tree_template', owner='0x2000', occurrence=1, returned=False)
         row = dict(run='attempt', seq=9, thread=7, kind='fixture', event=event)
         self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
-        for changes in [dict(line=-1), dict(ordinal=True), dict(owner=None), dict(extra='unknown')]:
+        for changes in [dict(line=-1), dict(occurrence=True), dict(owner=None), dict(extra='unknown')]:
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 wire.encode('record', dict(row, event=dict(event, **changes)))
-        terminal = dict(kind='end', registrations=3, field_reads=2, field_outcomes=0,
+        terminal = dict(kind='end', field_outcomes=0,
                         diagnostics=0, producer_last_sequence=12)
         self.assertEqual(wire.decode('record', wire.encode('record', dict(row, event=terminal)))['event'], terminal)
         diagnostic = dict(kind='diagnostic', text='Unexpected token',

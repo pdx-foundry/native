@@ -31,11 +31,9 @@ diagnostics = None
 
 class SessionProgress:
     """Observed boundaries and failures; observers never choose the session's pause."""
-    def __init__(self, active_registries=(), modifier_active=False, fixture_pending=False, world_active=False):
+    def __init__(self, active_registries=(), modifier_active=False, fixture_pending=False):
         self.active_registries = set(active_registries)
-        if world_active:
-            self.pause_owner = 'world'
-        elif modifier_active:
+        if modifier_active:
             self.pause_owner = 'modifiers'
         elif self.active_registries:
             self.pause_owner = 'registries'
@@ -43,7 +41,6 @@ class SessionProgress:
             self.pause_owner = None
         self.returned_registries = []
         self.modifier_returned = False
-        self.world_ready = False
         self.fixture_pending = fixture_pending
         self.callback_active = False
         self.callback_failed = False
@@ -61,8 +58,6 @@ def decide_pause(state):
         return PauseDecision(False, None)
     if state.callback_failed or state.worker_loss_ready:
         return PauseDecision(True, None)
-    if state.pause_owner == 'world' and state.world_ready:
-        return PauseDecision(True, 'world-ready')
     if state.pause_owner == 'modifiers' and state.modifier_returned and not state.fixture_pending:
         return PauseDecision(True, 'content-loaded')
     if state.pause_owner == 'registries' and state.active_registries.issubset(state.returned_registries) and not state.fixture_pending:
@@ -80,8 +75,6 @@ def fault_control(session_request, target):
 def requested_hooks(session_request, modifier_observer, fixture_observer):
     """Every hook the session requires, as (name, address)."""
     hooks = [(protocol.HOOK['registry'] + name, value['load_entry']) for name, value in session_request['registries'].items()]
-    if session_request.get('world'):
-        hooks.append((protocol.HOOK['world'], session_request['world']['binding']['pause_entry']))
     if modifier_observer:
         hooks.extend(modifier_observer.hooks())
     if fixture_observer:
@@ -95,15 +88,9 @@ def controlled_hook(session_request):
     target = fault['target'] if fault else None
     if isinstance(target, dict):
         return protocol.HOOK['registry'] + target['registry']
-    if target == 'world':
-        return protocol.HOOK['world']
     if target != 'fixture':
         return None
-    if session_request['fixture']['field_reads']:
-        return protocol.HOOK['fixture_field']
-    if not session_request['fixture']['registration_entries']:
-        return protocol.HOOK['fixture_member']
-    return protocol.HOOK['fixture_registration']
+    return protocol.HOOK['fixture_member']
 
 
 class UnsupportedKeyLayout(Exception):
@@ -142,9 +129,10 @@ def dropped_by_fault(kind, fields, session_request):
     """Whether a requested dropped-record fault leaves this record out of the trace. The record
     still takes its sequence number, so the trace shows the gap."""
     if fault_control(session_request, 'fixture') == protocol.CONTROL['dropped_record'] and kind == 'fixture':
-        dropped = ('field-read', 1) if session_request['fixture']['field_reads'] else ('registration-entry', 2)
         event = fields['event']
-        if (event['kind'], event.get('ordinal')) == dropped:
+        if event.get('question') == 0 and event.get('occurrence') == 1 and (
+                event['kind'] == 'field-storage' or
+                (event['kind'] == 'field-parse' and not event['returned'])):
             return True
     return (kind == 'registry-entry' and fields['index'] == 0
             and fault_control(session_request, {'registry': fields['name']}) == protocol.CONTROL['dropped_record'])
@@ -327,7 +315,6 @@ class FixtureObserver:
     def __init__(self, config):
         self.config = config
         self.bindings = config['bindings']
-        self.fields = {field['token']: field['name'] for field in self.bindings['fields']}
         registry = config['file'].rsplit('/', 1)[0]
         self.outcome_binding = next((item for item in self.bindings['outcome_registries'] if item['registry'] == registry), None)
         self.questions = {item['index']: item for item in config['questions']}
@@ -337,11 +324,8 @@ class FixtureObserver:
         self.validation = config['validation']
         self.validation_finished = False
         self.control = fault_control(request, 'fixture')
-        self.registrations = 0
-        self.field_count = 0
         self.loading = False
         self.returned = False
-        self.owner = None
         self.definitions = {}
         self.constructor_count = 0
         self.occurrences = {index: 0 for index in self.questions}
@@ -363,13 +347,9 @@ class FixtureObserver:
         ]
 
     def hooks(self):
-        load_entry = self.outcome_binding['load_entry'] if self.questions and self.outcome_binding else self.bindings['load_entry']
+        load_entry = self.outcome_binding['load_entry']
         hooks = [(protocol.HOOK['fixture_load'], load_entry)]
         hooks.extend(self.validation_hooks())
-        if self.config['registration_entries']:
-            hooks.append((protocol.HOOK['fixture_registration'], self.bindings['registration_entry']))
-        if self.config['field_reads']:
-            hooks.append((protocol.HOOK['fixture_field'], self.bindings['field_entry']))
         if self.questions and self.outcome_binding:
             hooks.extend([
                 (protocol.HOOK['fixture_constructor'], self.outcome_binding['constructor_entry']),
@@ -447,19 +427,6 @@ class FixtureObserver:
             else:
                 self.emit('diagnostics-unavailable', thread,
                     reason='Parser diagnostics are outside this registry binding')
-
-    def on_registration(self, thread, name):
-        self.registrations += 1
-        self.emit('registration-entry', thread, ordinal=self.registrations)
-        if self.registrations != 3:
-            return False
-        breakpoints[name].SetEnabled(False)
-        self.emit('registration-end', thread, count=3)
-        if self.control == protocol.CONTROL['worker_loss']:
-            emit('worker-loss-ready')
-            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
-            return True
-        return False
 
     def on_load(self, frame, process, thread, registers):
         file = string(process, register(frame, registers['file']))
@@ -643,27 +610,6 @@ class FixtureObserver:
         progress.fixture_pending = False
         return False
 
-    def on_field(self, frame, process, thread, registers, name):
-        file, line = self.location(process, register(frame, registers['reader']))
-        if file != self.config['file']:
-            return False
-        owner = register(frame, registers['owner'])
-        token = register(frame, registers['field-token'])
-        if not self.loading or self.returned or not owner or self.owner not in (None, owner):
-            raise RuntimeError('fixture field has no matching loader or owner')
-        if token not in self.fields or self.field_count >= 2:
-            breakpoints[name].SetEnabled(False)
-            raise RuntimeError('field outside the bounded category window')
-        self.owner = owner
-        self.field_count += 1
-        self.emit('field-read', thread, file=file, line=line, field=self.fields[token],
-            owner=hex(owner), ordinal=self.field_count)
-        if self.control == protocol.CONTROL['worker_loss'] and not self.config['registration_entries']:
-            emit('worker-loss-ready')
-            (ROOT / 'worker-loss-ready').touch(exist_ok=False)
-            return True
-        return False
-
     def on_return(self, process, thread):
         if not self.loading or self.returned:
             raise RuntimeError('fixture return has no matching loader entry')
@@ -671,7 +617,7 @@ class FixtureObserver:
         self.finish_questions(process, thread)
         if not self.validation:
             self.finish_diagnostics(thread)
-        self.emit('load-returned', thread, file=self.config['file'], field_count=self.field_count)
+        self.emit('load-returned', thread, file=self.config['file'])
         if self.validation:
             retained = {name for name, _ in self.validation_hooks()}
             retained.update([protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']])
@@ -687,7 +633,7 @@ class FixtureObserver:
             if key.startswith(protocol.HOOK['fixture']):
                 hook.SetEnabled(False)
         if self.control != protocol.CONTROL['missing_terminal']:
-            self.emit('end', thread, registrations=self.registrations, field_reads=self.field_count,
+            self.emit('end', thread,
                 field_outcomes=len(self.questions), diagnostics=self.diagnostics,
                 producer_last_sequence=sequence + 1)
 
@@ -707,8 +653,6 @@ class FixtureObserver:
             return False
         if thread != entry_thread:
             raise RuntimeError('fixture callback differs from the launch thread')
-        if name == protocol.HOOK['fixture_registration']:
-            return self.on_registration(thread, name)
         if name == protocol.HOOK['fixture_load']:
             return self.on_load(frame, process, thread, registers)
         if name == protocol.HOOK['fixture_constructor']:
@@ -727,8 +671,6 @@ class FixtureObserver:
             return self.on_diagnostic(frame, process, thread, registers, protocol.DIAGNOSTIC_STAGE['reader_malformed'])
         if name == protocol.HOOK['fixture_unexpected']:
             return self.on_diagnostic(frame, process, thread, registers, protocol.DIAGNOSTIC_STAGE['reader_unexpected'])
-        if name == protocol.HOOK['fixture_field']:
-            return self.on_field(frame, process, thread, registers, name)
         if name == protocol.HOOK['fixture_return']:
             return self.on_return(process, thread)
         if name == protocol.HOOK['fixture_validated']:
@@ -1143,18 +1085,7 @@ def callback(frame, loc, _):
     worker_loss_ready = False
     try:
         name = next(key for key, bp in breakpoints.items() if bp.GetID() == loc.GetBreakpoint().GetID())
-        if name == protocol.HOOK['world']:
-            import world
-            if frame.GetThread().GetThreadID() != entry_thread:
-                return False
-            if world.ready_boundary(frame, request['world']['binding']):
-                breakpoints[name].SetEnabled(False)
-                progress.world_ready = True
-                if fault_control(request, 'world') == protocol.CONTROL['worker_loss']:
-                    emit('worker-loss-ready')
-                    (ROOT / 'worker-loss-ready').touch(exist_ok=False)
-                    worker_loss_ready = True
-        elif name.startswith(protocol.HOOK['fixture']):
+        if name.startswith(protocol.HOOK['fixture']):
             try:
                 worker_loss_ready = fixture.callback(frame, name)
             except Exception:
@@ -1286,19 +1217,14 @@ def run(debugger):
                 active_registries.add(name.removeprefix(protocol.HOOK['registry']))
             elif name.startswith(protocol.HOOK['modifiers']):
                 modifier_active = True
-            elif name == protocol.HOOK['world']:
-                pass
         else:
-            if name == protocol.HOOK['world']:
-                emit('capability-unavailable', reason='required world hook missing before resume')
-                return
-            elif name.startswith(protocol.HOOK['modifiers']):
+            if name.startswith(protocol.HOOK['modifiers']):
                 emit('modifier-unavailable', reason='required modifier hook missing or late before resume')
             elif name.startswith(protocol.HOOK['fixture']):
                 fixture.emit('unavailable', entry_thread, reason='required fixture hook missing or late before resume')
             else:
                 emit('registry-unavailable', name=name.removeprefix(protocol.HOOK['registry']), reason='required registry hook missing or late before resume')
-    progress = SessionProgress(active_registries, modifier_active, bool(fixture and (fixture.validation or isinstance(fixture, InlineFixtureObserver))), bool(request.get("world")))
+    progress = SessionProgress(active_registries, modifier_active, bool(fixture and (fixture.validation or isinstance(fixture, InlineFixtureObserver))))
     if decide_pause(progress).stop:
         return
     emit('hooks-active-before-resume', hooks=state)
@@ -1343,22 +1269,6 @@ def run(debugger):
     while progress.worker_loss_ready and time.monotonic() < deadline:
         time.sleep(.02)
     if decision.cause and process.GetState() == lldb.eStateStopped:
-        if decision.cause == 'world-ready':
-            diagnostics.update('world-ready', phase='world-observation', thread=entry_thread, context='world day 0')
-            import world
-            disable_observation_hooks()
-            try:
-                if fault_control(request, 'world') == protocol.CONTROL['access_failure']:
-                    raise RuntimeError('world observation access failure control')
-                observation = world.WorldObserver(process, entry_thread, request['world'],
-                    request['script_checks'], request['attempt'], deadline, protocol.SCRIPT_LIMITS, diagnostics=diagnostics).observe()
-            except RuntimeError as error:
-                diagnostics.failure('world-observation', error)
-                emit('capability-unavailable', reason='world observation failed: ' + str(error))
-                return
-            atomic('world', 'world.json', dict(attempt=request['attempt'], game=request['game'],
-                thread=entry_thread, observation=observation), 4 * 1024 * 1024)
-            emit('world-observed', thread=entry_thread)
         emit('session-paused', returned=progress.returned_registries, cause=decision.cause, thread=entry_thread)
         disable_observation_hooks()
         held_registers = pause_registers(process, entry_thread)
