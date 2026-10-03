@@ -410,7 +410,10 @@ fn flag(outcome: &NameOutcome) -> &FlagCommand {
     }
 }
 
-fn routes(flag: &FlagCommand) -> Vec<(Role, usize, Result<Route, Unresolved>)> {
+/// A role with the mask bit of its scope type and the route of its store.
+type RoleRoute = (Role, usize, Result<Route, Unresolved>);
+
+fn routes(flag: &FlagCommand) -> Vec<RoleRoute> {
     flag.uses
         .iter()
         .map(|role_use| (role_use.role, role_use.scope.bit, role_use.route.clone()))
@@ -778,4 +781,145 @@ fn a_name_that_only_an_unreadable_site_registers_is_not_examined() {
         NameOutcome::NotExamined(Unresolved::new("command-registration"))
     );
     assert!(matches!(outcomes["set_flag"], NameOutcome::Flag(_)));
+}
+
+/// How a control breaks a command's assign reader.
+#[derive(Clone, Copy)]
+enum BrokenAssign {
+    NoSlot,
+    NoBody,
+    Undecodable,
+}
+
+/// The outcomes of `set_alone`, whose broken assign reader is its only flag reader, of
+/// `set_timed`, whose member reader is a valid flag reader, and of `unrelated`, whose readers
+/// name no flag.
+fn broken_assign_outcomes(broken: BrokenAssign) -> BTreeMap<String, NameOutcome> {
+    let assign_slot = match broken {
+        BrokenAssign::NoSlot => None,
+        BrokenAssign::NoBody | BrokenAssign::Undecodable => Some((SLOTS.assign, ASSIGN)),
+    };
+    let alone: Vec<(u64, u64)> = assign_slot
+        .into_iter()
+        .chain([(SLOTS.role, EXECUTE), (ACCESSOR_SLOT, ACCESSOR)])
+        .collect();
+    let mut timed = alone.clone();
+    timed.push((0x18, MEMBER));
+    let mut effects = family(
+        DeclarationKind::Effect,
+        vec![
+            command("set_alone", &[COUNTRY], &alone),
+            command("set_timed", &[COUNTRY], &timed),
+            command("unrelated", &[COUNTRY], &[(SLOTS.assign, STUB)]),
+        ],
+        vec![
+            timed_member(INDEX),
+            execute(EXECUTE, INDEX, SETTER, Store::Accessor),
+            forwarding(ACCESSOR, SCOPE_FLAGS),
+            scope_flags(),
+        ],
+    );
+    if let BrokenAssign::Undecodable = broken {
+        let partial_instruction = Function {
+            address: ASSIGN,
+            code: vec![0; 3],
+        };
+        effects
+            .declarations
+            .functions
+            .insert(ASSIGN, partial_instruction);
+    }
+
+    analyzed(vec![effects])
+}
+
+/// The broken assign reader leaves a stop with `reason` on each command that has it, and the
+/// unrelated command stays outside the answer.
+fn assert_broken_assign_stops(broken: BrokenAssign, reason: &'static str) {
+    let outcomes = broken_assign_outcomes(broken);
+
+    assert_eq!(
+        outcomes["set_alone"],
+        NameOutcome::Unresolved(Unresolved::new(reason))
+    );
+    let timed = flag(&outcomes["set_timed"]);
+    assert_eq!(routes(timed), [(Role::Defines, COUNTRY, Ok(SCOPE_ROUTE))]);
+    assert_eq!(timed.form, DynamicNameForm::Unresolved);
+    assert!(timed.stops.contains(&Unresolved::new(reason)));
+    assert!(timed.stops.contains(&Unresolved::new("dynamic-form")));
+    assert_eq!(outcomes["unrelated"], NameOutcome::NotFlag);
+}
+
+#[test]
+fn a_missing_assign_slot_leaves_the_command_unresolved() {
+    assert_broken_assign_stops(BrokenAssign::NoSlot, "assign-slot");
+}
+
+#[test]
+fn an_assign_reader_without_a_body_leaves_the_command_unresolved() {
+    assert_broken_assign_stops(BrokenAssign::NoBody, "reader-code");
+}
+
+#[test]
+fn an_undecodable_assign_reader_leaves_the_command_unresolved() {
+    assert_broken_assign_stops(BrokenAssign::Undecodable, "reader-code");
+}
+
+/// The five hops of a forwarding chain that ends at the scope's own flag accessor.
+const HOPS: [u64; 5] = [0x4800, 0x4c00, 0x5000, 0x5400, 0x5800];
+
+/// The routes of two setters whose accessors enter the chain at its first and its third hop.
+/// Commands run in name order, so `first_entry` and `third_entry` select which entry runs first.
+fn chain_routes(first_entry: &'static str, third_entry: &'static str) -> [Vec<RoleRoute>; 2] {
+    let mut bodies = vec![
+        assign(INDEX),
+        execute(EXECUTE, INDEX, SETTER, Store::Accessor),
+        forwarding(ACCESSOR, HOPS[0]),
+        forwarding(OTHER_ACCESSOR, HOPS[2]),
+        scope_flags(),
+    ];
+    let next_hops = HOPS[1..].iter().chain([&SCOPE_FLAGS]);
+    for (&hop, &next) in HOPS.iter().zip(next_hops) {
+        let mut code = Arm64::at(hop);
+        code.tail_call(next);
+        bodies.push(code);
+    }
+    let effects = family(
+        DeclarationKind::Effect,
+        vec![
+            command(first_entry, &[COUNTRY], &flag_slots(EXECUTE, ACCESSOR)),
+            command(
+                third_entry,
+                &[COUNTRY],
+                &flag_slots(EXECUTE, OTHER_ACCESSOR),
+            ),
+        ],
+        bodies,
+    );
+    let outcomes = analyzed(vec![effects]);
+
+    [
+        routes(flag(&outcomes[first_entry])),
+        routes(flag(&outcomes[third_entry])),
+    ]
+}
+
+#[test]
+fn a_forwarding_chain_gives_the_same_routes_in_either_command_order() {
+    let first_runs_first = chain_routes("set_early", "set_late");
+    let third_runs_first = chain_routes("set_late", "set_early");
+
+    assert_eq!(first_runs_first, third_runs_first);
+    // Each entry follows the chain for the same number of hops from where it enters.
+    let ends_at = |terminal| {
+        [(
+            Role::Defines,
+            COUNTRY,
+            Ok(Route::Scope {
+                terminal,
+                offset: 0,
+            }),
+        )]
+    };
+    assert_eq!(first_runs_first, [ends_at(HOPS[3]), ends_at(SCOPE_FLAGS)]);
 }

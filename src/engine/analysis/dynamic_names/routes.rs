@@ -83,17 +83,18 @@ pub(super) struct RouteInput<'a> {
     pub scope_type_offset: u64,
 }
 
-/// Resolved routes, kept for every function, caller and scope type that a run reached.
+/// Route runs, kept for every function, caller and scope type that a run reached. A kept run is
+/// the function's own route, before its terminal is followed, so it holds at every depth.
 pub(super) struct Routes<'a> {
     input: RouteInput<'a>,
-    resolved: HashMap<(u64, Caller, usize), Result<Route, Unresolved>>,
+    runs: HashMap<(u64, Caller, usize), Result<Route, Unresolved>>,
 }
 
 impl<'a> Routes<'a> {
     pub(super) fn new(input: RouteInput<'a>) -> Self {
         Self {
             input,
-            resolved: HashMap::new(),
+            runs: HashMap::new(),
         }
     }
 
@@ -115,19 +116,18 @@ impl<'a> Routes<'a> {
         scope: usize,
         depth: usize,
     ) -> Result<Route, Unresolved> {
-        let key = (function, caller, scope);
-        if let Some(route) = self.resolved.get(&key) {
-            return route.clone();
-        }
-        let route = run(&self.input, function, caller, scope).map(|route| match route {
+        let route = self
+            .runs
+            .entry((function, caller, scope))
+            .or_insert_with(|| run(&self.input, function, caller, scope))
+            .clone()?;
+
+        Ok(match route {
             Route::Scope { terminal, offset } if depth + 1 < DEPTH_LIMIT => self
                 .resolve(terminal, Caller::Scope, scope, depth + 1)
                 .map_or(route, |inner| inner.plus(offset)),
             route => route,
-        });
-        self.resolved.insert(key, route.clone());
-
-        route
+        })
     }
 }
 

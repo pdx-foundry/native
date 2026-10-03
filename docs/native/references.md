@@ -374,6 +374,8 @@ the command population takes about one minute.
 - The reader facts come from the paths that return. A reader path that stops, such as at an
   unknown branch target or a path limit, is a stop of the command, and its form stays
   `Unresolved`. A name that only an unreadable registration site names is not examined.
+- A missing assign slot or a reader body that does not decode is a stop (`assign-slot`,
+  `reader-code`), not a reader that names no flag. None occurs on M45-release.
 - The evaluator cannot prove the readers' scan loop: a loop over an unknown count reaches the path
   limit. Reads need the complete-function membership-scan shape.
 - A route that the method cannot follow falls back to its terminal, the function that receives

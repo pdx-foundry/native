@@ -140,7 +140,8 @@ pub enum NameOutcome {
     /// The command's registration or command object was not joined, so its readers were not
     /// examined.
     NotExamined(Unresolved),
-    /// The command's readers name a flag, but no one stored index was established.
+    /// The command's readers name a flag, but no one stored index was established; or a reader
+    /// was not read, so whether they name a flag was not established.
     Unresolved(Unresolved),
 }
 
@@ -477,7 +478,10 @@ impl<'a> Examiner<'a> {
         };
         let read = self.command_name_read(reader.vtable, reader.member);
         if !read.names_flags {
-            return NameOutcome::NotFlag;
+            return match read.stops.first() {
+                Some(stop) => NameOutcome::Unresolved(stop.clone()),
+                None => NameOutcome::NotFlag,
+            };
         }
         let index = match read.indexes.iter().collect::<Vec<_>>()[..] {
             [index] => *index,
@@ -515,8 +519,11 @@ impl<'a> Examiner<'a> {
             .pointers
             .get(&(vtable + self.family.slots.assign))
             .copied();
-        let functions: BTreeSet<u64> = assign.into_iter().chain([member]).collect();
         let mut read = NameRead::default();
+        if assign.is_none() {
+            read.stops.push(Unresolved::new("assign-slot"));
+        }
+        let functions: BTreeSet<u64> = assign.into_iter().chain([member]).collect();
         for function in functions {
             read.merge(self.name_read(function));
         }
@@ -601,7 +608,10 @@ impl<'a> Examiner<'a> {
     fn read_slot(&self, function: u64) -> NameRead {
         let flags = self.input.functions;
         let Some(rows) = self.rows(function) else {
-            return NameRead::default();
+            return NameRead {
+                stops: vec![Unresolved::new("reader-code")],
+                ..NameRead::default()
+            };
         };
         if !calls_any(&rows, &[flags.name_reader, flags.interner]) {
             return NameRead::default();
