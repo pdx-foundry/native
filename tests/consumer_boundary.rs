@@ -7,101 +7,57 @@ use proc_macro2::{TokenStream, TokenTree};
 use std::{
     path::{Path, PathBuf},
     process::Command,
+    sync::LazyLock,
 };
 use syn::{
-    Attribute, ExprLit, ExprMethodCall, ExprUnsafe, ItemForeignMod, ItemImpl, ItemTrait, ItemUse,
-    Lit, LitInt, Macro, Meta, Signature, UseTree, parse::Parser, punctuated::Punctuated,
-    visit::Visit,
+    Attribute, ExprLit, ExprMethodCall, ExprUnsafe, Item, ItemForeignMod, ItemImpl, ItemTrait,
+    ItemUse, Lit, LitInt, Macro, Meta, Signature, UseTree, Visibility, parse::Parser,
+    punctuated::Punctuated, visit::Visit,
 };
 
-const EXPORTS: &[&str] = &[
-    "Answer",
-    "Basis",
-    "BuildId",
-    "Completeness",
-    "ContextScopes",
-    "Declaration",
-    "DeclarationKind",
-    "DeclaredScopes",
-    "DeclaredTags",
-    "Define",
-    "DefineValueType",
-    "Disposal",
-    "EntryContext",
-    "EntryScope",
-    "Error",
-    "Field",
-    "FieldReference",
-    "EmptyKey",
-    "KeyMatch",
-    "LookupStage",
-    "MissingResult",
-    "ReferenceLookup",
-    "ReferenceTarget",
-    "Gap",
-    "GameRule",
-    "GapKind",
-    "GapSubject",
-    "GeneratedName",
-    "GenerationCondition",
-    "LinkData",
-    "LoadedContent",
-    "LoadedModifier",
-    "LoadedModifiers",
-    "LocalizationCommand",
-    "LocalizationContext",
-    "LocalizationContextId",
-    "LocalizationContextReference",
-    "LocalizationDeclarations",
-    "LocalizationLink",
-    "LocalizationOutput",
-    "ModifierBlock",
-    "ModifierEntry",
-    "ModifierCategory",
-    "ModifierDeclaration",
-    "ModifierFamily",
-    "NamePart",
-    "OnAction",
-    "Operation",
-    "OutputScope",
-    "Reader",
-    "ReaderId",
-    "ReaderKind",
-    "Registry",
-    "RuleKind",
-    "ScopeDeclaration",
-    "ScopeGroup",
-    "ScopeId",
-    "ScopeInventory",
-    "ScopeLink",
-    "ScopeReference",
-    "Source",
-    "Support",
-    "OpenError",
-    "DiagnosticCoverage",
-    "DiagnosticJoin",
-    "DiagnosticWindow",
-    "FixtureDiagnostic",
-    "FixtureFieldOutcome",
-    "FixtureFieldQuestion",
-    "FixtureObservation",
-    "FixtureOwnerId",
-    "FixtureRequest",
-    "FixtureStorage",
-    "FixtureValue",
-    "FixtureWindow",
-    "StoredFieldOccurrence",
-    "Game",
-    "GameOptions",
-    "Native",
-    "supervisor",
-    "CommandReference",
-    "DynamicNameForm",
-    "DynamicNameKind",
-    "DynamicNamespace",
-    "DynamicNamespaceId",
-    "NamespaceOwner",
-];
+/// Every name that `src/lib.rs` exports publicly and does not hide from its documentation.
+static EXPORTS: LazyLock<Vec<String>> = LazyLock::new(|| {
+    let library = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+    public_exports(&syn::parse_file(library).expect("the library root is Rust"))
+});
+
+fn public_exports(library: &syn::File) -> Vec<String> {
+    let mut exports = Vec::new();
+    for item in &library.items {
+        match item {
+            Item::Use(item) if is_documented_public(&item.vis, &item.attrs) => {
+                use_tree_names(&item.tree, &mut exports);
+            }
+            Item::Mod(item) if is_documented_public(&item.vis, &item.attrs) => {
+                exports.push(item.ident.to_string());
+            }
+            _ => {}
+        }
+    }
+    exports
+}
+
+fn is_documented_public(visibility: &Visibility, attributes: &[Attribute]) -> bool {
+    let hidden = attributes.iter().any(|attribute| {
+        matches!(&attribute.meta, Meta::List(list)
+            if list.path.is_ident("doc") && list.tokens.to_string() == "hidden")
+    });
+    matches!(visibility, Visibility::Public(_)) && !hidden
+}
+
+fn use_tree_names(tree: &UseTree, names: &mut Vec<String>) {
+    match tree {
+        UseTree::Path(path) => use_tree_names(&path.tree, names),
+        UseTree::Name(name) => names.push(name.ident.to_string()),
+        UseTree::Rename(rename) => names.push(rename.rename.to_string()),
+        UseTree::Group(group) => {
+            for tree in &group.items {
+                use_tree_names(tree, names);
+            }
+        }
+        UseTree::Glob(_) => panic!("a glob export in src/lib.rs hides its names"),
+    }
+}
 
 /// The `pdx_native::supervisor` members that Atlas may use.
 const SUPERVISOR_EXPORTS: &[&str] = &["serve", "SupervisorError"];
@@ -142,7 +98,7 @@ impl Checker {
     }
 
     fn check_export(&mut self, name: &str) {
-        if !EXPORTS.contains(&name) {
+        if !EXPORTS.iter().any(|export| export == name) {
             self.reject("unsupported export", name);
         }
     }
@@ -656,6 +612,31 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
             "{source}"
         );
     }
+}
+
+#[test]
+fn every_public_export_is_accepted_and_hidden_modules_are_not() {
+    for hidden in [
+        "internals",
+        "GameReadiness",
+        "UnavailableReason",
+        "AnalysisError",
+    ] {
+        assert!(!EXPORTS.iter().any(|export| export == hidden), "{hidden}");
+    }
+    for public in [
+        "Native",
+        "supervisor",
+        "Duration",
+        "CommandGrammar",
+        "ScriptCheck",
+    ] {
+        assert!(EXPORTS.iter().any(|export| export == public), "{public}");
+    }
+
+    let source = format!("use pdx_native::{{{}}};", EXPORTS.join(", "));
+    let found = violations(Path::new("case.rs"), &source);
+    assert!(found.is_empty(), "{found:?}");
 }
 
 #[test]
