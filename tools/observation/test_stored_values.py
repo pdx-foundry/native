@@ -10,6 +10,51 @@ import stored_values
 import protocol
 
 
+TAG = 23
+
+
+def short_cstring(text):
+    encoded = text.encode('utf-8')
+    return encoded.ljust(TAG, b'\0') + bytes([len(encoded)])
+
+
+def long_cstring(pointer, length):
+    return (pointer.to_bytes(8, 'little') + length.to_bytes(8, 'little')).ljust(TAG, b'\0') + bytes([128])
+
+
+class CStringTests(unittest.TestCase):
+    def test_short_text_is_in_place_and_multibyte_text_decodes(self):
+        read = Mock(side_effect=AssertionError('heap read'))
+        for text in ['', 'pop_happiness', 'Zürich ✓']:
+            with self.subTest(text=text):
+                self.assertEqual(stored_values.cstring(short_cstring(text), TAG, read), text)
+
+    def test_a_short_tag_beyond_its_storage_is_malformed(self):
+        storage = short_cstring('x')[:TAG] + bytes([TAG + 1])
+        with self.assertRaisesRegex(RuntimeError, 'short string length outside bound'):
+            stored_values.cstring(storage, TAG, Mock())
+
+    def test_long_text_reads_its_length_behind_the_pointer(self):
+        text = 'é' * 2048
+        read = Mock(return_value=text.encode('utf-8'))
+        self.assertEqual(stored_values.cstring(long_cstring(0x2000, 4096), TAG, read), text)
+        read.assert_called_once_with(0x2000, 4096)
+
+    def test_a_long_length_beyond_the_bound_is_not_read(self):
+        read = Mock()
+        with self.assertRaisesRegex(RuntimeError, 'string length outside bound'):
+            stored_values.cstring(long_cstring(0x2000, 4097), TAG, read)
+        read.assert_not_called()
+
+    def test_a_truncated_read_raises(self):
+        read = Mock(side_effect=RuntimeError('native memory access failed'))
+        with self.assertRaisesRegex(RuntimeError, 'native memory access failed'):
+            stored_values.cstring(long_cstring(0x2000, 40), TAG, read)
+        cut = 'Zürich'.encode('utf-8')[:2]
+        with self.assertRaises(UnicodeDecodeError):
+            stored_values.cstring(long_cstring(0x2000, 2), TAG, Mock(return_value=cut))
+
+
 class StoredValueTests(unittest.TestCase):
     def test_float_preserves_representative_binary32_patterns(self):
         for bits in [0, 0x80000000, 0x3f9e0652, 0x7f7fffff, 0x7f800000, 0xff800000, 0x7fc00001]:

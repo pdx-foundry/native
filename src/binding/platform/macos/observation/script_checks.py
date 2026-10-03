@@ -3,6 +3,7 @@
 The supervisor owns the absolute check deadline and disposal. Calls use LLDB's synchronous
 continue path so that the returned stop has settled before registers are changed again.
 """
+from functools import partial
 import re
 import time
 
@@ -124,14 +125,10 @@ def read_unsigned(process, address, size=8):
 
 
 def read_string(process, address, tag_offset, limit):
-    import lldb
-    if read_unsigned(process, address + tag_offset, 1) & 128:
-        address = read_unsigned(process, address)
-    error = lldb.SBError()
-    text = process.ReadCStringFromMemory(address, limit + 1, error)
-    if error.Fail() or text is None:
-        raise RuntimeError('script check string read failed: ' + str(error))
-    return text, len(text.encode('utf-8')) >= limit
+    """The first `limit` characters of the CString at `address`, and whether it had more."""
+    storage = read_memory(process, address, tag_offset + 1)
+    text = stored_values.cstring(storage, tag_offset, partial(read_memory, process))
+    return text[:limit], len(text) > limit
 
 
 def stored_text(process, address, tag_offset):

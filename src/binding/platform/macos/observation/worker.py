@@ -7,6 +7,7 @@ session that reads the loaded modifier table holds the game where the engine's m
 documentation returns instead, after all content has loaded. Engine locations arrive in the
 request, from Native's binding groups."""
 from collections import namedtuple
+from functools import partial
 import hashlib
 import json
 import os
@@ -172,13 +173,17 @@ def register(frame, name):
     return value.GetValueAsUnsigned()
 
 
-def uint(process, address, size=8):
+def memory(process, address, size):
     import lldb
     error = lldb.SBError()
-    value = process.ReadMemory(address, size, error)
+    value = process.ReadMemory(address, size, error) if size else b''
     if error.Fail() or len(value) != size:
         raise RuntimeError('native memory access failed: ' + str(error))
-    return int.from_bytes(value, 'little')
+    return value
+
+
+def uint(process, address, size=8):
+    return int.from_bytes(memory(process, address, size), 'little')
 
 
 def string(process, address):
@@ -190,16 +195,10 @@ def string(process, address):
     return value
 
 
-def long_cstring(tag):
-    """Bit 7 of a CString's tag byte says that it holds a pointer to its text."""
-    return tag & 128
-
-
 def cstring(process, storage, tag_offset):
     """The text of the CString at `storage`: in place, or behind its pointer."""
-    tag = uint(process, storage + tag_offset, 1)
-    address = uint(process, storage) if long_cstring(tag) else storage
-    return string(process, address)
+    storage_bytes = memory(process, storage, tag_offset + 1)
+    return stored_values.cstring(storage_bytes, tag_offset, partial(memory, process))
 
 
 def hook_state():
@@ -953,36 +952,18 @@ class ModifierObserver:
     def load(self, target, address):
         return target.ResolveFileAddress(address).GetLoadAddress(target)
 
-    def read(self, process, address, size):
-        import lldb
-        error = lldb.SBError()
-        value = process.ReadMemory(address, size, error) if size else b''
-        if error.Fail() or len(value) != size:
-            raise RuntimeError('native memory access failed: ' + str(error))
-        return value
-
     def text(self, process, buffer, offset):
-        """The engine string object at `offset` in `buffer`: short text in place, or a pointer
-        and a length when bit 7 of its tag byte is set."""
-        tag = buffer[offset + self.binding['string_tag_offset']]
-        if long_cstring(tag):
-            pointer = int.from_bytes(buffer[offset:offset + 8], 'little')
-            length = int.from_bytes(buffer[offset + 8:offset + 16], 'little')
-            if length > 4096:
-                raise RuntimeError('string length outside bound')
-            value = self.read(process, pointer, length)
-        else:
-            if tag > self.binding['string_tag_offset']:
-                raise RuntimeError('short string length outside bound')
-            value = bytes(buffer[offset:offset + tag])
-        return value.decode('utf-8')
+        """The engine string object at `offset` in `buffer`."""
+        tag_offset = self.binding['string_tag_offset']
+        storage = buffer[offset:offset + tag_offset + 1]
+        return stored_values.cstring(storage, tag_offset, partial(memory, process))
 
     def array(self, process, address, stride, bound):
         count = uint(process, address + self.binding['array_count_offset'], 4)
         data = uint(process, address + self.binding['array_data_offset'])
         if count > bound or (count and not data):
             raise RuntimeError('engine array bounds invalid')
-        return count, self.read(process, data, count * stride)
+        return count, memory(process, data, count * stride)
 
     def entries(self, process, target):
         b = self.binding
@@ -1011,7 +992,7 @@ class ModifierObserver:
             database = uint(process, self.load(target, registry['instance']))
             if not database or database % registry['pointer_size']:
                 raise RuntimeError('registry database instance is null')
-            header = self.read(process, database + registry['directory_offset'], 24)
+            header = memory(process, database + registry['directory_offset'], 24)
             if self.text(process, header, 0) != directory:
                 raise RuntimeError('registry database directory mismatch')
             count = uint(process, database + registry['count_offset'], 4)
@@ -1019,13 +1000,13 @@ class ModifierObserver:
             if count > 100000 or (count and (not data or data % registry['pointer_size'])):
                 raise RuntimeError('registry collection bounds invalid')
             size = registry['pointer_size']
-            pointers = self.read(process, data, count * size)
+            pointers = memory(process, data, count * size)
             keys = []
             for index in range(count):
                 item = int.from_bytes(pointers[index * size:index * size + size], 'little')
                 if not item or item % registry['pointer_size']:
                     raise RuntimeError('invalid registry object')
-                key = self.text(process, self.read(process, item + registry['key_offset'], 24), 0)
+                key = self.text(process, memory(process, item + registry['key_offset'], 24), 0)
                 if not key or key in keys or any(character.isspace() or ord(character) < 32 for character in key):
                     raise RuntimeError('item key layout not established: empty, duplicate, or invalid item key')
                 keys.append(key)

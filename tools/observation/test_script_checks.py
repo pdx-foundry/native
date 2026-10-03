@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'))
-from script_checks import DiagnosticCapture, attribute_message, stored_durations
+from script_checks import DiagnosticCapture, attribute_message, read_string, stored_durations
 
 
 def log_frame(level=2):
@@ -109,6 +109,16 @@ class CaptureTests(unittest.TestCase):
         with patch('script_checks.read_string', return_value=('unattributed engine error', False)):
             capture.capture(frame, location)
         self.assertEqual(capture.finish(1)['unjoined'][0]['text'], 'unattributed engine error')
+
+
+class StringTests(unittest.TestCase):
+    def test_a_long_string_is_cut_at_the_limit_and_marked(self):
+        text = 'é' * 10
+        storage = (0x2000).to_bytes(8, 'little') + (20).to_bytes(8, 'little') + bytes(7) + bytes([128])
+        memory = {(0x1000, 24): storage, (0x2000, 20): text.encode('utf-8')}
+        with patch('script_checks.read_memory', lambda process, address, size: memory[address, size]):
+            self.assertEqual(read_string(Mock(), 0x1000, 23, 10), (text, False))
+            self.assertEqual(read_string(Mock(), 0x1000, 23, 4), ('éééé', True))
 
 
 class DurationTests(unittest.TestCase):
