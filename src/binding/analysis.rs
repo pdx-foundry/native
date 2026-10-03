@@ -2,7 +2,7 @@
 //! still the one that was opened.
 use std::{
     collections::BTreeMap,
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use super::binary::families::FamilyIndex;
@@ -20,8 +20,9 @@ pub(crate) struct BoundAnalysis {
     /// Where a template database holds its items, when the build has a template layout.
     database: Option<DatabaseLayout>,
     installation: Installation,
-    /// The first change that a read saw. It stays, even when the original bytes come back.
-    invalidated: Mutex<Option<UnavailableReason>>,
+    /// The first change that a read or the binding's integrity check saw. It stays, even when
+    /// the original bytes come back.
+    invalidated: Arc<Mutex<Option<UnavailableReason>>>,
     catalog: OnceLock<Result<Catalog, AnalysisError>>,
     /// Derived from the catalog's executable; every read checks the executable first.
     families: OnceLock<Result<FamilyIndex, AnalysisError>>,
@@ -498,12 +499,13 @@ impl BoundAnalysis {
         declarations: Option<&'static super::targets::DeclarationRecipe>,
         database: Option<DatabaseLayout>,
         installation: Installation,
+        invalidated: Arc<Mutex<Option<UnavailableReason>>>,
     ) -> Self {
         Self {
             declarations,
             database,
             installation,
-            invalidated: Mutex::new(None),
+            invalidated,
             catalog: OnceLock::new(),
             families: OnceLock::new(),
             references: OnceLock::new(),

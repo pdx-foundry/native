@@ -62,6 +62,7 @@ pub(super) fn synthetic_variation() -> ResolvedObservation {
 pub(super) fn analysis(
     image: &ImageIdentity,
     installation: super::installation::Installation,
+    invalidated: std::sync::Arc<std::sync::Mutex<Option<crate::UnavailableReason>>>,
 ) -> Result<super::BoundAnalysis, OpenError> {
     machine::static_methods(image.architecture)?;
     let target = targets::lookup(image)?;
@@ -69,5 +70,6 @@ pub(super) fn analysis(
         target.declarations,
         groups::registry_layout(target.groups).map(groups::RegistryLayout::database),
         installation,
+        invalidated,
     ))
 }
