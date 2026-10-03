@@ -3,8 +3,9 @@
 `Native::command_grammar(kind, name)` gives independent `GrammarProperty` values for a registered
 command's forms, targets, child families, fixed keys (with [reference lookups](references.md)),
 numeric keys, ordering and duration groups. `Partial` keeps established values without claiming the
-property is exhaustive; a missing registered command gives `UnknownCommand`. The engine facts below
-apply to the exact M45-release build in [targets](targets.md). `grammar.rs` has only a one-line
+property is exhaustive; a missing registered command gives `UnknownCommand`. The method runs on
+M45-release and M451-hotfix ([targets](targets.md)); addresses and counts below are from
+M45-release unless a section names another build. `grammar.rs` has only a one-line
 module comment, so this page also describes the method.
 
 ## Forms and the stage chain

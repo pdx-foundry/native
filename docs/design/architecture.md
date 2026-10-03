@@ -163,7 +163,9 @@ changed group.
 
 [`src/binding/targets/records.rs`](../../src/binding/targets/records.rs) holds the exact target
 records, and `recipes.rs` beside it holds their recipes. A recipe names its binding groups and
-strategy; the live layouts are in `binding/groups.rs`.
+strategy; the live layouts are in `binding/groups.rs`. A recipe also owns its script-check
+bindings directly: `Recipe::script_checks` selects a function in `recipes.rs` that holds the
+exact addresses, object sizes, offsets and writes. A build adaptation updates both places.
 
 The content directory identifies a registry on the caller, supervisor and worker sides; the
 supervisor derives its loader bindings again from the executable and never trusts caller
