@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'))
-from script_checks import DiagnosticCapture, attribute_message, stored_durations
+from script_checks import DiagnosticCapture, attribute_message, read_string, stored_durations
 
 
 def log_frame(level=2):
@@ -109,6 +109,37 @@ class CaptureTests(unittest.TestCase):
         with patch('script_checks.read_string', return_value=('unattributed engine error', False)):
             capture.capture(frame, location)
         self.assertEqual(capture.finish(1)['unjoined'][0]['text'], 'unattributed engine error')
+
+
+def long_message_memory(text, at=2):
+    """Read memory holding a long CString object at `at` whose text `text` is at 0x2000."""
+    encoded = text.encode('utf-8')
+    storage = (0x2000).to_bytes(8, 'little') + len(encoded).to_bytes(8, 'little') + bytes(7) + bytes([128])
+    regions = {at: storage, 0x2000: encoded}
+
+    def read_memory(process, address, size):
+        if len(regions[address]) < size:
+            raise RuntimeError('script check memory read failed')
+        return regions[address][:size]
+    return read_memory
+
+
+class StringTests(unittest.TestCase):
+    def test_a_long_string_is_cut_at_the_byte_limit_and_marked(self):
+        text = 'é' * 10
+        with patch('script_checks.read_memory', long_message_memory(text, 0x1000)):
+            self.assertEqual(read_string(Mock(), 0x1000, 23, 20), (text, False))
+            self.assertEqual(read_string(Mock(), 0x1000, 23, 9), ('éééé', True))
+
+    def test_a_logger_message_over_the_limit_is_cut_and_reaches_the_bound(self):
+        capture, _, location = CaptureTests().capture()
+        text = 'x' * 4000 + 'é' * 600
+        with patch('script_checks.read_memory', long_message_memory(text)):
+            capture.capture(log_frame(), location)
+        result = capture.finish(1)
+        self.assertTrue(result['hooks_active'])
+        self.assertTrue(result['bound_reached'])
+        self.assertEqual(result['unjoined'][0]['text'], 'x' * 4000 + 'é' * 48)
 
 
 class DurationTests(unittest.TestCase):

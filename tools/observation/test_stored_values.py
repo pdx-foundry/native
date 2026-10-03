@@ -10,6 +10,78 @@ import stored_values
 import protocol
 
 
+TAG = 23
+
+
+def short_cstring(text):
+    encoded = text.encode('utf-8')
+    return encoded.ljust(TAG, b'\0') + bytes([len(encoded)])
+
+
+def long_cstring(pointer, length):
+    return (pointer.to_bytes(8, 'little') + length.to_bytes(8, 'little')).ljust(TAG, b'\0') + bytes([128])
+
+
+class CStringTests(unittest.TestCase):
+    def test_short_text_is_in_place_and_multibyte_text_decodes(self):
+        read = Mock(side_effect=AssertionError('heap read'))
+        for text in ['', 'pop_happiness', 'Zürich ✓']:
+            with self.subTest(text=text):
+                self.assertEqual(stored_values.cstring(short_cstring(text), TAG, read), text)
+
+    def test_a_short_tag_beyond_its_storage_is_malformed(self):
+        storage = short_cstring('x')[:TAG] + bytes([TAG + 1])
+        with self.assertRaisesRegex(RuntimeError, 'short string length outside bound'):
+            stored_values.cstring(storage, TAG, Mock())
+
+    def test_long_text_reads_its_length_behind_the_pointer(self):
+        text = 'é' * 2048
+        read = Mock(return_value=text.encode('utf-8'))
+        self.assertEqual(stored_values.cstring(long_cstring(0x2000, 4096), TAG, read), text)
+        read.assert_called_once_with(0x2000, 4096)
+
+    def test_whole_text_beyond_the_bound_is_rejected(self):
+        read = Mock(return_value=b'x' * 4096)
+        with self.assertRaisesRegex(RuntimeError, 'string length outside bound'):
+            stored_values.cstring(long_cstring(0x2000, 4097), TAG, read)
+
+    def test_a_prefix_cuts_long_text_without_reading_past_its_limit(self):
+        text = 'é' * 3000
+        read = Mock(side_effect=lambda address, size: text.encode('utf-8')[:size])
+        prefix, cut = stored_values.cstring_prefix(long_cstring(0x2000, 6000), TAG, read, 4095)
+        self.assertEqual((prefix, cut), ('é' * 2047, True))
+        read.assert_called_once_with(0x2000, 4095)
+
+    def test_a_prefix_drops_only_the_character_that_the_cut_splits(self):
+        for text, limit, expected in [('ab✓', 4, 'ab'), ('ab✓', 3, 'ab'), ('abé', 3, 'ab')]:
+            with self.subTest(text=text, limit=limit):
+                encoded = text.encode('utf-8')
+                read = Mock(side_effect=lambda address, size: encoded[:size])
+                prefix = stored_values.cstring_prefix(
+                    long_cstring(0x2000, len(encoded)), TAG, read, limit)
+                self.assertEqual(prefix, (expected, True))
+
+    def test_a_prefix_rejects_malformed_bytes_inside_the_cut_text(self):
+        for malformed in [b'a\xffbcdef', b'abcde\xff', b'a\xe2\x9cbcdef']:
+            with self.subTest(malformed=malformed):
+                read = Mock(return_value=malformed)
+                with self.assertRaises(UnicodeDecodeError):
+                    stored_values.cstring_prefix(long_cstring(0x2000, 40), TAG, read, 6)
+
+    def test_a_prefix_still_rejects_a_malformed_short_tag(self):
+        storage = short_cstring('x')[:TAG] + bytes([TAG + 1])
+        with self.assertRaisesRegex(RuntimeError, 'short string length outside bound'):
+            stored_values.cstring_prefix(storage, TAG, Mock(), 4096)
+
+    def test_a_truncated_read_raises(self):
+        read = Mock(side_effect=RuntimeError('native memory access failed'))
+        with self.assertRaisesRegex(RuntimeError, 'native memory access failed'):
+            stored_values.cstring(long_cstring(0x2000, 40), TAG, read)
+        cut = 'Zürich'.encode('utf-8')[:2]
+        with self.assertRaises(UnicodeDecodeError):
+            stored_values.cstring(long_cstring(0x2000, 2), TAG, Mock(return_value=cut))
+
+
 class StoredValueTests(unittest.TestCase):
     def test_float_preserves_representative_binary32_patterns(self):
         for bits in [0, 0x80000000, 0x3f9e0652, 0x7f7fffff, 0x7f800000, 0xff800000, 0x7fc00001]:

@@ -99,9 +99,9 @@ fn connect(
             _ => "Supervisor handshake failed or timed out".into(),
         }));
     }
-    protocol::write(output_pipe.as_mut().unwrap(), &request)?;
     let mut deadline =
         Instant::now() + Duration::from_secs(timing.startup_seconds + CLEANUP_SECONDS);
+    protocol::write(output_pipe.as_mut().unwrap(), &request)?;
     let mut pending = BTreeMap::new();
     let mut pending_script = None;
     let mut sequence = 0_u64;
