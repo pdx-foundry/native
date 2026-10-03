@@ -2,7 +2,8 @@
 
 `ScopedOperand` reports routing forms only. The retired representation-selection and
 literal-assignment properties, with their analysis versions and expected output, are in Git at
-`d8f9d8a`; the evaluated world results are on [ready-world observations](ready-world.md).
+`d8f9d8a`, with the evaluated world results; their pitfalls are on
+[ready-world observations](ready-world.md).
 
 ## Engine facts and method (M45-release, M451-hotfix)
 

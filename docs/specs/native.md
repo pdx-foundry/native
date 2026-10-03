@@ -6,8 +6,9 @@ Rewritten 2026-09-20 and narrowed 2026-10-02 by the
 ## Problem and solution
 
 Atlas asks the Stellaris engine questions to derive scripting rules. The answers depend on
-executable addresses, memory layouts, compiler patterns, launch workarounds and process control; if Atlas depended on them, each game update would be an Atlas port. Native is
-a Rust library with one API, the same on each platform and build, that owns all of that knowledge.
+executable addresses, memory layouts, compiler patterns, launch workarounds and process
+control; if Atlas depended on them, each game update would be an Atlas port. Native is a Rust
+library with one API, the same on each platform and build, that owns all of that knowledge.
 Its goal is parity with the cwtools config, plus additional static compiler facts that pass the
 compiler-need test and the overbuild check ([vision](../design/simplification.md#vision)). Atlas
 is the first consumer and, today, the only one.
