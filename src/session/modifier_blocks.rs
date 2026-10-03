@@ -43,7 +43,8 @@ pub(super) fn attach(
         let point = *points.first().unwrap();
         match facts.points.get(point) {
             Some(Ok(variant)) => {
-                field.members = FieldMembers::ModifierBlock(normalize(variant, references));
+                field.members =
+                    FieldMembers::ModifierBlock(normalize(variant, references, &field.name));
                 for (key, stop) in &variant.stops {
                     let mut path = vec![field.name.clone()];
                     path.extend(key.iter().cloned());
@@ -79,8 +80,14 @@ pub(super) fn attach(
     }
 }
 
-fn normalize(variant: &Variant, references: &ReferenceFacts) -> ModifierBlock {
-    let fields = super::fields::grammar_fields(&variant.fields, &variant.paths, references, None);
+/// The block grammar of the field `parent`. Fixed-key conditions name field paths from `parent`.
+fn normalize(variant: &Variant, references: &ReferenceFacts, parent: &str) -> ModifierBlock {
+    let mut fields =
+        super::fields::grammar_fields(&variant.fields, &variant.paths, references, None);
+    for field in &mut fields {
+        super::fields::prefix_conditions(field, parent);
+    }
+
     let fixed_keys = if variant.fixed_complete {
         GrammarProperty::Known(fields)
     } else {
@@ -114,5 +121,72 @@ fn normalize(variant: &Variant, references: &ReferenceFacts) -> ModifierBlock {
     ModifierBlock {
         fixed_keys,
         entries,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::FieldCondition;
+    use crate::engine::analysis::fields::{
+        Condition, PathOutcome, ReaderJoin, RootField, TokenPath, Value,
+    };
+
+    #[test]
+    fn a_fixed_key_condition_names_the_path_from_the_block_field() {
+        let read = |callee: &str, at: i64| ReaderJoin::Joined {
+            callee: callee.into(),
+            arguments: [("x1".into(), Value::Owner(at))].into(),
+            tail: true,
+        };
+        let variant = Variant {
+            fields: vec![
+                RootField {
+                    name: "flag".into(),
+                    token: 3,
+                    constructor: 0,
+                    paths: vec![],
+                    readers: vec![read("CReader::Read(bool&)", 8)],
+                },
+                RootField {
+                    name: "amount".into(),
+                    token: 7,
+                    constructor: 0,
+                    paths: vec![0],
+                    readers: vec![read("CReader::Read(int&)", 12)],
+                },
+            ],
+            paths: vec![TokenPath {
+                domain: [7, 7],
+                conditions: vec![Condition {
+                    at: 4,
+                    value: Some(Value::Load(Box::new(Value::Owner(8)), 1)),
+                    zero: false,
+                }],
+                instructions: vec![],
+                terminal: 0,
+                outcome: PathOutcome::Reader(read("CReader::Read(int&)", 12)),
+            }],
+            fixed_complete: true,
+            entries: GrammarProperty::Known(vec![]),
+            stops: vec![],
+        };
+        let references = ReferenceFacts {
+            readers: Default::default(),
+            initializers: Default::default(),
+        };
+
+        let block = normalize(&variant, &references, "modifier");
+
+        let GrammarProperty::Known(keys) = &block.fixed_keys else {
+            panic!("{:?}", block.fixed_keys);
+        };
+        assert_eq!(
+            keys[1].read[0].condition,
+            FieldCondition::FieldZero {
+                path: vec!["modifier".into(), "flag".into()],
+                zero: false,
+            }
+        );
     }
 }

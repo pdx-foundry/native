@@ -32,22 +32,31 @@ pub(super) fn concrete_reader_id(read: &str, member: &str) -> ReaderId {
     ReaderId(format!("{digest:x}")[..16].into())
 }
 
-fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>) -> Reader {
-    let mut alternatives = Vec::new();
-    for join in joins {
-        let mut selected = reader(std::slice::from_ref(join));
-        if matches!(join, ReaderJoin::Joined { callee, .. } if callee == "CReader::Read(CPersistent&)" )
+/// The reader of one path. A persistent read takes the concrete identity of its destination, or
+/// none when the destination has no known reader.
+pub(super) fn alternative_reader(
+    join: &ReaderJoin,
+    persistent: &BTreeMap<i64, ConcreteReader>,
+) -> Reader {
+    let mut selected = reader(std::slice::from_ref(join));
+    if matches!(join, ReaderJoin::Joined { callee, .. } if callee == "CReader::Read(CPersistent&)" )
+    {
+        selected.id = None;
+        if let Some(concrete) =
+            readers::destination(join).and_then(|offset| persistent.get(&offset))
         {
-            selected.id = None;
-            if let Some(concrete) =
-                readers::destination(join).and_then(|offset| persistent.get(&offset))
-            {
-                selected.id = Some(concrete_reader_id(&concrete.read, &concrete.member));
-                selected.family = concrete.family;
-            }
+            selected.id = Some(concrete_reader_id(&concrete.read, &concrete.member));
+            selected.family = concrete.family;
         }
-        alternatives.push(selected);
     }
+    selected
+}
+
+fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>) -> Reader {
+    let alternatives: Vec<_> = joins
+        .iter()
+        .map(|join| alternative_reader(join, persistent))
+        .collect();
     let mut joined = reader(joins);
     if let Some(first) = alternatives.first() {
         joined.id = alternatives
@@ -118,11 +127,10 @@ pub(super) fn field(
     };
     if let FieldMembers::Fields(children) = &mut normalized.members {
         for child in children {
-            for alternative in &mut child.read {
-                prefix_condition(&mut alternative.condition, &field.name);
-            }
+            prefix_conditions(child, &field.name);
         }
     }
+
     attach_uses(
         &mut normalized,
         std::slice::from_ref(&field.name),
@@ -277,16 +285,32 @@ fn ordinary_field(
             RepeatBehavior::Unknown
         },
     };
+    // `field.readers` holds only the field's own token paths; a wider path that also reads
+    // the token must not leave a shared reader claim that it contradicts.
     let mut reader = field_reader(&field.readers, persistent);
-    if read.iter().any(|alternative| match &alternative.outcome {
-        FieldReadOutcome::Read {
-            reader: alternative,
-            ..
-        } => alternative.family != reader.family,
-        FieldReadOutcome::Unresolved => true,
-        FieldReadOutcome::Rejected => false,
-    }) {
-        reader.family = crate::BlockFamily::Unknown;
+    for alternative in &read {
+        match &alternative.outcome {
+            FieldReadOutcome::Read {
+                reader: alternative,
+                ..
+            } => {
+                if alternative.id != reader.id {
+                    reader.id = None;
+                }
+                if alternative.kind != reader.kind {
+                    reader.kind = ReaderKind::Unknown;
+                }
+                if alternative.family != reader.family {
+                    reader.family = crate::BlockFamily::Unknown;
+                }
+            }
+            FieldReadOutcome::Unresolved => {
+                reader.id = None;
+                reader.kind = ReaderKind::Unknown;
+                reader.family = crate::BlockFamily::Unknown;
+            }
+            FieldReadOutcome::Rejected => {}
+        }
     }
     Field {
         name: field.name.clone(),
@@ -489,6 +513,33 @@ fn collection_field(
 
         uses: Vec::new(),
         reference: FieldReference::NotEstablished,
+    }
+}
+
+/// Prefix every field path that a condition of `field` or its members tests with `parent`, the
+/// block field that encloses `field`.
+pub(super) fn prefix_conditions(field: &mut Field, parent: &str) {
+    for alternative in &mut field.read {
+        prefix_condition(&mut alternative.condition, parent);
+    }
+
+    if let FieldReference::Lookups(lookups) = &mut field.reference {
+        for lookup in lookups {
+            prefix_condition(&mut lookup.condition, parent);
+        }
+    }
+
+    let members = match &mut field.members {
+        FieldMembers::Fields(members) => members,
+        FieldMembers::ModifierBlock(crate::ModifierBlock {
+            fixed_keys:
+                crate::GrammarProperty::Known(members) | crate::GrammarProperty::Partial(members),
+            ..
+        }) => members,
+        _ => return,
+    };
+    for member in members {
+        prefix_conditions(member, parent);
     }
 }
 
@@ -953,5 +1004,167 @@ mod tests {
             }]
         );
         assert_eq!(lookups[0].stage, LookupStage::OwnerInitialization);
+    }
+
+    fn path(domain: [i64; 2], conditions: Vec<Condition>, outcome: PathOutcome) -> TokenPath {
+        TokenPath {
+            domain,
+            conditions,
+            instructions: vec![],
+            terminal: 0,
+            outcome,
+        }
+    }
+
+    #[test]
+    fn a_wide_unresolved_path_leaves_no_shared_reader_claim() {
+        use crate::engine::analysis::stop::Unresolved;
+
+        let PathOutcome::Reader(join) = read(12) else {
+            unreachable!()
+        };
+        let field = RootField {
+            name: "count".into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![0],
+            readers: vec![join],
+        };
+        let fields = [field.clone()];
+        let references = ReferenceFacts {
+            readers: BTreeMap::new(),
+            initializers: BTreeMap::new(),
+        };
+        let normalize = |wide: PathOutcome| {
+            let paths = [path([7, 7], vec![], read(12)), path([6, 8], vec![], wide)];
+            ordinary_field(&field, &fields, &paths, &BTreeMap::new(), &references)
+        };
+
+        let unresolved = normalize(PathOutcome::Gap(Unresolved::new("wide-path")));
+        assert_eq!(unresolved.reader.id, None);
+        assert_eq!(unresolved.reader.kind, ReaderKind::Unknown);
+        let FieldReadOutcome::Read { reader: known, .. } = &unresolved.read[0].outcome else {
+            panic!("{:?}", unresolved.read[0]);
+        };
+        assert_eq!(known.id, Some(ReaderId::from_callee("CReader::Read(int&)")));
+        assert_eq!(known.kind, ReaderKind::Integer);
+        assert_eq!(unresolved.read[1].outcome, FieldReadOutcome::Unresolved);
+
+        let boolean = normalize(PathOutcome::Reader(ReaderJoin::Joined {
+            callee: "CReader::Read(bool&)".into(),
+            arguments: [("x1".into(), Value::Owner(12))].into(),
+            tail: true,
+        }));
+        assert_eq!(boolean.reader.id, None);
+        assert_eq!(boolean.reader.kind, ReaderKind::Unknown);
+
+        let rejected = normalize(PathOutcome::Rejected);
+        assert_eq!(rejected.reader, known.clone());
+        assert_eq!(rejected.read[1].outcome, FieldReadOutcome::Rejected);
+    }
+
+    #[test]
+    fn a_collection_child_reference_names_the_same_condition_path_as_its_read() {
+        use crate::engine::analysis::fields::CollectionField;
+        use crate::engine::analysis::references::{Lookup, ReaderLookup, Stage};
+
+        let deferred = "void NParserUtil::ReadKeyReferenceDeferred<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CShipDatabase::ValueType const**)";
+        let target = PathOutcome::Reader(ReaderJoin::Joined {
+            callee: deferred.into(),
+            arguments: [
+                ("x0".into(), Value::Owner(0)),
+                ("x1".into(), Value::Reader(0)),
+                ("x2".into(), Value::Owner(0x40)),
+            ]
+            .into(),
+            tail: true,
+        });
+        let PathOutcome::Reader(target_join) = target.clone() else {
+            unreachable!()
+        };
+        let flag = RootField {
+            name: "flag".into(),
+            token: 3,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: "CReader::Read(bool&)".into(),
+                arguments: [("x1".into(), Value::Owner(8))].into(),
+                tail: true,
+            }],
+        };
+        let target_field = RootField {
+            name: "target".into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![0],
+            readers: vec![target_join],
+        };
+        let result = |fields, paths, collections| RegistryFieldResult {
+            persistent: BTreeMap::new(),
+            persistent_points: BTreeMap::new(),
+            scoped_destinations: BTreeMap::new(),
+            uses: vec![],
+            collections,
+            fields,
+            paths,
+            gaps: vec![],
+            partition_accounted: true,
+        };
+        let child = result(
+            vec![flag, target_field],
+            vec![path([7, 7], vec![test(true)], target)],
+            vec![],
+        );
+        let parent = RootField {
+            name: "entry".into(),
+            token: 5,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![],
+        };
+        let registry = result(
+            vec![parent.clone()],
+            vec![],
+            vec![CollectionField {
+                token: 5,
+                offset: 0x20,
+                data_offset: None,
+                class: "CEntry".into(),
+                fields: Box::new(child),
+            }],
+        );
+        let references = ReferenceFacts {
+            readers: BTreeMap::from([(
+                deferred.to_owned(),
+                ReaderLookup {
+                    database: "CShipDatabase".into(),
+                    directory: Some("common/ships".into()),
+                    lookup: Ok(Lookup {
+                        stage: Stage::Deferred,
+                        key_match: None,
+                        empty_key_looked_up: Some(true),
+                        missing_yields_null: Some(true),
+                    }),
+                },
+            )]),
+            initializers: BTreeMap::new(),
+        };
+
+        let normalized = field(&parent, &registry, &references);
+
+        let FieldMembers::Fields(children) = &normalized.members else {
+            panic!("{:?}", normalized.members);
+        };
+        let target = &children[1];
+        let FieldReference::Lookups(lookups) = &target.reference else {
+            panic!("{:?}", target.reference);
+        };
+        let expected = FieldCondition::FieldZero {
+            path: vec!["entry".into(), "flag".into()],
+            zero: true,
+        };
+        assert_eq!(target.read[0].condition, expected);
+        assert_eq!(lookups[0].condition, expected);
     }
 }

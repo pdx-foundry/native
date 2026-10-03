@@ -17,6 +17,10 @@ The v8 sweep covers **164 registries: 11 complete, 153 partial, 0 failed**, with
 FixedPoint 88, Integer 93, Reference 28, String 245 and Unknown 569. Six root fields
 accumulate entries. The sweep takes about 200 seconds on the development host.
 
+On M45, no registry carries a token-partition gap. The check projects token paths to their
+intervals and needs one contiguous chain, so a state branch before token discrimination
+would give a false registry-wide `UnresolvedPath` gap. No M45 loader has that shape.
+
 The shared dispatch walker follows three compound shapes: a copied value token constructed
 as an event target and moved to an owner destination; a CString array emplace followed by
 a shared string reader at the new element; and an optional CString set from token text.
@@ -236,6 +240,12 @@ destination is a temporary, not the member. Joining the temporary to its member 
 repair.
 
 ## Members and shared readers
+
+A field's reader identity, kind and family come from every token path whose interval holds the
+field's token, not only from its singleton paths. A wider path that is unresolved, or reads with
+another reader, leaves the shared claim unknown; each read alternative keeps its own reader.
+Rejected paths do not change the claim. A condition on a nested field, on its reference lookup or
+on a modifier-block fixed key names the full field path from the root field or command key.
 
 ### Read conditions and use-time inheritance (SDK-541)
 
