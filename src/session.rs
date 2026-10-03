@@ -42,9 +42,8 @@ enum Backend {
 #[derive(Debug)]
 pub struct Native {
     backend: Backend,
-    /// The first executable change and the first default-content change seen by this context.
-    /// Each stays invalidated even when the original bytes return.
-    target_invalidated: Arc<Mutex<Option<UnavailableReason>>>,
+    /// The first default-content change seen by this context. It stays invalidated even when
+    /// the original bytes return. The binding keeps the first executable change.
     default_invalidated: Arc<Mutex<Option<UnavailableReason>>>,
 }
 
@@ -66,7 +65,6 @@ impl Native {
     ) -> Result<Self, crate::Error> {
         Ok(Self {
             backend: Backend::Recorded(Arc::new(crate::recorded::Answers::open(directory.into())?)),
-            target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
         })
     }
@@ -85,7 +83,6 @@ impl Native {
                 binding: Arc::new(binding),
                 recorder: None,
             },
-            target_invalidated: Arc::new(Mutex::new(None)),
             default_invalidated: Arc::new(Mutex::new(None)),
         }
     }
@@ -97,18 +94,8 @@ impl Native {
             Backend::Recorded(_) => panic!("recorded answers have no installation binding"),
         }
     }
-    fn target_integrity(&self, binding: &Binding) -> Option<UnavailableReason> {
-        let mut invalidated = self
-            .target_invalidated
-            .lock()
-            .expect("target integrity lock");
-        if invalidated.is_none() {
-            *invalidated = binding.target_integrity();
-        }
-        invalidated.clone()
-    }
     fn integrity(&self, binding: &Binding) -> Option<UnavailableReason> {
-        if let Some(reason) = self.target_integrity(binding) {
+        if let Some(reason) = binding.target_integrity() {
             return Some(reason);
         }
         let mut invalidated = self
@@ -127,7 +114,7 @@ impl Native {
     }
     /// Method and host availability without a particular content selection.
     pub(crate) fn selected_blocking_reasons(&self, binding: &Binding) -> Vec<UnavailableReason> {
-        binding.blocking_reasons(self.target_integrity(binding), false)
+        binding.blocking_reasons(binding.target_integrity(), false)
     }
     /// Start a supervised game and wait until it is paused after its registries load, or after
     /// all content loads with `GameOptions::loaded_modifiers`. With recorded answers, no process

@@ -249,6 +249,30 @@ def inventory_regressions(before, after, path):
     return []
 
 
+def copies(rows):
+    """How many times each row occurs. Identical stops at separate sites are separate rows."""
+    return Counter(json.dumps(row, sort_keys=True) for row in rows)
+
+
+def duration_list_regressions(before, after):
+    """Command duration lists may not become less known, and registry stops may not appear or
+    occur more often."""
+    losses = []
+    old_lists, new_lists = before["duration_lists"], after["duration_lists"]
+    if (new_lists.get("known", 0) < old_lists.get("known", 0)
+            or new_lists.get("unresolved", 0) > old_lists.get("unresolved", 0)):
+        losses.append(difference("duration_lists", old_lists, new_lists))
+    old_candidates = copies(before["registry_unresolved_candidates"])
+    new_candidates = copies(after["registry_unresolved_candidates"])
+    for candidate, count in sorted(new_candidates.items()):
+        old_count = old_candidates[candidate]
+        if count > old_count:
+            row = json.loads(candidate)
+            losses.append(difference("registry_unresolved_candidates",
+                                     {**row, "copies": old_count}, {**row, "copies": count}))
+    return losses
+
+
 def compare(before, after):
     old_kind, old_sections, old_counts = project(before)
     new_kind, new_sections, new_counts = project(after)
@@ -277,6 +301,8 @@ def compare(before, after):
         for failure in after["failed_questions"]:
             if failure not in before["failed_questions"]:
                 losses.append(difference("failed_questions", None, failure))
+        if old_kind == "duration":
+            losses.extend(duration_list_regressions(before, after))
         if old_kind == "scoped" and before["registry_completeness"] == "Complete" and after["registry_completeness"] != "Complete":
             losses.append(difference("registry_completeness", before["registry_completeness"], after["registry_completeness"]))
     return {"regressions": losses, "changes": changes,

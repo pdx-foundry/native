@@ -213,20 +213,17 @@ fn not_established(reason: &NotEstablished) -> String {
             "no function of the database's classes calls a constructor of the item's class".into()
         }
         NotEstablished::NoVtable => "the item's class has no vtable in the executable".into(),
-        NotEstablished::ConstructedElsewhere { function } => {
-            format!("{function} constructs an item outside the database's code")
+        NotEstablished::ConstructedElsewhere { .. } => {
+            "another function constructs an item outside the database's code".into()
         }
-        NotEstablished::InlineConstruction { function } => format!(
-            "{function} forms an address of the item's vtables without calling its constructor, which the method does not follow"
-        ),
-        NotEstablished::Unread { function } => format!(
-            "a path of {function} keeps an item that it constructed without running its post-read code"
-        ),
-        NotEstablished::Unfollowed {
-            function,
-            unresolved,
-        } => format!(
-            "a path of {function} could not be followed at {}",
+        NotEstablished::InlineConstruction { .. } => {
+            "a function forms an address of the item's vtables without calling its constructor, which the method does not follow".into()
+        }
+        NotEstablished::Unread { .. } => {
+            "a path of a database function keeps an item that it constructed without running its post-read code".into()
+        }
+        NotEstablished::Unfollowed { unresolved, .. } => format!(
+            "a path of a database function that constructs items could not be followed at {}",
             unresolved.reason
         ),
     }
@@ -374,7 +371,7 @@ mod tests {
             details
                 .iter()
                 .any(|detail| detail.contains("only an item's post-read code registers {key}_d")
-                    && detail.ends_with("a path of CXDatabase::CXDatabase() keeps an item that it constructed without running its post-read code"))
+                    && detail.ends_with("a path of a database function keeps an item that it constructed without running its post-read code"))
         );
         assert!(
             answer
@@ -418,6 +415,52 @@ mod tests {
         let answer = answer(Some(&missing_key), false, &[]);
         assert_eq!(answer.completeness, Completeness::Partial);
         assert_eq!(answer.gaps[0].kind, GapKind::UnresolvedPath);
+    }
+
+    #[test]
+    fn gap_details_name_no_engine_function() {
+        let symbol = "Marker::Symbol()";
+        let reasons = [
+            NotEstablished::ConstructedElsewhere {
+                function: symbol.into(),
+            },
+            NotEstablished::InlineConstruction {
+                function: symbol.into(),
+            },
+            NotEstablished::Unread {
+                function: symbol.into(),
+            },
+            NotEstablished::Unfollowed {
+                function: symbol.into(),
+                unresolved: Unresolved::new("branch-value"),
+            },
+        ];
+        let result = FamilyResult {
+            key_offset: Ok(0x10),
+            families: reasons
+                .into_iter()
+                .enumerate()
+                .map(|(index, reason)| {
+                    family(
+                        vec![Part::ItemKey, Part::Literal(format!("_{index}"))],
+                        Some(1),
+                        Condition::ItemRoot(reason),
+                    )
+                })
+                .collect(),
+            failures: BTreeMap::new(),
+        };
+        let answer = answer(Some(&result), false, &[]);
+
+        let item_root_gaps = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.detail.starts_with("only an item's post-read code"))
+            .count();
+        assert_eq!(item_root_gaps, 4);
+        for gap in &answer.gaps {
+            assert!(!gap.detail.contains(symbol), "{}", gap.detail);
+        }
     }
 
     #[test]

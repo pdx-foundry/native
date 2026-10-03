@@ -310,7 +310,9 @@ Each directory has a `build.json` containing the original serialized `BuildId` (
 Opening a recorded directory returns `Result<Native, Error>` and requires valid build metadata.
 `Native::build()` and all successful answers use that original identity. Reads and recording
 into an existing directory reject a different build. Errors can be recorded without a successful
-answer and still keep the build identity.
+answer and still keep the build identity. Each write uses a temporary name of its own and is then
+renamed, so an interrupted or concurrent recording leaves no partial file. One recorder writes to a directory at
+a time.
 
 Atlas claims keep provenance through `Source`. They do not reference retained captures. This
 amends the SDK-473 evidence decision (accepted by Jackson, 2026-09-19).

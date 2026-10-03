@@ -110,6 +110,9 @@ pub(crate) struct Binding {
     /// `None` only in tests that bind an authored installation.
     operation: Option<compose::ResolvedObservation>,
     installation: installation::Installation,
+    /// The first executable change that a static read or an integrity check saw, shared with
+    /// `analysis`. It stays, even when the original bytes come back.
+    invalidated: std::sync::Arc<std::sync::Mutex<Option<UnavailableReason>>>,
 }
 
 impl Binding {
@@ -156,14 +159,17 @@ impl Binding {
         let (installation, bytes) = installation::Installation::open(installation)?;
         let image = binary::identify(&bytes, installation.executable_hash())?;
         let operation = compose::compose(&image)?;
+        let invalidated = std::sync::Arc::new(std::sync::Mutex::new(None));
         let analysis = Some(std::sync::Arc::new(compose::analysis(
             &image,
             installation.clone(),
+            invalidated.clone(),
         )?));
         Ok(Self {
             analysis,
             operation: Some(operation),
             installation,
+            invalidated,
         })
     }
 
@@ -282,7 +288,11 @@ impl Binding {
     }
 
     pub(crate) fn target_integrity(&self) -> Option<UnavailableReason> {
-        self.installation.target_integrity()
+        let mut invalidated = self.invalidated.lock().expect("target integrity lock");
+        if invalidated.is_none() {
+            *invalidated = self.installation.target_integrity();
+        }
+        invalidated.clone()
     }
 
     pub(crate) fn default_content_integrity(&self) -> Option<UnavailableReason> {

@@ -657,42 +657,42 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_add; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers job_{key}_add; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_automated_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers job_{key}_automated_workforce_mult; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_max_workforce_add; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers job_{key}_max_workforce_add; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_max_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers job_{key}_max_workforce_mult; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_per_crime; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers job_{key}_per_crime; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers job_{key}_per_pop; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers job_{key}_per_pop; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers pop_{key}_bonus_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers pop_{key}_bonus_workforce_mult; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/pop_jobs"},
-        "only an item's post-read code registers pop_{key}_workforce_mult; that the engine runs it for every item is not established: a path of CJobTypeDatabase::CJobTypeDatabase() keeps an item that it constructed without running its post-read code"
+        "only an item's post-read code registers pop_{key}_workforce_mult; that the engine runs it for every item is not established: a path of a database function keeps an item that it constructed without running its post-read code"
       ],
       [
         "UnnamedDeclaration",
@@ -718,7 +718,7 @@
       [
         "UnresolvedPath",
         {"kind": "registry", "name": "common/resolution_categories"},
-        "only an item's post-read code registers {key}_vote_strength_mult; that the engine runs it for every item is not established: TSingleObjectGameDatabase<CResolutionCategoryDatabase, CResolutionCategory, false>::ReadExistingEntry(CReader&, CString const&, CResolutionCategory*, bool) forms an address of the item's vtables without calling its constructor, which the method does not follow"
+        "only an item's post-read code registers {key}_vote_strength_mult; that the engine runs it for every item is not established: a function forms an address of the item's vtables without calling its constructor, which the method does not follow"
       ],
       [
         "UnnamedDeclaration",

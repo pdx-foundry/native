@@ -84,13 +84,20 @@ fn installation() -> (TempDir, Binding) {
         operation: None,
         analysis: None,
         installation,
+        invalidated: Default::default(),
     };
     (directory, binding)
 }
 
 #[test]
 fn executable_replacement_permanently_invalidates_the_context() {
-    let (directory, binding) = installation();
+    let (directory, mut binding) = installation();
+    binding.analysis = Some(std::sync::Arc::new(super::BoundAnalysis::new(
+        None,
+        None,
+        binding.installation.clone(),
+        binding.invalidated.clone(),
+    )));
     let context = crate::Native::from_binding(binding);
     assert_eq!(context.blocking_reasons(context.bound()), []);
     fs::write(directory.path().join("stellaris"), "changed executable").unwrap();
@@ -105,6 +112,8 @@ fn executable_replacement_permanently_invalidates_the_context() {
             .blocking_reasons(context.bound())
             .contains(&UnavailableReason::TargetChanged)
     );
+    let analysis = context.bound().analysis.as_ref().unwrap();
+    assert!(analysis.executable().is_err());
 }
 
 #[test]
@@ -188,6 +197,7 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
             installation,
             operation: Some(super::compose::synthetic_variation()),
             analysis: None,
+            invalidated: Default::default(),
         },
     };
     let names = plan.binding.default_registries();
@@ -368,6 +378,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
             operation: Some(operation),
             analysis: None,
             installation: installed,
+            invalidated: Default::default(),
         },
     };
     let mut request = SessionRequest {

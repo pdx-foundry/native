@@ -14,10 +14,14 @@
 //! `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys, not provenance.
 //! The loaded modifier inventory uses `loaded_modifiers.json`, or
 //! `loaded_modifiers/<files-hash>/<request-hash>.json` for a session with a fixture.
+//!
+//! Each write goes to its own `<file>.<process>.<count>.tmp` and is then renamed, so a reader never
+//! sees a partial file, even while two queries record at once. One recorder writes to a directory
+//! at a time.
 use crate::answer::{Answer, Basis, BuildId, Error};
 use serde::{Serialize, de::DeserializeOwned};
-use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// One recorded build. Every successful answer must have the same original identity.
 #[derive(Debug)]
@@ -68,28 +72,37 @@ impl Answers {
 /// Record the identity even for an error-only run, and refuse to mix builds in one directory.
 fn record_build(root: &Path, build: &BuildId) -> Result<(), Error> {
     let path = root.join("build.json");
-    let failed = |error: std::io::Error| Error::Recorded(format!("{}: {error}", path.display()));
-    std::fs::create_dir_all(root).map_err(failed)?;
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-    {
-        Ok(mut file) => {
-            let mut bytes = serde_json::to_vec(build).expect("build identity serializes");
-            bytes.push(b'\n');
-            file.write_all(&bytes).map_err(failed)?;
+    let present = path
+        .try_exists()
+        .map_err(|error| Error::Recorded(format!("{}: {error}", path.display())))?;
+    if present {
+        if Answers::open(root.into())?.build != *build {
+            return Err(Error::Recorded(
+                "recording build differs from build.json".into(),
+            ));
         }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            if Answers::open(root.into())?.build != *build {
-                return Err(Error::Recorded(
-                    "recording build differs from build.json".into(),
-                ));
-            }
-        }
-        Err(error) => return Err(failed(error)),
+        return Ok(());
     }
-    Ok(())
+
+    let mut bytes = serde_json::to_vec(build).expect("build identity serializes");
+    bytes.push(b'\n');
+    publish(&path, &bytes)
+}
+
+/// Write `bytes` to a temporary file that no other write uses, and rename it to `path`, so that
+/// an interrupted write leaves no partial file under the name that readers open.
+fn publish(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+    static WRITES: AtomicU64 = AtomicU64::new(0);
+    let failed = |error: std::io::Error| Error::Recorded(format!("{}: {error}", path.display()));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(failed)?;
+    }
+
+    let write = WRITES.fetch_add(1, Ordering::Relaxed);
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(format!(".{}.{write}.tmp", std::process::id()));
+    std::fs::write(&temporary, bytes).map_err(failed)?;
+    std::fs::rename(&temporary, path).map_err(failed)
 }
 
 /// Location of one question's file. A subject that could leave the directory is refused.
@@ -146,13 +159,9 @@ pub(crate) fn write<T: Serialize>(
 ) -> Result<(), Error> {
     let path = path(root, question, subject)?;
     record_build(root, build)?;
-    let failed = |error: std::io::Error| Error::Recorded(format!("{}: {error}", path.display()));
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(failed)?;
-    }
     let mut bytes = serde_json::to_vec_pretty(answer).expect("answers serialize");
     bytes.push(b'\n');
-    std::fs::write(&path, bytes).map_err(failed)
+    publish(&path, &bytes)
 }
 
 /// Where an operation's questions read their files, as the module layout states.
@@ -220,6 +229,58 @@ mod tests {
             Err(Error::Recorded(_))
         ));
         assert_eq!(Answers::open(root.path().into()).unwrap().build, build);
+    }
+
+    #[test]
+    fn an_interrupted_write_leaves_no_file_under_its_final_name() {
+        let root = tempfile::tempdir().unwrap();
+        let build = BuildId("original".into());
+        std::fs::write(root.path().join("build.json.1.0.tmp"), "\"orig").unwrap();
+        std::fs::write(root.path().join("registries.json.1.1.tmp"), "{\"Ok\":").unwrap();
+        assert!(matches!(
+            Answers::open(root.path().into()),
+            Err(Error::Recorded(_))
+        ));
+
+        let answer: Result<Answer<Vec<String>>, Error> = Err(Error::BuildChanged);
+        write(root.path(), &build, "scopes", None, &answer).unwrap();
+        let recorded = Answers::open(root.path().into()).unwrap();
+        assert_eq!(recorded.build, build);
+        assert!(!recorded.contains(crate::Operation::Registries));
+        assert!(matches!(
+            recorded.read::<Vec<String>>("registries", None),
+            Err(Error::NotRecorded { .. })
+        ));
+        let left_over: Vec<_> = std::fs::read_dir(root.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name.to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert_eq!(left_over.len(), 2, "{left_over:?}");
+    }
+
+    #[test]
+    fn two_threads_record_into_one_directory_at_once() {
+        let root = tempfile::tempdir().unwrap();
+        let build = BuildId("original".into());
+        let answer: Result<Answer<Vec<String>>, Error> = Err(Error::BuildChanged);
+        std::thread::scope(|scope| {
+            for _ in 0..2 {
+                scope.spawn(|| {
+                    for _ in 0..50 {
+                        for question in ["registries", "scopes"] {
+                            write(root.path(), &build, question, None, &answer).unwrap();
+                        }
+                    }
+                });
+            }
+        });
+
+        let recorded = Answers::open(root.path().into()).unwrap();
+        assert_eq!(recorded.build, build);
+        for question in ["registries", "scopes"] {
+            assert_eq!(recorded.read::<Vec<String>>(question, None), answer);
+        }
     }
 
     #[test]

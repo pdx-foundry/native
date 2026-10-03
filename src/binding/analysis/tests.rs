@@ -55,7 +55,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     )
     .unwrap();
     let (installation, _) = Installation::open(&path).unwrap();
-    let analysis = BoundAnalysis::new(None, None, installation);
+    let analysis = BoundAnalysis::new(None, None, installation, Default::default());
     (root, analysis)
 }
 
@@ -97,6 +97,7 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
     let (installation, _) = Installation::open(&root.path().join("image")).unwrap();
     let plan = ExecutionPlan {
         binding: Binding {
+            invalidated: analysis.invalidated.clone(),
             analysis: Some(std::sync::Arc::new(analysis)),
             operation: Some(compose::synthetic_variation()),
             installation,
@@ -131,6 +132,7 @@ fn static_support_checks_the_pinned_executable_without_requiring_content() {
         let (root, analysis) = fixture();
         let binding = crate::binding::Binding {
             installation: analysis.installation.clone(),
+            invalidated: analysis.invalidated.clone(),
             analysis: Some(std::sync::Arc::new(analysis)),
             operation: None,
         };
@@ -158,6 +160,7 @@ fn static_support_checks_the_pinned_executable_without_requiring_content() {
                 Support::Unsupported(_)
             ));
         }
+        assert!(native.bound().target_integrity().is_some());
     }
 }
 
@@ -412,7 +415,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
     fs::write(&replacement, &image).unwrap();
     symlink(&original, &hint).unwrap();
     let (installation, _) = Installation::open(&hint).unwrap();
-    let analysis = BoundAnalysis::new(None, None, installation);
+    let analysis = BoundAnalysis::new(None, None, installation, Default::default());
     assert_eq!(analysis.executable().unwrap(), image);
     fs::remove_file(&hint).unwrap();
     symlink(&replacement, &hint).unwrap();
