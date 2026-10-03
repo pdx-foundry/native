@@ -210,6 +210,15 @@ class ComparisonTests(unittest.TestCase):
         self.assertFalse(compare(after, before)["regressions"])
         self.assertFalse(compare(before, copy.deepcopy(before))["regressions"])
 
+    def test_a_repeated_registry_stop_counts_each_copy(self):
+        stop = {"registry": "common/test", "path": ["x"], "reason": "call"}
+        once, twice = duration({"units": []}), duration({"units": []})
+        once["registry_unresolved_candidates"] = [stop]
+        twice["registry_unresolved_candidates"] = [stop, dict(reversed(stop.items()))]
+        self.assertTrue(compare(once, twice)["regressions"])
+        self.assertFalse(compare(twice, twice)["regressions"])
+        self.assertFalse(compare(twice, once)["regressions"])
+
     def test_cli_exit_codes_and_machine_readable_report(self):
         with tempfile.TemporaryDirectory() as directory:
             old_path, new_path = [Path(directory) / name for name in ("before.json", "after.json")]
