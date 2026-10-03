@@ -16,10 +16,10 @@ classification is resolved. An `OutsideMethod` gap states the boundary and can a
 `Complete`. Unnamed candidates, unresolved paths, unknown reader classifications and unreadable
 required input make the answer partial.
 
-## Current M45 sweep
+## Current M451 sweep
 
-`tests/population/m45-release/registry-field-sweep.json` (recorded at `registry-fields/v8`) holds
-the baseline: **164 registries, 11 complete, 153 partial, 0 failed**, 1,564 root and 41 nested
+`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v12`) holds
+the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,564 root and 41 nested
 fields. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 

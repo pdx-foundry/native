@@ -13,7 +13,7 @@ fn state<T>(property: &GrammarProperty<T>) -> &'static str {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH; optionally writes NATIVE_GRAMMAR_REPORT"]
-fn m45_command_grammar_population() {
+fn m451_command_grammar_population() {
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let started = std::time::Instant::now();
     let references = native

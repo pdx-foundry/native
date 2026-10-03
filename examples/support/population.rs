@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn missing_registry_and_nested_command_properties_remain_changes() {
         let fields: Value = serde_json::from_str(include_str!(
-            "../../tests/expected/m45/fields-traditions.json"
+            "../../tests/expected/m451/fields-traditions.json"
         ))
         .unwrap();
         let mut field = fields[0].clone();

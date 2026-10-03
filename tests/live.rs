@@ -43,7 +43,7 @@ const CATEGORIES: &str = "common/tradition_categories";
 const ASCENSION_PERKS: &str = "common/ascension_perks";
 const RELICS: &str = "common/relics";
 /// The registries whose database generators register modifier families (SDK-540), with the
-/// item counts of the catalogued M45 build.
+/// item counts of the catalogued M451-hotfix build.
 const GENERATOR_REGISTRIES: [(&str, usize); 6] = [
     ("common/buildings", 498),
     ("common/bypass", 10),
@@ -280,8 +280,6 @@ enum FixtureOutcomeCase {
     Malformed,
     UnknownField,
     SameOwner,
-    CategoryUnsupported,
-    CategoryStorageUnsupported,
     DiagnosticsNotRequested,
     MaximumQuestions,
     UnrelatedDefinitions,
@@ -632,14 +630,6 @@ fn cases() -> Vec<(String, Case)> {
         ("unknown_field", FixtureOutcomeCase::UnknownField),
         ("same_owner", FixtureOutcomeCase::SameOwner),
         (
-            "category_unsupported",
-            FixtureOutcomeCase::CategoryUnsupported,
-        ),
-        (
-            "category_storage_unsupported",
-            FixtureOutcomeCase::CategoryStorageUnsupported,
-        ),
-        (
             "diagnostics_not_requested",
             FixtureOutcomeCase::DiagnosticsNotRequested,
         ),
@@ -710,7 +700,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
     }
 }
 
-/// The SDK-548 fixture sample, `tests/population/m45-release/command-fixture-sample.json`.
+/// The SDK-548 fixture sample, `tests/population/m451-hotfix/command-fixture-sample.json`.
 /// Accepted samples cover each form, value alternative and fixed key of a command. Rejected
 /// samples use only a rejection that the method established on every path. A rejected key gives
 /// a reader report that can upset the definitions after it, so it keeps its own session.
@@ -1381,21 +1371,6 @@ fn validation_failures(
 fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureRequest {
     use pdx_native::{FixtureFieldQuestion, FixtureRequest};
 
-    if matches!(
-        case,
-        FixtureOutcomeCase::CategoryUnsupported | FixtureOutcomeCase::CategoryStorageUnsupported
-    ) {
-        let mut question =
-            FixtureFieldQuestion::new(CATEGORIES, "native_fixture_category", "tree_template");
-        if matches!(case, FixtureOutcomeCase::CategoryStorageUnsupported) {
-            question.diagnostics = false;
-        }
-        return FixtureRequest::field_outcomes(
-            "common/tradition_categories/native_fixture.txt",
-            "native_fixture_category = {\n tree_template = \"bad\nvalue\"\n}\n",
-            [question],
-        );
-    }
     if matches!(case, FixtureOutcomeCase::SameOwner) {
         return FixtureRequest::field_outcomes(
             "common/traditions/native_fixture.txt",
@@ -1425,8 +1400,6 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
             " unlocks_agenda = \"agenda_one\"\n this_is_an_unknown_field = { broken = yes }\n"
         }
         FixtureOutcomeCase::SameOwner
-        | FixtureOutcomeCase::CategoryUnsupported
-        | FixtureOutcomeCase::CategoryStorageUnsupported
         | FixtureOutcomeCase::MaximumQuestions
         | FixtureOutcomeCase::UnrelatedDefinitions => unreachable!(),
     };
@@ -1500,21 +1473,13 @@ fn assert_fixture_outcome(
 ) -> Outcome {
     use pdx_native::{DiagnosticCoverage, DiagnosticWindow};
 
-    let expected_completeness = if matches!(
-        case,
-        FixtureOutcomeCase::CategoryUnsupported | FixtureOutcomeCase::CategoryStorageUnsupported
-    ) {
-        Completeness::Partial
-    } else {
-        Completeness::Complete
-    };
-    if answer.completeness != expected_completeness {
+    if answer.completeness != Completeness::Complete {
         return Err(format!("fixture completeness: {answer:?}").into());
     }
     let expected_coverage = match case {
-        FixtureOutcomeCase::DiagnosticsNotRequested
-        | FixtureOutcomeCase::CategoryStorageUnsupported
-        | FixtureOutcomeCase::MaximumQuestions => DiagnosticCoverage::NotRequested,
+        FixtureOutcomeCase::DiagnosticsNotRequested | FixtureOutcomeCase::MaximumQuestions => {
+            DiagnosticCoverage::NotRequested
+        }
         _ => DiagnosticCoverage::Complete {
             window: DiagnosticWindow::FixtureFileLoad,
         },
@@ -1524,10 +1489,6 @@ fn assert_fixture_outcome(
     }
 
     match case {
-        FixtureOutcomeCase::CategoryUnsupported => assert_unsupported_category(answer),
-        FixtureOutcomeCase::CategoryStorageUnsupported => {
-            assert_unsupported_category_storage(answer)
-        }
         FixtureOutcomeCase::MaximumQuestions => assert_maximum_questions(answer),
         FixtureOutcomeCase::UnrelatedDefinitions => assert_unrelated_definitions(answer),
         FixtureOutcomeCase::SameOwner => assert_same_owner(answer),
@@ -1538,62 +1499,6 @@ fn assert_fixture_outcome(
         | FixtureOutcomeCase::UnknownField
         | FixtureOutcomeCase::DiagnosticsNotRequested => assert_agenda_outcome(case, answer),
     }
-}
-
-/// Checks a tradition-category question whose storage Native cannot read, with the diagnostic
-/// for its malformed value.
-fn assert_unsupported_category(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
-    use pdx_native::{DiagnosticJoin, FixtureStorage};
-
-    let outcome = answer
-        .value
-        .field_outcomes
-        .first()
-        .ok_or("missing category outcome")?;
-    let [diagnostic] = answer.value.diagnostics.as_slice() else {
-        return Err(format!("missing category diagnostic: {answer:?}").into());
-    };
-    if !matches!(outcome.storage, FixtureStorage::Unavailable(_))
-        || !answer
-            .gaps
-            .iter()
-            .any(|gap| gap.kind == GapKind::OutsideMethod)
-        || diagnostic.text != "Malformed token"
-        || diagnostic.stage != "reader-malformed-report"
-        || !matches!(&diagnostic.join,
-                DiagnosticJoin::Source { file, line: 3, definition: None, field: None, occurrence: None }
-                if file == "common/tradition_categories/native_fixture.txt")
-    {
-        return Err(format!("unsupported category outcome: {answer:?}").into());
-    }
-    Ok(())
-}
-
-/// Checks a tradition-category question without diagnostics: its reader is known, its storage
-/// is unavailable, and no observation is incomplete.
-fn assert_unsupported_category_storage(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
-    use pdx_native::{FixtureStorage, ReaderKind};
-
-    let outcome = answer
-        .value
-        .field_outcomes
-        .first()
-        .ok_or("missing category storage outcome")?;
-    if outcome.reader.kind != ReaderKind::String
-        || outcome.reader.id.is_none()
-        || !matches!(outcome.storage, FixtureStorage::Unavailable(_))
-        || !answer
-            .gaps
-            .iter()
-            .any(|gap| gap.kind == GapKind::OutsideMethod)
-        || answer
-            .gaps
-            .iter()
-            .any(|gap| gap.kind == GapKind::IncompleteObservation)
-    {
-        return Err(format!("unsupported category storage: {answer:?}").into());
-    }
-    Ok(())
 }
 
 /// Checks two fields of one tradition, which share its owner and definition line.
@@ -1652,8 +1557,6 @@ fn assert_agenda_outcome(
             )?;
         }
         FixtureOutcomeCase::SameOwner
-        | FixtureOutcomeCase::CategoryUnsupported
-        | FixtureOutcomeCase::CategoryStorageUnsupported
         | FixtureOutcomeCase::MaximumQuestions
         | FixtureOutcomeCase::UnrelatedDefinitions => unreachable!(),
     }
@@ -2199,7 +2102,7 @@ async fn close_confirmed(game: &mut Game) -> Outcome {
     }
 }
 
-/// The loaded tags of the five declared names that content registers again (M45-release).
+/// The loaded tags of the five declared names that content registers again (M451-hotfix).
 const RE_REGISTERED: [(&str, &[&str]); 5] = [
     ("terraforming_cost_mult", &["Planets", "AI Economy"]),
     (
@@ -2225,7 +2128,7 @@ const SHIP_TAGS_WITH_ECONOMY: [&str; 7] = [
     "Transport Ships",
     "AI Economy",
 ];
-/// Entries of the loaded table on M45-release with installed content (SDK-488: 45,578).
+/// Entries of the loaded table on M451-hotfix with installed content (45,578, as on M45-release in SDK-488).
 const LOADED_MODIFIERS: usize = 45_578;
 
 async fn loaded_modifiers(native: &Native) -> Outcome {

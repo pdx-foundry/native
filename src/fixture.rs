@@ -55,7 +55,7 @@ impl FixtureFieldQuestion {
 
     /// Select a field inside an embedded block of the named definition.
     ///
-    /// The M45-release binding supports `common/special_projects` in an initial file-load
+    /// The M451-hotfix binding supports `common/special_projects` in an initial file-load
     /// field-outcome request. Validation observations are not supported
     /// for this loader. Other parent or leaf shapes report unavailable when not proven.
     ///

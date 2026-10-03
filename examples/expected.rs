@@ -169,11 +169,6 @@ fn generate(directory: &Path) -> parity::Result<()> {
     let native = pdx_native::Native::open(installation)?;
     for name in parity::FILES {
         let bytes = parity::candidate(&native, name)?;
-        if *name == "field-storage-sdk533.json" {
-            let observed = serde_json::from_slice(&bytes)?;
-            let report = parity::comparison::historical_storage_report(&native.build(), &observed);
-            eprint!("{}", report.render_and_save()?);
-        }
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -181,7 +176,7 @@ fn generate(directory: &Path) -> parity::Result<()> {
         file.write_all(&bytes)?;
         eprintln!("wrote {name}");
     }
-    eprintln!("Candidates only: review the diff before copying any file into tests/expected/m45.");
+    eprintln!("Candidates only: review the diff before copying any file into tests/expected/m451.");
     Ok(())
 }
 

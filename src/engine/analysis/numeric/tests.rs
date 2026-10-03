@@ -166,7 +166,7 @@ fn numeric_recordings_require_properties_and_exact_bounds_round_trip() {
 
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-fn m45_numeric_reader_static_parity() {
+fn m451_numeric_reader_static_parity() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let facts = crate::internals::numeric_readers::run(&native).unwrap();
     for (name, width, scale, range) in [
@@ -212,12 +212,12 @@ fn m45_numeric_reader_static_parity() {
         })
         .collect();
     let expected: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../tests/expected/numeric-m45/readers.json"
+        "../../../../tests/expected/numeric-m451/readers.json"
     ))
     .unwrap();
     assert_eq!(serde_json::to_value(compact).unwrap(), expected);
     let entry: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../tests/expected/numeric-m45/modifier-entry.json"
+        "../../../../tests/expected/numeric-m451/modifier-entry.json"
     ))
     .unwrap();
     assert_eq!(serde_json::to_value(&facts.modifier_entry).unwrap(), entry);

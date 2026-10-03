@@ -84,7 +84,7 @@ Milestone 4 completes only when all of these hold:
    static entry bindings against hand-read call sites and independent scope expectations.
 3. **Method transfer:** each method runs unchanged over its full registry or command inventory,
    recording complete, partial and failed counts and distinct failure shapes. SDK-569 passes.
-   Production registry validation follows the bound build; M45-release parity explicitly asserts
+   Production registry validation follows the bound build; M451-hotfix parity explicitly asserts
    164 registries as a regression expectation, not a production cap.
 4. **Atlas integration (SDK-597, then SDK-625):** two established field branches and one
    unresolved branch survive assembly, verification, comparison and coverage; an established

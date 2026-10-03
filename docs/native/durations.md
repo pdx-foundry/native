@@ -105,7 +105,7 @@ the count.
 ## Live parser observations
 
 `tests/live/durations.rs` runs one `check_script` session in country, leader and astral rift
-scopes; `tests/expected/duration-m45/live.json` holds the results. An omitted case must store
+scopes; `tests/expected/duration-m451/live.json` holds the results. An omitted case must store
 exactly the static omitted count. Live values confirm the static constructor counts; they do not
 establish them. Pitfalls from these cases:
 

@@ -1,5 +1,4 @@
 //! Questions and selections for the tracked static parity files.
-//! Historical live observations are retained, never recreated from static answers.
 mod compact;
 pub mod comparison;
 mod layout;
@@ -8,7 +7,6 @@ mod layout;
 mod comparison_tests;
 
 pub use compact::*;
-pub use comparison::historical_storage_applies;
 use pdx_native::*;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,7 +30,6 @@ pub const FILES: &[&str] = &[
     "fields-tradition_categories.json",
     "fields-council_agendas.json",
     "fields-megastructures.json",
-    "field-storage-sdk533.json",
     "references.json",
     "command-grammars.json",
     "dynamic-names.json",
@@ -55,18 +52,13 @@ pub const FILES: &[&str] = &[
 ];
 
 pub fn expected_directory() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected/m45")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected/m451")
 }
 
-/// Ask each static selection; copy retained live evidence without claiming current applicability.
-/// Formatting uses the tracked key order.
+/// Ask each static selection. Formatting uses the tracked key order.
 pub fn candidate(native: &Native, name: &str) -> Result<Vec<u8>> {
     let template = std::fs::read(expected_directory().join(name))?;
     let expected: Value = serde_json::from_slice(&template)?;
-    if name == "field-storage-sdk533.json" {
-        comparison::historical_storage_source(&expected)?;
-        return Ok(template);
-    }
     let value = question(native, name, &expected)?;
     layout::render(name, &value, &template)
 }
@@ -93,14 +85,6 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
                 .map(|item| &item.name)
                 .collect::<Vec<_>>()
         )),
-        "field-storage-sdk533.json" => {
-            if !historical_storage_applies(&native.build(), expected)? {
-                return Err(
-                    "the historical SDK-533 storage observation is for a different build".into(),
-                );
-            }
-            Ok(expected.clone())
-        }
         "references.json" => references(native, expected),
         "command-grammars.json" => {
             assert_sdk492_keys(native);
@@ -420,44 +404,6 @@ pub fn assert_sdk492_keys(native: &Native) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn historical_candidate_is_copied_on_another_build_without_a_current_answer() {
-        let recorded = tempfile::tempdir().unwrap();
-        std::fs::write(recorded.path().join("build.json"), "\"another-build\"").unwrap();
-        let native = Native::from_recorded_answers(recorded.path()).unwrap();
-        let name = "field-storage-sdk533.json";
-        let reviewed = std::fs::read(expected_directory().join(name)).unwrap();
-        let generated = candidate(&native, name).unwrap();
-        assert_eq!(generated, reviewed);
-        let report = comparison::compare_static(&native.build(), name, &reviewed, &generated);
-        assert!(report.passes());
-        assert_eq!(report.differences[0].status, comparison::Status::Skip);
-        assert!(question(&native, name, &serde_json::from_slice(&reviewed).unwrap()).is_err());
-    }
-
-    fn build(value: &str) -> BuildId {
-        serde_json::from_value(json!(value)).unwrap()
-    }
-
-    #[test]
-    fn historical_storage_is_applicable_only_to_its_exact_live_build() {
-        let mut observed = json!({
-            "source": {
-                "build": "release",
-                "native_version": "0.1.0",
-                "method": "observe-fixture/v1",
-                "basis": "LiveObservation"
-            },
-            "outcomes": [{"stored": "original observation"}]
-        });
-        let unchanged = observed.clone();
-        assert!(historical_storage_applies(&build("release"), &observed).unwrap());
-        assert!(!historical_storage_applies(&build("hotfix"), &observed).unwrap());
-        assert_eq!(observed, unchanged);
-        observed["source"]["basis"] = json!("StaticAnalysis");
-        assert!(historical_storage_applies(&build("release"), &observed).is_err());
-    }
 
     #[test]
     fn every_tracked_file_has_one_question() {

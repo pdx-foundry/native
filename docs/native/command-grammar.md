@@ -4,8 +4,8 @@
 command's forms, targets, child families, fixed keys (with [reference lookups](references.md)),
 numeric keys, ordering and duration groups. `Partial` keeps established values without claiming the
 property is exhaustive; a missing registered command gives `UnknownCommand`. The method runs on
-M45-release and M451-hotfix ([targets](targets.md)); addresses and counts below are from
-M45-release unless a section names another build. `grammar.rs` has only a one-line
+M451-hotfix ([targets](targets.md)); addresses and counts below are from the earlier M45-release
+target unless a section names another build. `grammar.rs` has only a one-line
 module comment, so this page also describes the method.
 
 ## Forms and the stage chain
@@ -71,8 +71,8 @@ by token identity, not spelling (`ambiguous-key-token`). Missing member vtables,
 ### Current value-form results
 
 The tracked baseline and its counts are in
-[`tests/population/m45-release/README.md`](../../tests/population/m45-release/README.md). A failed
-answer has every property unresolved: the failed receiver joins are `command-vtable` (seven effects
+[`tests/population/m451-hotfix/README.md`](../../tests/population/m451-hotfix/README.md). A failed
+answer has every property unresolved: the failed receiver joins are `command-vtable` (four effects
 and the triggers `switch` and `inverted_switch`), `factory-terminal` (two effects) and `instruction`
 (`set_location`). Gap shapes outside `OutsideMethod`:
 
@@ -126,7 +126,7 @@ gap with an authored test.
 ## Live fixtures of complete grammars
 
 `cargo live fixture_argument` checks complete grammars with the sample fixed in
-`tests/population/m45-release/command-fixture-sample.json`, validated in `common/traditions`
+`tests/population/m451-hotfix/command-fixture-sample.json`, validated in `common/traditions`
 (`potential` for triggers, `on_enabled` for effects).
 
 - Only a rejection that the method established on every path is a rejected sample. A value given

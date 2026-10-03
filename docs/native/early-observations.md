@@ -89,7 +89,7 @@ stores a signed 32-bit integer, `CReader::Read(CFixedPoint&)` a signed 64-bit in
 32,768, `CReader::Read(float&)` binary32 bits and `CReader::Read(short&)` 16 bits with no sign
 interpretation. Conditional paths, several reader alternatives, an unproven token or destination
 and other signatures stay unavailable. The observed values are in
-`tests/expected/numeric-m45/live.json`; [numeric conversion](numeric-conversion.md#live-observations)
+`tests/expected/numeric-m451/live.json`; [numeric conversion](numeric-conversion.md#live-observations)
 interprets them.
 
 The template reader has no root field in the registry population. Its live case uses the inline

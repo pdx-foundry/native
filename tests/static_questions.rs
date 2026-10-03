@@ -1,4 +1,4 @@
-//! Parity of the static questions with tracked expected output for the M45 build.
+//! Parity of the static questions with tracked expected output for the M451-hotfix build.
 //! Needs the real executable: set `STELLARIS_PATH` and run with `--ignored`. No game starts.
 mod parity;
 use parity::*;
@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
     use pdx_native::{GenerationCondition, GrammarProperty, ModifierEntry, NamePart};
     let native = native();
@@ -51,20 +51,9 @@ fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
     assert_eq!(families.value[0].name_limit, None);
 }
 
-/// Report an inapplicable live observation outside harness capture, so a passing run shows the skip.
-fn report_historical_storage_skip(
-    build: &pdx_native::BuildId,
-    observed: &Value,
-) -> parity::Result<()> {
-    let report = comparison::historical_storage_report(build, observed);
-    use std::io::Write;
-    writeln!(std::io::stderr(), "{}", report.render_and_save()?)?;
-    Ok(())
-}
-
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn defines_match_the_recorded_m45_boundary() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn defines_match_the_recorded_m451_boundary() {
     let native = native();
     assert_eq!(
         native.supports(Operation::Defines),
@@ -81,8 +70,8 @@ fn defines_match_the_recorded_m45_boundary() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn declarations_match_the_recorded_m45_inventory() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn declarations_match_the_recorded_m451_inventory() {
     let native = native();
     for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
         let answer = native.declarations(kind).unwrap();
@@ -127,8 +116,8 @@ fn declarations_match_the_recorded_m45_inventory() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn declarations_give_the_scopes_of_known_m45_commands() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn declarations_give_the_scopes_of_known_m451_commands() {
     let native = native();
     let effects = native.declarations(DeclarationKind::Effect).unwrap();
     let win = find(&effects.value, "win", |item| &item.name);
@@ -158,8 +147,8 @@ fn declarations_give_the_scopes_of_known_m45_commands() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn modifier_declarations_match_the_recorded_m45_boundary() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn modifier_declarations_match_the_recorded_m451_boundary() {
     let answer = native().modifiers().unwrap();
     assert_declared(&answer);
 
@@ -174,8 +163,8 @@ fn modifier_declarations_match_the_recorded_m45_boundary() {
 /// SDK-566 live run matched the others against the loaded table
 /// (`docs/native/modifier-families.md`).
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn modifier_families_match_the_recorded_m45_generators() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn modifier_families_match_the_recorded_m451_generators() {
     let native = native();
     let expected: BTreeMap<String, Value> = expected("modifier-families.json");
     assert_eq!(expected.len(), 22);
@@ -215,7 +204,7 @@ fn modifier_families_match_the_recorded_m45_generators() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn modifier_categories_are_the_names_of_the_category_switch() {
     let answer = native().modifier_categories().unwrap();
     assert_declared(&answer);
@@ -223,7 +212,7 @@ fn modifier_categories_are_the_names_of_the_category_switch() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn scopes_group_keywords_by_the_engine_map_only() {
     let answer = native().scopes().unwrap();
     assert_eq!(answer.source.basis, Basis::Declared);
@@ -261,8 +250,8 @@ fn scopes_group_keywords_by_the_engine_map_only() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn scope_links_match_the_recorded_m45_boundary() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn scope_links_match_the_recorded_m451_boundary() {
     let answer = native().scope_links().unwrap();
     assert_declared(&answer);
 
@@ -301,7 +290,7 @@ fn scope_links_match_the_recorded_m45_boundary() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn every_scope_reference_joins_to_one_declared_scope_type() {
     let native = native();
     let scopes = native.scopes().unwrap().value;
@@ -338,8 +327,8 @@ fn every_scope_reference_joins_to_one_declared_scope_type() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn localization_declarations_match_the_recorded_m45_inventory() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn localization_declarations_match_the_recorded_m451_inventory() {
     let native = native();
     let answer = native.localization_declarations().unwrap();
     assert_eq!(answer.source.basis, Basis::Declared);
@@ -383,7 +372,7 @@ fn localization_declarations_match_the_recorded_m45_inventory() {
 /// Call sites checked by hand in the M45-release disassembly, before the expected files were
 /// generated.
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
     let answer = native().on_actions().unwrap();
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
@@ -439,7 +428,7 @@ fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn game_rules_supply_the_scopes_that_hand_checked_call_sites_build() {
     let answer = native().game_rules().unwrap();
     let rule = |name: &str| find(&answer.value, name, |rule| &rule.name);
@@ -469,8 +458,8 @@ fn game_rules_supply_the_scopes_that_hand_checked_call_sites_build() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn callbacks_match_the_recorded_m45_inventory() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn callbacks_match_the_recorded_m451_inventory() {
     let native = native();
     let on_actions = native.on_actions().unwrap();
     let game_rules = native.game_rules().unwrap();
@@ -570,18 +559,18 @@ fn native() -> Native {
 }
 
 fn expected<T: serde::de::DeserializeOwned>(name: &str) -> T {
-    let path = format!("{}/tests/expected/m45/{name}", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/tests/expected/m451/{name}", env!("CARGO_MANIFEST_DIR"));
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn registries_are_named_by_their_content_directory() {
     let answer = native().registries().unwrap();
     assert_eq!(
         answer.value.len(),
         164,
-        "M45-release registry discovery changed"
+        "M451-hotfix registry discovery changed"
     );
     let names: Vec<_> = answer.value.iter().map(|r| r.name.clone()).collect();
     assert_eq!(answer.completeness, Completeness::Complete);
@@ -597,7 +586,7 @@ fn registries_are_named_by_their_content_directory() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
     let native = native();
     let expected = expected::<BTreeMap<String, Value>>("references.json");
@@ -649,7 +638,7 @@ fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn registry_fields_match_and_share_reader_identities_across_registries() {
     let native = native();
     let mut potential = Vec::new();
@@ -701,7 +690,7 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
 
 /// The developer entry that the sweep uses gives the public answer from its one run.
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn megastructure_fields_behind_the_two_jump_tables_are_found() {
     let answer = native().registry_fields("common/megastructures").unwrap();
     let found: std::collections::BTreeSet<_> = answer
@@ -758,7 +747,7 @@ fn megastructure_fields_behind_the_two_jump_tables_are_found() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn the_developer_run_gives_the_public_registry_field_answer() {
     let native = native();
     for registry in ["common/traditions", "common/megastructures"] {
@@ -768,7 +757,7 @@ fn the_developer_run_gives_the_public_registry_field_answer() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn traced_questions_match_untraced_questions() {
     let untraced = observe(&native());
     // Each `Native` caches its analysis, so the traced questions need their own.
@@ -786,7 +775,7 @@ fn traced_questions_match_untraced_questions() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn traced_initial_state_keeps_destinations_across_later_member_constructors() {
     let untraced_native = native();
     // Each `Native` caches its analysis, so the traced questions need their own.
@@ -906,7 +895,7 @@ fn observe(native: &Native) -> Observed {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let directory = tempfile::tempdir().unwrap();
     let real = native().record_answers_to(directory.path());
@@ -976,7 +965,7 @@ fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn control_grammar_preserves_shared_readers_and_covered_properties() {
     use pdx_native::{BlockFamily, GrammarProperty, ReaderKind};
     let native = native();
@@ -1062,67 +1051,7 @@ fn control_grammar_preserves_shared_readers_and_covered_properties() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn field_shapes_agree_with_sdk533_omitted_and_repeated_storage() {
-    use pdx_native::{FieldMembers, RepeatBehavior, ValueShape};
-    let native = native();
-    let observed: Value = expected("field-storage-sdk533.json");
-    if !parity::historical_storage_applies(&native.build(), &observed).unwrap() {
-        report_historical_storage_skip(&native.build(), &observed).unwrap();
-        return;
-    }
-    let fields = native.registry_fields("common/traditions").unwrap().value;
-    let mut omitted = 0;
-    let mut repeated = 0;
-    for outcome in observed["outcomes"].as_array().unwrap() {
-        let name = outcome["question"]["field"].as_str().unwrap();
-        let field = fields.iter().find(|field| field.name == name).unwrap();
-        let historical_reader: pdx_native::Reader =
-            serde_json::from_value(outcome["reader"].clone()).unwrap();
-        assert_eq!(field.reader.id, historical_reader.id);
-        assert_eq!(field.reader.kind, historical_reader.kind);
-        assert_eq!(field.reader.family, pdx_native::BlockFamily::NotApplicable);
-        let storage = &outcome["storage"]["String"];
-        assert_eq!(storage["completeness"], "Complete");
-        let occurrences = storage["occurrences"].as_array().unwrap();
-        assert_eq!(field.shape.value, ValueShape::Scalar);
-        if occurrences.is_empty() {
-            omitted += 1;
-            assert_eq!(storage["final_value"], "");
-        } else {
-            repeated += 1;
-            assert!(occurrences.len() > 1);
-            assert_eq!(field.shape.repeat, RepeatBehavior::Replace, "{name}");
-            assert_eq!(
-                storage["final_value"],
-                occurrences.last().unwrap()["value"],
-                "{name}"
-            );
-        }
-    }
-    assert_eq!((omitted, repeated), (1, 1));
-    let swaps = fields
-        .iter()
-        .find(|field| field.name == "tradition_swap")
-        .unwrap();
-    assert_eq!(swaps.shape.repeat, RepeatBehavior::Accumulate);
-    let FieldMembers::Fields(children) = &swaps.members else {
-        panic!("swap members unresolved")
-    };
-    for flag in ["inherit_effects", "inherit_name", "inherit_icon"] {
-        assert!(children.iter().any(|field| field.name == flag));
-        assert!(children.iter().flat_map(|field| &field.uses).any(|selection| {
-            match &selection.condition {
-                pdx_native::FieldCondition::All(terms) => terms.iter().any(|term| matches!(term,
-                    pdx_native::FieldCondition::FieldZero { path, zero: true } if path == &["tradition_swap", flag])),
-                _ => false,
-            }
-        }), "no affected field for {flag}");
-    }
-}
-
-#[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn council_presence_initialization_does_not_restrict_field_reads() {
     use pdx_native::{FieldCondition, RepeatBehavior, ValueShape};
     let fields = native()
@@ -1139,7 +1068,7 @@ fn council_presence_initialization_does_not_restrict_field_reads() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
     let native = native();
     assert_eq!(
@@ -1164,19 +1093,12 @@ fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn every_tracked_candidate_matches_the_reviewed_tree() {
     let recordings = tempfile::tempdir().unwrap();
     let native = native().record_answers_to(recordings.path());
     for name in parity::FILES {
         let tracked = std::fs::read(parity::expected_directory().join(name)).unwrap();
-        if *name == "field-storage-sdk533.json" {
-            let observed = serde_json::from_slice(&tracked).unwrap();
-            if !parity::historical_storage_applies(&native.build(), &observed).unwrap() {
-                report_historical_storage_skip(&native.build(), &observed).unwrap();
-                continue;
-            }
-        }
         let candidate = parity::candidate(&native, name).unwrap();
         let report = comparison::compare_static(&native.build(), name, &tracked, &candidate);
         assert!(report.passes(), "{}", report.render_and_save().unwrap());
@@ -1197,13 +1119,6 @@ fn every_tracked_candidate_matches_the_reviewed_tree() {
         if *name == "registries.json" {
             expected = expected.replacen(&original, "deliberately_changed_registry", 1);
         }
-        if *name == "field-storage-sdk533.json" {
-            let observed = serde_json::from_str(&expected).unwrap();
-            if !parity::historical_storage_applies(&changed.build(), &observed).unwrap() {
-                report_historical_storage_skip(&changed.build(), &observed).unwrap();
-                continue;
-            }
-        }
         let candidate = parity::candidate(&changed, name).unwrap();
         let report =
             comparison::compare_static(&changed.build(), name, expected.as_bytes(), &candidate);
@@ -1212,8 +1127,8 @@ fn every_tracked_candidate_matches_the_reviewed_tree() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
-fn command_forms_keep_m45_acceptance_and_named_stage_gaps() {
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn command_forms_keep_m451_acceptance_and_named_stage_gaps() {
     use pdx_native::{CommandForm, GrammarProperty, ReaderKind};
     let native = native();
     let owner = native
@@ -1295,13 +1210,13 @@ fn command_forms_keep_m45_acceptance_and_named_stage_gaps() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn sdk492_fixed_key_grammars_match_the_engine() {
     assert_sdk492_keys(&native());
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build; also audited by command-population"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build; also audited by command-population"]
 fn known_target_lists_have_covered_arguments() {
     use pdx_native::{CommandForm, Field, FieldMembers, GrammarProperty, ReaderKind};
     fn known_fields(fields: &[Field]) -> bool {
@@ -1399,7 +1314,7 @@ fn scoped_numeric_api_parity() {
 }
 
 #[test]
-#[ignore = "requires STELLARIS_PATH with the exact M45 build"]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn numeric_command_arguments_share_registry_conversion_facts() {
     use pdx_native::GrammarProperty;
     let native = native();
