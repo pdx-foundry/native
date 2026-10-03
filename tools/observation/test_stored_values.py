@@ -40,11 +40,22 @@ class CStringTests(unittest.TestCase):
         self.assertEqual(stored_values.cstring(long_cstring(0x2000, 4096), TAG, read), text)
         read.assert_called_once_with(0x2000, 4096)
 
-    def test_a_long_length_beyond_the_bound_is_not_read(self):
-        read = Mock()
+    def test_whole_text_beyond_the_bound_is_rejected(self):
+        read = Mock(return_value=b'x' * 4096)
         with self.assertRaisesRegex(RuntimeError, 'string length outside bound'):
             stored_values.cstring(long_cstring(0x2000, 4097), TAG, read)
-        read.assert_not_called()
+
+    def test_a_prefix_cuts_long_text_without_reading_past_its_limit(self):
+        text = 'é' * 3000
+        read = Mock(side_effect=lambda address, size: text.encode('utf-8')[:size])
+        prefix, cut = stored_values.cstring_prefix(long_cstring(0x2000, 6000), TAG, read, 4095)
+        self.assertEqual((prefix, cut), ('é' * 2047, True))
+        read.assert_called_once_with(0x2000, 4095)
+
+    def test_a_prefix_still_rejects_a_malformed_short_tag(self):
+        storage = short_cstring('x')[:TAG] + bytes([TAG + 1])
+        with self.assertRaisesRegex(RuntimeError, 'short string length outside bound'):
+            stored_values.cstring_prefix(storage, TAG, Mock(), 4096)
 
     def test_a_truncated_read_raises(self):
         read = Mock(side_effect=RuntimeError('native memory access failed'))

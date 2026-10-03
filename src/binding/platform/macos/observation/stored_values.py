@@ -6,23 +6,34 @@ The callers own memory access: `read_unsigned(address, size)` reads a little-end
 """
 
 
-def cstring(storage, tag_offset, read):
-    """The text of an engine CString from its object bytes `storage`, at least `tag_offset + 1`
-    long. Bit 7 of the tag byte at `tag_offset` marks a long string: the object holds a pointer
-    and a byte length, and `read(address, size)` gives its bytes. Otherwise the tag byte is the
-    length of the characters that precede it."""
+def cstring_prefix(storage, tag_offset, read, limit):
+    """The text of an engine CString cut to at most `limit` bytes, and whether it was cut.
+    `storage` holds the object's bytes, at least `tag_offset + 1` long. Bit 7 of the tag byte at
+    `tag_offset` marks a long string: the object holds a pointer and a byte length, and
+    `read(address, size)` gives its bytes. Otherwise the tag byte is the length of the characters
+    that precede it. A cut can split a character; that partial character is dropped."""
     tag = storage[tag_offset]
     if tag & 128:
         pointer = int.from_bytes(storage[:8], 'little')
         length = int.from_bytes(storage[8:16], 'little')
-        if length > 4096:
-            raise RuntimeError('string length outside bound')
-        value = read(pointer, length) if length else b''
+        size = min(length, limit)
+        value = read(pointer, size) if size else b''
     else:
         if tag > tag_offset:
             raise RuntimeError('short string length outside bound')
-        value = bytes(storage[:tag])
-    return value.decode('utf-8')
+        length = tag
+        value = bytes(storage[:min(length, limit)])
+    cut = length > limit
+    return value.decode('utf-8', 'ignore' if cut else 'strict'), cut
+
+
+def cstring(storage, tag_offset, read):
+    """The whole text of an engine CString, as for `cstring_prefix`. Text above 4096 bytes is
+    rejected."""
+    text, cut = cstring_prefix(storage, tag_offset, read, 4096)
+    if cut:
+        raise RuntimeError('string length outside bound')
+    return text
 
 
 def signed_integer(raw, bits):

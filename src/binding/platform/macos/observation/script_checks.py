@@ -125,10 +125,9 @@ def read_unsigned(process, address, size=8):
 
 
 def read_string(process, address, tag_offset, limit):
-    """The first `limit` characters of the CString at `address`, and whether it had more."""
+    """The CString at `address` cut to at most `limit` bytes, and whether it was cut."""
     storage = read_memory(process, address, tag_offset + 1)
-    text = stored_values.cstring(storage, tag_offset, partial(read_memory, process))
-    return text[:limit], len(text) > limit
+    return stored_values.cstring_prefix(storage, tag_offset, partial(read_memory, process), limit)
 
 
 def stored_text(process, address, tag_offset):
