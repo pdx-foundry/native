@@ -388,7 +388,7 @@ fn one_unfollowed_call_that_receives_the_scope_makes_it_unresolved() {
 fn a_scope_stored_outside_a_link_escapes_at_the_next_unfollowed_call() {
     let result = fire_country(&[
         (0x1020, "add", "x8,sp,#0x100"),
-        (0x1024, "str", "x8,[sp,#0x20]"),
+        (0x1024, "str", "x8,[sp,#0x30]"),
         (0x1028, "mov", "x0,x19"),
         (0x102c, "bl", "#0x9900"),
     ]);
@@ -519,6 +519,38 @@ fn two_branches_that_build_different_names_in_one_string_give_both() {
             "{name}"
         );
     }
+}
+
+#[test]
+fn a_string_rebuilt_from_an_unknown_literal_is_not_named() {
+    let result = fire_country(&[
+        (0x1020, "add", "x0,sp,#0x10"),
+        (0x1024, "ldr", "x1,[x19]"),
+        (0x1028, "bl", "#0x9100"),
+    ]);
+
+    assert!(result.on_actions.is_empty(), "{result:?}");
+}
+
+#[test]
+fn a_path_name_that_the_name_pass_did_not_prove_is_not_public() {
+    // The store through x19 makes the saved string address unknown to the context pass only,
+    // so its rebuild as `on_other` leaves that pass with the stale `on_test` label.
+    let result = fire_country(&[
+        (0x1020, "add", "x8,sp,#0x10"),
+        (0x1024, "str", "x8,[sp,#0x30]"),
+        (0x1028, "str", "xzr,[x19]"),
+        (0x102c, "ldr", "x0,[sp,#0x30]"),
+        (0x1030, "adrp", "x1,#0x5000"),
+        (0x1034, "add", "x1,x1,#0x10"),
+        (0x1038, "bl", "#0x9100"),
+    ]);
+
+    assert!(!result.on_actions.contains_key("on_test"), "{result:?}");
+    assert_eq!(
+        contexts(&result, "on_other"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
 }
 
 #[test]
