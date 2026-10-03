@@ -1,10 +1,8 @@
 # Engine knowledge index
 
-This page says where the knowledge about the game engine is kept. The knowledge comes from
-prototypes and probes (SDK testing, Atlas, Typed PDXScript) and from the Rust supervisor.
 The Rust code and its `//!` comments describe the present methods. These pages hold what the
-code cannot hold: experiments, failed approaches, and prototype findings that no Rust method uses,
-such as the Windows adapters and the M45-old engine calls, time, events and resources.
+code cannot: engine facts, failed approaches and pitfalls, and prototype findings that no Rust
+method uses.
 
 ## Tracked knowledge pages
 
@@ -27,8 +25,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope, Boolean, key, target and reference messages; ordinary-log and source-filter gaps |
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | Loader-entry attachment, registry items at loader return, fixture parsing and storage, loader and destination pitfalls |
 | Call engine functions in a paused game | [Engine calls and memory](native/engine-calls.md) | Script-check calls and capture, calling conventions, M45-old time, resources, events and object lifetimes |
-| Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, launch, disposal on macOS and Windows, debugger shutdown and approval, the run summary |
-| The debugger worker trial | [Loader-entry worker](native/loader-entry-worker.md) | The LLDB worker trial, its handshake and its four controls |
+| Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, launch, disposal on macOS and Windows, debugger shutdown and approval, the worker handshake and fault controls, the run summary |
 | Load a world and observe prepared effects (retired route) | [Ready-world observations](native/ready-world.md) | The retired world route and how to restore it from `d8f9d8a`: world pins, daily updates, flag expiry and variable reads |
 | Builds and adaptation between them | [Targets](native/targets.md) | Exact executable identities, ports between builds and Windows adaptation results |
 | Static analysis cost | [Performance](native/performance.md) | Dev-profile settings, hashing cost and the static-query invariant |

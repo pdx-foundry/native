@@ -106,12 +106,10 @@ temporaries that are not fully written, so a copied flag byte can be unknown.
 - **Where to read it.** `CGameApplication::InitGame` calls `CModifier::LogDefinitions()`
   unconditionally (`0x1005e96ec`). It runs after the trigger, effect and event post-inits, and
   before `PrintScriptingDocumentation`. The worker hooks its entry on the launch thread and reads
-  the table when it returns. The session pauses there (`GameReadiness::AfterContentLoad`)
-  about 20 seconds after launch. The read takes about 0.4 seconds.
+  the table when it returns; the session pauses there (`GameReadiness::AfterContentLoad`).
 - **Layout.** `LogDefinitions` walks `CPdxModifier<…>::_Definitions`, a `CPdxArray` with its data
   at `+0x8` and its count at `+0x14`. Each definition is 0x98 bytes, with the lexer token at
   `+0x78` and the category mask at `+0x84`. `AddDefinition` indexes the array by `ModifierType`.
-  The beta layout is the same.
 - **Names.** A definition's own strings are localization keys (`MOD_COUNTRY_SCAVENGE_DEBRIS_MULT`),
   not names. The name is `CStaticLexer::GetString(token)`: element `token` of a
   `CPdxArray<CString>` of 0x28-byte elements in unnamed globals at `0x103796d70`. `GetString`
@@ -150,7 +148,7 @@ AI Economy; `starbase_shipyard_build_cost_mult` has Starbases and AI Economy; th
 `starbase_shipyard_*` names and `gdf_ship_alloys_cost_mult` have the six ship and station tags
 and AI Economy.
 
-`modifier_families` returns 50 families in 22 registries, in about 0.8 s for each registry. All 22
+`modifier_families` returns 50 families in 22 registries. All 22
 answers are `Partial`; none is complete or failed. The
 last two columns are from one live `examples/loaded-modifiers.rs` session: the registry's loaded
 items, and how many of the names that the template gives for them are loaded.
@@ -179,8 +177,8 @@ items, and how many of the names that the template gives for them are loaded.
 | `common/technology/category` | `category_{key}_research_speed_mult`, `category_{key}_draw_chance_mult` | database loop | Unresolved | 13 | 13 each |
 | `common/zones` | `planet_{key}_build_speed_mult` | database | Always | 146 | 146 |
 
-`common/leader_classes`, `common/ship_sizes` and `common/espionage_operation_categories` are the
-other three registries; they return no family (see the gaps below). The five build-speed and
+`common/leader_classes`, `common/ship_sizes` and `common/espionage_operation_categories` return no
+family (see the gaps below). The five build-speed and
 windup templates of buildings, districts and bypass also equal all 680 registrations that the
 SDK-498 prototype hooks observed in two live runs. That control does not cover the district and
 building maximum families. The hooked sites on M45-release are `0x1000df770` (buildings),

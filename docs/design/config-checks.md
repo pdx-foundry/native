@@ -1,14 +1,10 @@
 # Checking the config against the engine (Atlas proposals)
 
-Status: Atlas-owned rules and a proposal, kept in Native until Atlas holds them. They are not
-accepted Native designs. They came from the 2026-09-28 generated-fixture and config-test spikes
-and the script-check proposal. Native implemented the observation route as `Game::check_script`;
-see the [specification](../specs/native.md). The spike results are in Atlas
-`docs/prototypes/generated-fixture-spike/REPORT.md` and
-`docs/prototypes/config-test-spike/REPORT.md`. That directory is local and ignored; Native keeps
-checked copies under `.local/evidence/` (see [preservation](../native/preservation.md)). The
-engine findings are in [engine calls](../native/engine-calls.md) and the
-[diagnostic survey](../native/diagnostic-survey.md).
+Atlas-owned rules and a proposal, kept in Native until Atlas holds them; not accepted Native
+designs. Native's observation route is `Game::check_script`. The spike results are in Atlas
+`docs/prototypes/{generated-fixture-spike,config-test-spike}/REPORT.md` (ignored by Atlas Git;
+checked copies in `.local/evidence/`); the engine findings are in
+[engine calls](../native/engine-calls.md) and the [diagnostic survey](../native/diagnostic-survey.md).
 
 ## Every claim needs an oracle
 
@@ -68,24 +64,16 @@ config slice. Atlas, or the compiler project, owns it.
 
 ### Engine side
 
-One normal launch on the same build loads all vanilla content with the same DLC set. No registry
-is isolated, so no background errors come from isolation. No Native operation returns ordinary
-load errors today: `observe_fixture` filters its diagnostics to the fixture's file, and
-`check_script` observes only its own checks.
-
-The smallest route is an Atlas corpus harness. It starts a session with
-`GameOptions::loaded_modifiers`, waits for the pause, and reads the ordinary `error.log` from the
-session's work directory before cleanup. First confirm with the inspector that the loaded-modifier
-pause follows the trigger and effect validation stages in `CGameApplication::InitGame`; otherwise
-choose a later boundary. The work directory is kept today only through a hidden test option. A
-supported route (a Native question for the ordinary load errors with their sources) is
-additional API work; build it only if the corpus needs it.
-
-Only messages with a vanilla file name and line inside the slice are compared. Messages with no
-source, or with a source outside the slice, are listed as unresolved. The ordinary log drops a
-message identical to the one before it, so a missing repeat is not evidence. A launch that does not
-reach the boundary, or a log that cannot be read, makes the whole corpus result unavailable. It
-never becomes "neither reports an error".
+One normal launch on the same build loads all vanilla content with the same DLC set. No Native
+operation returns ordinary load errors: `observe_fixture` filters to the fixture's file and
+`check_script` sees only its own checks. The smallest route is an Atlas harness that starts a
+`GameOptions::loaded_modifiers` session and reads the ordinary `error.log` from the kept work
+directory (a hidden test option today); first confirm with the inspector that the loaded-modifier
+pause follows the trigger and effect validation stages in `CGameApplication::InitGame`. Compare only
+messages with a vanilla file and line inside the slice; list the rest as unresolved. The log drops
+a message identical to the one before it, so a missing repeat is not evidence. A launch that does
+not reach the boundary, or an unreadable log, makes the whole result unavailable, never "neither
+reports an error".
 
 ### Comparison
 

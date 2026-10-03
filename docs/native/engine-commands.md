@@ -4,23 +4,15 @@ These methods read, from the executable only, what the engine declares: effects 
 (`Native::declarations`), modifiers, categories, scope types and scope links, localization
 contexts (`Native::localization_declarations`), on_actions and game rules. The module comments of
 `engine/analysis/declarations.rs`, `declarations/composition.rs`, `modifiers.rs`, `scopes.rs`,
-`localization.rs` and `callbacks.rs` describe the methods. This page holds the engine facts, the
-M45-release results, the gaps and the pitfalls. The [discovery index](discovery.md) lists the
-other method pages.
-
-The SDK-488 prototype read the same inventories from the engine's documentation logs in a live
-M45-observe game: 1,096 triggers, 1,074 effects, 99 scope links and 45,578 modifier entries
-(bundle `atlas-discovery/prototype/engine-command-discovery/`, frozen run `20260917-154455`; see
-[retrieval](retrieval.md)). Its 14 live parser-scope checks agree with the declarations. The
-static results below are compared with those logs, or with the logs that the release build
-wrote, only after the static result was produced.
+`localization.rs` and `callbacks.rs` describe the methods. The engine's documentation logs (from
+the SDK-488 prototype in the `atlas-discovery` bundle, and the logs the release build writes) are
+the comparison for the static results; the prototype's 14 live parser-scope checks agree with the
+declarations.
 
 ## Effects and triggers
 
-`command-declarations/v3` returns 1,074 effects and 1,096 triggers on M45-release, with no
-unnamed registration. The names equal the SDK-488 inventory. The documentation of every command
-equals the live log. Two trigger descriptions (`is_original_owner`, `original_owner`) changed in
-the release build: "planet" became "colony carrier". `tests/expected/m45/declaration-recovered.json`
+`Native::declarations` returns 1,074 effects and 1,096 triggers on M45-release, with no unnamed
+registration; names and documentation equal the live logs. `tests/expected/m45/declaration-recovered.json`
 records each command that a mechanism other than a direct call registers.
 
 ### Registration mechanisms
@@ -47,13 +39,9 @@ follows the factory's create method to the command vtable and the supported-scop
 names come from `NEventScope::GetScopeName` of the same build. A zero mask means `Any`, as the
 live documentation shows for `if`; other masks list names in bit order.
 
-Every resolved scope set equals the `Supported Scopes:` line of its command in the `effects.log`
-and `triggers.log` that the release build wrote on 2026-09-22. 27 effect and 14 trigger scope sets
-stay `Unresolved`, each with a gap. Eight commands stop at `command-vtable`: effects
-`pop_change_ethic`, `pop_force_add_ethic`, `remove_random_starbase_building`,
-`remove_random_starbase_module`, and triggers `has_relation_flag`, `is_war_participant`,
-`pop_ethic_amount`, `reverse_has_relation_flag`. `tests/expected/m45/declaration-gaps.json`
-records the unresolved names.
+Every resolved scope set equals the `Supported Scopes:` line of its command in the release build's
+`effects.log` and `triggers.log`. The unresolved sets (27 effects and 14 triggers, eight of them at
+`command-vtable`) are in `tests/expected/m45/declaration-gaps.json`.
 
 ### Target getters are not target sets
 
@@ -213,7 +201,7 @@ that a text statement points at. There is no registration call and no factory.
 - The rows are in the initial image. Pointer slots that the fixup chain binds to another image are
   unknown.
 
-**Result on M45-release** (about 0.9 s). 48 contexts, 151 command names in 245 command rows, and
+**Result on M45-release.** 48 contexts, 151 command names in 245 command rows, and
 102 link rows. The 44 documented contexts have the same command and link names as the dump. 28
 contexts join scope types (`Ship (and Starbase)` joins `ship` and `starbase`; `System` joins
 `galactic_object`). 20 are `Missing`: `Base Scope`, the 12 dead-object contexts, `Diplomacy`,
@@ -261,7 +249,7 @@ The engine has no documentation dump for either.
   tables, and `FindRuleDeclarationByEnum` returns the row, with its token, for a rule's
   enumeration.
 
-**Result on M45-release** (about 1.0 s and 0.7 s). 294 on_actions; 281 have at least one context
+**Result on M45-release.** 294 on_actions; 281 have at least one context
 and 207 have at least one context with no unresolved scope. 18 names keep several contexts: for
 example, a fleet enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an
 astral rift as from. 223 game rules (209 scripted, 14 weighted); 220 have a context and 204 a
@@ -311,9 +299,7 @@ are not established. Atlas owns the comparison with shipped content and config.
 
 ## Pitfalls
 
-After their first run, the localization and callback methods needed only evaluator and name-pass
-coverage. No repair was an interpretation of one name or link, and the contexts, command rows and
-scope join transferred with no change. Each item below gave a wrong or missing answer once.
+Each item below gave a wrong or missing answer once.
 
 **Reading code and vtables.**
 

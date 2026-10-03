@@ -29,15 +29,8 @@ All variants have partial fixed keys and two known entry forms. The smallest var
 `divide_over_pop_groups` (unknown). Custom description adds `description` (string) and
 `description_parameters` (unknown).
 
-The compact selections are in `tests/expected/m45/modifier-blocks.json`. The field selections
-refer to these variants by reader identity. These are static results on the hotfix image;
-M45-release could not be verified because its executable is unavailable. The tracked
-`tests/population/m45-release/` field baseline predates `registry-fields/v11` and remains unchanged.
-
-Frozen captures of main `a51cfc8` and candidate `59b26bf` on the same installed build show
-30 field-member changes across 17 registries, no removed fields or gaps, and zero command-answer
-changes. Other field properties are unchanged. Reports and commit identities are retained under
-`.local/population/sdk607/` (`main`, `candidate-v3`, `verified-summary.json`).
+The compact selections are in `tests/expected/m45/modifier-blocks.json`; field selections refer
+to these variants by reader identity.
 
 ## Entry forms
 
@@ -103,23 +96,14 @@ Findings of the SDK-498 prototype that the method does not report:
 
 ## Reproduce
 
-Use the same executable on both sides and the detached-worktree procedure in
-[method authoring](method-authoring.md#capture-a-stable-main-and-branch-pair):
-
 ```sh
 cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH"
-cargo run --release --example command-population -- "$STELLARIS_PATH"
 cargo parity modifier_blocks
 cargo live fixture_modifier_block
 ```
 
-The live fixture passed on this build in 37 seconds: all 13 reported fixed keys, a numeric
-modifier, the scripted modifier `pop_job_amenities_mult` and the static modifier `gave_up_pop`
-completed one observed reader invocation with complete parsing and no immediate diagnostics.
-Disposal was confirmed; no game or debugger process remained. This does not test deferred
-completion or runtime application.
-
-The sweep's `modifier_blocks` section reports fields and distinct address-point counts per reader,
-key differences from the smallest variant, complete/partial/failed counts, failure shapes and
-unjoined persistent Block fields. The latter are uses whose grammar is not covered, not proof
-that each use is a modifier. Failed point joins retain their existing unresolved answer.
+The sweep's `modifier_blocks` section reports fields and address points per reader, key differences
+from the smallest variant, results, failure shapes and unjoined persistent `Block` fields (uses whose
+grammar is not covered, not proof that each is a modifier). The live fixture reads all 13 fixed
+keys, a numeric modifier, the scripted modifier `pop_job_amenities_mult` and the static modifier
+`gave_up_pop` with complete parsing; it does not test deferred completion or application.

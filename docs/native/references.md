@@ -2,11 +2,9 @@
 
 A reference is a field or command argument whose value the engine looks up by key in a loaded
 collection. A dynamic name is a name that script both defines and reads, such as a country flag.
-SDK-543 owns both methods. This page holds their engine facts on M45-release, the results, the gaps
-and the pitfalls. The [discovery index](discovery.md) lists the operations.
 
-`Field.reference` in `Native::registry_fields` (`registry-fields/v12`) and in the fixed keys of
-`Native::command_grammar` (`command-grammar/v13`) gives each lookup of a field's value: the target
+`Field.reference` in `Native::registry_fields` and in the fixed keys of `Native::command_grammar`
+gives each lookup of a field's value: the target
 registry by content directory, the stage, the key match, whether an empty key is looked up, and
 what a missing key yields. The method is `engine/analysis/references.rs`, with owner
 initializers in `references/initialization.rs` and the shapes in `references/shapes/`;
@@ -135,8 +133,7 @@ The field sweep over all 164 registries finds 29 root and nested fields with a r
 `megastructures#overclock_types`, `species_classes#ethics_to_prefer`,
 `star_classes/randomizers#stars`, and `scripted_action` in megastructures and ship sizes);
 `megastructures#bypass_type` uses an immediate reader of another shape. `ship_sizes#carries_colony` fails: its planet class reader has
-neither a directory nor a shape. Recognizing the immediate and list forms gave 18 fields a reader
-identity that had none; no other answer changed. `council_agendas#finish_modifier` is complete:
+neither a directory nor a shape. `council_agendas#finish_modifier` is complete:
 `common/static_modifiers`, deferred, first equal key, empty key looked up, null object on a miss.
 
 ### Owner initializers
@@ -229,25 +226,13 @@ lookups and flags on this page.
 
 ## SDK-482 prototype
 
-The first reference method, SDK-482, matched four whole-function templates on the 4.5 beta and
-was retired at milestone 2. Its sources, `qualification_controls.py`, `patterns.json` and
-evidence are in the `typed-extraction` bundle under `reference-observation-prototype/`, and its
-branch `prototype/sdk-482-reference-observations` is in the `source-git` bundle
-([retrieval](retrieval.md)). The Rust port is `git show 1da4abf^:src/engine/analysis/references.rs`,
-and its expected beta cases are `git show f184f08:docs/native/reference-method-cases.json`.
-The 27 controls are now authored tests (`control_01_…` to `control_27_…`).
-
-The "two unfamiliar resolver shapes" were those of the earlier Intel 4.4.6 spike, whose
-contiguous map-find matcher returned unknown for District (a linear scan) and Army (an
-event-target chain). What each retained case gives now:
-
-| Case | SDK-482 on the beta | M45-release now |
-| --- | --- | --- |
-| Ship | Candidate `CShipSize` through a typed map call | `create_ship#random_existing_design`: `common/ship_sizes`, owner initialization, `Equal`, empty key not looked up |
-| District | Candidate `CDistrictType` through a scan | `add_district#district_type`: `common/districts`, `FirstEqual` |
-| Planet class | Candidate `CPlanetClass` through a getter | Gap: `change_pc`'s initializer lookup joins no child key, and planet classes have no joined directory |
-| Army | Unknown | `create_army#type`: `common/armies`, while reading, `FirstEqual`; `PostInit` classifies event-target keywords and makes no lookup |
-| Relic | Candidate `CRelic` through the same scan | The lookup is established; `add_relic` copies its key inline, so no child key joins it |
+The first reference method matched four whole-function templates on the 4.5 beta and was retired.
+Its sources are in the `typed-extraction` bundle under `reference-observation-prototype/` and the
+`source-git` bundle ([retrieval](retrieval.md)); the Rust port is
+`git show 1da4abf^:src/engine/analysis/references.rs`. Its 27 controls are authored tests
+(`control_01_…` to `control_27_…`). Pitfall: the "two unfamiliar resolver shapes" it failed on were a
+linear scan (District) and an event-target chain (Army), which a contiguous map-find matcher
+cannot read.
 
 ## Dynamic names
 
@@ -303,8 +288,8 @@ cargo run --release --example dynamic-name-population -- "$STELLARIS_PATH"
 
 ### Dynamic-name result on M45-release
 
-The run examines all 2,170 registered commands (1,074 effects, 1,096 triggers) in about four
-seconds. Counts are distinct commands.
+The run examines all 2,170 registered commands (1,074 effects, 1,096 triggers). Counts are distinct
+commands.
 
 | Outcome | Effects | Triggers | Total |
 | --- | ---: | ---: | ---: |
@@ -337,17 +322,9 @@ Findings:
   `GetGalacticObject()`; `set_star_flag` reaches the same object through the lookup that
   `GetFlags` inlines. The method does not prove the two equal, so the stores stay separate.
 
-The factory walk follows out-of-line tail-called factories and register-move constructor
-wrappers. Empty summaries for non-polymorphic member constructors preserve the primary vtable
-at nonzero offsets inside the allocation. These shapes join 127 effects and 76 triggers.
-The 31 namespace values are unchanged. The new joins remove 203 receiver gaps, add three
-`index-store` gaps (`kill_exiled_leader`, `return_leader_from_exile`, `set_leader`), and add
-`dynamic-form` and `no-role` gaps for each of `clear_global_event_target`, `exile_leader_as`,
-`save_event_target_as`, and `save_global_event_target_as`. These commands store names without
-establishing a supported flag-store route. Thus `UnresolvedReader` has 15 gaps and
-`ReaderSemantics` has 37; the three `OutsideMethod` gaps remain.
-The walk reads pointer slots from one read-only overlay instead of copying them into each walk;
-the command population takes about one minute.
+`clear_global_event_target`, `exile_leader_as`, `save_event_target_as` and
+`save_global_event_target_as` store names without a supported flag-store route, and
+`kill_exiled_leader`, `return_leader_from_exile` and `set_leader` have `index-store` gaps.
 
 ### Dynamic-name gaps
 

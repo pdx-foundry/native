@@ -1,11 +1,7 @@
 # Development improvements: open items
 
-The 2026-09-24 proposal to make Native development smoother is mostly delivered: the inspector
-and stop diagnostics (DX 1), the sweep report (DX 2), `Operation::name` and the Atlas local patch
-(DX 4), the pause owner (DX 5), the locality gate, cargo aliases, toolchain and `cargo doc` in CI
-(DX 6), decoder step 1 and the test assembler (DX 7), and the method index and authoring guide
-(DX 8). The items below are still open. They keep their DX numbers, because other documents cite
-them. Linear holds their status.
+These are the open items of the development-experience proposal. They keep their DX numbers,
+which other documents cite; Linear holds their status.
 
 ## DX 3. Parity tests per build (prerequisite of SDK-557)
 

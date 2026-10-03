@@ -42,13 +42,26 @@ These replay retained instructions, traces, joins, normalizations and synthetic 
 
 `source-git/git/sdk.bundle` and `typed.bundle` preserve selected original branch histories without rewriting source repositories. `git bundle verify <path>` works in an empty Git repository; use `git clone <bundle> <new-directory>` for a separate historical source checkout. Standalone `.tar` snapshots preserve the named Windows adapter and draft specification commits even where no retained branch points at them. Working-tree/untracked evidence is preserved in the other bundles, not assumed present in Git.
 
+## Debugger-worker trial bundle
+
+`sdk-515-loader-entry-review` (159 files) holds the final debugger-worker trial; its initial
+batches are in `sdk-515-loader-entry`. [source-inventory.json](source-inventory.json) pins both
+identities. A verified second local copy is in
+`/Users/jackson/Documents/PDX/evidence/native-2026-09-18/`. Verify it offline after a restore:
+
+```sh
+python3 tools/knowledge_bundles.py sdk-515-loader-entry-review --restore
+python3 .local/evidence/restored/sdk-515-loader-entry-review/sdk-515-loader-entry-review/trial-03/trial-source/verify.py \
+  .local/evidence/restored/sdk-515-loader-entry-review/sdk-515-loader-entry-review/trial-03
+```
+
+The trial's `run.py` **launches games** and needs the exact retained installation; use
+`tests/live.rs` for the current session API.
+
 ## Fresh capture prerequisites
 
-SDK-515's `sdk-515-loader-entry-review` bundle retains the final candidate debugger-worker
-trial. Its initial batches remain in `sdk-515-loader-entry`.
-Use its [result and restore instructions](loader-entry-worker.md) for offline verification.
-The historical `trial-03/trial-source/run.py` in the restored bundle **launches games**
-and requires the exact retained installation. The repository no longer ships the trial tools;
-use `tests/live.rs` for the current Native session API.
-
-Fresh captures require the **particular** target/architecture, compatible save or parser fixture, declared installed content and DLC, OS/toolchain/debugger access, and no conflicting live game. Native capture scripts retain original absolute installation/profile/helper paths. Retarget working copies and record the changes; preserve hash gates and qualification controls. Do not silently substitute another binary or mock source. Missing installations, old source saves, Mythos/dependency content and Windows host access limit fresh reproduction even when offline replay succeeds.
+Fresh captures need the particular target and architecture, a compatible save or parser fixture,
+the declared installed content and DLC, OS, toolchain and debugger access, and no conflicting live
+game. Capture scripts keep their original absolute installation, profile and helper paths: retarget
+working copies, record the changes, and keep the hash gates. Do not substitute another binary or
+mock source.

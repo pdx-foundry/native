@@ -1,88 +1,26 @@
 # PDX Native specification
 
-Status: implementation specification, rewritten 2026-09-20 to agree with the approved
-[simplification decision](../design/simplification.md). It replaces the evidence-producer
-specification of 2026-09-17. The earlier text is in Git history. The delivered operations agree
-with this document; the roadmap tracks the operations that are still planned. The agreed
-[2026-10-02 review](../design/simplification.md) narrows the product to static engine facts
-that a compiler uses to accept, reject, type or complete script, plus the smallest live check
-of a static answer. Runtime values are out of scope. Atlas is the only consumer.
+Rewritten 2026-09-20 and narrowed 2026-10-02 by the
+[simplification decision](../design/simplification.md).
 
-## Problem Statement
+## Problem and solution
 
-Atlas needs to ask the Stellaris engine questions to derive scripting rules. The answers depend on
-executable addresses, memory layouts, compiler patterns, launch workarounds, and platform process
-control. If Atlas depends on these details, each game update becomes an Atlas port.
+Atlas asks the Stellaris engine questions to derive scripting rules. The answers depend on
+executable addresses, memory layouts, compiler patterns, launch workarounds and process
+control; if Atlas depended on them, each game update would be an Atlas port. Native is a Rust
+library with one API, the same on each platform and build, that owns all of that knowledge.
+Its goal is parity with the cwtools config, plus additional static compiler facts that pass the
+compiler-need test and the overbuild check ([vision](../design/simplification.md#vision)). Atlas
+is the first consumer and, today, the only one.
 
-Atlas must ask the same questions on each supported platform and game build. It must know when an
-answer is partial or unavailable. A successful launch, a discovered name, and a valid rule
-conclusion are different results.
-
-## Solution
-
-PDX Native is a Rust library: one standard API to ask Stellaris questions, the same on each
-platform and game build. Atlas is its first consumer. Native owns all platform and game-build
-knowledge: build identification, static analysis of the executable, process lifetime, hooks, and
-engine reads.
-
-A caller gets an answer, a statement of how complete the answer is, and a small stamp that says
-which build and method gave it. To check an answer, run the question again. Native is not an
-evidence archive. Tests use small recorded answers when no game is available.
-
-**Atlas has no platform or game-build knowledge.** It does not select adapters, decode native data,
-compare version strings, or choose a platform path. Atlas decides what an answer establishes about
-a rule.
-
-## User Stories
-
-1. As an Atlas developer, I want one engine interface, so that extraction logic works unchanged
-   across supported platforms and game builds.
-2. As an Atlas developer, I want Native to identify the installation from a location, so that I do
-   not choose executable architectures or adapters.
-3. As an Atlas developer, I want `supports(operation)` with a reason, so that missing native
-   support is a visible extraction gap.
-4. As an Atlas developer, I want to list engine registries and their fields without config seeds,
-   so that I can find fields and families that the config does not have.
-5. As an Atlas developer, I want each field's shared reader, so that one supported reader informs
-   many rule properties.
-6. As an Atlas developer, I want engine declarations (effects, triggers, modifiers, scopes, links,
-   defines, on_actions) marked as declared, so that I can distinguish them from observed behavior.
-7. As an Atlas developer, I want to supply fixture files and receive source-correlated field
-   observations, so that I control the experiment without controlling hooks or launch timing.
-8. As an Atlas developer, I want parsing, parser storage, and validation reported
-   separately, so that engine recovery does not imply valid input.
-9. As an Atlas developer, I want unknown conditions and typed gaps kept in partial answers, so that
-   useful answers do not conceal what is missing.
-10. As an Atlas developer, I want a source stamp on each answer, so that each claim records the
-    build and method that support it.
-11. As an Atlas developer, I want recorded answers for static and live questions, so that I can
-    develop and test extraction without a game.
-12. As an Atlas developer, I want a bounded startup, a fixed idle timeout, explicit close and cleanup on drop,
-    so that a stuck game cannot leave extraction waiting.
-13. As an operator, I want isolated profiles and owned processes, so that experiments do not change
-    my ordinary game profile or unrelated processes.
-14. As an operator, I want cleanup to survive caller and worker failure, so that a failed probe
-    does not abandon its game process.
-15. As a Native maintainer, I want an exact build check before each native operation, so that a
-    game update cannot silently reuse stale assumptions.
-16. As a Native maintainer, I want methods with no per-registry or per-command branch, run over
-    every registry, so that reuse is demonstrated and not inferred from training examples.
-17. As an offline tool maintainer, I want Native used only when rules are produced, so that
-    ordinary builds and authoring need neither native tooling nor a game.
+A caller gets an answer, how complete it is, and a stamp that says which build and method gave it;
+to check an answer, run the question again. **Atlas has no platform or game-build knowledge**: it
+does not select adapters, decode native data, compare versions or choose a platform path, and it
+decides what an answer establishes about a rule.
 
 ## Implementation Decisions
 
 ### 1. Authority and module boundaries
-
-| Module | Owns | Provides to its caller |
-| --- | --- | --- |
-| Native public API | `Native`, `Game`, `Answer<T>`, `Error`, normalized value types | Engine questions and answers |
-| Native target composition | Build identification; target records and recipes; platform and machine leaves | A fixed internal binding for one exact build |
-| Native analysis methods | Decoding, value provenance, bounded control flow, owner joins, reader patterns | Normalized static answers |
-| Native game supervision | Private profiles; process ownership; worker transport; deadlines; cancellation; disposal | Bounded live answers and a disposal result |
-| Atlas extraction | Rule questions; fixtures; interpretation of answers; coverage and gaps | Supported claims and unresolved properties |
-| Atlas rule assembly | Rule identities; conditional rules; documentation; snapshots | Deterministic offline snapshots |
-| Offline consumers | Snapshot pinning; rule application; authoring advice | Author-facing tools |
 
 Dependencies run from Atlas extraction into Native's public API. Native does not import Atlas's
 rule model. Atlas does not import adapters, analysis helpers, or process control.
@@ -92,7 +30,6 @@ Native establishes what was read or observed. Atlas decides what that establishe
 
 ### 2. Public API
 
-Availability below is the state after the simplification effort:
 
 | Operation | Availability | Atlas supplies | Native returns |
 | --- | --- | --- | --- |
@@ -165,22 +102,13 @@ for contexts and scope types.
   partial literal forms and accepted range. `Known(None)` establishes a
   nonnumeric reader; unresolved or partial properties must not be completed from storage limits
   or finite fixture observations. Caller post-processing is outside the shared conversion.
-  `accepted_range` means faithful storage without overflow or narrowing beyond the reader's
-  normal, established rounding or truncation rule. Values outside it may still parse successfully.
-  An endpoint is `Known` only with both a verified contract of the exact imported platform scanner,
-  checked by a reproducible test at and just beyond the limit, and agreeing live inward, endpoint
-  and outward boundary cases. A static proof of the libc implementation is not required.
-  Otherwise it remains `Unresolved`; a range with only one established endpoint is `Partial`.
-  Storage width alone is insufficient. A known range does not close `numeric-overflow` unless
-  out-of-range behavior is also established. The int reader's ordinary decimal fraction samples
-  truncate toward zero by scanning their integer prefix; this is not an exponent or suffix rule.
-  Exact binary32 endpoints remain unresolved because `NumericBound` has no suitable exact variant;
-  the float reader retains a typed numeric-conversion gap for that representation obstacle.
+  `accepted_range` means faithful storage; an endpoint is `Known` only under the rule in
+  [numeric conversion](../native/numeric-conversion.md#faithful-storage-and-endpoints), and a range
+  with one established endpoint is `Partial`. A known range does not close `numeric-overflow`.
 - `ReaderKind::ScopedNumeric` identifies a shared reader whose destination can store an integer
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
   storage. `Reader.scoped_operand` reports partial routing forms. These facts do not claim a
-  successful lookup or an evaluated number. Historical selection and evaluation findings remain
-  on the scoped numeric knowledge page.
+  successful lookup or an evaluated number.
 - `CommandGrammar.durations` groups child keys that set one duration count by their reader code.
   Each group gives the keys, factors, combination rule (`ScaledAtRead` or `SharedFactor`), and
   omitted count. Consumers, expiry dates and update frequency are outside the API.
@@ -197,8 +125,7 @@ for contexts and scope types.
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
 - Atlas's published gaps carry a reason and owner category. Repair-ticket mappings live in docs,
-  so changing the work plan does not change the published engine knowledge (agreed G1, 2026-09-24;
-  Atlas implementation tracked by SDK-597).
+  so changing the work plan does not change the published engine knowledge (agreed G1).
 
 Question, session, and recorded-answer failures use one `Error` type. Opening an installation uses
 `OpenError`, because no `Native` exists yet. `Answer<T>` and `Error` are serializable.
@@ -227,17 +154,12 @@ observation worker.
   read error. A failed deletion is a cleanup error with confirmed disposal; a later `close` tries
   it again.
 - Startup is configurable from 1 to 180 seconds. The idle timeout is 180 seconds. Readiness and
-  cancellation stay internal. The retired world route and restore instructions are preserved on
-  [ready-world observations](../native/ready-world.md).
+  cancellation stay internal.
 - No blind retry of an operation whose completion is uncertain.
 
-**Agreed G2, amended 2026-10-02:** Native selects the registries required by the session and
-always includes the fixture registry. Internal registry selection is validated against the bound
-build's discovery, without a fixed count. The supervisor verifies it from the installation.
-Duplicate and unknown internal selections remain invalid; transport limits remain. Build-specific
-counts are test expectations and remain allowed by the locality gate. This supersedes the
-Milestone 2 review's requirement to keep public `registry_items`; bounded internal observations
-remain available for SDK-552's loader-rule controls.
+**Agreed G2.** Native selects the registries a session observes and always includes the fixture
+registry. The selection is validated against the bound build's discovery, without a fixed count;
+duplicate and unknown selections are invalid. Build-specific counts are test expectations.
 
 ### 5. Shared native methods
 
@@ -250,44 +172,21 @@ stops an answer and becomes a gap. Engine-only discovery runs without config or 
 engine fact lives and how method transfer is measured. A manual exception records its claim,
 conditions, obstacle, and removal route; it is never presented as automatic extraction.
 
-### 6. Atlas's first consumer path
+### 6. Supported builds and maintenance
 
-| Atlas question | Native responsibility | Atlas responsibility |
-| --- | --- | --- |
-| Which definitions and fields exist? | Registries, fields, readers, with gaps | Coverage obligations and rule subjects |
-| What happens when fields are omitted, repeated, malformed, or conditional? | Observe stages, storage, diagnostics, conditions | Structural and conditional claims |
-| Which definitions do references select? | Lookup and owner relationships, with conditional outcomes | Reference categories |
-| Which shared numeric, command, modifier, or weight reader is used? | Reader behavior and unresolved paths | Reusable rule definitions |
-| Which scopes does the engine supply to a block? | Declared read entry scope and static root/from/prev bindings | Scope typing and completion |
-| Which files and duplicate definitions were used? | File selection and duplicate-definition rules | Naming and loading relationships |
-
-Atlas owns fixture meaning. Native owns mounting, isolation, and execution. Native does not ship
-game catalogues or config-derived fallback answers.
-
-### 7. Supported builds and maintenance
-
-A build is supported when its exact executable identity is in the target catalogue. Its tests
-prove the support. There are no separate qualification records. A new patch does not inherit
-support; it needs a target record and passing tests.
-
+A build is supported when its exact executable identity is in the target catalogue and its tests
+pass; there are no separate qualification records, and a new patch does not inherit support.
 [Targets](../native/targets.md) lists the catalogued builds: two Apple Silicon full releases.
-Static methods and their parity tests need the exact executable. Native keeps full-release targets
-only: Steam offers old full releases for download, but not old open betas. The earlier 4.5 beta
-ARM64 executable stays in `.local/executables` as a knowledge source. The 4.5.1 world recipe is
-retired by the 2026-10-02 review; that target remains for fixtures and script checks, and the
-historical world findings remain specific to it. The goal is one supported release at a time;
-SDK-674 removes 4.5.0 after the relevant API cuts.
+Native keeps full-release targets only, because Steam offers old full releases for download but not
+old open betas. The goal is one supported release at a time; SDK-674 removes 4.5.0. Windows x64 is
+deferred: one platform is enough for platform-independent snapshots, and target composition keeps
+platform knowledge in its own leaves.
 
-**Amendment, 2026-09-19 (Jackson):** Windows x64 is deferred. Atlas publishes platform-independent
-snapshots, so one platform is sufficient for rule coverage. Windows returns with the separate
-real-game testing framework. Target composition keeps platform knowledge in its own leaves, so
-the later Windows work adds a leaf, not a redesign.
+The update rehearsal freezes Atlas extraction logic for a second distinct Apple Silicon executable;
+routine port work stays in Native. Measure tooling, routine updates and exceptional repairs
+separately. No numeric maintenance guarantee is accepted.
 
-Freeze Atlas extraction logic for a second distinct Apple Silicon executable (the update
-rehearsal). Routine port work stays in Native. Measure tooling, routine updates, and exceptional
-repairs separately. No numeric maintenance guarantee is accepted.
-
-### 8. Recorded answers and provenance
+### 7. Recorded answers and provenance
 
 Recorded answers are JSON files of `Result<Answer<T>, Error>`. `record_answers_to` writes them
 during a real run. `from_recorded_answers` serves them for static and live questions and starts no
@@ -304,48 +203,40 @@ answer and still keep the build identity. Each write uses a temporary name of it
 renamed, so an interrupted or concurrent recording leaves no partial file. One recorder writes to a directory at
 a time.
 
-Atlas claims keep provenance through `Source`. They do not reference retained captures. This
-amends the SDK-473 evidence decision (accepted by Jackson, 2026-09-19).
-
-Atlas pins an exact Native source release. Prototype sources that hold unported knowledge are kept
-until their methods exist in Rust; see the [development policy](../development-policy.md).
+Atlas claims keep provenance through `Source`; they do not reference retained captures. Atlas pins
+an exact Native commit.
 
 ## Testing Decisions
 
 Test behavior through the public API. Internal tests are justified for unsafe decoding and for
 supervision failures that the public API cannot cause safely.
 
-1. **Boundary:** the Atlas caller has no platform or build branches, native constants, or adapter
-   imports.
-2. **Build check:** a changed executable, an unknown build, and an unsupported operation each give
-   the declared error and execute nothing.
-3. **Answer integrity:** wrong owners, clobbered values, unresolved calls, and missing joins give
-   typed gaps. No partial answer becomes complete.
-4. **Static methods:** small authored inputs test method logic. Ignored parity tests read the
-   exact executable and compare with small tracked expected answers (164 template registries and
-   ten agenda fields, plus traditions and categories). Large real method inputs are not tracked.
-5. **Live operations:** ignored by default; run with `STELLARIS_PATH`. Normal, missing-hook,
-   dropped-record, worker-loss, timeout, and cancel cases. The ordinary profile and unrelated
-   processes stay unchanged.
-6. **Supervisor without a game:** unit tests cover reservation ownership, worker-process cleanup,
-   pause witnesses and caller cancellation. A fake-worker session test sends a complete paused
-   answer through the supervisor observation and cleanup path. It checks the final report,
-   worker reap, game disposal and reservation release. The real debugger attachment checks
-   require the live game.
-7. **Recorded answers:** a recorded run gives the same answers as the real run apart from `Basis`;
-   a missing record gives `NotRecorded`; no process starts.
+1. **Boundary:** the Atlas caller has no platform or build branches, native constants or adapter
+   imports (`tests/consumer_boundary.rs`).
+2. **Build check:** a changed executable, an unknown build and an unsupported operation each give
+   the declared error and execute nothing (`tests/installation.rs`).
+3. **Answer integrity:** wrong owners, clobbered values, unresolved calls and missing joins give
+   typed gaps; no partial answer becomes complete.
+4. **Static methods:** authored inputs test method logic; ignored parity tests read the exact
+   executable and compare with small tracked expected answers (`tests/static_questions.rs`).
+5. **Live operations:** ignored by default, run with `STELLARIS_PATH` (`tests/live.rs`): normal,
+   missing-hook, dropped-record, worker-loss, timeout and cancel cases; the ordinary profile and
+   unrelated processes stay unchanged.
+6. **Supervisor without a game:** unit tests and a fake-worker session test cover reservations,
+   worker cleanup, pause witnesses, cancellation, the final report and reaping.
+7. **Recorded answers:** a recorded run gives the same answers apart from `Basis`; a missing record
+   gives `NotRecorded`; no process starts (`tests/recorded_answers.rs`).
 8. **Shared-method transfer:** the population run and the locality gate of the
    [development policy](../development-policy.md#measuring-method-transfer).
-9. **Atlas integration:** carry a tradition field through Native answers, Atlas claims, a
-   schema-valid snapshot, and an end-to-end offline test that reads the snapshot itself. Include
-   invalid input and an absent answer. No demo consumer is required. The first release covers one
-   catalogued build with passing tests; a correction is a new snapshot version.
-10. **Update portability:** run the unchanged Atlas flow on the next patch after 4.5.1. The live
-    run credits no recorded answer. This rehearsal is not a first-release gate.
+9. **Atlas integration:** a tradition field passes through Native answers, Atlas claims, a
+   schema-valid snapshot and an end-to-end offline test that reads the snapshot, including invalid
+   input and an absent answer.
+10. **Update portability:** the unchanged Atlas flow runs on the next patch after 4.5.1; the live
+    run credits no recorded answer.
 
 ### Milestone 4 shared-reader acceptance
 
-The [roadmap](../roadmap.md#milestone-4-acceptance-and-start-order) owns the Milestone 4
+The [roadmap](../roadmap.md#milestone-4-acceptance) owns the Milestone 4
 acceptance contract: the SDK-600 council agenda test, the method fixture criteria, method
 transfer and Atlas integration.
 
@@ -362,23 +253,11 @@ transfer and Atlas integration.
 - Concurrent games, supervisor-loss recovery, and guaranteed invisible launch.
 - Installation discovery without a location. It does not block config coverage.
 
-## Governing records
-
-- [Simplification decision](../design/simplification.md): purpose, compiler-need vision, what
-  stays and goes, and the decisions of 2026-10-02.
-- [Technical design](../design/architecture.md): project layout and target composition.
-- [Roadmap](../roadmap.md): order of work.
-- [Atlas map, SDK-470](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database):
-  Atlas decisions and open extraction questions. SDK-475 (module boundary), SDK-476 (supported
-  builds) and SDK-472 (first coverage) still apply. SDK-473 is amended as stated in section 8.
-- [Engine knowledge index](../engine-knowledge.md): where prototype knowledge is kept.
-
 ## Paused script checks
 
-Start with `GameOptions::loaded_modifiers`, then call `Game::check_script` serially with a
-`ScriptCheck`. Text is limited to 4,096 UTF-8 bytes with no NUL; one check captures at most 32
-messages, takes at most five seconds, and a session permits at most 3,000 checks. Each message
-is bounded to 4 KiB. Native adds trailing whitespace so the final token can be read.
+Start with `GameOptions::loaded_modifiers`, then call `Game::check_script` serially; its
+documentation and `src/script.rs` give the bounds. Native adds trailing whitespace so the final
+token can be read.
 
 Results are observations against the session's loaded content and retained command databases.
 Each message retains the raw signed engine log level; Native neither filters levels nor assigns
@@ -389,11 +268,9 @@ Missing hooks, unreadable messages, missing current-source lines, unjoined messa
 make the answer partial. Repeated messages remain separate occurrences. A complete quiet
 answer records capture coverage; it does not establish script acceptance.
 
-A check temporarily replaces the idle deadline. The idle period starts again after a verified
-return to the original stopped registers. A failed call, timeout, worker loss, register mismatch
-or cancellation ends the session; call `close` to observe disposal after cancelling a future.
-Invalid text, scope or a spent check count is rejected before an engine call. Engine allocations
-and deferred command objects remain until the session ends. Checks are not isolated fresh games.
+A check temporarily replaces the idle deadline. A failed call, timeout, worker loss, register
+mismatch or cancellation ends the session; call `close` to observe disposal. Engine allocations and
+deferred command objects remain until the session ends: checks are not isolated fresh games.
 
 `stored_durations` lists, for each top-level child whose receiver has a static `Duration` group,
 the stored count after reading and before validation. A scaled-at-read group gives its `Integer`
@@ -404,6 +281,5 @@ Children are classified by receiver; command names in the text only nominate rec
 `IncompleteObservation` gap. Recordings without this property are rejected.
 Stored values are parser storage, not evaluated or executed durations.
 
-Atlas owns conclusions drawn from these observations. Checks do not alter static answers,
-resolve silent properties, check registry fields, evaluate triggers or execute effects. Windows
-and the proposed Atlas corpus comparison are outside this operation.
+Checks do not alter static answers, resolve silent properties, check registry fields, evaluate
+triggers or execute effects.

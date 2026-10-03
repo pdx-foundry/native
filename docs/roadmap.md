@@ -1,24 +1,17 @@
 # Roadmap: from two registries to full config coverage
 
-Status: proposed plan, 2026-09-19; amended 2026-09-20 for the
-[simplification decision](design/simplification.md). The [Native specification](specs/native.md) and
-[technical design](design/architecture.md) remain the authority for behavior and layout. The
-[Atlas map](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database)
-remains the authority for decisions and open extraction questions. This document only orders the work.
+This page orders the work. The [specification](specs/native.md) and
+[technical design](design/architecture.md) own behavior and layout; Linear owns ticket status and
+blocking order; the [Atlas map](https://linear.app/unnamed-system/issue/SDK-470/specify-pdx-atlas-and-its-engine-derived-rule-database)
+owns Atlas decisions and open extraction questions.
 
 ## Goal
 
 Atlas generates the data that `cwtools-stellaris-config` maintains by hand, and publishes it as
-platform-independent JSON snapshots. Native supplies every engine observation that Atlas needs.
-
-## Current state
-
-The [specification's operation table](specs/native.md#2-public-api) lists what Native answers
-now: static registries, fields, declarations, command grammar, dynamic names, defines,
-on_actions, game rules and modifier families, plus live fixture outcomes, the loaded modifier
-table and script checks. The answers are normalized, with typed gaps and source stamps. Atlas
-asks the same questions for live and recorded answers. Linear holds the methods that are still
-open.
+platform-independent JSON snapshots, at parity with the config. Native supplies every engine
+observation that Atlas needs. Additional compiler facts beyond parity must pass the compiler-need
+test and are scrutinized for overbuilding ([vision](design/simplification.md#vision)).
+The [specification's operation table](specs/native.md#2-public-api) lists what Native answers now.
 
 ## The target, measured
 
@@ -31,51 +24,16 @@ The config fork has 49,196 lines in 172 `.cwt` files.
 | ~13% | 2,042 defines, 385 on_actions, game rules | Inventories |
 | ~8% | Interface, graphics, sound, map, descriptors | Separate loaders, not yet investigated |
 
-### Documentation provenance measured in full
+Of the config's documentation entries, 4,014 of 5,784 are exact copies of base-game or
+`script-docs` text; Atlas owns that [measurement](https://github.com/pdx-foundry/atlas/blob/67003ade425a3a071cc90db11c352206e49854d6/docs/coverage/documentation.md).
+Severity, soft cardinality, subtypes and alias factoring are cwtools modelling decisions, not
+engine knowledge; severity belongs to the compiler, and subtype names and alias factoring to the
+`.cwt` emitter tests. The `.cwt` emitter is a test tool that compares a snapshot with the config;
+the product is the JSON snapshot.
 
-SDK-525 measured every documentation claim against the installed base-game `common/**/*.txt`
-files and the config fork's `script-docs/v4.4.1` effects/triggers logs. Atlas owns the comment-to-key
-parser and the source-tagged ledger. Native's `declarations` operation (SDK-535) is separate: it
-reads the effect and trigger documentation strings from the executable.
-
-| Config area | Doc entries | Exact copies | Rewritten candidates | Authored remainder |
-| --- | ---: | ---: | ---: | ---: |
-| Effects | 1,520 | 967 | 79 | 474 |
-| Triggers | 1,152 | 939 | 90 | 123 |
-| Defines | 1,329 | 1,286 | 7 | 36 |
-| On_actions | 342 | 269 | 38 | 35 |
-| Game rules | 195 | 152 | 13 | 30 |
-| Type schemas | 1,054 | 401 | 68 | 585 |
-| Other | 192 | 0 | 0 | 192 |
-| **Total** | **5,784** | **4,014** | **295** | **1,475** |
-
-The type-schema row measures **all 1,703 documentation lines**, replacing the three-sample check.
-The full ledger contains 7,282 documentation lines. Entry counts include nested prose and repeated
-declarations, so they are not directly comparable with the earlier documented-command counts.
-Exact means equal after removing comment markers and folding whitespace. Rewritten candidates use
-an explicit similarity threshold and remain provisional.
-
-The 1,475 entries with no match are listed as authored and are not evidence. This is a bounded
-source search, not proof of historical authorship: version drift, source-parser limits, and content
-outside the examined corpus remain possible. The report retains 36 source parse diagnostics and
-the eight existing config diagnostics. Matching text grants no verified rule coverage.
-
-See Atlas's [complete measurement and reproduction instructions](https://github.com/pdx-foundry/atlas/blob/67003ade425a3a071cc90db11c352206e49854d6/docs/coverage/documentation.md)
-and [pinned acceptance fixture](https://github.com/pdx-foundry/atlas/blob/67003ade425a3a071cc90db11c352206e49854d6/tests/fixtures/documentation-baseline.json).
-The source manifest covers 2,062 files, with SHA-256
-`3d744becf7976e9ddd52e57f2d92cbaaf0b56f60b57af61852e45052519d3007`.
-
-Policy is not engine knowledge: severity (86), soft cardinality, subtypes (164) and alias factoring
-are cwtools modelling decisions. Subtypes have an engine-true counterpart in conditional field
-constraints (SDK-490).
-
-### Baseline
-
-The ledger exists (SDK-523, Atlas commit `be9cb3b`). With the retained registry capture as input,
-coverage is **0 of 56,551** Atlas-owned claims (53,465 engine-fact, 3,086 content-derived). The
-capture holds item names only, and item names answer no rule question. A further 2,637 claims are
-consumer policy and 192 are authored text; these are outside the headline figure. Atlas scores
-coverage by evidence, not by agreement with the config.
+Coverage started at 0 of 56,551 Atlas-owned claims (item names answer no rule question). At the
+Milestone 3 gate, a live snapshot on config revision `8574760` covered 15,278 of 58,032 claims
+(26.33%); see Atlas's [language snapshot measurement](https://github.com/pdx-foundry/atlas/blob/9c39c807ed062f65c893789edb16677b7ea843a1/docs/coverage/language-snapshot.md).
 
 ## Ordering principle
 
@@ -83,54 +41,14 @@ Coverage grows with each **shared method**, not with each file. The known risk i
 the reference matcher failed on both unfamiliar resolver shapes, and five shared-reader contracts
 block the council agenda completeness result. The
 [development policy](development-policy.md#keep-engine-knowledge-in-its-home) states the method
-rule and how transfer is measured; the registry sweep's failures return as new reader shapes, not
-as handwritten answers.
+rule and how transfer is measured.
 
-## Decisions taken with this roadmap
-
-- **The `.cwt` emitter is a test tool.** It compares an Atlas snapshot with the config fork. The
-  product remains the JSON snapshot (SDK-477).
-- **Windows is deferred.** Atlas output is platform-independent. Windows support returns with the
-  real-game testing project. This amends the Mac/Windows promise of SDK-476 and specification
-  section 7. The amendment is recorded in the specification (section 7, acceptance check 9, Out of
-  Scope) and in comments on SDK-476 and SDK-485.
-- **The update rehearsal stays, and runs last.** Per-build adaptation cost has never been measured.
-  The rehearsal blocks no earlier milestone, and it measures most when the full method set exists,
-  so it is the final milestone (SDK-557; the rescoped SDK-485 closed on 2026-09-24).
-- **The beta installation is preserved first.** Stellaris 4.5 leaves beta in the week of 2026-09-21.
-  The only supported target record is the exact beta executable. A verified copy of that
-  installation must exist before Steam updates it (SDK-522), or live work stops until a new
-  target record exists and its tests pass.
-  **Superseded, 2026-09-22:** Steam updated the installation to the full release, Cygnus v4.5.0
-  (8697). Its target record (M45-release) replaces the beta record. Steam offers old full releases
-  for download but not old open betas, so Native keeps full-release targets only. The beta ARM64
-  executable stays in `.local/executables`.
-- **Foundations come before the shared readers (2026-09-24).** After the Milestone 3 review and
-  the [DX proposal](design/native-dx.md), Milestone 4 held its ten method tickets and about twenty
-  repair and tooling tickets. Milestone 3.5 now holds the work that makes each method cheaper or
-  safer to write, and the independent cleanup. Refactors that block no method (SDK-594, SDK-595)
-  are in neither milestone. This amends the Milestone 3 review's rule that repairs do not gate
-  Milestone 4. The review is in Git history.
-- **The Atlas integration ticket is split (2026-09-25).** SDK-597 stayed open across the whole
-  milestone by design, the same shape as a gate ticket merged into its first method. It now holds
-  only the first slice, delivered after SDK-541 and SDK-542. SDK-625 holds the later answer
-  types and the final live coverage run; it is blocked by SDK-544 to SDK-546 and SDK-548 to
-  SDK-550. SDK-626 holds the triage of the 755 unowned gaps, which is ticket writing rather than
-  integration code and has no blockers.
-- **A method is written in one task (2026-09-24).** The inspector (SDK-579), stop diagnostics
-  and the sweep report (both SDK-581, which absorbed SDK-588 on 2026-09-24) replace the
-  throwaway prototype. One task explores with the inspector, records findings and failed shapes
-  on the method's page in `docs/native/` (indexed by `engine-knowledge.md`), and delivers the method with
-  its authored tests. The open prototype children of SDK-470 are closed. Their unique
-  cases moved into the production tickets; four remainders became SDK-607 to SDK-610.
+Windows is deferred: Atlas output is platform-independent, and Windows returns with the real-game
+testing project. The update rehearsal (SDK-557) runs last, when the full method set exists.
 
 ## Milestones
 
-Linear works milestones in order, so the order below is the work order.
-
-**Simplification completed, 2026-09-20.** The [simplification decision](design/simplification.md)
-records what stayed and what went: the API migration, analysis and live reducer moves, removal of
-replay and qualification, and private-directory cleanup. This work has no Linear tickets.
+Linear works milestones in order. Milestones 1 to 3.5 are complete.
 
 | # | Milestone | Work | Exit gate | Tickets |
 | --- | --- | --- | --- | --- |
@@ -143,22 +61,10 @@ replay and qualification, and private-directory cleanup. This work has no Linear
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
 | 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
 
-**Milestone 3 exit gate met, 2026-09-24 (SDK-570).** The Atlas language snapshot answers each
-of the five `script-docs` logs and each config name list: effect, trigger, log scope-link and
-localization entries are in it, and the ledger keeps its gaps. The snapshot holds the loaded
-modifier table's counts; the 45,578 loaded names remain in the recorded answer. With a live snapshot
-on config revision `8574760`, coverage is 15,278 of 58,032 Atlas-owned claims (26.33%); the
-language areas give 14,137 of 31,751 (44.52%), from effects 25.97% to scopes and links 91.15%. No
-on_action or game-rule entry scope is established: each followed call site supplies a self link or
-an unresolved scope. See Atlas's [language snapshot measurement](https://github.com/pdx-foundry/atlas/blob/9c39c807ed062f65c893789edb16677b7ea843a1/docs/coverage/language-snapshot.md).
+### Milestone 4 acceptance
 
-### Milestone 4 acceptance and start order
-
-The accepted Milestone 3 review (in Git history) set the work order. Its
-preparation (SDK-596) and Milestone 3.5 are complete. SDK-598 and SDK-599 are canceled by the
-2026-10-02 review. Linear is the authority for status and blocking order: for example, SDK-608
-blocks SDK-677, which blocks SDK-600. SDK-597 delivered the first Atlas integration slice;
-SDK-625 delivers the rest and the final live coverage run (split 2026-09-25, see above).
+SDK-608 blocks SDK-677, which blocks SDK-600. SDK-625 delivers the Atlas integration and the final
+live coverage run; SDK-626 triages the unowned gaps.
 
 Milestone 4 completes only when all of these hold:
 
@@ -191,41 +97,21 @@ Milestone 4 completes only when all of these hold:
    after that pin move and creates tickets only for compiler-relevant shapes with a dependent
    config claim. Other shapes receive “out of scope, vision 2026-10-02”.
 
-**SDK-541 dependency audit, 2026-09-25:** tradition inheritance affects the names and icons
+**Use-time inheritance.** Tradition inheritance affects the names and icons
 selected at use time, although the parser reads the fields without those tests. SDK-541 retains
 the inheritance condition-to-field extraction; SDK-546 depends on it for conditional naming
 templates. SDK-597 must preserve the processing stage and unresolved context. This is not a
 new exclusion from SDK-600. The exact-build findings and remaining work are in
-[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance-sdk-541).
+[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance-m45-release).
 
-Milestone 3 needs only the static context (SDK-527), so its first tickets are unblocked as soon as
-that ticket is done. The blocking relations in Linear are the authority for what can start.
+## Release and later work
 
-Ship-size modifier templates are tracked by SDK-678. The first release is one schema-valid
-snapshot for one catalogued build, checked by the end-to-end offline test. SDK-511 owns the
-tradition/category composition verdict from SDK-600 and SDK-553. The update rehearsal is not a
-release gate, and there is no demo consumer.
+The first release (SDK-511) is one schema-valid snapshot for one catalogued build, checked by the
+end-to-end offline test; SDK-511 owns the tradition and category composition verdict from SDK-600
+and SDK-553. The update rehearsal is not a release gate, and there is no demo consumer.
+Ship-size modifier templates are SDK-678. Atlas-side work after the tradition snapshot is SDK-558.
+Private remote preservation of the prototype sources is SDK-486.
 
-## Not yet ticketed
-
-- Atlas-side rule work after the tradition snapshot (SDK-558): snapshot assembly for milestones
-  5 and 6 (milestone 3 is SDK-570; milestone 4 is SDK-597 and SDK-625), the run driver and rule
-  composition of the registry sweep (SDK-553), and the authored remainder of the documentation.
-  Severity belongs to the compiler; subtype names and alias factoring belong to the `.cwt`
-  emitter tests, not the Atlas product.
-  These get the `Atlas` repository label.
-- Installation discovery without a location hint (specification user story 2). It does not block
-  config coverage.
-- Private remote preservation of the prototype sources is tracked as SDK-486. Retained captures
-  are no longer preserved.
-
-## Tracking
-
-Tickets are in the Linear **Atlas** project, one milestone per row above. The `Repo` label group
-(`Native` or `Atlas`) says in which repository the work of a ticket is done. Each ticket is a
-vertical slice: it ends at the public API, with tests on small tracked inputs and recorded
-answers, checked through the Atlas caller. The open tickets agree with the simplification
-decision (rewritten 2026-09-20). Completed tickets keep their original text; criteria in them that
-name replay, retained captures or qualification records are superseded. Open extraction questions
-stay with their Atlas map tickets; each Native ticket links to the question it implements and
-reports its result there.
+Tickets are in the Linear **Atlas** project, one milestone per row above; the `Repo` label
+(`Native` or `Atlas`) says where the work is done. Completed tickets keep their original text;
+criteria in them that name replay, retained captures or qualification records are superseded.

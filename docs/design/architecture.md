@@ -1,28 +1,16 @@
 # Native technical design: knowledge ownership and target composition
 
-Status: implementation design supporting the [Native specification](../specs/native.md), rewritten
-2026-09-20 to agree with the [simplification decision](simplification.md). The layout below is the
-present source. The earlier text is in Git history.
-
 ## Design position
 
-Native has one public API and one place that assembles the implementation for an exact build.
-Internally it separates operating-system process services, machine mechanisms, engine bindings,
-and analysis methods. Established libraries supply executable parsing, disassembly, and
-serialization; Native owns the game-specific interpretation.
-
-Use composition to share knowledge across builds. A new build normally adds an exact-target record
-and tests, with binding or method changes only where the executable requires them. It does not
-copy the preceding adapter or add version tests to operation handlers.
-
-Two principles govern the design:
+Native has one public API and one place that assembles the implementation for an exact build. A
+new build adds an exact-target record and tests, with binding or method changes only where the
+executable requires them; it does not copy the preceding adapter or add version tests to
+operation handlers. Two principles govern the design:
 
 - **Hunt & Thomas, DRY:** each piece of knowledge has one authority. Similar-looking code need not
   be combined when it represents different knowledge.
 - **Meyer, Single Choice:** the module that knows a set of alternatives selects the behavior.
   Downstream modules receive the selected behavior; they do not repeat the classification.
-
-The public API is the primary test seam.
 
 ## Project layout
 
@@ -59,8 +47,7 @@ The [discovery method index](../native/discovery.md) maps operations to their me
 The [analysis module root](../../src/engine/analysis.rs) lists the current modules.
 
 Use `feature.rs` as each module's entry file and `feature/` for its internal modules. Folders
-describe responsibilities; add them when an implemented operation needs them. If an injected
-library is later required, give it a separate build target because its loading requirements differ.
+describe responsibilities; add them when an implemented operation needs them.
 
 ## Dependency rules
 
@@ -135,16 +122,11 @@ executable is unchanged before an operation is an integrity check, not a second 
 Use compile-time platform selection at the platform module entry and for unavoidable foreign
 declarations. Do not scatter `cfg` sections through the API, game, and analysis logic.
 
-## Established primitives before new abstractions
+## Established primitives
 
-| Concern | Choice | Native still owns |
-| --- | --- | --- |
-| Executable files | [`object`](https://docs.rs/object/latest/object/) | Exact identity, slice selection, game-specific symbol and fixup interpretation |
-| Disassembly | The present ARM64 decoder; [`capstone`](https://docs.rs/capstone/latest/capstone/) if method controls need it | Instruction normalization, value tracking, bounded pattern semantics |
-| Serialization | [Serde](https://serde.rs/) with JSON | Answer shape and completeness rules |
-
-There is no separate pluggable `image` axis. Library support for a file format or instruction does
-not make a Native operation supported.
+`object` parses executables, Capstone decodes ARM64, and Serde writes JSON; Native owns the
+game-specific interpretation. There is no pluggable image axis, and library support for a format or
+instruction does not make a Native operation supported.
 
 ## Composing the version × platform cases
 
@@ -154,10 +136,8 @@ executable and the selected architecture slice.
 Represent support as a **sparse set of exact-target compositions**. There is no default Cartesian
 product of versions, platforms, methods, and operations.
 
-Each target record refers to an explicit recipe. Both are host-neutral Rust data: architecture,
-format, binding-group references, a live strategy identifier, and the layout facts of the static
-declaration methods, with no references to concrete platform types or function pointers. Records
-do not use `cfg`.
+Each target record refers to an explicit recipe. Both are host-neutral Rust data with no `cfg`,
+no concrete platform types and no function pointers.
 
 `binding::compose` looks up the record and recipe, resolves its binding groups and machine methods,
 and asks the compiled host's strategy resolver to turn a strategy identifier into an
@@ -183,26 +163,21 @@ changed group.
 
 [`src/binding/targets/records.rs`](../../src/binding/targets/records.rs) holds the exact target
 records, and `recipes.rs` beside it holds their recipes. A recipe names its binding groups and
-strategy; the live layouts are in `binding/groups.rs`.
+strategy; the live layouts are in `binding/groups.rs`. A recipe also owns its script-check
+bindings directly: `Recipe::script_checks` selects a function in `recipes.rs` that holds the
+exact addresses, object sizes, offsets and writes. A build adaptation updates both places.
 
-Static discovery supplies each observed registry's initial loader entry. The content directory is
-its identity on the caller, supervisor and worker sides. The supervisor derives these bindings
-again from the executable; it does not trust addresses from the caller.
+The content directory identifies a registry on the caller, supervisor and worker sides; the
+supervisor derives its loader bindings again from the executable and never trusts caller
+addresses.
 
 ## Binding once, executing without target tests
 
-`Native::open` does four steps:
-
-1. Accept an installation location. Read the executable identity and select the slice. Atlas
-   supplies no build or architecture selector.
-2. Look up the exact target record. An unknown build is an error.
-3. Resolve the recipe's machine support, live strategy and binding groups, and prepare the static
-   analysis binding.
-4. Return `Native`. Target records, recipes and native bindings stay private. Input integrity and
-   host prerequisites are checked again when a question or game needs them.
-
-Later operations dispatch through the bound operation set. They do not take a build enum or
-inspect a version string. `supports(operation)` reads the same set.
+`Native::open` reads the executable identity, selects the slice, looks up the exact target record
+(an unknown build is an error), and resolves the recipe's machine support, live strategy and
+binding groups. Atlas supplies no build or architecture selector. Later operations dispatch
+through the bound operation set and never take a build enum or inspect a version string;
+`supports(operation)` reads the same set.
 
 Prefer concrete types or a small private trait where behavior varies. Do not build a generic
 plugin system or a string-keyed service locator. A new operation is an explicit public method; a
@@ -217,10 +192,9 @@ The caller holds `Native` and `Game`. The independent supervisor process holds t
 resources, the cleanup budget, and the cancellation state. The observation worker holds transient
 debugger state. Worker failure must not remove the supervisor's disposal capability.
 
-The supervisor opens the installation itself and refuses a game build other than the one that the
-caller opened. The caller and the supervisor also compare their Native build in the handshake. The
-worker checks the hash of the executable and of its own package; it does not search for a
-different compatible build.
+The supervisor opens the installation itself and refuses another game build; caller and supervisor
+compare their Native build in the handshake; the worker checks the hash of the executable and of
+its own package.
 
 `execution::instances` owns the host-wide live-instance namespace: one Native-owned Stellaris game
 per host. The supervisor takes an OS-backed exclusive lock before it checks for conflicting game
@@ -228,7 +202,8 @@ processes, and holds it through disposal. Old session reports do not block a lat
 the lock and process inventory checks pass. The work directory records process identities,
 disposal and report-write failures for the caller.
 
-Ordinary game launchers do not honor the lock. Check for a conflicting instance before launch and
+One internal `check_registry_load` control owns a bounded session for loader-rule tests. Ordinary
+game launchers do not honor the lock. Check for a conflicting instance before launch and
 during the job. Never kill an unowned game.
 
 | Lifetime | Owned state |
@@ -248,23 +223,15 @@ recomputing them from exit codes or empty logs.
 signaling only. A broken control channel gives an unconfirmed disposal; it does not imply that the
 game exited.
 
-## Debugger-worker integration decision
+## Debugger worker
 
-SDK-515 selects an LLDB subprocess with embedded Python callbacks for the
-`MacSuspendedChildLoaderEntry` strategy. The supervisor stays the game's direct parent and spawns
-LLDB directly. Target recipes and Atlas requests have no debugger selector. Private `protocol` is
-the authority for wire meaning; do not duplicate Python breakpoint semantics in Rust.
-
-| Alternative | Why it was not selected |
-| --- | --- |
-| External Python that imports LLDB | Needs a matched interpreter, framework loader paths and module paths. The host's ordinary Python could not import `lldb`; Xcode's LLDB loads its own Python. A second interpreter setup adds no capability. |
-| Rust LLDB binding | Needs a compatible binding and framework to be selected, distributed and linked, and the callbacks to be translated. No required benefit. Not built. |
-| Custom debugger or in-process observer | Reopens ordering, calling conventions, access and failure handling. The earlier dylib attempt did not establish parsing. |
-
-The worker and the supervisor exchange a handshake (protocol revision, attempt identity, process
-identities, executable identity, LLDB and Python versions) before the game resumes. The trace is
-an append-only sequence with a terminal record; a missing sequence number or terminal prevents a
-complete answer. Worker output streams are diagnostics and are never parsed as observations.
+The `MacSuspendedChildLoaderEntry` strategy runs LLDB as a subprocess with embedded Python
+callbacks, and the supervisor stays the game's direct parent. An external Python cannot import
+`lldb` without Xcode's own interpreter setup, and a Rust LLDB binding or a custom in-process
+observer adds no needed capability (an earlier injected dylib never reached parsing). Target
+recipes and Atlas requests have no debugger selector. Private `protocol` owns the wire meaning; do
+not duplicate Python breakpoint semantics in Rust. [Lifecycle](../native/lifecycle.md#worker-handshake-and-fault-controls)
+holds the handshake and trace rules.
 
 ## Change examples and locality checks
 
@@ -281,36 +248,6 @@ The useful maintenance question is: **which authoritative decision changed?**
 
 ## Verification
 
-1. **Catalogue consistency:** exact-target keys are unique; recipe references resolve; each
-   operation has one implementation per composition; incompatible parts fail assembly.
-2. **Change locality:** a synthetic target that reuses existing methods needs no change to shared
-   operation source.
-3. **Dependency checks:** shared engine operations cannot import `binding::targets::records` or
-   platform and machine leaves. Module privacy enforces this.
-4. **Public types:** no address, token, symbol, or instruction appears in a public type.
-5. **Authority under failure:** dropped records cannot give a complete answer; worker death cannot
-   erase resource ownership; a missing recorded answer cannot give an empty answer.
-6. **Host-wide exclusion:** two supervisors contend for one lock; an ordinary game instance is
-   refused and never terminated. A finished prior session does not block the next launch.
-
-Do not assert private call sequences in consumer tests. Assert answers, gaps, side effects, and
-errors.
-
-## Alternatives not selected
-
-- **One complete adapter per version/platform pair:** duplicates lifecycle, analysis, and binding
-  knowledge.
-- **A universal adapter with flags and version checks:** distributes the same decisions.
-- **A hierarchy of version adapters with fallback overrides:** hides the effective behavior.
-- **A declarative language for arbitrary native behavior:** moves branching into a second language.
-- **Runtime plugin discovery and nearest-version fallback:** incompatible with exact-build support.
-- **Evidence archive, replay, and qualification records:** removed by the
-  [simplification decision](simplification.md). An answer is checked by running the question again.
-- **A distributed Native supervisor executable:** consumers supply the process and call the
-  library entry point.
-
-
-## Compiler scope amendment, 2026-10-02
-
-The [simplification decision](simplification.md#what-goes) lists what the 2026-10-02 review
-removed. One internal `check_registry_load` control owns a bounded session for loader-rule tests.
+The locality gate (`tests/locality.rs`), the consumer boundary test (`tests/consumer_boundary.rs`),
+the target-catalogue tests in `src/binding/targets/tests.rs` and module privacy enforce this design.
+Consumer tests assert answers, gaps, side effects and errors, never private call sequences.
