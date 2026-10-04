@@ -673,6 +673,7 @@ mod tests {
                     numeric: GrammarProperty::Unresolved,
                     scoped_operand: GrammarProperty::Unresolved,
                 },
+                child_scopes: GrammarProperty::Unresolved,
                 child_families: GrammarProperty::Unresolved,
                 fixed_keys: GrammarProperty::Unresolved,
                 durations: GrammarProperty::Unresolved,

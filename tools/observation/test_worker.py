@@ -296,7 +296,7 @@ class PauseTests(unittest.TestCase):
     def test_fixture_hooks_use_the_shared_names_for_field_outcomes(self):
         outcome = dict(registry='common/traditions', load_entry=1, constructor_entry=2,
                        reader_entry=3, member_entry=4, malformed_entry=5, unexpected_entry=6)
-        bindings = dict(outcome_registries=[outcome])
+        bindings = dict(outcome_registries=[outcome], validation=None)
         for diagnostics in [False, True]:
             with self.subTest(diagnostics=diagnostics):
                 config = dict(validation=False, bindings=bindings, file='common/traditions/example.txt',
@@ -344,7 +344,7 @@ class ParserObservationTests(unittest.TestCase):
                         parsing=True, diagnostics=True, reader_id='block', reader_family='Trigger',
                         reader_kind='Block', storage=None, storage_unavailable='No storage decoder')
         self.observer = worker.FixtureObserver(dict(validation=False, file=self.file,
-            bindings=dict(fields=[], outcome_registries=[]), questions=[question]))
+            bindings=dict(fields=[], outcome_registries=[], validation=None), questions=[question]))
         self.observer.loading = True
         self.observer.definitions['one'] = dict(owner=0x2000, line=1)
         self.observer.emit = Mock()
@@ -382,12 +382,26 @@ class ParserObservationTests(unittest.TestCase):
         self.assertEqual([call.kwargs['occurrence'] for call in calls], [1, 1])
         self.assertFalse(self.observer.pending_fields)
 
+    def test_initial_file_load_enables_logs_without_the_validation_terminal(self):
+        self.observer.bindings['validation'] = dict(log_entry=1, unformatted_log_entry=2,
+            stream_log_entry=3, sourced_log_entry=4, complete_entry=5)
+        self.assertEqual(len(self.observer.diagnostic_hooks()), 4)
+        self.assertEqual(self.observer.validation_hooks(), [])
+        for name, _ in self.observer.diagnostic_hooks():
+            worker.breakpoints[name] = Mock()
+        self.observer.finish_questions = Mock()
+        self.observer.on_return(Mock(), 7)
+        for hook in worker.breakpoints.values():
+            hook.SetEnabled.assert_called_once_with(False)
+        self.observer.diagnostics_requested = False
+        self.assertEqual(self.observer.diagnostic_hooks(), [])
+
     def test_validation_return_keeps_all_bound_logs_and_disables_parser_entries(self):
         self.observer.validation = True
         self.observer.bindings['validation'] = dict(log_entry=1, unformatted_log_entry=2,
             stream_log_entry=3, sourced_log_entry=4, complete_entry=5)
         self.observer.finish_questions = Mock()
-        retained = [name for name, _ in self.observer.validation_hooks()]
+        retained = [name for name, _ in self.observer.diagnostic_hooks() + self.observer.validation_hooks()]
         retained += [protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']]
         parser_entry = protocol.HOOK['fixture_member']
         for name in retained + [parser_entry]:
@@ -554,7 +568,8 @@ class NestedFixtureTests(unittest.TestCase):
             member_entry=30, reader_return=40, malformed_entry=50, unexpected_entry=60, fields=[],
             inline=dict(root_return=24, key_storage=dict(offset=8, decoder='String')))
         config = dict(file='common/example/nested.txt', questions=[self.question], validation=False,
-            bindings=dict(outcome_registries=[binding]))
+            bindings=dict(outcome_registries=[binding], validation=dict(log_entry=1,
+                unformatted_log_entry=2, stream_log_entry=3, sourced_log_entry=4, complete_entry=5)))
         self.observer = worker.InlineFixtureObserver(config)
         self.observer.loading = True
         self.observer.thread = 7
@@ -570,6 +585,17 @@ class NestedFixtureTests(unittest.TestCase):
             {'String': 'late_key'} if storage['decoder'] == 'String' else {'FixedPoint': {'raw': 40960, 'scale': 32768}})
         self.addCleanup(patch.stopall)
         self.observer.begin_root(self.frame, None)
+
+    def test_inline_hooks_and_background_logs_use_the_shared_source_filter(self):
+        log_names = {name for name, _ in self.observer.diagnostic_hooks()}
+        self.assertEqual(len(log_names), 4)
+        self.assertTrue(log_names.issubset({name for name, _ in self.observer.hooks()}))
+        self.frame.GetThread().GetThreadID.return_value = 8
+        self.observer.on_log = Mock(return_value=False)
+        self.assertFalse(self.observer.callback(self.frame, protocol.HOOK['fixture_log']))
+        self.observer.on_log.assert_called_once_with(self.frame, self.frame.GetThread().GetProcess(), 8)
+        with self.assertRaisesRegex(RuntimeError, 'another thread'):
+            self.observer.callback(self.frame, protocol.HOOK['fixture_member'])
 
     def begin_leaf(self):
         self.observer.begin_parent(self.frame, None)

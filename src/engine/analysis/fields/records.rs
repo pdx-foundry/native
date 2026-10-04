@@ -61,6 +61,8 @@ pub enum Value {
     Reader(i64),
     /// Original signed field token.
     Token,
+    /// The scope supplied to the enclosing command member reader.
+    EnclosingScope,
     /// Offset from the local stack pointer.
     Stack(i64),
     /// Load from a known base, with byte width.

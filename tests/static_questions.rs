@@ -1070,16 +1070,31 @@ fn control_grammar_preserves_shared_readers_and_covered_properties() {
         for name in names {
             let answer = native.command_grammar(kind, name).unwrap();
             assert_eq!(answer.source.method, COMMAND_GRAMMAR_METHOD);
-            let covered = kind == DeclarationKind::Trigger
+            let families_covered = kind == DeclarationKind::Trigger
                 || ["hidden_effect", "every_owned_planet"].contains(&name);
             assert_eq!(
                 answer.completeness,
-                if covered {
+                if kind == DeclarationKind::Trigger || name == "hidden_effect" {
                     Completeness::Complete
                 } else {
                     Completeness::Partial
                 }
             );
+            if name == "every_owned_planet" {
+                assert!(
+                    answer
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.detail == "read-scope: stored-scope")
+                );
+                assert_eq!(
+                    answer.value.child_scopes,
+                    GrammarProperty::Partial(vec![pdx_native::ChildScope {
+                        family,
+                        scope: GrammarProperty::Unresolved,
+                    }])
+                );
+            }
             assert!(answer.value.reader.id.is_some(), "{kind:?}/{name}");
             assert_eq!(
                 answer.value.reader.kind,
@@ -1098,7 +1113,7 @@ fn control_grammar_preserves_shared_readers_and_covered_properties() {
             };
             assert_eq!(
                 child.child_families,
-                if covered {
+                if families_covered {
                     GrammarProperty::Known(vec![family])
                 } else {
                     GrammarProperty::Partial(vec![family])
@@ -1452,5 +1467,79 @@ fn numeric_command_arguments_share_registry_conversion_facts() {
                     && gap.subject == Some(pdx_native::GapSubject::Field { name: key.into() }))
         );
         assert_eq!(answer.completeness, pdx_native::Completeness::Partial);
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn read_scopes_match_the_engine_and_link_output_ids() {
+    use pdx_native::GrammarProperty;
+    let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("expected/m451/read-scopes.json")).unwrap();
+    let actual = parity::read_scopes(&native, &expected).unwrap();
+    assert_eq!(actual, expected);
+    // Independent config expectations at cwtools-stellaris-config 85747602a614ad7daa8cc66453777ecb023463a8:
+    // common/traditions.cwt replace_scopes.this; triggers.cwt push_scope for any_owned_army
+    // and count_owned_army.limit. effects.cwt if/else/else_if keep the surrounding scope.
+    let named_scope = |property: &serde_json::Value, name: &str| {
+        let alternatives = property["Known"].as_array().expect("known read scope");
+        assert_eq!(alternatives.len(), 1);
+        let types = alternatives[0]["Types"]
+            .as_array()
+            .expect("named scope set");
+        assert_eq!(types.len(), 1);
+        assert_eq!(types[0]["name"], name);
+    };
+    for field in ["possible", "on_enabled"] {
+        named_scope(
+            &actual["registries"]["common/traditions"]["fields"][field],
+            "country",
+        );
+    }
+    named_scope(
+        &actual["commands"]["trigger/any_owned_army"]["children"]["Known"][0]["scope"],
+        "army",
+    );
+    named_scope(
+        &actual["commands"]["trigger/count_owned_army"]["fields"]["limit"],
+        "army",
+    );
+    // The config says planet; the member's explicit mask on this build names colony.
+    named_scope(
+        &actual["commands"]["trigger/any_owned_planet"]["children"]["Known"][0]["scope"],
+        "colony",
+    );
+    let links = native.scope_links().unwrap();
+    let army = native
+        .command_grammar(DeclarationKind::Trigger, "any_owned_army")
+        .unwrap();
+    let GrammarProperty::Known(children) = army.value.child_scopes else {
+        panic!("army child scopes")
+    };
+    let GrammarProperty::Known(scopes) = &children[0].scope else {
+        panic!("army read scope")
+    };
+    let pdx_native::ReadScope::Types(types) = &scopes[0] else {
+        panic!("army scope types")
+    };
+    assert!(links.value.iter().any(|link| matches!(&link.output_scope, pdx_native::OutputScope::Listed(output) if output == types)));
+    for (kind, name) in [
+        (DeclarationKind::Effect, "if"),
+        (DeclarationKind::Effect, "else"),
+        (DeclarationKind::Effect, "else_if"),
+        (DeclarationKind::Effect, "hidden_effect"),
+        (DeclarationKind::Trigger, "and"),
+        (DeclarationKind::Trigger, "or"),
+        (DeclarationKind::Trigger, "not"),
+    ] {
+        let answer = native.command_grammar(kind, name).unwrap();
+        let GrammarProperty::Known(children) = answer.value.child_scopes else {
+            panic!("{name}: child scope")
+        };
+        assert_eq!(
+            children[0].scope,
+            GrammarProperty::Known(vec![pdx_native::ReadScope::Enclosing])
+        );
     }
 }

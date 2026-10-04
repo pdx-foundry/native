@@ -118,14 +118,16 @@ pub(crate) fn reduce(
         .field_questions
         .iter()
         .any(|question| question.diagnostics);
-    if request.window == crate::FixtureWindow::InitialFileLoadAndValidation {
+    if diagnostics_requested {
         hooks.extend([
             hooks::FIXTURE_LOG,
             hooks::FIXTURE_UNFORMATTED_LOG,
             hooks::FIXTURE_STREAM_LOG,
             hooks::FIXTURE_SOURCED_LOG,
-            hooks::FIXTURE_VALIDATED,
         ]);
+    }
+    if request.window == crate::FixtureWindow::InitialFileLoadAndValidation {
+        hooks.push(hooks::FIXTURE_VALIDATED);
     }
     if !request.field_questions.is_empty() {
         hooks.extend([
@@ -384,10 +386,10 @@ impl<'a> Window<'a> {
             self.window_gap("A requested fixture observation was unavailable");
             return;
         }
-        let sourced_engine_log = self.validation_requested()
-            && matches!(event, FixtureEvent::Diagnostic {
+        let sourced_engine_log = matches!(event, FixtureEvent::Diagnostic {
                 stage, file: Some(file), definition: None, field: None, occurrence: None, ..
-            } if matches!(stage.as_str(), diagnostic_stage::ENGINE_PARSER | diagnostic_stage::ENGINE_VALIDATION)
+            } if (stage == diagnostic_stage::ENGINE_PARSER
+                || (stage == diagnostic_stage::ENGINE_VALIDATION && self.validation_requested()))
                 && file == self.request.file());
         let matching_thread = record.thread == Some(self.thread)
             || (sourced_engine_log && record.thread.is_some_and(|thread| thread != 0));
@@ -731,12 +733,11 @@ impl<'a> Window<'a> {
             stage.as_str(),
             diagnostic_stage::READER_MALFORMED | diagnostic_stage::READER_UNEXPECTED
         );
-        let engine_log = self.validation_requested()
-            && match stage.as_str() {
-                diagnostic_stage::ENGINE_PARSER => !self.returned,
-                diagnostic_stage::ENGINE_VALIDATION => self.returned,
-                _ => false,
-            };
+        let engine_log = match stage.as_str() {
+            diagnostic_stage::ENGINE_PARSER => !self.returned,
+            diagnostic_stage::ENGINE_VALIDATION => self.returned && self.validation_requested(),
+            _ => false,
+        };
         if !reader_report && !engine_log {
             self.diagnostic_gap("A parser diagnostic names an unknown engine stage");
         }
@@ -1205,7 +1206,7 @@ impl<'a> Window<'a> {
             },
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v6", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v7", Basis::LiveObservation),
         }
     }
 }
@@ -1344,6 +1345,64 @@ mod tests {
                 window: DiagnosticWindow::FixtureFileLoadAndValidation
             }
         ));
+    }
+
+    #[test]
+    fn engine_parser_logs_join_during_initial_file_load_on_either_thread() {
+        for thread in [7, 8] {
+            let mut events = block_parsing_events();
+            let diagnostic = events
+                .iter_mut()
+                .find(|event| event["event"]["kind"] == "diagnostic")
+                .unwrap();
+            diagnostic["thread"] = json!(thread);
+            diagnostic["event"]["stage"] = json!("engine-parser-log");
+            for key in ["definition", "field", "occurrence"] {
+                diagnostic["event"][key] = Value::Null;
+            }
+            let answer = block_parsing_answer(events.clone());
+            assert_eq!(
+                answer.value.diagnostic_coverage,
+                DiagnosticCoverage::Complete {
+                    window: DiagnosticWindow::FixtureFileLoad
+                }
+            );
+            assert!(matches!(
+                &answer.value.diagnostics[0].join,
+                DiagnosticJoin::Source {
+                    line: 3,
+                    occurrence: Some(1),
+                    ..
+                }
+            ));
+            let diagnostic = events
+                .iter_mut()
+                .find(|event| event["event"]["kind"] == "diagnostic")
+                .unwrap();
+            diagnostic["event"]["stage"] = json!("engine-validation-log");
+            assert!(!matches!(
+                block_parsing_answer(events).value.diagnostic_coverage,
+                DiagnosticCoverage::Complete { .. }
+            ));
+        }
+        for hook in [
+            "fixture:log",
+            "fixture:unformatted-log",
+            "fixture:stream-log",
+            "fixture:sourced-log",
+        ] {
+            let mut events = block_parsing_events();
+            events[1]["hooks"].as_object_mut().unwrap().remove(hook);
+            assert!(
+                reduce(
+                    &block_parsing_request(),
+                    &records(events),
+                    &owner(),
+                    BuildId("build".into())
+                )
+                .is_err()
+            );
+        }
     }
 
     #[test]
@@ -1595,7 +1654,11 @@ mod tests {
                 "fixture:reader":hook,
                 "fixture:member":hook,
                 "fixture:malformed":hook,
-                "fixture:unexpected":hook
+                "fixture:unexpected":hook,
+                "fixture:log":hook,
+                "fixture:unformatted-log":hook,
+                "fixture:stream-log":hook,
+                "fixture:sourced-log":hook
             }}),
             json!({"kind":"resume","error":"success"}),
         ];

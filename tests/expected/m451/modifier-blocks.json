@@ -78,6 +78,11 @@
         "NumericConversion",
         {"kind": "field", "name": "modifier"},
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "modifier"},
+        "read-scope: scope-argument"
       ]
     ]
   },
@@ -125,6 +130,11 @@
         "NumericConversion",
         {"kind": "field", "name": "modifier"},
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "modifier"},
+        "read-scope: scope-argument"
       ]
     ]
   },
@@ -185,6 +195,11 @@
         "NumericConversion",
         {"kind": "field", "name": "country_modifier"},
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "country_modifier"},
+        "read-scope: scope-argument"
       ]
     ]
   },
@@ -221,6 +236,11 @@
         "NumericConversion",
         {"kind": "field", "name": "modifier"},
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "modifier"},
+        "read-scope: scope-argument"
       ]
     ]
   }

@@ -294,7 +294,7 @@ mod modifier_tests {
             "shape":{"value":"Unknown","repeat":"Unknown"}, "read":[],
             "members":{"ModifierBlock":{"fixed_keys":{"Known":[]},"entries":{"Known":[
                 {"Reference":{"target":{"Registry":{"name":"common/static_modifiers"}},"value":"FixedPoint"}}
-            ]}}}, "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[]
+            ]}}}, "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved"
         })).unwrap()
     }
 

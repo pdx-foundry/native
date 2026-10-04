@@ -18,6 +18,7 @@ mod numeric;
 pub mod targets;
 pub use coverage::{Disposition, LedgerEntry, ReaderNode};
 mod ordering;
+pub mod read_scope;
 
 /// Collection storage used by command readers in one exact build.
 #[derive(Clone, Copy)]
@@ -28,7 +29,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v13";
+pub const METHOD: &str = "command-grammar/v14";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -111,6 +112,8 @@ pub enum OrderOutcome {
 
 /// The child grammar of one command reader, as far as the method follows it.
 pub struct GrammarResult {
+    /// Read-time scope arguments from an independent dispatch pass.
+    pub read_scopes: read_scope::ReadScopes,
     /// Factory-agreed vtable address points at scoped numeric destinations.
     pub scoped_destinations: BTreeMap<i64, u64>,
     /// Scope checks for the arguments stored by this command.
@@ -550,6 +553,7 @@ fn analyze_reader_with_state(
         &scoped_destinations,
     );
     Ok(GrammarResult {
+        read_scopes: read_scope::analyze(input, reader, root),
         durations,
         state_traces: BTreeMap::new(),
         scoped_destinations,
@@ -1483,9 +1487,15 @@ mod tests {
         let answer = normalize(&result);
         assert_eq!(
             answer.completeness,
-            crate::Completeness::Complete,
+            crate::Completeness::Partial,
             "{:?}",
             answer.gaps
+        );
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.detail == "read-scope: scope-argument")
         );
         // A nested initializer that cannot be read keeps the answer partial at its key path.
         let child = &mut result.nested.get_mut("parent").unwrap().nested;
@@ -1573,7 +1583,15 @@ mod tests {
             panic!("{members:?}");
         };
         assert_eq!(fields[0].name, "value");
-        assert_eq!(gaps, []);
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].detail, "read-scope: scope-argument");
+        assert_eq!(
+            gaps[0].subject,
+            Some(crate::GapSubject::key_path(vec![
+                "parent".into(),
+                "child".into()
+            ]))
+        );
 
         let changed_argument = arm64!(at 0xc100; mov x1, x3; b extern 0xc000);
         let undecoded = arm64!(at 0xc100; b extern 0xc800);

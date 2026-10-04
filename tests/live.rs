@@ -185,6 +185,7 @@ enum Case {
     FixtureTransfer,
     FixtureRelicPortrait,
     FixtureBlockParsing,
+    FixtureReadScope,
     FixtureModifierBlock,
     FixtureNumeric {
         registry: &'static str,
@@ -297,6 +298,7 @@ fn cases() -> Vec<(String, Case)> {
             Case::ScriptAccessFailure,
         ),
         ("loader_fixture".to_owned(), Case::LoaderFixture),
+        ("fixture_read_scope".to_owned(), Case::FixtureReadScope),
         (
             "loaded_modifier_key_layouts".to_owned(),
             Case::LoadedModifierKeyLayouts,
@@ -650,6 +652,7 @@ fn cases() -> Vec<(String, Case)> {
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
+        Case::FixtureReadScope => fixture_read_scope(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
         Case::FixtureNumeric {
             registry,
@@ -1250,6 +1253,69 @@ async fn fixture_modifier_block(native: &Native) -> Outcome {
     result
 }
 
+/// Check the engine-selected read scope at file load, before post-load validation.
+async fn fixture_read_scope(native: &Native) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureFieldQuestion, FixtureParsing,
+        FixtureRequest, GrammarProperty, ReadScope,
+    };
+    let file = "common/traditions/native_read_scope.txt";
+    let samples = [
+        (
+            "native_scope_trigger",
+            "potential",
+            "is_planet_class = pc_barren",
+        ),
+        ("native_scope_effect", "on_enabled", "change_pc = pc_barren"),
+    ];
+    let fields = native.registry_fields(TRADITIONS)?;
+    for (_, name, _) in samples {
+        let field = fields
+            .value
+            .iter()
+            .find(|field| field.name == name)
+            .ok_or("missing scope field")?;
+        if !matches!(&field.read_scope, GrammarProperty::Known(scopes)
+            if matches!(scopes.as_slice(), [ReadScope::Types(types)] if types.len() == 1 && types[0].name == "country"))
+        {
+            return Err(format!(
+                "{name}: unexpected static read scope {:?}",
+                field.read_scope
+            )
+            .into());
+        }
+    }
+    let text = samples
+        .iter()
+        .map(|(definition, field, child)| {
+            format!("{definition} = {{\n {field} = {{\n  {child}\n }}\n}}\n")
+        })
+        .collect::<String>();
+    let questions = samples.iter().map(|(definition, field, _)| {
+        FixtureFieldQuestion::new(TRADITIONS, *definition, *field).with_parsing()
+    });
+    let request = FixtureRequest::field_outcomes(file, text, questions);
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.value.diagnostic_coverage != (DiagnosticCoverage::Complete { window: DiagnosticWindow::FixtureFileLoad }) {
+            return Err(format!("read scope diagnostic coverage: {:?}", answer.gaps).into());
+        }
+        for (index, (definition, field, _)) in samples.iter().enumerate() {
+            let parsed = answer.value.field_outcomes.iter().any(|outcome| outcome.question.definition == *definition
+                && outcome.question.field == *field
+                && matches!(&outcome.parsing, FixtureParsing::Observed { completeness: Completeness::Complete, occurrences } if occurrences.len() == 1));
+            let diagnosed = answer.value.diagnostics.iter().any(|diagnostic| diagnostic.stage == "engine-parser-log"
+                && diagnostic.text.contains("Current Scope: country")
+                && matches!(&diagnostic.join, DiagnosticJoin::Source { file: source, line, .. } if source == file && *line == ValidationSample::child_line(index)));
+            if !parsed || !diagnosed { return Err(format!("{field}: parsed={parsed}, country diagnostic={diagnosed}: {:?}", answer.value.diagnostics).into()); }
+        }
+        Ok(())
+    }.await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
 /// Validate every sample in one session, so the session pays for loading all content once.
 async fn fixture_validation(native: &Native, field: &str, samples: &[ValidationSample]) -> Outcome {
     use pdx_native::{FixtureFieldQuestion, FixtureRequest};
@@ -1340,6 +1406,8 @@ fn validation_failures(
         let rejected = observation.diagnostics.iter().any(|diagnostic| {
             diagnostic.stage == stage
                 && source_line(&diagnostic.join) == Some(ValidationSample::child_line(index))
+                && (sample.name != "wrong_scope"
+                    || diagnostic.text.contains("Current Scope: country"))
         });
         if !rejected {
             failures.push(format!(

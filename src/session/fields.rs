@@ -326,6 +326,7 @@ fn ordinary_field(
 
         uses: Vec::new(),
         entry_contexts: Vec::new(),
+        read_scope: crate::GrammarProperty::Unresolved,
         reference: if lookups.is_empty() {
             FieldReference::NotEstablished
         } else {
@@ -514,6 +515,7 @@ fn collection_field(
 
         uses: Vec::new(),
         entry_contexts: Vec::new(),
+        read_scope: crate::GrammarProperty::Unresolved,
         reference: FieldReference::NotEstablished,
     }
 }
@@ -1153,11 +1155,28 @@ mod tests {
             initializers: BTreeMap::new(),
         };
 
-        let normalized = field(&parent, &registry, &references);
+        let mut normalized = field(&parent, &registry, &references);
+        let mut scope_gaps = Vec::new();
+        super::super::read_scope::registry_fields(
+            std::slice::from_mut(&mut normalized),
+            &registry,
+            None,
+            &[],
+            &mut scope_gaps,
+        );
 
         let FieldMembers::Fields(children) = &normalized.members else {
             panic!("{:?}", normalized.members);
         };
+        assert_eq!(
+            children[0].read_scope,
+            crate::GrammarProperty::Known(vec![])
+        );
+        assert!(
+            scope_gaps
+                .iter()
+                .any(|gap| gap.subject == Some(crate::GapSubject::field("entry")))
+        );
         let target = &children[1];
         let FieldReference::Lookups(lookups) = &target.reference else {
             panic!("{:?}", target.reference);

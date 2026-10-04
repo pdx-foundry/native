@@ -112,7 +112,7 @@ mod tests {
                 "numeric": "Unresolved", "scoped_operand": "Unresolved" },
             "shape": { "value": "Unknown", "repeat": "Unknown" }, "read": [],
             "members": "Unresolved", "domain": "Unknown", "uses": [],
-            "reference": "NotEstablished", "entry_contexts": []
+            "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved"
         }))
         .unwrap()
     }

@@ -28,6 +28,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
@@ -93,6 +96,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
@@ -174,6 +180,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
@@ -237,6 +255,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
@@ -284,6 +314,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
@@ -366,6 +408,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "6e28a363faf61c52",
    "kind": "Block",
@@ -413,6 +467,7 @@
     "outcome": "Unresolved"
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": null,
    "kind": "Unknown",
@@ -456,6 +511,7 @@
     }
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
@@ -503,6 +559,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",
@@ -555,6 +614,9 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
@@ -637,6 +699,7 @@
        }
       }
      ],
+     "read_scope": "Unresolved",
      "reader": {
       "id": null,
       "kind": "Block",
@@ -684,6 +747,9 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
@@ -749,6 +815,9 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
@@ -814,6 +883,18 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": [
+       {
+        "Types": [
+         {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+         }
+        ]
+       }
+      ]
+     },
      "reader": {
       "id": "e044b50825a1841d",
       "kind": "Block",
@@ -861,6 +942,18 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": [
+       {
+        "Types": [
+         {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+         }
+        ]
+       }
+      ]
+     },
      "reader": {
       "id": "6e28a363faf61c52",
       "kind": "Block",
@@ -943,6 +1036,18 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": [
+       {
+        "Types": [
+         {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+         }
+        ]
+       }
+      ]
+     },
      "reader": {
       "id": "6e28a363faf61c52",
       "kind": "Block",
@@ -990,6 +1095,7 @@
        "outcome": "Unresolved"
       }
      ],
+     "read_scope": "Unresolved",
      "reader": {
       "id": null,
       "kind": "Unknown",
@@ -1033,6 +1139,9 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
@@ -1080,6 +1189,9 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",
@@ -1127,6 +1239,9 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",
@@ -1174,6 +1289,9 @@
        }
       }
      ],
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",
@@ -1221,6 +1339,7 @@
        }
       }
      ],
+     "read_scope": "Unresolved",
      "reader": {
       "id": null,
       "kind": "Block",
@@ -1266,6 +1385,7 @@
     }
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": "3e4a6b47b20070ea",
    "kind": "Block",
@@ -1315,6 +1435,7 @@
     }
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": "1c2988588f7e8eaa",
    "kind": "Block",

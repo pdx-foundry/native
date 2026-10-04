@@ -22,7 +22,8 @@ pub(crate) fn follow_member(
     }
     // The known address point belongs to the root object, not an embedded delegate.
     let owner_vtable = input.owner_vtable.filter(|_| *offset == 0);
-    let dispatch = input.with_owner_vtable(owner_vtable);
+    let mut dispatch = input.with_owner_vtable(owner_vtable);
+    dispatch.scope = crate::engine::analysis::readers::scope_argument(callee, arguments).cloned();
     let (children, gaps) = super::explore_member(&dispatch, callee);
     let children = children
         .into_iter()

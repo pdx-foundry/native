@@ -3,6 +3,44 @@ mod compact;
 pub mod comparison;
 mod layout;
 
+/// Compact read-time scope answers; the tracked file supplies only sample identities.
+pub fn read_scopes(native: &Native, expected: &Value) -> Result<Value> {
+    let mut registries = BTreeMap::new();
+    for registry in expected["registries"]
+        .as_object()
+        .ok_or("expected registry selection")?
+        .keys()
+    {
+        let answer = current_answer(native, native.registry_fields(registry)?)?;
+        let fields: BTreeMap<_, _> = answer
+            .value
+            .into_iter()
+            .filter(|field| matches!(field.reader.kind, ReaderKind::Block | ReaderKind::Unknown))
+            .map(|field| (field.name, field.read_scope))
+            .collect();
+        registries.insert(registry, json!({"fields": fields, "gaps": answer.gaps.into_iter().filter(|gap| gap.detail.starts_with("read-scope:")).collect::<Vec<_>>()}));
+    }
+    let mut commands = BTreeMap::new();
+    for subject in expected["commands"]
+        .as_object()
+        .ok_or("expected command selection")?
+        .keys()
+    {
+        let (kind, name) = command(subject).ok_or("invalid command selection")?;
+        let answer = current_answer(native, native.command_grammar(kind, name)?)?;
+        let fields = match &answer.value.fixed_keys {
+            GrammarProperty::Known(fields) | GrammarProperty::Partial(fields) => fields
+                .iter()
+                .map(|field| (field.name.clone(), field.read_scope.clone()))
+                .collect::<BTreeMap<_, _>>(),
+            _ => BTreeMap::new(),
+        };
+        commands.insert(subject, json!({"children": answer.value.child_scopes, "fields": fields,
+            "gaps": answer.gaps.into_iter().filter(|gap| gap.detail.starts_with("read-scope:")).collect::<Vec<_>>()}));
+    }
+    Ok(json!({"build": native.build(), "registries": registries, "commands": commands}))
+}
+
 #[cfg(test)]
 mod comparison_tests;
 
@@ -26,6 +64,7 @@ pub const FIELD_FILES: [(&str, &str); 4] = [
 
 pub const FILES: &[&str] = &[
     "registries.json",
+    "read-scopes.json",
     "fields-traditions.json",
     "fields-tradition_categories.json",
     "fields-council_agendas.json",
@@ -85,6 +124,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
                 .map(|item| &item.name)
                 .collect::<Vec<_>>()
         )),
+        "read-scopes.json" => read_scopes(native, expected),
         "references.json" => references(native, expected),
         "command-grammars.json" => {
             assert_sdk492_keys(native);

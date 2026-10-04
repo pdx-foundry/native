@@ -71,6 +71,17 @@ pub(crate) fn is_member(callee: &str) -> bool {
         || callee.ends_with("::ReadMember(CReader&, int, EScopeType)")
 }
 
+/// Scope argument in the established scoped-reader ABI, after the token for a member reader.
+pub(crate) fn scope_argument<'a>(
+    callee: &str,
+    arguments: &'a std::collections::BTreeMap<String, crate::engine::analysis::fields::Value>,
+) -> Option<&'a crate::engine::analysis::fields::Value> {
+    if !callee.ends_with(", EScopeType)") {
+        return None;
+    }
+    arguments.get(if is_member(callee) { "x3" } else { "x2" })
+}
+
 /// Broad facts about an established reader entry, independent of routing provenance.
 pub(crate) fn entry(callee: &str) -> (ReaderKind, BlockFamily) {
     (classify_callee(callee), family_of_callee(callee))

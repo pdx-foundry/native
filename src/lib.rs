@@ -34,9 +34,9 @@ pub use answer::{
     LoadedContent, LoadedModifier, LoadedModifiers, LocalizationCommand, LocalizationContext,
     LocalizationContextId, LocalizationContextReference, LocalizationDeclarations,
     LocalizationLink, LocalizationOutput, ModifierCategory, ModifierDeclaration, ModifierFamily,
-    NamePart, OnAction, Operation, OutputScope, Reader, ReaderId, ReaderKind, Registry, RuleKind,
-    ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory, ScopeLink, ScopeReference, Source,
-    Support,
+    NamePart, OnAction, Operation, OutputScope, ReadScope, Reader, ReaderId, ReaderKind, Registry,
+    RuleKind, ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
+    Source, Support,
 };
 pub use api::OpenError;
 pub use duration::{Duration, DurationCombination, DurationUnit};
@@ -58,7 +58,7 @@ pub use fixture::{
 };
 pub use game::{Game, GameOptions};
 pub use grammar::{
-    ArgumentPath, ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, CommandForm,
+    ArgumentPath, ChildOrderCondition, ChildOrderOutcome, ChildOrderRule, ChildScope, CommandForm,
     CommandGrammar, CommandValue, GrammarProperty, TargetArgument, TargetCheckStage,
 };
 pub use numeric::{

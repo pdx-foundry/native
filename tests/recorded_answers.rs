@@ -13,7 +13,7 @@ fn recorded_field(name: &str, kind: &str) -> serde_json::Value {
     json!({ "name": name, "reader": { "id": if kind == "Unknown" { None } else { Some(name) }, "kind": kind, "family": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved" },
         "shape": { "value": "Unknown", "repeat": "Unknown" },
         "read": [{ "condition": "Unresolved", "outcome": "Unresolved" }],
-        "members": "Unresolved", "domain": "Unknown", "uses": [], "reference": "NotEstablished", "entry_contexts": [] })
+        "members": "Unresolved", "domain": "Unknown", "uses": [], "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved" })
 }
 
 fn source() -> serde_json::Value {
@@ -701,13 +701,13 @@ fn command_grammar_round_trip_preserves_partial_properties_and_unknown_commands(
         "forms": "Unresolved",
         "targets": "Unresolved",
         "reader": {"id": "shared-control-reader", "kind": "Block", "family": "Effect", "numeric": "Unresolved", "scoped_operand": "Unresolved"},
-        "child_families": {"Known": ["Effect"]},
+        "child_scopes": "Unresolved", "child_families": {"Known": ["Effect"]},
         "fixed_keys": {"Partial": []},
         "numeric_keys": {"Partial": {
             "forms": "Unresolved",
         "targets": "Unresolved",
             "reader": {"id": "weighted-entry", "kind": "Block", "family": "Effect", "numeric": "Unresolved", "scoped_operand": "Unresolved"},
-            "child_families": {"Partial": ["Effect"]},
+            "child_scopes": "Unresolved", "child_families": {"Partial": ["Effect"]},
             "fixed_keys": "Unresolved",
             "numeric_keys": "Unresolved",
             "ordering": "Unresolved",
@@ -802,7 +802,7 @@ fn recorded_answer_properties_must_be_present() {
     let grammar = json!({
         "reader": {"id": null, "kind": "Unknown", "family": "Unknown", "numeric":"Unresolved", "scoped_operand":"Unresolved"},
         "forms": "Unresolved", "targets": "Unresolved", "durations": "Unresolved",
-        "child_families": "Unresolved", "fixed_keys": "Unresolved",
+        "child_scopes": "Unresolved", "child_families": "Unresolved", "fixed_keys": "Unresolved",
         "numeric_keys": "Unresolved", "ordering": "Unresolved"
     });
     for property in ["forms", "targets", "durations"] {
