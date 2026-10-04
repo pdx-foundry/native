@@ -2,8 +2,10 @@
   "18ca47a52b4ceff7": {
     "block": {
       "fixed_keys": {
-        "Partial": [
+        "Known": [
+          ["scope", "Target", "Replace", {"Known": []}, null],
           ["add", "FixedPoint", "Replace", {"Known": []}, null],
+          ["calc", "Keyword", "Replace", {"Known": []}, null],
           ["mul", "FixedPoint", "Unknown", {"Known": []}, null],
           ["div", "FixedPoint", "Unknown", {"Known": []}, null],
           ["limit", "Block", "Unknown", "Unresolved", "Unresolved"]
@@ -11,10 +13,12 @@
       },
       "operation_repeat": "Unknown",
       "operations": {
-        "Partial": []
+        "Known": []
       },
       "other_keys": "Rejected",
-      "scalar": "Unresolved"
+      "scalar": {
+        "Known": null
+      }
     },
     "entry_of": [
       "common/council_agendas",
@@ -58,7 +62,9 @@
           "Known": ["Enclosing"]
         }
       },
-      "scalar": "Unresolved"
+      "scalar": {
+        "Known": null
+      }
     },
     "entry_of": [
       "common/council_agendas",
@@ -70,19 +76,25 @@
       "fixed_keys": {
         "Partial": [
           ["desc", "String", "Replace", {"Known": []}, null],
+          ["trigger", "Reference", "Replace", {"Known": []}, null],
           ["potential", "Block", "Unknown", "Unresolved", "Unresolved"],
           ["multiplier", "FixedPoint", "Replace", {"Known": []}, null],
           ["min_value", "FixedPoint", "Replace", {"Known": []}, null],
           ["max_value", "FixedPoint", "Replace", {"Known": []}, null],
+          ["parameters", "Unknown", "Unknown", "Unresolved", "Unresolved"],
+          ["trigger_scope", "Target", "Replace", {"Known": []}, null],
+          ["mode", "Keyword", "Replace", {"Known": []}, null],
           ["mult", "FixedPoint", "Replace", {"Known": []}, null]
         ]
       },
       "operation_repeat": "Unknown",
       "operations": {
-        "Partial": []
+        "Known": []
       },
       "other_keys": "Rejected",
-      "scalar": "Unresolved"
+      "scalar": {
+        "Known": null
+      }
     },
     "entry_of": [
       "common/council_agendas",
@@ -96,7 +108,7 @@
           ["days", "Integer", "Replace", {"Known": []}, null],
           ["months", "Integer", "Replace", {"Known": []}, null],
           ["years", "Integer", "Replace", {"Known": []}, null],
-          ["factor", "Unknown", "Replace", {"Known": []}, null],
+          ["factor", "FixedPoint", "Replace", {"Known": []}, null],
           ["base", "FixedPoint", "Replace", {"Known": []}, null],
           ["modifier", "Block", "Accumulate", {"Known": ["Enclosing"]}, {"WeightBlock": "6b0f3fb0d6febd07"}],
           ["scaled_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "18ca47a52b4ceff7"}],
@@ -141,14 +153,6 @@
         "Repeat behavior or nested fields remain unresolved."
       ],
       [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "factor"]
-        },
-        "The weight key's read alternatives do not share one reader."
-      ],
-      [
         "NumericConversion",
         {
           "kind": "key_path",
@@ -355,14 +359,6 @@
           "path": ["ai_weight", "modifier", "pow"]
         },
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
-      ],
-      [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "modifier"]
-        },
-        "The weight block's bare value stopped at weight-scalar."
       ],
       [
         "UnresolvedPath",
@@ -370,23 +366,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier"]
         },
-        "read-scope: scope-argument"
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
       ],
       [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "scaled_modifier", "scope"]
-        },
-        "The weight block analysis stopped at weight-call."
-      ],
-      [
-        "UnresolvedReader",
+        "ReaderSemantics",
         {
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier", "calc"]
         },
-        "The weight block analysis stopped at weight-acceptance."
+        "The keyword domain is not established."
       ],
       [
         "UnresolvedPath",
@@ -394,7 +382,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier", "limit"]
         },
-        "read-scope: zero-mask"
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
       ],
       [
         "NumericConversion",
@@ -421,28 +409,12 @@
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
       ],
       [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "scaled_modifier"]
-        },
-        "The weight block's bare value stopped at weight-scalar."
-      ],
-      [
         "UnresolvedPath",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier"]
         },
-        "read-scope: scope-argument"
-      ],
-      [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "complex_trigger_modifier", "trigger"]
-        },
-        "The weight block analysis stopped at weight-call."
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
       ],
       [
         "UnresolvedReader",
@@ -450,23 +422,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "parameters"]
         },
-        "The weight block analysis stopped at branch-value."
+        "The value is read by the object that `trigger` stores."
       ],
       [
-        "UnresolvedReader",
+        "ReaderSemantics",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "complex_trigger_modifier", "trigger_scope"]
+          "path": ["ai_weight", "complex_trigger_modifier", "trigger"]
         },
-        "The weight block analysis stopped at weight-call."
-      ],
-      [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "complex_trigger_modifier", "mode"]
-        },
-        "The weight block analysis stopped at weight-enum-argument."
+        "A name that no trigger command has becomes a scripted-trigger placeholder; when the lookup runs and how it matches are not established."
       ],
       [
         "UnresolvedPath",
@@ -474,7 +438,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "potential"]
         },
-        "read-scope: zero-mask"
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+      ],
+      [
+        "ReaderSemantics",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "mode"]
+        },
+        "The keyword domain is not established."
       ],
       [
         "NumericConversion",
@@ -507,14 +479,6 @@
           "path": ["ai_weight", "complex_trigger_modifier", "mult"]
         },
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
-      ],
-      [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "complex_trigger_modifier"]
-        },
-        "The weight block's bare value stopped at weight-scalar."
       ],
       [
         "NumericConversion",
@@ -1029,36 +993,20 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["weight", "modifier"]
-        },
-        "The weight block's bare value stopped at weight-scalar."
-      ],
-      [
         "UnresolvedPath",
         {
           "kind": "key_path",
           "path": ["weight", "scaled_modifier"]
         },
-        "read-scope: scope-argument"
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
       ],
       [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["weight", "scaled_modifier", "scope"]
-        },
-        "The weight block analysis stopped at weight-call."
-      ],
-      [
-        "UnresolvedReader",
+        "ReaderSemantics",
         {
           "kind": "key_path",
           "path": ["weight", "scaled_modifier", "calc"]
         },
-        "The weight block analysis stopped at weight-acceptance."
+        "The keyword domain is not established."
       ],
       [
         "UnresolvedPath",
@@ -1066,7 +1014,7 @@
           "kind": "key_path",
           "path": ["weight", "scaled_modifier", "limit"]
         },
-        "read-scope: zero-mask"
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
       ],
       [
         "NumericConversion",
@@ -1093,28 +1041,12 @@
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
       ],
       [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["weight", "scaled_modifier"]
-        },
-        "The weight block's bare value stopped at weight-scalar."
-      ],
-      [
         "UnresolvedPath",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier"]
         },
-        "read-scope: scope-argument"
-      ],
-      [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["weight", "complex_trigger_modifier", "trigger"]
-        },
-        "The weight block analysis stopped at weight-call."
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
       ],
       [
         "UnresolvedReader",
@@ -1122,23 +1054,15 @@
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "parameters"]
         },
-        "The weight block analysis stopped at branch-value."
+        "The value is read by the object that `trigger` stores."
       ],
       [
-        "UnresolvedReader",
+        "ReaderSemantics",
         {
           "kind": "key_path",
-          "path": ["weight", "complex_trigger_modifier", "trigger_scope"]
+          "path": ["weight", "complex_trigger_modifier", "trigger"]
         },
-        "The weight block analysis stopped at weight-call."
-      ],
-      [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["weight", "complex_trigger_modifier", "mode"]
-        },
-        "The weight block analysis stopped at weight-enum-argument."
+        "A name that no trigger command has becomes a scripted-trigger placeholder; when the lookup runs and how it matches are not established."
       ],
       [
         "UnresolvedPath",
@@ -1146,7 +1070,15 @@
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "potential"]
         },
-        "read-scope: zero-mask"
+        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+      ],
+      [
+        "ReaderSemantics",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "mode"]
+        },
+        "The keyword domain is not established."
       ],
       [
         "NumericConversion",
@@ -1179,14 +1111,6 @@
           "path": ["weight", "complex_trigger_modifier", "mult"]
         },
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
-      ],
-      [
-        "UnresolvedReader",
-        {
-          "kind": "key_path",
-          "path": ["weight", "complex_trigger_modifier"]
-        },
-        "The weight block's bare value stopped at weight-scalar."
       ],
       [
         "NumericConversion",

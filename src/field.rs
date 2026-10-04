@@ -238,6 +238,9 @@ pub enum ReferenceTarget {
         /// The content directory.
         name: String,
     },
+    /// The trigger commands, as `declarations(DeclarationKind::Trigger)` lists them. The
+    /// lookup's other facts say what a name that is no trigger command yields.
+    Triggers,
     /// The searched collection is not joined to a content directory; a gap says why.
     Unresolved,
 }

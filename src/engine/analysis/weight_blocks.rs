@@ -8,17 +8,30 @@
 //! token value from zero to the largest literal token and for the first value after it, which
 //! stands for every token created at run time (the token domain of [`super::scopes`]).
 //!
-//! A path is accepted only through one of four shapes: a shared reader joined with an owner
-//! destination, an allocated entry inserted into an owner array, an operation stored after the
-//! switch returned, or a delegate to a shared trigger or effect family. A path with none of them
-//! is rejected when it wrote an engine diagnostic, and unresolved otherwise. Calls that receive
-//! neither the owner nor the reader change no script state; a call that receives either and has
-//! no recognized shape stops the path.
+//! A path is accepted only through one of five shapes: a shared reader joined with an owner
+//! destination, a conversion of the value token stored in the owner, an allocated entry inserted
+//! into an owner array, an operation stored after the switch returned, or a delegate to a shared
+//! trigger or effect family. The conversions are an integer or fixed-point value, an event target
+//! assigned into the owner, and a trigger lookup. A path with no shape is rejected when it wrote
+//! an engine diagnostic, and unresolved otherwise. Calls that receive neither the owner nor the
+//! reader change no script state; a call that receives either and has no recognized shape stops
+//! the path.
 //!
 //! An accepted path is an operation when it called the switch with its key token and a word of
 //! the owner or of the inserted entry, written after the switch returned, holds the returned
 //! value. This is a validated rule, not a data-flow proof: a word that holds the same value by
 //! coincidence, most likely zero, would also satisfy it.
+//!
+//! A key whose paths store a value chosen by the value token, such as a calculation name compared
+//! inline or an enum switch on the value token, is a keyword. The key pass leaves the value token
+//! unknown, so such a key has no accepted shape; the method then runs the key again for every
+//! value token of the token domain. The key is a keyword when every value either writes the same
+//! owner words without a diagnostic, or writes nothing and emits one. The value pass never makes
+//! an operation, even when a value equals the key token.
+//!
+//! A key whose paths branch through a function pointer of an object loaded from an owner word,
+//! with the reader as the argument, is read by whatever object another key stored there. The
+//! method names that other key and does not follow the call.
 //!
 //! The unnamed token values decide what other keys are: rejected, or trigger conditions in one
 //! scope. A named key with that same disposition is one of the other keys.
@@ -64,6 +77,8 @@ pub(crate) struct WeightBlockInput {
     pub reader_token_offset: u64,
     /// Offset of the assigned value token within the reader.
     pub value_token_offset: u64,
+    /// Offset of the text pointer within a token.
+    pub token_text_offset: u64,
 }
 
 /// The grammar of each weight reader, by its address point.
@@ -115,6 +130,8 @@ pub(crate) struct Grammar {
     pub key_scopes: BTreeMap<String, Value>,
     /// Stops by key, or `None` for the block itself.
     pub stops: Vec<(Option<String>, Unresolved)>,
+    /// Keys read by the object that another key stores, with that other key.
+    pub dependent_readers: BTreeMap<String, String>,
     /// Whether some named token stopped before the method knew if it is a fixed key or an
     /// operation, so neither list is complete.
     pub undetermined_keys: bool,
@@ -216,6 +233,7 @@ struct Context<'a> {
 
 /// A member reader's code, with the delegates and enum switches it calls.
 struct Member {
+    name: String,
     entry: u64,
     code: Code,
     scoped: bool,
@@ -304,6 +322,7 @@ impl<'a> Context<'a> {
         }
         let ranges: Vec<_> = bodies.into_iter().collect();
         Ok(Member {
+            name: name.into(),
             entry,
             code: Code::decode(&ranges).map_err(|_| Unresolved::new("weight-member-code"))?,
             scoped: name.ends_with(", EScopeType)"),
@@ -320,7 +339,7 @@ impl<'a> Context<'a> {
         let member = self.member(name)?;
         let mut other_keys = None;
         for token in self.unnamed_tokens() {
-            let disposition = disposition(&self.evaluate(&member, token));
+            let disposition = disposition(&self.evaluate(&member, token, None));
             other_keys = Some(match other_keys {
                 None => disposition,
                 Some(known) if known == disposition => known,
@@ -339,14 +358,16 @@ impl<'a> Context<'a> {
             other_keys,
             key_scopes: BTreeMap::new(),
             stops: Vec::new(),
+            dependent_readers: BTreeMap::new(),
             undetermined_keys: false,
         };
         if let OtherKeys::Unresolved(stop) = &grammar.other_keys {
             grammar.stops.push((None, stop.clone()));
         }
         let mut repeats = BTreeSet::new();
+        let mut dependents = BTreeMap::new();
         for (&token, literal) in self.input.tokens.range(0..=self.last_token as i64) {
-            let ends = self.evaluate(&member, token as u64);
+            let ends = self.evaluate(&member, token as u64, None);
             if disposition(&ends) == grammar.other_keys {
                 continue;
             }
@@ -383,14 +404,26 @@ impl<'a> Context<'a> {
                     if let Some(scope) = ends.iter().find_map(|end| end.scope.clone()) {
                         grammar.key_scopes.insert(literal.name.clone(), scope);
                     }
+                    if let Some(offset) = ends.iter().find_map(|end| end.dependent) {
+                        dependents.insert(literal.name.clone(), offset);
+                    }
                     self.push_field(&mut grammar, token as u64, literal, &ends);
                 }
-                Key::Unresolved(stop) => {
-                    grammar.stops.push((Some(literal.name.clone()), stop));
-                    grammar.undetermined_keys = true;
-                }
+                Key::Unresolved(stop) => match self.keyword(&member, token as u64, &stop) {
+                    Some(keyword) => {
+                        self.push_field(&mut grammar, token as u64, literal, &[keyword])
+                    }
+                    None => {
+                        grammar.stops.push((Some(literal.name.clone()), stop));
+                        grammar.undetermined_keys = true;
+                    }
+                },
             }
         }
+        grammar.dependent_readers = dependents
+            .into_iter()
+            .filter_map(|(key, offset)| Some((key, storing_key(&grammar.fields, offset)?)))
+            .collect();
         // A key that might be an operation could store differently from the known ones.
         grammar.operation_repeat = match (grammar.undetermined_keys, repeats.len(), repeats.first())
         {
@@ -402,9 +435,72 @@ impl<'a> Context<'a> {
     }
 
     fn unnamed_tokens(&self) -> impl Iterator<Item = u64> + '_ {
-        (0..=self.last_token)
+        self.token_domain()
             .filter(|token| !self.input.tokens.contains_key(&(*token as i64)))
-            .chain([self.last_token + 1])
+    }
+
+    /// Every token value from zero to the largest literal token, and the first value after it,
+    /// which stands for every token created at run time.
+    fn token_domain(&self) -> std::ops::RangeInclusive<u64> {
+        0..=self.last_token + 1
+    }
+
+    /// The keyword that the key `token` reads, when its key pass stopped at `stop` for want of the
+    /// value token. Every value token must either write the same owner words without a diagnostic
+    /// or write nothing and emit one, and at least one value must be accepted.
+    fn keyword(&self, member: &Member, token: u64, stop: &Unresolved) -> Option<End> {
+        if !matches!(stop.reason, "weight-acceptance" | "weight-enum-argument") {
+            return None;
+        }
+
+        let mut stores = BTreeSet::new();
+        let mut terminal = None;
+        for value in self.token_domain() {
+            let (seeds, paths) = self.run(member, token, Some(value));
+            let mut outcomes = BTreeSet::new();
+            for path in &paths {
+                let machine = &path.machine;
+                let shaped = KEY_SHAPES
+                    .iter()
+                    .any(|&label| machine.labelled(label).is_some());
+                if path.end != Ok(Exit::Returned) || shaped {
+                    return None;
+                }
+
+                let written: BTreeSet<_> = machine
+                    .written_words(seeds.owner, seeds.owner + SPAN)
+                    .into_iter()
+                    .map(|word| word - seeds.owner)
+                    .collect();
+                let emitted = machine.labelled(EMITTED).is_some();
+                match (emitted, written.is_empty()) {
+                    (true, true) => {
+                        outcomes.insert(None);
+                    }
+                    (false, false) => {
+                        let switch = machine.labelled(KEYWORD_SWITCH);
+                        outcomes.insert(Some((written, switch)));
+                        terminal.get_or_insert(machine.pc());
+                    }
+                    _ => return None,
+                }
+            }
+
+            let [outcome] = <[_; 1]>::try_from(outcomes.into_iter().collect::<Vec<_>>()).ok()?;
+            stores.extend(outcome);
+        }
+
+        let [(written, switch)] =
+            <[_; 1]>::try_from(stores.into_iter().collect::<Vec<_>>()).ok()?;
+        let callee = switch.map_or(member.name.as_str(), |switch| self.name(switch));
+        Some(End::stored(
+            Shape::Stored {
+                callee: callee.into(),
+                kind: ReaderKind::Keyword,
+                destination: *written.first()? as i64,
+            },
+            terminal?,
+        ))
     }
 
     fn cached(
@@ -432,6 +528,12 @@ impl<'a> Context<'a> {
             Err(Unresolved::new("weight-nesting-limit"))
         } else {
             self.cached(&child.member, depth + 1, grammars)
+                .map(|grammar| {
+                    Box::new(Grammar {
+                        read_entry: self.entry_read(&child.read),
+                        ..*grammar
+                    })
+                })
         };
         Nested {
             reader,
@@ -489,6 +591,19 @@ impl<'a> Context<'a> {
         });
     }
 
+    /// What the read entry of a nested entry does before it reads a block.
+    fn entry_read(&self, name: &str) -> Result<ReadEntry, Unresolved> {
+        if name == TRIGGER_READ {
+            // Only the bare value matters for an entry; the stored scope applies to roots.
+            return Ok(ReadEntry {
+                scalar: None,
+                writes: BTreeSet::new(),
+            });
+        }
+
+        self.read_entry(name)
+    }
+
     /// What the read entry `name` does before it reads a block: the reader of a bare value it
     /// accepts instead, and the owner words it writes.
     fn read_entry(&self, name: &str) -> Result<ReadEntry, Unresolved> {
@@ -502,28 +617,42 @@ impl<'a> Context<'a> {
         let reader = machine.reserve(SPAN);
         machine.set_register(0, owner);
         machine.set_register(1, reader);
+        let seeds = Seeds {
+            owner,
+            reader,
+            token: None,
+            value: None,
+            text: None,
+        };
         let mut scalar = None;
         let mut writes = BTreeSet::new();
         let mut block = false;
         for path in machine.run_paths(entry, &mut |target, machine| {
             let callee = self.name(target.ok_or(Unresolved::new("weight-read-call"))?);
-            let arguments = Seeds {
-                owner,
-                reader,
-                token: None,
-            }
-            .arguments(machine);
+            let arguments = seeds.arguments(machine);
             let joined = readers::arguments_join(
                 callee,
                 &arguments,
                 false,
                 Some(self.input.value_token_offset as i64),
             );
+            // A persistent base other than the object's start reads the same block.
             let block = callee == "CPersistent::Read(CReader&)"
-                && arguments.get("x0") == Some(&Value::Owner(0))
+                && matches!(arguments.get("x0"), Some(Value::Owner(_)))
                 && arguments.get("x1") == Some(&Value::Reader(0));
             if block || (joined && is_reader(callee)) {
                 return Ok(Call::Stop);
+            }
+            if LOCATIONS.contains(&callee) || callee == STRING_RELEASE {
+                return Ok(Call::Return(None));
+            }
+            if is_string_move(callee)
+                && seeds.in_owner(machine.register(0))
+                && matches!(arguments.get("x1"), Some(Value::Stack(_)))
+            {
+                // The location string is summarized; its owner words count as written.
+                machine.forget(machine.register(0).unwrap(), STRING_SIZE);
+                return Ok(Call::Return(None));
             }
             Err(Unresolved::new("weight-read-call"))
         }) {
@@ -543,12 +672,7 @@ impl<'a> Context<'a> {
             }
             let join = ReaderJoin::Joined {
                 callee: callee.into(),
-                arguments: Seeds {
-                    owner,
-                    reader,
-                    token: None,
-                }
-                .arguments(&path.machine),
+                arguments: seeds.arguments(&path.machine),
                 tail: path.machine.is_tail_call(),
             };
             if scalar.as_ref().is_some_and(|known| *known != join) {
@@ -562,17 +686,36 @@ impl<'a> Context<'a> {
         Ok(ReadEntry { scalar, writes })
     }
 
-    /// Every path of `member` for one token.
-    fn evaluate(&self, member: &Member, token: u64) -> Vec<End> {
+    /// Every path of `member` for one key token, and for one value token in the value pass.
+    fn evaluate(&self, member: &Member, token: u64, value: Option<u64>) -> Vec<End> {
+        let (seeds, paths) = self.run(member, token, value);
+        paths
+            .into_iter()
+            .map(|path| self.end(seeds, path))
+            .collect()
+    }
+
+    fn run<'m>(
+        &'m self,
+        member: &'m Member,
+        token: u64,
+        value: Option<u64>,
+    ) -> (Seeds, Vec<Path<'m>>) {
         let data = &self.input.data;
         let mut machine = Machine::new(&member.code, data);
         let owner = machine.reserve(SPAN);
         let reader = machine.reserve(SPAN);
+        let text = machine.reserve(8);
+        let value_token = reader + self.input.value_token_offset;
         machine.write(
             reader + self.input.reader_token_offset,
             4,
             token & 0xffff_ffff,
         );
+        machine.write(value_token + self.input.token_text_offset, 8, text);
+        if let Some(value) = value {
+            machine.write(value_token, 4, value & 0xffff_ffff);
+        }
         machine.set_register(0, owner);
         machine.set_register(1, reader);
         machine.set_register(2, token);
@@ -584,14 +727,13 @@ impl<'a> Context<'a> {
             owner,
             reader,
             token: Some(token),
+            value,
+            text: Some(text),
         };
         let paths = machine.run_paths(member.entry, &mut |target, machine| {
             self.call(member, seeds, target, machine)
         });
-        paths
-            .into_iter()
-            .map(|path| self.end(seeds, path))
-            .collect()
+        (seeds, paths)
     }
 
     /// What one path of the member does at a call.
@@ -638,18 +780,28 @@ impl<'a> Context<'a> {
             }
             return Ok(Call::Return(None));
         }
-        if readers::conversion_kind(callee).is_some()
-            && arguments.get("x0") == Some(&Value::Reader(value_token))
+        if conversion_token(callee)
+            .is_some_and(|token| arguments.get(token) == Some(&Value::Reader(value_token)))
         {
             machine.label(CONVERSION, target);
             snapshot(machine, CONVERSION_WRITTEN, seeds.owner);
             return Ok(Call::Return(None));
         }
         if let Some(code) = member.enums.get(&target) {
-            let value = self.enum_value(code, target, seeds, machine)?;
-            machine.label(ENUM, value);
-            snapshot(machine, ENUM_WRITTEN, seeds.owner);
-            return Ok(Call::Return(Some(value)));
+            return match seeds.value {
+                Some(value) => {
+                    let result = self.enum_value(code, target, value, machine)?;
+                    machine.label(KEYWORD_SWITCH, target);
+                    Ok(Call::Return(Some(result)))
+                }
+                None => {
+                    let token = seeds.token.ok_or(Unresolved::new("weight-enum-argument"))?;
+                    let result = self.enum_value(code, target, token, machine)?;
+                    machine.label(ENUM, result);
+                    snapshot(machine, ENUM_WRITTEN, seeds.owner);
+                    Ok(Call::Return(Some(result)))
+                }
+            };
         }
         if self.input.operator_new.contains(&target) {
             let size = machine.known_register(0, "weight-allocation-size")?;
@@ -704,7 +856,10 @@ impl<'a> Context<'a> {
             machine.label(CHILD_SCOPE, scope_label(scope.as_ref()));
             return Ok(Call::Return(None));
         }
-        if LOCATIONS.contains(&callee) {
+        if let Some(call) = follow_target_from_value(callee, seeds, value_token, machine)? {
+            return Ok(call);
+        }
+        if LOCATIONS.contains(&callee) || reads_value_text(callee, seeds, machine) {
             return Ok(Call::Return(None));
         }
         if reaches_state {
@@ -713,17 +868,16 @@ impl<'a> Context<'a> {
         Ok(Call::Return(None))
     }
 
-    /// The value that the enum switch `code` returns for the key token. The switch must receive
-    /// the address of a word that holds the key token.
+    /// The value that the enum switch `code` returns for `token`. The switch must receive the
+    /// address of a word that holds `token`.
     fn enum_value(
         &self,
         code: &Code,
         entry: u64,
-        seeds: Seeds,
+        token: u64,
         machine: &Machine<'_>,
     ) -> Result<u64, Unresolved> {
         let argument = machine.known_register(0, "weight-enum-argument")?;
-        let token = seeds.token.ok_or(Unresolved::new("weight-enum-argument"))?;
         if machine.read(argument, 4) != Some(token & 0xffff_ffff) {
             return Err(Unresolved::new("weight-enum-argument"));
         }
@@ -753,6 +907,7 @@ impl<'a> Context<'a> {
             operation: None,
             emitted: machine.labelled(EMITTED).is_some(),
             stop: None,
+            dependent: None,
             scope: None,
             conditions,
             terminal: machine.pc(),
@@ -760,7 +915,11 @@ impl<'a> Context<'a> {
         let exit = match path.end {
             Ok(exit) => exit,
             Err(stop) => {
-                end.stop = Some(stop);
+                end.dependent = dependent_reader(seeds, machine, &stop);
+                end.stop = Some(match end.dependent {
+                    Some(_) => Unresolved::new("weight-dependent-reader"),
+                    None => stop,
+                });
                 return end;
             }
         };
@@ -809,6 +968,13 @@ impl<'a> Context<'a> {
         if exit != Exit::Returned {
             return Err(Unresolved::new("weight-terminal"));
         }
+        if let Some(destination) = machine.labelled(TARGET_STORED) {
+            return Ok(Some(Shape::Stored {
+                callee: TARGET_FROM_TOKEN.into(),
+                kind: ReaderKind::Target,
+                destination: destination as i64,
+            }));
+        }
         if let Some(child) = machine.labelled(INSERT_CHILD) {
             let array = machine.labelled(INSERT_ARRAY).unwrap_or(0) as i64;
             let read = machine
@@ -823,7 +989,7 @@ impl<'a> Context<'a> {
         if let Some(conversion) = machine.labelled(CONVERSION) {
             let destination = written_since(machine, CONVERSION_WRITTEN, seeds.owner)
                 .ok_or(Unresolved::new("weight-conversion-destination"))?;
-            return Ok(Some(Shape::Converted {
+            return Ok(Some(Shape::Stored {
                 callee: self.name(conversion).into(),
                 kind: readers::conversion_kind(self.name(conversion))
                     .unwrap_or(ReaderKind::Unknown),
@@ -920,6 +1086,10 @@ struct Seeds {
     owner: u64,
     reader: u64,
     token: Option<u64>,
+    /// The value token, in the value pass.
+    value: Option<u64>,
+    /// The address that the value token's text pointer holds.
+    text: Option<u64>,
 }
 
 impl Seeds {
@@ -980,12 +1150,28 @@ struct End {
     operation: Option<(Option<Operand>, Repeat)>,
     emitted: bool,
     stop: Option<Unresolved>,
+    /// The owner offset of the object that reads the value, for a dependent reader.
+    dependent: Option<i64>,
     scope: Option<Value>,
     conditions: Vec<Condition>,
     terminal: u64,
 }
 
 impl End {
+    /// An unconditional end that stores the value as `shape` describes.
+    fn stored(shape: Shape, terminal: u64) -> Self {
+        Self {
+            shape: Some(shape),
+            operation: None,
+            emitted: false,
+            stop: None,
+            dependent: None,
+            scope: None,
+            conditions: Vec::new(),
+            terminal,
+        }
+    }
+
     fn accepted(&self) -> bool {
         self.stop.is_none() && (self.shape.is_some() || self.operation.is_some())
     }
@@ -996,7 +1182,7 @@ impl End {
         }
         match &self.shape {
             Some(Shape::Read(join)) => PathOutcome::Reader(join.clone()),
-            Some(Shape::Converted {
+            Some(Shape::Stored {
                 callee,
                 kind,
                 destination,
@@ -1024,7 +1210,8 @@ impl End {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Shape {
     Read(ReaderJoin),
-    Converted {
+    /// A value of the value token, stored in the owner.
+    Stored {
         callee: String,
         kind: ReaderKind,
         destination: i64,
@@ -1092,6 +1279,9 @@ fn disposition(ends: &[End]) -> OtherKeys {
 
 fn key(ends: &[End]) -> Key {
     let accepted: Vec<_> = ends.iter().filter(|end| end.accepted()).collect();
+    if accepted.is_empty() && ends.iter().any(|end| end.dependent.is_some()) {
+        return Key::Field;
+    }
     if accepted.is_empty() {
         return Key::Unresolved(
             ends.iter()
@@ -1139,6 +1329,15 @@ const LOCATIONS: &[&str] = &[
     "CReader::GetFileLocationDescription() const",
 ];
 
+/// The calls that read the value token as an event target and assign it.
+const TOKEN_COPY: &str = "CToken::CToken(CToken const&)";
+const TARGET_FROM_TOKEN: &str = "CEventTarget::CEventTarget(CToken)";
+const TARGET_ASSIGN: &str = "CEventTarget::operator=(CEventTarget&&)";
+
+/// The trigger reader whose bare-value form was read by hand: it has no scalar conversion, and a
+/// value that is not a block logs `Expected "k = {"` and is then read as a block.
+const TRIGGER_READ: &str = "CTrigger::Read(CReader&, EScopeType)";
+
 /// Labels that keep one path's facts.
 const EMITTED: u64 = 1;
 const ENUM: u64 = 2;
@@ -1151,6 +1350,19 @@ const CHILD_READ: u64 = 8;
 const CHILD_RECEIVER: u64 = 9;
 const CHILD_SCOPE: u64 = 10;
 const OPERAND_POINT: u64 = 11;
+const COPIED_TOKEN: u64 = 12;
+const TARGET: u64 = 13;
+const TARGET_STORED: u64 = 14;
+const KEYWORD_SWITCH: u64 = 15;
+/// Labels of the shapes that the key pass recognizes, which a keyword path must not have.
+const KEY_SHAPES: [u64; 6] = [
+    ENUM,
+    OPERAND,
+    CONVERSION,
+    INSERT_CHILD,
+    CHILD_READ,
+    TARGET_STORED,
+];
 /// Tags of the owner words written before an event; the label key adds the word's address.
 const ENUM_WRITTEN: u64 = 1 << 63;
 const CONVERSION_WRITTEN: u64 = 1 << 62;
@@ -1227,6 +1439,99 @@ fn is_reader(callee: &str) -> bool {
 
 fn is_enum_switch(callee: &str) -> bool {
     callee.contains(" TokenToEnum<") && callee.ends_with("(int const&)")
+}
+
+/// Releases a string's heap buffer.
+const STRING_RELEASE: &str = "CPdxCommonStringAllocator::deallocate(char*, unsigned long)";
+/// The size of a string object.
+const STRING_SIZE: u64 = 0x18;
+
+fn is_string_move(callee: &str) -> bool {
+    callee.contains("basic_string<") && callee.contains("::__move_assign(")
+}
+
+/// Whether the call measures the value token's text, or copies it into the owner. Either is
+/// part of the read that the value's key makes.
+fn reads_value_text(callee: &str, seeds: Seeds, machine: &Machine<'_>) -> bool {
+    let text = seeds.text;
+    let copies = callee.contains("basic_string<")
+        && callee.ends_with("::__assign_external(char const*, unsigned long)")
+        && seeds.in_owner(machine.register(0))
+        && machine.register(1) == text;
+
+    copies || (callee == "_strlen" && machine.register(0) == text)
+}
+
+/// The argument register that holds the token that a value conversion reads.
+fn conversion_token(callee: &str) -> Option<&'static str> {
+    readers::conversion_kind(callee)?;
+    Some(if callee == readers::TRIGGER_LOOKUP {
+        "x1"
+    } else {
+        "x0"
+    })
+}
+
+/// Label a call that makes an event target from the value token: a copy of the value token, a
+/// target constructed from that copy, or that target assigned into the owner. The owner write
+/// happens inside the assignment, so the assignment's receiver is the destination.
+fn follow_target_from_value(
+    callee: &str,
+    seeds: Seeds,
+    value_token: i64,
+    machine: &mut Machine<'_>,
+) -> Result<Option<Call>, Unresolved> {
+    let copied = machine.labelled(COPIED_TOKEN);
+    let target = machine.labelled(TARGET);
+    let (label, value) = match callee {
+        TOKEN_COPY if seeds.arguments(machine).get("x1") == Some(&Value::Reader(value_token)) => (
+            COPIED_TOKEN,
+            machine.known_register(0, "weight-token-copy")?,
+        ),
+        TARGET_FROM_TOKEN if copied.is_some() && machine.register(1) == copied => {
+            (TARGET, machine.known_register(0, "weight-target")?)
+        }
+        TARGET_ASSIGN
+            if seeds.in_owner(machine.register(0))
+                && target.is_some()
+                && machine.register(1) == target =>
+        {
+            let receiver = machine.known_register(0, "weight-target-destination")?;
+            (TARGET_STORED, receiver - seeds.owner)
+        }
+        _ => return Ok(None),
+    };
+    machine.label(label, value);
+    Ok(Some(Call::Return(None)))
+}
+
+/// The owner offset of the object whose function pointer a path branched through, with the reader
+/// as the argument, when the path stopped there for want of the target.
+fn dependent_reader(seeds: Seeds, machine: &Machine<'_>, stop: &Unresolved) -> Option<i64> {
+    if stop.reason != "branch-value" || machine.register(1) != Some(seeds.reader) {
+        return None;
+    }
+
+    match owner_load(machine, 0)? {
+        Value::Load(base, 8) => match *base {
+            Value::Owner(offset) => Some(offset),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The key whose read stores into the owner word at `offset`.
+fn storing_key(fields: &[RootField], offset: i64) -> Option<String> {
+    fields
+        .iter()
+        .find(|field| {
+            field
+                .readers
+                .iter()
+                .any(|join| readers::destination(join) == Some(offset))
+        })
+        .map(|field| field.name.clone())
 }
 
 fn is_insert(callee: &str) -> bool {

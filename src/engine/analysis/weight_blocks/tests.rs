@@ -14,13 +14,25 @@ const PERSISTENT: u64 = 0x2800;
 const UNKNOWN: u64 = 0x2900;
 const ENUM_SWITCH: u64 = 0x3000;
 const ENTRY_MEMBER: u64 = 0x5000;
+const MODIFIER: u64 = 0x4000;
+const MODIFIER_READ: u64 = 0x4800;
+const LOCATION: u64 = 0x3100;
+const STRING_MOVE: u64 = 0x3200;
+const STRING_ASSIGN: u64 = 0x3300;
+const STRING_LENGTH: u64 = 0x3400;
+const COPY_TOKEN: u64 = 0x3500;
+const MAKE_TARGET: u64 = 0x3600;
+const ASSIGN_TARGET: u64 = 0x3700;
+const LOOKUP: u64 = 0x3800;
+const MALFORMED: u64 = 0x3900;
 const READ: u64 = 0x6000;
 const VARIANT: u64 = 0x7000;
 const VTABLE: u64 = 0x9010;
 const POINT: u64 = 0x8000;
+const WEIGHT_READ: &str = "Weight::Read(CReader&)";
 
 /// The tokens that the authored readers test, with the literal that names each.
-const TOKENS: [(i64, &str); 7] = [
+const TOKENS: [(i64, &str); 12] = [
     (7, "base"),
     (8, "days"),
     (9, "modifier"),
@@ -28,6 +40,11 @@ const TOKENS: [(i64, &str); 7] = [
     (21, "round"),
     (22, "always"),
     (30, "potential"),
+    (40, "scope"),
+    (41, "calc"),
+    (42, "trigger"),
+    (43, "parameters"),
+    (44, "mode"),
 ];
 
 /// How an authored weight member reader departs from the positive shape.
@@ -41,6 +58,19 @@ struct Variation {
     owner_call: bool,
     /// The unnamed token 15 reads `base`.
     interior_key: bool,
+    /// `calc` stores the value `always` in a different word from the value `add`.
+    split_keyword: bool,
+    /// `trigger` copies a text that is not the value token's into the owner.
+    other_text: bool,
+}
+
+/// How an authored read entry departs from a plain one.
+#[derive(Clone, Copy, Default)]
+struct ReadVariation {
+    /// The entry overwrites the stored scope before it reads.
+    clobber: bool,
+    /// The entry moves a location string into the owner at this offset first.
+    location: Option<u32>,
 }
 
 /// A weight member reader: `base`, `days` and a nested `modifier` entry are fixed keys; other
@@ -174,6 +204,125 @@ fn entry_member() -> Vec<u8> {
     )
 }
 
+/// A modifier entry reader in the shape of the scaled and complex weight modifiers: `scope`
+/// assigns an event target made from the value token, `calc` compares the value with `add` and
+/// `always`, `trigger` looks the value up as a trigger, `parameters` is read by that trigger, and
+/// `mode` maps the value through the operation switch. Every other key is malformed.
+fn modifier(variation: Variation) -> Vec<u8> {
+    let mut code = Arm64::at(MODIFIER);
+    arm64!(code;
+        sub sp, sp, #0x40;
+        mov x19, x0;
+        mov x20, x1;
+        cmp w2, #40; b.eq >scope;
+        cmp w2, #41; b.eq >calc;
+        cmp w2, #42; b.eq >trigger;
+        cmp w2, #43; b.eq >parameters;
+        cmp w2, #44; b.eq >mode;
+        add sp, sp, #0x40;
+        mov x0, x20;
+        b extern MALFORMED as usize;
+        scope:;
+        add x1, x20, #0x278;
+        add x0, sp, #0x10;
+        bl extern COPY_TOKEN as usize;
+        add x0, sp, #0x20;
+        add x1, sp, #0x10;
+        bl extern MAKE_TARGET as usize;
+        add x0, x19, #0x28;
+        add x1, sp, #0x20;
+        bl extern ASSIGN_TARGET as usize;
+        add sp, sp, #0x40;
+        ret;
+        calc:;
+        ldr w8, [x20, #0x278];
+        cmp w8, #20; b.eq >linear;
+        cmp w8, #22; b.eq >constant;
+        add sp, sp, #0x40;
+        mov x0, x20;
+        b extern MALFORMED as usize;
+        linear:;
+        mov w8, #1;
+        strb w8, [x19, #0x29a];
+        add sp, sp, #0x40;
+        ret;
+        constant:;
+        mov w8, #2
+    );
+    if variation.split_keyword {
+        arm64!(code; strb w8, [x19, #0x2a0]);
+    } else {
+        arm64!(code; strb w8, [x19, #0x29a]);
+    }
+    arm64!(code;
+        add sp, sp, #0x40;
+        ret;
+        trigger:
+    );
+    if variation.other_text {
+        arm64!(code; ldr x22, [x20, #0x290]);
+    } else {
+        arm64!(code; ldr x22, [x20, #0x288]);
+    }
+    arm64!(code;
+        mov x0, x22;
+        bl extern STRING_LENGTH as usize;
+        mov x2, x0;
+        add x0, x19, #0x60;
+        mov x1, x22;
+        bl extern STRING_ASSIGN as usize;
+        mov x0, xzr;
+        add x1, x20, #0x278;
+        add x2, sp, #0x10;
+        bl extern LOOKUP as usize;
+        str x0, [x19, #0x88];
+        add sp, sp, #0x40;
+        ret;
+        parameters:;
+        ldr x0, [x19, #0x88];
+        cbz x0, >missing;
+        ldr x8, [x0];
+        ldr x3, [x8, #0x30];
+        mov x1, x20;
+        mov x2, #0;
+        add sp, sp, #0x40;
+        br x3;
+        missing:;
+        bl extern LOG as usize;
+        add sp, sp, #0x40;
+        ret;
+        mode:;
+        ldr w8, [x20, #0x278];
+        str w8, [sp, #8];
+        add x0, sp, #8;
+        bl extern ENUM_SWITCH as usize;
+        str w0, [x19, #0x2e0];
+        add sp, sp, #0x40;
+        ret
+    );
+    code.bytes()
+}
+
+/// The modifier's read entry: it records its location in the owner, then reads its persistent
+/// base as a block.
+fn modifier_read() -> Vec<u8> {
+    arm64!(at MODIFIER_READ;
+        sub sp, sp, #0x20;
+        mov x19, x1;
+        mov x20, x0;
+        add x8, sp, #8;
+        mov x0, x1;
+        bl extern LOCATION as usize;
+        add x0, x20, #0x1b8;
+        add x1, sp, #8;
+        bl extern STRING_MOVE as usize;
+        add x0, x20, #8;
+        mov x1, x19;
+        add sp, sp, #0x20;
+        b extern PERSISTENT as usize
+    )
+}
+
 /// The operation switch: `add` is 1, `round` is 3, and every other token is 16.
 fn switch() -> Vec<u8> {
     arm64!(at ENUM_SWITCH;
@@ -191,12 +340,26 @@ fn switch() -> Vec<u8> {
     )
 }
 
-/// The read entry: a numeric value token sets `base`; anything else is read as a block. With
-/// `clobber`, it first overwrites the stored scope.
-fn read(clobber: bool) -> Vec<u8> {
+/// The read entry: a numeric value token sets `base`; anything else is read as a block.
+fn read(variation: ReadVariation) -> Vec<u8> {
     let mut code = Arm64::at(READ);
-    if clobber {
+    if variation.clobber {
         arm64!(code; str xzr, [x0, #0x30]);
+    }
+    if let Some(offset) = variation.location {
+        arm64!(code;
+            sub sp, sp, #0x30;
+            stp x0, x1, [sp, #0x20];
+            add x8, sp, #8;
+            mov x0, x1;
+            bl extern LOCATION as usize;
+            ldr x0, [sp, #0x20];
+            add x0, x0, #offset;
+            add x1, sp, #8;
+            bl extern STRING_MOVE as usize;
+            ldp x0, x1, [sp, #0x20];
+            add sp, sp, #0x30
+        );
     }
     arm64!(code;
         ldr w8, [x1, #0x278];
@@ -224,7 +387,7 @@ fn variant() -> Vec<u8> {
     )
 }
 
-fn input(member_name: &str) -> WeightBlockInput {
+fn input(read_name: &str, member_name: &str) -> WeightBlockInput {
     let names = [
         (MEMBER, "Weight::ReadMember(CReader&, int)"),
         (FIXED, "CReader::Read(CFixedPoint&)"),
@@ -250,13 +413,30 @@ fn input(member_name: &str) -> WeightBlockInput {
         (ENTRY_MEMBER, "Entry::ReadMember(CReader&, int, EScopeType)"),
         (READ, "Weight::Read(CReader&)"),
         (VARIANT, "Variant::ReadMember(CReader&, int)"),
+        (MODIFIER, "Modifier::ReadMember(CReader&, int)"),
+        (MODIFIER_READ, "Modifier::Read(CReader&)"),
+        (LOCATION, "CReader::GetFileLocationDescription() const"),
+        (
+            STRING_MOVE,
+            "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__move_assign(std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>&, std::__1::integral_constant<bool, false>)",
+        ),
+        (
+            STRING_ASSIGN,
+            "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)",
+        ),
+        (STRING_LENGTH, "_strlen"),
+        (COPY_TOKEN, "CToken::CToken(CToken const&)"),
+        (MAKE_TARGET, "CEventTarget::CEventTarget(CToken)"),
+        (ASSIGN_TARGET, "CEventTarget::operator=(CEventTarget&&)"),
+        (LOOKUP, readers::TRIGGER_LOOKUP),
+        (MALFORMED, "CReader::ReportMalformed()"),
     ];
     let pointers = BTreeMap::from([(VTABLE, ENTRY_READ), (VTABLE + 8, ENTRY_MEMBER)]);
     WeightBlockInput {
         points: BTreeMap::from([(
             POINT,
             ConcreteReader {
-                read: "Weight::Read(CReader&)".into(),
+                read: read_name.into(),
                 member: member_name.into(),
                 family: crate::BlockFamily::Weight,
             },
@@ -291,25 +471,51 @@ fn input(member_name: &str) -> WeightBlockInput {
         pointers,
         reader_token_offset: 0x38,
         value_token_offset: 0x278,
+        token_text_offset: 0x10,
     }
 }
 
-fn facts(variation: Variation, member_name: &str, clobber: bool) -> WeightBlockFacts {
-    let bodies = BTreeMap::from([
+fn bodies(variation: Variation, read_variation: ReadVariation) -> BTreeMap<u64, Vec<u8>> {
+    BTreeMap::from([
         (MEMBER, member(variation)),
         (ENTRY_MEMBER, entry_member()),
         (ENUM_SWITCH, switch()),
-        (READ, read(clobber)),
+        (READ, read(read_variation)),
         (VARIANT, variant()),
-    ]);
+        (MODIFIER, modifier(variation)),
+        (MODIFIER_READ, modifier_read()),
+    ])
+}
+
+fn facts(variation: Variation, member_name: &str, read: ReadVariation) -> WeightBlockFacts {
+    let bodies = bodies(variation, read);
     let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
-    analyze(&input(member_name), &body)
+    analyze(&input(WEIGHT_READ, member_name), &body)
 }
 
 fn analyze_member(variation: Variation, member_name: &str) -> Grammar {
-    facts(variation, member_name, false).points[&POINT]
+    facts(variation, member_name, ReadVariation::default()).points[&POINT]
         .clone()
         .unwrap()
+}
+
+fn modifier_grammar(variation: Variation) -> Grammar {
+    let bodies = bodies(variation, ReadVariation::default());
+    let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
+    let input = input(
+        "Modifier::Read(CReader&)",
+        "Modifier::ReadMember(CReader&, int)",
+    );
+    analyze(&input, &body).points[&POINT].clone().unwrap()
+}
+
+fn stored(callee: &str, kind: ReaderKind, destination: i64) -> ReaderJoin {
+    ReaderJoin::Stored {
+        callee: callee.into(),
+        kind,
+        destination,
+        repeat: RepeatBehavior::Replace,
+    }
 }
 
 fn grammar(variation: Variation) -> Grammar {
@@ -458,10 +664,10 @@ fn an_effect_family_fallback_is_not_a_trigger_condition() {
         (MEMBER, member(Variation::default())),
         (ENTRY_MEMBER, entry_member()),
         (ENUM_SWITCH, switch()),
-        (READ, read(false)),
+        (READ, read(ReadVariation::default())),
     ]);
     let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
-    let mut input = input("Weight::ReadMember(CReader&, int)");
+    let mut input = input(WEIGHT_READ, "Weight::ReadMember(CReader&, int)");
     for family in input.families.values_mut() {
         *family = crate::BlockFamily::Effect;
     }
@@ -496,14 +702,163 @@ fn an_interior_unnamed_key_leaves_other_keys_unresolved() {
 #[test]
 fn a_stored_scope_is_requested_only_when_the_read_entry_keeps_it() {
     let member = "Weight::ReadMember(CReader&, int)";
-    let kept = facts(Variation::default(), member, false);
+    let kept = facts(Variation::default(), member, ReadVariation::default());
     assert_eq!(
         kept.stored_scopes(),
         BTreeMap::from([(POINT, BTreeSet::from([0x30]))])
     );
 
-    let clobbered = facts(Variation::default(), member, true);
+    let clobbered = facts(
+        Variation::default(),
+        member,
+        ReadVariation {
+            clobber: true,
+            ..ReadVariation::default()
+        },
+    );
     assert!(clobbered.stored_scopes().is_empty());
+}
+
+#[test]
+fn a_location_string_moved_over_the_stored_scope_removes_it() {
+    let member = "Weight::ReadMember(CReader&, int)";
+    let located = |offset| {
+        let read = ReadVariation {
+            location: Some(offset),
+            ..ReadVariation::default()
+        };
+        facts(Variation::default(), member, read)
+    };
+
+    let apart = located(0x1b8);
+    assert_eq!(
+        apart.stored_scopes(),
+        BTreeMap::from([(POINT, BTreeSet::from([0x30]))])
+    );
+
+    let over = located(0x28);
+    let grammar = over.points[&POINT].as_ref().unwrap();
+    assert!(grammar.read_entry.is_ok(), "{:?}", grammar.read_entry);
+    assert!(over.stored_scopes().is_empty());
+}
+
+#[test]
+fn an_event_target_made_from_the_value_is_stored_where_it_is_assigned() {
+    let grammar = modifier_grammar(Variation::default());
+
+    assert_eq!(
+        key(&grammar, "scope").readers,
+        [stored(
+            "CEventTarget::CEventTarget(CToken)",
+            ReaderKind::Target,
+            0x28
+        )]
+    );
+}
+
+#[test]
+fn a_value_compared_with_fixed_names_is_a_keyword() {
+    let grammar = modifier_grammar(Variation::default());
+
+    assert_eq!(
+        key(&grammar, "calc").readers,
+        [stored(
+            "Modifier::ReadMember(CReader&, int)",
+            ReaderKind::Keyword,
+            0x298
+        )]
+    );
+}
+
+#[test]
+fn a_keyword_whose_values_store_in_different_words_is_a_gap() {
+    let grammar = modifier_grammar(Variation {
+        split_keyword: true,
+        ..Variation::default()
+    });
+
+    assert_eq!(stop(&grammar, "calc"), "weight-acceptance");
+}
+
+#[test]
+fn a_value_mapped_through_the_switch_is_a_keyword_and_never_an_operation() {
+    let grammar = modifier_grammar(Variation::default());
+
+    // The value pass also runs the value 44, which equals the key token of `mode`, and the
+    // unknown-name fallback 16 is stored like any other value.
+    assert_eq!(
+        key(&grammar, "mode").readers,
+        [stored(
+            "EOperation TokenToEnum<EOperation>(int const&)",
+            ReaderKind::Keyword,
+            0x2e0
+        )]
+    );
+    assert!(grammar.operations.is_empty(), "{:?}", grammar.operations);
+}
+
+#[test]
+fn a_trigger_lookup_of_the_value_is_a_reference() {
+    let grammar = modifier_grammar(Variation::default());
+
+    assert_eq!(
+        key(&grammar, "trigger").readers,
+        [stored(readers::TRIGGER_LOOKUP, ReaderKind::Reference, 0x88)]
+    );
+}
+
+#[test]
+fn a_copy_of_some_other_text_into_the_owner_is_a_gap() {
+    let grammar = modifier_grammar(Variation {
+        other_text: true,
+        ..Variation::default()
+    });
+
+    assert_eq!(stop(&grammar, "trigger"), "weight-call");
+}
+
+#[test]
+fn a_key_read_by_the_object_that_another_key_stores_names_that_key() {
+    let grammar = modifier_grammar(Variation::default());
+
+    assert_eq!(stop(&grammar, "parameters"), "weight-dependent-reader");
+    assert_eq!(
+        grammar.dependent_readers,
+        BTreeMap::from([("parameters".into(), "trigger".into())])
+    );
+    assert!(!grammar.undetermined_keys);
+}
+
+#[test]
+fn a_read_entry_that_records_its_location_and_reads_its_base_has_no_bare_value() {
+    let grammar = modifier_grammar(Variation::default());
+
+    let entry = grammar.read_entry.as_ref().unwrap();
+    assert_eq!(entry.scalar, None);
+    assert!(entry.writes.contains(&0x1b8), "{:?}", entry.writes);
+}
+
+#[test]
+fn only_the_trigger_reader_gives_a_nested_entry_no_bare_value_unread() {
+    let nested_scalar = |entry_read: &str| {
+        let bodies = bodies(Variation::default(), ReadVariation::default());
+        let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
+        let mut input = input(WEIGHT_READ, "Weight::ReadMember(CReader&, int)");
+        for symbol in &mut input.symbols {
+            if symbol.address == ENTRY_READ {
+                symbol.name = entry_read.into();
+            }
+        }
+        let grammar = analyze(&input, &body).points[&POINT].clone().unwrap();
+        let entry = grammar.nested["modifier"].grammar.clone().unwrap();
+        entry.read_entry.map(|entry| entry.scalar)
+    };
+
+    assert_eq!(
+        nested_scalar("CTrigger::Read(CReader&, EScopeType)"),
+        Ok(None)
+    );
+    assert!(nested_scalar("CReader::Read(CPersistent&)").is_err());
 }
 
 #[test]

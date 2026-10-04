@@ -125,13 +125,21 @@ fn family_of_callee(callee: &str) -> BlockFamily {
 /// The broad kind that a conversion of the reader's assigned value token produces.
 /// `CToken::GetFloat` returns the raw fixed-point value: its callers multiply it with a stored
 /// fixed-point value and divide the product by the fixed-point scale.
+/// [`TRIGGER_LOOKUP`] creates the trigger that the token names, so the result is a reference to
+/// a trigger command.
 pub(crate) fn conversion_kind(callee: &str) -> Option<ReaderKind> {
     match callee {
         "CToken::GetInt() const" => Some(ReaderKind::Integer),
         "CToken::GetFloat() const" => Some(ReaderKind::FixedPoint),
+        TRIGGER_LOOKUP => Some(ReaderKind::Reference),
         _ => None,
     }
 }
+
+/// Looks up the trigger command that a token names, or makes a scripted-trigger placeholder for
+/// a name that no trigger command has. It takes the trigger database, the token and a location.
+pub(crate) const TRIGGER_LOOKUP: &str =
+    "CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&) const";
 
 pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
