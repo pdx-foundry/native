@@ -189,7 +189,8 @@ fn property<T>(value: &GrammarProperty<T>, compact: impl Fn(&T) -> Value) -> Val
     }
 }
 
-/// Equal public reader identities must describe the same weight grammar.
+/// Equal public reader identities must describe the same weight grammar, for the field and for
+/// every nested entry inside it.
 #[cfg(test)]
 pub fn check_weight_identity(
     variants: &mut BTreeMap<String, (String, WeightBlock)>,
@@ -204,14 +205,22 @@ pub fn check_weight_identity(
         .to_owned();
     match variants.get(&id) {
         Some((first, previous)) if previous != &**block => {
-            Err(format!("weight grammar of {} differs from {first}", field.name).into())
+            return Err(format!("weight grammar of {} differs from {first}", field.name).into());
         }
-        Some(_) => Ok(()),
+        Some(_) => {}
         None => {
             variants.insert(id, (field.name.clone(), (**block).clone()));
-            Ok(())
         }
     }
+
+    let keys = match &block.fixed_keys {
+        GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) => keys.as_slice(),
+        GrammarProperty::Unresolved => &[],
+    };
+    for key in keys {
+        check_weight_identity(variants, key)?;
+    }
+    Ok(())
 }
 
 /// Equal public reader identities must describe the same modifier grammar.
@@ -450,6 +459,39 @@ mod weight_tests {
         };
         block.operation_repeat = RepeatBehavior::Replace;
         assert!(check_weight_identity(&mut variants, &other).is_err());
+    }
+
+    /// A root weight field with its own identity and one nested `modifier` entry.
+    fn with_entry(root: &str, entry_repeat: RepeatBehavior) -> Field {
+        let mut entry = field();
+        entry.name = "modifier".into();
+        entry.reader.id = serde_json::from_value(json!("entry")).unwrap();
+        let FieldMembers::WeightBlock(block) = &mut entry.members else {
+            unreachable!()
+        };
+        block.operation_repeat = entry_repeat;
+
+        let mut parent = field();
+        parent.reader.id = serde_json::from_value(json!(root)).unwrap();
+        let FieldMembers::WeightBlock(block) = &mut parent.members else {
+            unreachable!()
+        };
+        block.fixed_keys = GrammarProperty::Known(vec![entry]);
+        parent
+    }
+
+    #[test]
+    fn shared_nested_identity_rejects_different_blocks_under_different_roots() {
+        let mut variants = BTreeMap::new();
+        check_weight_identity(
+            &mut variants,
+            &with_entry("shared", RepeatBehavior::Replace),
+        )
+        .unwrap();
+
+        let differing = with_entry("variant", RepeatBehavior::Accumulate);
+        assert!(check_weight_identity(&mut variants, &differing).is_err());
+        assert!(variants.contains_key("entry"));
     }
 }
 

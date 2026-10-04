@@ -63,6 +63,7 @@ pub(in crate::binding) fn read(
         data: ReadOnlyData::new(sections).with_words(image.pointers),
         reader_token_offset: recipe.reader_token_offset,
         value_token_offset: recipe.reader_value_token_offset,
+        token_text_offset: recipe.token_text_offset,
     })
 }
 

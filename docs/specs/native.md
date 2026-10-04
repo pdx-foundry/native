@@ -140,10 +140,18 @@ for contexts and scope types.
 - Constructor-bound root weight fields have family `Weight` and expose `FieldMembers::WeightBlock`:
   the bare-value reader, fixed keys, operation keys with their operand readers, whether a further
   operation accumulates or replaces, and whether other keys are rejected or read as trigger
-  conditions. Nested `modifier` entries carry their own `WeightBlock`. A key or condition read in
-  the block's own stored scope reports `Enclosing`; the field's `read_scope` names that scope.
-  Weight evaluation and operation semantics remain outside this grammar. See
-  [weight blocks](../native/weight-blocks.md).
+  conditions. Nested `modifier`, `scaled_modifier` and `complex_trigger_modifier` entries carry
+  their own `WeightBlock`. A key or condition read in the block's own stored scope reports
+  `Enclosing`; the field's `read_scope` names that scope. When the readers of a key differ but all
+  read one value kind, the key reports that kind with no reader identity. Weight evaluation and
+  operation semantics remain outside this grammar. See [weight blocks](../native/weight-blocks.md).
+- `ReaderKind::Keyword` identifies a value from a fixed set of engine names that the reader stores
+  as the engine's own value, such as `calc` or `mode` in a weight modifier. Its `numeric` is
+  `Known(None)`. `Field.domain` gives the accepted names when it is established; until then a
+  `ReaderSemantics` gap says the domain is unknown.
+- `ReferenceTarget::Triggers` is the collection of trigger commands that `declarations` lists for
+  `DeclarationKind::Trigger`. A lookup in it can name its other facts as unresolved; a gap then says
+  what a name that is no trigger command yields.
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
 - Atlas's published gaps carry a reason and owner category. Repair-ticket mappings live in docs,

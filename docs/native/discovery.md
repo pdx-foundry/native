@@ -12,13 +12,13 @@ check a method in one task.
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v15` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v15`, `command-grammar/v14` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v15`, `command-grammar/v14` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v15`, `command-grammar/v14` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
-| `Field.entry_contexts` in `registry_fields` | `registry-fields/v15` | `callbacks/blocks.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
-| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v15` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
-| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v15` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
+| `Native::registry_fields` | `registry-fields/v16` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v16`, `command-grammar/v14` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v16`, `command-grammar/v14` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v16`, `command-grammar/v14` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.entry_contexts` in `registry_fields` | `registry-fields/v16` | `callbacks/blocks.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v16` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
+| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v16` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
 | `CommandGrammar.durations` | `command-grammar/v14` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
 | `Native::command_grammar` | `command-grammar/v14` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
@@ -86,12 +86,14 @@ failed receiver joins comprise six `command-vtable`, two `factory-terminal` and 
 `instruction`. Other grammar gaps are described on [command grammar](command-grammar.md) and
 [registry fields](registry-fields.md); the full case lists remain in `.local/sdk-549/implementation`.
 
-## Weight blocks (SDK-545)
+## Weight blocks (SDK-545, SDK-705)
 
-`FieldMembers::WeightBlock` gives the grammar of the shared mean-time reader. The method runs the
-member reader for every token value, as the scope methods do, and reads the scope that the owner
-constructor stores in the weight object; the [weight blocks](weight-blocks.md) page has the engine
-facts, the full failure shapes and the pitfalls.
+`FieldMembers::WeightBlock` gives the grammar of the shared mean-time reader and of its
+`modifier`, `scaled_modifier` and `complex_trigger_modifier` entries. The method runs the member
+reader for every token value, as the scope methods do, and runs a key again for every value token
+when the stored value depends on it (a keyword). It reads the scope that the owner constructor
+stores in the weight object; the [weight blocks](weight-blocks.md) page has the engine facts, the
+full failure shapes and the pitfalls.
 
 **Full inventory, M451-hotfix.** The inventory is every root field with a constructor-proven weight
 reader, in all 164 registries.
@@ -102,9 +104,11 @@ reader, in all 164 registries.
 
 Two reader identities cover them: 64 fields share `f08cb83d92484a89`, and
 `common/country_customization.weight` uses the `CAIMTTHChance` variant `fd8c6ad9ff94a8f2`. Every
-field is partial for the same shapes: conversion limits of numeric keys and scoped operands, the
-two readers of `factor`, the `scaled_modifier` and `complex_trigger_modifier` member grammars, and
-the bare value of nested entries. Fifteen weight-named persistent blocks have no constructor-proven
+key of the two entry grammars has an established reader or a narrow gap. Every field is partial for
+the same shapes: conversion limits of numeric keys and scoped operands, the zero-mask read scopes
+of the two entries and of `limit` and `potential`, the keyword domains of `calc` and `mode`, the
+`trigger` lookup facts, `parameters` (read by the trigger that `trigger` names) and whole-field
+repeat behavior. Fifteen weight-named persistent blocks have no constructor-proven
 reader, so the method does not reach them. The stored-scope join resolves the read scope of every
 weight field whose constructors agree; it does not change the registry counts above.
 

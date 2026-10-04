@@ -4,7 +4,7 @@
 weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
 value form, fixed keys, arithmetic operations, how a further operation key is stored, and what other
 keys are; a nested `modifier`, `scaled_modifier` or `complex_trigger_modifier` key carries its own
-`WeightBlock`. Source stamp `registry-fields/v15`. The method is
+`WeightBlock`. Source stamp `registry-fields/v16`. The method is
 `src/engine/analysis/weight_blocks.rs`, bound in `src/binding/binary/weight_blocks.rs` and
 normalized in `src/session/weight_blocks.rs`; its module comment states the acceptance shapes and
 the operation rule. The field's read scope comes from a constructor-stored word that
@@ -65,6 +65,47 @@ cannot reassign op` and replaces the first. `desc` (token `0x2c9f`) is a string.
 goes to `CAndTrigger::ReadMember` in the received scope: `id` is a string, and the rest are trigger
 conditions.
 
+**Scaled modifier.** `CScaledMTTHModifier::ReadMember(CReader&, int)` (`0x100930fb0`); token in
+`w2`, value token at reader `+0x278`.
+
+| Token | Key | Behavior | Answer |
+| --- | --- | --- | --- |
+| `0x2c8d` | `scope` | `CToken(CToken const&)` of the value token, `CEventTarget::CEventTarget(CToken)`, `CEventTarget::operator=` into `+0x28` | `Target` |
+| `0x34ee` | `calc` | the value token is compared with `0x2d36`, `0x34f2`, `0x47d2` and `0x47d3` (`0x47d1` is only a pivot of the compare tree); each stores a byte constant at `+0x29a`; another value tail-calls `CReader::ReportMalformed` | `Keyword` |
+| `0x3fc7` | `limit` | tail call `CTrigger::Read(CReader&, EScopeType)` on `+0x1e0` with scope `0` | `Block`, trigger family |
+| `0x2e2f`, `0x34f3`, `0x34f4` | `add`, `mul`, `div` | `Read(CFixedPoint&)` into `+0x10`, `+0x20`, `+0x18`; `div` of zero logs `scaled_modifier: cant divide by zero` | `FixedPoint` |
+| other | | `CPersistent::ReadMember` of the base at `+8` | rejected |
+
+**Complex trigger modifier.** `CComplexTriggerMTTHModifier::ReadMember(CReader&, int)`
+(`0x10092cfd0`).
+
+| Token | Key | Behavior | Answer |
+| --- | --- | --- | --- |
+| `0x2ca2` | `trigger` | `__assign_external` of the value token's text into `+0x60`, then `CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&)` with the value token; the result goes to `+0x88` | `Reference`, target `Triggers` |
+| `0x3377` | `parameters` | `+0x88` null: logs `specify trigger before parameters`; otherwise a tail branch through vtable slot `+0x30` of the `+0x88` object, with the reader and scope `0` | gap: read by the object that `trigger` stores |
+| `0x3378` | `trigger_scope` | the `scope` event-target chain into `+0x148` | `Target` |
+| `0x399e` | `mode` | `TokenToEnum<EScriptMaths>` on the **value** token, stored at `+0x2e0` | `Keyword` |
+| `0x2d21` | `potential` | tail call `ReadTrigger<CRootTrigger>` on `+0x90` with scope `0` | `Block`, trigger family |
+| `0x2c9f` | `desc` | `Read(CString&, bool)` | `String` |
+| `0x2d5c`, `0x3c59`, `0x2d5d`, `0x2d5e` | `multiplier`, `mult`, `min_value`, `max_value` | `Read(CFixedPoint&)`; the last two set a flag at `+0x2e8` first | `FixedPoint` |
+| other | | `CPersistent::ReadMember` of the base at `+8` | rejected |
+
+`CreateTriggerOrScriptedPlaceholder` searches the trigger database by token and calls the found
+trigger's factory; for a name that no trigger has, it makes a `CScriptedTrigger` with that name.
+`mode` stores `0x10` for a name that the switch does not know, without a diagnostic.
+
+**Entry read entries.** `CScaledMTTHModifier::Read` and `CComplexTriggerMTTHModifier::Read` move
+`GetFileLocationDescription` into the owner (`+0x1b8`, `+0x38`) and call `CPersistent::Read` on the
+base at `+8`. Neither checks the value token, so a bare value is not converted and parsing goes on
+as a block. `CTrigger::Read(CReader&, EScopeType)`, the `modifier` entry's read, logs `Expected "k
+= {", but got "k = v" at <location>` through `CLogger` for a value that is not a block, and then
+reads as a block. All three entries report `scalar: None`.
+
+**Later scope checks.** `CScaledMTTHModifier::ValidateScope` checks the `scope` target chain and then
+`limit` in the target's scope type; `CComplexTriggerMTTHModifier::ValidateScope` checks `potential`
+in the received scope, `trigger_scope`, and the trigger through vtable slot `+0x90`. The method does
+not read these functions; the read scope of `limit` and `potential` stays a zero-mask gap.
+
 **Stored scope.** `CMeanTimeToHappen(EScopeType, CFixedPoint, bool)` stores `x1` (the scope) at
 `+0x30` and `x2` (the default base) at `+0x10`. The council agenda, tradition and tradition
 category constructors pass `4` (country) and `_VHUNDRED`. An omitted `base` keeps that default
@@ -74,8 +115,9 @@ without a diagnostic.
 
 Sixty-five fields in the population of 164 registries have a weight reader: 64 share
 `f08cb83d92484a89` and one uses `fd8c6ad9ff94a8f2`. All are **partial: 0 complete, 65 partial, 0
-failed**; equal identities have equal blocks. The compact selections are in
-`tests/expected/m451/weight-blocks.json`, where field selections refer to them by reader identity.
+failed**; equal identities have equal blocks, for the roots and for the three nested entry readers
+(five identities). The compact selections are in `tests/expected/m451/weight-blocks.json`, where
+field selections refer to them by reader identity.
 The read scope is the stored scope: agenda and tradition `ai_weight` read in `country`. A key or
 condition that reads the block's own stored scope reports `Enclosing`, so the grammar does not
 depend on the owner.
@@ -85,11 +127,16 @@ Failure shapes, by field count:
 | Shape | Fields |
 | --- | ---: |
 | Numeric and scoped-literal conversion limits ([numeric conversion](numeric-conversion.md), [scoped numeric](scoped-numeric.md)) | 65 |
-| `factor` read alternatives do not share one reader | 64 |
-| `scaled_modifier`: `scope` (`weight-call`), `calc` (`weight-acceptance`), `limit` read scope (`zero-mask`), bare value | 65 |
-| `complex_trigger_modifier`: `trigger`, `trigger_scope` (`weight-call`), `parameters` (`branch-value`), `mode` (`weight-enum-argument`), `potential` read scope (`zero-mask`), bare value | 65 |
-| `modifier` entry bare value (`weight-scalar`) | 65 |
+| Zero-mask read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential` | 65 |
+| Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 65 |
+| `trigger` lookup stage and match, and the scripted-trigger placeholder (`ReaderSemantics`) | 65 |
+| `parameters` read by the object that `trigger` stores | 65 |
 | Field repeat behavior (`Repeat behavior or nested fields remain unresolved`) | 65 |
+
+Nine root fields also have a zero-mask read scope of their own, because their owner constructor
+stores scope `0`: the five weight fields of `common/buildings`, `planet_damage` in
+`common/bombardment_stances`, `weight_modifier` in `common/colony_types`, and `random_weight` in
+`common/ethics` and `common/governments/authorities`.
 
 Fifteen fields with weight names are persistent blocks without a constructor-proven reader, so the
 method does not see them: `ai_weight` in `common/federation_laws`, `common/federation_types`,
@@ -102,14 +149,16 @@ method does not see them: `ai_weight` in `common/federation_laws`, `common/feder
 
 ## Gaps
 
-- The `scaled_modifier` and `complex_trigger_modifier` member grammars, and the bare-value form of
-  nested entries, belong to SDK-705; SDK-600 needs them for a complete agenda answer.
-- `factor` keeps both of its readers with an unresolved condition: no new storage-condition
-  support was added, so its reader kind is `Unknown`. SDK-705 owns the decision.
+- `factor` keeps both of its readers with an unresolved condition. Both read a fixed-point value,
+  so the key reports `FixedPoint` with no reader identity.
+- `calc` and `mode` are `Keyword`; their domains stay `Unknown` (SDK-627).
+- The read scope of `limit` and `potential` stays unresolved: the engine reads them with scope mask
+  0, and a zero mask never establishes a scope.
+- `parameters` is read by the trigger that `trigger` names; its grammar is that trigger's, which
+  the method does not follow.
 - Repeat behavior of a whole weight field stays `Unknown`: a repeated block replaces `base` and
   keeps earlier entries.
-- Weight evaluation, operation semantics, the default base value and `calc` or `mode` value domains
-  are outside the method (SDK-627 owns value domains).
+- Weight evaluation, operation semantics and the default base value are outside the method.
 
 ## Pitfalls
 
@@ -117,6 +166,16 @@ method does not see them: `ai_weight` in `common/federation_laws`, `common/feder
   a word written after the switch returned holds the switch's value. A word that holds the same
   value by chance satisfies it, most likely `0` for `weight` and `set`. The parity test checks the
   result against the 19 spellings, the six operand-free operations and the disjoint key sets.
+- **A keyword needs a second pass.** The key pass leaves the value token unknown, so `calc` and
+  `mode` have no accepted shape there. The method reruns only such a key for every value token;
+  the pass costs about a quarter of a second for the whole build. A value that equals the key
+  token is still a value: the switch's role comes from the pass, never from a numeric match, so
+  `mode` is not an operation.
+- **A dependent reader is named, not followed.** `parameters` branches through a function pointer
+  of the object at `+0x88`; the path stops there, and the method names the key whose stored
+  destination is that word.
+- **A bare nested value is not rejected.** `CPersistent::Read` has no scalar branch, so
+  `scalar: None` means that no bare value is read, not that the engine reports one.
 - **The domain is every token value.** The method evaluates each value from zero to the largest
   literal token and the first value after it, as `scopes.rs` does. Sampling only the literal
   tokens would miss an interior value that a compare tree accepts.

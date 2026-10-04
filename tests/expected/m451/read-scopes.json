@@ -69,7 +69,7 @@
       },
       "gaps": [
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",
@@ -80,7 +80,7 @@
           }
         },
         {
-          "detail": "read-scope: zero-mask",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",
@@ -92,7 +92,7 @@
           }
         },
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",
@@ -103,7 +103,7 @@
           }
         },
         {
-          "detail": "read-scope: zero-mask",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",
@@ -206,7 +206,7 @@
       },
       "gaps": [
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",
@@ -217,7 +217,7 @@
           }
         },
         {
-          "detail": "read-scope: zero-mask",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",
@@ -229,7 +229,7 @@
           }
         },
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",
@@ -240,7 +240,7 @@
           }
         },
         {
-          "detail": "read-scope: zero-mask",
+          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "key_path",

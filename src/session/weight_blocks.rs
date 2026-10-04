@@ -1,15 +1,17 @@
 //! Attach shared weight grammar only where the field constructor proved its address point.
 use crate::engine::analysis::{
-    fields::{ReaderJoin, RegistryFieldResult, Value},
+    fields::{ReaderJoin, RegistryFieldResult, RootField, Value},
     numeric::NumericFacts,
     readers,
     references::ReferenceFacts,
     scoped_numeric::Facts as ScopedFacts,
-    weight_blocks::{Grammar, Operand, OtherKeys, WeightBlockFacts},
+    weight_blocks::{Grammar, Nested, Operand, OtherKeys, WeightBlockFacts},
 };
 use crate::{
-    BlockFamily, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject, GrammarProperty,
-    ReadScope, Reader, ReaderKind, ValueShape, WeightBlock, WeightOperation, WeightOtherKeys,
+    BlockFamily, EmptyKey, Field, FieldCondition, FieldMembers, FieldReadOutcome, FieldReference,
+    Gap, GapKind, GapSubject, GrammarProperty, KeyMatch, LookupStage, MissingResult, ReadScope,
+    Reader, ReaderKind, ReferenceLookup, ReferenceTarget, ValueShape, WeightBlock, WeightOperation,
+    WeightOtherKeys,
 };
 use std::collections::BTreeSet;
 
@@ -119,12 +121,45 @@ impl Block<'_> {
         if arguments.is_empty() {
             return GrammarProperty::Known(Vec::new());
         }
-        super::read_scope::normalize_scopes(
-            arguments.into_iter().collect(),
-            self.facts.scope_names,
-            self.subject(None),
+        self.normalize_scopes(arguments.into_iter().collect(), self.subject(None), gaps)
+    }
+
+    /// The read scopes that the scope `arguments` give. The weight readers read some trigger
+    /// blocks with scope mask 0 and check their scope only later, so a zero mask gets its own
+    /// reason.
+    fn normalize_scopes(
+        &self,
+        arguments: Vec<Option<Value>>,
+        subject: GapSubject,
+        gaps: &mut Vec<Gap>,
+    ) -> GrammarProperty<Vec<ReadScope>> {
+        let (zero, other): (Vec<_>, Vec<_>) = arguments
+            .into_iter()
+            .partition(|argument| *argument == Some(Value::Constant(0)));
+        if zero.is_empty() {
+            return super::read_scope::normalize_scopes(
+                other,
+                self.facts.scope_names,
+                subject,
+                gaps,
+            );
+        }
+
+        push(
             gaps,
-        )
+            GapKind::UnresolvedPath,
+            subject.clone(),
+            ZERO_MASK.into(),
+        );
+        if other.is_empty() {
+            return GrammarProperty::Unresolved;
+        }
+        match super::read_scope::normalize_scopes(other, self.facts.scope_names, subject, gaps) {
+            GrammarProperty::Known(scopes) | GrammarProperty::Partial(scopes) => {
+                GrammarProperty::Partial(scopes)
+            }
+            GrammarProperty::Unresolved => GrammarProperty::Unresolved,
+        }
     }
 
     /// The scope that a key or condition of the block is read in. When every key and condition
@@ -145,9 +180,8 @@ impl Block<'_> {
             .filter(|own| matches!(own, Value::Load(..) | Value::EnclosingScope));
         match scope {
             Some(scope) if Some(scope) == own => GrammarProperty::Known(vec![ReadScope::Enclosing]),
-            scope => super::read_scope::normalize_scopes(
+            scope => self.normalize_scopes(
                 vec![scope.and_then(|scope| resolve(scope, words))],
-                self.facts.scope_names,
                 subject,
                 gaps,
             ),
@@ -166,12 +200,14 @@ impl Block<'_> {
             } else {
                 GapKind::UnresolvedPath
             };
-            push(
-                gaps,
-                kind,
-                self.subject(key.as_deref()),
-                format!("The weight block analysis stopped at {}.", stop.reason),
-            );
+            let source = key
+                .as_ref()
+                .and_then(|key| grammar.dependent_readers.get(key));
+            let detail = match source {
+                Some(source) => format!("The value is read by the object that `{source}` stores."),
+                None => format!("The weight block analysis stopped at {}.", stop.reason),
+            };
+            push(gaps, kind, self.subject(key.as_deref()), detail);
         }
 
         let keys = self.fixed_keys(grammar, words, gaps);
@@ -249,11 +285,33 @@ impl Block<'_> {
         );
         for key in &mut keys {
             let subject = self.subject(Some(&key.name));
-            key.read_scope = match grammar.key_scopes.get(&key.name) {
-                None if key.shape.value == ValueShape::Scalar => GrammarProperty::Known(Vec::new()),
-                scope => self.scope(grammar, scope, words, subject.clone(), gaps),
+            let stopped = grammar
+                .stops
+                .iter()
+                .any(|(stop, _)| stop.as_deref() == Some(key.name.as_str()));
+            let nested = grammar.nested.get(&key.name);
+            let entry = nested.map(|nested| (self.child(&key.name), nested));
+            let entry_words =
+                |offset: u64| nested.and_then(|nested| nested.words.get(&offset).copied());
+            key.read_scope = match (grammar.key_scopes.get(&key.name), &entry) {
+                // The stop's gap says why the key's scope is unknown.
+                _ if stopped => GrammarProperty::Unresolved,
+                // An entry read with no scope argument reads in the scopes of its own keys.
+                (
+                    None,
+                    Some((
+                        block,
+                        Nested {
+                            grammar: Ok(child), ..
+                        },
+                    )),
+                ) => block.read_scope(child, &entry_words, gaps),
+                (None, None) if key.shape.value == ValueShape::Scalar => {
+                    GrammarProperty::Known(Vec::new())
+                }
+                (scope, _) => self.scope(grammar, scope, words, subject.clone(), gaps),
             };
-            if let Some(nested) = grammar.nested.get(&key.name) {
+            if let Some((block, nested)) = entry {
                 let id =
                     super::fields::concrete_reader_id(&nested.reader.read, &nested.reader.member);
                 let concrete = |reader: &mut Reader| {
@@ -267,20 +325,11 @@ impl Block<'_> {
                     }
                 }
                 key.members = match &nested.grammar {
-                    Ok(child) => {
-                        let mut path = self.path.clone();
-                        path.push(key.name.clone());
-                        let block = Block {
-                            facts: self.facts,
-                            path,
-                        };
-                        let entry_words = |offset: u64| nested.words.get(&offset).copied();
-                        FieldMembers::WeightBlock(Box::new(block.normalize(
-                            child,
-                            &entry_words,
-                            gaps,
-                        )))
-                    }
+                    Ok(child) => FieldMembers::WeightBlock(Box::new(block.normalize(
+                        child,
+                        &entry_words,
+                        gaps,
+                    ))),
                     Err(stop) => {
                         push(
                             gaps,
@@ -292,7 +341,32 @@ impl Block<'_> {
                     }
                 };
             }
-            if key.reader.kind == ReaderKind::Unknown {
+
+            let root = grammar.fields.iter().find(|field| field.name == key.name);
+            agree_on_kind(key);
+            if root.is_some_and(compares_inline) {
+                clear_identity(key);
+            }
+            if key.reader.kind == ReaderKind::Keyword {
+                push(
+                    gaps,
+                    GapKind::ReaderSemantics,
+                    subject.clone(),
+                    "The keyword domain is not established.".into(),
+                );
+            }
+            if root.is_some_and(looks_up_trigger) {
+                key.reference = FieldReference::Lookups(vec![trigger_lookup()]);
+                push(
+                    gaps,
+                    GapKind::ReaderSemantics,
+                    subject.clone(),
+                    "A name that no trigger command has becomes a scripted-trigger placeholder; \
+                     when the lookup runs and how it matches are not established."
+                        .into(),
+                );
+            }
+            if key.reader.kind == ReaderKind::Unknown && !stopped {
                 push(
                     gaps,
                     GapKind::UnresolvedReader,
@@ -303,6 +377,17 @@ impl Block<'_> {
         }
         super::numeric::fields(&mut keys, self.facts.numeric, &self.path, gaps);
         keys
+    }
+
+    /// The block of the nested entry at `key`.
+    fn child(&self, key: &str) -> Block<'_> {
+        let mut path = self.path.clone();
+        path.push(key.to_owned());
+
+        Block {
+            facts: self.facts,
+            path,
+        }
     }
 
     fn operand(
@@ -334,6 +419,68 @@ impl Block<'_> {
             gaps,
         );
         reader
+    }
+}
+
+/// Why a block read with scope mask 0 has no established read scope.
+const ZERO_MASK: &str = "read-scope: zero-mask: the engine reads this block with scope mask 0.";
+
+/// Give the key the value kind that every read alternative shares, when its readers differ but
+/// agree on the kind, such as a fixed-point value read either way. The reader identity stays
+/// unknown.
+fn agree_on_kind(key: &mut Field) {
+    if key.reader.kind != ReaderKind::Unknown {
+        return;
+    }
+
+    let kinds: BTreeSet<_> = key
+        .read
+        .iter()
+        .map(|alternative| match &alternative.outcome {
+            FieldReadOutcome::Read { reader, .. } => Some(reader.kind),
+            _ => None,
+        })
+        .collect();
+    if let Ok([Some(kind)]) = <[_; 1]>::try_from(kinds.into_iter().collect::<Vec<_>>())
+        && kind != ReaderKind::Unknown
+    {
+        key.reader.kind = kind;
+    }
+}
+
+/// Whether the member reader itself compares the key's value with fixed names, so no shared
+/// reader reads it.
+fn compares_inline(field: &RootField) -> bool {
+    field.readers.iter().any(|join| {
+        matches!(join, ReaderJoin::Stored { callee, kind: ReaderKind::Keyword, .. } if readers::is_member(callee))
+    })
+}
+
+/// Remove the reader identity of a key that no shared reader reads.
+fn clear_identity(key: &mut Field) {
+    key.reader.id = None;
+    for alternative in &mut key.read {
+        if let FieldReadOutcome::Read { reader, .. } = &mut alternative.outcome {
+            reader.id = None;
+        }
+    }
+}
+
+fn looks_up_trigger(field: &RootField) -> bool {
+    field.readers.iter().any(|join| {
+        matches!(join, ReaderJoin::Stored { callee, .. } if callee == readers::TRIGGER_LOOKUP)
+    })
+}
+
+/// The trigger lookup of a key's value. Only its collection is established.
+fn trigger_lookup() -> ReferenceLookup {
+    ReferenceLookup {
+        condition: FieldCondition::Always,
+        target: ReferenceTarget::Triggers,
+        stage: LookupStage::Unresolved,
+        key_match: KeyMatch::Unresolved,
+        empty_key: EmptyKey::Unresolved,
+        on_missing: MissingResult::Unresolved,
     }
 }
 
@@ -370,5 +517,115 @@ fn push(gaps: &mut Vec<Gap>, kind: GapKind, subject: GapSubject, detail: String)
     };
     if !gaps.contains(&gap) {
         gaps.push(gap);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{FieldDomain, FieldReadAlternative, FieldShape, ReaderId, RepeatBehavior};
+
+    fn reader(kind: ReaderKind, callee: &str) -> Reader {
+        Reader {
+            numeric: GrammarProperty::Unresolved,
+            scoped_operand: GrammarProperty::Unresolved,
+            id: Some(ReaderId::from_callee(callee)),
+            kind,
+            family: BlockFamily::NotApplicable,
+        }
+    }
+
+    /// A scalar key read by each of `readers` on its own path.
+    fn key(readers: Vec<Reader>) -> Field {
+        let shape = FieldShape {
+            value: ValueShape::Scalar,
+            repeat: RepeatBehavior::Replace,
+        };
+        Field {
+            name: "factor".into(),
+            reader: Reader {
+                id: None,
+                kind: ReaderKind::Unknown,
+                ..readers[0].clone()
+            },
+            shape,
+            read: readers
+                .into_iter()
+                .map(|reader| FieldReadAlternative {
+                    condition: FieldCondition::Unresolved,
+                    outcome: FieldReadOutcome::Read { reader, shape },
+                })
+                .collect(),
+            members: FieldMembers::None,
+            domain: FieldDomain::Unknown,
+            uses: Vec::new(),
+            entry_contexts: Vec::new(),
+            read_scope: GrammarProperty::Known(Vec::new()),
+            reference: FieldReference::NotEstablished,
+        }
+    }
+
+    #[test]
+    fn readers_that_agree_on_the_kind_give_the_key_that_kind_without_an_identity() {
+        let mut factor = key(vec![
+            reader(ReaderKind::FixedPoint, "CReader::Read(CFixedPoint&)"),
+            reader(ReaderKind::FixedPoint, "CToken::GetFloat() const"),
+        ]);
+
+        agree_on_kind(&mut factor);
+
+        assert_eq!(factor.reader.kind, ReaderKind::FixedPoint);
+        assert_eq!(factor.reader.id, None);
+    }
+
+    #[test]
+    fn readers_of_different_kinds_leave_the_key_unknown() {
+        let mut mixed = key(vec![
+            reader(ReaderKind::FixedPoint, "CReader::Read(CFixedPoint&)"),
+            reader(ReaderKind::Integer, "CToken::GetInt() const"),
+        ]);
+
+        agree_on_kind(&mut mixed);
+
+        assert_eq!(mixed.reader.kind, ReaderKind::Unknown);
+    }
+
+    #[test]
+    fn an_unresolved_alternative_leaves_the_key_unknown() {
+        let mut partial = key(vec![reader(
+            ReaderKind::FixedPoint,
+            "CReader::Read(CFixedPoint&)",
+        )]);
+        partial.read.push(FieldReadAlternative {
+            condition: FieldCondition::Unresolved,
+            outcome: FieldReadOutcome::Unresolved,
+        });
+
+        agree_on_kind(&mut partial);
+
+        assert_eq!(partial.reader.kind, ReaderKind::Unknown);
+    }
+
+    #[test]
+    fn a_keyword_compared_inside_the_member_reader_has_no_reader_identity() {
+        let stored = |callee: &str| RootField {
+            name: "calc".into(),
+            token: 41,
+            constructor: 0,
+            paths: Vec::new(),
+            readers: vec![ReaderJoin::Stored {
+                callee: callee.into(),
+                kind: ReaderKind::Keyword,
+                destination: 0x298,
+                repeat: crate::RepeatBehavior::Replace,
+            }],
+        };
+
+        assert!(compares_inline(&stored(
+            "Modifier::ReadMember(CReader&, int)"
+        )));
+        assert!(!compares_inline(&stored(
+            "EScriptMaths TokenToEnum<EScriptMaths>(int const&)"
+        )));
     }
 }

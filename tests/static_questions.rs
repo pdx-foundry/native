@@ -55,8 +55,8 @@ fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
 #[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     use pdx_native::{
-        BlockFamily, Field, FieldMembers, GrammarProperty, ReadScope, RepeatBehavior, WeightBlock,
-        WeightOtherKeys,
+        BlockFamily, Field, FieldMembers, FieldReference, GrammarProperty, ReadScope,
+        ReferenceTarget, RepeatBehavior, WeightBlock, WeightOtherKeys,
     };
     use std::collections::BTreeSet;
 
@@ -71,7 +71,7 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
             check_weight_identity(&mut variants, &field).unwrap();
         }
     }
-    assert_eq!(variants.len(), 2);
+    assert_eq!(variants.len(), 5);
 
     let weight = |registry: &str| -> Field {
         let answer = native.registry_fields(registry).unwrap();
@@ -188,6 +188,55 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     assert_eq!(
         entry.other_keys,
         WeightOtherKeys::Triggers(GrammarProperty::Known(vec![ReadScope::Enclosing]))
+    );
+
+    // Independent expectations from the hand-read scaled and complex member readers.
+    assert_eq!(kind(&top, "factor"), Some(ReaderKind::FixedPoint));
+    let entry_keys = |name: &str| -> Vec<Field> {
+        let key = top.iter().find(|key| key.name == name).unwrap();
+        let FieldMembers::WeightBlock(entry) = &key.members else {
+            panic!("{:?}", key.members);
+        };
+        assert_eq!(entry.scalar, GrammarProperty::Known(None), "{name}");
+        keys(entry)
+    };
+    let scaled = entry_keys("scaled_modifier");
+    assert_eq!(kind(&scaled, "scope"), Some(ReaderKind::Target));
+    assert_eq!(kind(&scaled, "calc"), Some(ReaderKind::Keyword));
+    let complex = entry_keys("complex_trigger_modifier");
+    assert_eq!(kind(&complex, "trigger_scope"), Some(ReaderKind::Target));
+    assert_eq!(kind(&complex, "mode"), Some(ReaderKind::Keyword));
+    let trigger = complex.iter().find(|key| key.name == "trigger").unwrap();
+    assert_eq!(trigger.reader.kind, ReaderKind::Reference);
+    assert!(matches!(
+        &trigger.reference,
+        FieldReference::Lookups(lookups)
+            if lookups.len() == 1 && lookups[0].target == ReferenceTarget::Triggers
+    ));
+
+    let gaps = native
+        .registry_fields("common/council_agendas")
+        .unwrap()
+        .gaps;
+    let details = |path: &[&str]| -> Vec<String> {
+        gaps.iter()
+            .filter(|gap| {
+                let subject = serde_json::to_value(&gap.subject).unwrap();
+                subject["path"] == serde_json::json!(path)
+            })
+            .map(|gap| gap.detail.clone())
+            .collect()
+    };
+    let zero_mask = "read-scope: zero-mask: the engine reads this block with scope mask 0.";
+    for path in [
+        ["ai_weight", "scaled_modifier", "limit"],
+        ["ai_weight", "complex_trigger_modifier", "potential"],
+    ] {
+        assert_eq!(details(&path), [zero_mask], "{path:?}");
+    }
+    assert_eq!(
+        details(&["ai_weight", "complex_trigger_modifier", "parameters"]),
+        ["The value is read by the object that `trigger` stores."]
     );
 }
 

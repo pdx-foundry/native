@@ -50,6 +50,7 @@ fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimit
         | ReaderKind::String
         | ReaderKind::Reference
         | ReaderKind::Target
+        | ReaderKind::Keyword
         | ReaderKind::Block => GrammarProperty::Known(None),
         _ => GrammarProperty::Unresolved,
     };
@@ -365,6 +366,28 @@ mod tests {
         };
         attach_reader_facts(&mut reader, &NumericFacts::default());
         assert_eq!(reader.scoped_operand, GrammarProperty::Unresolved);
+    }
+
+    #[test]
+    fn a_keyword_reader_and_its_alternatives_have_no_numeric_conversion() {
+        let reader = Reader {
+            id: None,
+            kind: ReaderKind::Keyword,
+            family: crate::BlockFamily::NotApplicable,
+            numeric: GrammarProperty::Unresolved,
+            scoped_operand: GrammarProperty::Unresolved,
+        };
+        let mut values = [numeric_field(reader)];
+        let mut gaps = Vec::new();
+
+        fields(&mut values, &NumericFacts::default(), &[], &mut gaps);
+
+        assert_eq!(values[0].reader.numeric, GrammarProperty::Known(None));
+        assert!(matches!(
+            &values[0].read[0].outcome,
+            FieldReadOutcome::Read { reader, .. } if reader.numeric == GrammarProperty::Known(None)
+        ));
+        assert!(gaps.is_empty(), "{gaps:?}");
     }
 
     #[test]
