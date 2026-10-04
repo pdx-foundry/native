@@ -44,6 +44,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "a430a4b92eb2c8f6",
    "kind": "Block",
@@ -149,6 +161,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "c61abc171edc30aa",
    "kind": "ScopedNumeric",
@@ -287,6 +302,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer",
@@ -400,6 +418,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "d7a95ab8c8d44489",
    "kind": "Integer",
@@ -506,6 +527,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
@@ -579,6 +612,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
@@ -642,6 +687,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "a430a4b92eb2c8f6",
    "kind": "Block",
@@ -689,6 +746,7 @@
     }
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
@@ -736,6 +794,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "ae2bd2a2d5591e04",
    "kind": "Reference",
@@ -800,6 +861,7 @@
     }
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": "5a74c67fe5a4adf9",
    "kind": "Block",

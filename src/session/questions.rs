@@ -351,6 +351,13 @@ impl Native {
         super::modifier_blocks::attach(&mut value, result, facts.modifiers, references, &mut gaps);
         super::numeric::fields(&mut value, facts.numeric, &[], &mut gaps);
         super::scoped_numeric::fields(&mut value, result, facts.scoped, facts.numeric, &mut gaps);
+        super::read_scope::registry_fields(
+            &mut value,
+            result,
+            facts.blocks.scope_names.as_deref(),
+            &[],
+            &mut gaps,
+        );
         super::field_entries::attach(&mut value, result, registry, owner, facts.blocks, &mut gaps);
         Answer {
             value,

@@ -12,15 +12,15 @@ check a method in one task.
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v13` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v13`, `command-grammar/v13` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v13`, `command-grammar/v13` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v13`, `command-grammar/v13` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
-| `Field.entry_contexts` in `registry_fields` | `registry-fields/v13` | `callbacks/blocks.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
-| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v13` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
-| `CommandGrammar.durations` | `command-grammar/v13` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
+| `Native::registry_fields` | `registry-fields/v14` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v14`, `command-grammar/v14` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v14`, `command-grammar/v14` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v14`, `command-grammar/v14` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.entry_contexts` in `registry_fields` | `registry-fields/v14` | `callbacks/blocks.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v14` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
+| `CommandGrammar.durations` | `command-grammar/v14` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v2` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v13` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v14` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -31,3 +31,56 @@ check a method in one task.
 | `Native::defines` | `defines/v1` | `defines.rs` | [Defines](engine-commands.md#defines) |
 | `Native::modifier_families` | `modifier-families/v3` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `families/strings.rs` | [Generation calls and roots](modifier-families.md#engine-code-m45-release) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
+
+## Read-time block scopes (SDK-549)
+
+`Field.read_scope` and `CommandGrammar.child_scopes` supply read-time `this`. Atlas uses them
+for `replace_scopes.this` and command `push_scope`; evaluation `entry_contexts` stays separate
+under the [consumer rule](../specs/native.md). The method lives in `grammar/read_scope.rs`,
+`fields/member.rs` and `src/session/read_scope.rs`.
+
+**Assumption: outer `Read` passes its incoming scope unchanged to `ReadMember`.** On M451-hotfix
+(`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`), hand-read samples show
+`CEffect::Read` and `CTrigger::Read` keeping the `x2` parameter in `x20` and passing it in `x3`
+to member slot `+0x18`. The root trigger/effect template readers pass the registry's scope to
+virtual `Read`. Member instructions still determine whether each child inherits that scope or
+receives an explicit set; no target-getter mask or config value produces an answer.
+
+**Checks.** Parity covers `if`, `else`, `else_if`, `hidden_effect`, `and`, `or` and `not`, plus
+scope-changing army readers. Independent expectations from cwtools-stellaris-config revision
+`85747602a614ad7daa8cc66453777ecb023463a8` cover the three effect conditionals without scope
+replacement, `any_owned_army` and `count_owned_army.limit` with `push_scope = army`, and tradition
+`possible` and `on_enabled` with `replace_scopes.this = country`. Scope IDs also join to link
+outputs. A contradictory reader requires a hand-read and an explicit unresolved result or a
+narrow repair before support is claimed; it is not a reason to silently extend the assumption.
+Seven config expectations agree (the three conditionals and four explicit scope assignments).
+One additional comparison disagrees: config `any_owned_planet` says `planet`, but its member
+reader explicitly passes mask `0x10000000000`, which names `colony`. Keep the engine result.
+This member-level replacement does not contradict the outer-reader assumption.
+
+**Limits.** Multiple reader paths retain separate scope sets. Zero masks, unnamed bits, missing
+boundaries and memory-loaded scopes remain gaps, including `every_owned_army`: its factory
+stores the army mask, but the method does not establish that value at member entry. Nested fields
+use the same rules and report gaps at their full key path. The removed strict forwarding proof
+and its string-helper findings are preserved in `.local/sdk-549/implementation/strict-forwarding-retained`.
+An unfinished member walk also keeps each established family's scope alternatives partial.
+
+The focused file-load fixture confirms the engine-selected country scope for a tradition trigger
+and effect. Inline fixture validation also passes. File-load diagnostics use the bound log hooks
+without waiting for post-load validation (`observe-fixture/v7`). The broader control fixtures
+captured country diagnostics but did not close their post-load window on this installation.
+
+**Full inventory, M451-hotfix.** Counts describe the whole public answer, including other grammar
+properties. Failed command cases lack a receiver join; their public answers remain partial.
+
+| Inventory | Total | Complete | Partial | Failed |
+| --- | ---: | ---: | ---: | ---: |
+| Registries | 164 | 8 | 156 | 0 |
+| Effects | 1,074 | 146 | 921 | 7 |
+| Triggers | 1,096 | 119 | 975 | 2 |
+
+The 1,564 registry fields have scope gaps for unknown arguments and zero masks. Command scope
+gaps are unknown arguments, memory-loaded scopes and missing child-family boundaries. The nine
+failed receiver joins comprise six `command-vtable`, two `factory-terminal` and one unsupported
+`instruction`. Other grammar gaps are described on [command grammar](command-grammar.md) and
+[registry fields](registry-fields.md); the full case lists remain in `.local/sdk-549/implementation`.

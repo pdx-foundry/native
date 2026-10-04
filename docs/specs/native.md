@@ -109,6 +109,21 @@ for contexts and scope types.
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
   storage. `Reader.scoped_operand` reports partial routing forms. These facts do not claim a
   successful lookup or an evaluated number.
+- `Field.read_scope` gives the read-time `this` scope alternatives for a block. `Types` is a set
+  from one reader path; multiple alternatives retain different read-time entry paths. `Enclosing`
+  means equality with the parent's scope, never `Any`. A known empty list means the field does
+  not read a block. Zero masks and unknown arguments remain unresolved. This is separate from
+  evaluation `entry_contexts` and does not prove runtime availability.
+- Atlas uses `read_scope` for a registry block's `replace_scopes.this` comparison, and
+  `child_scopes` or a named child's `read_scope` for command `push_scope`. It uses evaluation
+  `entry_contexts` for `root`, `from` and `prev` under the self-link rule. If read-time and
+  evaluation `this` differ, retain both and report the difference; do not merge them or replace
+  the read-time answer. An unresolved read-time scope stays unresolved even when evaluation
+  `this` is known. Config expectations are validation inputs only, never inputs to Native.
+- `CommandGrammar.child_scopes` associates read-time scope alternatives with each dispatched
+  command family. Named keys keep their own `Field.read_scope`; for example, an iterator's
+  `limit` can differ from its other child keys. Scope IDs join to `scopes` and matching
+  `scope_links` outputs without interpreting display names.
 - `CommandGrammar.durations` groups child keys that set one duration count by their reader code.
   Each group gives the keys, factors, combination rule (`ScaledAtRead` or `SharedFactor`), and
   omitted count. Consumers, expiry dates and update frequency are outside the API.

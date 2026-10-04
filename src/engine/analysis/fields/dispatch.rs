@@ -21,6 +21,7 @@ const MAX_TABLE_ENTRIES: usize = 1024;
 /// Executable inputs shared by registry fields and command member dispatch.
 #[derive(Clone)]
 pub(crate) struct DispatchInput<'a> {
+    pub scope: Option<Value>,
     functions: Vec<FunctionView<'a>>,
     key_readers: &'a super::KeyReaders,
     pub symbols: &'a [Symbol],
@@ -52,6 +53,7 @@ impl<'a> DispatchInput<'a> {
         key_readers: &'a super::KeyReaders,
     ) -> Self {
         Self {
+            scope: None,
             key_readers,
             functions: symbols
                 .iter()
@@ -797,6 +799,7 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
     let root = format!("{owner}::ReadMember(CReader&, int)");
     explore_member(
         &DispatchInput {
+            scope: None,
             key_readers: &input.key_readers,
             functions: input.functions.iter().map(FunctionView::from).collect(),
             symbols: &input.symbols,
@@ -825,7 +828,7 @@ fn explore_member_with_wrapped_owner(
     wrapped_owner: Option<(i64, i64)>,
     depth: usize,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    let initial = State {
+    let mut initial = State {
         stack: BTreeMap::new(),
         serializer: None,
         copied_tokens: BTreeSet::new(),
@@ -848,6 +851,11 @@ fn explore_member_with_wrapped_owner(
         path: vec![],
         table_case: None,
     };
+    if root.ends_with(", EScopeType)")
+        && let Some(scope) = &input.scope
+    {
+        initial.registers.insert("x3".into(), scope.clone());
+    }
     let Some((entry, rows)) = decode_root(input, root) else {
         let missing = Unresolved::new("root-function");
         return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);

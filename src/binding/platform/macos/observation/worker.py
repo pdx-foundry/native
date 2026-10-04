@@ -333,21 +333,26 @@ class FixtureObserver:
         self.diagnostics = 0
         self.active_reader = None
 
-    def validation_hooks(self):
-        if not self.validation:
-            return []
+    def diagnostic_hooks(self):
         binding = self.bindings['validation']
+        if not self.diagnostics_requested or binding is None:
+            return []
         return [
             (protocol.HOOK['fixture_log'], binding['log_entry']),
             (protocol.HOOK['fixture_unformatted_log'], binding['unformatted_log_entry']),
             (protocol.HOOK['fixture_stream_log'], binding['stream_log_entry']),
             (protocol.HOOK['fixture_sourced_log'], binding['sourced_log_entry']),
-            (protocol.HOOK['fixture_validated'], binding['complete_entry']),
         ]
+
+    def validation_hooks(self):
+        if not self.validation:
+            return []
+        return [(protocol.HOOK['fixture_validated'], self.bindings['validation']['complete_entry'])]
 
     def hooks(self):
         load_entry = self.outcome_binding['load_entry']
         hooks = [(protocol.HOOK['fixture_load'], load_entry)]
+        hooks.extend(self.diagnostic_hooks())
         hooks.extend(self.validation_hooks())
         if self.questions and self.outcome_binding:
             hooks.extend([
@@ -618,7 +623,7 @@ class FixtureObserver:
             self.finish_diagnostics(thread)
         self.emit('load-returned', thread, file=self.config['file'])
         if self.validation:
-            retained = {name for name, _ in self.validation_hooks()}
+            retained = {name for name, _ in self.diagnostic_hooks() + self.validation_hooks()}
             retained.update([protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']])
             for key, hook in breakpoints.items():
                 if key.startswith(protocol.HOOK['fixture']) and key not in retained:
@@ -717,6 +722,7 @@ class InlineFixtureObserver(FixtureObserver):
                 (protocol.HOOK['fixture_malformed'], binding['malformed_entry']),
                 (protocol.HOOK['fixture_unexpected'], binding['unexpected_entry']),
             ])
+        hooks.extend(self.diagnostic_hooks())
         return hooks
 
     def begin_file(self, frame, process, thread):
@@ -903,6 +909,8 @@ class InlineFixtureObserver(FixtureObserver):
     def callback(self, frame, name):
         process = frame.GetThread().GetProcess()
         thread = frame.GetThread().GetThreadID()
+        if name in {hook for hook, _ in self.diagnostic_hooks()}:
+            return super().callback(frame, name)
         if self.loading and not self.returned and thread != self.thread:
             raise RuntimeError('nested fixture callback moved to another thread')
         if name == protocol.HOOK['fixture_load']:

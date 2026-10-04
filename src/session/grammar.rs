@@ -174,6 +174,7 @@ pub(crate) fn normalize(
             family: BlockFamily::Unknown,
         },
         child_families: GrammarProperty::Unresolved,
+        child_scopes: GrammarProperty::Unresolved,
         fixed_keys: GrammarProperty::Unresolved,
         numeric_keys: GrammarProperty::Unresolved,
         ordering: GrammarProperty::Unresolved,
@@ -431,6 +432,9 @@ pub(crate) fn normalize(
     if !matches!(value.targets, GrammarProperty::Known(_)) {
         gap(GapKind::UnresolvedPath, "target-arguments".into());
     }
+    if let Ok(result) = result {
+        super::read_scope::grammar(&mut value, result, name, &mut key_gaps);
+    }
     if !properties_known(&value) {
         gap(
         GapKind::ReaderSemantics,
@@ -438,7 +442,7 @@ pub(crate) fn normalize(
             .into(),
     );
     }
-    gap(GapKind::OutsideMethod, "Required keys, key combinations, defaults, value domains, occurrence limits, operators, child scopes, numeric grammar, weights and runtime meaning are outside this method.".into());
+    gap(GapKind::OutsideMethod, "Required keys, key combinations, defaults, value domains, occurrence limits, operators, numeric grammar, weights and runtime meaning are outside this method.".into());
     for key_gap in key_gaps {
         if !gaps.contains(&key_gap) {
             gaps.push(key_gap);
@@ -530,6 +534,7 @@ fn properties_known(value: &CommandGrammar) -> bool {
     matches!(value.forms, GrammarProperty::Known(_))
         && matches!(value.targets, GrammarProperty::Known(_))
         && matches!(value.child_families, GrammarProperty::Known(_))
+        && matches!(value.child_scopes, GrammarProperty::Known(_))
         && matches!(value.fixed_keys, GrammarProperty::Known(_))
         && matches!(value.numeric_keys, GrammarProperty::Known(_))
         && matches!(value.ordering, GrammarProperty::Known(_))
@@ -699,6 +704,7 @@ mod tests {
             tail: true,
         };
         grammar::GrammarResult {
+            read_scopes: Default::default(),
             durations: Default::default(),
             scoped_destinations: Default::default(),
             state_traces: Default::default(),
@@ -964,6 +970,82 @@ mod tests {
     }
 
     #[test]
+    fn read_scope_keeps_a_wide_unknown_alternative_to_a_scalar_field() {
+        use crate::engine::analysis::fields::{PathOutcome, TokenPath};
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result.read_scopes.paths = result.fields.paths.clone();
+        result.read_scopes.paths.push(TokenPath {
+            domain: [6, 8],
+            conditions: vec![],
+            instructions: vec![],
+            terminal: 0,
+            outcome: PathOutcome::Gap(Unresolved::new("unfollowed-block")),
+        });
+        let answer = normalize(
+            Ok(&result),
+            "sample",
+            crate::BuildId("authored".into()),
+            &facts(scan_at(0xa8)),
+        );
+        let GrammarProperty::Partial(keys) = answer.value.fixed_keys else {
+            panic!()
+        };
+        assert_eq!(keys[0].read_scope, GrammarProperty::Unresolved);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.detail == "read-scope: scope-argument")
+        );
+    }
+
+    #[test]
+    fn nested_read_scopes_normalize_scalars_and_name_block_gaps_by_full_path() {
+        use crate::engine::analysis::fields::{ReaderJoin, Value};
+        let mut child = keyed(Ok(INITIALIZER.into()));
+        let scalar = child.fields.fields[0].clone();
+        let mut block = scalar.clone();
+        block.name = "limit".into();
+        block.token = 9;
+        block.readers = vec![ReaderJoin::Joined {
+            callee: "CTrigger::Read(CReader&, EScopeType)".into(),
+            arguments: [("x2".into(), Value::Constant(0))].into(),
+            tail: true,
+        }];
+        child.fields.fields.push(block);
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result
+            .nested
+            .insert("district_type".into(), Box::new(child));
+        let answer = normalize(
+            Ok(&result),
+            "sample",
+            crate::BuildId("authored".into()),
+            &facts(scan_at(0xa8)),
+        );
+        let GrammarProperty::Partial(keys) = answer.value.fixed_keys else {
+            panic!()
+        };
+        let crate::FieldMembers::Fields(children) = &keys[0].members else {
+            panic!()
+        };
+        assert_eq!(children[0].read_scope, GrammarProperty::Known(vec![]));
+        assert_eq!(children[1].read_scope, GrammarProperty::Unresolved);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.detail == "read-scope: zero-mask"
+                    && gap.subject
+                        == Some(GapSubject::key_path(vec![
+                            "district_type".into(),
+                            "limit".into()
+                        ])))
+        );
+        assert_eq!(answer.completeness, crate::Completeness::Partial);
+    }
+
+    #[test]
     fn control_17_changed_slots_no_longer_join_the_old_field() {
         let build = crate::BuildId("authored".into());
         let answer = normalize(
@@ -1142,6 +1224,7 @@ mod tests {
     #[test]
     fn nested_numeric_grammar_reports_each_gap_once() {
         let make = |numeric| grammar::GrammarResult {
+            read_scopes: Default::default(),
             durations: Default::default(),
             scoped_destinations: Default::default(),
             state_traces: Default::default(),
@@ -1187,7 +1270,15 @@ mod tests {
             crate::BuildId("authored".into()),
             &facts(Initialization::NoLookup),
         );
-        assert_eq!(answer.gaps.len(), 4);
+        assert_eq!(answer.gaps.len(), 5);
+        assert_eq!(
+            answer
+                .gaps
+                .iter()
+                .filter(|gap| gap.detail == "read-scope: child-family-boundary")
+                .count(),
+            1
+        );
         assert_eq!(
             answer
                 .gaps
@@ -1205,7 +1296,9 @@ mod tests {
                 answer
                     .gaps
                     .iter()
-                    .filter(|gap| gap.kind == kind && gap.detail != "target-arguments")
+                    .filter(|gap| gap.kind == kind
+                        && gap.detail != "target-arguments"
+                        && !gap.detail.starts_with("read-scope:"))
                     .count(),
                 1
             );
@@ -1262,6 +1355,7 @@ mod tests {
             }],
         };
         let result = grammar::GrammarResult {
+            read_scopes: Default::default(),
             durations: Default::default(),
             scoped_destinations: Default::default(),
             state_traces: Default::default(),
@@ -1311,6 +1405,7 @@ mod tests {
     #[test]
     fn concrete_identity_does_not_invent_a_kind_or_empty_grammar() {
         let result = grammar::GrammarResult {
+            read_scopes: Default::default(),
             durations: Default::default(),
             scoped_destinations: Default::default(),
             state_traces: Default::default(),
@@ -1371,6 +1466,40 @@ mod tests {
         assert_eq!(answer.value.fixed_keys, GrammarProperty::Unresolved);
         assert_eq!(answer.value.numeric_keys, GrammarProperty::Unresolved);
         assert_eq!(answer.value.ordering, GrammarProperty::Unresolved);
+    }
+
+    #[test]
+    fn unfinished_member_paths_keep_each_family_scope_partial() {
+        use crate::engine::analysis::fields::{PathOutcome, TokenPath, Value};
+
+        let mut result = keyed(Ok(INITIALIZER.into()));
+        result.read_scopes.children = vec![(BlockFamily::Effect, Some(Value::EnclosingScope))];
+        result.read_scopes.paths = vec![TokenPath {
+            domain: [0, i64::MAX],
+            conditions: vec![],
+            instructions: vec![],
+            terminal: 0,
+            outcome: PathOutcome::Gap(Unresolved::new("read-scope-path-limit")),
+        }];
+        let mut answer = normalize(
+            Ok(&result),
+            "example",
+            crate::BuildId("test".into()),
+            &ReferenceFacts::default(),
+        );
+        let mut gaps = Vec::new();
+        super::super::read_scope::grammar(&mut answer.value, &result, "example", &mut gaps);
+        assert_eq!(
+            answer.value.child_scopes,
+            GrammarProperty::Partial(vec![crate::ChildScope {
+                family: BlockFamily::Effect,
+                scope: GrammarProperty::Partial(vec![crate::ReadScope::Enclosing]),
+            }])
+        );
+        assert!(
+            gaps.iter()
+                .any(|gap| gap.detail == "read-scope: scope-argument")
+        );
     }
 
     /// The durations of `result` after normalization, with the duration gaps.

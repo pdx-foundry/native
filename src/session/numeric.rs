@@ -220,6 +220,7 @@ mod tests {
 
             uses: Vec::new(),
             entry_contexts: Vec::new(),
+            read_scope: crate::GrammarProperty::Unresolved,
             reference: FieldReference::NotEstablished,
         }
     }
@@ -284,6 +285,7 @@ mod tests {
                 fixed_keys: GrammarProperty::Known(vec![numeric_field(registry[0].reader.clone())]),
                 targets: GrammarProperty::Unresolved,
                 child_families: GrammarProperty::Unresolved,
+                child_scopes: GrammarProperty::Unresolved,
                 numeric_keys: GrammarProperty::Unresolved,
                 ordering: GrammarProperty::Known(vec![crate::ChildOrderRule {
                     child: "amount".into(),
@@ -402,6 +404,7 @@ mod tests {
             reader: block,
             forms: GrammarProperty::Known(vec![CommandForm::Block]),
             targets: GrammarProperty::Known(vec![]),
+            child_scopes: GrammarProperty::Unresolved,
             child_families: GrammarProperty::Known(vec![]),
             fixed_keys: GrammarProperty::Known(vec![numeric_field(number.clone())]),
             numeric_keys: GrammarProperty::Known(None),

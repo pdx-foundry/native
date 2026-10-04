@@ -26,6 +26,8 @@ pub struct CommandGrammar {
     pub targets: GrammarProperty<Vec<TargetArgument>>,
     /// Command families that the block can dispatch to.
     pub child_families: GrammarProperty<Vec<BlockFamily>>,
+    /// Scopes of children dispatched as commands. Named child keys carry their own read scope.
+    pub child_scopes: GrammarProperty<Vec<ChildScope>>,
     /// Named child keys and their conditional read alternatives.
     pub fixed_keys: GrammarProperty<Vec<Field>>,
     /// Child grammar selected by dynamic integer keys; a known `None` means none are accepted.
@@ -141,4 +143,13 @@ mod tests {
             GrammarProperty::Unresolved
         ));
     }
+}
+
+/// Read-time scope for one child command family.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChildScope {
+    /// Kind of commands read at this boundary.
+    pub family: BlockFamily,
+    /// Scope alternatives supplied to those commands.
+    pub scope: GrammarProperty<Vec<crate::ReadScope>>,
 }

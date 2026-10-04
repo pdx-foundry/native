@@ -10,6 +10,7 @@
     "outcome": "Unresolved"
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": null,
    "kind": "Unknown",
@@ -69,6 +70,18 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "e044b50825a1841d",
    "kind": "Block",
@@ -116,6 +129,7 @@
     }
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
@@ -145,6 +159,7 @@
     "outcome": "Unresolved"
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": null,
    "kind": "Unknown",
@@ -170,6 +185,7 @@
     "outcome": "Unresolved"
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": null,
    "kind": "Unknown",
@@ -195,6 +211,7 @@
     "outcome": "Unresolved"
    }
   ],
+  "read_scope": "Unresolved",
   "reader": {
    "id": null,
    "kind": "Unknown",
@@ -238,6 +255,9 @@
     }
    }
   ],
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "325efaa17499c32d",
    "kind": "String",

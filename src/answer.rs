@@ -620,6 +620,18 @@ pub struct Field {
     /// of this answer. Empty for other fields, and for a block that no followed call evaluates,
     /// which has a gap.
     pub entry_contexts: Vec<EntryContext>,
+    /// Scope alternatives supplied when the engine reads this block. A known empty list
+    /// means no block scope applies. This does not describe evaluation or availability.
+    pub read_scope: crate::GrammarProperty<Vec<ReadScope>>,
+}
+
+/// The scope used to read children of a block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReadScope {
+    /// Children keep the enclosing block's scope.
+    Enclosing,
+    /// The reader supplies this set of scope types. Join by scope ID, including to link outputs.
+    Types(Vec<ScopeReference>),
 }
 
 /// A command kind whose declarations can be read from the executable.

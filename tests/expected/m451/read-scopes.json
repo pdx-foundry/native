@@ -1,0 +1,463 @@
+{
+  "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
+  "registries": {
+    "common/traditions": {
+      "fields": {
+        "ai_weight": "Unresolved",
+        "modifier": "Unresolved",
+        "on_disabled": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        },
+        "on_enabled": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        },
+        "possible": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        },
+        "potential": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        },
+        "tradition_swap": "Unresolved",
+        "triggered_modifier": "Unresolved"
+      },
+      "gaps": [
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "triggered_modifier"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "ai_weight"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "tradition_swap"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "modifier"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "tradition_swap",
+              "weight"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "tradition_swap",
+              "triggered_modifier"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "tradition_swap",
+              "modifier"
+            ]
+          }
+        }
+      ]
+    },
+    "common/tradition_categories": {
+      "fields": {
+        "adoption_bonus": "Unresolved",
+        "ai_weight": "Unresolved",
+        "desc": "Unresolved",
+        "finish_bonus": "Unresolved",
+        "potential": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        },
+        "traditions": "Unresolved"
+      },
+      "gaps": [
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "desc"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "ai_weight"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "traditions"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "adoption_bonus"
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "finish_bonus"
+          }
+        }
+      ]
+    }
+  },
+  "commands": {
+    "effect/if": {
+      "children": {
+        "Known": [
+          {
+            "family": "Effect",
+            "scope": {
+              "Known": [
+                "Enclosing"
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {
+        "else": {
+          "Known": [
+            "Enclosing"
+          ]
+        },
+        "limit": {
+          "Known": [
+            "Enclosing"
+          ]
+        }
+      },
+      "gaps": []
+    },
+    "effect/else": {
+      "children": {
+        "Known": [
+          {
+            "family": "Effect",
+            "scope": {
+              "Known": [
+                "Enclosing"
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {
+        "else": {
+          "Known": [
+            "Enclosing"
+          ]
+        },
+        "limit": {
+          "Known": [
+            "Enclosing"
+          ]
+        }
+      },
+      "gaps": []
+    },
+    "effect/else_if": {
+      "children": {
+        "Known": [
+          {
+            "family": "Effect",
+            "scope": {
+              "Known": [
+                "Enclosing"
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {
+        "else": {
+          "Known": [
+            "Enclosing"
+          ]
+        },
+        "limit": {
+          "Known": [
+            "Enclosing"
+          ]
+        }
+      },
+      "gaps": []
+    },
+    "effect/hidden_effect": {
+      "children": {
+        "Known": [
+          {
+            "family": "Effect",
+            "scope": {
+              "Known": [
+                "Enclosing"
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {},
+      "gaps": []
+    },
+    "effect/every_owned_army": {
+      "children": {
+        "Partial": [
+          {
+            "family": "Effect",
+            "scope": "Unresolved"
+          }
+        ]
+      },
+      "fields": {
+        "limit": "Unresolved"
+      },
+      "gaps": [
+        {
+          "detail": "read-scope: stored-scope",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "limit"
+          }
+        },
+        {
+          "detail": "read-scope: stored-scope",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "answer_item",
+            "name": "every_owned_army"
+          }
+        }
+      ]
+    },
+    "trigger/and": {
+      "children": {
+        "Known": [
+          {
+            "family": "Trigger",
+            "scope": {
+              "Known": [
+                "Enclosing"
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {
+        "id": {
+          "Known": []
+        }
+      },
+      "gaps": []
+    },
+    "trigger/or": {
+      "children": {
+        "Known": [
+          {
+            "family": "Trigger",
+            "scope": {
+              "Known": [
+                "Enclosing"
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {},
+      "gaps": []
+    },
+    "trigger/not": {
+      "children": {
+        "Known": [
+          {
+            "family": "Trigger",
+            "scope": {
+              "Known": [
+                "Enclosing"
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {},
+      "gaps": []
+    },
+    "trigger/any_owned_army": {
+      "children": {
+        "Known": [
+          {
+            "family": "Trigger",
+            "scope": {
+              "Known": [
+                {
+                  "Types": [
+                    {
+                      "id": "b99e91b88a72f0c9",
+                      "name": "army"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {
+        "id": {
+          "Known": []
+        }
+      },
+      "gaps": []
+    },
+    "trigger/count_owned_army": {
+      "children": "Unresolved",
+      "fields": {
+        "count": "Unresolved",
+        "limit": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "b99e91b88a72f0c9",
+                  "name": "army"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "gaps": [
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "field",
+            "name": "count"
+          }
+        },
+        {
+          "detail": "read-scope: child-family-boundary",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "answer_item",
+            "name": "count_owned_army"
+          }
+        }
+      ]
+    },
+    "trigger/any_owned_planet": {
+      "children": {
+        "Known": [
+          {
+            "family": "Trigger",
+            "scope": {
+              "Known": [
+                {
+                  "Types": [
+                    {
+                      "id": "df2999a8f7dba6f6",
+                      "name": "colony"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "fields": {
+        "id": {
+          "Known": []
+        }
+      },
+      "gaps": []
+    }
+  }
+}
