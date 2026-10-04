@@ -60,6 +60,10 @@ fn fields(
     gaps: &mut Vec<Gap>,
 ) {
     for field in fields {
+        // The weight method sets the read scope of a weight block from its stored scope.
+        if matches!(field.members, crate::FieldMembers::WeightBlock(_)) {
+            continue;
+        }
         let Some(root) = roots.iter().find(|root| root.name == field.name) else {
             continue;
         };
@@ -96,7 +100,7 @@ fn fields(
             field.read_scope = GrammarProperty::Known(vec![]);
             continue;
         }
-        field.read_scope = normalize(arguments, names, GapSubject::field(&field.name), gaps);
+        field.read_scope = normalize_scopes(arguments, names, GapSubject::field(&field.name), gaps);
     }
 }
 
@@ -145,7 +149,7 @@ pub(super) fn grammar(
             }
             ChildScope {
                 family,
-                scope: normalize(arguments, names, GapSubject::answer_item(name), gaps),
+                scope: normalize_scopes(arguments, names, GapSubject::answer_item(name), gaps),
             }
         })
         .collect();
@@ -199,7 +203,9 @@ fn nested_fields(
     }
 }
 
-fn normalize(
+/// The read scopes that the scope `arguments` give, with a gap at `subject` for each argument
+/// that names no scope type.
+pub(super) fn normalize_scopes(
     arguments: Vec<Option<Value>>,
     names: Option<&[String]>,
     subject: GapSubject,
@@ -267,7 +273,7 @@ mod tests {
     fn scopes(arguments: Vec<Option<Value>>) -> (GrammarProperty<Vec<ReadScope>>, Vec<Gap>) {
         let names = ["none", "planet", "country", "pop"].map(String::from);
         let mut gaps = Vec::new();
-        let value = normalize(
+        let value = normalize_scopes(
             arguments,
             Some(&names),
             GapSubject::field("potential"),

@@ -12,20 +12,22 @@ use crate::engine::analysis::{
 use crate::{AnalysisError, BlockFamily};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(in crate::binding) fn read(
+/// The vtable address points whose read slot holds a `family` anchor of the recipe, with the read
+/// and member readers of each.
+pub(super) fn family_points(
     image: &Image<'_>,
-    candidates: &[NamedCandidate],
+    names: &BTreeMap<u64, String>,
     recipe: &DeclarationRecipe,
-) -> Result<ModifierBlockInput, AnalysisError> {
-    let text = Text::read(image.bytes, image.symbols)?;
-    let names =
-        super::references::names(image.symbols, image.pointers, image.imports, image.strings);
+    family: BlockFamily,
+) -> BTreeMap<u64, ConcreteReader> {
     let mut points = BTreeMap::new();
     for (&slot, &target) in image.pointers {
         let Some(read) = names.get(&target).filter(|name| {
-            recipe.persistent.families.iter().any(|(anchor, family)| {
-                *anchor == name.as_str() && *family == BlockFamily::Modifier
-            })
+            recipe
+                .persistent
+                .families
+                .iter()
+                .any(|(anchor, anchored)| *anchor == name.as_str() && *anchored == family)
         }) else {
             continue;
         };
@@ -45,10 +47,22 @@ pub(in crate::binding) fn read(
             ConcreteReader {
                 read: read.clone(),
                 member: member.clone(),
-                family: BlockFamily::Modifier,
+                family,
             },
         );
     }
+    points
+}
+
+pub(in crate::binding) fn read(
+    image: &Image<'_>,
+    candidates: &[NamedCandidate],
+    recipe: &DeclarationRecipe,
+) -> Result<ModifierBlockInput, AnalysisError> {
+    let text = Text::read(image.bytes, image.symbols)?;
+    let names =
+        super::references::names(image.symbols, image.pointers, image.imports, image.strings);
+    let points = family_points(image, &names, recipe, BlockFamily::Modifier);
     let mut functions = BTreeMap::new();
     let mut pending: BTreeSet<_> = points
         .values()

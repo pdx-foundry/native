@@ -187,6 +187,7 @@ enum Case {
     FixtureBlockParsing,
     FixtureReadScope,
     FixtureModifierBlock,
+    FixtureWeightBlock,
     FixtureNumeric {
         registry: &'static str,
         integer: Option<&'static str>,
@@ -200,6 +201,7 @@ enum Case {
     /// Validation samples of one block field, each in its own definition of one fixture file.
     FixtureValidation {
         field: &'static str,
+        family: pdx_native::BlockFamily,
         samples: Vec<ValidationSample>,
     },
     /// Validation samples of commands whose answers must be `Complete`. The samples come from
@@ -377,6 +379,7 @@ fn cases() -> Vec<(String, Case)> {
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
     cases.push(("fixture_modifier_block".into(), Case::FixtureModifierBlock));
+    cases.push(("fixture_weight_block".into(), Case::FixtureWeightBlock));
     cases.push((
         "fixture_numeric_megastructures".into(),
         Case::FixtureNumeric {
@@ -567,6 +570,7 @@ fn cases() -> Vec<(String, Case)> {
         "fixture_control_triggers".into(),
         Case::FixtureValidation {
             field: "potential",
+            family: pdx_native::BlockFamily::Trigger,
             samples: triggers,
         },
     ));
@@ -574,7 +578,24 @@ fn cases() -> Vec<(String, Case)> {
         "fixture_control_effects".into(),
         Case::FixtureValidation {
             field: "on_enabled",
+            family: pdx_native::BlockFamily::Effect,
             samples: effects,
+        },
+    ));
+    // The triggers of a weight entry are read in the scope that the owner constructor stores.
+    cases.push((
+        "fixture_control_weight_scope".into(),
+        Case::FixtureValidation {
+            field: "ai_weight",
+            family: pdx_native::BlockFamily::Weight,
+            samples: vec![
+                ValidationSample::new("valid", "modifier = { factor = 2 always = yes }", None),
+                ValidationSample::new(
+                    "wrong_scope",
+                    "modifier = { factor = 2 is_planet_class = pc_barren }",
+                    parser_log,
+                ),
+            ],
         },
     ));
     // A reader report or a malformed block can upset the parsing of the definitions after it, so
@@ -595,6 +616,7 @@ fn cases() -> Vec<(String, Case)> {
             format!("fixture_control_edge_effect_{name}"),
             Case::FixtureValidation {
                 field: "on_enabled",
+                family: pdx_native::BlockFamily::Effect,
                 samples: vec![ValidationSample::new(name, child, stage)],
             },
         ));
@@ -654,6 +676,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
         Case::FixtureReadScope => fixture_read_scope(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
+        Case::FixtureWeightBlock => fixture_weight_block(native).await,
         Case::FixtureNumeric {
             registry,
             integer,
@@ -664,9 +687,11 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::NumericConversionMatrix => numeric_conversion::matrix().await,
         Case::ScopedNumericMatrix => scoped_numeric::matrix().await,
         Case::ScopedNumericWorkerLoss => scoped_numeric::worker_loss().await,
-        Case::FixtureValidation { field, ref samples } => {
-            fixture_validation(native, field, samples).await
-        }
+        Case::FixtureValidation {
+            field,
+            family,
+            ref samples,
+        } => fixture_validation(native, field, family, samples).await,
         Case::FixtureArgument {
             field,
             ref commands,
@@ -1253,6 +1278,109 @@ async fn fixture_modifier_block(native: &Native) -> Outcome {
     result
 }
 
+/// A weight block with one additive operation and one multiplicative entry, and no `base`, parses
+/// completely without a diagnostic; a malformed `base` in another definition gets a diagnostic on
+/// its own line. The keys are the ones that the static weight grammar reports. An unknown key is
+/// not the control: the engine logs it in a format that the fixture's source join does not read.
+async fn fixture_weight_block(native: &Native) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldMembers, FixtureFieldQuestion,
+        FixtureParsing, FixtureRequest, GrammarProperty, WeightBlock,
+    };
+    const FILE: &str = "common/traditions/native_weight_block.txt";
+    const CONTROL_LINE: u64 = 12;
+    let text = r#"native_weight_block = {
+ ai_weight = {
+  add = 2
+  modifier = {
+   factor = 0.5
+   always = yes
+  }
+ }
+}
+native_weight_control = {
+ ai_weight = {
+  base = native_not_a_number
+ }
+}
+"#;
+    let fields = native.registry_fields(TRADITIONS)?;
+    let field = fields
+        .value
+        .iter()
+        .find(|field| field.name == "ai_weight")
+        .ok_or("ai_weight missing")?;
+    let FieldMembers::WeightBlock(block) = &field.members else {
+        return Err("weight grammar missing".into());
+    };
+    let operation = |block: &WeightBlock, key: &str| {
+        matches!(&block.operations, GrammarProperty::Known(operations)
+            if operations.iter().any(|operation| operation.key == key))
+    };
+    let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) = &block.fixed_keys else {
+        return Err("weight keys unresolved".into());
+    };
+    let entry = keys.iter().find_map(|key| match &key.members {
+        FieldMembers::WeightBlock(entry) if key.name == "modifier" => Some(entry),
+        _ => None,
+    });
+    let base = keys.iter().any(|key| key.name == "base");
+    if !base || !operation(block, "add") || !entry.is_some_and(|entry| operation(entry, "factor")) {
+        return Err(
+            "the static weight grammar does not report base, add and modifier.factor".into(),
+        );
+    }
+
+    let request = FixtureRequest::field_outcomes(
+        FILE,
+        text,
+        [
+            FixtureFieldQuestion::new(TRADITIONS, "native_weight_block", "ai_weight")
+                .with_parsing(),
+            FixtureFieldQuestion::new(TRADITIONS, "native_weight_control", "ai_weight")
+                .with_parsing(),
+        ],
+    );
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let observation = &answer.value;
+        let block = observation
+            .field_outcomes
+            .iter()
+            .find(|outcome| outcome.question.definition == "native_weight_block")
+            .ok_or("weight block outcome missing")?;
+        let parsed = matches!(&block.parsing,
+            FixtureParsing::Observed { completeness: Completeness::Complete, occurrences }
+                if occurrences.len() == 1 && occurrences[0].return_line.is_some());
+        let line = |join: &DiagnosticJoin| match join {
+            DiagnosticJoin::Source { file, line, .. } if file == FILE => Some(*line),
+            _ => None,
+        };
+        let control = observation.diagnostics.iter().any(|diagnostic| {
+            line(&diagnostic.join) == Some(CONTROL_LINE)
+                && diagnostic.stage == "reader-malformed-report"
+        });
+        let stray = observation
+            .diagnostics
+            .iter()
+            .any(|diagnostic| line(&diagnostic.join) != Some(CONTROL_LINE));
+        let covered = matches!(
+            observation.diagnostic_coverage,
+            DiagnosticCoverage::Complete {
+                window: DiagnosticWindow::FixtureFileLoad
+            }
+        );
+        if !parsed || !block.diagnostics.is_empty() || !control || stray || !covered {
+            return Err(format!("weight block fixture: {answer:?}").into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
 /// Check the engine-selected read scope at file load, before post-load validation.
 async fn fixture_read_scope(native: &Native) -> Outcome {
     use pdx_native::{
@@ -1317,7 +1445,12 @@ async fn fixture_read_scope(native: &Native) -> Outcome {
 }
 
 /// Validate every sample in one session, so the session pays for loading all content once.
-async fn fixture_validation(native: &Native, field: &str, samples: &[ValidationSample]) -> Outcome {
+async fn fixture_validation(
+    native: &Native,
+    field: &str,
+    family: pdx_native::BlockFamily,
+    samples: &[ValidationSample],
+) -> Outcome {
     use pdx_native::{FixtureFieldQuestion, FixtureRequest};
 
     let file = format!("common/traditions/native_validation_{field}.txt");
@@ -1333,7 +1466,7 @@ async fn fixture_validation(native: &Native, field: &str, samples: &[ValidationS
     let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
-        let failures = validation_failures(field, &file, samples, &answer);
+        let failures = validation_failures(family, &file, samples, &answer);
         if failures.is_empty() {
             return Ok(());
         }
@@ -1355,7 +1488,7 @@ async fn fixture_validation(native: &Native, field: &str, samples: &[ValidationS
 /// rejected one has a diagnostic of its stage on its child's line. A diagnostic that no sample
 /// owns is a failure too.
 fn validation_failures(
-    field: &str,
+    expected_family: pdx_native::BlockFamily,
     file: &str,
     samples: &[ValidationSample],
     answer: &Answer<pdx_native::FixtureObservation>,
@@ -1372,11 +1505,6 @@ fn validation_failures(
         return vec![format!("validation coverage: {answer:?}")];
     }
 
-    let expected_family = if field == "potential" {
-        pdx_native::BlockFamily::Trigger
-    } else {
-        pdx_native::BlockFamily::Effect
-    };
     let source_line = |join: &DiagnosticJoin| match join {
         DiagnosticJoin::Source {
             file: source, line, ..

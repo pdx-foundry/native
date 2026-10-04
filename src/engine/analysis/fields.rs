@@ -42,8 +42,9 @@
 //!
 //! `partition_accounted` means that the ledger accounts for every signed token interval,
 //! including gaps. It never means that every path was resolved. Council agenda keeps five
-//! unresolved shared-reader contracts from the SDK-487 prototype: scoped integer values,
-//! triggers, effects, graphical modifiers and AI weight.
+//! shared-reader contracts from the SDK-487 prototype that root dispatch does not resolve:
+//! scoped integer values, triggers, effects, graphical modifiers and AI weight. The modifier
+//! block and weight block methods attach the last two grammars.
 //!
 //! What the result does not establish: the template loader and owner symbol relationship is
 //! static, not observed live ownership. Deeper grammars, full post-read behavior and dynamic names
@@ -86,7 +87,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v14";
+pub const METHOD: &str = "registry-fields/v15";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
@@ -144,6 +145,7 @@ pub(crate) fn analyze_owner(input: &FieldInput) -> Result<RegistryFieldResult, I
         persistent: persistent.readers,
         persistent_points: persistent.points,
         scoped_destinations: persistent.scoped,
+        stored_words: persistent.words,
         uses,
         collections,
         fields,

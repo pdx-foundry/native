@@ -103,7 +103,9 @@
  {
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "WeightBlock": "f08cb83d92484a89"
+  },
   "name": "ai_weight",
   "read": [
    {
@@ -113,7 +115,7 @@
       "reader": {
        "id": "f08cb83d92484a89",
        "kind": "Block",
-       "family": "Unknown",
+       "family": "Weight",
        "numeric": {
         "Known": null
        },
@@ -129,11 +131,22 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
-   "family": "Unknown",
+   "family": "Weight",
    "numeric": {
     "Known": null
    },

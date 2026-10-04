@@ -281,6 +281,7 @@ pub(super) fn persistent(
             .never_return
             .into_iter()
             .collect(),
+        requested_words: Default::default(),
     })
 }
 

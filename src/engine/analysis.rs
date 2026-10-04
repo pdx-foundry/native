@@ -24,6 +24,7 @@ pub mod references;
 pub(crate) mod scoped_numeric;
 pub mod scopes;
 pub mod stop;
+pub(crate) mod weight_blocks;
 
 #[cfg(test)]
 #[path = "analysis/analysis_support.rs"]

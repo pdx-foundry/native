@@ -1108,6 +1108,7 @@ mod tests {
             persistent: BTreeMap::new(),
             persistent_points: BTreeMap::new(),
             scoped_destinations: BTreeMap::new(),
+            stored_words: BTreeMap::new(),
             uses: vec![],
             collections,
             fields,

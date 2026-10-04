@@ -322,8 +322,8 @@ incomplete window as acceptance.
 - Parser acceptance needs a witnessed, complete `FixtureParsing` result and a complete relevant
   diagnostic window without a source-located error; rejection needs a source-located diagnostic. The
   bounded post-read window is `FixtureFileLoadAndValidation`. A recorded answer gives no live credit.
-- The council agenda answer is still partial (SDK-600); entry scopes, reference targets and weight
-  grammar belong to SDK-549, SDK-543 and SDK-545.
+- The council agenda answer is still partial (SDK-600); entry scopes and reference targets belong
+  to SDK-549 and SDK-543, and the remaining weight gaps are on [weight blocks](weight-blocks.md).
 
 ### Target arguments and their checks
 

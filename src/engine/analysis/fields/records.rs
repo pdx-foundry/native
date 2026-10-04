@@ -239,6 +239,9 @@ pub struct RegistryFieldResult {
     pub persistent_points: BTreeMap<i64, u64>,
     /// Constructor-agreed vtable address points at scoped numeric destinations.
     pub scoped_destinations: BTreeMap<i64, u64>,
+    /// Constructor-agreed words inside persistent destinations, by destination and offset within
+    /// it. Only the words that `PersistentInput::requested_words` names are read.
+    pub stored_words: BTreeMap<(i64, u64), u64>,
     /// Established nested object collections.
     pub collections: Vec<CollectionField>,
     /// Named root fields, with explicit reader alternatives.
@@ -322,6 +325,9 @@ pub struct PersistentInput {
     pub writable_slots: BTreeSet<u64>,
     pub never_return: Vec<u64>,
     pub readers: BTreeMap<u64, ConcreteReader>,
+    /// The offsets of the words to read inside each persistent object, by its address point.
+    #[serde(default)]
+    pub requested_words: BTreeMap<u64, BTreeSet<u64>>,
 }
 
 /// Signature addresses for shared compound key-reader idioms.

@@ -137,6 +137,13 @@ for contexts and scope types.
   come from the registry's existing `modifier_families` answer. String reads do not establish
   localisation-key existence. Runtime effects, repeated-block behavior, deferred completion and
   nested modifier fields remain outside this grammar. See [modifier blocks](../native/modifier-blocks.md).
+- Constructor-bound root weight fields have family `Weight` and expose `FieldMembers::WeightBlock`:
+  the bare-value reader, fixed keys, operation keys with their operand readers, whether a further
+  operation accumulates or replaces, and whether other keys are rejected or read as trigger
+  conditions. Nested `modifier` entries carry their own `WeightBlock`. A key or condition read in
+  the block's own stored scope reports `Enclosing`; the field's `read_scope` names that scope.
+  Weight evaluation and operation semantics remain outside this grammar. See
+  [weight blocks](../native/weight-blocks.md).
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
 - Atlas's published gaps carry a reason and owner category. Repair-ticket mappings live in docs,

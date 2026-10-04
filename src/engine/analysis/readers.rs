@@ -122,6 +122,17 @@ fn family_of_callee(callee: &str) -> BlockFamily {
     }
 }
 
+/// The broad kind that a conversion of the reader's assigned value token produces.
+/// `CToken::GetFloat` returns the raw fixed-point value: its callers multiply it with a stored
+/// fixed-point value and divide the product by the fixed-point scale.
+pub(crate) fn conversion_kind(callee: &str) -> Option<ReaderKind> {
+    match callee {
+        "CToken::GetInt() const" => Some(ReaderKind::Integer),
+        "CToken::GetFloat() const" => Some(ReaderKind::FixedPoint),
+        _ => None,
+    }
+}
+
 pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
         "CVariableValue::Read(CReader&, EScopeType)"

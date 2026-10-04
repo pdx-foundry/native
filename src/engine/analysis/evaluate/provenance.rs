@@ -38,6 +38,15 @@ impl Machine<'_> {
             .unwrap_or_default()
     }
 
+    /// The watched receiver offsets that the unknown value of general register `index` was
+    /// loaded from; empty for a known value or another input.
+    pub fn register_sources(&self, index: usize) -> BTreeSet<u64> {
+        match (&self.provenance, self.registers[index]) {
+            (Some(provenance), None) => provenance.registers[index].clone(),
+            _ => BTreeSet::new(),
+        }
+    }
+
     pub(super) fn receiver_sources(&self, address: u64, width: u64) -> BTreeSet<u64> {
         let mut sources = BTreeSet::new();
         let Some(provenance) = &self.provenance else {
