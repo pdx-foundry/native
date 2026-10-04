@@ -1,6 +1,6 @@
 {
   "count": 31,
-  "gaps": { "OutsideMethod": 3, "ReaderSemantics": 37, "UnresolvedReader": 12 },
+  "gaps": { "OutsideMethod": 3, "ReaderSemantics": 37, "UnresolvedReader": 6 },
   "namespaces": [
     {
       "owner": "global",
@@ -25,16 +25,16 @@
     },
     {
       "owner": "galactic_object",
-      "defined_by": ["Effect set_star_flag", "Effect set_timed_star_flag"],
-      "removed_by": ["Effect remove_star_flag"],
-      "read_by": [],
+      "defined_by": [],
+      "removed_by": [],
+      "read_by": ["Trigger has_star_flag"],
       "dynamic_form": "TargetSuffix"
     },
     {
       "owner": "galactic_object",
-      "defined_by": [],
-      "removed_by": [],
-      "read_by": ["Trigger has_star_flag"],
+      "defined_by": ["Effect set_star_flag", "Effect set_timed_star_flag"],
+      "removed_by": ["Effect remove_star_flag"],
+      "read_by": [],
       "dynamic_form": "TargetSuffix"
     }
   ]

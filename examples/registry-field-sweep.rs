@@ -12,6 +12,8 @@
 mod modifier_blocks;
 #[path = "support/population.rs"]
 mod population;
+#[path = "support/triggered_modifiers.rs"]
+mod triggered_modifiers;
 #[path = "support/weight_blocks.rs"]
 mod weight_blocks;
 
@@ -101,6 +103,7 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
                     .modifier_blocks
                     .add(&registry.name, &answer, &result)?;
                 report.weight_blocks.add(&registry.name, &answer)?;
+                report.triggered_modifiers.add(&registry.name, &answer)?;
                 let stops = place_gaps(&image, &registry.name, result.gaps);
                 report.add_answer(&registry.name, answer, stops, elapsed_ms)?;
             }
@@ -213,6 +216,7 @@ struct SweepReport {
     references: ReferenceTally,
     modifier_blocks: modifier_blocks::Tally,
     weight_blocks: weight_blocks::Tally,
+    triggered_modifiers: triggered_modifiers::Tally,
     stop_cases: Vec<StopCase>,
     cases: Vec<Value>,
 }
@@ -380,12 +384,14 @@ impl SweepReport {
             },
             "modifier_blocks": self.modifier_blocks.report(),
             "weight_blocks": self.weight_blocks.report(),
+            "triggered_modifiers": self.triggered_modifiers.report(),
             "stop_shapes": stop_shapes(&self.stop_cases),
             "report_limits": {
                 "failure_shapes": "Grouped by public gap detail.",
                 "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
                 "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
                 "weight_blocks": "Root fields whose constructor-proven reader is a weight reader, grouped by reader identity. Complete: every property of the block and of each nested entry is known and the field has no gap. Failed: no weight grammar was attached. Weight-like fields without a constructor-proven reader are in modifier_blocks.failed_persistent_fields.",
+                "triggered_modifiers": "Fields whose collected object has a triggered modifier clause reader, grouped by reader identity. Complete: the clause keys, its other keys and each embedded modifier block are known and the field has no gap. Failed: no clause grammar was attached. unbound_triggered_named_fields lists fields named like a clause that no clause reader is bound to; it is an investigation list, not a count of clauses.",
                 "references": "Root and nested fields with a read alternative whose reader is a reference reader. Complete: every lookup names a registry and every lookup property is established. Failed: no lookup names a registry. Readers counts every reference reader in the executable, joined or not.",
             },
             "cases": self.cases,

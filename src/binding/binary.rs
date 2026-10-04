@@ -163,4 +163,5 @@ pub(crate) mod numeric;
 pub(super) mod receivers;
 pub(super) mod references;
 pub(crate) mod scoped_numeric;
+pub(crate) mod triggered_modifiers;
 pub(crate) mod weight_blocks;

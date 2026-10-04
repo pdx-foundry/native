@@ -758,6 +758,7 @@ mod tests {
             offset: 0x40,
             data_offset: Some(8),
             class: "CChild".into(),
+            reader: None,
             fields: Box::new(RegistryFieldResult {
                 persistent: Default::default(),
                 persistent_points: Default::default(),

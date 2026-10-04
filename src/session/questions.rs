@@ -259,6 +259,7 @@ impl Native {
             scoped: self.scoped_numeric_facts(Operation::RegistryFields)?,
             modifiers: self.modifier_block_facts()?,
             weights: self.weight_block_facts()?,
+            triggered: self.triggered_modifier_facts()?,
             blocks: self.block_facts()?,
         };
         let owner = &input.selection.owner_candidate;
@@ -303,6 +304,20 @@ impl Native {
                 reason: "this build has no static analysis recipe".into(),
             })?
             .weight_block_facts()
+            .map_err(|failure| error(Operation::RegistryFields, failure))
+    }
+
+    pub(crate) fn triggered_modifier_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::modifier_blocks::triggered::TriggeredFacts, Error> {
+        self.bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation: Operation::RegistryFields,
+                reason: "this build has no static analysis recipe".into(),
+            })?
+            .triggered_modifier_facts()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
@@ -364,6 +379,15 @@ impl Native {
         let mut gaps = normalized_gaps(result, registry, references);
         let mut value = normalized_fields(result, references);
         super::modifier_blocks::attach(&mut value, result, facts.modifiers, references, &mut gaps);
+        let clauses = super::triggered_modifiers::ClauseFacts {
+            clauses: facts.triggered,
+            modifiers: facts.modifiers,
+            references,
+            numeric: facts.numeric,
+            scoped: facts.scoped,
+            scope_names: facts.blocks.scope_names.as_deref(),
+        };
+        super::triggered_modifiers::attach(&mut value, result, &clauses, &mut gaps);
         super::numeric::fields(&mut value, facts.numeric, &[], &mut gaps);
         super::scoped_numeric::fields(&mut value, result, facts.scoped, facts.numeric, &mut gaps);
         let weights = super::weight_blocks::WeightFacts {
@@ -422,6 +446,7 @@ struct RegistryFieldFacts<'a> {
     scoped: &'a crate::engine::analysis::scoped_numeric::Facts,
     modifiers: &'a crate::engine::analysis::modifier_blocks::ModifierBlockFacts,
     weights: &'a crate::engine::analysis::weight_blocks::WeightBlockFacts,
+    triggered: &'a crate::engine::analysis::modifier_blocks::triggered::TriggeredFacts,
     blocks: &'a crate::binding::BlockFacts,
 }
 
@@ -915,6 +940,7 @@ mod field_gap_tests {
             read: "CPersistent::Read(CReader&)".into(),
             member: member.into(),
             family: crate::BlockFamily::Unknown,
+            delegate: None,
         };
         let with_wide_path = |destination: i64| {
             let mut result = result(vec![]);

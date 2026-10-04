@@ -145,6 +145,13 @@ for contexts and scope types.
   `Enclosing`; the field's `read_scope` names that scope. When the readers of a key differ but all
   read one value kind, the key reports that kind with no reader identity. Weight evaluation and
   operation semantics remain outside this grammar. See [weight blocks](../native/weight-blocks.md).
+- Root fields whose collected objects have a triggered modifier clause reader have family
+  `TriggeredModifier` and expose `FieldMembers::TriggeredModifier`: the clause's own fixed keys,
+  and `other_keys`, the modifier block that reads every key the clause does not name. A `modifier`
+  key carries `FieldMembers::ModifierBlock`; it and `other_keys` name the reader identity of the
+  shared modifier grammar. `Unresolved` other keys mean that their disposition is unknown, not that
+  the engine rejects them. Condition timing, the multiplier's effect and where the modifier takes
+  effect remain outside this grammar. See [triggered modifiers](../native/triggered-modifiers.md).
 - `ReaderKind::Keyword` identifies a value from a fixed set of engine names that the reader stores
   as the engine's own value, such as `calc` or `mode` in a weight modifier. Its `numeric` is
   `Known(None)`. `Field.domain` gives the accepted names when it is established; until then a

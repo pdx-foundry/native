@@ -28,6 +28,7 @@ pub mod registry_field_stops;
 mod scoped_numeric;
 pub(crate) mod script_durations;
 pub mod target_getters;
+mod triggered_modifiers;
 mod weight_blocks;
 
 #[derive(Debug)]

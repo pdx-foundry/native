@@ -90,34 +90,39 @@ pub(super) fn fields(
         }
         match &mut field.members {
             FieldMembers::Fields(children) => fields(children, facts, &path, gaps),
-            FieldMembers::ModifierBlock(block) => {
-                if let GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) =
-                    &mut block.fixed_keys
-                {
-                    fields(keys, facts, &path, gaps);
-                }
-                if let GrammarProperty::Known(entries) | GrammarProperty::Partial(entries) =
-                    &mut block.entries
-                {
-                    for entry in entries {
-                        if let crate::ModifierEntry::Numeric { value } = entry {
-                            let limits = attach_reader_facts(value, facts);
-                            if limits.incomplete {
-                                gap(
-                                    gaps,
-                                    if path.len() == 1 {
-                                        GapSubject::field(&field.name)
-                                    } else {
-                                        GapSubject::key_path(path.clone())
-                                    },
-                                    limits,
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+            FieldMembers::ModifierBlock(block) => modifier_block(block, facts, &path, gaps),
             _ => {}
+        }
+    }
+}
+
+/// Attach numeric facts to the keys and numeric entries of the modifier block at `path`.
+pub(super) fn modifier_block(
+    block: &mut crate::ModifierBlock,
+    facts: &NumericFacts,
+    path: &[String],
+    gaps: &mut Vec<Gap>,
+) {
+    if let GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) = &mut block.fixed_keys {
+        fields(keys, facts, path, gaps);
+    }
+
+    let (GrammarProperty::Known(entries) | GrammarProperty::Partial(entries)) = &mut block.entries
+    else {
+        return;
+    };
+
+    for entry in entries {
+        if let crate::ModifierEntry::Numeric { value } = entry {
+            let limits = attach_reader_facts(value, facts);
+            if limits.incomplete {
+                let subject = if path.len() == 1 {
+                    GapSubject::field(&path[0])
+                } else {
+                    GapSubject::key_path(path.to_vec())
+                };
+                gap(gaps, subject, limits);
+            }
         }
     }
 }

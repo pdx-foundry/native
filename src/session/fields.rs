@@ -32,6 +32,30 @@ pub(super) fn concrete_reader_id(read: &str, member: &str) -> ReaderId {
     ReaderId(format!("{digest:x}")[..16].into())
 }
 
+/// The identity of a persistent reader. A bound delegate tells apart readers that share their
+/// read and member.
+pub(super) fn persistent_reader_id(reader: &ConcreteReader) -> ReaderId {
+    match &reader.delegate {
+        None => concrete_reader_id(&reader.read, &reader.member),
+        Some(delegate) => {
+            concrete_reader_id(&reader.read, &format!("{}:{delegate}", reader.member))
+        }
+    }
+}
+
+/// Fields of a block whose persistent destinations, by owner offset, hold these readers.
+pub(super) fn embedded_fields(
+    fields: &[RootField],
+    paths: &[TokenPath],
+    references: &ReferenceFacts,
+    persistent: &BTreeMap<i64, ConcreteReader>,
+) -> Vec<Field> {
+    fields
+        .iter()
+        .map(|field| ordinary_field(field, fields, paths, persistent, references))
+        .collect()
+}
+
 /// The reader of one path. A persistent read takes the concrete identity of its destination, or
 /// none when the destination has no known reader.
 pub(super) fn alternative_reader(
@@ -45,7 +69,7 @@ pub(super) fn alternative_reader(
         if let Some(concrete) =
             readers::destination(join).and_then(|offset| persistent.get(&offset))
         {
-            selected.id = Some(concrete_reader_id(&concrete.read, &concrete.member));
+            selected.id = Some(persistent_reader_id(concrete));
             selected.family = concrete.family;
         }
     }
@@ -478,15 +502,34 @@ fn collection_field(
     collection: &crate::engine::analysis::fields::CollectionField,
     references: &ReferenceFacts,
 ) -> Field {
+    let (id, family, members) = match &collection.reader {
+        Some(bound) => (
+            persistent_reader_id(&bound.reader),
+            bound.reader.family,
+            FieldMembers::Unresolved,
+        ),
+        None => (
+            concrete_reader_id(
+                "CPersistent::Read(CReader&)",
+                &format!("{}::ReadMember(CReader&, int)", collection.class),
+            ),
+            crate::BlockFamily::Unknown,
+            FieldMembers::Fields(
+                collection
+                    .fields
+                    .fields
+                    .iter()
+                    .map(|child| self::field(child, &collection.fields, references))
+                    .collect(),
+            ),
+        ),
+    };
     let reader = Reader {
         numeric: crate::GrammarProperty::Unresolved,
         scoped_operand: crate::GrammarProperty::Unresolved,
-        id: Some(concrete_reader_id(
-            "CPersistent::Read(CReader&)",
-            &format!("{}::ReadMember(CReader&, int)", collection.class),
-        )),
+        id: Some(id),
         kind: ReaderKind::Block,
-        family: crate::BlockFamily::Unknown,
+        family,
     };
     let shape = FieldShape {
         value: ValueShape::Block,
@@ -503,14 +546,7 @@ fn collection_field(
         }],
         reader,
         shape,
-        members: FieldMembers::Fields(
-            collection
-                .fields
-                .fields
-                .iter()
-                .map(|child| self::field(child, &collection.fields, references))
-                .collect(),
-        ),
+        members,
         domain: FieldDomain::Unknown,
 
         uses: Vec::new(),
@@ -737,6 +773,32 @@ mod tests {
             value: Some(Value::Load(Box::new(Value::Owner(8)), 1)),
             zero,
         }
+    }
+    #[test]
+    fn a_bound_delegate_tells_apart_readers_that_share_read_and_member() {
+        let reader = |delegate: Option<&str>| ConcreteReader {
+            read: "CPersistent::Read(CReader&)".into(),
+            member: "Base::ReadMember(CReader&, int)".into(),
+            family: crate::BlockFamily::TriggeredModifier,
+            delegate: delegate.map(Into::into),
+        };
+        let undelegated = persistent_reader_id(&reader(None));
+
+        assert_eq!(
+            undelegated,
+            concrete_reader_id(
+                "CPersistent::Read(CReader&)",
+                "Base::ReadMember(CReader&, int)"
+            )
+        );
+        assert_ne!(
+            persistent_reader_id(&reader(Some("Base::ReadModifier"))),
+            undelegated
+        );
+        assert_ne!(
+            persistent_reader_id(&reader(Some("Base::ReadModifier"))),
+            persistent_reader_id(&reader(Some("Derived::ReadModifier")))
+        );
     }
     #[test]
     fn presence_tests_collapse_only_for_equal_outcomes_and_destinations() {
@@ -1136,6 +1198,7 @@ mod tests {
                 offset: 0x20,
                 data_offset: None,
                 class: "CEntry".into(),
+                reader: None,
                 fields: Box::new(child),
             }],
         );

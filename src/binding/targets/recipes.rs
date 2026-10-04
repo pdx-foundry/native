@@ -34,7 +34,34 @@ pub(in crate::binding) struct PersistentRecipe {
     pub token_text: u64,
     pub read_slot: u64,
     pub member_slot: u64,
-    pub families: &'static [(&'static str, crate::BlockFamily)],
+    pub families: &'static [FamilyAnchor],
+}
+
+/// A vtable slot whose target names the block family of every address point that holds it.
+pub(in crate::binding) struct FamilyAnchor {
+    pub symbol: &'static str,
+    pub slot: AnchorSlot,
+    pub family: crate::BlockFamily,
+    /// A further virtual slot whose target tells apart readers that share read and member.
+    pub delegate_slot: Option<u64>,
+}
+
+/// The slot whose target a family anchor names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::binding) enum AnchorSlot {
+    Read,
+    /// For readers whose read slot holds the generic `CPersistent::Read`.
+    Member,
+}
+
+impl PersistentRecipe {
+    /// Offset of an anchor's slot from its vtable address point.
+    pub fn anchor_offset(&self, slot: AnchorSlot) -> u64 {
+        match slot {
+            AnchorSlot::Read => self.read_slot,
+            AnchorSlot::Member => self.member_slot,
+        }
+    }
 }
 
 /// Layout facts that the declaration methods need on this exact build.
@@ -245,14 +272,30 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         read_slot: 0x20,
         member_slot: 0x28,
         families: &[
-            (
-                "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::Read(CReader&)",
-                crate::BlockFamily::Modifier,
-            ),
-            (
-                "CMeanTimeToHappen::Read(CReader&)",
-                crate::BlockFamily::Weight,
-            ),
+            FamilyAnchor {
+                symbol: "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::Read(CReader&)",
+                slot: AnchorSlot::Read,
+                family: crate::BlockFamily::Modifier,
+                delegate_slot: None,
+            },
+            FamilyAnchor {
+                symbol: "CMeanTimeToHappen::Read(CReader&)",
+                slot: AnchorSlot::Read,
+                family: crate::BlockFamily::Weight,
+                delegate_slot: None,
+            },
+            FamilyAnchor {
+                symbol: "CTriggeredModifierBase<CStaticModifier>::ReadMember(CReader&, int)",
+                slot: AnchorSlot::Member,
+                family: crate::BlockFamily::TriggeredModifier,
+                delegate_slot: Some(0x40),
+            },
+            FamilyAnchor {
+                symbol: "CTriggeredModifierBase<CCustomDescriptionModifier>::ReadMember(CReader&, int)",
+                slot: AnchorSlot::Member,
+                family: crate::BlockFamily::TriggeredModifier,
+                delegate_slot: Some(0x40),
+            },
         ],
     },
     command_children: crate::engine::analysis::grammar::ChildLayout {

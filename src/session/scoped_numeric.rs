@@ -13,11 +13,12 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
-struct FieldEvidence<'a> {
-    paths: &'a [TokenPath],
-    points: &'a BTreeMap<i64, u64>,
-    facts: &'a Facts,
-    numeric: &'a NumericFacts,
+/// The paths and destination address points that a field's scoped readers are read through.
+pub(super) struct FieldEvidence<'a> {
+    pub paths: &'a [TokenPath],
+    pub points: &'a BTreeMap<i64, u64>,
+    pub facts: &'a Facts,
+    pub numeric: &'a NumericFacts,
 }
 
 pub(super) fn fields(
@@ -73,7 +74,7 @@ fn field_subject(path: &[String]) -> GapSubject {
     }
 }
 
-fn attach_field(
+pub(super) fn attach_field(
     value: &mut Field,
     root: &RootField,
     evidence: FieldEvidence<'_>,

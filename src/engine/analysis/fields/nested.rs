@@ -1,4 +1,7 @@
 //! Connect a constructed persistent object to its read and collection insertion on every path.
+//! A factory that returns the object through `x8` is entered, so its allocation and constructor
+//! call are evaluated. A moving insertion counts only when the binding proved that it clears its
+//! source; the model then clears the moved-from pointer.
 use super::{
     CollectionField, FieldInput, RegistryFieldResult, RootField, dispatch, inventory, tokens,
 };
@@ -33,7 +36,21 @@ pub(super) fn discover(
     else {
         return Vec::new();
     };
-    let Ok(code) = Code::decode(&[(root.address, &root.code)]) else {
+    let factories: Vec<_> = input
+        .functions
+        .iter()
+        .filter(|function| {
+            input
+                .objects
+                .iter()
+                .any(|object| object.factories.contains(&function.address))
+        })
+        .collect();
+    let ranges: Vec<_> = std::iter::once(root)
+        .chain(factories)
+        .map(|function| (function.address, function.code.as_slice()))
+        .collect();
+    let Ok(code) = Code::decode(&ranges) else {
         return Vec::new();
     };
     let data = ReadOnlyData::new(
@@ -73,6 +90,13 @@ pub(super) fn discover(
                 machine.label(ALLOCATED | at, 1);
                 return Ok(Call::Return(Some(at)));
             }
+            if input
+                .objects
+                .iter()
+                .any(|object| object.factories.contains(&target))
+            {
+                return Ok(Call::Enter);
+            }
             for (index, object) in input.objects.iter().enumerate() {
                 if object.constructors.contains(&target) {
                     let at = machine.known_register(0, "constructed-object")?;
@@ -101,7 +125,8 @@ pub(super) fn discover(
                         return Ok(Call::Return(None));
                     }
                 }
-                if object.insert.contains(&target) {
+                let moves = object.moving_insert.contains(&target);
+                if moves || object.insert.contains(&target) {
                     let receiver = machine.known_register(0, "insert-collection")?;
                     let pointer = machine.known_register(2, "insert-value")?;
                     let at = machine
@@ -112,6 +137,9 @@ pub(super) fn discover(
                         && machine.labelled(OBJECT | at) == Some(index as u64)
                         && machine.labelled(INSERTED_CLASS).is_none()
                     {
+                        if moves {
+                            machine.write(pointer, 8, 0);
+                        }
                         machine.label(INSERTED_OBJECT, at);
                         machine.label(INSERTED_CLASS, index as u64);
                         machine.label(INSERTED_OFFSET, receiver - owner);
@@ -142,7 +170,14 @@ pub(super) fn discover(
             continue;
         }
         let object = &input.objects[first.0 as usize];
-        let (paths, mut gaps) = dispatch::explore_owner(input, &object.class);
+        let reader = object
+            .reader
+            .clone()
+            .filter(|bound| bound.reader.family != crate::BlockFamily::Unknown);
+        let (paths, mut gaps) = match reader {
+            Some(_) => Default::default(),
+            None => dispatch::explore_owner(input, &object.class),
+        };
         let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
         gaps.extend(field_gaps);
         let partition_accounted = inventory::partition_accounted(&paths);
@@ -151,6 +186,7 @@ pub(super) fn discover(
             offset: first.1,
             data_offset: object.data_offset,
             class: object.class.clone(),
+            reader,
             fields: Box::new(RegistryFieldResult {
                 persistent: Default::default(),
                 persistent_points: Default::default(),

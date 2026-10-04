@@ -4,6 +4,7 @@ use crate::engine::analysis::{
     modifier_blocks::{Entry, ModifierBlockFacts, Variant},
     readers,
     references::ReferenceFacts,
+    stop::Unresolved,
 };
 use crate::{
     BlockFamily, Field, FieldMembers, Gap, GapKind, GapSubject, GrammarProperty, ModifierBlock,
@@ -41,43 +42,65 @@ pub(super) fn attach(
             continue;
         }
         let point = *points.first().unwrap();
-        match facts.points.get(point) {
-            Some(Ok(variant)) => {
-                field.members =
-                    FieldMembers::ModifierBlock(normalize(variant, references, &field.name));
-                for (key, stop) in &variant.stops {
-                    let mut path = vec![field.name.clone()];
-                    path.extend(key.iter().cloned());
-                    gaps.push(Gap {
-                        kind: if key.is_some() {
-                            GapKind::UnresolvedReader
-                        } else {
-                            GapKind::UnresolvedPath
-                        },
-                        subject: Some(if key.is_some() {
-                            GapSubject::key_path(path)
-                        } else {
-                            GapSubject::field(&field.name)
-                        }),
-                        detail: format!("The modifier block analysis stopped at {}.", stop.reason),
-                    });
-                }
-            }
-            failure => {
-                gaps.push(Gap {
-                    kind: GapKind::UnresolvedReader,
-                    subject: Some(GapSubject::field(&field.name)),
-                    detail: format!(
-                        "The modifier block analysis stopped at {}.",
-                        match failure {
-                            Some(Err(stop)) => stop.reason,
-                            _ => "modifier-block-point",
-                        }
-                    ),
-                });
-            }
+        if let Some(block) = block(
+            facts.points.get(point),
+            references,
+            std::slice::from_ref(&field.name),
+            gaps,
+        ) {
+            field.members = FieldMembers::ModifierBlock(block);
         }
     }
+}
+
+/// The modifier block at `path` from its analysis result, with a gap for each stop. A missing
+/// or stopped analysis gives `None` and a gap at `path`.
+pub(super) fn block(
+    found: Option<&Result<Variant, Unresolved>>,
+    references: &ReferenceFacts,
+    path: &[String],
+    gaps: &mut Vec<Gap>,
+) -> Option<ModifierBlock> {
+    let subject = |path: Vec<String>| {
+        if path.len() == 1 {
+            GapSubject::field(&path[0])
+        } else {
+            GapSubject::key_path(path)
+        }
+    };
+    let variant = match found {
+        Some(Ok(variant)) => variant,
+        failure => {
+            gaps.push(Gap {
+                kind: GapKind::UnresolvedReader,
+                subject: Some(subject(path.to_vec())),
+                detail: format!(
+                    "The modifier block analysis stopped at {}.",
+                    match failure {
+                        Some(Err(stop)) => stop.reason,
+                        _ => "modifier-block-point",
+                    }
+                ),
+            });
+            return None;
+        }
+    };
+
+    for (key, stop) in &variant.stops {
+        let mut stopped = path.to_vec();
+        stopped.extend(key.iter().cloned());
+        gaps.push(Gap {
+            kind: if key.is_some() {
+                GapKind::UnresolvedReader
+            } else {
+                GapKind::UnresolvedPath
+            },
+            subject: Some(subject(stopped)),
+            detail: format!("The modifier block analysis stopped at {}.", stop.reason),
+        });
+    }
+
+    Some(normalize(variant, references, path.last()?))
 }
 
 /// The block grammar of the field `parent`. Fixed-key conditions name field paths from `parent`.
