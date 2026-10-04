@@ -6,7 +6,9 @@ use crate::OpenError;
 
 pub(super) use recipes::InlineFixtureRecipe;
 pub(super) use recipes::M45_DEFAULT_REGISTRIES;
-pub(super) use recipes::{BindingGroupId, DeclarationRecipe, PersistentRecipe, Recipe, StrategyId};
+pub(super) use recipes::{
+    AnchorSlot, BindingGroupId, DeclarationRecipe, PersistentRecipe, Recipe, StrategyId,
+};
 
 pub(super) struct TargetRecord {
     pub executable: &'static str,

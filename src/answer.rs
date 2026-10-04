@@ -1127,6 +1127,9 @@ pub enum BlockFamily {
     /// Weight and script-value blocks; registry fields can carry their grammar in
     /// `FieldMembers::WeightBlock`.
     Weight,
+    /// Modifier blocks applied while a trigger holds (`triggered_*_modifier`); registry fields
+    /// can carry their grammar in `FieldMembers::TriggeredModifier`.
+    TriggeredModifier,
     /// The family is not established, including conflicting or missing alternatives.
     #[default]
     Unknown,

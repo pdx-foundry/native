@@ -34,6 +34,9 @@ pub(crate) struct DispatchInput<'a> {
     pub owner_vtable: Option<(u64, &'a BTreeMap<u64, u64>)>,
     /// Constructors whose body proves a wrapped owner pointer at this object offset.
     pub serializer_constructors: Option<&'a BTreeMap<u64, i64>>,
+    /// The one owner-vtable target that joins as a member delegate when a tail call passes it the
+    /// owner, reader and token unchanged.
+    pub virtual_delegate: Option<&'a str>,
 }
 impl<'a> DispatchInput<'a> {
     pub(crate) fn with_owner_vtable(
@@ -73,6 +76,7 @@ impl<'a> DispatchInput<'a> {
             bitwise_updates: false,
             owner_vtable: None,
             serializer_constructors: None,
+            virtual_delegate: None,
         }
     }
 }
@@ -809,6 +813,7 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
             bitwise_updates: false,
             owner_vtable: None,
             serializer_constructors: None,
+            virtual_delegate: None,
         },
         &root,
     )
@@ -1221,14 +1226,18 @@ fn call_outcome(
     tail: bool,
     input: &DispatchInput<'_>,
 ) -> PathOutcome {
+    if let Some(delegate) = name.filter(|&name| tail && Some(name) == input.virtual_delegate)
+        && forwards_member_arguments(state)
+    {
+        return PathOutcome::Reader(ReaderJoin::Joined {
+            callee: delegate.into(),
+            arguments: state.registers.clone(),
+            tail,
+        });
+    }
     if input.owner_vtable.is_some()
         && name.is_some_and(|name| name.ends_with("::TryReadMember(CReader&, int)"))
-        && state.registers.get("x0") == Some(&Value::Owner(0))
-        && state.registers.get("x1") == Some(&Value::Reader(0))
-        && matches!(
-            state.registers.get("x2"),
-            Some(Value::Token | Value::TokenWord(0))
-        )
+        && forwards_member_arguments(state)
     {
         return PathOutcome::Reader(ReaderJoin::Joined {
             callee: name.unwrap().into(),
@@ -1269,6 +1278,16 @@ fn call_outcome(
             Some(input.key_readers.value_token),
         ))
     }
+}
+
+/// Whether `x0` to `x2` still hold the member reader's owner, reader and token.
+fn forwards_member_arguments(state: &State) -> bool {
+    state.registers.get("x0") == Some(&Value::Owner(0))
+        && state.registers.get("x1") == Some(&Value::Reader(0))
+        && matches!(
+            state.registers.get("x2"),
+            Some(Value::Token | Value::TokenWord(0))
+        )
 }
 
 fn owner_virtual_target(input: &DispatchInput<'_>, state: &State, operand: &str) -> Option<u64> {

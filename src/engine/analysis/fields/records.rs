@@ -267,10 +267,20 @@ pub struct ObjectReader {
     pub pointers: BTreeMap<u64, u64>,
     /// Entry address of the persistent reader called on the constructed object.
     pub read: u64,
+    /// Entry addresses of factories that allocate, construct and return the object through `x8`.
+    #[serde(default)]
+    pub factories: Vec<u64>,
     /// Entry addresses of insertion specializations accepting this object's pointer.
     pub insert: Vec<u64>,
+    /// Entry addresses of insertion specializations that take the object from a scoped pointer
+    /// and are proven to clear that pointer.
+    #[serde(default)]
+    pub moving_insert: Vec<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.
     pub data_offset: Option<u64>,
+    /// The persistent reader at the object's primary address point.
+    #[serde(default)]
+    pub reader: Option<PointReader>,
 }
 
 /// A root field that reads constructed objects into an owner collection.
@@ -284,6 +294,9 @@ pub struct CollectionField {
     pub data_offset: Option<u64>,
     /// Demangled class name of the inserted object.
     pub class: String,
+    /// The inserted object's reader when its family has a block grammar. Such a collection
+    /// carries no loader fields; the family's grammar describes its members.
+    pub reader: Option<PointReader>,
     /// Loader fields and gaps discovered for the inserted object's class.
     pub fields: Box<RegistryFieldResult>,
 }
@@ -307,6 +320,18 @@ pub struct ConcreteReader {
     pub read: String,
     pub member: String,
     pub family: crate::BlockFamily,
+    /// The target of the family's delegate slot, for readers that share read and member.
+    #[serde(default)]
+    pub delegate: Option<String>,
+}
+
+/// A persistent reader with the vtable address point that holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointReader {
+    /// Executable virtual address of the object's vtable address point.
+    pub point: u64,
+    /// The concrete methods and family bound at that address point.
+    pub reader: ConcreteReader,
 }
 
 /// Exact executable inputs for owner constructor evaluation.

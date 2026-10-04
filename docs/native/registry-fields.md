@@ -18,8 +18,8 @@ required input make the answer partial.
 
 ## Current M451 sweep
 
-`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v16`) holds
-the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,564 root and 41 nested
+`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v17`) holds
+the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
 fields. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -41,7 +41,10 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   an element from an unknown call cannot establish the shape.
 - **Constructed objects.** The method reads `tradition_swap` in traditions and ascension perks (13
   child fields each); in `advanced_authority_swap` the collection is established but not its
-  children. The council presence branches normalize to unconditional integer reads.
+  children. The council presence branches normalize to unconditional integer reads. Objects built
+  by a `PdxMakeScopedPtr` factory and moved into a scoped-pointer array join the same way; when the
+  object's reader has a block family, as the 50 triggered modifier clauses do, the field carries that
+  reader and its grammar instead of loader fields ([triggered modifiers](triggered-modifiers.md)).
 - **Repeat behavior.** A fixture agrees with `unlocks_agenda` replacing storage: omission leaves an
   empty string and two occurrences keep the second. This sets no occurrence limit or default rule.
 

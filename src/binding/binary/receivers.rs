@@ -1,5 +1,6 @@
 //! Constructor summaries shared with the nested-object reader method.
 use crate::AnalysisError;
+use crate::binding::targets::{AnchorSlot, PersistentRecipe};
 use crate::engine::analysis::{
     declarations::{Function, branch_alias},
     decode::decode_arm64,
@@ -10,9 +11,32 @@ use std::collections::{BTreeMap, BTreeSet};
 // Bound decoded constructor input to avoid unbounded analysis of oversized bodies.
 const MAX_CONSTRUCTOR_CODE_BYTES: usize = 65536;
 
-fn constructor_class(name: &str) -> Option<&str> {
-    let (class, method) = name.split_once("::")?;
-    method.starts_with(&format!("{class}(")).then_some(class)
+/// The class of a constructor symbol, `Class::Class(…)` or `Class<Arguments>::Class(…)`. The
+/// class is the name before the first scope separator outside template arguments, so a nested
+/// class's constructor does not match.
+pub(super) fn constructor_class(name: &str) -> Option<&str> {
+    let separator = top_level_scope(name)?;
+    let (class, method) = (&name[..separator], &name[separator + 2..]);
+    let base = class.split_once('<').map_or(class, |(base, _)| base);
+
+    method.strip_prefix(base)?.starts_with('(').then_some(class)
+}
+
+/// The byte offset of the first `::` outside template arguments, before any parameter list.
+fn top_level_scope(name: &str) -> Option<usize> {
+    let mut depth = 0usize;
+
+    for (at, character) in name.char_indices() {
+        match character {
+            '<' => depth += 1,
+            '>' => depth = depth.checked_sub(1)?,
+            '(' if depth == 0 => return None,
+            ':' if depth == 0 && name[at..].starts_with("::") => return Some(at),
+            _ => {}
+        }
+    }
+
+    None
 }
 
 /// Constructor entries reached directly or through register-move wrappers, with their compiler
@@ -131,6 +155,41 @@ pub(super) fn constructor_calls(
     Ok(calls)
 }
 
+/// The persistent reader at one vtable address point, with the family of the recipe anchor that
+/// its read or member slot holds. `name` gives the unique symbol at an address.
+pub(super) fn concrete_reader(
+    recipe: &PersistentRecipe,
+    pointers: &BTreeMap<u64, u64>,
+    point: u64,
+    name: &dyn Fn(u64) -> Option<String>,
+) -> Option<crate::engine::analysis::fields::ConcreteReader> {
+    let slot = |offset: u64| {
+        pointers
+            .get(&point.checked_add(offset)?)
+            .and_then(|&at| name(at))
+    };
+    let read = slot(recipe.read_slot).filter(|read| read.ends_with("::Read(CReader&)"))?;
+    let member = slot(recipe.member_slot)
+        .filter(|member| member.ends_with("::ReadMember(CReader&, int)"))?;
+    let anchor = recipe.families.iter().find(|anchor| {
+        let held = match anchor.slot {
+            AnchorSlot::Read => &read,
+            AnchorSlot::Member => &member,
+        };
+
+        anchor.symbol == held
+    });
+
+    Some(crate::engine::analysis::fields::ConcreteReader {
+        family: anchor.map_or(crate::BlockFamily::Unknown, |anchor| anchor.family),
+        delegate: anchor
+            .and_then(|anchor| anchor.delegate_slot)
+            .and_then(slot),
+        read,
+        member,
+    })
+}
+
 /// Owner constructors and the virtual methods installed by their called constructors.
 pub(super) fn persistent(
     bytes: &[u8],
@@ -138,15 +197,17 @@ pub(super) fn persistent(
     pointers: &BTreeMap<u64, u64>,
     bound_slots: &BTreeSet<u64>,
     owner: &str,
-    recipe: &super::super::targets::PersistentRecipe,
+    recipe: &PersistentRecipe,
 ) -> Result<crate::engine::analysis::fields::PersistentInput, AnalysisError> {
-    use crate::engine::analysis::fields::{ConcreteReader, PersistentInput};
+    use crate::engine::analysis::fields::PersistentInput;
     let text = super::declarations::Text::read(bytes, symbols)?;
     let entries: BTreeSet<_> = symbols
         .iter()
         .filter(|symbol| {
-            symbol.name.starts_with(&format!("{owner}::{owner}("))
+            constructor_class(&symbol.name) == Some(owner)
                 && !symbol.name.contains("[clone .cold.")
+                // A branch-island stub outside the text section only jumps to a selected body.
+                && text.starts.contains(&symbol.address)
         })
         .map(|symbol| symbol.address)
         .collect();
@@ -171,17 +232,33 @@ pub(super) fn persistent(
         })
         .map(|body| body.address)
         .collect();
+    let names_at = |address: u64| {
+        symbols
+            .iter()
+            .filter(move |symbol| symbol.address == address)
+            .map(|symbol| symbol.name.as_str())
+    };
+    let full_names: BTreeSet<_> = full_entries
+        .iter()
+        .flat_map(|&entry| names_at(entry))
+        .collect();
+    // A branch-island stub outside the text section carries the name of the body it reaches.
+    let full_stub = |target: u64| {
+        !text.starts.contains(&target) && names_at(target).any(|name| full_names.contains(name))
+    };
     bodies.retain(|body| {
         let Ok(rows) = decode_arm64(&body.code, body.address) else {
             return true;
         };
         // An alias delegates every input unchanged to a proved full constructor.
-        !branch_alias(&rows).is_some_and(|target| full_entries.contains(&target))
+        !branch_alias(&rows)
+            .is_some_and(|target| full_entries.contains(&target) || full_stub(target))
     });
     let roots: Vec<_> = bodies.iter().collect();
     let summaries = constructors(bytes, symbols, pointers, bound_slots, &roots)?;
     let mut constructor_bodies = BTreeMap::new();
-    for &entry in summaries.keys() {
+    // A branch-island stub has no body to enter; its summary still installs its vtables.
+    for &entry in summaries.keys().filter(|entry| text.starts.contains(entry)) {
         let (address, code) = text.function(entry)?;
         if code.len() <= MAX_CONSTRUCTOR_CODE_BYTES {
             constructor_bodies.insert(
@@ -230,37 +307,10 @@ pub(super) fn persistent(
             points.extend(group.address_points.into_values());
         }
     }
-    let mut readers = BTreeMap::new();
-    for point in &points {
-        let Some(read) = pointers
-            .get(&(point + recipe.read_slot))
-            .and_then(|&address| name(address))
-        else {
-            continue;
-        };
-        let Some(member) = pointers
-            .get(&(point + recipe.member_slot))
-            .and_then(|&address| name(address))
-        else {
-            continue;
-        };
-        if !read.ends_with("::Read(CReader&)") || !member.ends_with("::ReadMember(CReader&, int)") {
-            continue;
-        }
-        let family = recipe
-            .families
-            .iter()
-            .find_map(|(anchor, family)| (*anchor == read).then_some(*family))
-            .unwrap_or(crate::BlockFamily::Unknown);
-        readers.insert(
-            *point,
-            ConcreteReader {
-                read,
-                member,
-                family,
-            },
-        );
-    }
+    let readers = points
+        .iter()
+        .filter_map(|&point| Some((point, concrete_reader(recipe, pointers, point, &name)?)))
+        .collect();
     let constructors = bodies
         .into_iter()
         .map(|body| crate::engine::analysis::fields::Function {
@@ -291,6 +341,65 @@ mod tests {
     use crate::engine::analysis::{analysis_support::macho_with_text, assembler::arm64};
 
     #[test]
+    fn a_constructor_names_its_class_with_template_arguments() {
+        assert_eq!(constructor_class("A::A(int)"), Some("A"));
+        assert_eq!(constructor_class("A<B<C>>::A(int)"), Some("A<B<C>>"));
+        assert_eq!(constructor_class("A<x::Y>::A()"), Some("A<x::Y>"));
+        assert_eq!(constructor_class("A::B::B()"), None);
+        assert_eq!(constructor_class("A<B>::~A()"), None);
+        assert_eq!(constructor_class("A::Read(B::C)"), None);
+    }
+
+    #[test]
+    fn an_alias_to_a_stub_of_a_full_constructor_is_not_a_second_constructor() {
+        let code = arm64!(at 0x1000;
+            ret;
+            b extern 0x9000
+        );
+        let bytes = macho_with_text(&code);
+        let constructor = "CExample<A>::CExample(int)";
+        let mut symbols = vec![
+            Symbol {
+                name: constructor.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: constructor.into(),
+                address: 0x1004,
+            },
+            Symbol {
+                name: constructor.into(),
+                address: 0x9000,
+            },
+        ];
+        let recipe = PersistentRecipe {
+            string_array: [0; 3],
+            compound_sizes: [0; 3],
+            value_token: 0,
+            token_text: 0,
+            read_slot: 0,
+            member_slot: 0,
+            families: &[],
+        };
+        let bind = |symbols: &[Symbol]| {
+            persistent(
+                &bytes,
+                symbols,
+                &BTreeMap::new(),
+                &BTreeSet::new(),
+                "CExample<A>",
+                &recipe,
+            )
+            .unwrap()
+        };
+
+        assert_eq!(bind(&symbols).constructors.len(), 1);
+
+        symbols[2].name = "COther::COther(int)".into();
+        assert_eq!(bind(&symbols).constructors.len(), 2);
+    }
+
+    #[test]
     fn owner_constructors_exclude_outlined_cleanup_fragments_and_keep_complete_aliases() {
         let code = arm64!(at 0x1000;
             ret;
@@ -312,7 +421,7 @@ mod tests {
                 address: 0x1008,
             },
         ];
-        let recipe = super::super::super::targets::PersistentRecipe {
+        let recipe = PersistentRecipe {
             string_array: [0; 3],
             compound_sizes: [0; 3],
             value_token: 0,

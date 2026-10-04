@@ -39,6 +39,20 @@ pub(super) fn registry_fields(
     }
 }
 
+/// The read scopes of a block's keys, with gaps at their paths below `parent`.
+pub(super) fn block_keys(
+    values: &mut [Field],
+    roots: &[RootField],
+    paths: &[TokenPath],
+    names: Option<&[String]>,
+    parent: &[String],
+    gaps: &mut Vec<Gap>,
+) {
+    let mut local_gaps = Vec::new();
+    fields(values, roots, paths, names, &mut local_gaps);
+    prefix_gaps(local_gaps, parent, gaps);
+}
+
 fn prefix_gaps(local_gaps: Vec<Gap>, parent: &[String], gaps: &mut Vec<Gap>) {
     for mut gap in local_gaps {
         if !parent.is_empty()

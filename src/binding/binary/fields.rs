@@ -1,7 +1,8 @@
 use crate::AnalysisError;
+use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
-    fields::{DataSection, FieldInput, Function, ObjectReader, has_owner_receiver},
+    fields::{DataSection, FieldInput, Function, ObjectReader, PointReader, has_owner_receiver},
 };
 use object::{Object, ObjectSection, SectionKind};
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,7 +16,7 @@ pub(in crate::binding) fn read(
     pointers: &BTreeMap<u64, u64>,
     bound_slots: &BTreeSet<u64>,
     selection: CandidateRecord,
-    persistent_recipe: Option<&super::super::targets::PersistentRecipe>,
+    persistent_recipe: Option<&PersistentRecipe>,
 ) -> Result<FieldInput, AnalysisError> {
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
@@ -55,7 +56,14 @@ pub(in crate::binding) fn read(
             code: super::code_range(bytes, start, length)?,
         });
     }
-    let objects = collect_objects(bytes, symbols, pointers, bound_slots, &mut functions)?;
+    let objects = collect_objects(
+        bytes,
+        symbols,
+        pointers,
+        bound_slots,
+        persistent_recipe,
+        &mut functions,
+    )?;
     if !objects.is_empty() {
         collect_owner_methods(
             bytes,
@@ -108,12 +116,14 @@ pub(super) fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisE
         .collect()
 }
 
-/// Follow direct constructor calls only; a symbol alone does not attach a nested class to a field.
+/// Follow direct constructor and factory calls only; a symbol alone does not attach a nested
+/// class to a field.
 fn collect_objects(
     bytes: &[u8],
     symbols: &[Symbol],
     pointers: &BTreeMap<u64, u64>,
     bound_slots: &BTreeSet<u64>,
+    recipe: Option<&PersistentRecipe>,
     functions: &mut Vec<Function>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
     let Some(root) = functions.first() else {
@@ -126,26 +136,36 @@ fn collect_objects(
         .filter(|row| row.operation == "bl")
         .filter_map(|row| u64::from_str_radix(row.operands.trim_start_matches("#0x"), 16).ok())
         .collect();
-    let classes: BTreeSet<_> = symbols
+    let mut classes = BTreeMap::<String, Vec<&Symbol>>::new();
+
+    for symbol in symbols
         .iter()
         .filter(|symbol| calls.contains(&symbol.address))
-        .filter_map(|symbol| {
-            let (class, method) = symbol.name.split_once("::")?;
-            method
-                .starts_with(&format!("{class}("))
-                .then_some(class.to_owned())
-        })
-        .collect();
+    {
+        if let Some(class) = super::receivers::constructor_class(&symbol.name) {
+            classes.entry(class.to_owned()).or_default();
+        } else if let Some(class) = factory_class(&symbol.name) {
+            classes.entry(class.to_owned()).or_default().push(symbol);
+        }
+    }
+
     if classes.is_empty() {
         return Ok(Vec::new());
     }
+
     let data = super::language::constant_data(bytes, pointers, bound_slots)?;
+    let unique_name = |address: u64| {
+        let names: BTreeSet<_> = symbols
+            .iter()
+            .filter(|symbol| symbol.address == address)
+            .map(|symbol| symbol.name.as_str())
+            .collect();
+
+        (names.len() == 1).then(|| names.first().unwrap().to_string())
+    };
     let mut objects = Vec::new();
-    for class in classes {
-        let member = format!("{class}::ReadMember(CReader&, int)");
-        let Some(symbol) = symbols.iter().find(|symbol| symbol.name == member) else {
-            continue;
-        };
+
+    for (class, factories) in classes {
         let Some(vtable) = super::families::vtable_group(symbols, &data, &class) else {
             continue;
         };
@@ -157,22 +177,38 @@ fn collect_objects(
             })
             .map(|symbol| symbol.address)
             .collect();
+
         if reads.len() != 1 {
             continue;
         }
-        let end = symbols
-            .iter()
-            .map(|other| other.address)
-            .filter(|address| *address > symbol.address)
-            .min();
-        let Some(end) = end.filter(|end| end - symbol.address <= 1024 * 1024) else {
-            continue;
+
+        let reader = recipe
+            .zip(vtable.address_points.get(&0))
+            .and_then(|(recipe, &point)| {
+                Some(PointReader {
+                    point,
+                    reader: super::receivers::concrete_reader(
+                        recipe,
+                        pointers,
+                        point,
+                        &unique_name,
+                    )?,
+                })
+            });
+        let member_name = format!("{class}::ReadMember(CReader&, int)");
+        let mut bodies_available = match symbols.iter().find(|symbol| symbol.name == member_name) {
+            Some(symbol) => push_function(bytes, symbols, functions, symbol)?,
+            None => reader.is_some(),
         };
-        functions.push(Function {
-            name: member,
-            address: symbol.address,
-            code: super::code_range(bytes, symbol.address, end - symbol.address)?,
-        });
+
+        for factory in &factories {
+            bodies_available &= push_function(bytes, symbols, functions, factory)?;
+        }
+
+        if !bodies_available {
+            continue;
+        }
+
         let mut slots = BTreeMap::new();
         for point in vtable.address_points.values() {
             let end = symbols
@@ -187,24 +223,257 @@ fn collect_objects(
                 }
             }
         }
-        let insert: Vec<_> = symbols.iter().filter(|symbol| symbol.name == format!("{class}*& CPdxArray<{class}*, int>::InsertAtEmplace<{class}* const&>(int, {class}* const&)"))
-            .map(|symbol| symbol.address).collect();
+        let insert = addresses(
+            symbols,
+            &format!(
+                "{class}*& CPdxArray<{class}*, int>::InsertAtEmplace<{class}* const&>(int, {class}* const&)"
+            ),
+        );
+        let scoped = format!("CPdxScopedPtrImpl<{class}, false>");
+        let moving_insert = addresses(
+            symbols,
+            &format!(
+                "{scoped}& CPdxArray<{scoped}, int>::InsertAtEmplace<{scoped} >(int, {scoped}&&)"
+            ),
+        )
+        .into_iter()
+        .filter(|&start| clears_moved_source_at(bytes, symbols, start).unwrap_or(false))
+        .collect();
         let data_offset = array_data_offset(bytes, symbols, &insert)?;
         objects.push(ObjectReader {
             data_offset,
             constructors: symbols
                 .iter()
-                .filter(|symbol| symbol.name.starts_with(&format!("{class}::{class}(")))
+                .filter(|symbol| super::receivers::constructor_class(&symbol.name) == Some(&class))
                 .map(|symbol| symbol.address)
                 .collect(),
+            factories: factories.iter().map(|symbol| symbol.address).collect(),
             insert,
+            moving_insert,
             class,
             vtables: vtable.address_points,
             pointers: slots,
             read: *reads.first().unwrap(),
+            reader,
         });
     }
     Ok(objects)
+}
+
+/// The class that a `PdxMakeScopedPtr<Class, …>` factory allocates and constructs.
+fn factory_class(name: &str) -> Option<&str> {
+    let (_, arguments) = name.split_once(" PdxMakeScopedPtr<")?;
+    let mut depth = 0usize;
+
+    for (at, character) in arguments.char_indices() {
+        match character {
+            '<' => depth += 1,
+            '>' if depth == 0 => return Some(&arguments[..at]),
+            '>' => depth -= 1,
+            ',' if depth == 0 => return Some(&arguments[..at]),
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn addresses(symbols: &[Symbol], name: &str) -> Vec<u64> {
+    symbols
+        .iter()
+        .filter(|symbol| symbol.name == name)
+        .map(|symbol| symbol.address)
+        .collect()
+}
+
+/// Add a symbol's bounded body once; whether the body is available.
+fn push_function(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    functions: &mut Vec<Function>,
+    symbol: &Symbol,
+) -> Result<bool, AnalysisError> {
+    if functions
+        .iter()
+        .any(|function| function.address == symbol.address)
+    {
+        return Ok(true);
+    }
+
+    let end = symbols
+        .iter()
+        .map(|other| other.address)
+        .filter(|address| *address > symbol.address)
+        .min();
+    let Some(end) = end.filter(|end| end - symbol.address <= 1024 * 1024) else {
+        return Ok(false);
+    };
+
+    functions.push(Function {
+        name: symbol.name.clone(),
+        address: symbol.address,
+        code: super::code_range(bytes, symbol.address, end - symbol.address)?,
+    });
+    Ok(true)
+}
+
+/// Whether the moving insertion at `start` clears its source pointer on every return.
+fn clears_moved_source_at(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    start: u64,
+) -> Result<bool, AnalysisError> {
+    let Some(end) = symbols
+        .iter()
+        .map(|symbol| symbol.address)
+        .filter(|address| *address > start)
+        .min()
+        .filter(|end| end - start <= 65536)
+    else {
+        return Ok(false);
+    };
+    let code = super::code_range(bytes, start, end - start)?;
+    let rows = crate::engine::analysis::decode::decode_arm64(&code, start)
+        .map_err(|_| AnalysisError::InvalidRange)?;
+
+    Ok(clears_moved_source(&rows))
+}
+
+/// Whether every return leaves the 8-byte slot that `x2` names on entry holding zero, as the
+/// moving insertion of a scoped pointer must. The slot is cleared by `str xzr` through a register
+/// that still holds the entry `x2`; any other store through such a register, or a call that may
+/// receive it, makes the slot unknown again. Stores through other registers are taken not to
+/// alias the caller's source slot, because the insertion writes only its array and frame.
+fn clears_moved_source(rows: &[crate::engine::analysis::decode::Instruction]) -> bool {
+    #[derive(Clone, PartialEq)]
+    struct Source {
+        registers: BTreeSet<String>,
+        cleared: bool,
+    }
+
+    if rows.is_empty() {
+        return false;
+    }
+
+    let indexes: BTreeMap<_, _> = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| (row.address, index))
+        .collect();
+    let mut states: Vec<Option<Source>> = vec![None; rows.len()];
+    states[0] = Some(Source {
+        registers: BTreeSet::from(["x2".to_owned()]),
+        cleared: false,
+    });
+    let mut pending = std::collections::VecDeque::from([0]);
+    let mut returned = false;
+    let mut steps = 0;
+
+    while let Some(pc) = pending.pop_front() {
+        steps += 1;
+        if steps > rows.len() * 32 {
+            return false;
+        }
+
+        let row = &rows[pc];
+        let Some(mut source) = states[pc].clone() else {
+            return false;
+        };
+        let parts: Vec<_> = row.operands.split(',').collect();
+
+        if row.operation == "ret" {
+            if !source.cleared {
+                return false;
+            }
+            returned = true;
+            continue;
+        }
+
+        if row.operation == "br" {
+            return false;
+        }
+
+        if row.operation.starts_with("st")
+            && memory_base(&row.operands).is_some_and(|base| source.registers.contains(base))
+        {
+            source.cleared = row.operation == "str" && parts.len() == 2 && parts[0] == "xzr";
+        }
+
+        if (row.operation == "bl" || row.operation == "blr")
+            && (0..8).any(|index| source.registers.contains(&format!("x{index}")))
+        {
+            source.cleared = false;
+        }
+
+        let copied = row.operation == "mov"
+            && parts.len() == 2
+            && parts[0].starts_with('x')
+            && source.registers.contains(parts[1]);
+
+        for register in super::families::written_registers(&row.operation, &row.operands) {
+            source.registers.remove(&format!("x{register}"));
+        }
+
+        if copied {
+            source.registers.insert(parts[0].into());
+        }
+
+        let mut next = Vec::new();
+
+        if !matches!(row.operation.as_str(), "b" | "brk") && pc + 1 < rows.len() {
+            next.push(pc + 1);
+        }
+
+        if row.operation == "b"
+            || row.operation.starts_with("b.")
+            || matches!(row.operation.as_str(), "cbz" | "cbnz" | "tbz" | "tbnz")
+        {
+            let Some(target) = branch_target(&row.operands) else {
+                return false;
+            };
+            let Some(&index) = indexes.get(&target) else {
+                return false;
+            };
+            next.push(index);
+        }
+
+        for next in next {
+            let joined = match &states[next] {
+                Some(previous) => Source {
+                    registers: previous
+                        .registers
+                        .intersection(&source.registers)
+                        .cloned()
+                        .collect(),
+                    cleared: previous.cleared && source.cleared,
+                },
+                None => source.clone(),
+            };
+
+            if states[next].as_ref() != Some(&joined) {
+                states[next] = Some(joined);
+                pending.push_back(next);
+            }
+        }
+    }
+
+    returned
+}
+
+/// The base register of an instruction's memory operand.
+fn memory_base(operands: &str) -> Option<&str> {
+    let (_, memory) = operands.split_once('[')?;
+
+    memory.split([',', ']']).next()
+}
+
+fn branch_target(operands: &str) -> Option<u64> {
+    let operand = operands.rsplit(',').next()?.trim_start_matches('#');
+
+    match operand.strip_prefix("0x") {
+        Some(hex) => u64::from_str_radix(hex, 16).ok(),
+        None => operand.parse().ok(),
+    }
 }
 
 fn collect_owner_methods(
@@ -430,6 +699,81 @@ mod tests {
         assert_eq!(sections[0].address, 0x1_0000_3000);
         assert_eq!(sections[0].bytes, IMAGE_JUMP_TABLE);
     }
+    #[test]
+    fn a_moving_insertion_must_clear_its_source_on_every_return() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let clears = |code: Vec<u8>| clears_moved_source(&decode_arm64(&code, 0x1000).unwrap());
+        let moved = arm64!(at 0x1000;
+            mov x22, x2;
+            bl extern 0x2000; // allocation
+            ldr x8, [x22];
+            str xzr, [x22];
+            str x8, [x0];
+            ret
+        );
+        let bypassed = arm64!(at 0x1000;
+            mov x22, x2;
+            cbz w1, extern 0x1010;
+            ldr x8, [x22];
+            str xzr, [x22];
+            ret
+        );
+        let other_slot = arm64!(at 0x1000;
+            ldr x8, [x2];
+            str xzr, [x3];
+            ret
+        );
+        let kept = arm64!(at 0x1000;
+            ldr x8, [x2];
+            str x8, [x0];
+            ret
+        );
+        let passed_on = arm64!(at 0x1000;
+            str xzr, [x2];
+            mov x0, x2;
+            bl extern 0x2000; // may store through the source
+            ret
+        );
+
+        assert!(clears(moved));
+        for code in [bypassed, other_slot, kept, passed_on] {
+            assert!(!clears(code));
+        }
+    }
+
+    #[test]
+    fn an_object_whose_member_is_the_root_does_not_add_the_root_twice() {
+        // A second body with the root's name would make the root ambiguous to the dispatch walk.
+        let root = Symbol {
+            name: "CExample::ReadMember(CReader&, int)".into(),
+            address: 0x1000,
+        };
+        let mut functions = vec![Function {
+            name: root.name.clone(),
+            address: root.address,
+            code: vec![0; 4],
+        }];
+
+        assert!(push_function(&[], std::slice::from_ref(&root), &mut functions, &root).unwrap());
+        assert_eq!(functions.len(), 1);
+    }
+
+    #[test]
+    fn a_factory_names_its_class_as_the_first_template_argument() {
+        assert_eq!(
+            factory_class(
+                "CPdxScopedPtrImpl<A<B>, false> PdxMakeScopedPtr<A<B>, int, C const&>(int, C const&)"
+            ),
+            Some("A<B>")
+        );
+        assert_eq!(
+            factory_class("CPdxScopedPtrImpl<A, false> PdxMakeScopedPtr<A>()"),
+            Some("A")
+        );
+        assert_eq!(factory_class("A::A(int)"), None);
+    }
+
     #[test]
     fn collection_buffer_requires_a_receiver_on_every_incoming_path() {
         use crate::engine::analysis::assembler::arm64;

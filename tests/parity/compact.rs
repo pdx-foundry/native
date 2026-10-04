@@ -17,6 +17,9 @@ pub fn compact_fields(fields: &[Field]) -> Value {
                     FieldMembers::WeightBlock(_) => {
                         value["members"] = json!({"WeightBlock": field.reader.id})
                     }
+                    FieldMembers::TriggeredModifier(_) => {
+                        value["members"] = json!({"TriggeredModifier": field.reader.id})
+                    }
                     FieldMembers::Fields(children) => {
                         value["members"] = json!({"Fields": compact_fields(children)})
                     }
@@ -126,10 +129,74 @@ pub fn weight_blocks(native: &Native) -> super::Result<Value> {
     Ok(json!(variants))
 }
 
+/// One representative of each triggered modifier clause variant. A modifier block names its
+/// reader identity; its grammar is in `modifier-blocks.json`.
+pub fn triggered_modifiers(native: &Native) -> super::Result<Value> {
+    let mut variants = BTreeMap::new();
+    for (registry, name) in [
+        ("common/megastructures", "triggered_country_modifier"),
+        ("common/pop_jobs", "triggered_planet_modifier"),
+        ("common/traditions", "triggered_modifier"),
+    ] {
+        let answer = native.registry_fields(registry)?;
+        let field = answer
+            .value
+            .iter()
+            .find(|field| field.name == name)
+            .ok_or("triggered modifier sample missing")?;
+        let FieldMembers::TriggeredModifier(block) = &field.members else {
+            return Err(format!("{registry}: triggered modifier grammar missing").into());
+        };
+        let keys = |fields: &Vec<Field>| {
+            json!(
+                fields
+                    .iter()
+                    .map(|key| {
+                        let members = match &key.members {
+                            FieldMembers::ModifierBlock(_) => {
+                                json!({"ModifierBlock": key.reader.id})
+                            }
+                            FieldMembers::None => Value::Null,
+                            other => json!(other),
+                        };
+                        json!([
+                            key.name,
+                            key.reader.kind,
+                            key.reader.family,
+                            key.shape.repeat,
+                            members
+                        ])
+                    })
+                    .collect::<Vec<_>>()
+            )
+        };
+        let gaps: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| match &gap.subject {
+                Some(GapSubject::Field { name }) => name == &field.name,
+                Some(GapSubject::KeyPath { path }) => path.first() == Some(&field.name),
+                _ => false,
+            })
+            .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+            .collect();
+        variants.insert(
+            identity(field)?,
+            json!({
+                "sample": [registry, name],
+                "fixed_keys": property(&block.fixed_keys, keys),
+                "other_keys": property(&block.other_keys, |members| json!({"ModifierBlock": members.reader.id})),
+                "gaps": gaps,
+            }),
+        );
+    }
+    Ok(json!(variants))
+}
+
 fn identity(field: &Field) -> super::Result<String> {
     Ok(serde_json::to_value(&field.reader.id)?
         .as_str()
-        .ok_or("missing weight identity")?
+        .ok_or("missing reader identity")?
         .to_owned())
 }
 
@@ -221,6 +288,28 @@ pub fn check_weight_identity(
         check_weight_identity(variants, key)?;
     }
     Ok(())
+}
+
+/// Equal public reader identities must describe the same triggered modifier clause.
+#[cfg(test)]
+pub fn check_triggered_identity(
+    variants: &mut BTreeMap<String, (String, TriggeredModifierBlock)>,
+    field: &Field,
+) -> super::Result<()> {
+    let FieldMembers::TriggeredModifier(block) = &field.members else {
+        return Ok(());
+    };
+    let id = identity(field)?;
+    match variants.get(&id) {
+        Some((first, previous)) if previous != &**block => {
+            Err(format!("clause grammar of {} differs from {first}", field.name).into())
+        }
+        Some(_) => Ok(()),
+        None => {
+            variants.insert(id, (field.name.clone(), (**block).clone()));
+            Ok(())
+        }
+    }
 }
 
 /// Equal public reader identities must describe the same modifier grammar.
@@ -429,6 +518,32 @@ pub fn compact_namespace(namespace: &pdx_native::DynamicNamespace) -> Value {
         "read_by": commands(&namespace.read_by),
         "dynamic_form": format!("{:?}", namespace.dynamic_form),
     })
+}
+
+#[cfg(test)]
+mod triggered_tests {
+    use super::*;
+
+    #[test]
+    fn shared_identity_rejects_different_clauses() {
+        let field: Field = serde_json::from_value(json!({
+            "name":"triggered_modifier", "reader":{"id":"shared","kind":"Block","family":"TriggeredModifier","numeric":"Unresolved","scoped_operand":"Unresolved"},
+            "shape":{"value":"Block","repeat":"Accumulate"}, "read":[],
+            "members":{"TriggeredModifier":{"fixed_keys":{"Known":[]},"other_keys":"Unresolved"}},
+            "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved"
+        }))
+        .unwrap();
+        let mut variants = BTreeMap::new();
+        check_triggered_identity(&mut variants, &field).unwrap();
+        let mut other = field.clone();
+        other.name = "triggered_planet_modifier".into();
+        check_triggered_identity(&mut variants, &other).unwrap();
+        let FieldMembers::TriggeredModifier(block) = &mut other.members else {
+            unreachable!()
+        };
+        block.fixed_keys = GrammarProperty::Unresolved;
+        assert!(check_triggered_identity(&mut variants, &other).is_err());
+    }
 }
 
 #[cfg(test)]

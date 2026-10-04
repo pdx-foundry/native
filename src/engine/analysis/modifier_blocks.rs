@@ -2,6 +2,7 @@
 //! unresolved readers; the default domain must join one try-member before entry forms or
 //! inherited keys are added. No content name selects a path through this method.
 pub(crate) mod reference;
+pub(crate) mod triggered;
 
 use std::collections::BTreeMap;
 
@@ -335,6 +336,7 @@ mod tests {
                     read: "read".into(),
                     member: root.into(),
                     family: crate::BlockFamily::Modifier,
+                    delegate: None,
                 },
             )]),
             functions: BTreeMap::from([(

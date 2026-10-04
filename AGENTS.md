@@ -9,6 +9,16 @@ Native is a simple engine API, not an evidence archive. Read the [simplification
 before you add an operation. Do not add replay paths, evidence descriptors, artifact hashes, qualification
 records, or Cargo features. Public names prefer clarity to brevity (`registry_fields`, not `fields`).
 
+Make the smallest change that works, but only after you understand the problem. Read the code and the knowledge
+page that the change touches before you choose a solution. A small change in the wrong place is a second defect.
+Then stop at the first step that holds: Atlas does not need it now; Native already has it (a recipe, an
+engine/analysis method, a test helper); the standard library or a current dependency does it. Only then write
+new code. Do not add a trait with one implementation, a setting for a value that does not change, or structure
+for a later project. Prefer deletion to addition. Fix a defect where all callers go through it, not only on the
+path the ticket names. When you accept a known limit, such as the host-wide lock or a linear scan, write the limit
+and the condition for a change in the document that owns that decision. Do not simplify away exact build
+identification, process cleanup or honest partial answers. Leave one small test that fails if new logic breaks.
+
 Before you work on game launch, cleanup, injection, engine calls, memory layouts or discovery, read the
 [engine knowledge index](docs/engine-knowledge.md). Match the exact build before you reuse a finding.
 

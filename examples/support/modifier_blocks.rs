@@ -29,6 +29,10 @@ pub fn children(members: &FieldMembers) -> Option<&[Field]> {
             GrammarProperty::Known(fields) | GrammarProperty::Partial(fields) => Some(fields),
             _ => None,
         },
+        FieldMembers::TriggeredModifier(clause) => match &clause.fixed_keys {
+            GrammarProperty::Known(fields) | GrammarProperty::Partial(fields) => Some(fields),
+            _ => None,
+        },
         _ => None,
     }
 }

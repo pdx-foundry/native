@@ -187,6 +187,7 @@ enum Case {
     FixtureBlockParsing,
     FixtureReadScope,
     FixtureModifierBlock,
+    FixtureTriggeredModifier,
     FixtureWeightBlock,
     FixtureNumeric {
         registry: &'static str,
@@ -379,6 +380,10 @@ fn cases() -> Vec<(String, Case)> {
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
     cases.push(("fixture_modifier_block".into(), Case::FixtureModifierBlock));
+    cases.push((
+        "fixture_triggered_modifier".into(),
+        Case::FixtureTriggeredModifier,
+    ));
     cases.push(("fixture_weight_block".into(), Case::FixtureWeightBlock));
     cases.push((
         "fixture_numeric_megastructures".into(),
@@ -676,6 +681,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
         Case::FixtureReadScope => fixture_read_scope(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
+        Case::FixtureTriggeredModifier => fixture_triggered_modifier(native).await,
         Case::FixtureWeightBlock => fixture_weight_block(native).await,
         Case::FixtureNumeric {
             registry,
@@ -1270,6 +1276,93 @@ async fn fixture_modifier_block(native: &Native) -> Outcome {
                 .any(|gap| gap.kind == GapKind::IncompleteObservation)
         {
             return Err(format!("modifier reader did not complete cleanly: {answer:?}").into());
+        }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// A triggered modifier clause with every key that the static clause grammar reports, a nested
+/// `modifier` block and a direct modifier entry parses completely without a diagnostic.
+async fn fixture_triggered_modifier(native: &Native) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticWindow, FieldMembers, FixtureFieldQuestion, FixtureParsing,
+        FixtureRequest, GrammarProperty,
+    };
+    let text = r#"native_triggered_modifier = {
+ triggered_modifier = {
+  key = native_triggered_modifier
+  potential = { always = yes }
+  show_if_not_potential = yes
+  not_potential_override_text_key = native_triggered_text
+  mult = 2
+  multiplier = 1
+  modifier = { country_resource_max_add = 1 }
+  pop_job_amenities_mult = 0.1
+ }
+}
+"#;
+    let fields = native.registry_fields(TRADITIONS)?;
+    let field = fields
+        .value
+        .iter()
+        .find(|field| field.name == "triggered_modifier")
+        .ok_or("triggered_modifier missing")?;
+    let FieldMembers::TriggeredModifier(block) = &field.members else {
+        return Err("triggered modifier grammar missing".into());
+    };
+    let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) = &block.fixed_keys else {
+        return Err("triggered modifier keys unresolved".into());
+    };
+    for key in keys {
+        if !text.contains(&format!("\n  {} =", key.name)) {
+            return Err(format!("fixture omits reported key {}", key.name).into());
+        }
+    }
+    if !matches!(block.other_keys, GrammarProperty::Known(_)) {
+        return Err("direct modifier entries are not established".into());
+    }
+    let request = FixtureRequest::field_outcomes(
+        "common/traditions/native_triggered_modifier.txt",
+        text,
+        [FixtureFieldQuestion::new(
+            TRADITIONS,
+            "native_triggered_modifier",
+            "triggered_modifier",
+        )
+        .with_parsing()],
+    );
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let [outcome] = answer.value.field_outcomes.as_slice() else {
+            return Err(format!("triggered modifier outcomes: {answer:?}").into());
+        };
+        let FixtureParsing::Observed {
+            occurrences,
+            completeness: Completeness::Complete,
+        } = &outcome.parsing
+        else {
+            return Err(format!("triggered modifier parser observation: {answer:?}").into());
+        };
+        if occurrences.len() != 1
+            || occurrences[0].return_line.is_none()
+            || outcome.owner.is_none()
+            || !answer.value.diagnostics.is_empty()
+            || !matches!(
+                answer.value.diagnostic_coverage,
+                DiagnosticCoverage::Complete {
+                    window: DiagnosticWindow::FixtureFileLoad
+                }
+            )
+            || answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::IncompleteObservation)
+        {
+            return Err(format!("triggered modifier did not parse cleanly: {answer:?}").into());
         }
         Ok(())
     }

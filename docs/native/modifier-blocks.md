@@ -12,13 +12,13 @@ the read/member hash used by persistent fields:
 
 | Reader identity | Member implementation | Fields | Address points | Fixed keys |
 | --- | --- | ---: | ---: | ---: |
-| `e327ea91dfe75d65` | `CModifier::ReadMember` | 1 | 1 | 2 |
+| `e327ea91dfe75d65` | `CModifier::ReadMember` | 2 | 1 | 2 |
 | `5a74c67fe5a4adf9` | `CGraphicalModifier::ReadMember` | 2 | 1 | 8 |
 | `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 25 | 1 | 11 |
-| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 2 | 1 | 13 |
+| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 3 | 1 | 13 |
 
-The full population covers 164 registries and 1,564 root fields. Thirty modifier fields in
-17 registries share these four variants: **0 complete, 30 partial, 0 failed**. Every repeated
+The full population covers 164 registries and 1,593 root fields. Thirty-two modifier fields in
+18 registries share these four variants: **0 complete, 32 partial, 0 failed**. Every repeated
 reader identity has the same block. Another 57 generic persistent Block fields have no concrete
 reader join; they include fifteen weight-named fields. Constructor-proven weight readers have
 their own grammar ([weight blocks](weight-blocks.md)).
@@ -79,8 +79,9 @@ named field. Equal public reader identities must have equal blocks; both the pop
 and installed-build parity test enforce this. Their negative controls reject a removed fixed key,
 a changed reference kind and conflicting blocks under one identity.
 
-Root fields without persistent joins, nested `tradition_swap.modifier`, command fixed-key grammar
-and triggered modifier clauses (SDK-673) are unchanged. This answer does not establish repeat or
+Root fields without persistent joins, nested `tradition_swap.modifier` and command fixed-key grammar
+are unchanged. Triggered modifier clauses embed these blocks; their join is on the [triggered
+modifiers](triggered-modifiers.md) page. This answer does not establish repeat or
 duplicate behavior, icon post-read validation, deferred completion, localisation-key existence,
 authored-entry storage, or runtime effects (SDK-547).
 

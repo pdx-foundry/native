@@ -12,45 +12,41 @@ use crate::engine::analysis::{
 use crate::{AnalysisError, BlockFamily};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The vtable address points whose read slot holds a `family` anchor of the recipe, with the read
-/// and member readers of each.
+/// The vtable address points whose anchored slot holds a `family` anchor of the recipe, with the
+/// readers of each.
 pub(super) fn family_points(
     image: &Image<'_>,
     names: &BTreeMap<u64, String>,
     recipe: &DeclarationRecipe,
     family: BlockFamily,
 ) -> BTreeMap<u64, ConcreteReader> {
+    let persistent = &recipe.persistent;
+    let name = |address: u64| names.get(&address).cloned();
     let mut points = BTreeMap::new();
+
     for (&slot, &target) in image.pointers {
-        let Some(read) = names.get(&target).filter(|name| {
-            recipe
-                .persistent
-                .families
-                .iter()
-                .any(|(anchor, anchored)| *anchor == name.as_str() && *anchored == family)
-        }) else {
+        let Some(held) = names.get(&target) else {
             continue;
         };
-        let Some(point) = slot.checked_sub(recipe.persistent.read_slot) else {
-            continue;
-        };
-        let Some(member) = image
-            .pointers
-            .get(&(point + recipe.persistent.member_slot))
-            .and_then(|address| names.get(address))
-            .filter(|name| name.ends_with("::ReadMember(CReader&, int)"))
-        else {
-            continue;
-        };
-        points.insert(
-            point,
-            ConcreteReader {
-                read: read.clone(),
-                member: member.clone(),
-                family,
-            },
-        );
+
+        for anchor in persistent
+            .families
+            .iter()
+            .filter(|anchor| anchor.family == family && anchor.symbol == held)
+        {
+            let Some(point) = slot.checked_sub(persistent.anchor_offset(anchor.slot)) else {
+                continue;
+            };
+
+            if let Some(reader) =
+                super::receivers::concrete_reader(persistent, image.pointers, point, &name)
+                    .filter(|reader| reader.family == family)
+            {
+                points.insert(point, reader);
+            }
+        }
     }
+
     points
 }
 

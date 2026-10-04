@@ -4,7 +4,7 @@
 weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
 value form, fixed keys, arithmetic operations, how a further operation key is stored, and what other
 keys are; a nested `modifier`, `scaled_modifier` or `complex_trigger_modifier` key carries its own
-`WeightBlock`. Source stamp `registry-fields/v16`. The method is
+`WeightBlock`. Source stamp `registry-fields/v17`. The method is
 `src/engine/analysis/weight_blocks.rs`, bound in `src/binding/binary/weight_blocks.rs` and
 normalized in `src/session/weight_blocks.rs`; its module comment states the acceptance shapes and
 the operation rule. The field's read scope comes from a constructor-stored word that
@@ -113,8 +113,8 @@ without a diagnostic.
 
 ## Result on M451-hotfix
 
-Sixty-five fields in the population of 164 registries have a weight reader: 64 share
-`f08cb83d92484a89` and one uses `fd8c6ad9ff94a8f2`. All are **partial: 0 complete, 65 partial, 0
+Sixty-eight fields in the population of 164 registries have a weight reader: 67 share
+`f08cb83d92484a89` and one uses `fd8c6ad9ff94a8f2`. All are **partial: 0 complete, 68 partial, 0
 failed**; equal identities have equal blocks, for the roots and for the three nested entry readers
 (five identities). The compact selections are in `tests/expected/m451/weight-blocks.json`, where
 field selections refer to them by reader identity.
@@ -126,12 +126,12 @@ Failure shapes, by field count:
 
 | Shape | Fields |
 | --- | ---: |
-| Numeric and scoped-literal conversion limits ([numeric conversion](numeric-conversion.md), [scoped numeric](scoped-numeric.md)) | 65 |
-| Zero-mask read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential` | 65 |
-| Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 65 |
-| `trigger` lookup stage and match, and the scripted-trigger placeholder (`ReaderSemantics`) | 65 |
-| `parameters` read by the object that `trigger` stores | 65 |
-| Field repeat behavior (`Repeat behavior or nested fields remain unresolved`) | 65 |
+| Numeric and scoped-literal conversion limits ([numeric conversion](numeric-conversion.md), [scoped numeric](scoped-numeric.md)) | 68 |
+| Zero-mask read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential` | 68 |
+| Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 68 |
+| `trigger` lookup stage and match, and the scripted-trigger placeholder (`ReaderSemantics`) | 68 |
+| `parameters` read by the object that `trigger` stores | 68 |
+| Field repeat behavior (`Repeat behavior or nested fields remain unresolved`) | 68 |
 
 Nine root fields also have a zero-mask read scope of their own, because their owner constructor
 stores scope `0`: the five weight fields of `common/buildings`, `planet_damage` in

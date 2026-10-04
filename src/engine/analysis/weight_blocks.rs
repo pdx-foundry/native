@@ -523,6 +523,7 @@ impl<'a> Context<'a> {
             read: child.read.clone(),
             member: child.member.clone(),
             family: crate::BlockFamily::Weight,
+            delegate: None,
         };
         let grammar = if depth + 1 >= NESTING_LIMIT {
             Err(Unresolved::new("weight-nesting-limit"))

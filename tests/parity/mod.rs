@@ -84,6 +84,7 @@ pub const FILES: &[&str] = &[
     "modifier-families.json",
     "modifier-blocks.json",
     "weight-blocks.json",
+    "triggered-modifiers.json",
     "on-actions.json",
     "game-rules.json",
     "localization-declarations.json",
@@ -193,6 +194,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
         )),
         "modifier-blocks.json" => modifier_blocks(native),
         "weight-blocks.json" => weight_blocks(native),
+        "triggered-modifiers.json" => triggered_modifiers(native),
         "modifier-families.json" => {
             let mut families = BTreeMap::new();
             for registry in expected

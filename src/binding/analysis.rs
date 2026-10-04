@@ -34,6 +34,9 @@ pub(crate) struct BoundAnalysis {
     >,
     weight_blocks:
         OnceLock<Result<crate::engine::analysis::weight_blocks::WeightBlockFacts, AnalysisError>>,
+    triggered_modifiers: OnceLock<
+        Result<crate::engine::analysis::modifier_blocks::triggered::TriggeredFacts, AnalysisError>,
+    >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
     /// One immutable input per family; callers verify the executable before each access.
@@ -536,6 +539,7 @@ impl BoundAnalysis {
             numeric: OnceLock::new(),
             modifier_blocks: OnceLock::new(),
             weight_blocks: OnceLock::new(),
+            triggered_modifiers: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             block_facts: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
@@ -985,6 +989,33 @@ impl BoundAnalysis {
                 Ok(crate::engine::analysis::weight_blocks::analyze(
                     &input, &bodies,
                 ))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// Triggered modifier clause grammar at each executable-bound address point.
+    pub(crate) fn triggered_modifier_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::modifier_blocks::triggered::TriggeredFacts, AnalysisError>
+    {
+        let verified = self.verified()?;
+        self.triggered_modifiers
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                let image = binary::references::Image {
+                    bytes: &verified.executable,
+                    symbols: &verified.catalog.symbols,
+                    strings: &verified.catalog.strings,
+                    pointers: &verified.catalog.pointers,
+                    imports: &verified.catalog.imports,
+                };
+                let input = binary::triggered_modifiers::read(
+                    &image,
+                    &verified.catalog.bound_slots,
+                    recipe,
+                )?;
+                Ok(crate::engine::analysis::modifier_blocks::triggered::analyze(&input))
             })
             .as_ref()
             .map_err(Clone::clone)

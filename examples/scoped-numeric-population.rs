@@ -109,16 +109,34 @@ impl Population {
             match &field.members {
                 FieldMembers::Fields(children) => self.fields(owner, children, &path, gaps),
                 FieldMembers::ModifierBlock(block) => {
-                    if let Some(keys) = established(&block.fixed_keys) {
+                    self.modifier_block(owner, block, &path, gaps)
+                }
+                FieldMembers::TriggeredModifier(clause) => {
+                    if let Some(keys) = established(&clause.fixed_keys) {
                         self.fields(owner, keys, &path, gaps);
                     }
-                    for entry in established(&block.entries).into_iter().flatten() {
-                        if let pdx_native::ModifierEntry::Numeric { value } = entry {
-                            self.reader(owner, &path, value, gaps);
-                        }
+                    if let Some(other_keys) = established(&clause.other_keys) {
+                        self.modifier_block(owner, &other_keys.block, &path, gaps);
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    fn modifier_block(
+        &mut self,
+        owner: &str,
+        block: &pdx_native::ModifierBlock,
+        path: &[String],
+        gaps: &[Gap],
+    ) {
+        if let Some(keys) = established(&block.fixed_keys) {
+            self.fields(owner, keys, path, gaps);
+        }
+        for entry in established(&block.entries).into_iter().flatten() {
+            if let pdx_native::ModifierEntry::Numeric { value } = entry {
+                self.reader(owner, path, value, gaps);
             }
         }
     }

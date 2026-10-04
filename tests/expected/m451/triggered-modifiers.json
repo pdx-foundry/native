@@ -1,0 +1,340 @@
+{
+  "88f77b58ddf77488": {
+    "fixed_keys": {
+      "Known": [
+        ["key", "String", "NotApplicable", "Replace", null],
+        ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
+        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
+        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Unknown", null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Unknown", null],
+        ["modifier", "Block", "Modifier", "Unknown", {"ModifierBlock": "ba5f8cddeba0d833"}]
+      ]
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "key"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "divide_over_pop_groups"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "name"]},
+        "The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "data"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "icon_frame"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "multiplier"]},
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "multiplier"]},
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "mult"]},
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "mult"]},
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "potential"]},
+        "read-scope: stored-scope"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier"]},
+        "read-scope: scope-argument"
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Keys that the triggered modifier does not name, at `key`: The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Keys that the triggered modifier does not name, at `divide_over_pop_groups`: The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Keys that the triggered modifier does not name, at `name`: The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Keys that the triggered modifier does not name, at `data`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Keys that the triggered modifier does not name, at `icon_frame`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Keys that the triggered modifier does not name: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "read-scope: scope-argument"
+      ]
+    ],
+    "other_keys": {
+      "Known": {
+        "ModifierBlock": "ba5f8cddeba0d833"
+      }
+    },
+    "sample": [
+      "common/megastructures",
+      "triggered_country_modifier"
+    ]
+  },
+  "d3a866b65e16b749": {
+    "fixed_keys": {
+      "Known": [
+        ["key", "String", "NotApplicable", "Replace", null],
+        ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
+        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
+        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Unknown", null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Unknown", null],
+        ["modifier", "Block", "Unknown", "Unknown", "Unresolved"]
+      ]
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {"kind": "field", "name": "triggered_planet_modifier"},
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedStorage",
+        {"kind": "key_path", "path": ["triggered_planet_modifier", "multiplier"]},
+        "Scoped destination vtable is not established."
+      ],
+      [
+        "UnresolvedStorage",
+        {"kind": "key_path", "path": ["triggered_planet_modifier", "mult"]},
+        "Scoped destination vtable is not established."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["triggered_planet_modifier", "potential"]},
+        "read-scope: stored-scope"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["triggered_planet_modifier", "modifier"]},
+        "read-scope: scope-argument"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "triggered_planet_modifier"},
+        "The triggered modifier analysis stopped at triggered-embedded-point."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_planet_modifier"},
+        "The reader of keys that the triggered modifier does not name is not established: triggered-delegate."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "triggered_planet_modifier"},
+        "read-scope: scope-argument"
+      ]
+    ],
+    "other_keys": "Unresolved",
+    "sample": [
+      "common/pop_jobs",
+      "triggered_planet_modifier"
+    ]
+  },
+  "f9fb8c8f5f2ca714": {
+    "fixed_keys": {
+      "Known": [
+        ["key", "String", "NotApplicable", "Replace", null],
+        ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
+        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
+        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Unknown", null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Unknown", null],
+        ["modifier", "Block", "Modifier", "Unknown", {"ModifierBlock": "1c2988588f7e8eaa"}]
+      ]
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "key"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "description_parameters"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "description_parameters"]},
+        "The modifier block analysis stopped at instruction."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "description_parameters"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "description_parameters"]},
+        "The modifier block analysis stopped at instruction."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "divide_over_pop_groups"]},
+        "The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "name"]},
+        "The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "data"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "icon_frame"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier"]},
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_modifier", "multiplier"]},
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "key_path", "path": ["triggered_modifier", "multiplier"]},
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "key_path", "path": ["triggered_modifier", "mult"]},
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "key_path", "path": ["triggered_modifier", "mult"]},
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["triggered_modifier", "potential"]},
+        "read-scope: stored-scope"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier"]},
+        "read-scope: scope-argument"
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `key`: The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `description_parameters`: The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `description_parameters`: The modifier block analysis stopped at instruction."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `divide_over_pop_groups`: The modifier block analysis stopped at reader-routing."
+      ],
+      [
+        "UnresolvedReader",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `name`: The modifier block analysis stopped at modifier-name-reader."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `data`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `icon_frame`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "triggered_modifier"},
+        "read-scope: scope-argument"
+      ]
+    ],
+    "other_keys": {
+      "Known": {
+        "ModifierBlock": "1c2988588f7e8eaa"
+      }
+    },
+    "sample": [
+      "common/traditions",
+      "triggered_modifier"
+    ]
+  }
+}

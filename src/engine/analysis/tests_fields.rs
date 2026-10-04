@@ -1135,8 +1135,11 @@ fn nested_fixture() -> FieldInput {
         vtables: [(0, 0xa000)].into(),
         pointers: [(0xa020, 0x9200)].into(),
         read: 0x9200,
+        factories: vec![],
         insert: vec![0x9300],
+        moving_insert: vec![],
         data_offset: Some(8),
+        reader: None,
     });
     input
 }
@@ -1197,6 +1200,108 @@ fn reconstruction_invalidates_the_previous_persistent_read() {
     }
 }
 
+/// The nested fixture with a clause object that a factory builds into a scoped pointer, a
+/// moving insertion, and the destructor of the moved-from pointer.
+fn factory_fixture() -> FieldInput {
+    use crate::engine::analysis::fields::{ConcreteReader, PointReader};
+    let mut input = nested_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        mov x8, sp; // scoped pointer
+        bl extern 0x9500; // factory
+        ldr x0, [sp];
+        ldr x8, [x0];
+        ldr x8, [x8, #0x20];
+        mov x1, x20;
+        blr x8; // persistent read
+        add x0, x19, #0x40; // collection
+        mov x2, sp;
+        bl extern 0x9600; // moving insertion
+        ldr x0, [sp];
+        cbz x0, extern 0x1054;
+        ldr x8, [x0];
+        ldr x8, [x8, #8];
+        blr x8; // destructor of the moved-from pointer
+        ret
+    );
+    let mut factory = Arm64::at(0x9500);
+    arm64!(factory; stp x19, x20, [sp, #-16]!);
+    factory.prologue();
+    arm64!(factory;
+        mov x19, x8;
+        bl extern 0x9000; // allocation
+        mov x20, x0;
+        bl extern 0x9100; // constructor
+        str x20, [x19]
+    );
+    factory.epilogue();
+    arm64!(factory; ldp x19, x20, [sp], #16; ret);
+    input.functions.push(Function {
+        name: "CPdxScopedPtrImpl<CChild, false> PdxMakeScopedPtr<CChild>()".into(),
+        address: 0x9500,
+        code: factory.bytes(),
+    });
+    let object = &mut input.objects[0];
+    object.factories = vec![0x9500];
+    object.insert = vec![];
+    object.moving_insert = vec![0x9600];
+    object.reader = Some(PointReader {
+        point: 0xa000,
+        reader: ConcreteReader {
+            read: "CPersistent::Read(CReader&)".into(),
+            member: "CChild::ReadMember(CReader&, int)".into(),
+            family: crate::BlockFamily::TriggeredModifier,
+            delegate: Some("CChild::ReadModifier(CReader&, int)".into()),
+        },
+    });
+    input
+}
+
+#[test]
+fn a_factory_built_object_joins_through_a_proven_moving_insertion() {
+    let result = derive(factory_fixture());
+
+    assert_eq!(result.collections.len(), 1);
+    assert_eq!(result.collections[0].offset, 0x40);
+    assert_eq!(result.collections[0].reader.as_ref().unwrap().point, 0xa000);
+    assert!(result.collections[0].fields.fields.is_empty());
+}
+
+#[test]
+fn an_unproven_move_or_an_unconstructed_factory_object_is_not_joined() {
+    let mut unproven = factory_fixture();
+    unproven.objects[0].moving_insert.clear();
+    assert!(derive(unproven).collections.is_empty());
+
+    // Taken as a pointer insertion, the moved-from pointer still holds the object, so its
+    // destructor is an unmodelled call.
+    let mut not_cleared = factory_fixture();
+    not_cleared.objects[0].insert = std::mem::take(&mut not_cleared.objects[0].moving_insert);
+    assert!(derive(not_cleared).collections.is_empty());
+
+    let mut unconstructed = factory_fixture();
+    replace(&mut unconstructed, 0x9518, arm64!(at 0x9518; nop)); // constructor call
+    assert!(derive(unconstructed).collections.is_empty());
+}
+
+#[test]
+fn an_object_without_a_block_family_keeps_its_loader_fields() {
+    let mut input = factory_fixture();
+    input.objects[0].reader.as_mut().unwrap().reader.family = crate::BlockFamily::Unknown;
+    let result = derive(input);
+
+    assert!(result.collections[0].reader.is_none());
+    assert_eq!(
+        result.collections[0].fields.fields[0].name,
+        "new_engine_field"
+    );
+}
+
 fn persistent_fixture() -> FieldInput {
     use crate::engine::analysis::fields::{ConcreteReader, PersistentInput};
     let mut input = fixture();
@@ -1230,6 +1335,7 @@ fn persistent_fixture() -> FieldInput {
                 read: "shared persistent read".into(),
                 member: "modifier member".into(),
                 family: crate::BlockFamily::Modifier,
+                delegate: None,
             },
         )]),
     });

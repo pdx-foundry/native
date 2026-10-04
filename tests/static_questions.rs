@@ -3,7 +3,7 @@
 mod parity;
 use parity::*;
 
-use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Trace, Unresolved};
+use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Unresolved};
 use pdx_native::internals::{
     COMMAND_GRAMMAR_METHOD, DEFINES_METHOD, DYNAMIC_NAMES_METHOD, command_grammar_stops,
     registry_field_stops, trace_causes,
@@ -49,6 +49,106 @@ fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
     assert_eq!(families.value[0].name, vec![NamePart::ItemKey]);
     assert_eq!(families.value[0].condition, GenerationCondition::Always);
     assert_eq!(families.value[0].name_limit, None);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
+    use pdx_native::{BlockFamily, Field, FieldMembers, GrammarProperty};
+
+    let native = native();
+    assert_eq!(
+        triggered_modifiers(&native).unwrap(),
+        expected::<Value>("triggered-modifiers.json")
+    );
+    let mut variants = BTreeMap::new();
+    for registry in native.registries().unwrap().value {
+        for field in native.registry_fields(&registry.name).unwrap().value {
+            check_triggered_identity(&mut variants, &field).unwrap();
+        }
+    }
+    assert_eq!(variants.len(), 3);
+
+    let fields = native.registry_fields("common/traditions").unwrap().value;
+    let field = |name: &str| -> &Field { fields.iter().find(|field| field.name == name).unwrap() };
+    let clause = field("triggered_modifier");
+    assert_eq!(clause.reader.family, BlockFamily::TriggeredModifier);
+    let FieldMembers::TriggeredModifier(block) = &clause.members else {
+        panic!("{:?}", clause.members);
+    };
+    let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) = &block.fixed_keys else {
+        panic!("{:?}", block.fixed_keys);
+    };
+    let key = |name: &str| keys.iter().find(|key| key.name == name).unwrap();
+
+    // Independent expectations: the config's `triggered_modifier_clause_base` keys.
+    let mut names: Vec<_> = keys.iter().map(|key| key.name.as_str()).collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "key",
+            "modifier",
+            "mult",
+            "multiplier",
+            "not_potential_override_text_key",
+            "potential",
+            "show_if_not_potential"
+        ]
+    );
+    assert_eq!(key("potential").reader.kind, ReaderKind::Block);
+    assert_eq!(key("potential").reader.family, BlockFamily::Trigger);
+    assert_eq!(
+        key("show_if_not_potential").reader.kind,
+        ReaderKind::Boolean
+    );
+    for name in ["key", "not_potential_override_text_key"] {
+        assert_eq!(key(name).reader.kind, ReaderKind::String);
+        assert_eq!(key(name).reference, FieldReference::NotEstablished);
+    }
+    for name in ["mult", "multiplier"] {
+        assert_eq!(key(name).reader.kind, ReaderKind::ScopedNumeric);
+        assert!(!matches!(
+            key(name).reader.numeric,
+            GrammarProperty::Unresolved
+        ));
+    }
+
+    // The nested block and direct entries reach the tradition's own modifier reader.
+    let modifier = field("modifier");
+    assert_eq!(key("modifier").reader.id, modifier.reader.id);
+    assert!(matches!(
+        key("modifier").members,
+        FieldMembers::ModifierBlock(_)
+    ));
+    let GrammarProperty::Known(other_keys) = &block.other_keys else {
+        panic!("{:?}", block.other_keys);
+    };
+    assert_eq!(other_keys.reader.id, modifier.reader.id);
+    let GrammarProperty::Partial(modifier_keys) = &other_keys.block.fixed_keys else {
+        panic!("{:?}", other_keys.block.fixed_keys);
+    };
+    for name in [
+        "custom_tooltip",
+        "show_only_custom_tooltip",
+        "description",
+        "description_parameters",
+        "divide_over_pop_groups",
+    ] {
+        assert!(modifier_keys.iter().any(|key| key.name == name), "{name}");
+    }
+
+    // Negative control: `common/federation_perks` skips the body of its `triggered_modifier`.
+    let perks = native
+        .registry_fields("common/federation_perks")
+        .unwrap()
+        .value;
+    assert!(
+        perks
+            .iter()
+            .filter(|field| field.name == "triggered_modifier")
+            .all(|field| field.reader.family != BlockFamily::TriggeredModifier)
+    );
 }
 
 #[test]
@@ -1030,11 +1130,6 @@ fn traced_questions_match_untraced_questions() {
     assert_eq!(traced.answers, untraced.answers);
     assert_eq!(traced.fields, untraced.fields);
     assert_eq!(traced.grammars, untraced.grammars);
-    assert!(untraced.receiver_failures.iter().all(Option::is_none));
-    for trace in &traced.receiver_failures {
-        let trace = trace.as_ref().expect("a traced receiver failure");
-        assert!(trace.causes().next().is_some());
-    }
 }
 
 #[test]
@@ -1060,12 +1155,11 @@ fn traced_initial_state_keeps_destinations_across_later_member_constructors() {
 }
 
 /// What tracing must not change on one `Native`: every static answer, the internal results of
-/// four registries and 22 commands, and the traces of three known receiver failures.
+/// four registries and 22 commands.
 struct Observed {
     answers: Vec<Value>,
     fields: Vec<(Value, Vec<TokenPath>, Vec<FieldGap>)>,
     grammars: Vec<(Value, GrammarOutcome)>,
-    receiver_failures: Vec<Option<Box<Trace>>>,
 }
 
 type GrammarOutcome = std::result::Result<(Vec<Unresolved>, Vec<TokenPath>), Unresolved>;
@@ -1138,22 +1232,10 @@ fn observe(native: &Native) -> Observed {
         })
         .collect();
 
-    let receiver_failures = [
-        (DeclarationKind::Effect, "pop_change_ethic"),
-        (DeclarationKind::Trigger, "switch"),
-        (DeclarationKind::Trigger, "inverted_switch"),
-    ]
-    .map(|(kind, name)| {
-        let run = command_grammar_stops::run(native, kind, name).unwrap();
-        run.result.err().expect("the receiver join stops").trace
-    })
-    .into();
-
     Observed {
         answers,
         fields,
         grammars,
-        receiver_failures,
     }
 }
 

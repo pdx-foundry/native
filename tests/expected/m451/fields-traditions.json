@@ -459,26 +459,50 @@
  {
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "TriggeredModifier": "f9fb8c8f5f2ca714"
+  },
   "name": "triggered_modifier",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "f9fb8c8f5f2ca714",
+       "kind": "Block",
+       "family": "TriggeredModifier",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Accumulate",
+       "value": "Block"
+      }
+     }
+    }
    }
   ],
   "read_scope": "Unresolved",
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "f9fb8c8f5f2ca714",
+   "kind": "Block",
+   "family": "TriggeredModifier",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
-   "repeat": "Unknown",
-   "value": "Unknown"
+   "repeat": "Accumulate",
+   "value": "Block"
   },
   "uses": []
  },

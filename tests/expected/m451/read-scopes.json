@@ -69,6 +69,28 @@
       },
       "gaps": [
         {
+          "detail": "read-scope: stored-scope",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "triggered_modifier",
+              "potential"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "triggered_modifier",
+              "modifier"
+            ]
+          }
+        },
+        {
           "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
           "kind": "UnresolvedPath",
           "subject": {

@@ -45,9 +45,61 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
     let Some(binding) = &input.persistent else {
         return PersistentFields::default();
     };
+    let ConstructorPoints {
+        points,
+        words,
+        gaps,
+    } = constructor_points(binding, &input.read_only_data, &offsets);
+    let readers = points
+        .clone()
+        .into_iter()
+        .filter_map(|(offset, point)| {
+            binding
+                .readers
+                .get(&point)
+                .cloned()
+                .map(|reader| (offset, reader))
+        })
+        .collect();
+    let scoped = points
+        .clone()
+        .into_iter()
+        .filter(|(offset, _)| {
+            fields.iter().flat_map(|field| &field.readers).any(|join| {
+                matches!(join, ReaderJoin::Joined { callee, .. }
+                    if matches!(callee.as_str(),
+                        "CVariableValue::Read(CReader&, EScopeType)"
+                            | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+                    ) && readers::destination(join) == Some(*offset))
+            })
+        })
+        .collect();
+    PersistentFields {
+        readers,
+        points,
+        scoped,
+        words,
+        gaps,
+    }
+}
+
+/// The vtable address points that every owner constructor installs at the requested offsets.
+pub(crate) struct ConstructorPoints {
+    pub points: BTreeMap<i64, u64>,
+    /// Requested words that every constructor's entered run establishes with one value.
+    pub words: BTreeMap<(i64, u64), u64>,
+    pub gaps: Vec<FieldGap>,
+}
+
+/// Run every owner constructor of `binding` and keep the address points at `offsets` that all
+/// of them agree on.
+pub(crate) fn constructor_points(
+    binding: &super::PersistentInput,
+    read_only_data: &[super::DataSection],
+    offsets: &BTreeSet<i64>,
+) -> ConstructorPoints {
     let sections = ReadOnlyData::new(
-        input
-            .read_only_data
+        read_only_data
             .iter()
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
@@ -199,39 +251,13 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
         }
     }
     let points = agreement.unwrap_or_default();
-    let readers = points
-        .clone()
-        .into_iter()
-        .filter_map(|(offset, point)| {
-            binding
-                .readers
-                .get(&point)
-                .cloned()
-                .map(|reader| (offset, reader))
-        })
-        .collect();
-    let scoped = points
-        .clone()
-        .into_iter()
-        .filter(|(offset, _)| {
-            fields.iter().flat_map(|field| &field.readers).any(|join| {
-                matches!(join, ReaderJoin::Joined { callee, .. }
-                    if matches!(callee.as_str(),
-                        "CVariableValue::Read(CReader&, EScopeType)"
-                            | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
-                    ) && readers::destination(join) == Some(*offset))
-            })
-        })
-        .collect();
     let words = word_agreement
         .unwrap_or_default()
         .into_iter()
         .filter(|((offset, _), _)| points.contains_key(offset))
         .collect();
-    PersistentFields {
-        readers,
+    ConstructorPoints {
         points,
-        scoped,
         words,
         gaps,
     }

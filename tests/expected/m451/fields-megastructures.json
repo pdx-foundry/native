@@ -3376,26 +3376,50 @@
  {
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "TriggeredModifier": "88f77b58ddf77488"
+  },
   "name": "triggered_country_modifier",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "88f77b58ddf77488",
+       "kind": "Block",
+       "family": "TriggeredModifier",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Accumulate",
+       "value": "Block"
+      }
+     }
+    }
    }
   ],
   "read_scope": "Unresolved",
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "88f77b58ddf77488",
+   "kind": "Block",
+   "family": "TriggeredModifier",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
-   "repeat": "Unknown",
-   "value": "Unknown"
+   "repeat": "Accumulate",
+   "value": "Block"
   },
   "uses": []
  },

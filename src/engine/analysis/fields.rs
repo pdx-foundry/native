@@ -62,6 +62,7 @@ mod uses;
 pub(crate) use dispatch::{DispatchInput, explore_member};
 pub(crate) use inventory::fields_and_gaps;
 pub(crate) use member::{follow_member, serializer_owner_slot};
+pub(crate) use persistent::constructor_points;
 pub use records::*;
 pub(crate) use tokens::{Token, recover_decoded};
 pub(crate) use uses::has_owner_receiver;
@@ -87,7 +88,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v16";
+pub const METHOD: &str = "registry-fields/v17";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {

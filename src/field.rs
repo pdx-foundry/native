@@ -112,6 +112,8 @@ pub enum FieldMembers {
     ModifierBlock(ModifierBlock),
     /// Keys, arithmetic operations and conditions of a shared weight or script-value reader.
     WeightBlock(Box<WeightBlock>),
+    /// Keys of a modifier block applied while a trigger holds, such as `triggered_modifier`.
+    TriggeredModifier(Box<TriggeredModifierBlock>),
     /// The child fields have not been established.
     Unresolved,
 }
@@ -124,6 +126,29 @@ pub struct ModifierBlock {
     pub fixed_keys: crate::GrammarProperty<Vec<crate::Field>>,
     /// Forms of entries whose keys are not fixed keys.
     pub entries: crate::GrammarProperty<Vec<ModifierEntry>>,
+}
+
+/// Parser acceptance of a triggered modifier clause, such as `triggered_planet_modifier`. This
+/// does not establish when the condition is evaluated, how a multiplier scales the modifier, or
+/// where the modifier takes effect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TriggeredModifierBlock {
+    /// Keys that the clause reads itself, such as `potential` and `mult`. A `modifier` key
+    /// carries its `FieldMembers::ModifierBlock`.
+    pub fixed_keys: crate::GrammarProperty<Vec<crate::Field>>,
+    /// The modifier block that reads every key that `fixed_keys` does not name, so modifier
+    /// entries can be written directly in the clause. `Unresolved` means that the disposition of
+    /// such keys is not established, not that the engine rejects them.
+    pub other_keys: crate::GrammarProperty<ModifierMembers>,
+}
+
+/// Keys read as members of a shared modifier block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModifierMembers {
+    /// The modifier-block reader; its identity matches every field that the same reader reads.
+    pub reader: Reader,
+    /// The modifier block's grammar.
+    pub block: ModifierBlock,
 }
 
 /// An entry selected by a name in the modifier table or a reference registry.
