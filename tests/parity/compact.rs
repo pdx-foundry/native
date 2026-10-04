@@ -14,6 +14,9 @@ pub fn compact_fields(fields: &[Field]) -> Value {
                     FieldMembers::ModifierBlock(_) => {
                         value["members"] = json!({"ModifierBlock": field.reader.id})
                     }
+                    FieldMembers::WeightBlock(_) => {
+                        value["members"] = json!({"WeightBlock": field.reader.id})
+                    }
                     FieldMembers::Fields(children) => {
                         value["members"] = json!({"Fields": compact_fields(children)})
                     }
@@ -74,6 +77,141 @@ pub fn modifier_blocks(native: &Native) -> super::Result<Value> {
         );
     }
     Ok(json!(variants))
+}
+
+/// One representative of each constructor-bound weight reader variant.
+pub fn weight_blocks(native: &Native) -> super::Result<Value> {
+    let mut variants = BTreeMap::new();
+    for (registry, name) in [
+        ("common/council_agendas", "ai_weight"),
+        ("common/country_customization", "weight"),
+    ] {
+        let answer = native.registry_fields(registry)?;
+        let field = answer
+            .value
+            .iter()
+            .find(|field| field.name == name)
+            .ok_or("weight sample missing")?;
+        let FieldMembers::WeightBlock(block) = &field.members else {
+            return Err(format!("{registry}: weight grammar missing").into());
+        };
+        let gaps: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| match &gap.subject {
+                Some(GapSubject::Field { name }) => name == &field.name,
+                Some(GapSubject::KeyPath { path }) => path.first() == Some(&field.name),
+                _ => false,
+            })
+            .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+            .collect();
+        let id = identity(field)?;
+        let mut entries = BTreeMap::new();
+        let block = compact_weight(block, &mut entries)?;
+        variants.insert(
+            id,
+            json!({
+                "sample": [registry, name],
+                "read_scope": field.read_scope,
+                "block": block,
+                "gaps": gaps,
+            }),
+        );
+        for (id, entry) in entries {
+            variants
+                .entry(id)
+                .or_insert_with(|| json!({ "entry_of": [registry, name], "block": entry }));
+        }
+    }
+    Ok(json!(variants))
+}
+
+fn identity(field: &Field) -> super::Result<String> {
+    Ok(serde_json::to_value(&field.reader.id)?
+        .as_str()
+        .ok_or("missing weight identity")?
+        .to_owned())
+}
+
+/// A weight grammar with each key's name, kind, repeat behavior and read scope. A nested entry
+/// names its reader identity; its grammar goes to `entries`.
+fn compact_weight(
+    block: &WeightBlock,
+    entries: &mut BTreeMap<String, Value>,
+) -> super::Result<Value> {
+    let mut keys = Vec::new();
+    if let GrammarProperty::Known(fields) | GrammarProperty::Partial(fields) = &block.fixed_keys {
+        for field in fields {
+            let members = match &field.members {
+                FieldMembers::WeightBlock(nested) => {
+                    let id = identity(field)?;
+                    let entry = compact_weight(nested, entries)?;
+                    entries.insert(id.clone(), entry);
+                    json!({ "WeightBlock": id })
+                }
+                FieldMembers::None => Value::Null,
+                other => json!(other),
+            };
+            keys.push(json!([
+                field.name,
+                field.reader.kind,
+                field.shape.repeat,
+                field.read_scope,
+                members
+            ]));
+        }
+    }
+    let operations: Vec<_> = match &block.operations {
+        GrammarProperty::Known(operations) | GrammarProperty::Partial(operations) => operations
+            .iter()
+            .map(|operation| {
+                let operand = operation.operand.as_ref().map(|operand| operand.kind);
+                json!([operation.key, operand])
+            })
+            .collect(),
+        GrammarProperty::Unresolved => Vec::new(),
+    };
+
+    Ok(json!({
+        "scalar": property(&block.scalar, |reader| json!(reader.as_ref().map(|reader| reader.kind))),
+        "fixed_keys": property(&block.fixed_keys, |_| json!(keys)),
+        "operations": property(&block.operations, |_| json!(operations)),
+        "operation_repeat": block.operation_repeat,
+        "other_keys": block.other_keys,
+    }))
+}
+
+fn property<T>(value: &GrammarProperty<T>, compact: impl Fn(&T) -> Value) -> Value {
+    match value {
+        GrammarProperty::Known(value) => json!({"Known": compact(value)}),
+        GrammarProperty::Partial(value) => json!({"Partial": compact(value)}),
+        GrammarProperty::Unresolved => json!("Unresolved"),
+    }
+}
+
+/// Equal public reader identities must describe the same weight grammar.
+#[cfg(test)]
+pub fn check_weight_identity(
+    variants: &mut BTreeMap<String, (String, WeightBlock)>,
+    field: &Field,
+) -> super::Result<()> {
+    let FieldMembers::WeightBlock(block) = &field.members else {
+        return Ok(());
+    };
+    let id = serde_json::to_value(&field.reader.id)?
+        .as_str()
+        .ok_or("weight block has no reader identity")?
+        .to_owned();
+    match variants.get(&id) {
+        Some((first, previous)) if previous != &**block => {
+            Err(format!("weight grammar of {} differs from {first}", field.name).into())
+        }
+        Some(_) => Ok(()),
+        None => {
+            variants.insert(id, (field.name.clone(), (**block).clone()));
+            Ok(())
+        }
+    }
 }
 
 /// Equal public reader identities must describe the same modifier grammar.
@@ -282,6 +420,37 @@ pub fn compact_namespace(namespace: &pdx_native::DynamicNamespace) -> Value {
         "read_by": commands(&namespace.read_by),
         "dynamic_form": format!("{:?}", namespace.dynamic_form),
     })
+}
+
+#[cfg(test)]
+mod weight_tests {
+    use super::*;
+
+    fn field() -> Field {
+        serde_json::from_value(json!({
+            "name":"ai_weight", "reader":{"id":"shared","kind":"Block","family":"Weight","numeric":"Unresolved","scoped_operand":"Unresolved"},
+            "shape":{"value":"Block","repeat":"Unknown"}, "read":[],
+            "members":{"WeightBlock":{"scalar":{"Known":null},"fixed_keys":{"Known":[]},
+                "operations":{"Known":[{"key":"add","operand":null}]},
+                "operation_repeat":"Accumulate","other_keys":"Rejected"}},
+            "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved"
+        })).unwrap()
+    }
+
+    #[test]
+    fn shared_identity_rejects_different_blocks() {
+        let field = field();
+        let mut variants = BTreeMap::new();
+        check_weight_identity(&mut variants, &field).unwrap();
+        let mut other = field.clone();
+        other.name = "random_weight".into();
+        check_weight_identity(&mut variants, &other).unwrap();
+        let FieldMembers::WeightBlock(block) = &mut other.members else {
+            unreachable!()
+        };
+        block.operation_repeat = RepeatBehavior::Replace;
+        assert!(check_weight_identity(&mut variants, &other).is_err());
+    }
 }
 
 #[cfg(test)]

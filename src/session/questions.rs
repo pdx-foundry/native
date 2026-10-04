@@ -258,6 +258,7 @@ impl Native {
             numeric: self.numeric_facts(Operation::RegistryFields)?,
             scoped: self.scoped_numeric_facts(Operation::RegistryFields)?,
             modifiers: self.modifier_block_facts()?,
+            weights: self.weight_block_facts()?,
             blocks: self.block_facts()?,
         };
         let owner = &input.selection.owner_candidate;
@@ -288,6 +289,20 @@ impl Native {
                 reason: "this build has no static analysis recipe".into(),
             })?
             .modifier_block_facts()
+            .map_err(|failure| error(Operation::RegistryFields, failure))
+    }
+
+    pub(crate) fn weight_block_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::weight_blocks::WeightBlockFacts, Error> {
+        self.bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation: Operation::RegistryFields,
+                reason: "this build has no static analysis recipe".into(),
+            })?
+            .weight_block_facts()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
@@ -351,6 +366,14 @@ impl Native {
         super::modifier_blocks::attach(&mut value, result, facts.modifiers, references, &mut gaps);
         super::numeric::fields(&mut value, facts.numeric, &[], &mut gaps);
         super::scoped_numeric::fields(&mut value, result, facts.scoped, facts.numeric, &mut gaps);
+        let weights = super::weight_blocks::WeightFacts {
+            weights: facts.weights,
+            references,
+            numeric: facts.numeric,
+            scoped: facts.scoped,
+            scope_names: facts.blocks.scope_names.as_deref(),
+        };
+        super::weight_blocks::attach(&mut value, result, &weights, &mut gaps);
         super::read_scope::registry_fields(
             &mut value,
             result,
@@ -380,9 +403,12 @@ impl Native {
                 name: registry.into(),
             });
         };
-        let input = verified
+        let mut input = verified
             .field_input(candidate.record.clone())
             .map_err(|e| error(operation, e))?;
+        if let Some(persistent) = &mut input.persistent {
+            persistent.requested_words = self.weight_block_facts()?.stored_scopes();
+        }
         let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
 
         Ok((input, result))
@@ -395,6 +421,7 @@ struct RegistryFieldFacts<'a> {
     numeric: &'a crate::engine::analysis::numeric::NumericFacts,
     scoped: &'a crate::engine::analysis::scoped_numeric::Facts,
     modifiers: &'a crate::engine::analysis::modifier_blocks::ModifierBlockFacts,
+    weights: &'a crate::engine::analysis::weight_blocks::WeightBlockFacts,
     blocks: &'a crate::binding::BlockFacts,
 }
 
@@ -796,6 +823,7 @@ mod field_gap_tests {
             persistent: Default::default(),
             persistent_points: Default::default(),
             scoped_destinations: Default::default(),
+            stored_words: Default::default(),
             uses: vec![],
             collections: vec![],
             fields: vec![RootField {

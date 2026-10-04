@@ -3,7 +3,18 @@
   "registries": {
     "common/traditions": {
       "fields": {
-        "ai_weight": "Unresolved",
+        "ai_weight": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        },
         "modifier": "Unresolved",
         "on_disabled": {
           "Known": [
@@ -61,8 +72,46 @@
           "detail": "read-scope: scope-argument",
           "kind": "UnresolvedPath",
           "subject": {
-            "kind": "field",
-            "name": "triggered_modifier"
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "scaled_modifier"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: zero-mask",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "scaled_modifier",
+              "limit"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "complex_trigger_modifier"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: zero-mask",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "complex_trigger_modifier",
+              "potential"
+            ]
           }
         },
         {
@@ -70,7 +119,7 @@
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
-            "name": "ai_weight"
+            "name": "triggered_modifier"
           }
         },
         {
@@ -127,7 +176,18 @@
     "common/tradition_categories": {
       "fields": {
         "adoption_bonus": "Unresolved",
-        "ai_weight": "Unresolved",
+        "ai_weight": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        },
         "desc": "Unresolved",
         "finish_bonus": "Unresolved",
         "potential": {
@@ -149,8 +209,46 @@
           "detail": "read-scope: scope-argument",
           "kind": "UnresolvedPath",
           "subject": {
-            "kind": "field",
-            "name": "desc"
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "scaled_modifier"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: zero-mask",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "scaled_modifier",
+              "limit"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "complex_trigger_modifier"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: zero-mask",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "ai_weight",
+              "complex_trigger_modifier",
+              "potential"
+            ]
           }
         },
         {
@@ -158,7 +256,7 @@
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
-            "name": "ai_weight"
+            "name": "desc"
           }
         },
         {

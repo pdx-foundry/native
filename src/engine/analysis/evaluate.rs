@@ -762,6 +762,14 @@ impl<'a> Machine<'a> {
             .collect()
     }
 
+    /// The 4-byte-aligned words in `start..end` that this path wrote or invalidated.
+    pub fn written_words(&self, start: u64, end: u64) -> BTreeSet<u64> {
+        self.memory
+            .range(start..end)
+            .map(|(&address, _)| address & !3)
+            .collect()
+    }
+
     /// Whether this path wrote or explicitly invalidated any byte of reserved memory.
     /// A reservation starts without entries; even an unknown stored byte counts as a write.
     pub fn has_written(&self, address: u64, length: u64) -> bool {

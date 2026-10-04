@@ -20,7 +20,8 @@ the read/member hash used by persistent fields:
 The full population covers 164 registries and 1,564 root fields. Thirty modifier fields in
 17 registries share these four variants: **0 complete, 30 partial, 0 failed**. Every repeated
 reader identity has the same block. Another 57 generic persistent Block fields have no concrete
-reader join; these include weights and other non-modifier blocks.
+reader join; they include fifteen weight-named fields. Constructor-proven weight readers have
+their own grammar ([weight blocks](weight-blocks.md)).
 
 All variants have partial fixed keys and two known entry forms. The smallest variant has
 `name` (unknown reader) and `data` (integer). Graphical adds `icon`, `custom_tooltip` (string),

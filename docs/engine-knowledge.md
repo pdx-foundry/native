@@ -21,6 +21,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, routing forms, owner derivation, the lexer string investigation and retired world evaluation results |
 | Duration keys | [Duration keys](native/durations.md) | Unit factors, combination rules, omitted counts, the flag-store countdown and the modifier and trait consumers |
 | Modifier blocks | [Modifier blocks](native/modifier-blocks.md) | Shared fixed keys, entry forms, reader gaps and prototype findings on modifier fields |
+| Weight blocks | [Weight blocks](native/weight-blocks.md) | The mean-time reader's keys, arithmetic operations, entry readers, stored scope and the method's pitfalls |
 | Generated modifiers | [Modifier families](native/modifier-families.md) | Generation calls and roots, item keys, the per-item post-read call and the loaded modifier table |
 | Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope, Boolean, key, target and reference messages; ordinary-log and source-filter gaps |
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | Loader-entry attachment, registry items at loader return, fixture parsing and storage, loader and destination pitfalls |

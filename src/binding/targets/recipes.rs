@@ -244,10 +244,16 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         token_text: M45_TOKEN_TEXT,
         read_slot: 0x20,
         member_slot: 0x28,
-        families: &[(
-            "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::Read(CReader&)",
-            crate::BlockFamily::Modifier,
-        )],
+        families: &[
+            (
+                "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::Read(CReader&)",
+                crate::BlockFamily::Modifier,
+            ),
+            (
+                "CMeanTimeToHappen::Read(CReader&)",
+                crate::BlockFamily::Weight,
+            ),
+        ],
     },
     command_children: crate::engine::analysis::grammar::ChildLayout {
         data: 0x10,

@@ -1124,6 +1124,9 @@ pub enum BlockFamily {
     Effect,
     /// Modifier entries; registry fields can carry their grammar in `FieldMembers::ModifierBlock`.
     Modifier,
+    /// Weight and script-value blocks; registry fields can carry their grammar in
+    /// `FieldMembers::WeightBlock`.
+    Weight,
     /// The family is not established, including conflicting or missing alternatives.
     #[default]
     Unknown,

@@ -49,6 +49,7 @@ pub use field::{
     EmptyKey, FieldCondition, FieldDomain, FieldMembers, FieldReadAlternative, FieldReadOutcome,
     FieldReference, FieldShape, FieldUse, FieldUseId, KeyMatch, LookupStage, MissingResult,
     ModifierBlock, ModifierEntry, ReferenceLookup, ReferenceTarget, RepeatBehavior, ValueShape,
+    WeightBlock, WeightOperation, WeightOtherKeys,
 };
 pub use fixture::{
     DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureDiagnostic, FixtureFieldOutcome,

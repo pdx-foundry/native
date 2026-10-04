@@ -18,14 +18,16 @@ required input make the answer partial.
 
 ## Current M451 sweep
 
-`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v13`) holds
+`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v15`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,564 root and 41 nested
 fields. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
 - **Council agendas (SDK-600).** All ten fields are found, but the answer is partial: `agenda_cost`
-  uses `CVariableValue::Read`, a scoped operand. `CPersistent` block classification of `ai_weight`
-  and `modifier` does not establish their keys or member family. `potential`, `allow`, `effect`
+  uses `CVariableValue::Read`, a scoped operand. `ai_weight` has the shared weight grammar
+  ([weight blocks](weight-blocks.md)) and reads in `country`; it stays partial for the sub-block
+  and conversion gaps listed there. `CPersistent` block classification of `modifier` does not
+  establish its member family. `potential`, `allow`, `effect`
   and `init_effect` enter as a country with self-linked root, from and prev; `potential` and
   `allow` keep two contradicted call sites ([block entry contexts](#block-entry-contexts)).
 - **Unknown kinds.** Most unknown kinds come from fields with no single established reader and
@@ -157,7 +159,7 @@ Pitfalls:
   and `OnDisabled` test `+0x4f0` (`ldrb` `0x100ce26ac`) and `csel` (`0x100ce26b8`) the swap effect
   `+0x378` or the base effect `+0x418`; the same flag selects modifier and tooltip members.
   `CTraditionType::CalcAIWeight` (`0x100ce2cdc`) reads its own `+0x568`, which does not show that
-  a swap inherits the weight (SDK-545).
+  a swap inherits the weight; the SDK-545 amendment removed that question.
 
 Use selections carry `All(Unresolved, FieldZero(...))`: the unresolved part covers the choice of
 swap, validity, other branches and method bounds. An empty selection does not prove no runtime

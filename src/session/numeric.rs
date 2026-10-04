@@ -121,6 +121,19 @@ pub(super) fn fields(
     }
 }
 
+/// Attach the numeric facts of one reader that no field carries, with its gap at `subject`.
+pub(super) fn reader(
+    reader: &mut Reader,
+    facts: &NumericFacts,
+    subject: GapSubject,
+    gaps: &mut Vec<Gap>,
+) {
+    let limits = attach_reader_facts(reader, facts);
+    if limits.incomplete {
+        gap(gaps, subject, limits);
+    }
+}
+
 pub(super) fn grammar(
     value: &mut CommandGrammar,
     name: &str,

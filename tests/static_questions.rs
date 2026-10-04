@@ -53,6 +53,146 @@ fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
+    use pdx_native::{
+        BlockFamily, Field, FieldMembers, GrammarProperty, ReadScope, RepeatBehavior, WeightBlock,
+        WeightOtherKeys,
+    };
+    use std::collections::BTreeSet;
+
+    let native = native();
+    assert_eq!(
+        weight_blocks(&native).unwrap(),
+        expected::<Value>("weight-blocks.json")
+    );
+    let mut variants = BTreeMap::new();
+    for registry in native.registries().unwrap().value {
+        for field in native.registry_fields(&registry.name).unwrap().value {
+            check_weight_identity(&mut variants, &field).unwrap();
+        }
+    }
+    assert_eq!(variants.len(), 2);
+
+    let weight = |registry: &str| -> Field {
+        let answer = native.registry_fields(registry).unwrap();
+        answer
+            .value
+            .into_iter()
+            .find(|field| field.name == "ai_weight")
+            .unwrap()
+    };
+    let agenda = weight("common/council_agendas");
+    let tradition = weight("common/traditions");
+    assert_eq!(agenda.reader.id, tradition.reader.id);
+    assert_eq!(agenda.reader.family, BlockFamily::Weight);
+    for field in [&agenda, &tradition] {
+        let GrammarProperty::Known(scopes) = &field.read_scope else {
+            panic!("{:?}", field.read_scope);
+        };
+        assert!(
+            matches!(scopes.as_slice(), [ReadScope::Types(types)] if types.len() == 1 && types[0].name == "country")
+        );
+    }
+
+    // Independent expectations: the config's `modifier_rule` grammar and the prototype's switch
+    // table of nineteen spellings. The fixed `factor` key shadows its operation spelling.
+    let FieldMembers::WeightBlock(block) = &agenda.members else {
+        panic!("{:?}", agenda.members);
+    };
+    let keys = |block: &WeightBlock| -> Vec<Field> {
+        match &block.fixed_keys {
+            GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) => keys.clone(),
+            GrammarProperty::Unresolved => panic!("fixed keys unresolved"),
+        }
+    };
+    let operations = |block: &WeightBlock| -> BTreeMap<String, Option<ReaderKind>> {
+        let GrammarProperty::Known(operations) = &block.operations else {
+            panic!("{:?}", block.operations);
+        };
+        operations
+            .iter()
+            .map(|operation| {
+                let operand = operation.operand.as_ref().map(|reader| reader.kind);
+                (operation.key.clone(), operand)
+            })
+            .collect()
+    };
+    let kind = |keys: &[Field], name: &str| {
+        keys.iter()
+            .find(|key| key.name == name)
+            .map(|key| key.reader.kind)
+    };
+    let top = keys(block);
+    assert_eq!(kind(&top, "base"), Some(ReaderKind::FixedPoint));
+    assert_eq!(kind(&top, "days"), Some(ReaderKind::Integer));
+    assert_eq!(kind(&top, "modifier"), Some(ReaderKind::Block));
+    let simple: BTreeSet<_> = ["round", "floor", "ceiling", "abs", "square", "square_root"]
+        .into_iter()
+        .collect();
+    let spellings: BTreeSet<_> = [
+        "weight",
+        "set",
+        "add",
+        "subtract",
+        "factor",
+        "mult",
+        "multiply",
+        "divide",
+        "modulo",
+        "round_to",
+        "round",
+        "floor",
+        "ceiling",
+        "max",
+        "min",
+        "abs",
+        "square",
+        "pow",
+        "square_root",
+    ]
+    .into_iter()
+    .collect();
+    let top_operations = operations(block);
+    let expected: BTreeSet<_> = spellings
+        .iter()
+        .copied()
+        .filter(|key| *key != "factor")
+        .collect();
+    assert_eq!(
+        top_operations
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        expected
+    );
+    for (key, operand) in &top_operations {
+        let expected = (!simple.contains(key.as_str())).then_some(ReaderKind::ScopedNumeric);
+        assert_eq!(*operand, expected, "{key}");
+    }
+    assert_eq!(block.operation_repeat, RepeatBehavior::Accumulate);
+    assert_eq!(block.other_keys, WeightOtherKeys::Rejected);
+
+    let modifier = top.iter().find(|key| key.name == "modifier").unwrap();
+    let FieldMembers::WeightBlock(entry) = &modifier.members else {
+        panic!("{:?}", modifier.members);
+    };
+    let entry_operations = operations(entry);
+    assert_eq!(
+        entry_operations
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        spellings
+    );
+    assert_eq!(entry.operation_repeat, RepeatBehavior::Replace);
+    assert_eq!(
+        entry.other_keys,
+        WeightOtherKeys::Triggers(GrammarProperty::Known(vec![ReadScope::Enclosing]))
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn defines_match_the_recorded_m451_boundary() {
     let native = native();
     assert_eq!(

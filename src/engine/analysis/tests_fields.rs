@@ -5,7 +5,7 @@ use crate::engine::analysis::{
     fields::{self, FieldGap, FieldGapKind, FieldInput, Function, PathOutcome, ReaderJoin},
     stop::{Bound, Obstacle, Unknown, Unresolved},
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn fixture() -> FieldInput {
     let root = "CExample::ReadMember(CReader&, int)";
@@ -1223,6 +1223,7 @@ fn persistent_fixture() -> FieldInput {
         pointers: BTreeMap::new(),
         writable_slots: Default::default(),
         never_return: vec![],
+        requested_words: BTreeMap::new(),
         readers: BTreeMap::from([(
             0xb000,
             ConcreteReader {
@@ -1282,6 +1283,64 @@ fn scoped_destination_requires_ctor_agreement_and_owner_reader_join() {
         b extern 0x4000
     );
     assert!(derive(input).scoped_destinations.is_empty());
+}
+
+/// The persistent fixture with a constructor body that stores `scope` in the object's word at
+/// `0x30`, and a request for that word.
+fn stored_scope_fixture(scope: u32) -> FieldInput {
+    let mut input = persistent_fixture();
+    let binding = input.persistent.as_mut().unwrap();
+    binding.constructor_bodies.insert(
+        0xa000,
+        Function {
+            name: "CWeight::CWeight(EScopeType)".into(),
+            address: 0xa000,
+            code: arm64!(at 0xa000; mov w8, #scope; str x8, [x0, #0x30]; ret),
+        },
+    );
+    binding.requested_words = BTreeMap::from([(0xb000, BTreeSet::from([0x30]))]);
+    input
+}
+
+#[test]
+fn a_requested_word_needs_an_entered_constructor() {
+    let input = stored_scope_fixture(4);
+    assert_eq!(
+        derive(input.clone()).stored_words.get(&(0x40, 0x30)),
+        Some(&4)
+    );
+
+    let mut baseline_only = input;
+    baseline_only
+        .persistent
+        .as_mut()
+        .unwrap()
+        .constructor_bodies
+        .clear();
+    assert!(derive(baseline_only).stored_words.is_empty());
+}
+
+#[test]
+fn a_requested_word_needs_every_constructor_to_agree() {
+    let mut input = stored_scope_fixture(4);
+    let mut other = Arm64::at(0xc000);
+    other.prologue();
+    arm64!(other; mov x19, x0; add x0, x0, #0x40; bl extern 0xa000; mov w8, #8; str x8, [x19, #0x70]);
+    other.epilogue();
+    arm64!(other; ret);
+    input
+        .persistent
+        .as_mut()
+        .unwrap()
+        .constructors
+        .push(Function {
+            name: "CExample::CExample(other)".into(),
+            address: 0xc000,
+            code: other.bytes(),
+        });
+    let result = derive(input);
+    assert_eq!(result.persistent_points.get(&0x40), Some(&0xb000));
+    assert!(result.stored_words.is_empty());
 }
 
 #[test]

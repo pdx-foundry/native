@@ -762,6 +762,7 @@ mod tests {
                 persistent: Default::default(),
                 persistent_points: Default::default(),
                 scoped_destinations: Default::default(),
+                stored_words: Default::default(),
                 fields: vec![
                     member("inherit", 8, 0x10, "CReader::Read(bool&)"),
                     member("text", 9, 0x18, "CReader::Read(CString&, bool)"),

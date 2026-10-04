@@ -123,17 +123,17 @@ pub(super) async fn paired_file(
         .find(|scope| scope.name == "country")
         .ok_or("country scope missing")?
         .id;
-    let kind = if field == "potential" {
-        DeclarationKind::Trigger
+    let (kind, family) = if field == "potential" {
+        (DeclarationKind::Trigger, pdx_native::BlockFamily::Trigger)
     } else {
-        DeclarationKind::Effect
+        (DeclarationKind::Effect, pdx_native::BlockFamily::Effect)
     };
     let mut game = native
         .start_game(options().loaded_modifiers().fixture(request))
         .await?;
     let mut result = async {
         let file_answer = game.observe_fixture().await?;
-        let failures = validation_failures(field, &file, samples, &file_answer);
+        let failures = validation_failures(family, &file, samples, &file_answer);
         if !failures.is_empty() { return Err(failures.join("; ").into()); }
         game.close().await?;
         game = native.start_game(options().loaded_modifiers()).await?;

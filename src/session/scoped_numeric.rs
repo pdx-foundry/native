@@ -283,7 +283,7 @@ fn grammar_fields(
     }
 }
 
-fn attach(
+pub(super) fn attach(
     reader: &mut Reader,
     point: Option<u64>,
     facts: &Facts,

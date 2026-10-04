@@ -110,6 +110,8 @@ pub enum FieldMembers {
     Fields(Vec<crate::Field>),
     /// Fixed keys and entry forms of a shared modifier-block reader.
     ModifierBlock(ModifierBlock),
+    /// Keys, arithmetic operations and conditions of a shared weight or script-value reader.
+    WeightBlock(Box<WeightBlock>),
     /// The child fields have not been established.
     Unresolved,
 }
@@ -143,6 +145,47 @@ pub enum ModifierEntry {
         /// Broad value form; no numeric conversion limits are stated here.
         value: crate::ReaderKind,
     },
+}
+
+/// Parser acceptance of a shared weight block, such as `ai_weight`, `weight_modifier` or a
+/// script value, and of the `modifier` entries inside it. This does not establish how the engine
+/// evaluates the weight.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeightBlock {
+    /// The reader of a bare value written instead of a block, such as `ai_weight = 7`, or `None`
+    /// when the block reader accepts no bare value.
+    pub scalar: crate::GrammarProperty<Option<Reader>>,
+    /// Named keys. A nested block key carries its own members and read scope.
+    pub fixed_keys: crate::GrammarProperty<Vec<crate::Field>>,
+    /// Keys that select an arithmetic operation.
+    pub operations: crate::GrammarProperty<Vec<WeightOperation>>,
+    /// How a further operation key affects the block. `Accumulate`: each operation adds an
+    /// entry. `Replace`: the block holds one operation, and a later operation key replaces it;
+    /// the engine reports the replacement in its log.
+    pub operation_repeat: RepeatBehavior,
+    /// Keys that are neither fixed keys nor operations.
+    pub other_keys: WeightOtherKeys,
+}
+
+/// A key that selects an arithmetic operation of a weight block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeightOperation {
+    /// The key, such as `add` or `factor`.
+    pub key: String,
+    /// The reader of the operand, or `None` when the engine reads no value for this key.
+    pub operand: Option<Reader>,
+}
+
+/// What a weight block does with a key that is neither a fixed key nor an operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum WeightOtherKeys {
+    /// The engine reports the key in its log and stores nothing.
+    Rejected,
+    /// The key is read as a trigger condition, in these scopes.
+    Triggers(crate::GrammarProperty<Vec<crate::ReadScope>>),
+    /// The disposition is not established.
+    Unresolved,
 }
 
 /// An exhaustive set of accepted spellings, independently of fallback or recovery behavior.

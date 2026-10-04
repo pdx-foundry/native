@@ -1220,7 +1220,9 @@
  {
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "WeightBlock": "f08cb83d92484a89"
+  },
   "name": "ai_weight",
   "read": [
    {
@@ -1230,7 +1232,7 @@
       "reader": {
        "id": "f08cb83d92484a89",
        "kind": "Block",
-       "family": "Unknown",
+       "family": "Weight",
        "numeric": {
         "Known": null
        },
@@ -1246,11 +1248,22 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "5ab5fc854e81e429",
+       "name": "galactic_object"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
-   "family": "Unknown",
+   "family": "Weight",
    "numeric": {
     "Known": null
    },
@@ -2418,7 +2431,9 @@
  {
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "WeightBlock": "f08cb83d92484a89"
+  },
   "name": "tooltip_system_score",
   "read": [
    {
@@ -2428,7 +2443,7 @@
       "reader": {
        "id": "f08cb83d92484a89",
        "kind": "Block",
-       "family": "Unknown",
+       "family": "Weight",
        "numeric": {
         "Known": null
        },
@@ -2444,11 +2459,22 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "5ab5fc854e81e429",
+       "name": "galactic_object"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "f08cb83d92484a89",
    "kind": "Block",
-   "family": "Unknown",
+   "family": "Weight",
    "numeric": {
     "Known": null
    },

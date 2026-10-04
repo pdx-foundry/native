@@ -155,6 +155,7 @@ pub(super) fn discover(
                 persistent: Default::default(),
                 persistent_points: Default::default(),
                 scoped_destinations: Default::default(),
+                stored_words: Default::default(),
                 uses: Vec::new(),
                 fields,
                 paths,

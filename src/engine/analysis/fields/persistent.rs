@@ -15,6 +15,8 @@ pub(super) struct PersistentFields {
     pub readers: BTreeMap<i64, ConcreteReader>,
     pub points: BTreeMap<i64, u64>,
     pub scoped: BTreeMap<i64, u64>,
+    /// Requested words that every constructor's entered run establishes with one value.
+    pub words: BTreeMap<(i64, u64), u64>,
     pub gaps: Vec<FieldGap>,
 }
 
@@ -53,9 +55,11 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
     let image = ConstructorImage::new(&sections, &binding.pointers, &binding.writable_slots)
         .with_calls(binding.constructor_calls.clone());
     let mut agreement: Option<BTreeMap<i64, u64>> = None;
+    let mut word_agreement: Option<BTreeMap<(i64, u64), u64>> = None;
     let mut gaps = Vec::new();
     for constructor in &binding.constructors {
-        let run = |enter_constructors: bool| -> Result<BTreeMap<i64, u64>, Unresolved> {
+        type Run = (BTreeMap<i64, u64>, BTreeMap<(i64, u64), u64>);
+        let run = |enter_constructors: bool| -> Result<Run, Unresolved> {
             let bodies: Vec<_> = binding
                 .constructors
                 .iter()
@@ -144,6 +148,7 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
                 Ok(Call::Return(None))
             });
             let mut established: Option<BTreeMap<i64, u64>> = None;
+            let mut established_words: Option<BTreeMap<(i64, u64), u64>> = None;
             for path in paths {
                 match path.end? {
                     Exit::Stopped(target) if binding.never_return.contains(&target) => continue,
@@ -159,12 +164,23 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
                             .map(|point| (offset, point))
                     })
                     .collect();
+                let words = requested_words(&path.machine, owner, &points, binding);
                 intersect(&mut established, points);
+                intersect(&mut established_words, words);
             }
-            established.ok_or(Unresolved::new("persistent-constructor-return"))
+            let points = established.ok_or(Unresolved::new("persistent-constructor-return"))?;
+            Ok((points, established_words.unwrap_or_default()))
         };
-        let baseline = run(false);
+        let baseline = run(false).map(|(points, _)| points);
         let entered = run(true);
+        // A constructor body that the baseline does not enter may write any word, so only an
+        // entered run establishes words.
+        let words = match &entered {
+            Ok((_, words)) => words.clone(),
+            Err(_) => BTreeMap::new(),
+        };
+        intersect(&mut word_agreement, words);
+        let entered = entered.map(|(points, _)| points);
         let result = match (baseline, entered) {
             (Ok(baseline), Ok(mut entered)) => {
                 entered.extend(baseline);
@@ -207,15 +223,39 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
             })
         })
         .collect();
+    let words = word_agreement
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|((offset, _), _)| points.contains_key(offset))
+        .collect();
     PersistentFields {
         readers,
         points,
         scoped,
+        words,
         gaps,
     }
 }
 
-fn intersect(agreement: &mut Option<BTreeMap<i64, u64>>, points: BTreeMap<i64, u64>) {
+/// The requested words inside each persistent destination at the end of one constructor path.
+fn requested_words(
+    machine: &crate::engine::analysis::evaluate::Machine<'_>,
+    owner: u64,
+    points: &BTreeMap<i64, u64>,
+    binding: &super::PersistentInput,
+) -> BTreeMap<(i64, u64), u64> {
+    points
+        .iter()
+        .filter_map(|(&offset, point)| Some((offset, binding.requested_words.get(point)?)))
+        .flat_map(|(offset, words)| words.iter().map(move |&word| (offset, word)))
+        .filter_map(|(offset, word)| {
+            let value = machine.read(owner + offset as u64 + word, 8)?;
+            Some(((offset, word), value))
+        })
+        .collect()
+}
+
+fn intersect<K: Ord, V: PartialEq>(agreement: &mut Option<BTreeMap<K, V>>, points: BTreeMap<K, V>) {
     match agreement {
         Some(known) => known.retain(|offset, point| points.get(offset) == Some(point)),
         None => *agreement = Some(points),

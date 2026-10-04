@@ -1,0 +1,1444 @@
+{
+  "18ca47a52b4ceff7": {
+    "block": {
+      "fixed_keys": {
+        "Partial": [
+          ["add", "FixedPoint", "Replace", {"Known": []}, null],
+          ["mul", "FixedPoint", "Unknown", {"Known": []}, null],
+          ["div", "FixedPoint", "Unknown", {"Known": []}, null],
+          ["limit", "Block", "Unknown", "Unresolved", "Unresolved"]
+        ]
+      },
+      "operation_repeat": "Unknown",
+      "operations": {
+        "Partial": []
+      },
+      "other_keys": "Rejected",
+      "scalar": "Unresolved"
+    },
+    "entry_of": [
+      "common/council_agendas",
+      "ai_weight"
+    ]
+  },
+  "6b0f3fb0d6febd07": {
+    "block": {
+      "fixed_keys": {
+        "Known": [
+          ["id", "String", "Unknown", {"Known": []}, null],
+          ["desc", "String", "Unknown", {"Known": []}, null]
+        ]
+      },
+      "operation_repeat": "Replace",
+      "operations": {
+        "Known": [
+          ["weight", "ScopedNumeric"],
+          ["min", "ScopedNumeric"],
+          ["max", "ScopedNumeric"],
+          ["factor", "ScopedNumeric"],
+          ["add", "ScopedNumeric"],
+          ["set", "ScopedNumeric"],
+          ["mult", "ScopedNumeric"],
+          ["subtract", "ScopedNumeric"],
+          ["multiply", "ScopedNumeric"],
+          ["divide", "ScopedNumeric"],
+          ["modulo", "ScopedNumeric"],
+          ["floor", null],
+          ["ceiling", null],
+          ["round_to", "ScopedNumeric"],
+          ["abs", null],
+          ["square", null],
+          ["pow", "ScopedNumeric"],
+          ["square_root", null],
+          ["round", null]
+        ]
+      },
+      "other_keys": {
+        "Triggers": {
+          "Known": ["Enclosing"]
+        }
+      },
+      "scalar": "Unresolved"
+    },
+    "entry_of": [
+      "common/council_agendas",
+      "ai_weight"
+    ]
+  },
+  "7b0a790da1cbdc65": {
+    "block": {
+      "fixed_keys": {
+        "Partial": [
+          ["desc", "String", "Replace", {"Known": []}, null],
+          ["potential", "Block", "Unknown", "Unresolved", "Unresolved"],
+          ["multiplier", "FixedPoint", "Replace", {"Known": []}, null],
+          ["min_value", "FixedPoint", "Replace", {"Known": []}, null],
+          ["max_value", "FixedPoint", "Replace", {"Known": []}, null],
+          ["mult", "FixedPoint", "Replace", {"Known": []}, null]
+        ]
+      },
+      "operation_repeat": "Unknown",
+      "operations": {
+        "Partial": []
+      },
+      "other_keys": "Rejected",
+      "scalar": "Unresolved"
+    },
+    "entry_of": [
+      "common/council_agendas",
+      "ai_weight"
+    ]
+  },
+  "f08cb83d92484a89": {
+    "block": {
+      "fixed_keys": {
+        "Known": [
+          ["days", "Integer", "Replace", {"Known": []}, null],
+          ["months", "Integer", "Replace", {"Known": []}, null],
+          ["years", "Integer", "Replace", {"Known": []}, null],
+          ["factor", "Unknown", "Replace", {"Known": []}, null],
+          ["base", "FixedPoint", "Replace", {"Known": []}, null],
+          ["modifier", "Block", "Accumulate", {"Known": ["Enclosing"]}, {"WeightBlock": "6b0f3fb0d6febd07"}],
+          ["scaled_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "18ca47a52b4ceff7"}],
+          ["complex_trigger_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "7b0a790da1cbdc65"}]
+        ]
+      },
+      "operation_repeat": "Accumulate",
+      "operations": {
+        "Known": [
+          ["weight", "ScopedNumeric"],
+          ["min", "ScopedNumeric"],
+          ["max", "ScopedNumeric"],
+          ["add", "ScopedNumeric"],
+          ["set", "ScopedNumeric"],
+          ["mult", "ScopedNumeric"],
+          ["subtract", "ScopedNumeric"],
+          ["multiply", "ScopedNumeric"],
+          ["divide", "ScopedNumeric"],
+          ["modulo", "ScopedNumeric"],
+          ["floor", null],
+          ["ceiling", null],
+          ["round_to", "ScopedNumeric"],
+          ["abs", null],
+          ["square", null],
+          ["pow", "ScopedNumeric"],
+          ["square_root", null],
+          ["round", null]
+        ]
+      },
+      "other_keys": "Rejected",
+      "scalar": {
+        "Known": "FixedPoint"
+      }
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {
+          "kind": "field",
+          "name": "ai_weight"
+        },
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "factor"]
+        },
+        "The weight key's read alternatives do not share one reader."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "weight"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "weight"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "min"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "min"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "max"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "max"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "factor"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "factor"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "add"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "add"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "set"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "set"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "mult"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "mult"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "subtract"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "subtract"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "multiply"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "multiply"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "divide"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "divide"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "modulo"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "modulo"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "round_to"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "round_to"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "pow"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "pow"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier"]
+        },
+        "The weight block's bare value stopped at weight-scalar."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier"]
+        },
+        "read-scope: scope-argument"
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "scope"]
+        },
+        "The weight block analysis stopped at weight-call."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "calc"]
+        },
+        "The weight block analysis stopped at weight-acceptance."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "limit"]
+        },
+        "read-scope: zero-mask"
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "add"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "mul"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "div"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier"]
+        },
+        "The weight block's bare value stopped at weight-scalar."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier"]
+        },
+        "read-scope: scope-argument"
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "trigger"]
+        },
+        "The weight block analysis stopped at weight-call."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "parameters"]
+        },
+        "The weight block analysis stopped at branch-value."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "trigger_scope"]
+        },
+        "The weight block analysis stopped at weight-call."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "mode"]
+        },
+        "The weight block analysis stopped at weight-enum-argument."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "potential"]
+        },
+        "read-scope: zero-mask"
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "multiplier"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "min_value"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "max_value"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "mult"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier"]
+        },
+        "The weight block's bare value stopped at weight-scalar."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "days"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "months"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "years"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "factor"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "base"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "weight"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "weight"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "min"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "min"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "max"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "max"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "add"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "add"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "set"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "set"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "mult"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "mult"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "subtract"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "subtract"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "multiply"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "multiply"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "divide"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "divide"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modulo"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modulo"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "round_to"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "round_to"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "pow"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "pow"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "field",
+          "name": "ai_weight"
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ]
+    ],
+    "read_scope": {
+      "Known": [
+        {
+          "Types": [{"id": "44b5e21fe5e593d7", "name": "country"}]
+        }
+      ]
+    },
+    "sample": [
+      "common/council_agendas",
+      "ai_weight"
+    ]
+  },
+  "fd8c6ad9ff94a8f2": {
+    "block": {
+      "fixed_keys": {
+        "Known": [
+          ["days", "Integer", "Replace", {"Known": []}, null],
+          ["months", "Integer", "Replace", {"Known": []}, null],
+          ["years", "Integer", "Replace", {"Known": []}, null],
+          ["factor", "FixedPoint", "Replace", {"Known": []}, null],
+          ["base", "FixedPoint", "Replace", {"Known": []}, null],
+          ["modifier", "Block", "Accumulate", {"Known": ["Enclosing"]}, {"WeightBlock": "6b0f3fb0d6febd07"}],
+          ["scaled_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "18ca47a52b4ceff7"}],
+          ["complex_trigger_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "7b0a790da1cbdc65"}]
+        ]
+      },
+      "operation_repeat": "Accumulate",
+      "operations": {
+        "Known": [
+          ["weight", "ScopedNumeric"],
+          ["min", "ScopedNumeric"],
+          ["max", "ScopedNumeric"],
+          ["add", "ScopedNumeric"],
+          ["set", "ScopedNumeric"],
+          ["mult", "ScopedNumeric"],
+          ["subtract", "ScopedNumeric"],
+          ["multiply", "ScopedNumeric"],
+          ["divide", "ScopedNumeric"],
+          ["modulo", "ScopedNumeric"],
+          ["floor", null],
+          ["ceiling", null],
+          ["round_to", "ScopedNumeric"],
+          ["abs", null],
+          ["square", null],
+          ["pow", "ScopedNumeric"],
+          ["square_root", null],
+          ["round", null]
+        ]
+      },
+      "other_keys": "Rejected",
+      "scalar": {
+        "Known": "FixedPoint"
+      }
+    },
+    "gaps": [
+      [
+        "UnresolvedStorage",
+        {
+          "kind": "field",
+          "name": "weight"
+        },
+        "Repeat behavior or nested fields remain unresolved."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "weight"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "weight"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "min"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "min"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "max"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "max"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "factor"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "factor"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "add"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "add"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "set"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "set"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "mult"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "mult"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "subtract"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "subtract"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "multiply"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "multiply"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "divide"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "divide"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "modulo"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "modulo"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "round_to"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "round_to"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "pow"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "pow"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier"]
+        },
+        "The weight block's bare value stopped at weight-scalar."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier"]
+        },
+        "read-scope: scope-argument"
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "scope"]
+        },
+        "The weight block analysis stopped at weight-call."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "calc"]
+        },
+        "The weight block analysis stopped at weight-acceptance."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "limit"]
+        },
+        "read-scope: zero-mask"
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "add"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "mul"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "div"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier"]
+        },
+        "The weight block's bare value stopped at weight-scalar."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier"]
+        },
+        "read-scope: scope-argument"
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "trigger"]
+        },
+        "The weight block analysis stopped at weight-call."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "parameters"]
+        },
+        "The weight block analysis stopped at branch-value."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "trigger_scope"]
+        },
+        "The weight block analysis stopped at weight-call."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "mode"]
+        },
+        "The weight block analysis stopped at weight-enum-argument."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "potential"]
+        },
+        "read-scope: zero-mask"
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "multiplier"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "min_value"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "max_value"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "mult"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedReader",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier"]
+        },
+        "The weight block's bare value stopped at weight-scalar."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "days"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "months"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "years"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "factor"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "base"]
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "weight"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "weight"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "min"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "min"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "max"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "max"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "add"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "add"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "set"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "set"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "mult"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "mult"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "subtract"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "subtract"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "multiply"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "multiply"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "divide"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "divide"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modulo"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modulo"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "round_to"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "round_to"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "key_path",
+          "path": ["weight", "pow"]
+        },
+        "Scoped literal conversion boundaries and overflow are incomplete."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "pow"]
+        },
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+      ],
+      [
+        "NumericConversion",
+        {
+          "kind": "field",
+          "name": "weight"
+        },
+        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ]
+    ],
+    "read_scope": {
+      "Known": [
+        {
+          "Types": [{"id": "44b5e21fe5e593d7", "name": "country"}]
+        }
+      ]
+    },
+    "sample": [
+      "common/country_customization",
+      "weight"
+    ]
+  }
+}

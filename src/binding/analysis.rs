@@ -32,6 +32,8 @@ pub(crate) struct BoundAnalysis {
     modifier_blocks: OnceLock<
         Result<crate::engine::analysis::modifier_blocks::ModifierBlockFacts, AnalysisError>,
     >,
+    weight_blocks:
+        OnceLock<Result<crate::engine::analysis::weight_blocks::WeightBlockFacts, AnalysisError>>,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
     /// One immutable input per family; callers verify the executable before each access.
@@ -533,6 +535,7 @@ impl BoundAnalysis {
             references: OnceLock::new(),
             numeric: OnceLock::new(),
             modifier_blocks: OnceLock::new(),
+            weight_blocks: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             block_facts: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
@@ -951,6 +954,36 @@ impl BoundAnalysis {
                 Ok(crate::engine::analysis::modifier_blocks::analyze(
                     &input,
                     self.numeric_facts()?,
+                ))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// Shared weight grammar at each executable-bound address point.
+    pub(crate) fn weight_block_facts(
+        &self,
+    ) -> Result<&crate::engine::analysis::weight_blocks::WeightBlockFacts, AnalysisError> {
+        let verified = self.verified()?;
+        self.weight_blocks
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                let image = binary::references::Image {
+                    bytes: &verified.executable,
+                    symbols: &verified.catalog.symbols,
+                    strings: &verified.catalog.strings,
+                    pointers: &verified.catalog.pointers,
+                    imports: &verified.catalog.imports,
+                };
+                let input =
+                    binary::weight_blocks::read(&image, &verified.catalog.bound_slots, recipe)?;
+                let text = binary::declarations::Text::read(
+                    &verified.executable,
+                    &verified.catalog.symbols,
+                )?;
+                let bodies = |address| binary::weight_blocks::body(&text, address);
+                Ok(crate::engine::analysis::weight_blocks::analyze(
+                    &input, &bodies,
                 ))
             })
             .as_ref()
