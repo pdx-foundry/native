@@ -1,5 +1,5 @@
 //! Generate static parity candidates for review. Starts no game and never accepts an answer.
-//! Modes: --out NEW_DIRECTORY, --compare REVIEWED_DIR CANDIDATE_DIR --build BUILD_ID,
+//! Modes: --out NEW_DIRECTORY [--only FILE...], --compare REVIEWED_DIR CANDIDATE_DIR --build BUILD_ID,
 //! and --compare-durations REVIEWED_FILE CANDIDATE_FILE --build BUILD_ID.
 //! STELLARIS_PATH names the installation for generation. Comparison is fully offline.
 #[path = "../tests/parity/mod.rs"]
@@ -21,14 +21,17 @@ fn main() -> std::process::ExitCode {
 }
 
 const USAGE: &str = concat!(
-    "usage: expected --out NEW_DIRECTORY (set STELLARIS_PATH)\n",
+    "usage: expected --out NEW_DIRECTORY [--only FILE...] (set STELLARIS_PATH)\n",
     "       expected --compare REVIEWED_DIR CANDIDATE_DIR --build BUILD_ID\n",
     "       expected --compare-durations REVIEWED_FILE CANDIDATE_FILE --build BUILD_ID",
 );
 
 #[derive(Debug, PartialEq)]
 enum Command {
-    Generate(PathBuf),
+    Generate {
+        directory: PathBuf,
+        files: Vec<&'static str>,
+    },
     Compare {
         reviewed: PathBuf,
         candidate: PathBuf,
@@ -43,7 +46,16 @@ enum Command {
 
 fn parse_args(args: &[std::ffi::OsString]) -> parity::Result<Command> {
     match args {
-        [flag, directory] if flag == "--out" => Ok(Command::Generate(PathBuf::from(directory))),
+        [flag, directory] if flag == "--out" => Ok(Command::Generate {
+            directory: PathBuf::from(directory),
+            files: parity::FILES.to_vec(),
+        }),
+        [flag, directory, only, names @ ..] if flag == "--out" && only == "--only" => {
+            Ok(Command::Generate {
+                directory: PathBuf::from(directory),
+                files: selected_files(names)?,
+            })
+        }
         [flag, reviewed, candidate, build_flag, build] if build_flag == "--build" => {
             let identity = build
                 .to_str()
@@ -70,11 +82,36 @@ fn parse_args(args: &[std::ffi::OsString]) -> parity::Result<Command> {
     }
 }
 
+/// Keep the named parity files in their full-run order, or name the known files.
+fn selected_files(names: &[std::ffi::OsString]) -> parity::Result<Vec<&'static str>> {
+    if names.is_empty() {
+        return Err(USAGE.into());
+    }
+
+    if let Some(unknown) = names
+        .iter()
+        .find(|name| !parity::FILES.iter().any(|file| *name == file))
+    {
+        return Err(format!(
+            "unknown parity file {}; known files: {}",
+            unknown.display(),
+            parity::FILES.join(", ")
+        )
+        .into());
+    }
+
+    Ok(parity::FILES
+        .iter()
+        .copied()
+        .filter(|file| names.iter().any(|name| name == file))
+        .collect())
+}
+
 fn run() -> parity::Result<u8> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let report = match parse_args(&args)? {
-        Command::Generate(directory) => {
-            generate(&directory)?;
+        Command::Generate { directory, files } => {
+            generate(&directory, &files)?;
             return Ok(0);
         }
         Command::Compare {
@@ -162,12 +199,12 @@ fn compare_tree(
     Ok(report)
 }
 
-fn generate(directory: &Path) -> parity::Result<()> {
+fn generate(directory: &Path, files: &[&str]) -> parity::Result<()> {
     let directory = prepare_output(directory)?;
     let installation = std::env::var_os("STELLARIS_PATH")
         .ok_or("set STELLARIS_PATH to the installation or executable")?;
     let native = pdx_native::Native::open(installation)?;
-    for name in parity::FILES {
+    for &name in files {
         let bytes = parity::candidate(&native, name)?;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -230,6 +267,43 @@ mod tests {
             ]))
             .is_err()
         );
+    }
+
+    #[test]
+    fn only_selects_known_files_in_full_run_order() {
+        let args = |values: &[&str]| {
+            values
+                .iter()
+                .map(std::ffi::OsString::from)
+                .collect::<Vec<_>>()
+        };
+        let generate = |files: Vec<&'static str>| Command::Generate {
+            directory: PathBuf::from("out"),
+            files,
+        };
+        assert_eq!(
+            parse_args(&args(&["--out", "out"])).unwrap(),
+            generate(parity::FILES.to_vec())
+        );
+        assert_eq!(
+            parse_args(&args(&[
+                "--out",
+                "out",
+                "--only",
+                "triggered-modifiers.json",
+                "registries.json",
+                "registries.json"
+            ]))
+            .unwrap(),
+            generate(vec!["registries.json", "triggered-modifiers.json"])
+        );
+        assert!(parse_args(&args(&["--out", "out", "--only"])).is_err());
+
+        let unknown = parse_args(&args(&["--out", "out", "--only", "missing.json"]))
+            .unwrap_err()
+            .to_string();
+        assert!(unknown.contains("missing.json"), "{unknown}");
+        assert!(unknown.contains("triggered-modifiers.json"), "{unknown}");
     }
 
     #[test]

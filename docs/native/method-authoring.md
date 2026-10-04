@@ -193,6 +193,11 @@ cargo run --release --example expected -- --out /tmp/native-expected-candidate
 cargo run --release --example expected -- --compare tests/expected/m451 /tmp/native-expected-candidate --build BUILD_ID
 ```
 
+To review one or a few files, add `--only` with their names, for example
+`--out /tmp/native-expected-candidate --only triggered-modifiers.json`. Each file is the same as
+the file from a full run, and an unknown name lists the known names. The tree comparison
+reports the files that were not written as missing.
+
 The output directory must be new and outside `tests/expected/`; the command never overwrites a
 file, and the comparison is offline. Pass the exact candidate build ID from `Native::build()` or
 the [target catalogue](targets.md), without JSON quotes. Exit status is 0 for parity, 1 for parity
@@ -326,6 +331,32 @@ For command grammars, run and compare the whole population:
 cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
 cargo run --release --example command-population -- --diff tests/population/m451-hotfix/command-population.json .local/population/commands.json
 ```
+
+A tracked baseline can be stale on `main`. To separate what your change did from what `main`
+already changed, run the same example on a `main` worktree and diff the two reports. The worktree
+goes in the ignored `.local/main/` and builds into its own `target/`; the first build is a full
+release build. One example builds before it runs, so the branch side can use the current
+checkout; for a multi-example capture before delivery, use
+[a stable main and branch pair](#capture-a-stable-main-and-branch-pair).
+
+```sh
+git fetch origin main
+git worktree add --detach .local/main origin/main
+(cd .local/main && cargo run --release --example command-population -- "$STELLARIS_PATH") > .local/population/commands-main.json
+cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
+cargo run --release --example command-population -- --diff .local/population/commands-main.json .local/population/commands.json
+git worktree remove .local/main
+```
+
+`registry-field-sweep` takes the same steps. `dynamic-name-population` has no `--diff`; compare its
+text output without the timing line:
+
+```sh
+diff <(grep -v '^method run' .local/population/names-main.txt) <(grep -v '^method run' .local/population/names.txt)
+```
+
+Keep the worktree to compare later changes against the same `main`. Remove it when you finish; that
+also deletes its build.
 
 Review changed answers, then update the affected baseline in the same PR as the method change:
 
