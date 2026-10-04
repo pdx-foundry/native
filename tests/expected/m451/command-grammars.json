@@ -624,6 +624,7 @@
         "Partial": [
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "Unresolved",
             "name": "flag",
             "read": [
@@ -648,6 +649,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "days",
             "read": [
@@ -810,6 +812,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "months",
             "read": [
@@ -972,6 +975,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "years",
             "read": [
@@ -1246,6 +1250,7 @@
         "Partial": [
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "multiplier",
             "read": [
@@ -1422,6 +1427,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "mult",
             "read": [
@@ -1650,6 +1656,7 @@
         "Known": [
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "id",
             "read": [
@@ -1696,6 +1703,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "Unresolved",
             "name": "limit",
             "read": [
@@ -1840,6 +1848,7 @@
         "Partial": [
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "Unresolved",
             "name": "limit",
             "read": [
@@ -1886,6 +1895,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "Unresolved",
             "name": "else",
             "read": [
@@ -2134,6 +2144,7 @@
         "Known": [
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "size",
             "read": [
@@ -2180,6 +2191,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "Unresolved",
             "name": "effect",
             "read": [
@@ -2226,6 +2238,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "building",
             "read": [
@@ -2272,6 +2285,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "design",
             "read": [
@@ -2318,6 +2332,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "owner",
             "read": [
@@ -2418,6 +2433,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "module",
             "read": [
@@ -2560,6 +2576,7 @@
         "Partial": [
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "district_type",
             "read": [
@@ -2621,6 +2638,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "ignore_cap",
             "read": [
@@ -2667,6 +2685,7 @@
           },
           {
             "domain": "Unknown",
+            "entry_contexts": [],
             "members": "None",
             "name": "type_conversion",
             "read": [

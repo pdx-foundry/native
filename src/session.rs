@@ -12,6 +12,7 @@ mod durations;
 pub mod dynamic_name_commands;
 mod dynamic_names;
 mod families;
+mod field_entries;
 mod fields;
 pub(crate) mod grammar;
 mod language;

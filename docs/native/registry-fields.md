@@ -18,14 +18,16 @@ required input make the answer partial.
 
 ## Current M451 sweep
 
-`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v12`) holds
+`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v13`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,564 root and 41 nested
 fields. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
 - **Council agendas (SDK-600).** All ten fields are found, but the answer is partial: `agenda_cost`
   uses `CVariableValue::Read`, a scoped operand. `CPersistent` block classification of `ai_weight`
-  and `modifier` does not establish their keys or member family.
+  and `modifier` does not establish their keys or member family. `potential`, `allow`, `effect`
+  and `init_effect` enter as a country with self-linked root, from and prev; `potential` and
+  `allow` keep two contradicted call sites ([block entry contexts](#block-entry-contexts)).
 - **Unknown kinds.** Most unknown kinds come from fields with no single established reader and
   from unresolved root paths, not from unclassified reader signatures (`CVariableValue::Read`,
   `CReader::Read(CColor&)`, `CReader::Read(float&)`, `CReader::Read(CVector2FixedPoint&)`).
@@ -257,3 +259,108 @@ Fields and their conditional read alternatives carry conservative block families
 persistent destinations are joined to constructor-installed virtual readers; a shared
 `CPersistent::Read` call alone does not give a concrete identity. Command block families are on
 [nested command grammar](command-grammar.md).
+
+## Block entry contexts
+
+`Field.entry_contexts` gives, for each root trigger and effect block, the scopes that the engine's
+direct evaluation calls supply for `this`, `root`, the `from` chain and the `prev` chain
+(`registry-fields/v13`; `callbacks/blocks.rs`, `callbacks/contexts.rs`,
+`src/binding/binary/callbacks.rs`, `src/session/field_entries.rs`). The answer keeps
+`EntryScope::SelfLink`; read it by the [self-link rule](engine-commands.md#on_actions-game-rules-and-their-entry-scopes).
+`this` is the scope at the call; the scope that the engine reads the block in is SDK-549's.
+
+**How the engine evaluates a stored block.** A registry item evaluates its own blocks in its
+methods: it passes `this` plus the block's storage offset to a trigger evaluator or an effect
+executor (`CTrigger::Evaluate`, `EvaluateExtended`, `CEffect::Execute`, `ExecuteExtended`,
+`CRootEffect::Execute`), with a scope in `x1`. The method either builds the scope itself
+(`CTraditionType::IsPotential(CCountry const*)`: a fresh scope, `SetCountry`, then `this + 0x108`)
+or takes it from its caller (`CCouncilAgenda::IsPotential(CEventScope&, CString*)` evaluates
+`this + 0x1c8` with its scope parameter; `CGovernment::UpdateCouncilAgenda` builds that scope).
+The field method's storage offset is the offset from the method's `this`.
+
+**The method.** The name pass attributes a call to `(owner, offset)` only when `x0` holds `this`
+plus one offset on every path. A method whose scope is its own parameter is a *wrapper*; the method
+goes up its direct callers, at most 2, to the call that builds the scope. From that call it runs
+the caller to the call and through it, and runs every wrapper and every function that receives a
+scope, up to 6 calls deep, inline on the path with the caller's arguments and memory. Before the
+selected call, evaluations act only through their effects. A call reads the argument registers that
+its demangled signature uses; a call through an import pointer to the stack probe
+(`___chkstk_darwin`) reads none; a call to a function that never returns ends the path. A copy of a
+scope pointer in the stack reaches a call only in the frame of a stack address that the call
+receives, at or above that address.
+
+**Assumptions.** Beside the self-link rule:
+
+- [Evaluation leaves a scope as it found it](engine-commands.md#on_actions-game-rules-and-their-entry-scopes):
+  trigger and effect code that receives a scope is a scope reader.
+- A bounded search with no contradiction: when the paths of a call stop only at the path, loop or
+  step limit, and every evaluation that the followed paths reach receives a scope that the method
+  can read, the found contexts stand with no gap. A path that reaches an evaluation with an
+  unreadable scope is a contradiction; then the bounds are gaps too.
+
+**Result on M451-hotfix.** 237 root trigger and effect blocks in 164 registries: 109 have contexts
+and no entry gap, 53 have contexts and a gap, 75 have none. 24 blocks keep several readable
+contexts, 47 name a typed `from` and 2 a typed `prev`. 3 registries have 4 evaluation calls whose
+block the method cannot name. These call sites were checked by hand in the disassembly:
+
+- council agenda `potential` and `allow`: `CGovernment::UpdateCouncilAgenda` builds a country scope
+  and calls `IsPotential` and then `IsAllowed` with it (`this + 0x1c8`, `this + 0x280`).
+- council agenda `init_effect`: `CGovernment::SetCouncilAgenda` builds a country scope;
+  `ExecuteInitialEffect` tail-calls `CEffect::Execute` on `this + 0x580`.
+- tradition `potential`: `CTraditionType::IsPotential` builds its own country scope.
+- diplomatic action `on_accept`: `CDiplomaticActionType::OnAccept` builds two country scopes, links
+  the second as the first's from and runs `this + 0x2f8` with the first.
+- tradition `on_enabled`: `OnEnabled` runs the swap's or its own effect through vtable slot `+0x48`,
+  a virtual call, so the block has a gap.
+
+**Comparison with the config's `replace_scopes`.** Read through the self-link rule, comparing the
+keys that the config states (`system` is the engine's `galactic_object`; `any` matches any scope):
+107 blocks have a readable context and a config expectation. 82 agree, 5 agree on the stated keys
+where the engine also sets a first link that the config omits, and 20 disagree. 103 blocks have no
+readable context and 27 have no `replace_scopes`. Each disagreement was read by hand:
+
+- **Source errors (10).** The engine agrees with Native. Armies `on_built`, `on_queued` and
+  `on_unqueued` run on a colony with no from (`CArmyType::OnBuilt`: `SetColony`), not a planet with a
+  species from. Starbase building and module `abort_trigger` and `destroy_trigger` run on a starbase
+  with no from (`ShouldAbort`, `ShouldDestroy`: `SetStarbase`). Overclock `potential` and `possible`
+  run on the megastructure (`COverclockType::IsPotential`: `SetMegaStructure`), not a country.
+  Megastructure `on_cycle_complete` runs on the megastructure with no links (`OnCycleComplete`).
+- **The config states one of several contexts (9).** Bypass `potential` and `country_can_use` link
+  the second country as from only when it is set (`CBypassType::CanPotentiallyBeUsedByCountry`).
+  Megastructure `on_build_queued` and `on_build_unqueued` link the fleet as fromfrom only when it is
+  set (`OnBuildQueued`). Colony type `potential` also runs on a planet from the surface view
+  (`CSurfaceView::RefreshDesignations`). Observation mission `potential` and `valid` also run from
+  the order button with a from of no type. Button effect `potential` and `allow` also run from
+  `CEffectButton::PerFrameUpdate` on a scope with no type.
+- **A Native limit (1).** Deposit `can_be_cleared_potential` is filled by
+  `CDepositHolderRefCaster::FillEventScope`, whose type is a run-time value: the followed fallback path
+  has no type and the typed paths stop at a jump table, which keeps a gap.
+
+The five omissions name a from or prev that the engine sets and the config leaves out: bombardment
+stance `trigger` (from planet on one path), casus belli `potential` (from country), diplomatic action
+`possible` (prev country, from the three-country `IsPossible`), pop faction `on_destroy` (from pop
+faction) and system type `potential` (from country). Per-name conclusions go to the Atlas ledger
+(SDK-704).
+
+**Gaps.**
+
+- 63 blocks have no direct evaluation in the owner's methods: they run through a virtual call
+  (tradition `on_enabled` and `on_disabled`), outside the owner's methods, or only as nested blocks.
+- 44 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
+  Council agenda `potential` and `allow` keep two. `ExecuteTradition` passes the scope to
+  `CTraditionType::GetUnlocksAgenda`, which, for a tradition with no swaps, makes a virtual call
+  while `x1` still holds the scope; the swap paths stop at the loop limit. The AI's
+  `SelectByWeightedRandom<CCouncilAgenda>` keeps the scope pointer in a callee-saved register that
+  `IsPotential` saves in its own frame above a local string that it passes to `CString::operator+=`.
+- Path, loop and step limits are gaps only where a contradiction appears (45 path, 17 loop).
+- 7 wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2 callers
+  (`caller-depth`). Weights, script values, modifier blocks and nested blocks are outside the method.
+
+Pitfalls:
+
+- A scope pointer left in an argument register is not an argument when the callee's signature does
+  not take it; an unknown virtual call cannot be checked this way.
+- A callee-saved register spill is stack memory like any other; telling it from an object field
+  needs object extents, which the method does not have.
+- `run_paths_to` skips the site checks inside an entered call, and `follow` runs a setter outside the
+  entered calls; without them a prefix that enters a wrapper is lost or runs into the caller.

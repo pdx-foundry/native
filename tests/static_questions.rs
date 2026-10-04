@@ -10,9 +10,9 @@ use pdx_native::internals::{
 };
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags,
-    EntryScope, Error, FieldReference, GapKind, KeyMatch, LinkData, LocalizationContextReference,
-    LocalizationDeclarations, LocalizationOutput, LookupStage, Native, Operation, OutputScope,
-    ReaderKind, ReferenceTarget, RuleKind, ScopeId,
+    EntryScope, Error, FieldReference, GapKind, GapSubject, KeyMatch, LinkData,
+    LocalizationContextReference, LocalizationDeclarations, LocalizationOutput, LookupStage,
+    Native, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind, ScopeId,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -429,6 +429,70 @@ fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
             on_action.name
         );
     }
+}
+
+/// Registry field-block call sites checked by hand in the disassembly, before the expected files
+/// were generated.
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() {
+    let native = native();
+    let field = |registry: &str, name: &str| -> (Vec<String>, Vec<String>) {
+        let answer = native.registry_fields(registry).unwrap();
+        let entries = find(&answer.value, name, |field| &field.name)
+            .entry_contexts
+            .iter()
+            .map(entry)
+            .collect();
+        let gaps = answer
+            .gaps
+            .iter()
+            .filter(|gap| matches!(&gap.subject, Some(GapSubject::Field { name: subject }) if subject == name))
+            .filter(|gap| matches!(gap.kind, GapKind::UnresolvedPath | GapKind::UnreadableInput))
+            .map(|gap| gap.detail.clone())
+            .collect();
+        (entries, gaps)
+    };
+    let country = "this=country root=SelfLink from=[SelfLink] prev=[SelfLink]";
+
+    // CGovernment::UpdateCouncilAgenda builds a country scope and passes it to
+    // CCouncilAgenda::IsPotential and IsAllowed, which evaluate the blocks at this + 0x1c8 and
+    // this + 0x280.
+    assert!(
+        field("common/council_agendas", "potential")
+            .0
+            .contains(&country.into())
+    );
+    assert!(
+        field("common/council_agendas", "allow")
+            .0
+            .contains(&country.into())
+    );
+    // CGovernment::SetCouncilAgenda builds a country scope for
+    // CCouncilAgenda::ExecuteInitialEffect, which tail-calls CEffect::Execute on this + 0x580.
+    assert_eq!(
+        field("common/council_agendas", "init_effect"),
+        (vec![country.to_string()], vec![])
+    );
+    // CTraditionType::IsPotential builds its own country scope and evaluates this + 0x108.
+    assert_eq!(
+        field("common/traditions", "potential"),
+        (vec![country.to_string()], vec![])
+    );
+    // CDiplomaticActionType::OnAccept builds two country scopes, links the second as the
+    // first's from, and runs the effect at this + 0x2f8 with the first.
+    assert!(
+        field("common/diplomatic_actions", "on_accept")
+            .0
+            .contains(&"this=country root=SelfLink from=[country,SelfLink] prev=[SelfLink]".into())
+    );
+    // CTraditionType::OnEnabled runs the swap's or its own effect through a virtual call.
+    let (entries, gaps) = field("common/traditions", "on_enabled");
+    assert!(entries.is_empty());
+    assert_eq!(
+        gaps,
+        ["no direct call in the owner's methods evaluates this block"]
+    );
 }
 
 #[test]

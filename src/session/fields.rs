@@ -325,6 +325,7 @@ fn ordinary_field(
         domain: FieldDomain::Unknown,
 
         uses: Vec::new(),
+        entry_contexts: Vec::new(),
         reference: if lookups.is_empty() {
             FieldReference::NotEstablished
         } else {
@@ -512,6 +513,7 @@ fn collection_field(
         domain: FieldDomain::Unknown,
 
         uses: Vec::new(),
+        entry_contexts: Vec::new(),
         reference: FieldReference::NotEstablished,
     }
 }

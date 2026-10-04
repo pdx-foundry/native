@@ -1,7 +1,9 @@
 # Ready-world observations (retired route)
 
 The world API and the M451-hotfix world recipe were retired on 2026-10-02. Keep this page complete
-enough to restore the world pause if the entry-context self-link assumption fails (SDK-677).
+enough to restore the world pause if an entry-context assumption fails: the self-link rule, or that
+evaluation leaves a scope as it found it ([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes),
+[block entry contexts](registry-fields.md#block-entry-contexts)).
 
 ## Restore
 

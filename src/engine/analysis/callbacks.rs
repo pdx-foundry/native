@@ -22,6 +22,7 @@
 //! A small set of forwarders, which take a name or rule from their caller, are pinned by the
 //! binding and checked here before their callers are read. A site whose name the method cannot
 //! recover is an unnamed site; the method never guesses its name.
+pub mod blocks;
 mod contexts;
 mod names;
 
@@ -185,6 +186,10 @@ pub struct CallbacksInput {
     pub scope_names: Option<Vec<String>>,
     pub data: ReadOnlyData,
     pub layout: CallbackLayout,
+    /// How many argument registers, from `x0`, each known function reads.
+    pub arguments: BTreeMap<u64, usize>,
+    /// How many argument registers a call through a pointer reads, by the call instruction.
+    pub call_arguments: BTreeMap<u64, usize>,
 }
 
 /// One entry scope at a site.
@@ -209,6 +214,17 @@ pub struct Context {
     /// prev, prevprev, …; passes a scope of type 0 and ends after the first other slot that is
     /// not a scope.
     pub prev: Vec<Slot>,
+}
+
+impl Context {
+    /// Whether every slot of the context is established.
+    pub fn is_established(&self) -> bool {
+        std::iter::once(&self.this)
+            .chain([&self.root])
+            .chain(&self.from)
+            .chain(&self.prev)
+            .all(|slot| *slot != Slot::Unresolved)
+    }
 }
 
 /// What the method established for one name.
@@ -277,6 +293,8 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         lookups: &input.lookups,
         data: &input.data,
         layout: input.layout,
+        arguments: &input.arguments,
+        call_arguments: &input.call_arguments,
     };
     let states = site_states(input);
     let rule_names = match family {

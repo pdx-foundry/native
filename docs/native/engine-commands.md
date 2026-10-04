@@ -269,6 +269,20 @@ below; Atlas applies it to the raw answer.
 The `EEffectUserDataKey` map that the firing functions take is not visible to script; its named
 reader is `NAIUtil::GetSpecialOfferData`.
 
+**Evaluation leaves a scope as it found it.** A second assumption, used by the registry field
+block method ([block entry contexts](registry-fields.md#block-entry-contexts)): trigger and effect
+code that receives a scope does not change the type or links of any scope object and keeps no
+pointer to one. It covers the evaluators, such as `CTrigger::Evaluate` and `CRootEffect::Execute`,
+and the other `const` members of trigger and effect classes that take a scope, such as
+`CAndTrigger::BuildToolTip`. Checked by hand on M451-hotfix:
+
+- `CTrigger::Evaluate` (`0x100d063f0`) and `CEffect::Execute` (`0x100458118`) only forward the
+  scope through virtual calls: `ActualEvaluate` at vtable `+0x20` and `ExecuteActual` at `+0x50`.
+- A scope-changing trigger, `CAnyInScriptedListTrigger<CAmbientObjectListBuilder>::ActualEvaluate`
+  (`0x101eb29a0`), copies the scope it receives into a local child, copies root and from, links the
+  child's prev to the received scope and sets the child's type. It only reads the received scope.
+- A scope-changing effect, `CEveryInListEffect::ExecuteActual` (`0x101d225cc`), does the same.
+
 **Result on M451-hotfix.** 294 on_actions; 281 have at least one context and 207 have at least
 one context with no unresolved scope. 13 names keep several contexts with no unresolved scope: for
 example, a fleet enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an

@@ -219,6 +219,7 @@ mod tests {
             domain: FieldDomain::Unknown,
 
             uses: Vec::new(),
+            entry_contexts: Vec::new(),
             reference: FieldReference::NotEstablished,
         }
     }

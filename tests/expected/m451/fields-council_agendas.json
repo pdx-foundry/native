@@ -1,6 +1,23 @@
 [
  {
   "domain": "Unknown",
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "effect",
   "read": [
@@ -47,6 +64,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "agenda_cost",
   "read": [
@@ -209,6 +227,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "agenda_cooldown",
   "read": [
@@ -321,6 +340,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "agenda_finish_modifier_duration",
   "read": [
@@ -433,6 +453,33 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   },
+   {
+    "from": [
+     "Unresolved"
+    ],
+    "prev": [
+     "Unresolved"
+    ],
+    "root": "Unresolved",
+    "this": "Unresolved"
+   }
+  ],
   "members": "Unresolved",
   "name": "potential",
   "read": [
@@ -479,6 +526,33 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   },
+   {
+    "from": [
+     "Unresolved"
+    ],
+    "prev": [
+     "Unresolved"
+    ],
+    "root": "Unresolved",
+    "this": "Unresolved"
+   }
+  ],
   "members": "Unresolved",
   "name": "allow",
   "read": [
@@ -525,6 +599,23 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "init_effect",
   "read": [
@@ -571,6 +662,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "ai_weight",
   "read": [
@@ -617,6 +709,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "finish_modifier",
   "read": [
@@ -678,6 +771,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": {
    "ModifierBlock": "5a74c67fe5a4adf9"
   },

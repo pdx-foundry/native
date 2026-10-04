@@ -1,6 +1,7 @@
 [
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "desc",
   "read": [
@@ -25,6 +26,23 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "potential",
   "read": [
@@ -71,6 +89,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "ai_weight",
   "read": [
@@ -117,6 +136,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "traditions",
   "read": [
@@ -141,6 +161,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "adoption_bonus",
   "read": [
@@ -165,6 +186,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "finish_bonus",
   "read": [
@@ -189,6 +211,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "tree_template",
   "read": [
