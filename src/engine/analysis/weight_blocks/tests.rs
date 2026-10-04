@@ -448,6 +448,29 @@ fn an_entry_that_is_not_inserted_is_a_gap() {
 
     assert_eq!(stop(&grammar, "modifier"), "weight-acceptance");
     assert!(!grammar.nested.contains_key("modifier"));
+    assert!(grammar.undetermined_keys);
+    assert_eq!(grammar.operation_repeat, RepeatBehavior::Unknown);
+}
+
+#[test]
+fn an_effect_family_fallback_is_not_a_trigger_condition() {
+    let bodies = BTreeMap::from([
+        (MEMBER, member(Variation::default())),
+        (ENTRY_MEMBER, entry_member()),
+        (ENUM_SWITCH, switch()),
+        (READ, read(false)),
+    ]);
+    let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
+    let mut input = input("Weight::ReadMember(CReader&, int)");
+    for family in input.families.values_mut() {
+        *family = crate::BlockFamily::Effect;
+    }
+
+    let facts = analyze(&input, &body);
+
+    let grammar = facts.points[&POINT].as_ref().unwrap();
+    let entry = grammar.nested["modifier"].grammar.as_ref().unwrap();
+    assert!(matches!(entry.other_keys, OtherKeys::Unresolved(_)));
 }
 
 #[test]

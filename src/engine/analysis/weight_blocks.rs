@@ -101,7 +101,6 @@ impl WeightBlockFacts {
 /// What one member reader accepts.
 #[derive(Debug, Clone)]
 pub(crate) struct Grammar {
-    /// The reader of a bare value, from the block's read entry.
     /// What the block's read entry does before it reads the block.
     pub read_entry: Result<ReadEntry, Unresolved>,
     /// Fixed keys, other than nested entries and operations.
@@ -116,6 +115,9 @@ pub(crate) struct Grammar {
     pub key_scopes: BTreeMap<String, Value>,
     /// Stops by key, or `None` for the block itself.
     pub stops: Vec<(Option<String>, Unresolved)>,
+    /// Whether some named token stopped before the method knew if it is a fixed key or an
+    /// operation, so neither list is complete.
+    pub undetermined_keys: bool,
 }
 
 impl Grammar {
@@ -158,7 +160,7 @@ pub(crate) struct Operation {
 }
 
 /// The reader of an operation's value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Operand {
     pub callee: String,
     pub scope: Option<Value>,
@@ -337,6 +339,7 @@ impl<'a> Context<'a> {
             other_keys,
             key_scopes: BTreeMap::new(),
             stops: Vec::new(),
+            undetermined_keys: false,
         };
         if let OtherKeys::Unresolved(stop) = &grammar.other_keys {
             grammar.stops.push((None, stop.clone()));
@@ -351,6 +354,7 @@ impl<'a> Context<'a> {
                 grammar
                     .stops
                     .push((None, Unresolved::new("weight-token-name")));
+                grammar.undetermined_keys = true;
                 continue;
             }
             match key(&ends) {
@@ -381,12 +385,17 @@ impl<'a> Context<'a> {
                     }
                     self.push_field(&mut grammar, token as u64, literal, &ends);
                 }
-                Key::Unresolved(stop) => grammar.stops.push((Some(literal.name.clone()), stop)),
+                Key::Unresolved(stop) => {
+                    grammar.stops.push((Some(literal.name.clone()), stop));
+                    grammar.undetermined_keys = true;
+                }
             }
         }
-        grammar.operation_repeat = match (repeats.len(), repeats.first()) {
-            (1, Some(Repeat::Accumulate)) => RepeatBehavior::Accumulate,
-            (1, Some(Repeat::Replace(_))) => RepeatBehavior::Replace,
+        // A key that might be an operation could store differently from the known ones.
+        grammar.operation_repeat = match (grammar.undetermined_keys, repeats.len(), repeats.first())
+        {
+            (false, 1, Some(Repeat::Accumulate)) => RepeatBehavior::Accumulate,
+            (false, 1, Some(Repeat::Replace(_))) => RepeatBehavior::Replace,
             _ => RepeatBehavior::Unknown,
         };
         Ok(grammar)
@@ -766,7 +775,7 @@ impl<'a> Context<'a> {
             Some(Shape::Read(ReaderJoin::Joined {
                 callee, arguments, ..
             })) => readers::scope_argument(callee, arguments).cloned(),
-            Some(Shape::Family { scope }) => scope.clone(),
+            Some(Shape::Family { scope, .. }) => scope.clone(),
             Some(Shape::Inserted { child, .. }) => {
                 child.as_ref().and_then(|child| child.scope.clone())
             }
@@ -785,8 +794,9 @@ impl<'a> Context<'a> {
         if let Exit::Stopped(target) = exit {
             let callee = self.name(target);
             let arguments = seeds.arguments(machine);
-            if self.input.families.contains_key(callee) {
+            if let Some(&family) = self.input.families.get(callee) {
                 return Ok(Some(Shape::Family {
+                    family,
                     scope: readers::scope_argument(callee, &arguments).cloned(),
                 }));
             }
@@ -1024,11 +1034,12 @@ enum Shape {
         child: Option<Child>,
     },
     Family {
+        family: crate::BlockFamily,
         scope: Option<Value>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Child {
     read: String,
     member: String,
@@ -1062,7 +1073,14 @@ fn disposition(ends: &[End]) -> OtherKeys {
     let scopes: BTreeSet<_> = ends
         .iter()
         .map(|end| match (&end.stop, &end.shape, &end.operation) {
-            (None, Some(Shape::Family { scope }), None) => Some(scope.clone()),
+            (
+                None,
+                Some(Shape::Family {
+                    family: crate::BlockFamily::Trigger,
+                    scope,
+                }),
+                None,
+            ) => Some(scope.clone()),
             _ => None,
         })
         .collect();
@@ -1081,26 +1099,14 @@ fn key(ends: &[End]) -> Key {
                 .unwrap_or(Unresolved::new("weight-acceptance")),
         );
     }
-    let operations: BTreeSet<_> = accepted
-        .iter()
-        .map(|end| {
-            end.operation
-                .as_ref()
-                .map(|(operand, repeat)| (operand.is_some(), repeat.clone()))
-        })
-        .collect();
+    let operations: BTreeSet<_> = accepted.iter().map(|end| end.operation.clone()).collect();
     if operations.iter().any(Option::is_some) {
         let complete = ends.iter().all(|end| end.stop.is_none());
         return match (
             complete,
             <[_; 1]>::try_from(operations.into_iter().collect::<Vec<_>>()),
         ) {
-            (true, Ok([Some((_, repeat))])) => {
-                let operand = accepted
-                    .iter()
-                    .find_map(|end| end.operation.as_ref()?.0.clone());
-                Key::Operation(operand, repeat)
-            }
+            (true, Ok([Some((operand, repeat))])) => Key::Operation(operand, repeat),
             _ => Key::Unresolved(Unresolved::new("weight-operation")),
         };
     }
@@ -1115,18 +1121,6 @@ fn key(ends: &[End]) -> Key {
         Ok([None]) => Key::Field,
         Ok([Some(Some(child))]) => Key::Nested(child),
         _ => Key::Unresolved(Unresolved::new("weight-entry")),
-    }
-}
-
-impl PartialOrd for Child {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Child {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (&self.read, &self.member).cmp(&(&other.read, &other.member))
     }
 }
 

@@ -114,7 +114,7 @@ impl Block<'_> {
         gaps: &mut Vec<Gap>,
     ) -> GrammarProperty<Vec<ReadScope>> {
         let arguments: BTreeSet<_> = scope_arguments(grammar)
-            .map(|scope| resolve(scope, words))
+            .map(|scope| scope.and_then(|scope| resolve(scope, words)))
             .collect();
         if arguments.is_empty() {
             return GrammarProperty::Known(Vec::new());
@@ -141,6 +141,7 @@ impl Block<'_> {
         let arguments: BTreeSet<_> = scope_arguments(grammar).collect();
         let own = (arguments.len() == 1)
             .then(|| *arguments.first().unwrap())
+            .flatten()
             .filter(|own| matches!(own, Value::Load(..) | Value::EnclosingScope));
         match scope {
             Some(scope) if Some(scope) == own => GrammarProperty::Known(vec![ReadScope::Enclosing]),
@@ -174,13 +175,7 @@ impl Block<'_> {
         }
 
         let keys = self.fixed_keys(grammar, words, gaps);
-        let field_names: BTreeSet<_> = grammar.fields.iter().map(|field| &field.name).collect();
-        let keyed_stops: BTreeSet<_> = grammar
-            .stops
-            .iter()
-            .filter_map(|(key, _)| key.as_ref())
-            .collect();
-        let operation_stops = keyed_stops.iter().any(|key| !field_names.contains(key));
+        let key_stops = grammar.stops.iter().any(|(key, _)| key.is_some());
         let operations: Vec<_> = grammar
             .operations
             .iter()
@@ -195,12 +190,12 @@ impl Block<'_> {
 
         WeightBlock {
             scalar: self.scalar(grammar, gaps),
-            fixed_keys: if keyed_stops.is_empty() {
-                GrammarProperty::Known(keys)
-            } else {
+            fixed_keys: if key_stops || grammar.undetermined_keys {
                 GrammarProperty::Partial(keys)
+            } else {
+                GrammarProperty::Known(keys)
             },
-            operations: if operation_stops {
+            operations: if grammar.undetermined_keys {
                 GrammarProperty::Partial(operations)
             } else {
                 GrammarProperty::Known(operations)
@@ -342,13 +337,14 @@ impl Block<'_> {
     }
 }
 
-/// The scope arguments of the block's keys and conditions.
-fn scope_arguments(grammar: &Grammar) -> impl Iterator<Item = &Value> {
+/// The scope arguments of the block's keys and conditions; `None` is a trigger condition whose
+/// scope argument is not established.
+fn scope_arguments(grammar: &Grammar) -> impl Iterator<Item = Option<&Value>> {
     let conditions = match &grammar.other_keys {
-        OtherKeys::Triggers(Some(scope)) => Some(scope),
+        OtherKeys::Triggers(scope) => Some(scope.as_ref()),
         _ => None,
     };
-    grammar.key_scopes.values().chain(conditions)
+    grammar.key_scopes.values().map(Some).chain(conditions)
 }
 
 /// The scope argument with a stored scope replaced by the word that the object holds.
