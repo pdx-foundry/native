@@ -698,8 +698,8 @@ mod tests {
     fn the_summary_counts_each_query_and_field_once() {
         let mut report = SweepReport::default();
         let fields = json!([
-            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [] },
-            { "name": "icon", "reader": { "id": null, "kind": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [] },
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [] },
+            { "name": "icon", "reader": { "id": null, "kind": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [] },
         ]);
         let gaps = json!([{ "kind": "UnresolvedPath", "subject": null, "detail": "path 1" }]);
         report
@@ -711,7 +711,7 @@ mod tests {
             )
             .unwrap();
         let fields = json!([
-            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [] },
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [] },
         ]);
         report
             .add_answer(

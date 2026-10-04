@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 
 use super::Native;
-use super::language::gap;
+use super::language::{gap, gap_for_subject};
 use super::questions::{error, scope_id};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, EntryContext, EntryScope, Error, GameRule, Gap, GapKind,
-    OnAction, Operation, RuleKind, ScopeReference, Source,
+    GapSubject, OnAction, Operation, RuleKind, ScopeReference, Source,
 };
 use crate::engine::analysis::callbacks::{
     self, CallbacksResult, Context, Family, Findings, METHOD, RuleFamily, Slot,
@@ -100,7 +100,7 @@ pub(crate) fn normalized_on_actions(
         .iter()
         .map(|(name, findings)| OnAction {
             name: name.clone(),
-            entries: entries(name, findings, &scopes, &mut gaps),
+            entries: entries(&GapSubject::answer_item(name), findings, &scopes, &mut gaps),
         })
         .collect();
 
@@ -143,7 +143,7 @@ pub(crate) fn normalized_game_rules(
                 RuleFamily::Scripted => RuleKind::Scripted,
                 RuleFamily::Weighted => RuleKind::Weighted,
             },
-            entries: entries(name, findings, &scopes, &mut gaps),
+            entries: entries(&GapSubject::answer_item(name), findings, &scopes, &mut gaps),
         })
         .collect();
 
@@ -166,10 +166,10 @@ fn static_answer<T>(value: Vec<T>, gaps: Vec<Gap>, build: BuildId) -> Answer<Vec
 }
 
 /// The scope names by bit, when the table could be read.
-struct Scopes<'a>(Option<&'a [String]>);
+pub(super) struct Scopes<'a>(Option<&'a [String]>);
 
 impl<'a> Scopes<'a> {
-    fn new(names: &'a Option<Vec<String>>, gaps: &mut Vec<Gap>) -> Self {
+    pub(super) fn new(names: &'a Option<Vec<String>>, gaps: &mut Vec<Gap>) -> Self {
         if names.is_none() {
             gaps.push(gap(
                 GapKind::UnreadableInput,
@@ -208,14 +208,15 @@ impl<'a> Scopes<'a> {
     }
 }
 
-/// The public entries of one name, and a gap for each reason that some site gave no context,
+/// The public entries of one subject, and a gap for each reason that some site gave no context,
 /// and for a context with a scope that could not be established.
-fn entries(
-    name: &str,
+pub(super) fn entries(
+    subject: &GapSubject,
     findings: &Findings,
     scopes: &Scopes<'_>,
     gaps: &mut Vec<Gap>,
 ) -> Vec<EntryContext> {
+    let gap = |kind, detail: &str| gap_for_subject(kind, Some(subject.clone()), detail);
     let entries: Vec<EntryContext> = findings
         .contexts
         .iter()
@@ -236,7 +237,7 @@ fn entries(
         .collect();
 
     for reason in &findings.unresolved {
-        gaps.push(gap(GapKind::UnresolvedPath, Some(name), describe(reason)));
+        gaps.push(gap(GapKind::UnresolvedPath, &describe(reason)));
     }
     let incomplete = findings
         .contexts
@@ -246,7 +247,6 @@ fn entries(
     if incomplete {
         gaps.push(gap(
             GapKind::UnresolvedPath,
-            Some(name),
             "some entry scopes of a call site could not be established",
         ));
     }
@@ -258,14 +258,12 @@ fn entries(
     if unreadable {
         gaps.push(gap(
             GapKind::UnreadableInput,
-            Some(name),
             "a scope type has no name in the engine's scope table",
         ));
     }
     if entries.is_empty() && findings.unresolved.is_empty() {
         gaps.push(gap(
             GapKind::UnresolvedPath,
-            Some(name),
             "no call site of this name was followed",
         ));
     }
@@ -302,7 +300,7 @@ fn unnamed_gaps(result: &CallbacksResult, family: Family, gaps: &mut Vec<Gap>) {
 }
 
 /// A reader's description of a method reason. The reason code stays at the end.
-fn describe(reason: &str) -> String {
+pub(super) fn describe(reason: &str) -> String {
     let text = match reason {
         "path-limit" => "a call site has more paths than the method follows",
         "step-limit" => "a path to a call site is longer than the method follows",
@@ -328,6 +326,11 @@ fn describe(reason: &str) -> String {
         "rule-not-declared" => "a rule object that the rule declarations do not name",
         "forwarder-not-verified" => "a forwarder did not pass its caller's argument as expected",
         "site-not-decoded" => "the function that holds a call site could not be decoded",
+        "no-caller" => {
+            "the scope comes from a caller, and no direct call to the function was found"
+        }
+        "caller-depth" => "the scope comes from more callers than the method follows",
+        "caller-not-decoded" => "a function that passes the scope on could not be decoded",
         _ => "a path to a call site could not be followed",
     };
     format!("{text} ({reason})")

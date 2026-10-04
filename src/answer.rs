@@ -614,6 +614,12 @@ pub struct Field {
     pub uses: Vec<crate::FieldUse>,
     /// The lookups that the engine makes with the field's value as a key.
     pub reference: crate::FieldReference,
+    /// The scopes that the engine's direct evaluation calls supply to this trigger or effect
+    /// block, one entry for each distinct context. Read a [`EntryScope::SelfLink`] by the rule
+    /// on it. `this` is the scope at the call; the scope that the block is read in is not part
+    /// of this answer. Empty for other fields, and for a block that no followed call evaluates,
+    /// which has a gap.
+    pub entry_contexts: Vec<EntryContext>,
 }
 
 /// A command kind whose declarations can be read from the executable.

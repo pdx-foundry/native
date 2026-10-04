@@ -339,6 +339,10 @@ pub struct Machine<'a> {
     pc: u64,
     /// The target of each entered call, beside `frames`.
     callees: Vec<u64>,
+    /// The stack pointer at each entered call, beside `frames`: the top of the callee's frame.
+    frame_tops: Vec<u64>,
+    /// The stack pointer where the present run started: the top of its entry's frame.
+    run_top: u64,
     /// Where each unknown value stopped being known, while cause tracing is on.
     traces: Option<Box<Traces>>,
 }
@@ -386,11 +390,14 @@ struct HeadState {
 }
 
 /// The instruction that [`Machine::run_paths_to`] must arrive at, every instruction from which
-/// it can, and the loop heads among them: the targets of backward branches.
+/// it can, and the loop heads among them: the targets of backward branches. The site is in the
+/// function that the run started in, at `depth` entered calls; inside a call that the run
+/// entered, a path runs on until it returns there.
 struct Site {
     address: u64,
     reaching: BTreeSet<u64>,
     loop_heads: BTreeSet<u64>,
+    depth: usize,
 }
 
 impl<'a> Machine<'a> {
@@ -420,6 +427,8 @@ impl<'a> Machine<'a> {
             entry: 0,
             pc: 0,
             callees: Vec::new(),
+            frame_tops: Vec::new(),
+            run_top: STACK_TOP,
             traces: Traces::when_tracing(),
         }
     }
@@ -484,6 +493,23 @@ impl<'a> Machine<'a> {
     /// The present stack pointer.
     pub fn stack_pointer(&self) -> u64 {
         self.stack_pointer
+    }
+
+    /// Whether `address` is in the stack, above every scratch object.
+    pub fn is_stack(&self, address: u64) -> bool {
+        (self.next_object..STACK_TOP).contains(&address)
+    }
+
+    /// The top of the stack frame that holds the stack address `address`: the stack pointer at
+    /// the innermost entered call, or at the start of the run, above it, or the top of the stack.
+    pub fn frame_top(&self, address: u64) -> u64 {
+        self.frame_tops
+            .iter()
+            .chain([&self.run_top])
+            .copied()
+            .filter(|top| *top > address)
+            .min()
+            .unwrap_or(STACK_TOP)
     }
 
     /// A fresh call frame at the caller's stack position, with the call's arguments, the
@@ -706,6 +732,22 @@ impl<'a> Machine<'a> {
         &self.unknown_stores
     }
 
+    /// The instruction that the run is at. During a call of [`PathCalls`], the call instruction.
+    pub fn pc(&self) -> u64 {
+        self.pc
+    }
+
+    /// This machine's state outside every call that its path entered, so that a run from it
+    /// returns where its own entry returns.
+    pub fn without_entered_calls(&self) -> Self {
+        let mut machine = self.clone();
+        machine.frames.clear();
+        machine.callees.clear();
+        machine.frame_tops.clear();
+        machine.tail_aliases.clear();
+        machine
+    }
+
     /// The address of each entered call that this path is inside, outermost first.
     pub fn entered_calls(&self) -> impl Iterator<Item = u64> + '_ {
         self.frames.iter().map(|address| address - 4)
@@ -861,7 +903,8 @@ impl<'a> Machine<'a> {
     /// A path ends as [`Exit::Reached`] when it arrives at `site`, before `site` runs, so the
     /// registers hold the arguments of a call there. A path that can no longer arrive, by the
     /// direct branches of the decoded code, is dropped and counts toward no limit. A branch
-    /// through a register may go anywhere, so every instruction before one can arrive.
+    /// through a register may go anywhere, so every instruction before one can arrive. Inside a
+    /// call that the run enters, a path is neither dropped nor at the site until it returns.
     pub fn run_paths_to(
         self,
         entry: u64,
@@ -873,12 +916,14 @@ impl<'a> Machine<'a> {
             address: site,
             loop_heads: self.code.loop_heads(&reaching),
             reaching,
+            depth: self.frames.len(),
         };
         self.follow(entry, &Ends::Site(site), calls)
     }
 
     fn follow(mut self, entry: u64, ends: &Ends, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
         self.entry = entry;
+        self.run_top = self.stack_pointer;
         let mut pending = vec![PendingWalk {
             machine: self,
             pc: entry,
@@ -951,7 +996,7 @@ impl<'a> Machine<'a> {
             self.pc = pc;
             match ends {
                 Ends::Unbounded => {}
-                Ends::Site(site) => {
+                Ends::Site(site) if self.frames.len() == site.depth => {
                     if pc == site.address {
                         return Walk::End(Ok(Exit::Reached));
                     }
@@ -963,6 +1008,7 @@ impl<'a> Machine<'a> {
                         return Walk::End(Err(self.stop(pc, "loop-limit", limit)));
                     }
                 }
+                Ends::Site(_) => {}
                 // A walk that resumes a split on flags has joined at its instruction already.
                 Ends::Joining(heads) if heads.contains(&pc) && !resumes_flag_split => {
                     match self.join(pc, joined) {
@@ -1210,6 +1256,7 @@ impl<'a> Machine<'a> {
     fn enter(&mut self, pc: u64, target: u64) -> u64 {
         self.frames.push(pc + 4);
         self.callees.push(target);
+        self.frame_tops.push(self.stack_pointer);
         target
     }
 
@@ -1226,6 +1273,7 @@ impl<'a> Machine<'a> {
             self.tail_aliases.retain(|(at, _)| *at != depth);
         }
         self.callees.pop();
+        self.frame_tops.pop();
         self.frames.pop()
     }
 
@@ -3982,6 +4030,120 @@ mod tests {
                 (Ok(Exit::Returned), Some(0x21))
             ]
         );
+    }
+
+    /// Runs `code` from 0x100 to the site at 0x10c with the call to 0x200 entered, and gives
+    /// each path's end with the `x1` that it holds there, ordered by `x1`.
+    fn entered_paths_to_site(code: &Code) -> Vec<(Result<Exit, Unresolved>, Option<u64>)> {
+        let data = ReadOnlyData::default();
+        let mut paths: Vec<_> = Machine::new(code, &data)
+            .run_paths_to(0x100, 0x10c, &mut |target, _| {
+                Ok(match target {
+                    Some(0x200) => Call::Enter,
+                    _ => Call::Return(None),
+                })
+            })
+            .into_iter()
+            .map(|path| (path.end, path.machine.register(1)))
+            .collect();
+        paths.sort_by_key(|(_, value)| *value);
+        paths
+    }
+
+    #[test]
+    fn a_call_entered_before_the_site_returns_to_it_with_its_writes() {
+        let code = rows(&[
+            (0x100, "sub", "sp,sp,#0x20"),
+            (0x104, "bl", "#0x200"),
+            (0x108, "ldr", "x1,[sp]"),
+            (0x10c, "bl", "#0x900"),
+            (0x110, "ret", ""),
+            (0x200, "mov", "x9,#7"),
+            (0x204, "str", "x9,[sp]"),
+            (0x208, "ret", ""),
+        ]);
+
+        assert_eq!(entered_paths_to_site(&code), [(Ok(Exit::Reached), Some(7))]);
+    }
+
+    #[test]
+    fn each_branch_of_a_call_entered_before_the_site_returns_to_it() {
+        let code = rows(&[
+            (0x100, "sub", "sp,sp,#0x20"),
+            (0x104, "bl", "#0x200"),
+            (0x108, "ldr", "x1,[sp]"),
+            (0x10c, "bl", "#0x900"),
+            (0x110, "ret", ""),
+            (0x200, "cbz", "x5,#0x20c"),
+            (0x204, "mov", "x9,#7"),
+            (0x208, "b", "#0x210"),
+            (0x20c, "mov", "x9,#8"),
+            (0x210, "str", "x9,[sp]"),
+            (0x214, "ret", ""),
+        ]);
+
+        assert_eq!(
+            entered_paths_to_site(&code),
+            [(Ok(Exit::Reached), Some(7)), (Ok(Exit::Reached), Some(8))]
+        );
+    }
+
+    #[test]
+    fn an_entered_call_that_never_returns_does_not_reach_the_site() {
+        let code = rows(&[
+            (0x100, "sub", "sp,sp,#0x20"),
+            (0x104, "bl", "#0x200"),
+            (0x108, "ldr", "x1,[sp]"),
+            (0x10c, "bl", "#0x900"),
+            (0x110, "ret", ""),
+            (0x200, "b", "#0x200"),
+        ]);
+
+        assert!(
+            entered_paths_to_site(&code)
+                .iter()
+                .all(|(end, _)| *end != Ok(Exit::Reached))
+        );
+    }
+
+    /// A run of the called function from inside an entered call returns where that function
+    /// returns, not into the code that entered the call.
+    #[test]
+    fn a_run_outside_the_entered_calls_ends_at_its_own_return() {
+        let code = rows(&[
+            (0x100, "bl", "#0x200"),
+            (0x104, "mov", "x0,#9"),
+            (0x108, "ret", ""),
+            (0x200, "bl", "#0x300"),
+            (0x204, "ret", ""),
+            (0x300, "mov", "x0,#5"),
+            (0x304, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let run_callee = |machine: Machine<'_>| -> Vec<Option<u64>> {
+            machine
+                .run_paths(0x300, &mut |_, _| Ok(Call::Return(None)))
+                .iter()
+                .filter(|path| path.end == Ok(Exit::Returned))
+                .map(|path| path.machine.register(0))
+                .collect()
+        };
+        let mut inherited = Vec::new();
+        let mut own = Vec::new();
+        Machine::new(&code, &data).run_paths(0x100, &mut |target, machine| {
+            Ok(match target {
+                Some(0x200) => Call::Enter,
+                Some(0x300) => {
+                    inherited = run_callee(machine.clone());
+                    own = run_callee(machine.without_entered_calls());
+                    Call::Return(None)
+                }
+                _ => Call::Return(None),
+            })
+        });
+
+        assert_eq!(inherited, [Some(9)]);
+        assert_eq!(own, [Some(5)]);
     }
 
     #[test]

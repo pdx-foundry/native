@@ -57,7 +57,9 @@ name, each with the scopes that its call sites supply for `this`, `root`, the `f
 `prev` chain. A name that different call sites fire with different scopes keeps each
 `EntryContext`; a link that points back to its own scope, the engine's default, is `SelfLink`, and
 its documentation says how script reads it; a name whose call sites could not be followed has no
-entries and a gap. See `examples/declarations.rs`.
+entries and a gap. See `examples/declarations.rs`. In `registry_fields`, each root trigger and
+effect block has `entry_contexts`: the same `EntryContext` for each context that the engine's direct
+evaluation calls supply; a block that no followed call evaluates has none and a gap.
 `defines` reports the namespace, name and value type of each resolved executable read helper.
 Custom table searches that cannot be followed are named gaps. It does not read define files or
 return their example values, documentation or defaults.

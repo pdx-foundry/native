@@ -39,20 +39,7 @@ pub struct Run {
 /// written to a recorder.
 pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
     native.method_result(Operation::RegistryFields, || {
-        let result = native.registry_field_result(registry)?;
-        let references = native.reference_facts(Operation::RegistryFields)?;
-        let numeric = native.numeric_facts(Operation::RegistryFields)?;
-        let scoped = native.scoped_numeric_facts(Operation::RegistryFields)?;
-        Ok(Run {
-            answer: native.registry_field_answer(
-                registry,
-                &result,
-                references,
-                numeric,
-                scoped,
-                native.modifier_block_facts()?,
-            ),
-            result,
-        })
+        let (answer, result) = native.registry_field_answer_and_result(registry)?;
+        Ok(Run { answer, result })
     })
 }

@@ -28,6 +28,17 @@ const NEVER_RETURN: [&str; 5] = [
     "_abort",
 ];
 
+/// The functions that never return: the engine's throw helpers and the runtime's.
+pub(super) fn never_return(symbols: &[Symbol]) -> BTreeSet<u64> {
+    symbols
+        .iter()
+        .filter(|symbol| {
+            NEVER_RETURN.contains(&symbol.name.as_str()) || symbol.name.contains("::__throw_")
+        })
+        .map(|symbol| symbol.address)
+        .collect()
+}
+
 const ASSIGN_TEXT: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
 
 const DEFINITIONS: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions";
@@ -952,13 +963,7 @@ pub(super) fn string_functions(symbols: &[Symbol]) -> StringFunctions {
             Some((symbol.address, capacity))
         })
         .collect();
-    let never_return = symbols
-        .iter()
-        .filter(|symbol| {
-            NEVER_RETURN.contains(&symbol.name.as_str()) || symbol.name.contains("::__throw_")
-        })
-        .map(|symbol| symbol.address)
-        .collect();
+    let never_return = never_return(symbols);
 
     StringFunctions {
         from_text: named("CString::CString(char const*)"),

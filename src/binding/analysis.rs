@@ -33,6 +33,7 @@ pub(crate) struct BoundAnalysis {
         Result<crate::engine::analysis::modifier_blocks::ModifierBlockFacts, AnalysisError>,
     >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
+    block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
 }
@@ -360,6 +361,27 @@ impl VerifiedAnalysis<'_> {
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.strings,
+            &self.catalog.imports,
+            recipe,
+        )
+    }
+
+    fn block_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::callbacks::blocks::BlockInput, AnalysisError> {
+        let owners = self
+            .catalog
+            .candidates
+            .iter()
+            .map(|candidate| candidate.record.owner_candidate.as_str())
+            .collect();
+        binary::callbacks::block_evaluations(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            &self.catalog.imports,
+            &owners,
             recipe,
         )
     }
@@ -512,6 +534,7 @@ impl BoundAnalysis {
             numeric: OnceLock::new(),
             modifier_blocks: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
+            block_facts: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
         }
     }
@@ -809,6 +832,12 @@ impl BoundAnalysis {
     }
 }
 
+/// The contexts of registry field blocks, with the scope names that name their types.
+pub(crate) struct BlockFacts {
+    pub entries: crate::engine::analysis::callbacks::blocks::BlockEntries,
+    pub scope_names: Option<Vec<String>>,
+}
+
 /// One template candidate and the content directory that its constructors establish.
 #[derive(Debug, Clone)]
 pub(crate) struct NamedCandidate {
@@ -938,6 +967,22 @@ impl BoundAnalysis {
                 let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 let input = verified.scoped_numeric_input(recipe)?;
                 Ok(crate::engine::analysis::scoped_numeric::analyze(&input))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// The contexts of registry field blocks, derived once from the verified executable.
+    pub(crate) fn block_facts(&self) -> Result<&BlockFacts, AnalysisError> {
+        let verified = self.verified()?;
+        self.block_facts
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                let input = verified.block_input(recipe)?;
+                Ok(BlockFacts {
+                    entries: crate::engine::analysis::callbacks::blocks::analyze_blocks(&input),
+                    scope_names: input.scope_names,
+                })
             })
             .as_ref()
             .map_err(Clone::clone)

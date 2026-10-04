@@ -10,23 +10,23 @@ const STRING: u64 = 0x9100;
 const STRING_END: u64 = 0x9108;
 const STRCMP: u64 = 0x9300;
 
-const FRESH: u64 = 0x8000;
-const SET_COUNTRY: u64 = 0x8100;
-const SET_LEADER: u64 = 0x8200;
-const CLEAR: u64 = 0x8300;
-const COPY: u64 = 0x8400;
-const PASSES_ON: u64 = 0x8500;
+pub(super) const FRESH: u64 = 0x8000;
+pub(super) const SET_COUNTRY: u64 = 0x8100;
+pub(super) const SET_LEADER: u64 = 0x8200;
+pub(super) const CLEAR: u64 = 0x8300;
+pub(super) const COPY: u64 = 0x8400;
+pub(super) const PASSES_ON: u64 = 0x8500;
 
 /// `on_test` is at 0x5000 and `on_other` at 0x5010.
 const ON_TEST: u64 = 0x5000;
 const INSTANCE: u64 = 0x6f00;
 
-const COUNTRY: Slot = Slot::Scope(2);
-const LEADER: Slot = Slot::Scope(8);
+pub(super) const COUNTRY: Slot = Slot::Scope(2);
+pub(super) const LEADER: Slot = Slot::Scope(8);
 
-type Rows<'a> = &'a [(u64, &'a str, &'a str)];
+pub(super) type Rows<'a> = &'a [(u64, &'a str, &'a str)];
 
-fn rows(lines: Rows<'_>) -> Vec<Instruction> {
+pub(super) fn rows(lines: Rows<'_>) -> Vec<Instruction> {
     lines
         .iter()
         .map(|(address, operation, operands)| Instruction {
@@ -39,7 +39,7 @@ fn rows(lines: Rows<'_>) -> Vec<Instruction> {
 }
 
 /// A fresh constructor, two typed setters, the link reset and a copy, as the engine writes them.
-fn scope_code() -> Vec<Instruction> {
+pub(super) fn scope_code() -> Vec<Instruction> {
     rows(&[
         (FRESH, "str", "xzr,[x0,#0x8]"),
         (FRESH + 4, "stp", "x0,x0,[x0,#0x30]"),
@@ -68,7 +68,7 @@ fn callback_name_data() -> ReadOnlyData {
     ReadOnlyData::new(vec![(ON_TEST, strings)])
 }
 
-fn layout() -> CallbackLayout {
+pub(super) fn layout() -> CallbackLayout {
     CallbackLayout {
         scope_type_offset: 0x8,
         scope_root_offset: 0x30,
@@ -191,6 +191,8 @@ impl Program {
             scope_names: None,
             data: callback_name_data(),
             layout: layout(),
+            arguments: BTreeMap::new(),
+            call_arguments: BTreeMap::new(),
         }
     }
 }

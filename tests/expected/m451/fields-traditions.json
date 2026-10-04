@@ -1,6 +1,7 @@
 [
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "custom_tooltip",
   "read": [
@@ -65,6 +66,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "custom_tooltip_with_modifiers",
   "read": [
@@ -129,6 +131,23 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "potential",
   "read": [
@@ -175,6 +194,23 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "possible",
   "read": [
@@ -221,6 +257,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "on_enabled",
   "read": [
@@ -302,6 +339,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "on_disabled",
   "read": [
@@ -366,6 +404,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "triggered_modifier",
   "read": [
@@ -390,6 +429,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "Unresolved",
   "name": "ai_weight",
   "read": [
@@ -436,6 +476,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": "None",
   "name": "unlocks_agenda",
   "read": [
@@ -482,10 +523,12 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": {
    "Fields": [
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "None",
      "name": "name",
      "read": [
@@ -567,6 +610,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "Unresolved",
      "name": "weight",
      "read": [
@@ -613,6 +657,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "None",
      "name": "custom_tooltip",
      "read": [
@@ -677,6 +722,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "None",
      "name": "custom_tooltip_with_modifiers",
      "read": [
@@ -741,6 +787,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "Unresolved",
      "name": "trigger",
      "read": [
@@ -787,6 +834,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "Unresolved",
      "name": "on_enabled",
      "read": [
@@ -868,6 +916,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "Unresolved",
      "name": "on_disabled",
      "read": [
@@ -932,6 +981,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "Unresolved",
      "name": "triggered_modifier",
      "read": [
@@ -956,6 +1006,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "None",
      "name": "unlocks_agenda",
      "read": [
@@ -1002,6 +1053,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "None",
      "name": "inherit_effects",
      "read": [
@@ -1048,6 +1100,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "None",
      "name": "inherit_name",
      "read": [
@@ -1094,6 +1147,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "None",
      "name": "inherit_icon",
      "read": [
@@ -1140,6 +1194,7 @@
     },
     {
      "domain": "Unknown",
+     "entry_contexts": [],
      "members": "Unresolved",
      "name": "modifier",
      "read": [
@@ -1231,6 +1286,7 @@
  },
  {
   "domain": "Unknown",
+  "entry_contexts": [],
   "members": {
    "ModifierBlock": "1c2988588f7e8eaa"
   },

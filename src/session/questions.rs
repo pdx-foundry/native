@@ -243,12 +243,38 @@ impl Native {
     }
 
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
-        let result = self.registry_field_result(registry)?;
-        let references = self.reference_facts(Operation::RegistryFields)?;
-        let numeric = self.numeric_facts(Operation::RegistryFields)?;
-        let scoped = self.scoped_numeric_facts(Operation::RegistryFields)?;
-        let modifiers = self.modifier_block_facts()?;
-        Ok(self.registry_field_answer(registry, &result, references, numeric, scoped, modifiers))
+        self.registry_field_answer_and_result(registry)
+            .map(|(answer, _)| answer)
+    }
+
+    /// The public registry field answer, with the method's own result that it is derived from.
+    pub(crate) fn registry_field_answer_and_result(
+        &self,
+        registry: &str,
+    ) -> Result<(Answer<Vec<Field>>, RegistryFieldResult), Error> {
+        let (input, result) = self.registry_field_input_and_result(registry)?;
+        let facts = RegistryFieldFacts {
+            references: self.reference_facts(Operation::RegistryFields)?,
+            numeric: self.numeric_facts(Operation::RegistryFields)?,
+            scoped: self.scoped_numeric_facts(Operation::RegistryFields)?,
+            modifiers: self.modifier_block_facts()?,
+            blocks: self.block_facts()?,
+        };
+        let owner = &input.selection.owner_candidate;
+        let answer = self.registry_field_answer(registry, owner, &result, &facts);
+        Ok((answer, result))
+    }
+
+    pub(crate) fn block_facts(&self) -> Result<&crate::binding::BlockFacts, Error> {
+        self.bound()
+            .analysis
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported {
+                operation: Operation::RegistryFields,
+                reason: "this build has no static analysis recipe".into(),
+            })?
+            .block_facts()
+            .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
     pub(crate) fn modifier_block_facts(
@@ -311,35 +337,27 @@ impl Native {
     }
 
     /// The public answer that the registry field method's `result` gives for `registry`.
-    pub(crate) fn registry_field_answer(
+    fn registry_field_answer(
         &self,
         registry: &str,
+        owner: &str,
         result: &RegistryFieldResult,
-        references: &ReferenceFacts,
-        numeric: &crate::engine::analysis::numeric::NumericFacts,
-        scoped: &crate::engine::analysis::scoped_numeric::Facts,
-        modifiers: &crate::engine::analysis::modifier_blocks::ModifierBlockFacts,
+        facts: &RegistryFieldFacts<'_>,
     ) -> Answer<Vec<Field>> {
-        let mut gaps = normalized_gaps(result, registry.trim_end_matches('/'), references);
+        let registry = registry.trim_end_matches('/');
+        let references = facts.references;
+        let mut gaps = normalized_gaps(result, registry, references);
         let mut value = normalized_fields(result, references);
-        super::modifier_blocks::attach(&mut value, result, modifiers, references, &mut gaps);
-        super::numeric::fields(&mut value, numeric, &[], &mut gaps);
-        super::scoped_numeric::fields(&mut value, result, scoped, numeric, &mut gaps);
+        super::modifier_blocks::attach(&mut value, result, facts.modifiers, references, &mut gaps);
+        super::numeric::fields(&mut value, facts.numeric, &[], &mut gaps);
+        super::scoped_numeric::fields(&mut value, result, facts.scoped, facts.numeric, &mut gaps);
+        super::field_entries::attach(&mut value, result, registry, owner, facts.blocks, &mut gaps);
         Answer {
             value,
             completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
         }
-    }
-
-    /// The registry field method's own result, with every path and stop.
-    pub(crate) fn registry_field_result(
-        &self,
-        registry: &str,
-    ) -> Result<RegistryFieldResult, Error> {
-        self.registry_field_input_and_result(registry)
-            .map(|(_, result)| result)
     }
 
     /// The registry field method's input and its result.
@@ -362,6 +380,15 @@ impl Native {
 
         Ok((input, result))
     }
+}
+
+/// The executable-wide facts that a registry field answer joins.
+struct RegistryFieldFacts<'a> {
+    references: &'a ReferenceFacts,
+    numeric: &'a crate::engine::analysis::numeric::NumericFacts,
+    scoped: &'a crate::engine::analysis::scoped_numeric::Facts,
+    modifiers: &'a crate::engine::analysis::modifier_blocks::ModifierBlockFacts,
+    blocks: &'a crate::binding::BlockFacts,
 }
 
 pub(crate) fn normalized_fields(
