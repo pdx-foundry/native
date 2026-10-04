@@ -236,7 +236,7 @@ cannot read.
 
 ## Dynamic names
 
-`Native::dynamic_names` (`dynamic-names/v2`) groups the effects and triggers that define, remove
+`Native::dynamic_names` (`dynamic-names/v3`) groups the effects and triggers that define, remove
 and read integer flags by the store that each reaches. The method is
 `engine/analysis/dynamic_names.rs`, with store routes in `dynamic_names/routes.rs` and the read
 shape in `dynamic_names/membership_scan.shape`. `binding/binary/dynamic_names.rs` locates the

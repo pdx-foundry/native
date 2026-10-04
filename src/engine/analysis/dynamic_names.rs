@@ -35,7 +35,7 @@ use crate::{DeclarationKind, DynamicNameForm};
 use routes::{Route, RouteInput, Routes, STAND_IN_STRIDE, position_or_push, stand_in};
 
 /// Name and revision of this static method.
-pub const METHOD: &str = "dynamic-names/v2";
+pub const METHOD: &str = "dynamic-names/v3";
 
 /// The flag index that the interner returns in a run; it marks where the reader stores it.
 const INDEX_MARKER: u64 = 0xa5c3;

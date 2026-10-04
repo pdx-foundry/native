@@ -72,9 +72,11 @@ by token identity, not spelling (`ambiguous-key-token`). Missing member vtables,
 
 The tracked baseline and its counts are in
 [`tests/population/m451-hotfix/README.md`](../../tests/population/m451-hotfix/README.md). A failed
-answer has every property unresolved: the failed receiver joins are `command-vtable` (four effects
-and the triggers `switch` and `inverted_switch`), `factory-terminal` (two effects) and `instruction`
-(`set_location`). Gap shapes outside `OutsideMethod`:
+answer has every property unresolved: the failed receiver joins are `factory-terminal`
+(`add_starbase_component`, `remove_starbase_component`) and `instruction` (`set_location`). The six
+former `command-vtable` failures (`pop_change_ethic`, `pop_force_add_ethic`,
+`remove_random_starbase_building`, `remove_random_starbase_module`, `switch`, `inverted_switch`)
+join since template constructors have summaries (SDK-673). Gap shapes outside `OutsideMethod`:
 
 | Shape | Meaning |
 | --- | --- |
