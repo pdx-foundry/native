@@ -133,9 +133,11 @@ writes no diagnostic. The binding states this beside `PdxLocalizeAndReplaceView`
 - **Do not enter the diagnostic constructor.** `CPdxLogFileAndLine::CPdxLogFileAndLine` clears a
   large buffer one byte at a time. Composer selection entered it as a leaf, and the paths after a
   missing name spent the step bound before the diagnostic, which hid the diagnostic.
-- **Give a lookup a known result.** After `PdxLocalizeAndReplaceView`, the callers copy the
-  returned view. With an unknown length every lookup forked several times and `GetDesc` spent the
-  path bound before its swap names. A run gives each lookup the empty text.
+- **Give a lookup a known result, as assumed text.** After `PdxLocalizeAndReplaceView`, the callers
+  copy the returned view. With an unknown length every lookup forked several times and `GetDesc`
+  spent the path bound before its swap names. A run gives each lookup the empty text, but the
+  real text is not empty: a later length test takes one arm. The lookup's own facts stand; the
+  path's later events establish no condition or miss behavior, and the search keeps its gap.
 - **An assumed text is not the empty name.** The model writes the empty text for an unresolved
   node. A view of length zero of that text read as the literal empty name, which became a checked
   name and an outcome to enumerate.
@@ -143,8 +145,12 @@ writes no diagnostic. The binding states this beside `PdxLocalizeAndReplaceView`
   paths after the null swap object's unknown name, and `GetDesc` hit the path bound.
 - **Model `CString::CString(char const*, int)`.** Unmodelled, it left the strings that `GetDesc`
   builds after its lookup unknown, and each destructor's flag test forked.
-- **Compare a fallback per path.** In `GetDesc` another path (no valid swap) uses key + suffix at
-  the same check site in the found run too. A comparison of whole runs saw no replacement; the
-  method compares the paths that check the name.
+- **Prove a fallback on every path that checks the name.** In `GetDesc` another path (no valid
+  swap) uses key + suffix at the same check site in the found run too, so a comparison of whole
+  runs saw no replacement. A union over paths was wrong the other way: a check whose result is
+  ignored, followed by a content choice between the name and another at one site, read as a
+  fallback. The method counts only paths that check the name: every found path uses only the name
+  at the sites where found paths use it, every missing path uses only the one replacement there,
+  and every missing path that does not end in a trap reaches such a site.
 - **The registry-fields page has M45-release addresses.** Match the build before reusing an
   address from [registry fields](registry-fields.md).

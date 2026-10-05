@@ -19,6 +19,8 @@ const MOVE_ASSIGN: u64 = 0x928;
 const LOOKUP: u64 = 0x9a0;
 const CHECK: u64 = 0x9a4;
 const SPRITE_LOOKUP: u64 = 0x9a8;
+/// A localisation lookup that returns its text through `x8`, as the engine's does.
+const VIEW_LOOKUP: u64 = 0x9ac;
 const LOG: u64 = 0x9b0;
 
 const CONSTRUCTOR: u64 = 0x100;
@@ -86,6 +88,15 @@ fn input() -> NameInput {
         unchecked_miss,
         result: None,
     };
+    let view_lookup = Sink {
+        result: Some(ResultView { size: 0x10 }),
+        ..sink(
+            Target::Localization,
+            Role::Lookup,
+            view,
+            Some(Miss::ShowsKey),
+        )
+    };
     NameInput {
         sinks: [
             (
@@ -102,6 +113,7 @@ fn input() -> NameInput {
                 SPRITE_LOOKUP,
                 sink(Target::Sprite, Role::Lookup, NameArgument::Object(1), None),
             ),
+            (VIEW_LOOKUP, view_lookup),
         ]
         .into(),
         logs: [(LOG, LogArguments::Formatted)].into(),
@@ -410,6 +422,73 @@ fn a_missing_name_that_another_name_replaces_at_the_same_sites_falls_back() {
     let base = named(&result, &key_desc());
     assert_eq!(base.on_missing, Miss::Silent);
     assert_eq!(base.condition, Condition::Unresolved);
+}
+
+/// The name is checked and the result ignored; content then chooses the name or another one for
+/// one lookup site. Both runs use both names there, so the outcome causes no replacement.
+#[test]
+fn an_ignored_check_followed_by_an_independent_choice_is_no_fallback() {
+    let mut code = root(0);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; ldrb w8, [x19, #STATE]; cbz w8, ->delayed);
+    compose(&mut code, 0x60, KEY, Some(DESC));
+    arm64!(code; b ->look_up; ->delayed:);
+    compose(&mut code, 0x60, KEY, Some(DELAYED));
+    arm64!(code; ->look_up:);
+    use_stack(&mut code, 0x60, LOOKUP);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert_eq!(named(&result, &key_desc()).on_missing, Miss::Unresolved);
+}
+
+/// Only some paths that miss the name use another name at the site where the found paths use it;
+/// the others skip the site.
+#[test]
+fn a_replacement_on_only_some_missing_paths_is_no_fallback() {
+    let mut code = root(0);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; tbnz w0, #0, ->look_up; ldrb w8, [x19, #STATE]; cbz w8, ->done);
+    compose(&mut code, 0x20, KEY, Some(DELAYED));
+    arm64!(code; ->look_up:);
+    use_stack(&mut code, 0x20, LOOKUP);
+    arm64!(code; ->done:; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert_eq!(named(&result, &key_desc()).on_missing, Miss::Unresolved);
+}
+
+/// A lookup that returns its text through `x8` gives the empty text. A branch on its length then
+/// takes one arm, so the name looked up after it is not established and the other is never found.
+#[test]
+fn the_text_that_a_lookup_returns_is_assumed_and_later_lookups_establish_nothing() {
+    let mut code = root(0);
+    arm64!(code; add x0, x19, #KEY);
+    code.call(VIEW);
+    arm64!(code; add x8, sp, #0xc0);
+    code.call(VIEW_LOOKUP);
+    arm64!(code; ldr w9, [sp, #0xc8]; cbnz w9, ->localized);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    arm64!(code; b ->look_up; ->localized:);
+    compose(&mut code, 0x20, KEY, Some(DELAYED));
+    arm64!(code; ->look_up:);
+    use_stack(&mut code, 0x20, LOOKUP);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    let key = named(&result, &[Part::ItemKey]);
+    assert_eq!(key.on_missing, Miss::ShowsKey);
+    assert_eq!(key.condition, Condition::Always);
+    let after = named(&result, &key_desc());
+    assert_eq!(after.on_missing, Miss::Unresolved);
+    assert_eq!(after.condition, Condition::Unresolved);
+    assert!(!result.names.iter().any(|name| name.parts == key_delayed()));
+    assert!(result.failures.contains_key("assumed-text"));
 }
 
 #[test]

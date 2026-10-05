@@ -26,7 +26,8 @@
 //! would fork without end. A template run's collections hold one element, so it follows every
 //! path without joining, and the installed element keeps its identity through a selection loop.
 //! A check of a name with an unresolved part may go either way, except after the path assumed
-//! text, where it finds nothing. A lookup that returns its text through `x8` gives the empty text.
+//! text, where it finds nothing. A lookup that returns its text through `x8` gives the empty text,
+//! as an assumed text: the lookup's own facts stand, and the path's later events establish nothing.
 //!
 //! A name's miss behavior comes from pairs of runs that differ only in the name's outcome: a check
 //! or lookup site that uses the name when it is found and another derived name when it is missing
@@ -92,7 +93,8 @@ pub struct Sink {
 
 /// A text that a lookup returns through `x8`, in an object of `size` bytes whose first word points
 /// at the text. A run gives each lookup the empty text, all other bytes zero, so that the code
-/// after the lookup takes the branches of one known text instead of forking on unknown ones.
+/// after the lookup takes the branches of one known text instead of forking on unknown ones; the
+/// path has then assumed text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResultView {
     pub size: u64,
@@ -878,24 +880,26 @@ impl Recorder<'_> {
 
     /// Record the name at a sink call, and give a check the run's outcome for it.
     fn sink(&mut self, sink: &Sink, machine: &mut Machine) -> Call {
-        if let (Some(view), Some(result)) = (sink.result, machine.register(8)) {
-            let empty = machine.allocate(1);
-            for offset in (0..view.size).step_by(8) {
-                machine.write(result + offset, 8, 0);
-            }
-            machine.write(result, 8, empty);
+        let outcome = self.record_sink(sink, machine);
+        if let Some(view) = sink.result {
+            self.assume_empty_result(view, machine);
         }
+        Call::Return(outcome)
+    }
+
+    /// Record the name at a sink call, and give a check's outcome.
+    fn record_sink(&mut self, sink: &Sink, machine: &mut Machine) -> Option<u64> {
         let chain = chain(machine);
         self.sites.insert(chain.clone());
         let node = self.name(sink.argument, machine);
         let node = self.arena.node(node).clone();
         if node.limit.is_some() {
             self.bounded.insert(chain);
-            return Call::Return(None);
+            return None;
         }
         let Some(text) = node.text(&self.model.sources) else {
             self.unresolved.insert(chain);
-            return Call::Return(unresolved_outcome(sink, machine));
+            return unresolved_outcome(sink, machine);
         };
 
         let outcome = match sink.role {
@@ -916,7 +920,28 @@ impl Recorder<'_> {
             };
             self.record(machine, kind, chain);
         }
-        Call::Return(outcome)
+        outcome
+    }
+
+    /// Give a lookup that returns its text through `x8` the empty text, all other bytes zero, so
+    /// that the code after it takes the branches of one known text. The real text is not that,
+    /// so the text is unresolved and the path has assumed text: its later events establish
+    /// nothing.
+    fn assume_empty_result(&mut self, view: ResultView, machine: &mut Machine) {
+        let Some(result) = machine.register(8) else {
+            return;
+        };
+        let empty = machine.allocate(1);
+        for offset in (0..view.size).step_by(8) {
+            machine.write(result + offset, 8, 0);
+        }
+        machine.write(result, 8, empty);
+        let unresolved = self.arena.add(Node {
+            parts: vec![Part::Unresolved],
+            limit: None,
+        });
+        machine.label(empty, unresolved);
+        machine.label(ASSUMED_TEXT, 1);
     }
 
     fn name(&mut self, argument: NameArgument, machine: &Machine) -> u64 {
@@ -1299,11 +1324,10 @@ fn pair_result(name: &NameId, hit: &RunRecord, miss: &RunRecord) -> Option<Miss>
         return None;
     }
 
-    let replacements = replacements(name, hit, miss);
-    match replacements.len() {
-        0 => {}
-        1 => return replacements.into_iter().next().map(Miss::Fallback),
-        _ => return Some(Miss::Unresolved),
+    match replacement(name, hit, miss, &missing_paths) {
+        Replacement::None => {}
+        Replacement::Proved(parts) => return Some(Miss::Fallback(parts)),
+        Replacement::Conflicting => return Some(Miss::Unresolved),
     }
 
     let logs = |run: &RunRecord, path: &PathRecord, established: bool| {
@@ -1362,27 +1386,92 @@ fn receives(texts: &[String], text: &str) -> bool {
     texts.iter().any(|received| received.contains(text))
 }
 
-/// The other derived names, with the name's lookup target, that the missing run's paths use
-/// after they check the name, at the sites where the found run's paths use the name after they
-/// check it.
-fn replacements(name: &NameId, hit: &RunRecord, miss: &RunRecord) -> BTreeSet<Vec<Part>> {
-    let name_sites: BTreeSet<&Vec<u64>> = checking_paths(hit, name)
-        .into_iter()
-        .flat_map(|path| after_check(hit, path, name))
-        .filter(|event| !event.assumed && use_of(event, name).is_some())
-        .map(|event| &event.chain)
+/// Whether another derived name replaces a missing name.
+enum Replacement {
+    /// No missing path uses a name at a site where a found path uses the name.
+    None,
+    /// The derived name with these parts replaces it.
+    Proved(Vec<Part>),
+    /// The paths do not show one replacement that the name's outcome causes.
+    Conflicting,
+}
+
+/// The derived name that replaces `name` when it is missing. A replacement site is a site where a
+/// path of the found run uses the name after its check. The name is replaced by M when every
+/// found path uses only the name at the replacement sites that it reaches, every missing path
+/// uses only M there, M has the name's lookup target, and every missing path reaches such a site
+/// unless it ends in a trap or a function that never returns. Only paths that check the name
+/// count, and only their events after the check and before assumed text.
+fn replacement(
+    name: &NameId,
+    hit: &RunRecord,
+    miss: &RunRecord,
+    missing_paths: &[&PathRecord],
+) -> Replacement {
+    let found_paths = checking_paths(hit, name);
+    let sites: BTreeSet<&Vec<u64>> = found_paths
+        .iter()
+        .flat_map(|path| uses_after_check(hit, path, name))
+        .filter(|(_, used)| used == name)
+        .map(|(chain, _)| chain)
         .collect();
-    checking_paths(miss, name)
-        .into_iter()
-        .flat_map(|path| after_check(miss, path, name))
-        .filter(|event| !event.assumed && name_sites.contains(&event.chain))
+    let uses_at_sites = |run, path| {
+        let mut uses: BTreeMap<&Vec<u64>, BTreeSet<NameId>> = BTreeMap::new();
+        for (chain, used) in uses_after_check(run, path, name) {
+            if sites.contains(chain) {
+                uses.entry(chain).or_default().insert(used);
+            }
+        }
+        uses
+    };
+
+    let missing_uses: Vec<_> = missing_paths
+        .iter()
+        .map(|path| uses_at_sites(miss, path))
+        .collect();
+    if missing_uses.iter().all(BTreeMap::is_empty) {
+        return Replacement::None;
+    }
+
+    let found_use_only_the_name = found_paths.iter().all(|path| {
+        uses_at_sites(hit, path)
+            .values()
+            .all(|used| used.len() == 1 && used.contains(name))
+    });
+    let every_missing_path_replaces = missing_paths
+        .iter()
+        .zip(&missing_uses)
+        .all(|(path, uses)| path.ending == Ending::Ignored || !uses.is_empty());
+    let replacements: BTreeSet<&NameId> = missing_uses
+        .iter()
+        .flat_map(|uses| uses.values().flatten())
+        .collect();
+    match replacements.into_iter().collect::<Vec<_>>().as_slice() {
+        [other]
+            if found_use_only_the_name
+                && every_missing_path_replaces
+                && other.1 == name.1
+                && *other != name =>
+        {
+            Replacement::Proved(other.0.clone())
+        }
+        _ => Replacement::Conflicting,
+    }
+}
+
+/// The site and name of each check or lookup of a derived name that the path makes after its first
+/// check of `name`, before it assumes text.
+fn uses_after_check<'a>(
+    run: &'a RunRecord,
+    path: &'a PathRecord,
+    name: &'a NameId,
+) -> impl Iterator<Item = (&'a Vec<u64>, NameId)> + 'a {
+    after_check(run, path, name)
+        .filter(|event| !event.assumed)
         .filter_map(|event| match &event.kind {
-            EventKind::Use {
-                target,
-                name: other,
-                ..
-            } if *target == name.1 && other.parts != name.0 => Some(other.parts.clone()),
-            _ => None,
+            EventKind::Use { target, name, .. } => {
+                Some((&event.chain, (name.parts.clone(), *target)))
+            }
+            EventKind::Log(_) | EventKind::Unfollowed(_) => None,
         })
-        .collect()
 }
