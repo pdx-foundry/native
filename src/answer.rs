@@ -947,11 +947,11 @@ pub struct ModifierNodeOwner {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum KeptCategories {
-    /// The constructor's mask. The method found no store to the mask in the node's calculation
-    /// function; it searches that function's own body at the mask's own offset.
+    /// The categories that the node's constructor sets. The method found no other mask that the
+    /// node's calculation sets.
     Constant(Vec<String>),
-    /// The constructor's mask and each mask that the same search finds the calculation storing,
-    /// in mask order. Which one the node holds is chosen at run time.
+    /// Each set of categories that the node can keep: the constructor's, and each that the node's
+    /// calculation can set, in mask order. The engine chooses one at run time.
     Recalculated(Vec<Vec<String>>),
     /// The mask could not be read; a gap names the node.
     Unresolved,

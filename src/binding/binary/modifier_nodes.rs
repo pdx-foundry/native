@@ -62,6 +62,8 @@ pub(in crate::binding) fn read(
     if constructions.is_empty() {
         return Err(AnalysisError::InvalidRange);
     }
+    constructions.sort_by_key(|construction| construction.site);
+    constructions.dedup_by_key(|construction| construction.site);
 
     Ok(ModifierNodeInput {
         sources,

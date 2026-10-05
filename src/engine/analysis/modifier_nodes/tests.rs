@@ -240,6 +240,22 @@ fn each_mask_that_the_calculation_can_store_joins_the_constructors_mask() {
 }
 
 #[test]
+fn a_calculation_that_stores_the_constructors_mask_keeps_it_constant() {
+    let calculation = arm64!(at CALCULATION;
+        mov w8, #0x20; // the constructor's mask
+        str w8, [x1, #0xdc];
+        ret
+    );
+    let input = input(
+        caller(Prefix::None, MaskArgument::Stack(0x20)),
+        calculation,
+        initializer(),
+    );
+
+    assert_eq!(masks(&input), Ok(Masks::Constant(0x20)));
+}
+
+#[test]
 fn a_store_at_the_mask_offset_from_another_object_is_not_a_mask() {
     let input = input(
         caller(Prefix::None, MaskArgument::Stack(0x400)),

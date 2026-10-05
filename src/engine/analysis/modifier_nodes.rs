@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{Instruction, adrp, decode_arm64};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
-use super::modifiers::{CategoryInput, CategoryNames, category_names};
+use super::modifiers::{CategoryInput, CategoryNames, EVERY_CATEGORY, category_names};
 use super::stop::Unresolved;
 
 #[cfg(test)]
@@ -100,6 +100,7 @@ pub struct ModifierNodeInput {
     /// The source nodes of each node that a node type symbol names. `Err` when two symbols give
     /// one node different sources.
     pub sources: BTreeMap<u32, Result<Vec<u32>, Unresolved>>,
+    /// Each direct call to a node base constructor once, in address order.
     pub constructions: Vec<Construction>,
     /// Entry of each static initializer.
     pub initializers: Vec<u64>,
@@ -154,10 +155,7 @@ pub fn analyze(input: &ModifierNodeInput) -> ModifierNodeResult {
         })
         .collect();
 
-    let mut constructions: Vec<_> = input.constructions.iter().collect();
-    constructions.sort_by_key(|construction| construction.site);
-
-    for construction in constructions {
+    for construction in &input.constructions {
         let owner = OwnerRead {
             owner: construction.owner.clone(),
             masks: construction_masks(input, construction),
@@ -191,14 +189,12 @@ fn construction_masks(
     construction: &Construction,
 ) -> Result<Masks, Unresolved> {
     let (mask, calculation) = construction_arguments(input, construction)?;
-    let stored = calculation_masks(input, calculation)?;
+    let mut masks = calculation_masks(input, calculation)?;
+    masks.insert(mask);
 
-    if stored.is_empty() {
+    if masks.len() == 1 {
         return Ok(Masks::Constant(mask));
     }
-
-    let mut masks = stored;
-    masks.insert(mask);
     Ok(Masks::Recalculated(masks))
 }
 
@@ -375,7 +371,7 @@ fn calculation_masks(input: &ModifierNodeInput, entry: u64) -> Result<BTreeSet<u
                 Some(register) => machine.known_register(register, "stored-mask")?,
                 None => 0,
             };
-            masks.insert(mask & 0xffff_ffff);
+            masks.insert(mask & EVERY_CATEGORY);
         }
     }
 

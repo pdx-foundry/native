@@ -7,13 +7,12 @@ use crate::answer::{
     ModifierNodeId, ModifierNodeOwner, Operation, Source,
 };
 use crate::engine::analysis::modifier_nodes::{self, Masks, ModifierNodeResult};
-use crate::engine::analysis::modifiers::{CategoryNames, Tags, tags};
+use crate::engine::analysis::modifiers::{
+    CATEGORY_MASK_BITS, CategoryNames, EVERY_CATEGORY, Tags, tags,
+};
 
 /// Why the answer holds no supported scopes.
 const TAKES_EFFECT: &str = "Where a modifier takes effect is decided at application by each receiver's category mask and the include and exclude masks of each propagation edge. The engine reports no diagnostic for a filtered entry. These masks are not established; supported scopes stay outside this method.";
-
-/// The mask that keeps every category. A node with it says nothing about one category.
-const EVERY_CATEGORY: u64 = 0xffff_ffff;
 
 impl Native {
     /// Read the engine's modifier node graph: each node's source nodes, the engine types that
@@ -167,7 +166,7 @@ fn categories_without_node(
         )
     };
 
-    (0..32)
+    (0..CATEGORY_MASK_BITS)
         .map(|bit| 1u64 << bit)
         .filter(|bit| kept & bit == 0)
         .filter_map(|bit| match categories.get(&bit) {

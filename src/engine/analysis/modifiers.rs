@@ -20,7 +20,10 @@ use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
 
 /// The width of the engine's category mask, a 32-bit stack argument.
-const CATEGORY_MASK_BITS: u32 = 32;
+pub const CATEGORY_MASK_BITS: u32 = 32;
+
+/// The category mask with every bit set.
+pub const EVERY_CATEGORY: u64 = (1 << CATEGORY_MASK_BITS) - 1;
 
 /// Name and revision of the modifier method.
 pub const MODIFIER_METHOD: &str = "modifier-declarations/v1";
@@ -129,7 +132,7 @@ pub fn category_names(
 ) -> CategoryNames {
     (0..CATEGORY_MASK_BITS)
         .map(|bit| 1u64 << bit)
-        .chain([(1u64 << CATEGORY_MASK_BITS) - 1])
+        .chain([EVERY_CATEGORY])
         .chain(masks)
         .collect::<BTreeSet<_>>()
         .into_iter()

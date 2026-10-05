@@ -542,12 +542,12 @@ impl<'a> Machine<'a> {
         callee
     }
 
-    /// Set the stack position for an authored caller or a separately evaluated call frame.
     /// Follow at most `limit` paths in a run of several paths, in place of [`PATH_LIMIT`].
     pub fn set_path_limit(&mut self, limit: usize) {
         self.path_limit = limit;
     }
 
+    /// Set the stack position for an authored caller or a separately evaluated call frame.
     pub fn set_stack_pointer(&mut self, value: u64) {
         self.stack_pointer = value;
     }
