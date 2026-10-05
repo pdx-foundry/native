@@ -257,7 +257,9 @@ mod tests {
     fn deeply_nested_template_symbols_demangle() {
         let name = display_name(DEEP_NODE_CONSTRUCTOR);
 
-        assert!(name.starts_with("NModifierNode::CModifierNodeBase<CModifier, EModifierNodeCategory>::CModifierNodeBase<"));
+        assert!(name.starts_with(
+            "NModifierNode::CModifierNodeBase<CModifier, EModifierNodeCategory>::CModifierNodeBase<"
+        ));
         assert!(name.contains("::CModifierNode<CPopGroup, int, ModifierCategory const&>("));
     }
 }
