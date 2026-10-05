@@ -158,6 +158,7 @@ pub(super) mod fields;
 pub(super) mod grammar;
 pub(super) mod language;
 pub(crate) mod modifier_blocks;
+pub(super) mod modifier_nodes;
 pub(super) mod modifier_table;
 pub(super) mod names;
 pub(crate) mod numeric;

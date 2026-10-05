@@ -35,8 +35,6 @@ pub(in crate::binding) fn modifiers(
     recipe: &DeclarationRecipe,
 ) -> Result<ModifierInput, AnalysisError> {
     let define = unique(symbols, DEFINE_MODIFIER)?;
-    let category_name = unique(symbols, CATEGORY_NAME)?;
-    let assign_literal = addresses(symbols, ASSIGN_LITERAL);
     let text = Text::read(bytes, symbols)?;
 
     let mut definition_sites = Vec::new();
@@ -52,14 +50,26 @@ pub(in crate::binding) fn modifiers(
         define,
         category_offset: recipe.modifier_category_offset,
         generation_sites,
-        categories: CategoryInput {
-            category_name,
-            string_object_size: recipe.string_object_size,
-            short_length_offset: recipe.short_string_length_offset,
-            assign_literal,
-            code: code(&text, &[category_name])?,
-            data: read_only_data(bytes)?,
-        },
+        categories: categories(bytes, symbols, &text, recipe)?,
+    })
+}
+
+/// The category-name switch and what running it needs.
+pub(super) fn categories(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    text: &Text,
+    recipe: &DeclarationRecipe,
+) -> Result<CategoryInput, AnalysisError> {
+    let category_name = unique(symbols, CATEGORY_NAME)?;
+
+    Ok(CategoryInput {
+        category_name,
+        string_object_size: recipe.string_object_size,
+        short_length_offset: recipe.short_string_length_offset,
+        assign_literal: addresses(symbols, ASSIGN_LITERAL),
+        code: code(text, &[category_name])?,
+        data: read_only_data(bytes)?,
     })
 }
 

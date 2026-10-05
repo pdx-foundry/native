@@ -46,7 +46,8 @@ pub use trace::trace_causes;
 /// The most instructions that one run may execute.
 const STEP_LIMIT: usize = 20_000;
 
-/// The most paths that one [`Machine::run_paths`] follows.
+/// The most paths that one [`Machine::run_paths`] follows, unless the caller sets another limit
+/// with [`Machine::set_path_limit`].
 pub const PATH_LIMIT: usize = 64;
 
 /// The most times that one path of [`Machine::run_paths_to`] arrives at one loop head.
@@ -335,6 +336,8 @@ pub struct Machine<'a> {
     frames: Vec<u64>,
     /// The entry of the present run.
     entry: u64,
+    /// The most paths that one run of several paths follows.
+    path_limit: usize,
     /// The instruction that the run is at, or the last one it ran.
     pc: u64,
     /// The target of each entered call, beside `frames`.
@@ -423,6 +426,7 @@ impl<'a> Machine<'a> {
             unknown_stores: Vec::new(),
             owner: None,
             loop_visits: BTreeMap::new(),
+            path_limit: PATH_LIMIT,
             frames: Vec::new(),
             entry: 0,
             pc: 0,
@@ -539,6 +543,11 @@ impl<'a> Machine<'a> {
     }
 
     /// Set the stack position for an authored caller or a separately evaluated call frame.
+    /// Follow at most `limit` paths in a run of several paths, in place of [`PATH_LIMIT`].
+    pub fn set_path_limit(&mut self, limit: usize) {
+        self.path_limit = limit;
+    }
+
     pub fn set_stack_pointer(&mut self, value: u64) {
         self.stack_pointer = value;
     }
@@ -961,8 +970,9 @@ impl<'a> Machine<'a> {
                     branches,
                     steps,
                 } => {
-                    if ended.len() - covered + pending.len() + branches.len() > PATH_LIMIT {
-                        let limit = Obstacle::Bound(Bound::Paths(PATH_LIMIT));
+                    let path_limit = machine.path_limit;
+                    if ended.len() - covered + pending.len() + branches.len() > path_limit {
+                        let limit = Obstacle::Bound(Bound::Paths(path_limit));
                         ended.push(Path {
                             end: Err(machine.stop(at, "path-limit", limit)),
                             machine,

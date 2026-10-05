@@ -90,6 +90,7 @@ pub const FILES: &[&str] = &[
     "modifier-declarations.json",
     "modifier-categories.json",
     "modifier-families.json",
+    "modifier-nodes.json",
     "derived-names-traditions.json",
     "derived-names-tradition_categories.json",
     "modifier-blocks.json",
@@ -208,6 +209,12 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
                 .map(|item| &item.name)
                 .collect::<Vec<_>>()
         )),
+        "modifier-nodes.json" => {
+            let answer = current_answer(native, native.modifier_nodes()?)?;
+            Ok(json!({
+                "completeness": answer.completeness, "gaps": answer.gaps, "nodes": answer.value
+            }))
+        }
         "modifier-blocks.json" => modifier_blocks(native),
         "weight-blocks.json" => weight_blocks(native),
         "triggered-modifiers.json" => triggered_modifiers(native),

@@ -6,11 +6,11 @@ use parity::*;
 use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Unresolved};
 use pdx_native::internals::{
     COMMAND_GRAMMAR_METHOD, DEFINES_METHOD, DERIVED_NAMES_METHOD, DYNAMIC_NAMES_METHOD,
-    command_grammar_stops, registry_field_stops, trace_causes,
+    MODIFIER_NODES_METHOD, command_grammar_stops, registry_field_stops, trace_causes,
 };
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags,
-    EntryScope, Error, FieldReference, GapKind, GapSubject, KeyMatch, LinkData,
+    EntryScope, Error, FieldReference, GapKind, GapSubject, KeptCategories, KeyMatch, LinkData,
     LocalizationContextReference, LocalizationDeclarations, LocalizationOutput, LookupStage,
     Native, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind, ScopeId,
 };
@@ -632,6 +632,71 @@ fn modifier_categories_are_the_names_of_the_category_switch() {
     let answer = native().modifier_categories().unwrap();
     assert_declared(&answer);
     assert_eq!(answer.completeness, Completeness::Complete);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn modifier_nodes_give_owners_masks_and_sources_but_no_scopes() {
+    let native = native();
+    assert_eq!(
+        native.supports(Operation::ModifierNodes),
+        pdx_native::Support::Supported
+    );
+    let answer = native.modifier_nodes().unwrap();
+    assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+    assert_eq!(answer.source.method, MODIFIER_NODES_METHOD);
+    assert_eq!(answer.completeness, Completeness::Partial);
+    assert_eq!(answer.value.len(), 35);
+
+    let node = |id: usize| &answer.value[id];
+    let owners = |id: usize| -> Vec<&str> {
+        node(id)
+            .owners
+            .iter()
+            .map(|owner| owner.owner.as_str())
+            .collect()
+    };
+    assert!(node(0).owners.is_empty());
+    assert_eq!(owners(15), ["CStarbase", "CMegaStructure"]);
+    assert_eq!(owners(18), ["CColony"]);
+    assert_eq!(
+        node(18).source_nodes,
+        [17, 32, 8, 1, 33].map(|id| node(id).id)
+    );
+    let KeptCategories::Recalculated(ship) = &node(32).owners[0].kept_categories else {
+        panic!("the ship's calculation sets its mask")
+    };
+    assert_eq!(ship.len(), 2);
+    assert!(ship[0].contains(&"Owned Ships".to_string()) && !ship[0].contains(&"Pops".to_string()));
+    assert!(ship[1].contains(&"Pops".to_string()) && ship[1].contains(&"Colony".to_string()));
+
+    assert_eq!(answer.gaps[0].kind, GapKind::OutsideMethod);
+    assert_eq!(answer.gaps[0].subject, None);
+    assert!(
+        answer.gaps[0]
+            .detail
+            .starts_with("Where a modifier takes effect is decided at application")
+    );
+    assert!(
+        answer
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::UnresolvedPath
+                && gap.subject.as_ref().map(|subject| subject.name()) == Some("modifier node 0"))
+    );
+    let categories: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| {
+            gap.detail
+                .starts_with("no resolved modifier node mask keeps")
+        })
+        .map(|gap| gap.subject.as_ref().unwrap().name())
+        .collect();
+    assert_eq!(
+        categories,
+        ["Pop Factions", "AI Economy", "Ship Design Stats"]
+    );
 }
 
 #[test]
@@ -1311,6 +1376,7 @@ fn observe(native: &Native) -> Observed {
     answers.push(json!(native.on_actions()));
     answers.push(json!(native.game_rules()));
     answers.push(json!(native.defines()));
+    answers.push(json!(native.modifier_nodes()));
     let families: BTreeMap<String, Value> = expected("modifier-families.json");
     for registry in families.keys() {
         answers.push(json!(native.modifier_families(registry)));

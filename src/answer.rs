@@ -308,6 +308,8 @@ pub enum Operation {
     DynamicNames,
     /// `Native::derived_names`
     DerivedNames,
+    /// `Native::modifier_nodes`
+    ModifierNodes,
 }
 
 /// One define whose name and value type the executable reads.
@@ -366,6 +368,7 @@ impl Operation {
         Self::LoadedModifiers,
         Self::DynamicNames,
         Self::DerivedNames,
+        Self::ModifierNodes,
     ];
 
     /// The operation's stable snake_case name, such as `registry_fields`.
@@ -389,6 +392,7 @@ impl Operation {
             Self::LoadedModifiers => "loaded_modifiers",
             Self::DynamicNames => "dynamic_names",
             Self::DerivedNames => "derived_names",
+            Self::ModifierNodes => "modifier_nodes",
         }
     }
 
@@ -409,6 +413,7 @@ impl Operation {
                 | Self::GameRules
                 | Self::DynamicNames
                 | Self::DerivedNames
+                | Self::ModifierNodes
         )
     }
 }
@@ -444,7 +449,8 @@ mod operation_tests {
             | Operation::LoadedModifiers
             | Operation::DynamicNames
             | Operation::DerivedNames
-            | Operation::CheckScript => 18,
+            | Operation::ModifierNodes
+            | Operation::CheckScript => 19,
         }
     }
 
@@ -905,6 +911,50 @@ pub enum LoadedContent {
 pub struct ModifierCategory {
     /// The category name as the engine spells it, such as `Countries`.
     pub name: String,
+}
+
+/// One node of the engine's modifier graph: a modifier total that adds the totals of its source
+/// nodes and keeps only the entries whose categories meet its mask. A node is not a scope, and its
+/// categories do not say where a modifier takes effect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModifierNode {
+    /// The node. Source nodes name it by this identity.
+    pub id: ModifierNodeId,
+    /// The nodes whose totals this node receives, in the engine's order.
+    pub source_nodes: Vec<ModifierNodeId>,
+    /// One entry for each distinct owner and mask that constructs the node. Empty when the
+    /// method followed no construction; a gap then names the node.
+    pub owners: Vec<ModifierNodeOwner>,
+}
+
+/// Identity of a modifier node within one build. Join source nodes to nodes by it; do not
+/// compare it across builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ModifierNodeId(pub(crate) u32);
+
+/// An engine type that constructs a modifier node, and the categories that the node keeps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModifierNodeOwner {
+    /// The engine type, such as `CShip`.
+    pub owner: String,
+    /// The categories of the entries that the node keeps.
+    pub kept_categories: KeptCategories,
+}
+
+/// The categories that a modifier node keeps, named as the engine names a category mask: the
+/// name of the whole mask when the engine has one, such as `All`, otherwise the name of each set
+/// category.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum KeptCategories {
+    /// The constructor's mask. The method found no store to the mask in the node's calculation
+    /// function; it searches that function's own body at the mask's own offset.
+    Constant(Vec<String>),
+    /// The constructor's mask and each mask that the same search finds the calculation storing,
+    /// in mask order. Which one the node holds is chosen at run time.
+    Recalculated(Vec<Vec<String>>),
+    /// The mask could not be read; a gap names the node.
+    Unresolved,
 }
 
 /// Opaque identity of a scope type within one build. Two types can share a display name (two
