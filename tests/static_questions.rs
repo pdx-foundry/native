@@ -552,7 +552,7 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
         &traditions,
         vec![field(&["tradition_swap", "name"])],
         LookupStage::WhenUsed,
-        MissingName::ShowsKey,
+        MissingName::Unresolved,
     );
     assert!(terms(&swap_name).contains(&FieldCondition::Unresolved));
     assert!(terms(&swap_name).contains(&zero(&["tradition_swap", "inherit_name"], true)));
@@ -561,7 +561,7 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
             &traditions,
             vec![field(&["tradition_swap", "name"]), text(suffix)],
             LookupStage::WhenUsed,
-            MissingName::Fallback(vec![NamePart::ItemKey, text(suffix)]),
+            MissingName::Unresolved,
         );
         assert!(terms(&swap_desc).contains(&zero(&["tradition_swap", "name"], false)));
         find(
@@ -581,7 +581,7 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
             &traditions,
             vec![field(path)],
             LookupStage::OwnerInitialization,
-            MissingName::Diagnostic,
+            MissingName::Unresolved,
         );
         assert!(terms(&tooltip).contains(&zero(path, false)));
     }
@@ -592,8 +592,9 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
                 .name
                 .iter()
                 .any(|part| matches!(part, NamePart::Field(_))))
-            .all(|name| name.condition != FieldCondition::Always),
-        "a field-derived name is never unconditional"
+            .all(|name| name.condition != FieldCondition::Always
+                && name.on_missing == MissingName::Unresolved),
+        "a field-derived name is never unconditional and has no established miss behavior"
     );
 
     let categories = native
