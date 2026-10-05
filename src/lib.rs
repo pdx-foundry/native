@@ -29,14 +29,14 @@ pub mod supervisor;
 
 pub use answer::{
     Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
-    DeclaredScopes, DeclaredTags, Define, DefineValueType, Disposal, EntryContext, EntryScope,
-    Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName, GenerationCondition, LinkData,
-    LoadedContent, LoadedModifier, LoadedModifiers, LocalizationCommand, LocalizationContext,
-    LocalizationContextId, LocalizationContextReference, LocalizationDeclarations,
-    LocalizationLink, LocalizationOutput, ModifierCategory, ModifierDeclaration, ModifierFamily,
-    NamePart, OnAction, Operation, OutputScope, ReadScope, Reader, ReaderId, ReaderKind, Registry,
-    RuleKind, ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory, ScopeLink, ScopeReference,
-    Source, Support,
+    DeclaredScopes, DeclaredTags, Define, DefineValueType, DerivedName, Disposal, EntryContext,
+    EntryScope, Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName,
+    GenerationCondition, LinkData, LoadedContent, LoadedModifier, LoadedModifiers,
+    LocalizationCommand, LocalizationContext, LocalizationContextId, LocalizationContextReference,
+    LocalizationDeclarations, LocalizationLink, LocalizationOutput, MissingName, ModifierCategory,
+    ModifierDeclaration, ModifierFamily, NameLookup, NamePart, OnAction, Operation, OutputScope,
+    ReadScope, Reader, ReaderId, ReaderKind, Registry, RuleKind, ScopeDeclaration, ScopeGroup,
+    ScopeId, ScopeInventory, ScopeLink, ScopeReference, Source, Support,
 };
 pub use api::OpenError;
 pub use duration::{Duration, DurationCombination, DurationUnit};
@@ -87,6 +87,7 @@ pub mod internals {
     pub use crate::engine::analysis::dynamic_names::METHOD as DYNAMIC_NAMES_METHOD;
     pub use crate::engine::analysis::evaluate::trace_causes;
     pub use crate::engine::analysis::grammar::METHOD as COMMAND_GRAMMAR_METHOD;
+    pub use crate::engine::analysis::names::METHOD as DERIVED_NAMES_METHOD;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::{
         check_registry_load, command_grammar_stops, duration_groups, dynamic_name_commands,

@@ -39,6 +39,7 @@ pub(crate) struct BoundAnalysis {
     >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
+    names: OnceLock<crate::engine::analysis::names::NameInput>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
 }
@@ -542,6 +543,7 @@ impl BoundAnalysis {
             triggered_modifiers: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             block_facts: OnceLock::new(),
+            names: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
         }
     }
@@ -1217,6 +1219,44 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.scope_input(recipe)
+    }
+
+    /// The lookup, check and diagnostic functions of the derived-name method.
+    pub(crate) fn name_input(
+        &self,
+    ) -> Result<&crate::engine::analysis::names::NameInput, AnalysisError> {
+        let verified = self.verified()?;
+        Ok(self
+            .names
+            .get_or_init(|| binary::names::input(&verified.catalog.symbols)))
+    }
+
+    /// The code of one named registry's item class that composes derived names, or `None` when
+    /// the name is not a registry's content directory.
+    pub(crate) fn registry_names(
+        &self,
+        registry: &str,
+    ) -> Result<Option<crate::engine::analysis::names::RegistryInput>, AnalysisError> {
+        let index = self.family_index()?;
+        let input = self.name_input()?;
+        let verified = self.verified()?;
+        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
+            return Ok(None);
+        };
+        let named = binary::families::NamedRegistry {
+            name: registry,
+            database: &candidate.record.database,
+            owner: &candidate.record.owner_candidate,
+        };
+        binary::names::registry(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &index.input.data,
+            &index.input.strings,
+            input,
+            &named,
+        )
+        .map(Some)
     }
 
     pub(crate) fn localization_input(

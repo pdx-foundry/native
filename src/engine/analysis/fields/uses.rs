@@ -314,7 +314,8 @@ fn flow(
     Some(states)
 }
 
-fn storage(field: &RootField) -> Option<i64> {
+/// The one storage offset that every reader of `field` writes, when they agree.
+pub(crate) fn storage_offset(field: &RootField) -> Option<i64> {
     let mut offsets = BTreeSet::new();
     for join in &field.readers {
         offsets.insert(crate::engine::analysis::readers::destination(join)?);
@@ -343,7 +344,9 @@ fn named(
         }
         _ => return None,
     };
-    let mut matches = members.iter().filter(|field| storage(field) == Some(at));
+    let mut matches = members
+        .iter()
+        .filter(|field| storage_offset(field) == Some(at));
     let field = matches.next()?;
     if matches.next().is_some() {
         return None;
@@ -757,6 +760,7 @@ mod tests {
             token: 7,
             offset: 0x40,
             data_offset: Some(8),
+            count_offset: Some(0x14),
             class: "CChild".into(),
             reader: None,
             fields: Box::new(RegistryFieldResult {

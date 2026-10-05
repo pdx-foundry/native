@@ -109,7 +109,15 @@ pub(in crate::binding) fn index(
             })
             .collect();
         let path = join.map(|join| join.path.clone()).unwrap_or_default();
-        let entered = entered(&text, &names, &strings, &roots, path, registration)?;
+        let callers = roots.iter().map(|root| root.function).collect();
+        let entered = entered(
+            &text,
+            &names,
+            &strings,
+            callers,
+            path,
+            &[registration].into(),
+        )?;
         let constructors = constructors(symbols, registry.owner);
         let loading = roots
             .iter()
@@ -312,30 +320,27 @@ fn takes_any(name: &str, classes: &BTreeSet<&str>) -> bool {
     })
 }
 
-/// The functions that a run of the registry enters: the functions between its roots and a
-/// generation call, and the composers that they or the roots call.
-fn entered(
+/// The functions that a run enters: the functions on `path` between its `roots` and the calls
+/// that it records, and the composers that they or the roots call. A run never enters a function
+/// of `recorded`.
+pub(super) fn entered(
     text: &Text,
     names: &Names,
     strings: &StringFunctions,
-    roots: &[Root],
+    roots: BTreeSet<u64>,
     path: BTreeSet<u64>,
-    registration: u64,
+    recorded: &BTreeSet<u64>,
 ) -> Result<BTreeSet<u64>, AnalysisError> {
-    let callers: BTreeSet<u64> = roots
-        .iter()
-        .map(|root| root.function)
-        .chain(path.iter().copied())
-        .collect();
+    let callers: BTreeSet<u64> = roots.into_iter().chain(path.iter().copied()).collect();
     let mut entered = path;
     for &caller in &callers {
-        for call in calls(text, caller)? {
+        for (_, call) in calls(text, caller)? {
             let Call::Direct(callee) = call else {
                 continue;
             };
             let modelled = strings.follows(callee) || strings.never_return.contains(&callee);
             if modelled
-                || callee == registration
+                || recorded.contains(&callee)
                 || callers.contains(&callee)
                 || !text.starts.contains(&callee)
             {
@@ -343,7 +348,7 @@ fn entered(
             }
             let kinds: Vec<CallKind> = calls(text, callee)?
                 .into_iter()
-                .map(|call| call_kind(names, strings, callee, call))
+                .map(|(_, call)| call_kind(names, strings, callee, call))
                 .collect();
             if is_composer(&kinds) {
                 entered.insert(callee);
@@ -355,7 +360,7 @@ fn entered(
 
 /// One call or tail call out of a function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Call {
+pub(super) enum Call {
     Direct(u64),
     /// A call through a register.
     Indirect,
@@ -364,7 +369,7 @@ enum Call {
 /// The code that constructs the registry's items: the functions that call a constructor of the
 /// item's class, directly or through a constructor that delegates, the database constructor,
 /// and the item's vtables.
-fn loading(
+pub(super) fn loading(
     text: &Text,
     symbols: &[Symbol],
     names: &Names,
@@ -810,8 +815,8 @@ pub(super) fn vtable_group(
     group.address_points.contains_key(&0).then_some(group)
 }
 
-/// Every call and every branch out of the function at `start`.
-fn calls(text: &Text, start: u64) -> Result<Vec<Call>, AnalysisError> {
+/// Every call and every branch out of the function at `start`, with its address.
+pub(super) fn calls(text: &Text, start: u64) -> Result<Vec<(u64, Call)>, AnalysisError> {
     let (address, code) = text.function(start)?;
     let end = address + code.len() as u64;
     Ok(code
@@ -823,10 +828,10 @@ fn calls(text: &Text, start: u64) -> Result<Vec<Call>, AnalysisError> {
             let at = address + (index * 4) as u64;
             let word = u32::from_le_bytes(*word);
             if word & 0xffff_fc1f == 0xd63f_0000 {
-                return Some(Call::Indirect);
+                return Some((at, Call::Indirect));
             }
             let target = call_or_jump_target(word, at)?;
-            (!(address..end).contains(&target)).then_some(Call::Direct(target))
+            (!(address..end).contains(&target)).then_some((at, Call::Direct(target)))
         })
         .collect())
 }
@@ -883,7 +888,7 @@ fn is_composer(calls: &[CallKind]) -> bool {
 
 /// Decode each function on its own and keep the ones that decode completely. A run that
 /// reaches a function left out is unresolved there.
-fn decoded(text: &Text, functions: &[u64]) -> Code {
+pub(super) fn decoded(text: &Text, functions: &[u64]) -> Code {
     let mut rows = Vec::new();
     for start in functions.iter().collect::<BTreeSet<_>>() {
         let Ok((address, code)) = text.function(*start) else {
@@ -897,12 +902,12 @@ fn decoded(text: &Text, functions: &[u64]) -> Code {
 }
 
 /// Every demangled name of each address.
-struct Names<'a> {
+pub(super) struct Names<'a> {
     by_address: BTreeMap<u64, Vec<&'a str>>,
 }
 
 impl<'a> Names<'a> {
-    fn new(symbols: &'a [Symbol]) -> Self {
+    pub(super) fn new(symbols: &'a [Symbol]) -> Self {
         let mut by_address: BTreeMap<u64, Vec<&str>> = BTreeMap::new();
         for symbol in symbols {
             by_address
@@ -913,13 +918,13 @@ impl<'a> Names<'a> {
         Self { by_address }
     }
 
-    fn of(&self, address: u64) -> impl Iterator<Item = &'a str> + '_ {
+    pub(super) fn of(&self, address: u64) -> impl Iterator<Item = &'a str> + '_ {
         self.by_address.get(&address).into_iter().flatten().copied()
     }
 }
 
 /// The item constructors that take the key: by reference or by value.
-fn constructors(symbols: &[Symbol], owner: &str) -> Vec<u64> {
+pub(super) fn constructors(symbols: &[Symbol], owner: &str) -> Vec<u64> {
     ["CString const&", "CString"]
         .iter()
         .flat_map(|key| addresses(symbols, &format!("{owner}::{owner}(int, {key})")))
@@ -969,6 +974,7 @@ pub(super) fn string_functions(symbols: &[Symbol]) -> StringFunctions {
 
     StringFunctions {
         from_text: named("CString::CString(char const*)"),
+        from_view: named("CString::CString(char const*, int)"),
         append_string: named("CString::operator+=(CString const&)"),
         append_text: named("CString::operator+=(char const*)"),
         append_view: named("CString::operator+=(CPdxStringView)"),

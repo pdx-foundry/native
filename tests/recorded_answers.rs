@@ -888,3 +888,50 @@ fn recorded_support_requires_a_file_for_the_operation() {
         Support::Unsupported(_)
     ));
 }
+
+#[test]
+fn derived_names_read_their_registry_file_and_keep_conditions_and_fallbacks() {
+    use pdx_native::{FieldCondition, LookupStage, MissingName, NameLookup, NamePart};
+    let root = recorded();
+    write(
+        root.path(),
+        "derived_names/common/traditions.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": ["ItemKey"], "lookup": "Localization", "stage": "WhenUsed",
+                  "on_missing": "ShowsKey", "condition": "Always" },
+                { "name": [{ "Field": ["tradition_swap", "name"] }, { "Literal": "_desc" }],
+                  "lookup": "Localization", "stage": "WhenUsed",
+                  "on_missing": { "Fallback": ["ItemKey", { "Literal": "_desc" }] },
+                  "condition": { "All": ["Unresolved",
+                      { "FieldZero": { "path": ["tradition_swap", "name"], "zero": false } }] } }
+            ],
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnresolvedCondition",
+                       "subject": { "kind": "answer_item", "name": "{tradition_swap/name}_desc" },
+                       "detail": "field states" }],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+
+    let answer = native.derived_names("common/traditions/").unwrap();
+
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(native.supports(Operation::DerivedNames), Support::Supported);
+    let [base, swap] = answer.value.as_slice() else {
+        panic!("two names: {:?}", answer.value);
+    };
+    assert_eq!(base.name, [NamePart::ItemKey]);
+    assert_eq!(base.lookup, NameLookup::Localization);
+    assert_eq!(base.stage, LookupStage::WhenUsed);
+    assert_eq!(base.condition, FieldCondition::Always);
+    assert_eq!(
+        swap.on_missing,
+        MissingName::Fallback(vec![NamePart::ItemKey, NamePart::Literal("_desc".into())])
+    );
+    assert!(matches!(
+        native.derived_names("common/tradition_categories"),
+        Err(Error::NotRecorded { .. })
+    ));
+}

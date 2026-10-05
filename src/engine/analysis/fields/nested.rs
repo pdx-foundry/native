@@ -185,6 +185,7 @@ pub(super) fn discover(
             token: field.token,
             offset: first.1,
             data_offset: object.data_offset,
+            count_offset: object.count_offset,
             class: object.class.clone(),
             reader,
             fields: Box::new(RegistryFieldResult {

@@ -19,6 +19,7 @@ mod language;
 mod loaded_modifiers;
 mod localization;
 mod modifier_blocks;
+mod names;
 mod numeric;
 pub mod numeric_readers;
 pub(crate) mod questions;

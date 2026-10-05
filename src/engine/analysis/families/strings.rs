@@ -3,8 +3,9 @@
 //!
 //! The model keeps, for each path, a label from a text address to a node of the shared arena. A
 //! text address is a long string's buffer, a short string's object (its text is in place), or a
-//! formatter's buffer. A node is the ordered parts of the text: literals from read-only data, the
-//! item key, or an unresolved part. Moves and copies of a string object carry its buffer pointer,
+//! formatter's buffer. A node is the ordered parts of the text: literals from read-only data, a
+//! labelled source, or an unresolved part. A source is the item key, or a string field whose
+//! text a run planted with real bytes; each source has its own text in the run. Moves and copies of a string object carry its buffer pointer,
 //! so the model reads a string by its labels and never needs the object's flag byte: vector copies
 //! of partly unwritten temporaries leave that byte unknown.
 //!
@@ -23,6 +24,9 @@ const TEXT_LIMIT: u64 = 4096;
 pub struct StringFunctions {
     /// `CString::CString(char const*)`: the object in `x0`, the text in `x1`.
     pub from_text: BTreeSet<u64>,
+    /// `CString::CString(char const*, int)`: the object in `x0`, the text in `x1` and its length
+    /// in `w2`.
+    pub from_view: BTreeSet<u64>,
     /// `CString::operator+=(CString const&)`: the object in `x0`, the other object in `x1`.
     pub append_string: BTreeSet<u64>,
     /// `CString::operator+=(char const*)`: the object in `x0`, the text in `x1`.
@@ -78,6 +82,7 @@ impl StringFunctions {
     pub fn follows(&self, target: u64) -> bool {
         self.composes(target)
             || [
+                &self.from_view,
                 &self.assigns,
                 &self.move_assigns,
                 &self.allocators,
@@ -111,6 +116,8 @@ impl StringLayout {
 pub enum Part {
     Literal(String),
     ItemKey,
+    /// The text of a string field, by its path from the registry's definition.
+    Field(Vec<String>),
     Unresolved,
 }
 
@@ -164,24 +171,26 @@ impl Node {
         !self.parts.contains(&Part::Unresolved)
     }
 
-    /// The text when every part is a literal: `None` for the item key or an unresolved part.
+    /// The text when every part is a literal: `None` for a source or an unresolved part.
     pub fn literal_text(&self) -> Option<String> {
         self.parts
             .iter()
             .map(|part| match part {
                 Part::Literal(text) => Some(text.as_str()),
-                Part::ItemKey | Part::Unresolved => None,
+                Part::ItemKey | Part::Field(_) | Part::Unresolved => None,
             })
             .collect()
     }
 
-    /// The real text, with `key` for the item key. `None` when a part is unresolved.
-    fn text(&self, key: &str) -> Option<String> {
+    /// The real text, with each source's text in the run. `None` when a part is unresolved or
+    /// names a field that the run did not plant.
+    pub fn text(&self, sources: &Sources) -> Option<String> {
         self.parts
             .iter()
             .map(|part| match part {
                 Part::Literal(text) => Some(text.as_str()),
-                Part::ItemKey => Some(key),
+                Part::ItemKey => Some(sources.key),
+                Part::Field(path) => sources.fields.get(path).map(String::as_str),
                 Part::Unresolved => None,
             })
             .collect()
@@ -218,19 +227,40 @@ impl Arena {
         &self.nodes[index as usize]
     }
 
-    fn add(&mut self, node: Node) -> u64 {
+    pub fn add(&mut self, node: Node) -> u64 {
         self.nodes.push(node);
         self.nodes.len() as u64 - 1
     }
 }
 
-/// The model for one run: the functions it follows, the string layout, and the item key's text.
+/// The text of each labelled source in one run.
+pub struct Sources<'a> {
+    /// The text of the item key.
+    pub key: &'a str,
+    /// The text of each string field that the run planted, by its path.
+    pub fields: &'a BTreeMap<Vec<String>, String>,
+}
+
+/// No planted string field: a run whose only source is the item key.
+static NO_FIELDS: BTreeMap<Vec<String>, String> = BTreeMap::new();
+
+impl<'a> Sources<'a> {
+    /// The sources of a run whose only source is the item key, with the text `key`.
+    pub fn key_only(key: &'a str) -> Self {
+        Self {
+            key,
+            fields: &NO_FIELDS,
+        }
+    }
+}
+
+/// The model for one run: the functions it follows, the string layout, and the text of each
+/// source.
 pub struct Model<'a> {
     pub functions: &'a StringFunctions,
     pub layout: StringLayout,
     pub data: &'a ReadOnlyData,
-    /// The text of the item key in this run.
-    pub key: &'a str,
+    pub sources: Sources<'a>,
 }
 
 /// What the model did at one call.
@@ -267,7 +297,7 @@ impl Model<'_> {
             let other = self.text_node(machine, machine.register(1), arena);
             self.append(machine, other, arena)?
         } else if functions.append_view.contains(&target) {
-            let other = self.view_node(machine, arena);
+            let other = self.view(machine, machine.register(1), machine.register(2), arena);
             self.append(machine, other, arena)?
         } else if functions.append_character.contains(&target) {
             let character = machine
@@ -281,8 +311,8 @@ impl Model<'_> {
             self.append(machine, other, arena)?
         } else if functions.reserves.contains(&target) {
             Call::Return(None)
-        } else if functions.assigns.contains(&target) {
-            let text = self.view_node(machine, arena);
+        } else if functions.assigns.contains(&target) || functions.from_view.contains(&target) {
+            let text = self.view(machine, machine.register(1), machine.register(2), arena);
             match machine.register(0) {
                 Some(object) => self.build(machine, Some(object), text, arena)?,
                 None => Call::Return(None),
@@ -352,17 +382,31 @@ impl Model<'_> {
         })
     }
 
-    /// The node of the view in `x1` and `x2`: the text at `x1`, when its length is `x2`.
-    fn view_node(&self, machine: &Machine, arena: &mut Arena) -> u64 {
-        let length = machine.register(2).map(|length| length & 0xffff_ffff);
+    /// The node of a `CPdxStringView` with its text at `text` and its length in the low word of
+    /// `length`: the text's node, when the view's length is the text's length. Text that the model
+    /// wrote for an unresolved node stays unresolved, whatever its length.
+    pub fn view(
+        &self,
+        machine: &Machine,
+        text: Option<u64>,
+        length: Option<u64>,
+        arena: &mut Arena,
+    ) -> u64 {
+        let assumed = text
+            .and_then(|address| machine.labelled(address))
+            .filter(|&node| !arena.node(node).is_resolved());
+        if let Some(node) = assumed {
+            return node;
+        }
+        let length = length.map(|length| length & 0xffff_ffff);
         if length == Some(0) {
             return arena.add(Node::literal(String::new()));
         }
 
-        let node = self.text_node(machine, machine.register(1), arena);
+        let node = self.text_node(machine, text, arena);
         let text_length = arena
             .node(node)
-            .text(self.key)
+            .text(&self.sources)
             .map(|text| text.len() as u64);
         if length.is_some() && text_length == length {
             node
@@ -380,7 +424,7 @@ impl Model<'_> {
         arena: &Arena,
     ) -> Result<Call, Unresolved> {
         let object = object.ok_or(Unresolved::new("string-object"))?;
-        let text = match arena.node(node).text(self.key) {
+        let text = match arena.node(node).text(&self.sources) {
             Some(text) => text,
             None => {
                 machine.label(ASSUMED_TEXT, 1);
@@ -468,7 +512,7 @@ impl Model<'_> {
             ..node
         };
 
-        match node.text(self.key) {
+        match node.text(&self.sources) {
             Some(text) if (text.len() as u64) < capacity => {
                 for (offset, byte) in text.bytes().enumerate() {
                     machine.write(buffer + offset as u64, 1, u64::from(byte));
@@ -601,6 +645,7 @@ mod tests {
     const ASSIGN: u64 = 0x18;
     const COPY: u64 = 0x1c;
     const MOVE_ASSIGN: u64 = 0x20;
+    const FROM_VIEW: u64 = 0x24;
     const LITERAL: u64 = 0x5000;
 
     fn functions() -> StringFunctions {
@@ -610,6 +655,7 @@ mod tests {
             assigns: [ASSIGN].into(),
             copies: [COPY].into(),
             move_assigns: [MOVE_ASSIGN].into(),
+            from_view: [FROM_VIEW].into(),
             ..StringFunctions::default()
         }
     }
@@ -643,7 +689,7 @@ mod tests {
             functions: &functions,
             layout: StringLayout { flag_byte: 0x17 },
             data: &data,
-            key: "key",
+            sources: Sources::key_only("key"),
         };
         let mut machine = Machine::new(&code, &data);
         let mut arena = Arena::default();
@@ -683,6 +729,47 @@ mod tests {
         let assign = [Some(copy), Some(LITERAL), Some(3)];
         let node = call(&model, &mut machine, &mut arena, ASSIGN, assign, copy);
         assert_eq!(node.parts, [Part::Literal("pop".into())]);
+
+        let constructed = machine.allocate(0x18);
+        let view = [Some(constructed), Some(LITERAL), Some(3)];
+        let node = call(
+            &model,
+            &mut machine,
+            &mut arena,
+            FROM_VIEW,
+            view,
+            constructed,
+        );
+        assert_eq!(node.parts, [Part::Literal("pop".into())]);
+    }
+
+    /// The model writes the empty text for an unresolved node; a view of that text with length
+    /// zero is the unresolved node, not the empty text.
+    #[test]
+    fn a_view_of_text_that_the_model_assumed_stays_unresolved() {
+        let code = Code::default();
+        let data = ReadOnlyData::default();
+        let functions = functions();
+        let model = Model {
+            functions: &functions,
+            layout: StringLayout { flag_byte: 0x17 },
+            data: &data,
+            sources: Sources::key_only("key"),
+        };
+        let mut machine = Machine::new(&code, &data);
+        let mut arena = Arena::default();
+        let unknown = machine.reserve(8);
+        let object = machine.allocate(0x18);
+        let view = [Some(object), Some(unknown), Some(4)];
+        call(&model, &mut machine, &mut arena, APPEND_VIEW, view, object);
+        let buffer = machine.read(object, 8).unwrap();
+
+        let node = model.view(&machine, Some(buffer), Some(0), &mut arena);
+        assert!(!arena.node(node).is_resolved());
+
+        let empty = machine.allocate(1);
+        let node = model.view(&machine, Some(empty), Some(0), &mut arena);
+        assert_eq!(arena.node(node).parts, [Part::Literal(String::new())]);
     }
 
     #[test]
@@ -695,7 +782,7 @@ mod tests {
             functions: &functions,
             layout,
             data: &data,
-            key: "key",
+            sources: Sources::key_only("key"),
         };
         let mut machine = Machine::new(&code, &data);
         let mut arena = Arena::default();
@@ -789,7 +876,7 @@ mod tests {
             functions: &functions,
             layout: StringLayout { flag_byte: 0x17 },
             data: &data,
-            key: "key",
+            sources: Sources::key_only("key"),
         };
         let mut machine = Machine::new(&code, &data);
         let mut arena = Arena::default();
@@ -833,7 +920,7 @@ mod tests {
             functions: &functions,
             layout: StringLayout { flag_byte: 0x17 },
             data: &data,
-            key: "key",
+            sources: Sources::key_only("key"),
         };
         let mut machine = Machine::new(&code, &data);
         let mut arena = Arena::default();

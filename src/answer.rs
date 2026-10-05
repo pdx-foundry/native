@@ -306,6 +306,8 @@ pub enum Operation {
     LoadedModifiers,
     /// `Native::dynamic_names`
     DynamicNames,
+    /// `Native::derived_names`
+    DerivedNames,
 }
 
 /// One define whose name and value type the executable reads.
@@ -363,6 +365,7 @@ impl Operation {
         Self::ObserveFixture,
         Self::LoadedModifiers,
         Self::DynamicNames,
+        Self::DerivedNames,
     ];
 
     /// The operation's stable snake_case name, such as `registry_fields`.
@@ -385,6 +388,7 @@ impl Operation {
             Self::ObserveFixture => "observe_fixture",
             Self::LoadedModifiers => "loaded_modifiers",
             Self::DynamicNames => "dynamic_names",
+            Self::DerivedNames => "derived_names",
         }
     }
 
@@ -404,6 +408,7 @@ impl Operation {
                 | Self::OnActions
                 | Self::GameRules
                 | Self::DynamicNames
+                | Self::DerivedNames
         )
     }
 }
@@ -438,7 +443,8 @@ mod operation_tests {
             | Operation::ObserveFixture
             | Operation::LoadedModifiers
             | Operation::DynamicNames
-            | Operation::CheckScript => 17,
+            | Operation::DerivedNames
+            | Operation::CheckScript => 18,
         }
     }
 
@@ -735,16 +741,18 @@ pub struct ModifierFamily {
 
 impl ModifierFamily {
     /// The modifier name that the family gives the item named `key`, or `None` when the name
-    /// would be longer than `name_limit`.
+    /// would be longer than `name_limit`, or when a part is a field, whose text a key does not
+    /// give.
     pub fn name_for(&self, key: &str) -> Option<String> {
         let name: String = self
             .name
             .iter()
             .map(|part| match part {
-                NamePart::Literal(text) => text.as_str(),
-                NamePart::ItemKey => key,
+                NamePart::Literal(text) => Some(text.as_str()),
+                NamePart::ItemKey => Some(key),
+                NamePart::Field(_) => None,
             })
-            .collect();
+            .collect::<Option<_>>()?;
         match self.name_limit {
             Some(limit) if name.len() > limit => None,
             _ => Some(name),
@@ -752,7 +760,7 @@ impl ModifierFamily {
     }
 }
 
-/// One part of a generated modifier name.
+/// One part of a name that the engine composes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum NamePart {
@@ -760,6 +768,61 @@ pub enum NamePart {
     Literal(String),
     /// The key of the item, such as `building_foundry`.
     ItemKey,
+    /// The text of a string field of the item, by its path from the registry's definition, such
+    /// as `["tradition_swap", "name"]`. Modifier families have no field part.
+    Field(Vec<String>),
+}
+
+/// A name that a registry's own code composes from an item key or a field, and looks up or
+/// checks.
+///
+/// Atlas matches `name` to a config naming line (`"$_desc"` is `[ItemKey, Literal("_desc")]`),
+/// `lookup` to `localisation` or `images`, and decides from `on_missing` whether the name is
+/// required. A name that interface code composes is outside this answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DerivedName {
+    /// The parts of the name, in order. At least one part is the item key or a field.
+    pub name: Vec<NamePart>,
+    /// What the engine looks the name up in.
+    pub lookup: NameLookup,
+    /// When the engine looks the name up: [`LookupStage::WhenUsed`](crate::LookupStage::WhenUsed)
+    /// for the registry's own methods that read an item,
+    /// [`LookupStage::OwnerInitialization`](crate::LookupStage::OwnerInitialization) for its
+    /// initialization after reading.
+    pub stage: crate::LookupStage,
+    /// What a name that the lookup does not find gives.
+    pub on_missing: MissingName,
+    /// The stored field values under which the engine composes the name. Unresolved terms stand
+    /// for run-time choices, such as which swap the engine selects.
+    pub condition: crate::FieldCondition,
+}
+
+/// What a derived name is looked up in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum NameLookup {
+    /// The localisation keys.
+    Localization,
+    /// The interface sprites (`GFX_` names).
+    Sprite,
+    /// The game's files.
+    File,
+}
+
+/// What the engine does when a derived name is missing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum MissingName {
+    /// The text shows the name itself, and the engine writes no diagnostic.
+    ShowsKey,
+    /// The engine skips the name and writes no diagnostic.
+    Silent,
+    /// The engine writes a diagnostic that names the missing name.
+    Diagnostic,
+    /// The engine uses this other derived name in its place, in the same lookup.
+    Fallback(Vec<NamePart>),
+    /// Not established; a gap names the name.
+    Unresolved,
 }
 
 /// Whether every item of a registry generates a modifier family.

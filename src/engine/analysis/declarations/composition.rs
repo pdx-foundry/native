@@ -23,7 +23,7 @@ use super::{DeclarationInput, Function, Site, decode, scopes, split_documentatio
 use crate::engine::analysis::{
     decode::Instruction,
     evaluate::{Call, Code, Exit, Machine, PATH_LIMIT, ReadOnlyData},
-    families::{Arena, Effect, Model, StringFunctions, StringLayout},
+    families::{Arena, Effect, Model, Sources, StringFunctions, StringLayout},
     stop::Unresolved,
 };
 
@@ -179,7 +179,7 @@ impl<'a> Composer<'a> {
                 functions: &composition.strings,
                 layout: composition.layout,
                 data: &composition.data,
-                key: "",
+                sources: Sources::key_only(""),
             },
         };
         let mut arena = Arena::default();

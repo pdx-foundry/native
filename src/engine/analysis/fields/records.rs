@@ -278,6 +278,9 @@ pub struct ObjectReader {
     pub moving_insert: Vec<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.
     pub data_offset: Option<u64>,
+    /// Byte offset of the element count within the collection, if proven.
+    #[serde(default)]
+    pub count_offset: Option<u64>,
     /// The persistent reader at the object's primary address point.
     #[serde(default)]
     pub reader: Option<PointReader>,
@@ -292,6 +295,8 @@ pub struct CollectionField {
     pub offset: u64,
     /// Buffer-pointer byte offset relative to the collection, if proven.
     pub data_offset: Option<u64>,
+    /// Element-count byte offset relative to the collection, if proven.
+    pub count_offset: Option<u64>,
     /// Demangled class name of the inserted object.
     pub class: String,
     /// The inserted object's reader when its family has a block grammar. Such a collection

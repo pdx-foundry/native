@@ -239,9 +239,11 @@ fn collect_objects(
         .into_iter()
         .filter(|&start| clears_moved_source_at(bytes, symbols, start).unwrap_or(false))
         .collect();
-        let data_offset = array_data_offset(bytes, symbols, &insert)?;
+        let data_offset = array_member_offset(bytes, symbols, &insert, array_pointer_offsets)?;
+        let count_offset = array_member_offset(bytes, symbols, &insert, array_count_offsets)?;
         objects.push(ObjectReader {
             data_offset,
+            count_offset,
             constructors: symbols
                 .iter()
                 .filter(|symbol| super::receivers::constructor_class(&symbol.name) == Some(&class))
@@ -518,12 +520,14 @@ fn collect_owner_methods(
     Ok(())
 }
 
-/// The insertion specialization loads one pointer member through its preserved receiver.
-/// Refuse ambiguous offsets, unfamiliar receiver copies, or an absent specialization.
-fn array_data_offset(
+/// The one offset of an array member that `find` reads from every insertion specialization, such
+/// as the pointer member that the specialization loads through its preserved receiver. Refuse
+/// ambiguous offsets, unfamiliar receiver copies, or an absent specialization.
+fn array_member_offset(
     bytes: &[u8],
     symbols: &[Symbol],
     inserts: &[u64],
+    find: fn(&[crate::engine::analysis::decode::Instruction]) -> Option<BTreeSet<u64>>,
 ) -> Result<Option<u64>, AnalysisError> {
     let mut offsets = BTreeSet::new();
     for &start in inserts {
@@ -541,7 +545,7 @@ fn array_data_offset(
         let code = super::code_range(bytes, start, end - start)?;
         let rows = crate::engine::analysis::decode::decode_arm64(&code, start)
             .map_err(|_| AnalysisError::InvalidRange)?;
-        let Some(found) = array_pointer_offsets(&rows) else {
+        let Some(found) = find(&rows) else {
             return Ok(None);
         };
         offsets.extend(found);
@@ -549,9 +553,104 @@ fn array_data_offset(
     Ok((offsets.len() == 1).then(|| *offsets.first().unwrap()))
 }
 
+/// The offsets of the pointer members that the specialization loads through its receiver.
 fn array_pointer_offsets(
     rows: &[crate::engine::analysis::decode::Instruction],
 ) -> Option<BTreeSet<u64>> {
+    let states = receiver_states(rows)?;
+    Some(
+        rows.iter()
+            .zip(states)
+            .filter_map(|(row, state)| pointer_member_offset(row, &state?))
+            .collect(),
+    )
+}
+
+/// The offsets of the 32-bit members that the specialization increments: it loads the word
+/// through its receiver, adds one, and stores the sum back at the same offset. The array's count
+/// is such a member. The scan reads the instructions in address order.
+fn array_count_offsets(
+    rows: &[crate::engine::analysis::decode::Instruction],
+) -> Option<BTreeSet<u64>> {
+    let states = receiver_states(rows)?;
+    let mut loaded: BTreeMap<String, u64> = BTreeMap::new();
+    let mut incremented: BTreeMap<String, u64> = BTreeMap::new();
+    let mut counts = BTreeSet::new();
+    for (row, receivers) in rows.iter().zip(states) {
+        let receivers = receivers.unwrap_or_default();
+        let parts: Vec<&str> = row.operands.split(',').collect();
+        let member = |base: &str, offset: Option<&&str>| {
+            let base = base.strip_prefix('[')?;
+            let offset =
+                offset.map_or(Some(0), |offset| parse_offset(offset.trim_end_matches(']')))?;
+            receivers
+                .contains(base.trim_end_matches(']'))
+                .then_some(offset)
+        };
+        let mut words: Vec<(String, u64)> = Vec::new();
+        let mut sum = None;
+        match (row.operation.as_str(), parts.as_slice()) {
+            ("ldr", [destination, base, offset @ ..]) if destination.starts_with('w') => {
+                words.extend(member(base, offset.first()).map(|at| (destination.to_string(), at)));
+            }
+            ("ldp", [first, second, base, offset @ ..]) if first.starts_with('w') => {
+                if let Some(at) = member(base, offset.first()) {
+                    words.push((first.to_string(), at));
+                    words.push((second.to_string(), at + 4));
+                }
+            }
+            ("sxtw" | "mov", [destination, source]) => {
+                let source = format!("w{}", &source[1..]);
+                if let Some(&at) = loaded.get(&source) {
+                    words.push((format!("w{}", &destination[1..]), at));
+                }
+            }
+            ("add", [destination, source, "#1"]) if destination.starts_with('w') => {
+                sum = loaded.get(*source).map(|&at| (destination.to_string(), at));
+            }
+            ("str", [value, base, offset @ ..]) => {
+                let at = member(base, offset.first());
+                if at.is_some() && incremented.get(*value) == at.as_ref() {
+                    counts.extend(at);
+                }
+            }
+            ("stp", [first, second, base, offset @ ..]) => {
+                if let Some(at) = member(base, offset.first()) {
+                    if incremented.get(*first) == Some(&at) {
+                        counts.insert(at);
+                    }
+                    if incremented.get(*second) == Some(&(at + 4)) {
+                        counts.insert(at + 4);
+                    }
+                }
+            }
+            _ => {}
+        }
+        for register in super::families::written_registers(&row.operation, &row.operands) {
+            loaded.remove(&format!("w{register}"));
+            incremented.remove(&format!("w{register}"));
+        }
+        loaded.extend(words);
+        incremented.extend(sum);
+    }
+    Some(counts)
+}
+
+/// An immediate offset such as `#0x14`.
+fn parse_offset(operand: &str) -> Option<u64> {
+    let digits = operand.strip_prefix('#')?;
+    match digits.strip_prefix("0x") {
+        Some(hex) => u64::from_str_radix(hex, 16).ok(),
+        None => digits.parse().ok(),
+    }
+}
+
+/// For each instruction, the registers that hold the specialization's receiver before it runs:
+/// `x0` at entry and its copies, joined across branches. `None` when the flow leaves through a
+/// register or exceeds its bound.
+fn receiver_states(
+    rows: &[crate::engine::analysis::decode::Instruction],
+) -> Option<Vec<Option<BTreeSet<String>>>> {
     if rows.is_empty() {
         return None;
     }
@@ -617,12 +716,7 @@ fn array_pointer_offsets(
             }
         }
     }
-    Some(
-        rows.iter()
-            .zip(states)
-            .filter_map(|(row, state)| pointer_member_offset(row, &state?))
-            .collect(),
-    )
+    Some(states)
 }
 
 fn pointer_member_offset(
@@ -699,6 +793,38 @@ mod tests {
         assert_eq!(sections[0].address, 0x1_0000_3000);
         assert_eq!(sections[0].bytes, IMAGE_JUMP_TABLE);
     }
+    /// The shape of the pointer insertion specialization: the count at `+0x14` is incremented
+    /// on the path that has room and on the path that grows the buffer.
+    #[test]
+    fn the_count_is_the_word_that_an_insertion_loads_increments_and_stores_back() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let counts = |code: Vec<u8>| array_count_offsets(&decode_arm64(&code, 0x1000).unwrap());
+        let insertion = arm64!(at 0x1000;
+            mov x19, x0;
+            ldp w8, w25, [x0, #0x10];
+            sxtw x25, w25;
+            cmp w25, w8;
+            b.ne extern 0x1020;
+            add w26, w25, #1;
+            stp w8, w26, [x19, #0x10];
+            ret;
+            ldr x8, [x19, #8]; // 0x1020: room for one more
+            add w10, w25, #1;
+            str w10, [x19, #0x14];
+            ret
+        );
+        let other_word = arm64!(at 0x1000;
+            ldr w8, [x0, #0x10];
+            add w9, w8, #1;
+            str w9, [x0, #0x14];
+            ret
+        );
+
+        assert_eq!(counts(insertion), Some(BTreeSet::from([0x14])));
+        assert_eq!(counts(other_word), Some(BTreeSet::new()));
+    }
+
     #[test]
     fn a_moving_insertion_must_clear_its_source_on_every_return() {
         use crate::engine::analysis::assembler::arm64;

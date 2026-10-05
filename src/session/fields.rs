@@ -1197,6 +1197,7 @@ mod tests {
                 token: 5,
                 offset: 0x20,
                 data_offset: None,
+                count_offset: None,
                 class: "CEntry".into(),
                 reader: None,
                 fields: Box::new(child),
