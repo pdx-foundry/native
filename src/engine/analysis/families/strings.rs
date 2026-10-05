@@ -37,6 +37,9 @@ pub struct StringFunctions {
     /// The standard string's `__assign_external(char const*, unsigned long)`: the object in
     /// `x0`, the text in `x1` and its length in `x2`. It only reads the text.
     pub assigns: BTreeSet<u64>,
+    /// The standard string's `__move_assign(basic_string&, false_type)`: the object in `x0`, the
+    /// source object in `x1`. The object takes the source's text and the source becomes empty.
+    pub move_assigns: BTreeSet<u64>,
     /// `PdxStrFmt<N>::PdxStrFmt(char const*, ...)`, with the buffer capacity `N`: the buffer in
     /// `x0`, the format in `x1`, and the arguments on the stack.
     pub formatters: BTreeMap<u64, u64>,
@@ -76,6 +79,7 @@ impl StringFunctions {
         self.composes(target)
             || [
                 &self.assigns,
+                &self.move_assigns,
                 &self.allocators,
                 &self.array_allocators,
                 &self.releases,
@@ -283,6 +287,8 @@ impl Model<'_> {
                 Some(object) => self.build(machine, Some(object), text, arena)?,
                 None => Call::Return(None),
             }
+        } else if functions.move_assigns.contains(&target) {
+            self.move_assign(machine, arena)?
         } else if let Some(&capacity) = functions.formatters.get(&target) {
             self.format(machine, capacity, arena)?
         } else if functions.allocators.contains(&target) {
@@ -398,6 +404,34 @@ impl Model<'_> {
         // The object now holds a long string, so a short string's label on it is stale.
         machine.unlabel(object);
         Ok(Call::Return(Some(object)))
+    }
+
+    /// The standard string's move assignment from the object in `x1` to the object in `x0`. The
+    /// engine takes the source's bytes, so the object holds the source's text in the source's
+    /// form, and leaves the source as the empty short string: a zero flag byte and a zero first
+    /// byte. A short source's label moves to the object; a long source's label stays at its
+    /// buffer, which the object now points to. An unresolved source gives an unresolved object.
+    ///
+    /// The engine moves only when both strings have the same allocator state; the model assumes
+    /// it. `docs/native/modifier-families.md` holds that limit and the condition for a change.
+    fn move_assign(&self, machine: &mut Machine, arena: &mut Arena) -> Result<Call, Unresolved> {
+        let object = machine.known_register(0, "string-object")?;
+        let source = machine.known_register(1, "string-object")?;
+        let short_label = machine.labelled(source);
+
+        machine.copy_bytes(object, source, self.layout.flag_byte + 1);
+        match short_label {
+            Some(node) => machine.label(object, node),
+            None => machine.unlabel(object),
+        }
+
+        machine.write(source, 1, 0);
+        machine.write(source + self.layout.flag_byte, 1, 0);
+        // A label on the object, not the zero flag byte, makes the source empty: the first word
+        // still holds most of the old buffer pointer, which may be labelled.
+        let empty = arena.add(Node::literal(String::new()));
+        machine.label(source, empty);
+        Ok(Call::Return(None))
     }
 
     fn append(
@@ -566,6 +600,7 @@ mod tests {
     const APPEND_CHARACTER: u64 = 0x14;
     const ASSIGN: u64 = 0x18;
     const COPY: u64 = 0x1c;
+    const MOVE_ASSIGN: u64 = 0x20;
     const LITERAL: u64 = 0x5000;
 
     fn functions() -> StringFunctions {
@@ -574,6 +609,7 @@ mod tests {
             append_character: [APPEND_CHARACTER].into(),
             assigns: [ASSIGN].into(),
             copies: [COPY].into(),
+            move_assigns: [MOVE_ASSIGN].into(),
             ..StringFunctions::default()
         }
     }
@@ -647,6 +683,79 @@ mod tests {
         let assign = [Some(copy), Some(LITERAL), Some(3)];
         let node = call(&model, &mut machine, &mut arena, ASSIGN, assign, copy);
         assert_eq!(node.parts, [Part::Literal("pop".into())]);
+    }
+
+    #[test]
+    fn a_move_assignment_gives_the_object_the_source_text_and_empties_the_source() {
+        let code = Code::default();
+        let data = ReadOnlyData::new(vec![(LITERAL, b"pop\0".to_vec())]);
+        let functions = functions();
+        let layout = StringLayout { flag_byte: 0x17 };
+        let model = Model {
+            functions: &functions,
+            layout,
+            data: &data,
+            key: "key",
+        };
+        let mut machine = Machine::new(&code, &data);
+        let mut arena = Arena::default();
+        let empty = [Part::Literal(String::new())];
+
+        let long = machine.allocate(0x18);
+        call(
+            &model,
+            &mut machine,
+            &mut arena,
+            ASSIGN,
+            [Some(long), Some(LITERAL), Some(3)],
+            long,
+        );
+        let object = machine.allocate(0x18);
+        let node = call(
+            &model,
+            &mut machine,
+            &mut arena,
+            MOVE_ASSIGN,
+            [Some(object), Some(long), None],
+            object,
+        );
+        assert_eq!(node.parts, [Part::Literal("pop".into())]);
+        let buffer = machine.read(object, 8).unwrap();
+        assert_eq!(known_text(&machine, buffer), Some(b"pop".to_vec()));
+        let source = model.object_node(&machine, Some(long), &mut arena);
+        assert_eq!(arena.node(source).parts, empty);
+        assert_eq!(machine.read(long + layout.flag_byte, 1), Some(0));
+
+        let short = machine.allocate(0x18);
+        for (offset, byte) in b"war".iter().enumerate() {
+            machine.write(short + offset as u64, 1, u64::from(*byte));
+        }
+        machine.write(short + layout.flag_byte, 1, 3);
+        let war = arena.add(Node::literal("war".into()));
+        machine.label(short, war);
+        let node = call(
+            &model,
+            &mut machine,
+            &mut arena,
+            MOVE_ASSIGN,
+            [Some(object), Some(short), None],
+            object,
+        );
+        assert_eq!(node.parts, [Part::Literal("war".into())]);
+        assert_eq!(known_text(&machine, object), Some(b"war".to_vec()));
+        let source = model.object_node(&machine, Some(short), &mut arena);
+        assert_eq!(arena.node(source).parts, empty);
+
+        let unknown = machine.reserve(0x18);
+        let node = call(
+            &model,
+            &mut machine,
+            &mut arena,
+            MOVE_ASSIGN,
+            [Some(object), Some(unknown), None],
+            object,
+        );
+        assert!(!node.is_resolved());
     }
 
     /// Fresh memory that holds `text` and its terminator, labelled with a new literal node.

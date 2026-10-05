@@ -41,6 +41,8 @@ pub(super) fn never_return(symbols: &[Symbol]) -> BTreeSet<u64> {
 
 const ASSIGN_TEXT: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
 
+const MOVE_ASSIGN: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__move_assign(std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>&, std::__1::integral_constant<bool, false>)";
+
 const DEFINITIONS: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions";
 
 /// The post-read functions that the engine runs for a content object.
@@ -835,7 +837,7 @@ enum CallKind {
     /// A string function that composes text: a constructor from text, an append, a reserve or
     /// a formatter.
     Composing,
-    /// Another function that the model follows: memory, length and copy functions.
+    /// Another function that the model follows: memory, length, copy and assignment functions.
     Modelled,
     /// The function's own out-of-line part, which only unwinding reaches.
     OwnColdPart,
@@ -868,9 +870,9 @@ fn call_kind(names: &Names, strings: &StringFunctions, function: u64, call: Call
 
 /// A composer is a leaf, or composes text with the string functions. It calls nothing that the
 /// model does not follow, other than its own out-of-line parts and functions that never return.
-/// A function that only calls memory and copy functions, such as the standard string's own
-/// assignment, is not a composer: it writes through the object's buffer pointer, which is often
-/// unknown, and such a store makes every known byte unknown.
+/// A function that only calls memory and copy functions, such as the standard string's
+/// `__assign_no_alias`, is not a composer: it writes through the object's buffer pointer, which
+/// is often unknown, and such a store makes every known byte unknown.
 fn is_composer(calls: &[CallKind]) -> bool {
     let followed = calls.iter().all(|kind| *kind != CallKind::Other);
     let leaf = calls
@@ -973,6 +975,7 @@ pub(super) fn string_functions(symbols: &[Symbol]) -> StringFunctions {
         append_character: named("CString::operator+=(char)"),
         reserves: named("CString::Reserve(unsigned int)"),
         assigns: named(ASSIGN_TEXT),
+        move_assigns: named(MOVE_ASSIGN),
         formatters,
         allocators: named("CPdxCommonStringAllocator::allocate(unsigned long, void const*)"),
         array_allocators: named("operator new[](unsigned long)"),
@@ -1144,6 +1147,7 @@ mod tests {
             symbol(0x900, "CTag::Build(CPdxStringView) [clone .cold.1]"),
             symbol(0x980, "COther::Build(CPdxStringView) (.cold.1)"),
             symbol(0xa00, "CString::Reserve(unsigned int)"),
+            symbol(0xb00, MOVE_ASSIGN),
         ];
         let names = Names::new(&symbols);
         let strings = string_functions(&symbols);
@@ -1151,6 +1155,7 @@ mod tests {
         assert_eq!(kind(0x900), OwnColdPart);
         assert_eq!(kind(0x980), Other);
         assert_eq!(kind(0xa00), Composing);
+        assert_eq!(kind(0xb00), Modelled);
         assert_eq!(call_kind(&names, &strings, 0x100, Call::Indirect), Other);
     }
 
