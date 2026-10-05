@@ -128,7 +128,7 @@ The compact selections are in `tests/expected/m451/triggered-modifiers.json`.
 - Repeat behavior of the whole field stays the collection's `Accumulate`, with the field's repeat
   gap; occurrence bounds are not established.
 - Condition timing, how a multiplier scales the modifier and where it takes effect are runtime
-  behavior (SDK-547).
+  behavior (see [modifier masks](modifier-masks.md#gaps)).
 
 ## Pitfalls
 

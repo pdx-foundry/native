@@ -23,6 +23,7 @@ let grammar = native.command_grammar(DeclarationKind::Effect, "random_list")?;
 let modifiers = native.modifiers()?;                        // Answer<Vec<ModifierDeclaration>>
 let categories = native.modifier_categories()?;             // Answer<Vec<ModifierCategory>>
 let families = native.modifier_families("common/bypass")?;  // Answer<Vec<ModifierFamily>>
+let nodes = native.modifier_nodes()?;                       // Answer<Vec<ModifierNode>>
 let scopes = native.scopes()?;                              // Answer<ScopeInventory>
 let links = native.scope_links()?;                          // Answer<Vec<ScopeLink>>
 let localization = native.localization_declarations()?;     // Answer<LocalizationDeclarations>
@@ -211,6 +212,7 @@ command_grammar/effect/random_list.json
 modifiers.json
 modifier_categories.json
 modifier_families/common/bypass.json
+modifier_nodes.json
 scopes.json
 scope_links.json
 localization_declarations.json

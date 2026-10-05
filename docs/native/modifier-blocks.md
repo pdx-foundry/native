@@ -83,7 +83,7 @@ Root fields without persistent joins, nested `tradition_swap.modifier` and comma
 are unchanged. Triggered modifier clauses embed these blocks; their join is on the [triggered
 modifiers](triggered-modifiers.md) page. This answer does not establish repeat or
 duplicate behavior, icon post-read validation, deferred completion, localisation-key existence,
-authored-entry storage, or runtime effects (SDK-547).
+authored-entry storage, or runtime effects (see [modifier masks](modifier-masks.md#gaps)).
 
 Findings of the SDK-498 prototype that the method does not report:
 
