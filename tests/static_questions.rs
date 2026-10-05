@@ -5,8 +5,8 @@ use parity::*;
 
 use pdx_native::internals::registry_field_stops::{FieldGap, TokenPath, Unresolved};
 use pdx_native::internals::{
-    COMMAND_GRAMMAR_METHOD, DEFINES_METHOD, DYNAMIC_NAMES_METHOD, command_grammar_stops,
-    registry_field_stops, trace_causes,
+    COMMAND_GRAMMAR_METHOD, DEFINES_METHOD, DERIVED_NAMES_METHOD, DYNAMIC_NAMES_METHOD,
+    command_grammar_stops, registry_field_stops, trace_causes,
 };
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags,
@@ -488,6 +488,140 @@ fn modifier_families_match_the_recorded_m451_generators() {
 
     assert!(matches!(
         native.modifier_families("common/not_a_registry"),
+        Err(Error::UnknownRegistry { .. })
+    ));
+}
+
+/// Names checked by hand against the M451-hotfix tradition and tradition category getters and
+/// `CTraditionType::PostReadInit` (`docs/native/derived-names.md`).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
+    use pdx_native::{DerivedName, FieldCondition, MissingName, NameLookup, NamePart, Support};
+
+    let native = native();
+    assert_eq!(native.supports(Operation::DerivedNames), Support::Supported);
+    for (registry, _) in DERIVED_NAME_FILES {
+        let answer = native.derived_names(registry).unwrap();
+        assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+        assert_eq!(answer.source.method, DERIVED_NAMES_METHOD);
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::OutsideMethod)
+        );
+        for name in &answer.value {
+            assert_eq!(name.lookup, NameLookup::Localization, "{name:?}");
+            let fixed = name
+                .name
+                .iter()
+                .all(|part| matches!(part, NamePart::Literal(_)));
+            assert!(!fixed, "a fixed key is not a derived name: {name:?}");
+        }
+    }
+
+    let text = |text: &str| NamePart::Literal(text.into());
+    let field = |path: &[&str]| NamePart::Field(path.iter().map(|part| part.to_string()).collect());
+    let zero = |path: &[&str], zero: bool| FieldCondition::FieldZero {
+        path: path.iter().map(|part| part.to_string()).collect(),
+        zero,
+    };
+    let find = |names: &[DerivedName], parts: Vec<NamePart>, stage, on_missing| -> DerivedName {
+        names
+            .iter()
+            .find(|name| name.name == parts && name.stage == stage && name.on_missing == on_missing)
+            .unwrap_or_else(|| panic!("{parts:?} {stage:?} {on_missing:?} in {names:#?}"))
+            .clone()
+    };
+    let terms = |name: &DerivedName| match &name.condition {
+        FieldCondition::All(terms) => terms.clone(),
+        other => panic!("{:?} has condition {other:?}", name.name),
+    };
+
+    let traditions = native.derived_names("common/traditions").unwrap().value;
+    let base = find(
+        &traditions,
+        vec![NamePart::ItemKey],
+        LookupStage::WhenUsed,
+        MissingName::ShowsKey,
+    );
+    assert_eq!(base.condition, FieldCondition::Always);
+    let swap_name = find(
+        &traditions,
+        vec![field(&["tradition_swap", "name"])],
+        LookupStage::WhenUsed,
+        MissingName::Unresolved,
+    );
+    assert!(terms(&swap_name).contains(&FieldCondition::Unresolved));
+    assert!(terms(&swap_name).contains(&zero(&["tradition_swap", "inherit_name"], true)));
+    for suffix in ["_desc", "_delayed"] {
+        let swap_desc = find(
+            &traditions,
+            vec![field(&["tradition_swap", "name"]), text(suffix)],
+            LookupStage::WhenUsed,
+            MissingName::Unresolved,
+        );
+        assert!(terms(&swap_desc).contains(&zero(&["tradition_swap", "name"], false)));
+        find(
+            &traditions,
+            vec![NamePart::ItemKey, text(suffix)],
+            LookupStage::WhenUsed,
+            MissingName::Silent,
+        );
+    }
+    for path in [
+        &["custom_tooltip"][..],
+        &["custom_tooltip_with_modifiers"],
+        &["tradition_swap", "custom_tooltip"],
+        &["tradition_swap", "custom_tooltip_with_modifiers"],
+    ] {
+        let tooltip = find(
+            &traditions,
+            vec![field(path)],
+            LookupStage::OwnerInitialization,
+            MissingName::Unresolved,
+        );
+        assert!(terms(&tooltip).contains(&zero(path, false)));
+    }
+    assert!(
+        traditions
+            .iter()
+            .filter(|name| name
+                .name
+                .iter()
+                .any(|part| matches!(part, NamePart::Field(_))))
+            .all(|name| name.condition != FieldCondition::Always
+                && name.on_missing == MissingName::Unresolved),
+        "a field-derived name is never unconditional and has no established miss behavior"
+    );
+
+    let categories = native
+        .derived_names("common/tradition_categories")
+        .unwrap()
+        .value;
+    let base = find(
+        &categories,
+        vec![NamePart::ItemKey],
+        LookupStage::WhenUsed,
+        MissingName::ShowsKey,
+    );
+    assert_eq!(base.condition, FieldCondition::Always);
+    let desc = find(
+        &categories,
+        vec![NamePart::ItemKey, text("_desc")],
+        LookupStage::WhenUsed,
+        MissingName::ShowsKey,
+    );
+    assert_ne!(
+        desc.condition,
+        FieldCondition::Always,
+        "the description block decides"
+    );
+
+    assert!(matches!(
+        native.derived_names("common/not_a_registry"),
         Err(Error::UnknownRegistry { .. })
     ));
 }

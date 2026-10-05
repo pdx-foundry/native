@@ -99,10 +99,13 @@ Milestone 4 completes only when all of these hold:
 
 **Use-time inheritance.** Tradition inheritance affects the names and icons
 selected at use time, although the parser reads the fields without those tests. SDK-541 retains
-the inheritance condition-to-field extraction; SDK-546 depends on it for conditional naming
-templates. SDK-597 must preserve the processing stage and unresolved context. This is not a
-new exclusion from SDK-600. The exact-build findings and remaining work are in
-[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance-m45-release).
+the inheritance condition-to-field extraction. `Native::derived_names` (SDK-546) uses it: the
+swap's name carries `inherit_name` as a field condition, and the swap tooltips carry
+`inherit_effects`. The tradition icon (`GFX_` and the key) is composed by interface code, outside
+that method. SDK-597 must preserve the processing stage and unresolved context. This is not a new
+exclusion from SDK-600. The exact-build findings and remaining work are in
+[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance-m45-release)
+and [derived names](native/derived-names.md).
 
 ## Release and later work
 

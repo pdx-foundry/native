@@ -32,6 +32,7 @@ check a method in one task.
 | `Native::on_actions`, `Native::game_rules` | `callbacks/v2` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
 | `Native::defines` | `defines/v1` | `defines.rs` | [Defines](engine-commands.md#defines) |
 | `Native::modifier_families` | `modifier-families/v3` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `families/strings.rs` | [Generation calls and roots](modifier-families.md#engine-code-m45-release) |
+| `Native::derived_names` | `derived-names/v1` | `names.rs`, `families/strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
 ## Read-time block scopes (SDK-549)
@@ -149,3 +150,22 @@ The shared fixes change other answers on the same build:
   weight fields.
 - **`common/agreement_term_values.triggered_desc`.** The object is built by a factory, so the field
   now reports its child fields.
+
+## Derived names (SDK-546)
+
+`Native::derived_names` gives the names that a registry's own `const` members and post-read
+initialization compose from the item key or a string field and then check or look up in the
+localisation keys, the sprites or the files. Search runs with unknown item memory establish the
+key-only names and their conditions; template runs with planted field text recover field parts.
+The [derived names](derived-names.md) page has the engine facts, the full gap shapes, the config
+agreement and the pitfalls.
+
+**Full inventory, M451-hotfix.** The inventory is every registry from `Native::registries()`.
+
+| Inventory | Total | Complete | Partial | Failed |
+| --- | ---: | ---: | ---: | ---: |
+| Registries | 164 | 62 | 102 | 0 |
+
+Eighty-five registries return names, and all of them are partial; the complete answers return
+no name. The [derived names](derived-names.md#population) page has the gap shapes, the entry
+counts and the findings.

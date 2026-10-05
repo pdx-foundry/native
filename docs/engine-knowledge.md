@@ -23,6 +23,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Modifier blocks | [Modifier blocks](native/modifier-blocks.md) | Shared fixed keys, entry forms, reader gaps and prototype findings on modifier fields |
 | Weight blocks | [Weight blocks](native/weight-blocks.md) | The mean-time reader's keys, arithmetic operations, entry readers, stored scope and the method's pitfalls |
 | Triggered modifiers | [Triggered modifiers](native/triggered-modifiers.md) | The clause reader's keys, its embedded modifier, the delegate slot, scoped-pointer collections and branch-island stubs |
+| Derived localisation and sprite names | [Derived names](native/derived-names.md) | Lookup and check functions, the stated rule for an unchecked miss, tradition, category and agenda getters, the population result, config agreement and the method's pitfalls |
 | Generated modifiers | [Modifier families](native/modifier-families.md) | Generation calls and roots, item keys, the per-item post-read call and the loaded modifier table |
 | Information in engine errors | [Diagnostic survey](native/diagnostic-survey.md) | Exact-build scope, Boolean, key, target and reference messages; ordinary-log and source-filter gaps |
 | Observe the game before it parses content | [Early observations](native/early-observations.md) | Loader-entry attachment, registry items at loader return, fixture parsing and storage, loader and destination pitfalls |
