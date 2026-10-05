@@ -397,31 +397,71 @@ fn a_check_whose_miss_skips_the_name_is_silent() {
     assert_eq!(name.condition, Condition::Always);
 }
 
-/// The `GetDesc` shape: the field's name with a suffix is checked; when it is missing, the key
-/// with the suffix replaces it in one string, which one check and one lookup then use. A path
-/// that skips the field (`STATE` zero) uses the key's name at once.
+/// The `GetDesc` shape on names of the key: one name is checked; when it is missing, another
+/// name replaces it in one string, which one check and one lookup then use.
 #[test]
 fn a_missing_name_that_another_name_replaces_at_the_same_sites_falls_back() {
     let mut code = root(0);
-    arm64!(code; ldrb w8, [x19, #STATE]; cbz w8, ->base);
-    compose(&mut code, 0x20, NAME, Some(DESC));
-    use_stack(&mut code, 0x20, CHECK);
-    arm64!(code; tbnz w0, #0, ->use_name; ->base:);
     compose(&mut code, 0x20, KEY, Some(DESC));
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; tbnz w0, #0, ->use_name);
+    compose(&mut code, 0x20, KEY, Some(DELAYED));
     arm64!(code; ->use_name:);
     use_stack(&mut code, 0x20, CHECK);
     arm64!(code; tbz w0, #0, ->done);
     use_stack(&mut code, 0x20, LOOKUP);
     arm64!(code; ->done:; ret);
 
+    let result = analyze_root(code, &Storage::default());
+
+    let first = named(&result, &key_desc());
+    assert_eq!(first.on_missing, Miss::Fallback(key_delayed()));
+    assert_eq!(first.condition, Condition::Always);
+    let replacement = named(&result, &key_delayed());
+    assert_eq!(replacement.on_missing, Miss::Silent);
+    assert_eq!(replacement.condition, Condition::Unresolved);
+}
+
+/// A field's name replaces the same way, but a template run plants one state for every field and
+/// explores no miss path that depends on another field, so its miss behavior is unresolved.
+#[test]
+fn a_name_with_a_field_part_has_an_unresolved_miss() {
+    let mut code = root(0);
+    compose(&mut code, 0x20, NAME, Some(DESC));
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; tbnz w0, #0, ->use_name);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    arm64!(code; ->use_name:);
+    use_stack(&mut code, 0x20, LOOKUP);
+    arm64!(code; ret);
+
     let result = analyze_root(code, &name_storage());
 
     let swap = named(&result, &[field(&["name"]), literal("_desc")]);
-    assert_eq!(swap.on_missing, Miss::Fallback(key_desc()));
+    assert_eq!(swap.on_missing, Miss::Unresolved);
     assert_eq!(swap.condition, unresolved_field_condition(&["name"]));
-    let base = named(&result, &key_desc());
-    assert_eq!(base.on_missing, Miss::Silent);
-    assert_eq!(base.condition, Condition::Unresolved);
+}
+
+/// The key is checked; a missing key logs the key with a suffix, which holds the key's text but
+/// is another name.
+#[test]
+fn a_log_of_a_longer_name_is_no_diagnostic_for_the_shorter_one() {
+    let mut code = root(0);
+    use_object(&mut code, KEY, CHECK);
+    arm64!(code; tbnz w0, #0, ->found);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    arm64!(code; add x0, sp, #0x20);
+    code.call(VIEW);
+    arm64!(code; str x0, [sp]);
+    code.address(1, MISSING).call(LOG);
+    arm64!(code; ->found:; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert_ne!(
+        named(&result, &[Part::ItemKey]).on_missing,
+        Miss::Diagnostic
+    );
 }
 
 /// The name is checked and the result ignored; content then chooses the name or another one for
@@ -664,7 +704,7 @@ fn a_field_copied_inline_appended_and_moved_names_its_field() {
     let result = analyze_root(code, &name_storage());
 
     let name = named(&result, &[field(&["name"]), literal("_desc")]);
-    assert_eq!(name.on_missing, Miss::ShowsKey);
+    assert_eq!(name.on_missing, Miss::Unresolved);
     assert_eq!(name.condition, unresolved_field_condition(&["name"]));
 }
 

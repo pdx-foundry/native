@@ -33,7 +33,10 @@
 //! or lookup site that uses the name when it is found and another derived name when it is missing
 //! gives a fallback; a diagnostic that only the missing paths write and that receives the name's
 //! text gives a diagnostic; missing paths that do nothing more with the name are silent. A name
-//! that no path checks before its lookup gets the lookup function's stated rule.
+//! that no path checks before its lookup gets the lookup function's stated rule. Only search runs
+//! give a miss behavior: a name with a field part has an unresolved one, since a template run
+//! plants one state for every string field and does not explore a miss path that depends on
+//! another field.
 //!
 //! The model writes unresolved text as the empty text, so that the code runs on. A path's events
 //! after that point establish no condition and no miss behavior, and a search path that goes on
@@ -721,8 +724,14 @@ impl Analysis<'_> {
                     Kind::Search => key_condition(&name, &kind_runs, flags, every_item),
                     Kind::Template => field_condition(&name, &kind_runs, flags),
                 };
+                // A template run plants one state for every string field, so a miss path that
+                // depends on another field's state is never explored.
+                let on_missing = match kind {
+                    Kind::Search => miss_behavior(&name, &kind_runs),
+                    Kind::Template => Miss::Unresolved,
+                };
                 names.push(Name {
-                    on_missing: miss_behavior(&name, &kind_runs),
+                    on_missing,
                     parts: name.0,
                     target: name.1,
                     stage: root.stage,
@@ -1400,9 +1409,22 @@ fn after_check<'a>(
         .skip(1)
 }
 
-/// Whether one of the derived texts is the name's text, or a message that holds it.
+/// Whether one of the derived texts is the name's text, or a message that holds it as a whole
+/// name: with no key character directly before or after it. The text of `{key}_desc` holds the
+/// key's text, but does not name the key.
 fn receives(texts: &[String], text: &str) -> bool {
-    texts.iter().any(|received| received.contains(text))
+    texts.iter().any(|received| {
+        received.match_indices(text).any(|(start, _)| {
+            let before = received[..start].chars().next_back();
+            let after = received[start + text.len()..].chars().next();
+            !before.is_some_and(is_key_character) && !after.is_some_and(is_key_character)
+        })
+    })
+}
+
+/// A character that a key can hold, so that a name next to it would be part of a longer name.
+fn is_key_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
 }
 
 /// Whether another derived name replaces a missing name.

@@ -158,6 +158,8 @@ for contexts and scope types.
   derived name. `on_missing: ShowsKey` comes from the lookup function's stated rule when no check of
   the name comes first; [derived names](../native/derived-names.md) records the rule's checks.
   `Fallback` names the derived name that the same check and lookup use when the name is missing.
+  A name with a field part has an `Unresolved` miss behavior, with a gap: the method plants one
+  state for every string field and does not explore a miss that depends on another field.
   A condition is never `Always` for a name with a field part: it keeps an `Unresolved` term and
   `FieldZero { zero: false }` for each field part, with a gap. A flag term comes only from runs
   that wrote the flag. The `Unresolved` term beside a flag term is the run-time choice of the

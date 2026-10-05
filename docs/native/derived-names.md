@@ -109,6 +109,15 @@ writes no diagnostic. The binding states this beside `PdxLocalizeAndReplaceView`
   agenda, expected sprite ..." through `CLogger::Log` only when the word at `+0x2fc` is nonzero, so
   the miss is not a diagnostic on every path.
 
+### What the answer does not publish
+
+The swap name + suffix of `GetDesc` falls back to key + suffix, and a missing `custom_tooltip` or
+`custom_tooltip_with_modifiers` of `PostReadInit` writes a diagnostic (both read by hand above).
+The answer gives these names an `Unresolved` miss behavior. Their names have a field part, and a
+template run plants one state for every string field, so a miss path that depends on another
+field's state, such as one that logs only when another field is empty, is never explored. The
+method gives a miss behavior only from search runs, whose names hold the key alone.
+
 ## Gaps
 
 - **Outside the method:** names that interface code composes or looks up, such as the tradition
@@ -126,6 +135,11 @@ writes no diagnostic. The binding states this beside `PdxLocalizeAndReplaceView`
 
 - **Do not trace outward from the lookup.** `PdxLocalizeAndReplaceView` has about 7,144 direct
   callers. Start from the registry's own methods.
+- **A longer name holds a shorter one's text.** The text of `{key}_desc` holds the key's text, so
+  a substring test made a diagnostic that names `{key}_desc` a diagnostic for `{key}`. A message
+  names a name only when no key character (letter, digit or `_`) is directly before or after it.
+- **Follow the member call graph to its end.** A depth bound on same-class member calls dropped a
+  root whose sink was deeper, with no gap. The graph is finite; a run's own bounds give the gaps.
 - **Join search runs at loop heads, not template runs.** A search run's swap collection has an
   unknown length, and a loop over it forks until the path bound. A template run installs one
   element, so its loops end; a join at the selection loop's head merged the installed element with

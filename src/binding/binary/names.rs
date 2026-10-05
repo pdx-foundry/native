@@ -5,7 +5,7 @@ use crate::AnalysisError;
 use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
-    families::{Receiver, Root as FamilyRoot, StringFunctions, joins::DEPTH},
+    families::{Receiver, Root as FamilyRoot, StringFunctions},
     fields::has_owner_receiver,
     names::{
         LogArguments, Miss, NameArgument, NameInput, RegistryInput, ResultView, Role, Root, Sink,
@@ -235,8 +235,9 @@ fn is_member(name: &str, owner: &str) -> bool {
     member.contains('(') && !method.contains("::") && !name.contains(".cold.")
 }
 
-/// The sink calls of each member function, directly or through other members, at most [`DEPTH`]
-/// calls away.
+/// The sink calls of each member function, directly or through other members. The member call
+/// graph is finite, so the search ends; a run's own path and step bounds turn a deep chain that
+/// it cannot follow into a gap.
 struct Reach {
     /// The sink calls in each member's own code.
     own: BTreeMap<u64, BTreeSet<u64>>,
@@ -275,41 +276,38 @@ impl Reach {
         Ok(Self { own, callees })
     }
 
-    /// The sink calls that `function` reaches.
+    /// The sink calls that `function` reaches through any number of member calls.
     fn sites(&self, function: u64) -> BTreeSet<u64> {
         let mut sites = BTreeSet::new();
-        let mut level = BTreeSet::from([function]);
-        let mut seen = level.clone();
-        for _ in 0..=DEPTH {
-            let mut next = BTreeSet::new();
-            for member in &level {
-                sites.extend(self.own.get(member).into_iter().flatten());
-                for &callee in self.callees.get(member).into_iter().flatten() {
-                    if seen.insert(callee) {
-                        next.insert(callee);
-                    }
+        let mut pending = vec![function];
+        let mut seen = BTreeSet::from([function]);
+        while let Some(member) = pending.pop() {
+            sites.extend(self.own.get(&member).into_iter().flatten());
+            for &callee in self.callees.get(&member).into_iter().flatten() {
+                if seen.insert(callee) {
+                    pending.push(callee);
                 }
             }
-            level = next;
         }
         sites
     }
 
-    /// The members that a root calls, at most [`DEPTH`] calls away, and that reach a sink. A
-    /// root that another root calls is one of them.
+    /// The members that a root calls, through any number of member calls, and that reach a sink.
+    /// A root that another root calls is one of them.
     fn path(&self, roots: &BTreeSet<u64>) -> BTreeSet<u64> {
         let mut path = BTreeSet::new();
-        let mut level = roots.clone();
-        for _ in 0..DEPTH {
-            let mut next = BTreeSet::new();
-            for member in &level {
-                for &callee in self.callees.get(member).into_iter().flatten() {
-                    if !self.sites(callee).is_empty() && path.insert(callee) {
-                        next.insert(callee);
-                    }
+        let mut pending: Vec<u64> = roots.iter().copied().collect();
+        let mut seen = BTreeSet::new();
+        while let Some(member) = pending.pop() {
+            for &callee in self.callees.get(&member).into_iter().flatten() {
+                if !seen.insert(callee) {
+                    continue;
+                }
+                pending.push(callee);
+                if !self.sites(callee).is_empty() {
+                    path.insert(callee);
                 }
             }
-            level = next;
         }
         path
     }
@@ -351,6 +349,31 @@ mod tests {
             root_stage("non-virtual thunk to CItem::PostReadInit()", owner),
             None
         );
+    }
+
+    #[test]
+    fn a_root_that_reaches_a_sink_through_five_member_calls_is_a_root() {
+        const SINK_CALL: u64 = 0x7000;
+        let chain = [0x100, 0x200, 0x300, 0x400, 0x500, 0x600];
+        let reach = Reach {
+            own: chain
+                .iter()
+                .map(|&member| (member, BTreeSet::new()))
+                .chain([(0x600, BTreeSet::from([SINK_CALL]))])
+                .collect(),
+            callees: chain
+                .windows(2)
+                .map(|pair| (pair[0], BTreeSet::from([pair[1]])))
+                .collect(),
+        };
+
+        assert_eq!(reach.sites(0x100), BTreeSet::from([SINK_CALL]));
+        assert_eq!(
+            reach.path(&BTreeSet::from([0x100])),
+            chain[1..].iter().copied().collect()
+        );
+        let both_roots = BTreeSet::from([0x100, 0x300]);
+        assert!(reach.path(&both_roots).contains(&0x300));
     }
 
     #[test]
