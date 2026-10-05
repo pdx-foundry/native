@@ -151,6 +151,7 @@ writes no diagnostic. The binding states this beside `PdxLocalizeAndReplaceView`
   ignored, followed by a content choice between the name and another at one site, read as a
   fallback. The method counts only paths that check the name: every found path uses only the name
   at the sites where found paths use it, every missing path uses only the one replacement there,
-  and every missing path that does not end in a trap reaches such a site.
+  and every missing path that does not end in a trap reaches such a site. A use of an unresolved
+  name at such a site could be another replacement, so it refutes the fallback.
 - **The registry-fields page has M45-release addresses.** Match the build before reusing an
   address from [registry fields](registry-fields.md).

@@ -462,6 +462,26 @@ fn a_replacement_on_only_some_missing_paths_is_no_fallback() {
     assert_eq!(named(&result, &key_desc()).on_missing, Miss::Unresolved);
 }
 
+/// After the check, found paths use the name at two sites. Missing paths use another name at the
+/// first site and an unnamed string at the second, which could be a different replacement.
+#[test]
+fn an_unresolved_use_at_a_replacement_site_is_no_fallback() {
+    let mut code = root(0);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; tbz w0, #0, ->missing; add x20, sp, #0x20; b ->sites; ->missing:);
+    compose(&mut code, 0x20, KEY, Some(DELAYED));
+    arm64!(code; ldr x20, [x19, #UNNAMED]; ->sites:);
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; mov x0, x20);
+    code.call(VIEW).call(CHECK);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert_eq!(named(&result, &key_desc()).on_missing, Miss::Unresolved);
+}
+
 /// A lookup that returns its text through `x8` gives the empty text. A branch on its length then
 /// takes one arm, so the name looked up after it is not established and the other is never found.
 #[test]

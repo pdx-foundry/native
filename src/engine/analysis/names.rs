@@ -437,6 +437,9 @@ enum EventKind {
     Log(Vec<String>),
     /// A call that the run does not follow, and that receives these derived texts.
     Unfollowed(Vec<String>),
+    /// A check or lookup whose name has an unresolved part, or that a formatter's buffer bounds.
+    /// A path records it once for each site.
+    UnresolvedUse,
 }
 
 /// How one path ended, and the index of each event it recorded, in order.
@@ -894,11 +897,13 @@ impl Recorder<'_> {
         let node = self.name(sink.argument, machine);
         let node = self.arena.node(node).clone();
         if node.limit.is_some() {
-            self.bounded.insert(chain);
+            self.bounded.insert(chain.clone());
+            self.record_unresolved_use(machine, chain);
             return None;
         }
         let Some(text) = node.text(&self.model.sources) else {
-            self.unresolved.insert(chain);
+            self.unresolved.insert(chain.clone());
+            self.record_unresolved_use(machine, chain);
             return unresolved_outcome(sink, machine);
         };
 
@@ -1033,6 +1038,19 @@ impl Recorder<'_> {
             .collect()
     }
 
+    /// Record a use of an unresolved name at `chain`, unless the path recorded one there already,
+    /// so that a loop that repeats the use still joins.
+    fn record_unresolved_use(&mut self, machine: &mut Machine, chain: Vec<u64>) {
+        let count = machine.labelled(EVENT_COUNT).unwrap_or(0);
+        let recorded = (0..count)
+            .filter_map(|index| machine.labelled(EVENT_COUNT + 1 + index))
+            .map(|index| &self.events[index as usize])
+            .any(|event| matches!(event.kind, EventKind::UnresolvedUse) && event.chain == chain);
+        if !recorded {
+            self.record(machine, EventKind::UnresolvedUse, chain);
+        }
+    }
+
     /// Add an event to the run and to this path's events.
     fn record(&mut self, machine: &mut Machine, kind: EventKind, chain: Vec<u64>) {
         self.events.push(Event {
@@ -1112,7 +1130,7 @@ fn recorded_names(runs: &[&RunRecord], kind: Kind) -> BTreeSet<NameId> {
         .flat_map(|run| &run.events)
         .filter_map(|event| match &event.kind {
             EventKind::Use { target, name, .. } => Some((name.parts.clone(), *target)),
-            EventKind::Log(_) | EventKind::Unfollowed(_) => None,
+            EventKind::Log(_) | EventKind::Unfollowed(_) | EventKind::UnresolvedUse => None,
         })
         .filter(|(parts, _)| {
             let field = parts.iter().any(|part| matches!(part, Part::Field(_)));
@@ -1350,6 +1368,7 @@ fn pair_result(name: &NameId, hit: &RunRecord, miss: &RunRecord) -> Option<Miss>
             && !after_check(miss, path, name).any(|event| match &event.kind {
                 EventKind::Use { .. } => use_of(event, name) == Some(Role::Lookup),
                 EventKind::Log(texts) | EventKind::Unfollowed(texts) => receives(texts, &text),
+                EventKind::UnresolvedUse => false,
             })
     });
     Some(if silent {
@@ -1400,8 +1419,9 @@ enum Replacement {
 /// path of the found run uses the name after its check. The name is replaced by M when every
 /// found path uses only the name at the replacement sites that it reaches, every missing path
 /// uses only M there, M has the name's lookup target, and every missing path reaches such a site
-/// unless it ends in a trap or a function that never returns. Only paths that check the name
-/// count, and only their events after the check and before assumed text.
+/// unless it ends in a trap or a function that never returns. A use of an unresolved name at a
+/// replacement site could be another replacement, so it refutes the proof. Only paths that check
+/// the name count, and only their events after the check and before assumed text.
 fn replacement(
     name: &NameId,
     hit: &RunRecord,
@@ -1431,6 +1451,18 @@ fn replacement(
         .collect();
     if missing_uses.iter().all(BTreeMap::is_empty) {
         return Replacement::None;
+    }
+    let unresolved_at_site = |run, path| {
+        after_check(run, path, name).any(|event| {
+            matches!(event.kind, EventKind::UnresolvedUse) && sites.contains(&event.chain)
+        })
+    };
+    let unresolved = found_paths.iter().any(|path| unresolved_at_site(hit, path))
+        || missing_paths
+            .iter()
+            .any(|path| unresolved_at_site(miss, path));
+    if unresolved {
+        return Replacement::Conflicting;
     }
 
     let found_use_only_the_name = found_paths.iter().all(|path| {
@@ -1472,6 +1504,6 @@ fn uses_after_check<'a>(
             EventKind::Use { target, name, .. } => {
                 Some((&event.chain, (name.parts.clone(), *target)))
             }
-            EventKind::Log(_) | EventKind::Unfollowed(_) => None,
+            EventKind::Log(_) | EventKind::Unfollowed(_) | EventKind::UnresolvedUse => None,
         })
 }
