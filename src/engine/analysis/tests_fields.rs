@@ -1139,6 +1139,7 @@ fn nested_fixture() -> FieldInput {
         insert: vec![0x9300],
         moving_insert: vec![],
         data_offset: Some(8),
+        count_offset: Some(0x14),
         reader: None,
     });
     input

@@ -10,6 +10,15 @@ use crate::engine::analysis::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+/// The functions that write an engine error message, or a part of one.
+pub(super) const ERROR_LOGS: [&str; 5] = [
+    "CLogger::Log(char const*, unsigned int, int)",
+    "CLogStream::operator<<(char*)",
+    "CLogStream::operator<<(char const*)",
+    "CLogStream::operator<<(CString const&)",
+    "CPdxLogFileAndLine::operator()(char const*, ...)",
+];
+
 #[allow(clippy::too_many_arguments)] // Independent executable inputs and the selected build recipe.
 pub(in crate::binding) fn read(
     bytes: &[u8],
@@ -190,13 +199,7 @@ fn command_bindings(
     }
     let scope_accessors = scope_accessors(symbols)?;
     let mut error_logs = BTreeSet::new();
-    for name in [
-        "CLogger::Log(char const*, unsigned int, int)",
-        "CLogStream::operator<<(char*)",
-        "CLogStream::operator<<(char const*)",
-        "CLogStream::operator<<(CString const&)",
-        "CPdxLogFileAndLine::operator()(char const*, ...)",
-    ] {
+    for name in ERROR_LOGS {
         error_logs.insert(unique(symbols, name)?);
     }
     Ok(CommandBindings {

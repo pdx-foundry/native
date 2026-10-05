@@ -16,6 +16,7 @@ pub mod localization;
 pub(crate) mod modifier_blocks;
 pub mod modifier_table;
 pub mod modifiers;
+pub mod names;
 pub(crate) mod numeric;
 pub mod readers;
 mod receivers;

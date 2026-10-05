@@ -118,7 +118,8 @@ impl Native {
             | Operation::LocalizationDeclarations
             | Operation::OnActions
             | Operation::GameRules
-            | Operation::DynamicNames => match &binding.analysis {
+            | Operation::DynamicNames
+            | Operation::DerivedNames => match &binding.analysis {
                 Some(analysis) => match analysis.executable() {
                     Ok(_) => Support::Supported,
                     Err(reason) => Support::Unsupported(error(operation, reason).to_string()),

@@ -44,6 +44,7 @@ Native establishes what was read or observed. Atlas decides what that establishe
 | `command_grammar` | Implemented for effects and triggers on M451-hotfix | A declaration kind and registered command name | The accepted forms (value alternatives with their reader kind, a block, or both); target arguments with the scope types they accept and the stage that checks them; concrete shared reader identity, child families, fixed keys with their reference lookups (including the receiver initializer's lookup of a stored key), nested members, numeric child grammar, conditional reader ordering and duration key groups. The answer is `Complete` only when every property is established at every depth. Every property keeps unresolved evidence explicit; this is not runtime meaning. A missing registered command gives `UnknownCommand`. |
 | `modifiers`, `modifier_categories` | Implemented | — | Built-in modifiers with their declared category tags, from every direct definition call; category names from the engine's category switch. Generated modifier families are gaps. Tags are intended-use tags, not application contexts. |
 | `modifier_families` | Implemented for database generators, post-read code and shared helpers | A registry name | Name templates that the registry's code registers for each item, with the item-key position, category tags, whether every item generates the family, and a name-length limit. Code that generates modifiers and is not joined to a registry is a gap, with its reason. |
+| `derived_names` | Implemented for M451-hotfix | A registry name | Names that the registry's own `const` methods and post-read initialization compose from the item key or a string field and then check or look up: the name's parts (literal, item key, field path), what it is looked up in (localisation, sprites, files), the stage (when used, or owner initialization), what a missing name gives (shows the key, silent, a diagnostic, a fallback to another derived name, or unresolved) and the field condition. Names that interface code composes and the run-time choice behind a selection are outside it; unfollowed paths, unresolved name parts and unresolved conditions are gaps. |
 | `scopes`, `scope_links` | Implemented | — | Scope types with the keywords that the engine maps to each, and keywords that match several types (`carrier`); documented links and the link prefixes that take data, each with declared input and output scopes |
 | `localization_declarations` | Implemented | — | Localization contexts from the engine's text tables, each context's commands and links, each link's output context, and the scope types that select each context; a missing join keeps its commands; links that the method cannot follow are gaps |
 | `on_actions` | Implemented | — | On_action names that engine call sites fire, from every direct call to the firing functions, the deferred command and the checked forwarders, with the cached pulse lists; for each name, each distinct context of `this`, `root`, the `from` chain and the `prev` chain that a followed call site supplies. A self-link stays `SelfLink`; its documentation states how script reads it, as an assumption. Names that script content fires, names built at run time and call sites that the method cannot follow are gaps. |
@@ -152,6 +153,17 @@ for contexts and scope types.
   shared modifier grammar. `Unresolved` other keys mean that their disposition is unknown, not that
   the engine rejects them. Condition timing, the multiplier's effect and where the modifier takes
   effect remain outside this grammar. See [triggered modifiers](../native/triggered-modifiers.md).
+- `DerivedName.name` uses `NamePart`; a `Field` part is a string field's path from the registry's
+  definition, such as `["tradition_swap", "name"]`. A fixed key with no key or field part is not a
+  derived name. `on_missing: ShowsKey` comes from the lookup function's stated rule when no check of
+  the name comes first; [derived names](../native/derived-names.md) records the rule's checks.
+  `Fallback` names the derived name that the same check and lookup use when the name is missing.
+  A name with a field part has an `Unresolved` miss behavior, with a gap: the method plants one
+  state for every string field and does not explore a miss that depends on another field.
+  A condition is never `Always` for a name with a field part: it keeps an `Unresolved` term and
+  `FieldZero { zero: false }` for each field part, with a gap. A flag term comes only from runs
+  that wrote the flag. The `Unresolved` term beside a flag term is the run-time choice of the
+  selected object, which the `OutsideMethod` gap states.
 - `ReaderKind::Keyword` identifies a value from a fixed set of engine names that the reader stores
   as the engine's own value, such as `calc` or `mode` in a weight modifier. Its `numeric` is
   `Known(None)`. `Field.domain` gives the accepted names when it is established; until then a

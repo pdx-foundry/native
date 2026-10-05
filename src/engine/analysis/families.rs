@@ -48,8 +48,8 @@ mod strings;
 
 pub use joins::Receiver;
 pub use loading::{Loading, NotEstablished};
-use strings::{ASSUMED_TEXT, ITEM_KEY};
-pub(super) use strings::{Arena, Effect, Model, Node};
+pub(super) use strings::{ASSUMED_TEXT, ITEM_KEY};
+pub(super) use strings::{Arena, Effect, Model, Node, Sources};
 pub use strings::{Part, StringFunctions, StringLayout};
 
 /// Name and revision of the modifier-family method.
@@ -62,7 +62,7 @@ const LONG_KEY: &str = "generatedmodifierfamilyitemkey01";
 const SHORT_KEY: &str = "itemkey1";
 
 /// Bytes of item memory that the method gives the constructor and the roots.
-const ITEM_SPAN: u64 = 0x4000;
+pub(super) const ITEM_SPAN: u64 = 0x4000;
 
 /// Bytes of zeroed database memory that a database root reads.
 const DATABASE_SPAN: u64 = 0x400;
@@ -151,7 +151,7 @@ pub fn item_key_offset(input: &KeyStorageInput) -> Result<u64, Unresolved> {
     )
 }
 
-fn key_storage(
+pub(super) fn key_storage(
     code: &Code,
     data: &ReadOnlyData,
     strings: &StringFunctions,
@@ -251,7 +251,7 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
     let mut families: BTreeMap<Template, Condition> = BTreeMap::new();
     let mut failures = BTreeMap::new();
     for root in &registry.roots {
-        let runs: Vec<Vec<PathSummary>> = [KeyForm::Long, KeyForm::Short]
+        let runs: Vec<Vec<PathSummary>> = KeyForm::BOTH
             .into_iter()
             .map(|form| root_paths(input, registry, root, offset, form))
             .collect();
@@ -286,14 +286,19 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
     })
 }
 
-#[derive(Debug, Clone, Copy)]
-enum KeyForm {
+/// The form of a string object: a long string holds its text in a buffer, a short string in
+/// place. The engine branches on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum KeyForm {
     Long,
     Short,
 }
 
 impl KeyForm {
-    fn text(self) -> &'static str {
+    pub(super) const BOTH: [Self; 2] = [Self::Long, Self::Short];
+
+    /// The item key's text in this form.
+    pub(super) fn text(self) -> &'static str {
         match self {
             Self::Long => LONG_KEY,
             Self::Short => SHORT_KEY,
@@ -304,7 +309,20 @@ impl KeyForm {
 /// Write the item key into the string object at `object`, label its text, and keep the object
 /// and its text known through a store to an unknown address.
 fn write_key(machine: &mut Machine, layout: StringLayout, object: u64, form: KeyForm) {
-    let text = form.text();
+    write_source(machine, layout, object, form.text(), form, ITEM_KEY);
+}
+
+/// Write `text` into the string object at `object` in `form`, label its text with the source
+/// `node`, and keep the object and its text known through a store to an unknown address. A short
+/// form's text must fit in the object.
+pub(super) fn write_source(
+    machine: &mut Machine,
+    layout: StringLayout,
+    object: u64,
+    text: &str,
+    form: KeyForm,
+    node: u64,
+) {
     let length = text.len() as u64;
 
     let (address, flag) = match form {
@@ -326,7 +344,7 @@ fn write_key(machine: &mut Machine, layout: StringLayout, object: u64, form: Key
     if let Some(length) = flag {
         machine.write(object + layout.flag_byte, 1, length);
     }
-    machine.label(address, ITEM_KEY);
+    machine.label(address, node);
     machine.protect(object, layout.flag_byte + 1);
     machine.protect(address, length + 1);
 }
@@ -351,7 +369,7 @@ fn key_offset(
         functions: strings,
         layout,
         data,
-        key: LONG_KEY,
+        sources: Sources::key_only(LONG_KEY),
     };
     let mut arena = Arena::default();
     let paths = machine.run_paths(constructor, &mut |target, machine| {
@@ -406,7 +424,7 @@ fn model(input: &FamilyInput, form: KeyForm) -> Model<'_> {
         functions: &input.strings,
         layout: input.layout,
         data: &input.data,
-        key: form.text(),
+        sources: Sources::key_only(form.text()),
     }
 }
 
@@ -425,20 +443,39 @@ fn follow(
 
 /// How one path ended, for the generation condition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Ending {
+pub(super) enum Ending {
     Returned,
-    /// A trap or a function that never returns: the path does not finish the loop.
+    /// A trap or a function that never returns: the path does not finish the loop. A path that
+    /// arrived at a loop head in a state that another path covers is also ignored: the covering
+    /// path goes on for it.
     Ignored,
     Failed,
 }
 
-fn ending(strings: &StringFunctions, end: &Result<Exit, Unresolved>) -> Ending {
+pub(super) fn ending(strings: &StringFunctions, end: &Result<Exit, Unresolved>) -> Ending {
     match end {
         Ok(Exit::Returned) => Ending::Returned,
-        Ok(Exit::Trapped) => Ending::Ignored,
+        Ok(Exit::Trapped | Exit::Looped) => Ending::Ignored,
         Ok(Exit::Stopped(target)) if strings.never_return.contains(target) => Ending::Ignored,
-        Ok(Exit::Stopped(_) | Exit::Reached | Exit::Looped) | Err(_) => Ending::Failed,
+        Ok(Exit::Stopped(_) | Exit::Reached) | Err(_) => Ending::Failed,
     }
+}
+
+/// Whether, in every run, no path failed, some path returned, and every returned path `holds`.
+pub(super) fn every_returned_path<P>(
+    runs: &[Vec<P>],
+    ending: impl Fn(&P) -> Ending,
+    holds: impl Fn(&P) -> bool,
+) -> bool {
+    runs.iter().all(|paths| {
+        let mut returned = paths
+            .iter()
+            .filter(|path| ending(path) == Ending::Returned)
+            .peekable();
+        !paths.iter().any(|path| ending(path) == Ending::Failed)
+            && returned.peek().is_some()
+            && returned.all(&holds)
+    })
 }
 
 /// One registration: the calls that the path was inside and the call itself, the name, and
@@ -693,19 +730,15 @@ fn condition(
         return Condition::ItemRoot(reason.clone());
     }
 
-    let always = runs.iter().all(|paths| {
-        let returned: Vec<_> = paths
-            .iter()
-            .filter(|path| path.ending == Ending::Returned)
-            .collect();
-        !paths.iter().any(|path| path.ending == Ending::Failed)
-            && !returned.is_empty()
-            && returned.iter().all(|path| {
-                path.established
-                    .iter()
-                    .any(|(at, registered)| at == calls && registered == name)
-            })
-    });
+    let always = every_returned_path(
+        runs,
+        |path| path.ending,
+        |path| {
+            path.established
+                .iter()
+                .any(|(at, registered)| at == calls && registered == name)
+        },
+    );
 
     if always {
         Condition::Always

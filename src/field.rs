@@ -52,7 +52,8 @@ pub enum FieldCondition {
     Always,
     /// Every term must hold. Terms can include unresolved context.
     All(Vec<FieldCondition>),
-    /// The stored scalar is zero or nonzero. For a Boolean, zero means false.
+    /// The stored scalar is zero or nonzero. For a Boolean, zero means false. A string field is
+    /// zero when its text is empty.
     FieldZero {
         /// Field path, including enclosing block fields.
         path: Vec<String>,
@@ -282,6 +283,9 @@ pub enum LookupStage {
     /// When the engine initializes the object that holds the field, after reading it. The field
     /// stores the key text; the initialization looks it up.
     OwnerInitialization,
+    /// Each time the engine uses the item, such as when it shows the item's name. A name that is
+    /// missing does not stop the item from loading.
+    WhenUsed,
     /// The stage is not established.
     Unresolved,
 }

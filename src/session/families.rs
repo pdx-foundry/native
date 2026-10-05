@@ -149,7 +149,7 @@ fn normalized_families(
 
         for family in &result.families {
             let public = public_family(family, categories);
-            let template = template(&public);
+            let template = template(&public.name);
             if public.category_tags == DeclaredTags::Unresolved {
                 gaps.push(registry_gap(
                     GapKind::UnresolvedPath,
@@ -197,7 +197,12 @@ fn normalized_families(
         "The search covers the registry's database generator and post-read code. Where a modifier takes effect, the tags that a later registration of the same name gives, the tags of a declared modifier after content registers it again, and names longer than a fixed-size buffer keeps are outside it.",
     ));
 
-    value.sort_by_cached_key(|family| (template(family), format!("{:?}", family.category_tags)));
+    value.sort_by_cached_key(|family| {
+        (
+            template(&family.name),
+            format!("{:?}", family.category_tags),
+        )
+    });
     Answer {
         value,
         completeness: Completeness::from_gaps(&gaps),
@@ -207,7 +212,7 @@ fn normalized_families(
 }
 
 /// Why the method did not establish that the engine runs the item roots for every item.
-fn not_established(reason: &NotEstablished) -> String {
+pub(super) fn not_established(reason: &NotEstablished) -> String {
     match reason {
         NotEstablished::NoLoader => {
             "no function of the database's classes calls a constructor of the item's class".into()
@@ -229,16 +234,21 @@ fn not_established(reason: &NotEstablished) -> String {
     }
 }
 
-pub(super) fn public_family(family: &Family, categories: &CategoryNames) -> ModifierFamily {
-    let name = family
-        .parts
+/// The public parts of a composed name; an unresolved part has none.
+pub(super) fn public_parts(parts: &[Part]) -> Vec<NamePart> {
+    parts
         .iter()
         .filter_map(|part| match part {
             Part::Literal(text) => Some(NamePart::Literal(text.clone())),
             Part::ItemKey => Some(NamePart::ItemKey),
+            Part::Field(path) => Some(NamePart::Field(path.clone())),
             Part::Unresolved => None,
         })
-        .collect();
+        .collect()
+}
+
+pub(super) fn public_family(family: &Family, categories: &CategoryNames) -> ModifierFamily {
+    let name = public_parts(&family.parts);
     let category_tags = match family.mask.map(|mask| modifiers::tags(categories, mask)) {
         Some(Tags::Listed(tags)) => DeclaredTags::Listed(tags),
         Some(Tags::Unresolved(_)) | None => DeclaredTags::Unresolved,
@@ -256,14 +266,14 @@ pub(super) fn public_family(family: &Family, categories: &CategoryNames) -> Modi
     }
 }
 
-/// The name with `{key}` for the item key, such as `planet_{key}_build_speed_mult`.
-fn template(family: &ModifierFamily) -> String {
-    family
-        .name
-        .iter()
+/// The name with `{key}` for the item key and `{path}` for a field, such as
+/// `planet_{key}_build_speed_mult` or `{tradition_swap/name}_desc`.
+pub(super) fn template(name: &[NamePart]) -> String {
+    name.iter()
         .map(|part| match part {
-            NamePart::Literal(text) => text.as_str(),
-            NamePart::ItemKey => "{key}",
+            NamePart::Literal(text) => text.clone(),
+            NamePart::ItemKey => "{key}".into(),
+            NamePart::Field(path) => format!("{{{}}}", path.join("/")),
         })
         .collect()
 }
@@ -343,7 +353,11 @@ mod tests {
         };
         let answer = answer(Some(&result), false, &[]);
 
-        let templates: Vec<_> = answer.value.iter().map(template).collect();
+        let templates: Vec<_> = answer
+            .value
+            .iter()
+            .map(|family| template(&family.name))
+            .collect();
         assert_eq!(templates, ["a_{key}", "{key}_b", "{key}_c", "{key}_d"]);
         assert_eq!(
             answer.value[1].category_tags,

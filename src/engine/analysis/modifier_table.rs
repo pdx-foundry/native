@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use super::{
     decode::Instruction,
     evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
-    families::{Arena, Effect, Model, StringFunctions, StringLayout},
+    families::{Arena, Effect, Model, Sources, StringFunctions, StringLayout},
     stop::Unresolved,
 };
 
@@ -204,7 +204,7 @@ fn definition_reads(
         functions: &input.strings,
         layout: input.string_layout,
         data: &input.data,
-        key: "",
+        sources: Sources::key_only(""),
     };
     let mut arena = Arena::default();
     let mut found = Vec::new();
