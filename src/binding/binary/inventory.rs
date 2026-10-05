@@ -93,13 +93,22 @@ impl Inventory<'_> {
     }
 }
 
+/// The deepest nesting that a symbol may reach while it is parsed and while it is rendered. The
+/// defaults (96 and 128) reject the deepest modifier node constructors, which need 120 and 144 on
+/// M451-hotfix. Twice the defaults reads every symbol that 1,024 and 2,048 read there, and keeps
+/// the recursion well inside the stack.
+const DEMANGLE_PARSE_LIMIT: u32 = 192;
+const DEMANGLE_RENDER_LIMIT: u32 = 256;
+
 /// A raw symbol name as a demangled C++ name, or unchanged when it does not demangle.
 pub(super) fn display_name(raw: &str) -> String {
     let mangled = raw.strip_prefix('_').unwrap_or(raw);
+    let parse = cpp_demangle::ParseOptions::default().recursion_limit(DEMANGLE_PARSE_LIMIT);
+    let render = cpp_demangle::DemangleOptions::default().recursion_limit(DEMANGLE_RENDER_LIMIT);
 
-    cpp_demangle::Symbol::new(mangled)
+    cpp_demangle::Symbol::new_with_options(mangled, &parse)
         .ok()
-        .and_then(|symbol| symbol.demangle().ok())
+        .and_then(|symbol| symbol.demangle_with_options(&render).ok())
         .unwrap_or_else(|| raw.into())
 }
 
@@ -234,4 +243,21 @@ fn strings(file: &object::File<'_>) -> Option<BTreeMap<u64, String>> {
     }
 
     Some(strings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_name;
+
+    /// The base constructor of modifier node 23 on M451-hotfix, which nests past the default
+    /// parse and render limits.
+    const DEEP_NODE_CONSTRUCTOR: &str = "__ZN13NModifierNode17CModifierNodeBaseI9CModifier21EModifierNodeCategoryEC2IZNS_13CModifierNodeIS1_S2_LS2_23ENS_13SDependenciesIS2_JNS5_IS1_S2_LS2_18ENS6_IS2_JNS5_IS1_S2_LS2_17ENS6_IS2_JNS5_IS1_S2_LS2_4ENS6_IS2_JEEEEENS5_IS1_S2_LS2_13ES7_EENS5_IS1_S2_LS2_27ES7_EENS5_IS1_S2_LS2_0ES7_EENS5_IS1_S2_LS2_5ES7_EENS5_IS1_S2_LS2_6ES7_EENS5_IS1_S2_LS2_2ENS6_IS2_JNS5_IS1_S2_LS2_10ES7_EENS5_IS1_S2_LS2_26ES7_EENS5_IS1_S2_LS2_34ES7_EEEEEEENS5_IS1_S2_LS2_28ES7_EENS5_IS1_S2_LS2_22ES7_EEEEEEENS5_IS1_S2_LS2_32ENS6_IS2_JNS5_IS1_S2_LS2_24ENS6_IS2_JNS5_IS1_S2_LS2_3ES7_EES8_S9_NS5_IS1_S2_LS2_15ES7_EENS5_IS1_S2_LS2_9ES7_EESI_SD_SC_NS5_IS1_S2_LS2_30ENS6_IS2_JS8_S9_NS5_IS1_S2_LS2_25ES7_EESC_SD_SI_SB_NS5_IS1_S2_LS2_33ES7_EEEEEEESA_SK_EEEEENS5_IS1_S2_LS2_29ES7_EESJ_EEEEENS5_IS1_S2_LS2_8ES7_EENS5_IS1_S2_LS2_1ES7_EESR_EEEEESI_EEEEC1IZNS14_C1I9CPopGroupJiRK16ModifierCategoryEEERT_MS1B_FvRS14_EDpOT0_EUlS1D_E_JiS1A_EEENS_10EOwnerTypeES1B_S1I_EUlRS3_E_JiS1A_EEERKNS_17CNodeTypeInstanceIS2_EES1K_S1B_S1I_";
+
+    #[test]
+    fn deeply_nested_template_symbols_demangle() {
+        let name = display_name(DEEP_NODE_CONSTRUCTOR);
+
+        assert!(name.starts_with("NModifierNode::CModifierNodeBase<CModifier, EModifierNodeCategory>::CModifierNodeBase<"));
+        assert!(name.contains("::CModifierNode<CPopGroup, int, ModifierCategory const&>("));
+    }
 }
