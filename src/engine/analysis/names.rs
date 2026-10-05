@@ -720,15 +720,14 @@ impl Analysis<'_> {
             let kind_runs: Vec<&RunRecord> =
                 runs.iter().filter(|run| run.plan.kind == kind).collect();
             for name in recorded_names(&kind_runs, kind) {
-                let condition = match kind {
-                    Kind::Search => key_condition(&name, &kind_runs, flags, every_item),
-                    Kind::Template => field_condition(&name, &kind_runs, flags),
-                };
-                // A template run plants one state for every string field, so a miss path that
-                // depends on another field's state is never explored.
-                let on_missing = match kind {
-                    Kind::Search => miss_behavior(&name, &kind_runs),
-                    Kind::Template => Miss::Unresolved,
+                let (condition, on_missing) = match kind {
+                    Kind::Search => (
+                        key_condition(&name, &kind_runs, flags, every_item),
+                        miss_behavior(&name, &kind_runs),
+                    ),
+                    // A template run plants one state for every string field, so a miss path
+                    // that depends on another field's state is never explored.
+                    Kind::Template => (field_condition(&name, &kind_runs, flags), Miss::Unresolved),
                 };
                 names.push(Name {
                     on_missing,
