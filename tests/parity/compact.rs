@@ -482,6 +482,47 @@ pub fn compact_families(answer: &Answer<Vec<ModifierFamily>>) -> Value {
     json!({ "families": families, "gaps": gaps })
 }
 
+/// Names as templates such as `{key}_desc`; the boundary statement is not part of the selection.
+pub fn compact_derived_names(answer: &Answer<Vec<DerivedName>>) -> Value {
+    let names: Vec<_> = answer
+        .value
+        .iter()
+        .map(|name| {
+            let on_missing = match &name.on_missing {
+                MissingName::Fallback(parts) => json!({ "Fallback": template(parts) }),
+                other => json!(other),
+            };
+
+            json!({
+                "template": template(&name.name),
+                "lookup": name.lookup,
+                "stage": name.stage,
+                "on_missing": on_missing,
+                "condition": name.condition,
+            })
+        })
+        .collect();
+    let gaps: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind != GapKind::OutsideMethod)
+        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+        .collect();
+
+    json!({ "completeness": answer.completeness, "names": names, "gaps": gaps })
+}
+
+fn template(name: &[NamePart]) -> String {
+    name.iter()
+        .map(|part| match part {
+            NamePart::Literal(text) => text.clone(),
+            NamePart::ItemKey => "{key}".into(),
+            NamePart::Field(path) => format!("{{{}}}", path.join("/")),
+            other => panic!("unexpected part {other:?}"),
+        })
+        .collect()
+}
+
 pub fn gap_counts<T>(answer: &Answer<Vec<T>>) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for gap in &answer.gaps {

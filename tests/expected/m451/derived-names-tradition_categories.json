@@ -1,0 +1,18 @@
+{
+  "completeness": "Partial",
+  "names": [
+    {"template": "{key}", "lookup": "Localization", "stage": "WhenUsed", "on_missing": "ShowsKey", "condition": "Always"},
+    {"template": "{key}", "lookup": "Localization", "stage": "WhenUsed", "on_missing": "Unresolved", "condition": "Unresolved"},
+    {"template": "{key}_desc", "lookup": "Localization", "stage": "WhenUsed", "on_missing": "ShowsKey", "condition": "Unresolved"}
+  ],
+  "gaps": [
+    ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "6 of the registry's methods have paths that go on after text that the method could not follow; their later lookups establish no condition or miss behavior"],
+    ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "1 of the registry's methods have paths that could not be followed at instruction"],
+    ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "2 of the registry's methods have paths that could not be followed at path-limit"],
+    ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "1 of the registry's methods have paths that could not be followed at string-object"],
+    ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "2 lookup or check calls receive a name with a part that the method could not follow"],
+    ["UnresolvedCondition", {"kind": "answer_item", "name": "{key}"}, "what a missing {key} gives is not established"],
+    ["UnresolvedCondition", {"kind": "answer_item", "name": "{key}"}, "the field values under which the engine uses {key} are not established"],
+    ["UnresolvedCondition", {"kind": "answer_item", "name": "{key}_desc"}, "the field values under which the engine uses {key}_desc are not established"]
+  ]
+}

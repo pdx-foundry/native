@@ -113,6 +113,7 @@ impl Layout<'_> {
             "triggered-modifiers.json" => depth >= 4 || (section == "gaps" && depth >= 3),
             "dynamic-names.json" => section == "gaps" || depth >= 3,
             "defines.json" => section == "samples" && depth >= 2,
+            name if name.starts_with("derived-names-") => depth >= 2,
             _ => false,
         }
     }

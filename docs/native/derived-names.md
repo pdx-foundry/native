@@ -118,6 +118,111 @@ template run plants one state for every string field, so a miss path that depend
 field's state, such as one that logs only when another field is empty, is never explored. The
 method gives a miss behavior only from search runs, whose names hold the key alone.
 
+## Result on M451-hotfix
+
+`tests/expected/m451/derived-names-traditions.json` and `derived-names-tradition_categories.json`
+hold the two acceptance answers. The ignored test
+`derived_names_follow_the_tradition_getters_and_keep_swap_conditions` checks them against the
+engine facts above.
+
+- **Traditions** (partial). `{key}` shows the key when missing and is `Always`.
+  `{tradition_swap/name}` shows the key, under a nonempty name and `inherit_name` zero.
+  `{tradition_swap/name}_desc` and `_delayed` fall back to `{key}_desc` and `{key}_delayed`. A
+  missing fallback name is silent, and its condition is `Unresolved` (the engine-set type at
+  `+0x40`). `custom_tooltip`, `custom_tooltip_with_modifiers` and the swap's two tooltip fields are
+  diagnostics in `PostReadInit` and show the key when used; the swap's use carries
+  `inherit_effects` zero. `common/ascension_perks` uses the same class and gives the same names.
+- **Tradition categories** (partial). `{key}` is `Always` and shows the key. `{key}_desc` shows the
+  key; its condition is `Unresolved` (the count of the `description` block).
+- **Second entries with `Unresolved`.** A const member that calls one getter after another also
+  records the second getter's names, after assumed text. `CTraditionType::GetTooltip` calls
+  `GetName` (`+0x38`) and then `GetDesc` (`+0xd0`). So `{key}_desc` and `{key}_delayed` of
+  traditions, `{key}` of categories and some tooltip fields appear a second time with an
+  `Unresolved` miss, each with its gaps. The entry with the same name, lookup and stage and an
+  established miss is the one to match.
+
+### Population
+
+The run covers every registry from `Native::registries()`:
+
+```sh
+cargo run --release --example derived-name-population -- "$STELLARIS_PATH"
+```
+
+| Inventory | Total | Complete | Partial | Failed |
+| --- | ---: | ---: | ---: | ---: |
+| Registries | 164 | 62 | 102 | 0 |
+
+Eighty-five registries return names, and all of them are partial. The 62 complete answers return
+no name: no own method of theirs reaches a lookup or check. Eight of the 17 partial answers with
+no name have no established key place.
+
+Gap shapes, by registry (the answer-item shapes also give their gap count):
+
+| Shape | Registries | Gaps |
+| --- | ---: | ---: |
+| Paths go on after assumed text (`assumed-text`) | 92 | |
+| A lookup or check receives a name with an unfollowed part (`unresolved-name`) | 49 | |
+| Paths stop at the path bound (`path-limit`) | 47 | |
+| Paths stop at an unmodelled string object (`string-object`) | 44 | |
+| Lookup or check calls that no run reaches (`unreached`) | 41 | |
+| Paths stop at the loop bound (`loop-limit`) | 14 | |
+| Paths stop at an unsupported instruction (`instruction`) | 7 | |
+| Paths stop at an unknown branch value (`branch-value`) | 5 | |
+| A fixed-size buffer bounds the name (`name-limit`) | 5 | |
+| No established key place (`constructor` 4, `key-storage` 4) | 8 | |
+| Every-item initialization not established | 36 | |
+| Field values of a name not established | 47 | 112 |
+| What a missing name gives not established | 30 | 65 |
+| Field-derived name with unexplored field states | 25 | 69 |
+
+The 36 every-item gaps are: a database path keeps an item without its post-read code (25), a
+function forms an item's vtable address without its constructor (6), another function constructs
+items (5).
+
+The 298 entries: 275 localisation, 18 file and 5 sprite; 219 when used and 79 at owner
+initialization. On a miss, 190 show the key, 65 are unresolved, 21 are diagnostics, 18 are silent
+and 4 are fallbacks (traditions and ascension perks only). Conditions: 117 `Always`, 69 with field
+terms, 112 `Unresolved`.
+
+Findings of the run:
+
+- **Post-read file checks.** Owner initialization checks `.dds` paths with `VFSExists`, such as
+  `gfx/interface/icons/decisions/{key}.dds` (silent) and `gfx/interface/icons/districts/{key}.dds`
+  (unresolved). The `icon` field of event chains and missions and the `arkship_picture` field of
+  ship sizes and star classes are diagnostics.
+- **Sprite checks** are rare: `GFX_{key}_bg` and `GFX_{key}_box_icon_rectangle` of districts,
+  `GFX_{icon}` (silent) and `GFX_{map_counter_icon}` of ship sizes, and the council agenda icon,
+  whose miss is unresolved as the engine facts above say.
+- **Run time.** The run takes about 400 s: 2.2 to 6.2 s per registry, of which about 2.2 s is the
+  read and hash of the executable that every static query does
+  ([performance](performance.md#the-static-query-invariant)). `common/agreement_presets` is the
+  slowest.
+
+### Config agreement
+
+Comparison with `config/common/traditions.cwt` of `cwtools-stellaris-config`, a test expectation
+only (Native reads no config). `$` is the item key; in `swapped_tradition` it is the swap's `name`
+(`name_field = name`). Atlas owns the meaning of `## optional`; a silent or fallback miss is the
+engine form of an optional line, a shown key or a diagnostic the form of a required one.
+
+| Config line | Engine entry | Agreement |
+| --- | --- | --- |
+| `tradition` `name = "$"` | `{key}`, shows key, `Always` | Agrees |
+| `tradition` `## optional flavor = "$_delayed"` | `{key}_delayed`, silent | Agrees |
+| `tradition` `## optional effects = "$_desc"` | `{key}_desc`, silent | Agrees. The engine looks up one of the two suffixes, chosen by the type at `+0x40`; the config lists both |
+| `tradition` `icon = "GFX_$"` | None | Outside the method: `GetIconKey` returns the key, and interface code adds `GFX_` |
+| `tradition` `custom_tooltip = localisation` | `{custom_tooltip}`, diagnostic at owner initialization | Agrees |
+| `tradition` `custom_tooltip_with_modifiers = localisation` | `{custom_tooltip_with_modifiers}`, diagnostic | Agrees |
+| `swapped_tradition` `subtype[not_inheriting_name]` `name = "$"` | `{tradition_swap/name}`, shows key, `inherit_name` zero | Agrees: `inherit_name = yes` with cardinality `0..0` is `inherit_name` zero |
+| `swapped_tradition` `subtype[not_inheriting_name]` `## optional flavor = "$_delayed"` | `{tradition_swap/name}_delayed`, fallback to `{key}_delayed` | Miss agrees. Condition differs: `GetDesc` (`0x100cdd3c8`–`0x100cdd7a4`) reads no inheritance flag, so it checks the name of an inheriting swap too. Only the swap's validity, a vtable call outside the method, could depend on one |
+| `swapped_tradition` `subtype[not_inheriting_effects]` `## optional effects = "$_desc"` | `{tradition_swap/name}_desc`, fallback to `{key}_desc` | Miss agrees. Condition differs: `GetDesc` does not test `inherit_effects` |
+| `swapped_tradition` `subtype[not_inheriting_icon]` `icon = "GFX_$"` | None | Outside the method, as the tradition icon |
+| `tradition_swap` `name = localisation` or `name = scalar` | `{tradition_swap/name}` only under `inherit_name` zero | Agrees: an inheriting swap's name is not looked up, so it can be any scalar |
+| `tradition_swap` `custom_tooltip`, `custom_tooltip_with_modifiers` | `{tradition_swap/…}`, diagnostic at owner initialization | Agrees. The use also carries `inherit_effects` zero, which the config does not state |
+| `tradition_category` `name = "$"` | `{key}`, shows key, `Always` | Agrees |
+| `tradition_category` `desc = "$_desc"` | `{key}_desc`, shows key, condition `Unresolved` | Miss agrees. The engine looks it up only when the `desc` block is empty; the config requires it always |
+
 ## Gaps
 
 - **Outside the method:** names that interface code composes or looks up, such as the tradition

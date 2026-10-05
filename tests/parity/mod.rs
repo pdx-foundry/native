@@ -62,6 +62,14 @@ pub const FIELD_FILES: [(&str, &str); 4] = [
     ("common/megastructures", "fields-megastructures.json"),
 ];
 
+pub const DERIVED_NAME_FILES: [(&str, &str); 2] = [
+    ("common/traditions", "derived-names-traditions.json"),
+    (
+        "common/tradition_categories",
+        "derived-names-tradition_categories.json",
+    ),
+];
+
 pub const FILES: &[&str] = &[
     "registries.json",
     "read-scopes.json",
@@ -82,6 +90,8 @@ pub const FILES: &[&str] = &[
     "modifier-declarations.json",
     "modifier-categories.json",
     "modifier-families.json",
+    "derived-names-traditions.json",
+    "derived-names-tradition_categories.json",
     "modifier-blocks.json",
     "weight-blocks.json",
     "triggered-modifiers.json",
@@ -117,6 +127,12 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
         return Ok(compact_fields(
             &current_answer(native, native.registry_fields(registry)?)?.value,
         ));
+    }
+    if let Some((registry, _)) = DERIVED_NAME_FILES.iter().find(|(_, file)| *file == name) {
+        return Ok(compact_derived_names(&current_answer(
+            native,
+            native.derived_names(registry)?,
+        )?));
     }
     match name {
         "registries.json" => Ok(json!(
