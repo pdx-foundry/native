@@ -101,6 +101,21 @@ The engine branches on the key's form: a long key is in a buffer, and a short ke
 the string object. Constructors and generators copy string objects through `q` registers from
 temporaries that are not fully written, so a copied flag byte can be unknown.
 
+### Standard-string move assignment
+
+On M451-hotfix, `basic_string<char, char_traits<char>, CPdxCommonStringAllocator>::__move_assign(
+basic_string&, integral_constant<bool, false>)` is at `0x1000113a4`, with the destination in `x0`
+and the source in `x1`. It compares the allocator state of the two strings, the 4 bytes at
+`+0x18` and the 8 bytes at `+0x20`. When they are equal, it takes the source's 24 bytes and
+leaves the source as the empty short string (zero at `+0x17` and `+0`). When they differ, it
+copies the text and the source keeps it. `CString::CString(char const*)` (`0x102521f3c`) writes
+zero to both words, so strings from the engine's constructors have equal state.
+
+The string model always takes the move: the destination gets the source's text and the source
+becomes empty. A source with a different allocator state would keep its text in the engine. If
+a method finds a string whose allocator state is not the constructors' zero state, the model
+must read both words and take the copy when they differ.
+
 ### The loaded modifier table
 
 - **Where to read it.** `CGameApplication::InitGame` calls `CModifier::LogDefinitions()`

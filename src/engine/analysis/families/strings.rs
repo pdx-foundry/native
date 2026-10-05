@@ -412,9 +412,8 @@ impl Model<'_> {
     /// byte. A short source's label moves to the object; a long source's label stays at its
     /// buffer, which the object now points to. An unresolved source gives an unresolved object.
     ///
-    /// The engine moves only when both strings have the same allocator state, and copies
-    /// otherwise. The model assumes the move, because the engine's string constructors write the
-    /// same zero state. A string with another allocator state would keep its text after the call.
+    /// The engine moves only when both strings have the same allocator state; the model assumes
+    /// it. `docs/native/modifier-families.md` holds that limit and the condition for a change.
     fn move_assign(&self, machine: &mut Machine, arena: &mut Arena) -> Result<Call, Unresolved> {
         let object = machine.known_register(0, "string-object")?;
         let source = machine.known_register(1, "string-object")?;
