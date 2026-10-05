@@ -1420,8 +1420,9 @@ enum Replacement {
 /// found path uses only the name at the replacement sites that it reaches, every missing path
 /// uses only M there, M has the name's lookup target, and every missing path reaches such a site
 /// unless it ends in a trap or a function that never returns. A use of an unresolved name at a
-/// replacement site could be another replacement, so it refutes the proof. Only paths that check
-/// the name count, and only their events after the check and before assumed text.
+/// replacement site anywhere on a checking path could be another replacement, so it refutes the
+/// proof; a path records such a use once for each site. Only paths that check the name count, and
+/// their resolved uses only after the check and before assumed text.
 fn replacement(
     name: &NameId,
     hit: &RunRecord,
@@ -1445,15 +1446,8 @@ fn replacement(
         uses
     };
 
-    let missing_uses: Vec<_> = missing_paths
-        .iter()
-        .map(|path| uses_at_sites(miss, path))
-        .collect();
-    if missing_uses.iter().all(BTreeMap::is_empty) {
-        return Replacement::None;
-    }
-    let unresolved_at_site = |run, path| {
-        after_check(run, path, name).any(|event| {
+    let unresolved_at_site = |run: &RunRecord, path| {
+        run.events(path).any(|event| {
             matches!(event.kind, EventKind::UnresolvedUse) && sites.contains(&event.chain)
         })
     };
@@ -1463,6 +1457,14 @@ fn replacement(
             .any(|path| unresolved_at_site(miss, path));
     if unresolved {
         return Replacement::Conflicting;
+    }
+
+    let missing_uses: Vec<_> = missing_paths
+        .iter()
+        .map(|path| uses_at_sites(miss, path))
+        .collect();
+    if missing_uses.iter().all(BTreeMap::is_empty) {
+        return Replacement::None;
     }
 
     let found_use_only_the_name = found_paths.iter().all(|path| {

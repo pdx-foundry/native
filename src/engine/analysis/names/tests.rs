@@ -482,6 +482,40 @@ fn an_unresolved_use_at_a_replacement_site_is_no_fallback() {
     assert_eq!(named(&result, &key_desc()).on_missing, Miss::Unresolved);
 }
 
+/// Found paths use the name at one site; missing paths use only an unnamed string there.
+#[test]
+fn an_unresolved_use_without_a_resolved_replacement_is_no_silent_miss() {
+    let mut code = root(0);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; tbz w0, #0, ->missing; add x20, sp, #0x20; b ->site; ->missing:);
+    arm64!(code; ldr x20, [x19, #UNNAMED]; ->site:; mov x0, x20);
+    code.call(VIEW).call(CHECK);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert_eq!(named(&result, &key_desc()).on_missing, Miss::Unresolved);
+}
+
+/// A loop uses an unnamed string at one site before the check. After the check, found paths
+/// use the name there and missing paths use the unnamed string again, which the path records only
+/// once.
+#[test]
+fn an_unresolved_use_before_the_check_at_a_site_revisited_after_it_is_no_silent_miss() {
+    let mut code = root(0);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    arm64!(code; ldr x20, [x19, #UNNAMED]; mov w21, #0; ->site:; mov x0, x20);
+    code.call(VIEW).call(CHECK);
+    arm64!(code; cbnz w21, ->done; mov w21, #1);
+    use_stack(&mut code, 0x20, CHECK);
+    arm64!(code; tbz w0, #0, ->site; add x20, sp, #0x20; b ->site; ->done:; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert_eq!(named(&result, &key_desc()).on_missing, Miss::Unresolved);
+}
+
 /// A lookup that returns its text through `x8` gives the empty text. A branch on its length then
 /// takes one arm, so the name looked up after it is not established and the other is never found.
 #[test]
