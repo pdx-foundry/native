@@ -15,12 +15,13 @@ the read/member hash used by persistent fields:
 | `e327ea91dfe75d65` | `CModifier::ReadMember` | 2 | 1 | 2 |
 | `5a74c67fe5a4adf9` | `CGraphicalModifier::ReadMember` | 2 | 1 | 8 |
 | `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 25 | 1 | 11 |
-| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 3 | 1 | 13 |
+| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 7 | 1 | 13 |
 
-The full population covers 164 registries and 1,593 root fields. Thirty-two modifier fields in
-18 registries share these four variants: **0 complete, 32 partial, 0 failed**. Every repeated
-reader identity has the same block. Another 57 generic persistent Block fields have no concrete
-reader join; they include fifteen weight-named fields. Constructor-proven weight readers have
+The full population covers 164 registries and 1,593 root fields. Thirty-six modifier fields in
+19 registries share these four variants: **0 complete, 36 partial, 0 failed**. Every repeated
+reader identity has the same block. Another 47 generic persistent Block fields have no concrete
+reader join; they include thirteen weight-named fields. The four modifier fields of
+`common/agreement_term_values` join since the shared evaluator runs `ld1r` (SDK-547). Constructor-proven weight readers have
 their own grammar ([weight blocks](weight-blocks.md)).
 
 All variants have partial fixed keys and two known entry forms. The smallest variant has
