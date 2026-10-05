@@ -255,7 +255,7 @@ fn named<'a>(result: &'a NameResult, parts: &[Part]) -> &'a Name {
         .unwrap_or_else(|| panic!("no name {parts:?} in {:#?}", result.names))
 }
 
-fn string_field(path: &[&str], offset: u32) -> StoredField {
+fn stored_field(path: &[&str], offset: u32) -> StoredField {
     StoredField {
         path: path.iter().map(|part| (*part).into()).collect(),
         offset: offset.into(),
@@ -266,7 +266,7 @@ fn string_field(path: &[&str], offset: u32) -> StoredField {
 /// A storage whose only string field is `name` at `NAME`.
 fn name_storage() -> Storage {
     Storage {
-        strings: vec![string_field(&["name"], NAME)],
+        strings: vec![stored_field(&["name"], NAME)],
         ..Storage::default()
     }
 }
@@ -644,7 +644,7 @@ fn a_name_that_a_tested_flag_selects_carries_the_flag_condition() {
     use_stack(&mut code, 0x20, LOOKUP);
     arm64!(code; ->skip:; ret);
     let storage = Storage {
-        flags: vec![string_field(&["flag"], FLAG)],
+        flags: vec![stored_field(&["flag"], FLAG)],
         selections: vec![StorageSelection {
             method: root_name(0),
             field: vec!["name".into()],
@@ -800,7 +800,7 @@ fn storage_reads_string_and_boolean_fields_of_the_item_and_its_collections() {
     assert_eq!(
         storage.strings,
         [
-            string_field(&["name"], NAME),
+            stored_field(&["name"], NAME),
             StoredField {
                 path: vec!["swap".into(), "name".into()],
                 offset: 0xf8,
@@ -825,7 +825,7 @@ fn a_root_that_tests_too_many_flags_is_a_gap() {
     use_stack(&mut code, 0x20, LOOKUP);
     arm64!(code; ret);
     let flags: Vec<StoredField> = (0..=FLAG_BOUND as u32)
-        .map(|index| string_field(&[&format!("flag{index}")], FLAG + index))
+        .map(|index| stored_field(&[&format!("flag{index}")], FLAG + index))
         .collect();
     let storage = Storage {
         selections: flags

@@ -898,11 +898,15 @@ impl Recorder<'_> {
             return Call::Return(unresolved_outcome(sink, machine));
         };
 
-        let key = (sink.target, text);
-        let outcome = (sink.role == Role::Check).then(|| u64::from(!self.misses.contains(&key)));
-        if sink.role == Role::Check {
-            self.checked.insert(key);
-        }
+        let outcome = match sink.role {
+            Role::Check => {
+                let key = (sink.target, text);
+                let found = !self.misses.contains(&key);
+                self.checked.insert(key);
+                Some(u64::from(found))
+            }
+            Role::Lookup => None,
+        };
         if has_source(&node) {
             let kind = EventKind::Use {
                 role: sink.role,
