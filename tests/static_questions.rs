@@ -522,7 +522,6 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
         }
     }
 
-    let key = || NamePart::ItemKey;
     let text = |text: &str| NamePart::Literal(text.into());
     let field = |path: &[&str]| NamePart::Field(path.iter().map(|part| part.to_string()).collect());
     let zero = |path: &[&str], zero: bool| FieldCondition::FieldZero {
@@ -544,7 +543,7 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
     let traditions = native.derived_names("common/traditions").unwrap().value;
     let base = find(
         &traditions,
-        vec![key()],
+        vec![NamePart::ItemKey],
         LookupStage::WhenUsed,
         MissingName::ShowsKey,
     );
@@ -562,12 +561,12 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
             &traditions,
             vec![field(&["tradition_swap", "name"]), text(suffix)],
             LookupStage::WhenUsed,
-            MissingName::Fallback(vec![key(), text(suffix)]),
+            MissingName::Fallback(vec![NamePart::ItemKey, text(suffix)]),
         );
         assert!(terms(&swap_desc).contains(&zero(&["tradition_swap", "name"], false)));
         find(
             &traditions,
-            vec![key(), text(suffix)],
+            vec![NamePart::ItemKey, text(suffix)],
             LookupStage::WhenUsed,
             MissingName::Silent,
         );
@@ -603,14 +602,14 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
         .value;
     let base = find(
         &categories,
-        vec![key()],
+        vec![NamePart::ItemKey],
         LookupStage::WhenUsed,
         MissingName::ShowsKey,
     );
     assert_eq!(base.condition, FieldCondition::Always);
     let desc = find(
         &categories,
-        vec![key(), text("_desc")],
+        vec![NamePart::ItemKey, text("_desc")],
         LookupStage::WhenUsed,
         MissingName::ShowsKey,
     );

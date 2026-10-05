@@ -166,10 +166,6 @@ agreement and the pitfalls.
 | --- | ---: | ---: | ---: | ---: |
 | Registries | 164 | 62 | 102 | 0 |
 
-Eighty-five registries return 298 names, and all of them are partial; the complete answers return
-no name. The most frequent gap shapes, by registry, are paths that go on after assumed text (92),
-names with an unfollowed part (49), the path bound (47), unmodelled string objects (44) and
-lookup or check calls that no run reaches (41). Eight registries have no established key place.
-On a miss, 190 names show the key, 65 are unresolved, 21 are diagnostics, 18 are silent and 4 are
-fallbacks (the tradition swap descriptions, in traditions and ascension perks). The run also
-finds post-read `.dds` file checks and a few sprite checks.
+Eighty-five registries return names, and all of them are partial; the complete answers return
+no name. The [derived names](derived-names.md#population) page has the gap shapes, the entry
+counts and the findings.
