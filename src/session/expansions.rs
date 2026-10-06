@@ -9,6 +9,8 @@ use crate::{ExpansionMechanism, ScriptExpansion};
 
 /// Why the cycle behavior of a template mechanism is not established.
 const CYCLES: &str = "What a cycle of definitions yields is not established. The depth check is reached by deep nesting; other ways that a cycle can end were not traced, and a fixture of a cycle needs its own definitions.";
+/// Why the definition that a duplicated name selects is not established.
+const DUPLICATE_DEFINITIONS: &str = "Which definition a name selects when files of the directory define it twice is not established.";
 /// Why a use of a definition that loads after it is not established.
 const FORWARD_DEFINITIONS: &str = "Whether a use resolves a definition that loads after it is not established. A use is a placeholder until all content loads, but the lookup's result was not traced.";
 
@@ -36,8 +38,15 @@ fn normalize(result: ExpansionResult, build: BuildId) -> Answer<Vec<ScriptExpans
     let mut gaps: Vec<Gap> = result.gaps.iter().map(property_gap).collect();
 
     for expansion in &result.expansions {
+        let subject = mechanism_name(expansion.mechanism);
+        if has_directory(&expansion.definitions) {
+            gaps.push(gap(
+                GapKind::OutsideMethod,
+                Some(subject),
+                DUPLICATE_DEFINITIONS,
+            ));
+        }
         if expansion.stage == crate::GrammarProperty::Known(crate::ExpansionStage::Compile) {
-            let subject = mechanism_name(expansion.mechanism);
             gaps.push(gap(GapKind::OutsideMethod, Some(subject), CYCLES));
             gaps.push(gap(
                 GapKind::OutsideMethod,
@@ -54,6 +63,19 @@ fn normalize(result: ExpansionResult, build: BuildId) -> Answer<Vec<ScriptExpans
         gaps,
         source: Source::new(build, expansions::METHOD, Basis::StaticAnalysis),
     }
+}
+
+/// Whether a content directory defines some of the mechanism's names.
+fn has_directory(definitions: &crate::GrammarProperty<Vec<crate::ExpansionDefinitions>>) -> bool {
+    let (crate::GrammarProperty::Known(sources) | crate::GrammarProperty::Partial(sources)) =
+        definitions
+    else {
+        return false;
+    };
+
+    sources
+        .iter()
+        .any(|source| matches!(source, crate::ExpansionDefinitions::Directory { .. }))
 }
 
 fn property_gap(found: &ExpansionGap) -> Gap {

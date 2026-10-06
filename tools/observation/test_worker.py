@@ -473,18 +473,25 @@ class ParserObservationTests(unittest.TestCase):
             sourced_log_owner_register='x19', sourced_log_source_offset=0x28,
             sourced_log_generated_frame_offset=0x50,
             source_file_prefix='file: ', source_line_prefix=' line: ')
+        self.observer.bindings['string_tag_offset'] = 23
         self.observer.returned = True
-        self.observer.stored_string = Mock(side_effect=[
-            f'file: {self.file} line: 3', 'Unexpected token', 'if = { limit = { always = yes } }'])
+        self.observer.stored_string = Mock(side_effect=[f'file: {self.file} line: 3', 'Unexpected token'])
         values = dict(x19=0x2000, x20=0x3000, x29=0x4050)
-        with patch.object(worker, 'register', side_effect=lambda frame, name: values[name]):
-            self.observer.on_sourced_log(self.frame, Mock(), 7)
-        self.assertEqual([call.args[1] for call in self.observer.stored_string.call_args_list],
-                         [0x2028, 0x3000, 0x4000])
-        call = self.observer.emit.call_args
-        self.assertEqual(call.kwargs['line'], 3)
-        self.assertEqual(call.kwargs['stage'], 'engine-validation-log')
-        self.assertTrue(call.kwargs['text'].endswith('resulting in source:\nif = { limit = { always = yes } }'))
+        for generated, ending in [(b'if = { }', 'resulting in source:\nif = { }'),
+                                  (b'x' * 5000, '[generated source cut at 4096 bytes]')]:
+            self.observer.stored_string.side_effect = [f'file: {self.file} line: 3', 'Unexpected token']
+            storage = (0x9000).to_bytes(8, 'little') + len(generated).to_bytes(8, 'little') + bytes(7)
+            storage = storage[:23] + bytes([128])
+            reads = {0x4000: storage, 0x9000: generated}
+            with patch.object(worker, 'register', side_effect=lambda frame, name: values[name]), \
+                    patch.object(worker, 'memory', side_effect=lambda process, address, size: reads[address][:size]):
+                self.observer.on_sourced_log(self.frame, Mock(), 7)
+            self.assertEqual([call.args[1] for call in self.observer.stored_string.call_args_list[-2:]],
+                             [0x2028, 0x3000])
+            call = self.observer.emit.call_args
+            self.assertEqual(call.kwargs['line'], 3)
+            self.assertEqual(call.kwargs['stage'], 'engine-validation-log')
+            self.assertTrue(call.kwargs['text'].endswith(ending), call.kwargs['text'][-80:])
 
     def test_sourced_log_ignores_other_files_and_closed_windows(self):
         self.observer.bindings['validation'] = dict(sourced_log_owner_register='x0',

@@ -55,11 +55,16 @@
   "gaps": [
     {"detail": "a reader that expands the mechanism is not joined to a content directory or a shared reader (unjoined-reader)", "kind": "UnresolvedPath", "subject": {"kind": "answer_item", "name": "inline script"}},
     {"detail": "the order in which a use looks up the file's own definitions and the directory's is not established (lookup-order)", "kind": "UnresolvedPath", "subject": {"kind": "answer_item", "name": "scripted variable"}},
+    {"detail": "Which definition a name selects when files of the directory define it twice is not established.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "inline script"}},
+    {"detail": "Which definition a name selects when files of the directory define it twice is not established.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "scripted effect"}},
     {"detail": "What a cycle of definitions yields is not established. The depth check is reached by deep nesting; other ways that a cycle can end were not traced, and a fixture of a cycle needs its own definitions.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "scripted effect"}},
     {"detail": "Whether a use resolves a definition that loads after it is not established. A use is a placeholder until all content loads, but the lookup's result was not traced.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "scripted effect"}},
+    {"detail": "Which definition a name selects when files of the directory define it twice is not established.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "scripted trigger"}},
     {"detail": "What a cycle of definitions yields is not established. The depth check is reached by deep nesting; other ways that a cycle can end were not traced, and a fixture of a cycle needs its own definitions.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "scripted trigger"}},
     {"detail": "Whether a use resolves a definition that loads after it is not established. A use is a placeholder until all content loads, but the lookup's result was not traced.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "scripted trigger"}},
+    {"detail": "Which definition a name selects when files of the directory define it twice is not established.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "script value"}},
     {"detail": "What a cycle of definitions yields is not established. The depth check is reached by deep nesting; other ways that a cycle can end were not traced, and a fixture of a cycle needs its own definitions.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "script value"}},
-    {"detail": "Whether a use resolves a definition that loads after it is not established. A use is a placeholder until all content loads, but the lookup's result was not traced.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "script value"}}
+    {"detail": "Whether a use resolves a definition that loads after it is not established. A use is a placeholder until all content loads, but the lookup's result was not traced.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "script value"}},
+    {"detail": "Which definition a name selects when files of the directory define it twice is not established.", "kind": "OutsideMethod", "subject": {"kind": "answer_item", "name": "scripted variable"}}
   ]
 }

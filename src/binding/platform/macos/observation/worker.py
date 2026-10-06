@@ -306,6 +306,10 @@ def source_line_patterns(file, file_prefix, line_prefix):
             re.escape(file) + r':([0-9]+)\(inline_script\) ']
 
 
+# An engine error's generated instance source is evidence, not a value: keep a bounded prefix.
+GENERATED_SOURCE_LIMIT = 4096
+
+
 def interpret_fixture_log(text, file, file_prefix, line_prefix, returned):
     """Keep a matching file's diagnostic, with a line only when its source is unambiguous."""
     if file not in text:
@@ -622,8 +626,12 @@ class FixtureObserver:
         if self.config['file'] not in source:
             return False
         text = self.stored_string(process, register(frame, binding['sourced_log_text_register']))
-        generated = register(frame, 'x29') - binding['sourced_log_generated_frame_offset']
-        generated = self.stored_string(process, generated)
+        storage = register(frame, 'x29') - binding['sourced_log_generated_frame_offset']
+        storage_bytes = memory(process, storage, self.bindings['string_tag_offset'] + 1)
+        generated, cut = stored_values.cstring_prefix(storage_bytes, self.bindings['string_tag_offset'],
+            partial(memory, process), GENERATED_SOURCE_LIMIT)
+        if cut:
+            generated += '\n[generated source cut at ' + str(GENERATED_SOURCE_LIMIT) + ' bytes]'
         return self.emit_log(text + ' at ' + source + '\nresulting in source:\n' + generated, thread)
 
     def emit_log(self, text, thread):

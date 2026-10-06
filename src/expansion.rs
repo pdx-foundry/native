@@ -20,8 +20,10 @@ pub struct ScriptExpansion {
     /// How a definition refers to the parameters of a use. A known empty list means that the
     /// mechanism takes no parameters.
     pub parameter_forms: GrammarProperty<Vec<ParameterForm>>,
-    /// What a use that does not give a parameter yields; a known `None` means that the mechanism
-    /// takes no parameters.
+    /// What a use yields when it omits a parameter that the definition writes as a plain `$KEY$`
+    /// outside the conditional blocks that the use drops. Omitting a parameter that the definition
+    /// writes only as `$KEY|default$` or inside `[[KEY] … ]` is valid. A known `None` means that
+    /// the mechanism takes no parameters.
     pub missing_parameter: GrammarProperty<Option<MissingParameter>>,
     /// Diagnostics that the engine logs for a use while it loads content. Other messages can
     /// exist, so a list is never `Known`.
@@ -163,7 +165,7 @@ pub enum ParameterForm {
     NegatedConditional,
 }
 
-/// What a use that does not give a parameter yields.
+/// What a use yields when it omits a parameter that its definition requires.
 #[derive(
     Debug,
     Clone,
@@ -179,7 +181,7 @@ pub enum ParameterForm {
 )]
 #[non_exhaustive]
 pub enum MissingParameter {
-    /// The engine logs a diagnostic for the use.
+    /// The engine logs a diagnostic that names the missing parameters.
     Diagnostic,
     /// The text keeps `$KEY$`, and the engine reads it as written.
     KeptAsText,

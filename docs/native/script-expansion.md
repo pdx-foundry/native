@@ -108,15 +108,22 @@ tell its form from its absence would remove that form from the stated rule.
 
 ## Gaps and limits
 
+- **A missing parameter is one that the definition writes as a plain `$KEY$` outside the
+  conditional blocks that the use drops.** A use that omits a parameter written only as
+  `$KEY|default$` or inside `[[KEY] … ]` is valid; the fixture rows above omit such parameters
+  with no diagnostic.
 - **The missing-parameter message is not joined to a call.** It names the template, not the use.
   `MissingParameter::Diagnostic` rests on the static check alone.
 - **The unknown inline-script message is not captured by fixtures.** The inline reader sends it
   piece by piece to a `CLogStream`, and no fixture hook reads that stream. The check rests on the
   static message argument.
+- **Duplicate definitions** are an `OutsideMethod` gap on every mechanism with a definition
+  directory: which definition a name selects when two files define it is not established
+  (SDK-552).
 - **Cycles and forward definitions** are `OutsideMethod` gaps. The depth check is established; a
   cycle needs authored definitions, and the lookup's result for a later definition was not
   traced.
-- **Outside the method:** which duplicate definition wins (SDK-552), comparing a scripted
+- **Outside the method:** comparing a scripted
   trigger's value (`== int`), `optimize_memory`, and escapes such as `\$`.
 
 ## Stated forms (recorded manual exception)
