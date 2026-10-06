@@ -258,7 +258,7 @@ fn malformed_json_and_missing_shapes_are_input_errors() {
 fn duration_report(reviewed: &Value, candidate: &Value) -> Report {
     compare_durations(
         &build("hotfix"),
-        "duration-m451/live.json",
+        "duration-m452/live.json",
         &serde_json::to_vec(reviewed).unwrap(),
         &serde_json::to_vec(candidate).unwrap(),
     )

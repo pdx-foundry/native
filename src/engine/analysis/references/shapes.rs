@@ -9,7 +9,7 @@
 //! are, and rename the scratch and callee-saved registers `x8`–`x28` by first use, so one shape
 //! covers every register allocation of the same code. Branch targets inside the function become
 //! relative line offsets. A branch or call outside the function, and an address formed by `adrp`
-//! with `add` or `ldr`, carry the demangled name at that address as the line's value.
+//! with `add`, `ldr` or `str`, carry the demangled name at that address as the line's value.
 //!
 //! A shape line may hold placeholders. `{name}` in the text captures one operand token, such as a
 //! field offset; `{name}` as the value captures a name. A placeholder binds once: every later use
@@ -114,7 +114,7 @@ impl Canonicalizer<'_> {
         }
     }
 
-    /// An `add` or `ldr` that completes an `adrp` address names that address.
+    /// An `add`, `ldr` or `str` that completes an `adrp` address names that address.
     fn page_access(&mut self, operation: &str, operands: &[&str], base: &str, offset: i64) -> Line {
         let page = self.pages.get(&self.registers.canonical(base)).copied();
         let renamed = operands_text(operands, &mut self.registers);
@@ -333,12 +333,12 @@ fn branch_target(operation: &str, operands: &[&str]) -> Option<u64> {
         .map(|target| target as u64)
 }
 
-/// The base register and offset of `add xD,xN,#offset` or `ldr xD,[xN,#offset]`, which may
-/// complete an `adrp` address.
+/// The base register and offset of `add xD,xN,#offset`, `ldr xD,[xN,#offset]` or
+/// `str xS,[xN,#offset]`, which may complete an `adrp` address.
 fn page_offset<'a>(operation: &str, operands: &[&'a str]) -> Option<(&'a str, i64)> {
     match (operation, operands) {
         ("add", [_, base, offset]) => Some((base, number(offset)?)),
-        ("ldr", [_, memory]) => {
+        ("ldr" | "str", [_, memory]) => {
             let inside = memory.strip_prefix('[')?.strip_suffix(']')?;
             let (base, offset) = inside.split_once(',')?;
             Some((base, number(offset)?))
@@ -489,6 +489,26 @@ mod tests {
                 "mov x0,xr0",
                 "bl CALL = _memcmp",
                 "ret",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_store_through_a_page_names_the_global() {
+        let rows = [
+            row(0x1000, "adrp", "x20,#0x5000"),
+            row(0x1004, "str", "x0,[x20,#0x8]"),
+        ];
+        let lines: Vec<String> = canonical(&rows, &names())
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+
+        assert_eq!(
+            lines,
+            [
+                "adrp xr0,PAGE",
+                "str x0,[xr0,G] = TGameDatabase<CExampleDatabase>::_pInstance",
             ]
         );
     }

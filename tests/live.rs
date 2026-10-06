@@ -43,7 +43,7 @@ const CATEGORIES: &str = "common/tradition_categories";
 const ASCENSION_PERKS: &str = "common/ascension_perks";
 const RELICS: &str = "common/relics";
 /// The registries whose database generators register modifier families (SDK-540), with the
-/// item counts of the catalogued M451-hotfix build.
+/// item counts of the catalogued M452 build.
 const GENERATOR_REGISTRIES: [(&str, usize); 6] = [
     ("common/buildings", 498),
     ("common/bypass", 10),
@@ -754,7 +754,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
     }
 }
 
-/// The SDK-548 fixture sample, `tests/population/m451-hotfix/command-fixture-sample.json`.
+/// The SDK-548 fixture sample, `tests/population/m452/command-fixture-sample.json`.
 /// Accepted samples cover each form, value alternative and fixed key of a command. Rejected
 /// samples use only a rejection that the method established on every path. A rejected key gives
 /// a reader report that can upset the definitions after it, so it keeps its own session.
@@ -2022,7 +2022,30 @@ fn assert_unrelated_definitions(answer: &Answer<pdx_native::FixtureObservation>)
     let [outcome] = answer.value.field_outcomes.as_slice() else {
         return Err(format!("unrelated definition outcome: {answer:?}").into());
     };
-    let [diagnostic] = answer.value.diagnostics.as_slice() else {
+    // M452 logs each repeated key; the repeats sit before and after the target.
+    let (repeats, others): (Vec<_>, Vec<_>) =
+        answer.value.diagnostics.iter().partition(|diagnostic| {
+            diagnostic
+                .text
+                .starts_with("Object with key: native_fixture_repeat already exists")
+        });
+    let repeat_lines: Vec<_> = repeats
+        .iter()
+        .map(|diagnostic| match &diagnostic.join {
+            DiagnosticJoin::Source {
+                file,
+                line,
+                definition: None,
+                field: None,
+                occurrence: None,
+            } if file == "common/traditions/native_fixture.txt" => Some(*line),
+            _ => None,
+        })
+        .collect();
+    if repeat_lines != [Some(259), Some(521), Some(522)] {
+        return Err(format!("repeated definition diagnostics: {answer:?}").into());
+    }
+    let [diagnostic] = others.as_slice() else {
         return Err(format!("unrelated definition diagnostic: {answer:?}").into());
     };
     if answer.completeness != Completeness::Complete
@@ -2481,7 +2504,7 @@ async fn close_confirmed(game: &mut Game) -> Outcome {
     }
 }
 
-/// The loaded tags of the five declared names that content registers again (M451-hotfix).
+/// The loaded tags of the five declared names that content registers again (M452).
 const RE_REGISTERED: [(&str, &[&str]); 5] = [
     ("terraforming_cost_mult", &["Planets", "AI Economy"]),
     (
@@ -2507,8 +2530,8 @@ const SHIP_TAGS_WITH_ECONOMY: [&str; 7] = [
     "Transport Ships",
     "AI Economy",
 ];
-/// Entries of the loaded table on M451-hotfix with installed content (45,578, as on M45-release in SDK-488).
-const LOADED_MODIFIERS: usize = 45_578;
+/// Entries of the loaded table on M452 with installed content (45,578 on M45-release in SDK-488).
+const LOADED_MODIFIERS: usize = 45_583;
 
 async fn loaded_modifiers(native: &Native) -> Outcome {
     use pdx_native::{DeclaredTags, LoadedContent};

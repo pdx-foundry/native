@@ -136,7 +136,7 @@ pub const FILES: &[&str] = &[
 ];
 
 pub fn expected_directory() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected/m451")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected/m452")
 }
 
 /// Ask each static selection. Formatting uses the tracked key order.

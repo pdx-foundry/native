@@ -1,6 +1,6 @@
 {
   "effect": {
-    "sdk_488_live_inventory": 1074,
+    "sdk_488_live_inventory": 1080,
     "recovered": [
       {
         "mechanism": "registry helper constructor",
@@ -184,7 +184,7 @@
     ]
   },
   "trigger": {
-    "sdk_488_live_inventory": 1096,
+    "sdk_488_live_inventory": 1098,
     "recovered": [
       {
         "mechanism": "registry helper constructor",

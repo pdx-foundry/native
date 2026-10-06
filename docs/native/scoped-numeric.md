@@ -5,7 +5,7 @@ literal-assignment properties, with their analysis versions and expected output,
 `d8f9d8a`, with the evaluated world results; their pitfalls are on
 [ready-world observations](ready-world.md).
 
-## Engine facts and method (M45-release, M451-hotfix)
+## Engine facts and method (M45-release to M452)
 
 `CVariableValue::Read` and `Assign` share one operand reader. A destination's constructor vtable
 point selects `CIntVariableValue` (signed 32-bit, scale 1), `CFixedPointVariableValue` (signed
@@ -36,10 +36,10 @@ Stored-representation rules (not evaluated results):
 Literals inherit the int or direct fixed-point range in
 [numeric conversion](numeric-conversion.md#faithful-storage-and-endpoints) only when
 constructor evidence establishes the concrete storage; unresolved destinations keep
-`Reader.numeric: Unresolved`. The live matrix (`tests/expected/scoped-numeric-m451/`) checks the
+`Reader.numeric: Unresolved`. The live matrix (`tests/expected/scoped-numeric-m452/`) checks the
 inherited range at `overclock_cooldown` and `cycle_length_in_days`.
 
-## Current result on M451-hotfix
+## Result on M451-hotfix
 
 At `main` `6f643a1`, `scoped-numeric-population` covers all 164 registries and 2,170 commands
 with no failed question. Registry destinations: 7, **0 complete, 7 partial, 0 failed**. Command
@@ -55,7 +55,7 @@ nested-field limit.
   reader stores `{` as variable text and disrupts parsing after it. Run inline-block cases alone.
 - **`agenda_cooldown` has conditional storage routing** outside the fixture binding; its contrast
   inputs use `sensor_range`. Timed-flag operands use `agenda_cost` and `add_trust.amount` operands
-  use `cycle_length_in_days` (`tests/expected/scoped-numeric-m451/cases.json` maps each case).
+  use `cycle_length_in_days` (`tests/expected/scoped-numeric-m452/cases.json` maps each case).
 - An incomplete diagnostic source join is not complete coverage.
 
 ## Transfer to the 4.5.1 hotfix
@@ -67,6 +67,20 @@ matcher now captures a nonempty named diagnostic string (repeated uses in a body
 matches each local `adr` by its relative instruction position; a different target, an address
 outside the body or any changed instruction still fails. Shape captures are in
 `.local/sdk-650/hotfix/scoped-*`.
+
+## Transfer to M452
+
+The canonical bodies again align instruction for instruction. Two literals broke the match:
+
+- The prefix body stores its new `CPostInitVariableValueDatabase` through an `adrp` page. The
+  store's page offset was a literal in the shape; canonical shapes now name a global stored through
+  a page, as they name one loaded through it.
+- Both `GetValue` bodies switch on lexer token IDs, and M452 moved most IDs in the switch up by 9.
+  The shapes pin every token, so `int_get.txt` and `fixed_get.txt` hold the M452 values. The method
+  needs only the literal, location and size offsets from these bodies. Accepted limit: a build that
+  adds keywords below these tokens needs the shapes derived again
+  (`examples/inspect --derive-shape`). Replace the pinned tokens with captures if this recurs on
+  the SDK-557 rehearsal.
 
 ## Constructor state on M451-hotfix
 

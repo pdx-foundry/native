@@ -5,7 +5,7 @@ use pdx_native::{
 };
 use serde::{Deserialize, Serialize};
 
-const TABLE: &str = include_str!("../expected/script-numeric-m451/cases.json");
+const TABLE: &str = include_str!("../expected/script-numeric-m452/cases.json");
 const INTEGER_EFFECT: &str = "set_timed_country_flag";
 const INTEGER_KEY: &str = "days";
 const FIXED_EFFECT: &str = "set_variable";

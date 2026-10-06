@@ -12,7 +12,7 @@ check a method in one task.
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v18` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m45-sweep) |
+| `Native::registry_fields` | `registry-fields/v18` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m452-sweep) |
 | `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v18`, `command-grammar/v15` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
 | `Reader.numeric` in fields and command grammar | `registry-fields/v18`, `command-grammar/v15` | `numeric.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md) |
 | `Reader.scoped_operand` in fields and command grammar | `registry-fields/v18`, `command-grammar/v15` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |

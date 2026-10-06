@@ -1,5 +1,5 @@
 {
-  "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
+  "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "cases": {
     "common/armies/war_exhaustion/exponent": {"diagnostics": [],"final": {"FixedPoint": {"raw": 100000,"scale": 100000}},"inputs": ["1e2"],"stored": [{"FixedPoint": {"raw": 100000,"scale": 100000}}]},
     "common/armies/war_exhaustion/fixed_above_min": {"diagnostics": [],"final": {"FixedPoint": {"raw": -9223372036854775807,"scale": 100000}},"inputs": ["-92233720368547.75807"],"stored": [{"FixedPoint": {"raw": -9223372036854775807,"scale": 100000}}]},

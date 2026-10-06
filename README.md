@@ -229,7 +229,7 @@ loaded_modifiers.json
 
 ## Supported build
 
-The catalogue binds the exact M451-hotfix (4.5.1) ARM64 executable, with fixtures and script
+The catalogue binds the exact M452 (4.5.2) ARM64 executable, with fixtures and script
 checks. An unknown build is refused; it never inherits another build's recipe. See [targets](docs/native/targets.md) for exact identities.
 
 ## One-time setup for live games (Apple Silicon macOS)

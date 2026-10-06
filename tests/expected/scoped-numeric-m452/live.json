@@ -1,5 +1,5 @@
 {
-  "build": "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38",
+  "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "cases": {
     "at": {
       "coverage": "Complete",
@@ -2072,7 +2072,12 @@
     },
     "overclock_cooldown_trigger_value": {
       "coverage": "Complete",
-      "diagnostics": [],
+      "diagnostics": [
+        {
+          "stage": "engine-parser-log",
+          "text": "Trigger num_owned_colonies used in wrong scope at  file: common/megastructures/native_scoped.txt line: 76, got megastructure\n"
+        }
+      ],
       "field": "overclock_cooldown",
       "final": {
         "ScopedNumeric": {
@@ -2240,7 +2245,12 @@
     },
     "quoted_space": {
       "coverage": "Complete",
-      "diagnostics": [],
+      "diagnostics": [
+        {
+          "stage": "engine-parser-log",
+          "text": "Not Allowed To Have Spaces in Variable Names!  file: common/council_agendas/native_scoped.txt line: 69\n"
+        }
+      ],
       "field": "agenda_cost",
       "final": {
         "ScopedNumeric": {

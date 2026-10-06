@@ -120,7 +120,7 @@ method gives a miss behavior only from search runs, whose names hold the key alo
 
 ## Result on M451-hotfix
 
-`tests/expected/m451/derived-names-traditions.json` and `derived-names-tradition_categories.json`
+`tests/expected/m452/derived-names-traditions.json` and `derived-names-tradition_categories.json`
 hold the two acceptance answers. The ignored test
 `derived_names_follow_the_tradition_getters_and_keep_swap_conditions` checks them against the
 engine facts above.

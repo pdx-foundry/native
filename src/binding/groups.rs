@@ -9,12 +9,12 @@ pub(super) fn fixture(
 ) -> Option<crate::protocol::observation::FixtureBinding> {
     groups
         .iter()
-        .any(|group| matches!(group, BindingGroupId::M451CategoryFixture))
-        .then(m451_fixture)
+        .any(|group| matches!(group, BindingGroupId::M452CategoryFixture))
+        .then(m452_fixture)
 }
 
-/// Fresh fixture pins for the exact 4.5.1 ARM64 slice.
-fn m451_fixture() -> crate::protocol::observation::FixtureBinding {
+/// Fresh fixture pins for the exact 4.5.2 ARM64 slice.
+fn m452_fixture() -> crate::protocol::observation::FixtureBinding {
     crate::protocol::observation::FixtureBinding {
         reader_lexer_offset: 0x30,
         lexer_file_offset: 8,
@@ -22,17 +22,17 @@ fn m451_fixture() -> crate::protocol::observation::FixtureBinding {
         string_tag_offset: M45_TEMPLATE_LAYOUT.string_tag_offset,
         file_line_offset: 8,
         validation: Some(crate::protocol::observation::FixtureValidationBinding {
-            log_entry: 0x1025087e4,
+            log_entry: 0x10250b6f4,
             log_text_register: "x4".into(),
-            unformatted_log_entry: 0x1025088b8,
-            stream_log_entry: 0x10212388c,
+            unformatted_log_entry: 0x10250b7c8,
+            stream_log_entry: 0x102126434,
             stream_log_text_register: "x1".into(),
-            sourced_log_entry: 0x101d2206c,
+            sourced_log_entry: 0x101d242b0,
             sourced_log_text_register: "x20".into(),
             sourced_log_owner_register: "x19".into(),
             sourced_log_source_offset: 0x28,
             sourced_log_generated_frame_offset: 0x50,
-            complete_entry: 0x100971a00,
+            complete_entry: 0x10097181c,
             source_file_prefix: "file: ".into(),
             source_line_prefix: " line: ".into(),
         }),
@@ -40,13 +40,13 @@ fn m451_fixture() -> crate::protocol::observation::FixtureBinding {
         outcome_registries: vec![
             crate::protocol::observation::FixtureOutcomeRegistryBinding {
                 registry: "common/traditions".into(),
-                load_entry: 0x100ce2fe4,
-                reader_entry: 0x100ce42c4,
-                reader_return: 0x100ce3054,
-                constructor_entry: 0x100cdc0f8,
-                member_entry: 0x100cdc700,
-                malformed_entry: 0x1025b25c4,
-                unexpected_entry: 0x1025b234c,
+                load_entry: 0x100ce48ac,
+                reader_entry: 0x100ce5b8c,
+                reader_return: 0x100ce491c,
+                constructor_entry: 0x100cdd9c0,
+                member_entry: 0x100cddfc8,
+                malformed_entry: 0x1025b5500,
+                unexpected_entry: 0x1025b5288,
                 fields: Vec::new(),
                 inline: None,
             },

@@ -16,11 +16,12 @@ classification is resolved. An `OutsideMethod` gap states the boundary and can a
 `Complete`. Unnamed candidates, unresolved paths, unknown reader classifications and unreadable
 required input make the answer partial.
 
-## Current M451 sweep
+## Current M452 sweep
 
-`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v18`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v18`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
-fields. Compare a new run with `registry-field-sweep --diff` ([method
+fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
 - **Council agendas (SDK-600).** All ten fields are found, but the answer is partial: `agenda_cost`

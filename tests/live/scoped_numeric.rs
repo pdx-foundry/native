@@ -16,7 +16,7 @@ struct CaseInput {
 
 pub(super) async fn matrix() -> Outcome {
     let cases: Vec<CaseInput> =
-        serde_json::from_str(include_str!("../expected/scoped-numeric-m451/cases.json"))?;
+        serde_json::from_str(include_str!("../expected/scoped-numeric-m452/cases.json"))?;
     assert_eq!(
         cases
             .iter()
@@ -155,7 +155,7 @@ fn check_report(
     std::fs::create_dir_all(path.parent().unwrap())?;
     std::fs::write(&path, serde_json::to_string_pretty(&actual)?)?;
     let expected: serde_json::Value =
-        serde_json::from_str(include_str!("../expected/scoped-numeric-m451/live.json"))?;
+        serde_json::from_str(include_str!("../expected/scoped-numeric-m452/live.json"))?;
     if actual != expected {
         return Err(format!("scoped observations differ; inspect {}", path.display()).into());
     }

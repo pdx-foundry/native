@@ -31,7 +31,7 @@ All variants have partial fixed keys and two known entry forms. The smallest var
 `divide_over_pop_groups` (unknown). Custom description adds `description` (string) and
 `description_parameters` (unknown).
 
-The compact selections are in `tests/expected/m451/modifier-blocks.json`; field selections refer
+The compact selections are in `tests/expected/m452/modifier-blocks.json`; field selections refer
 to these variants by reader identity.
 
 ## Entry forms

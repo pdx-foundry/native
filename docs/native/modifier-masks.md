@@ -84,41 +84,44 @@ method confirmed them and corrected one.
 - **Parse-time containers.** The registry field method reads them; see
   [container masks](#container-masks) below.
 
-## Result on M451-hotfix
+## Result on M452
 
-35 nodes. 34 have a followed construction and a resolved mask; node 0 is a gap. Node 15 has two
-owners, and node 32 (the ship) has two masks. `tests/expected/m451/modifier-nodes.json` holds the
-whole answer. The mask source of each node:
+34 nodes. 33 have a followed construction and a resolved mask; node 0 is a gap. Node 14 has two
+owners, and node 31 (the ship) has two masks. `tests/expected/m452/modifier-nodes.json` holds the
+whole answer. M452 has one country node where M451-hotfix had two: the M451-hotfix node 1, which
+had no source nodes, is gone, and the colony node no longer receives it. Every other node keeps its
+owner, mask and sources one number lower, so the node numbers in the engine facts above are
+M451-hotfix numbers. The mask source of each node:
 
 | Node | Owner | Mask | Mask source |
 | --- | --- | --- | --- |
-| 1, 2 | `CCountry` | 0x50bfcffe | `CCountry::MODIFIER_CATEGORIES` |
-| 33, 34 | `CWaystationNetwork` | 0x50bfcffe | `CCountryWaystationNetworkManager::MODIFIER_CATEGORIES` |
-| 3 | `CGalacticObject` | 0x402fdafe | `CGalacticObject::EXTERNAL_MODIFIER_CATEGORIES`, set by its initializer |
-| 4–8, 13 | `CGalacticObject`, `CSector` | 0x403fdafe | `CGalacticObject::MODIFIER_CATEGORIES`, set by its initializer |
-| 9 | `CLeader` | All | immediate |
-| 20 | `CLeader` | 0x80400 | immediate |
-| 10 | `CFederation` | 0x400000 | immediate |
-| 11 | `CGalacticCommunity` | 0x20000000 | immediate |
-| 12, 14 | `CEspionageOperation`, `CSpyNetwork` | 0x880000 | immediate |
-| 15 | `CStarbase` | 0x400840fe | `CStarbase::MODIFIER_CATEGORIES_ORBIT_MODIFIER` |
-| 15 | `CMegaStructure` | All | immediate |
-| 16 | `CCosmicStormInfluenceField` | 0x8000000 | immediate, in two constructors |
-| 17 | `CPlanet` | 0x400a8a02 | `CColonyCarrier::PLANET_MODIFIER_CATEGORIES` |
-| 18 | `CColony` | 0x400a8202 | `CColony::MODIFIER_CATEGORIES` |
-| 19 | `CAstralRift` | 0x4088000 | `CAstralRift::MODIFIER_CATEGORIES_FROM_COUNTRY` |
-| 21 | `CMegaStructure` | 0x9417c | immediate |
-| 22 | `CMegaStructure` | 0x4008c8fe | `MODIFIER_CATEGORIES_SYSTEM` |
-| 23 | `CPopGroup` | 0xa8002 | `CPopGroup::ModifierCategories` |
-| 24 | `CFleet` | 0x500ac2fe | immediate |
-| 25 | `CStarbase` | 0x402ec27e | `CStarbase::MODIFIER_CATEGORIES_STATION_MODIFIER` |
-| 26 | `CStarbase` | All | `CStarbase::MODIFIER_CATEGORIES_COUNTRY_MODIFIER` |
-| 27 | `CStarbase` | 0x4008c8fe | `CStarbase::MODIFIER_CATEGORIES_SYSTEM_MODIFIER` |
-| 28 | `CStarbase` | 0x400aca7e | `CColonyCarrier::ALL_MODIFIER_CATEGORIES` |
-| 29 | `CStarbase` | 0x8407c | `CStarbase::MODIFIER_CATEGORIES_DEFENSE_PLATFORM_MODIFIER` |
-| 30 | `CStarbase` | 0x502ec27e | immediate |
-| 31 | `CArmy` | 0x80200 | immediate; not `CArmy::MODIFIER_CATEGORIES` (0x84200) |
-| 32 | `CShip` | 0x500ac27e, 0x1000c07c | immediate, then `CShip::CalculateModifier` |
+| 1 | `CCountry` | 0x50bfcffe | `CCountry::MODIFIER_CATEGORIES` |
+| 32, 33 | `CWaystationNetwork` | 0x50bfcffe | `CCountryWaystationNetworkManager::MODIFIER_CATEGORIES` |
+| 2 | `CGalacticObject` | 0x402fdafe | `CGalacticObject::EXTERNAL_MODIFIER_CATEGORIES`, set by its initializer |
+| 3–7, 12 | `CGalacticObject`, `CSector` | 0x403fdafe | `CGalacticObject::MODIFIER_CATEGORIES`, set by its initializer |
+| 8 | `CLeader` | All | immediate |
+| 19 | `CLeader` | 0x80400 | immediate |
+| 9 | `CFederation` | 0x400000 | immediate |
+| 10 | `CGalacticCommunity` | 0x20000000 | immediate |
+| 11, 13 | `CEspionageOperation`, `CSpyNetwork` | 0x880000 | immediate |
+| 14 | `CStarbase` | 0x400840fe | `CStarbase::MODIFIER_CATEGORIES_ORBIT_MODIFIER` |
+| 14 | `CMegaStructure` | All | immediate |
+| 15 | `CCosmicStormInfluenceField` | 0x8000000 | immediate, in two constructors |
+| 16 | `CPlanet` | 0x400a8a02 | `CColonyCarrier::PLANET_MODIFIER_CATEGORIES` |
+| 17 | `CColony` | 0x400a8202 | `CColony::MODIFIER_CATEGORIES` |
+| 18 | `CAstralRift` | 0x4088000 | `CAstralRift::MODIFIER_CATEGORIES_FROM_COUNTRY` |
+| 20 | `CMegaStructure` | 0x9417c | immediate |
+| 21 | `CMegaStructure` | 0x4008c8fe | `MODIFIER_CATEGORIES_SYSTEM` |
+| 22 | `CPopGroup` | 0xa8002 | `CPopGroup::ModifierCategories` |
+| 23 | `CFleet` | 0x500ac2fe | immediate |
+| 24 | `CStarbase` | 0x402ec27e | `CStarbase::MODIFIER_CATEGORIES_STATION_MODIFIER` |
+| 25 | `CStarbase` | All | `CStarbase::MODIFIER_CATEGORIES_COUNTRY_MODIFIER` |
+| 26 | `CStarbase` | 0x4008c8fe | `CStarbase::MODIFIER_CATEGORIES_SYSTEM_MODIFIER` |
+| 27 | `CStarbase` | 0x400aca7e | `CColonyCarrier::ALL_MODIFIER_CATEGORIES` |
+| 28 | `CStarbase` | 0x8407c | `CStarbase::MODIFIER_CATEGORIES_DEFENSE_PLATFORM_MODIFIER` |
+| 29 | `CStarbase` | 0x502ec27e | immediate |
+| 30 | `CArmy` | 0x80200 | immediate; not `CArmy::MODIFIER_CATEGORIES` (0x84200) |
+| 31 | `CShip` | 0x500ac27e, 0x1000c07c | immediate, then `CShip::CalculateModifier` |
 
 Species, pop factions, deposits, ship designs and systems have no node of their own.
 
@@ -128,7 +131,7 @@ Species, pop factions, deposits, ship designs and systems have no node of their 
   by each receiver's mask and by the include and exclude masks of each propagation edge (above). The
   answer has no supported scopes.
 - **Categories with no node.** Pop Factions, AI Economy and Ship Design Stats are on no mask other
-  than the all-bits masks (nodes 9, 15 for `CMegaStructure`, and 26). While node 0 is unresolved, the
+  than the all-bits masks (nodes 8, 14 for `CMegaStructure`, and 25). While node 0 is unresolved, the
   gap is `UnresolvedPath`, because an unresolved mask could keep a category.
 - **Node 0**, `UnresolvedPath`: no base constructor call (above). A second construction shape, a
   direct `RegisterNode` call with the node number from the `std::function` vtable symbol, would
@@ -224,15 +227,16 @@ Stated assumptions, true for M451-hotfix by the scans above: no code writes a co
 between its construction and the check, and the galactic-object initializer runs before any parse.
 Extend the walk when a new build shows another writer.
 
-### Result on M451-hotfix
+### Result on M452
 
-`tests/expected/m451/modifier-containers.json` holds 24 registries. 19 have container fields: 68
-fields (48 restricted, 20 every category) and 45 `Enclosing` clause keys, with no unresolved
+`tests/expected/m452/modifier-containers.json` holds 24 registries. 19 have container fields: 69
+fields (48 restricted, 21 every category) and 45 `Enclosing` clause keys, with no unresolved
 modifier field. The global-offset-table form (buildings `triggered_planet_modifier`, planet) and the
 `__common` form (psionic aura `triggered_system_modifier`, system) resolve. Tradition `modifier`
 accepts every category and tradition `triggered_modifier` has the country mask. Edict and councilor
-`modifier` accept every category through the inline default. The values agree with the SDK-709
-sites above.
+`modifier` accept every category through the inline default. M452 adds edict
+`relay_network_modifier`, which accepts every category. The values agree with the SDK-709 sites
+above.
 
 Limits, all gaps:
 
@@ -313,7 +317,7 @@ key comes from the exact shape of each call site: `ldr w0, [xB, #off]`, the call
 constructor call with no branch before it and `D` after it. Both readers on M451-hotfix have that
 shape and compare with 0x165 (`none`). Any other shape, or sites that disagree, is a gap. The
 answer gives each key's single categories; on M451-hotfix it has 24 keys (23 nonzero and `none`,
-no `pop_job`), and `tests/expected/m451/modifier-category-keys.json` holds it.
+no `pop_job`), and `tests/expected/m452/modifier-category-keys.json` holds it.
 
 The 19 `## modifier_categories` annotations of the config are on `enum[scripted_modifier_category]`
 (`enums.cwt`), the value of `category` in `common/scripted_modifiers` and of `modifier_category` in

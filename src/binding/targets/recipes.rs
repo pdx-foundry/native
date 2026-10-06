@@ -10,7 +10,7 @@ use crate::engine::analysis::localization::TextLayout;
 #[derive(Debug, Clone, Copy)]
 pub(in crate::binding) enum BindingGroupId {
     M45TemplateRegistryLayout,
-    M451CategoryFixture,
+    M452CategoryFixture,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -128,19 +128,19 @@ const M45_EVENT_TARGET_SIZE: u64 = 0x190;
 pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
     &["common/traditions", "common/tradition_categories"];
 
-pub(super) const M451_HOTFIX: Recipe = Recipe {
+pub(super) const M452: Recipe = Recipe {
     groups: &[
         BindingGroupId::M45TemplateRegistryLayout,
-        BindingGroupId::M451CategoryFixture,
+        BindingGroupId::M452CategoryFixture,
     ],
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     declarations: Some(&M45_DECLARATIONS),
-    script_checks: Some(m451_script_checks),
+    script_checks: Some(m452_script_checks),
 };
 
-/// Console readers and logger verified on the exact 4.5.1 ARM64 slice.
-fn m451_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
+/// Console readers and logger verified on the exact 4.5.2 ARM64 slice.
+fn m452_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
     use crate::protocol::script_check::{
         CallBinding, CommandBinding, DatabaseBinding, ObjectWrite, ScriptCheckBinding,
     };
@@ -149,18 +149,18 @@ fn m451_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
         widths: widths.to_vec(),
     };
     let trigger_database = DatabaseBinding {
-        instance: 0x1032e9758,
-        post_init: call(0x100d052d0, &[64]),
-        post_validate: call(0x100d05268, &[64]),
+        instance: 0x1032ed768,
+        post_init: call(0x100d06b98, &[64]),
+        post_validate: call(0x100d06b30, &[64]),
     };
     ScriptCheckBinding {
-        string_constructor: call(0x102521fec, &[64, 64]),
-        string_assign: call(0x100229a00, &[64, 64]),
-        blob_constructor: call(0x1024f26d8, &[64]),
-        blob_append: call(0x1024f2b74, &[64, 64]),
-        file_constructor: call(0x10250b5b4, &[64, 64, 32, 32, 8]),
-        lexer_constructor: call(0x1025adfe8, &[64, 64, 8]),
-        reader_constructor: call(0x1025b1e8c, &[64, 64]),
+        string_constructor: call(0x102524efc, &[64, 64]),
+        string_assign: call(0x10031673c, &[64, 64]),
+        blob_constructor: call(0x1024f55d0, &[64]),
+        blob_append: call(0x1024f5a6c, &[64, 64]),
+        file_constructor: call(0x10250e4c4, &[64, 64, 32, 32, 8]),
+        lexer_constructor: call(0x1025b0f24, &[64, 64, 8]),
+        reader_constructor: call(0x1025b4dc8, &[64, 64]),
         string_size: 0x40,
         blob_size: 0x80,
         file_size: 0x400,
@@ -170,24 +170,24 @@ fn m451_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
         lexer_argument: 0,
         file_name_offset: 0x20,
         string_tag_offset: 23,
-        logger_entry: 0x102504718,
+        logger_entry: 0x102507610,
         logger_text_register: "x4".into(),
         logger_level_register: "w1".into(),
         trigger: CommandBinding {
             size: 0x200,
-            constructor: call(0x100d0613c, &[64]),
-            read: call(0x100d066d0, &[64, 64, 64]),
+            constructor: call(0x100d07a04, &[64]),
+            read: call(0x100d07f98, &[64, 64, 64]),
             writes: vec![
                 ObjectWrite {
                     offset: 0,
                     width: 8,
-                    value: 0x103095ee8,
+                    value: 0x103099f30,
                     relocate: true,
                 },
                 ObjectWrite {
                     offset: 0x68,
                     width: 8,
-                    value: 0x103000458,
+                    value: 0x103004458,
                     relocate: true,
                 },
                 ObjectWrite {
@@ -203,8 +203,8 @@ fn m451_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
         },
         effect: CommandBinding {
             size: 0x200,
-            constructor: call(0x10045680c, &[64]),
-            read: call(0x100456d30, &[64, 64, 64]),
+            constructor: call(0x1004565c0, &[64]),
+            read: call(0x100456ae4, &[64, 64, 64]),
             writes: vec![ObjectWrite {
                 offset: 0x78,
                 width: 1,
@@ -215,9 +215,9 @@ fn m451_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
             children_array_offset: 0x10,
             validation: vec![
                 DatabaseBinding {
-                    instance: 0x1032e8370,
-                    post_init: call(0x100455f10, &[64]),
-                    post_validate: call(0x1004560f0, &[64]),
+                    instance: 0x1032ec380,
+                    post_init: call(0x100455cc4, &[64]),
+                    post_validate: call(0x100455ea4, &[64]),
                 },
                 trigger_database,
             ],
