@@ -58,6 +58,8 @@ type Outcome = Result<(), Box<dyn std::error::Error>>;
 #[path = "live/scoped_numeric.rs"]
 mod scoped_numeric;
 
+#[path = "live/expansions.rs"]
+mod expansions;
 #[path = "live/numeric.rs"]
 mod numeric_conversion;
 #[path = "live/script.rs"]
@@ -170,6 +172,8 @@ fn main() {
 }
 
 enum Case {
+    ScriptExpansionTemplates,
+    ScriptExpansionVariables,
     ScriptNumericStored,
     StoredDurations,
     ScriptArguments,
@@ -292,6 +296,14 @@ enum FixtureOutcomeCase {
 
 fn cases() -> Vec<(String, Case)> {
     let mut cases = vec![
+        (
+            "script_expansion_templates".to_owned(),
+            Case::ScriptExpansionTemplates,
+        ),
+        (
+            "script_expansion_variables".to_owned(),
+            Case::ScriptExpansionVariables,
+        ),
         ("script_numeric".to_owned(), Case::ScriptNumericStored),
         ("stored_durations".to_owned(), Case::StoredDurations),
         ("script_arguments".to_owned(), Case::ScriptArguments),
@@ -709,6 +721,8 @@ async fn run(native: &Native, case: &Case) -> Outcome {
             ref commands,
             ref samples,
         } => fixture_argument(native, field, commands, samples).await,
+        Case::ScriptExpansionTemplates => expansions::templates_and_inline_scripts(native).await,
+        Case::ScriptExpansionVariables => expansions::scripted_variables(native).await,
         Case::ScriptNumericStored => script_numeric::stored(native).await,
         Case::StoredDurations => stored_durations::stored(native).await,
         Case::ScriptArguments => script_checks::arguments(native).await,

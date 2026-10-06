@@ -130,6 +130,15 @@ pub fn add_immediate(word: u32) -> Option<(usize, usize, u64)> {
     ))
 }
 
+/// The destination register, source register and subtrahend of a 64-bit `sub` of an
+/// immediate, with its optional `lsl #12`. Register 31 is the stack pointer.
+pub fn sub_immediate(word: u32) -> Option<(usize, usize, u64)> {
+    if word & 0xff80_0000 != 0xd100_0000 {
+        return None;
+    }
+    add_immediate(word & !0x4000_0000)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

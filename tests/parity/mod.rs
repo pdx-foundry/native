@@ -121,6 +121,7 @@ pub const FILES: &[&str] = &[
     "modifier-families.json",
     "modifier-nodes.json",
     "modifier-category-keys.json",
+    "script-expansions.json",
     "modifier-containers.json",
     "derived-names-traditions.json",
     "derived-names-tradition_categories.json",
@@ -249,6 +250,12 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
                 .collect();
             Ok(json!({
                 "completeness": answer.completeness, "gaps": answer.gaps, "keys": keys
+            }))
+        }
+        "script-expansions.json" => {
+            let answer = current_answer(native, native.script_expansions()?)?;
+            Ok(json!({
+                "completeness": answer.completeness, "gaps": answer.gaps, "expansions": answer.value
             }))
         }
         "modifier-nodes.json" => {

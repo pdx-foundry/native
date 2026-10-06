@@ -340,6 +340,45 @@ fn modifier_category_keys_read_recorded_categories_and_basis() {
 }
 
 #[test]
+fn script_expansions_read_recorded_rules_and_basis() {
+    use pdx_native::{ExpansionMechanism, ExpansionStage, GrammarProperty};
+    let root = recorded();
+    write(
+        root.path(),
+        "script_expansions.json",
+        json!({ "Ok": {
+            "value": [{
+                "mechanism": "InlineScript",
+                "definitions": { "Known": [{ "Directory": { "directory": "common/inline_scripts" } }] },
+                "hosts": { "Partial": [{ "Commands": "Effect" }, "ObjectBlock"] },
+                "call_forms": { "Known": [{ "Block": { "name_key": "script" } }] },
+                "stage": { "Known": "Read" },
+                "parameter_forms": { "Known": ["Substitution"] },
+                "missing_parameter": { "Known": "KeptAsText" },
+                "checks": { "Partial": ["UnknownName"] }
+            }],
+            "completeness": "Partial",
+            "gaps": [],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let answer = native.script_expansions().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(answer.value[0].mechanism, ExpansionMechanism::InlineScript);
+    assert_eq!(
+        answer.value[0].stage,
+        GrammarProperty::Known(ExpansionStage::Read)
+    );
+
+    std::fs::remove_file(root.path().join("script_expansions.json")).unwrap();
+    assert!(matches!(
+        native.script_expansions(),
+        Err(Error::NotRecorded { .. })
+    ));
+}
+
+#[test]
 fn dynamic_names_read_recorded_namespaces_and_basis() {
     let root = recorded();
     write(

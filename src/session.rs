@@ -12,6 +12,7 @@ pub mod duration_groups;
 mod durations;
 pub mod dynamic_name_commands;
 mod dynamic_names;
+mod expansions;
 mod families;
 mod field_entries;
 mod fields;

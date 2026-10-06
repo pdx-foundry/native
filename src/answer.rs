@@ -312,6 +312,8 @@ pub enum Operation {
     ModifierNodes,
     /// `Native::modifier_category_keys`
     ModifierCategoryKeys,
+    /// `Native::script_expansions`
+    ScriptExpansions,
 }
 
 /// One define whose name and value type the executable reads.
@@ -372,6 +374,7 @@ impl Operation {
         Self::DerivedNames,
         Self::ModifierNodes,
         Self::ModifierCategoryKeys,
+        Self::ScriptExpansions,
     ];
 
     /// The operation's stable snake_case name, such as `registry_fields`.
@@ -397,6 +400,7 @@ impl Operation {
             Self::DerivedNames => "derived_names",
             Self::ModifierNodes => "modifier_nodes",
             Self::ModifierCategoryKeys => "modifier_category_keys",
+            Self::ScriptExpansions => "script_expansions",
         }
     }
 
@@ -419,6 +423,7 @@ impl Operation {
                 | Self::DerivedNames
                 | Self::ModifierNodes
                 | Self::ModifierCategoryKeys
+                | Self::ScriptExpansions
         )
     }
 }
@@ -456,7 +461,8 @@ mod operation_tests {
             | Operation::DerivedNames
             | Operation::ModifierNodes
             | Operation::ModifierCategoryKeys
-            | Operation::CheckScript => 20,
+            | Operation::ScriptExpansions
+            | Operation::CheckScript => 21,
         }
     }
 

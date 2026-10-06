@@ -17,8 +17,8 @@ The method matches complete `Read`, `Assign`, prefix, variable, `AssignSimple`, 
 `GetValueInternal` bodies, and joins the `AssignSimple` vtable slot to the constructor-selected
 address point; captured offsets must agree across the shared and concrete bodies. `forms` lists
 the literal, `trigger:`, `modifier:`, `value:` and unprefixed variable routes; the qualified
-event-target and parameter grammar is not established, and a recognized prefix does not prove
-that a lookup finds a name.
+event-target grammar is not established, and a recognized prefix does not prove that a lookup
+finds a name. The `value:name|KEY|value|` parameters are in [script expansion](script-expansion.md).
 
 Stored-representation rules (not evaluated results):
 

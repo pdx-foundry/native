@@ -299,11 +299,13 @@ def registry_callback(frame, name):
 
 
 def interpret_fixture_log(text, file, file_prefix, line_prefix, returned):
-    """Keep a matching file's diagnostic, with a line only when its source is unambiguous."""
+    """Keep a matching file's diagnostic, with a line only when its source is unambiguous. An
+    inline script that the file calls names the call's line in its own source."""
     if file not in text:
         return None
     prefix = re.escape(file_prefix + file + line_prefix)
-    lines = {int(match) for match in re.findall(prefix + r'([0-9]+)', text)}
+    inline = re.escape(file) + r':([0-9]+)\(inline_script\) '
+    lines = {int(match) for match in re.findall(prefix + r'([0-9]+)', text) + re.findall(inline, text)}
     line = next(iter(lines)) if len(lines) == 1 else None
     stage = protocol.DIAGNOSTIC_STAGE['engine_validation'] if returned else protocol.DIAGNOSTIC_STAGE['engine_parser']
     return dict(text=text, stage=stage, file=file, line=line)
@@ -378,6 +380,24 @@ class FixtureObserver:
 
     def stored_string(self, process, storage):
         return cstring(process, storage, self.bindings['string_tag_offset'])
+
+    def fixture_line(self, file, line):
+        """The fixture line of a reader location: its own line in the fixture, or the line of the
+        fixture's call when the reader reads expanded text, which names the call in its source:
+        `<file>:<line>(inline_script) <script>` or `scripted effect <name> at file: <file> line:
+        <line>`. None for any other source."""
+        if file == self.config['file']:
+            return line
+        binding = self.bindings['validation'] or {}
+        calls = [re.escape(self.config['file']) + r':([0-9]+)\(inline_script\) ']
+        if binding:
+            calls.append(re.escape(binding['source_file_prefix'] + self.config['file']
+                + binding['source_line_prefix']) + r'([0-9]+)')
+        for call in calls:
+            match = re.search(call, file)
+            if match:
+                return int(match.group(1))
+        return None
 
     def stored_value(self, process, owner, binding):
         return stored_values.decode(lambda address, size: uint(process, address, size),
@@ -511,8 +531,10 @@ class FixtureObserver:
             raise RuntimeError('fixture field occurrence bound exceeded')
         reader = register(frame, registers['reader'])
         file, line = self.location(process, reader)
-        if file != self.config['file']:
+        line = self.fixture_line(file, line)
+        if line is None:
             raise RuntimeError('fixture member source differs from selected file')
+        file = self.config['file']
         dynamic = protocol.HOOK['fixture_member_return'] + str(index) + ':' + str(self.occurrences[index])
         self.pending_fields[dynamic] = dict(question=index, owner=owner, reader=reader,
             line=line, occurrence=self.occurrences[index], field=question['field'], definition=definition)
@@ -535,7 +557,8 @@ class FixtureObserver:
         question = self.questions[pending['question']]
         if question['parsing']:
             file, line = self.location(process, pending['reader'])
-            self.emit('field-parse', thread, question=pending['question'], file=file, line=line,
+            line = self.fixture_line(file, line)
+            self.emit('field-parse', thread, question=pending['question'], file=self.config['file'], line=line,
                 definition=pending['definition'], field=pending['field'], owner=hex(pending['owner']),
                 occurrence=pending['occurrence'], returned=True)
         if question['storage_unavailable'] is not None:
@@ -556,9 +579,12 @@ class FixtureObserver:
         file, line = None, None
         try:
             observed_file, observed_line = self.location(process, reader)
-            if observed_file != self.config['file']:
+            line = self.fixture_line(observed_file, observed_line)
+            if line is None:
                 return False
-            file, line = observed_file, observed_line
+            file = self.config['file']
+            if observed_file != file:
+                text += ' in ' + observed_file + ' near line ' + str(observed_line)
         except Exception:
             pass
         pending = next((value for value in self.pending_fields.values()
@@ -581,6 +607,7 @@ class FixtureObserver:
         return self.emit_log(text, thread)
 
     def on_sourced_log(self, frame, process, thread):
+        """An engine error with its owner's source and the instance source that it generated."""
         if not self.loading or self.validation_finished:
             return False
         binding = self.bindings['validation']
@@ -589,7 +616,9 @@ class FixtureObserver:
         if self.config['file'] not in source:
             return False
         text = self.stored_string(process, register(frame, binding['sourced_log_text_register']))
-        return self.emit_log(text + ' at ' + source, thread)
+        generated = register(frame, 'x29') - binding['sourced_log_generated_frame_offset']
+        generated = self.stored_string(process, generated)
+        return self.emit_log(text + ' at ' + source + '\nresulting in source:\n' + generated, thread)
 
     def emit_log(self, text, thread):
         binding = self.bindings['validation']

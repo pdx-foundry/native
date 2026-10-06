@@ -191,7 +191,8 @@ fn layout(operation: crate::Operation) -> Layout {
         | Defines
         | DynamicNames
         | ModifierNodes
-        | ModifierCategoryKeys => Layout::File,
+        | ModifierCategoryKeys
+        | ScriptExpansions => Layout::File,
     }
 }
 

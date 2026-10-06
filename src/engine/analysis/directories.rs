@@ -11,6 +11,8 @@
 //!   (`common/ship_categories` on M45).
 //!
 //! The scan is linear and bounded. It tracks only constants, stack addresses and register copies.
+//! A frame address, such as `x29 - 0x98` after the prologue sets `x29` from the stack pointer, is
+//! a stack address.
 //! A call clears the caller-saved registers, and any other instruction clears the register that
 //! it may write. It does not follow branches, so a value that arrives on another path is unknown.
 //! It stops at a return or an unconditional branch, since the next word is not reached from it.
@@ -24,7 +26,7 @@
 //! the same rule: exactly one distinct literal, or a gap.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::decode::{add_immediate, adrp};
+use super::decode::{add_immediate, adrp, sub_immediate};
 
 /// Method revision recorded in each answer's source.
 pub const METHOD: &str = "registry-directories/v3";
@@ -130,12 +132,20 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
         let address = function.address + index as u64 * 4;
         if let Some((destination, page)) = adrp(word, address) {
             registers[destination] = Value::Constant(page);
-        } else if let Some((destination, source, addend)) = add_immediate(word) {
+        } else if let Some((destination, source, offset, sign)) = add_immediate(word)
+            .map(|(destination, source, addend)| (destination, source, addend, 1))
+            .or_else(|| {
+                sub_immediate(word)
+                    .map(|(destination, source, subtrahend)| (destination, source, subtrahend, -1))
+            })
+        {
             // Register 31 is the stack pointer: a source gives a stack address, and a write to it
             // is not followed.
+            let offset = (offset as i64 * sign) as u64;
             let value = match (source, registers[source]) {
-                (31, _) => Value::Stack(addend),
-                (_, Value::Constant(base)) => Value::Constant(base.wrapping_add(addend)),
+                (31, _) => Value::Stack(offset),
+                (_, Value::Constant(base)) => Value::Constant(base.wrapping_add(offset)),
+                (_, Value::Stack(base)) => Value::Stack(base.wrapping_add(offset)),
                 _ => Value::Unknown,
             };
             if destination != 31 {
@@ -460,6 +470,38 @@ mod tests {
             resolve(&[temporary(0x20)], &BTreeMap::new()),
             Directory::Named("map/other".into())
         );
+    }
+
+    #[test]
+    fn a_temporary_at_a_frame_address_names_the_registry() {
+        // add x29, sp, #0x40; sub x0, x29, #0x20; sub x1, x29, #0x20
+        let add_x29_sp: u32 = 0x9101_03fd;
+        let sub_x0_x29: u32 = 0xd100_83a0;
+        let sub_x1_x29: u32 = 0xd100_83a1;
+        let framed = function(&[
+            add_x29_sp,
+            ADRP_X1,
+            add_x1(0x10),
+            sub_x0_x29,
+            bl(4, STRING),
+            sub_x1_x29,
+            bl(6, BASE),
+        ]);
+        assert_eq!(
+            resolve(&[framed], &BTreeMap::new()),
+            Directory::Named("common/examples".into())
+        );
+
+        let elsewhere = function(&[
+            add_x29_sp,
+            ADRP_X1,
+            add_x1(0x10),
+            sub_x0_x29,
+            bl(4, STRING),
+            ADD_X1_SP_8,
+            bl(6, BASE),
+        ]);
+        assert_eq!(resolve(&[elsewhere], &BTreeMap::new()), Directory::Missing);
     }
 
     #[test]

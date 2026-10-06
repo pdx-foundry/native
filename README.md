@@ -25,6 +25,7 @@ let categories = native.modifier_categories()?;             // Answer<Vec<Modifi
 let keys = native.modifier_category_keys()?;                // Answer<Vec<ModifierCategoryKey>>
 let families = native.modifier_families("common/bypass")?;  // Answer<Vec<ModifierFamily>>
 let nodes = native.modifier_nodes()?;                       // Answer<Vec<ModifierNode>>
+let expansions = native.script_expansions()?;               // Answer<Vec<ScriptExpansion>>
 let scopes = native.scopes()?;                              // Answer<ScopeInventory>
 let links = native.scope_links()?;                          // Answer<Vec<ScopeLink>>
 let localization = native.localization_declarations()?;     // Answer<LocalizationDeclarations>
@@ -215,6 +216,7 @@ modifier_categories.json
 modifier_category_keys.json
 modifier_families/common/bypass.json
 modifier_nodes.json
+script_expansions.json
 scopes.json
 scope_links.json
 localization_declarations.json

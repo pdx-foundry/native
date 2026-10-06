@@ -664,6 +664,93 @@ fn modifier_category_keys_are_the_parsed_masks_with_an_empty_none() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn script_expansions_give_hosts_stages_and_checks() {
+    use pdx_native::{
+        CallForm, ExpansionCheck, ExpansionHost, ExpansionMechanism, ExpansionStage,
+        GrammarProperty, MissingParameter,
+    };
+    let native = native();
+    assert_eq!(
+        native.supports(Operation::ScriptExpansions),
+        pdx_native::Support::Supported
+    );
+    let answer = native.script_expansions().unwrap();
+    assert_eq!(answer.source.basis, Basis::StaticAnalysis);
+    assert_eq!(
+        answer.source.method,
+        pdx_native::internals::SCRIPT_EXPANSIONS_METHOD
+    );
+    let expansion = |mechanism| {
+        let found = answer.value.iter().find(|item| item.mechanism == mechanism);
+        found.unwrap().clone()
+    };
+
+    let inline = expansion(ExpansionMechanism::InlineScript);
+    let GrammarProperty::Partial(hosts) = &inline.hosts else {
+        panic!("inline hosts: {:?}", inline.hosts);
+    };
+    let roots = hosts
+        .iter()
+        .filter(|host| matches!(host, ExpansionHost::RegistryRoot { .. }))
+        .count();
+    assert_eq!(roots, 164);
+    assert!(hosts.contains(&ExpansionHost::RegistryRoot {
+        registry: "common/traditions".into()
+    }));
+    assert!(hosts.contains(&ExpansionHost::ObjectBlock));
+    assert_eq!(inline.stage, GrammarProperty::Known(ExpansionStage::Read));
+    assert_eq!(
+        inline.missing_parameter,
+        GrammarProperty::Known(Some(MissingParameter::KeptAsText))
+    );
+
+    let trigger = expansion(ExpansionMechanism::ScriptedTrigger);
+    assert_eq!(
+        trigger.hosts,
+        GrammarProperty::Known(vec![
+            ExpansionHost::Commands(pdx_native::BlockFamily::Trigger),
+            ExpansionHost::TriggerReference,
+            ExpansionHost::ScopedOperand,
+        ])
+    );
+    assert_eq!(
+        trigger.stage,
+        GrammarProperty::Known(ExpansionStage::Compile)
+    );
+    assert_eq!(
+        trigger.checks,
+        GrammarProperty::Partial(vec![
+            ExpansionCheck::UnknownName,
+            ExpansionCheck::DepthLimit
+        ])
+    );
+
+    let value = expansion(ExpansionMechanism::ScriptValue);
+    assert_eq!(
+        value.call_forms,
+        GrammarProperty::Known(vec![CallForm::Pipe])
+    );
+    assert_eq!(
+        value.missing_parameter,
+        GrammarProperty::Known(Some(MissingParameter::Diagnostic))
+    );
+
+    let variable = expansion(ExpansionMechanism::ScriptedVariable);
+    assert_eq!(variable.stage, GrammarProperty::Known(ExpansionStage::Lex));
+    assert_eq!(variable.missing_parameter, GrammarProperty::Known(None));
+
+    let unresolved: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind != pdx_native::GapKind::OutsideMethod)
+        .map(|gap| gap.detail.as_str())
+        .collect();
+    assert_eq!(unresolved.len(), 2, "{unresolved:?}");
+    assert_eq!(answer.completeness, Completeness::Partial);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn modifier_containers_list_their_categories_or_keep_a_gap() {
     use pdx_native::{AcceptedCategories, GapSubject};
     let native = native();
@@ -1464,6 +1551,7 @@ fn observe(native: &Native) -> Observed {
     answers.push(json!(native.defines()));
     answers.push(json!(native.modifier_nodes()));
     answers.push(json!(native.modifier_category_keys()));
+    answers.push(json!(native.script_expansions()));
     let families: BTreeMap<String, Value> = expected("modifier-families.json");
     for registry in families.keys() {
         answers.push(json!(native.modifier_families(registry)));

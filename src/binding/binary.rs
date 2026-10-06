@@ -153,6 +153,7 @@ pub(super) mod defines;
 #[cfg(test)]
 pub(super) mod durations;
 pub(super) mod dynamic_names;
+pub(super) mod expansions;
 pub(super) mod families;
 pub(super) mod fields;
 pub(super) mod grammar;

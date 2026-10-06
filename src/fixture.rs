@@ -383,7 +383,9 @@ pub enum DiagnosticJoin {
 /// One diagnostic captured at the engine's reader-report stage.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureDiagnostic {
-    /// Exact diagnostic text supplied to the engine report routine.
+    /// Exact diagnostic text supplied to the engine report routine. A reader report from text
+    /// that a call expands, such as an inline script, ends with ` in <expanded source> near line
+    /// <line>`; an engine error from a generated instance ends with its generated source.
     pub text: String,
     /// Actual engine stage that was intercepted.
     pub stage: String,
