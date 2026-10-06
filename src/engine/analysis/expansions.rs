@@ -161,21 +161,18 @@ pub enum Property {
 
 /// Decide every property of every mechanism.
 pub fn analyze(input: &ExpansionInput) -> ExpansionResult {
+    let mut expansions = Vec::new();
     let mut gaps = Vec::new();
-    let expansions = input
-        .mechanisms
-        .iter()
-        .map(|mechanism| {
-            let mut gap = |property, cause| {
-                gaps.push(ExpansionGap {
-                    mechanism: mechanism.mechanism,
-                    property,
-                    cause,
-                })
-            };
-            expansion(input, mechanism, &mut gap)
-        })
-        .collect();
+
+    for mechanism in &input.mechanisms {
+        let mut found = Vec::new();
+        expansions.push(expansion(input, mechanism, &mut found));
+        gaps.extend(found.into_iter().map(|(property, cause)| ExpansionGap {
+            mechanism: mechanism.mechanism,
+            property,
+            cause,
+        }));
+    }
 
     ExpansionResult { expansions, gaps }
 }
@@ -183,7 +180,7 @@ pub fn analyze(input: &ExpansionInput) -> ExpansionResult {
 fn expansion(
     input: &ExpansionInput,
     mechanism: &MechanismInput,
-    gap: &mut impl FnMut(Property, Unresolved),
+    gaps: &mut Vec<(Property, Unresolved)>,
 ) -> ScriptExpansion {
     let (call_forms, parameter_forms) = match &mechanism.stated {
         Ok(stated) => (
@@ -191,26 +188,26 @@ fn expansion(
             GrammarProperty::Known(stated.parameter_forms.clone()),
         ),
         Err(reason) => {
-            gap(Property::Forms, Unresolved::new(reason));
+            gaps.push((Property::Forms, Unresolved::new(reason)));
             (GrammarProperty::Unresolved, GrammarProperty::Unresolved)
         }
     };
 
     ScriptExpansion {
         mechanism: mechanism.mechanism,
-        definitions: definitions(&mechanism.definitions, gap),
-        hosts: hosts(mechanism, &input.allocations, gap),
+        definitions: definitions(&mechanism.definitions, gaps),
+        hosts: hosts(mechanism, &input.allocations, gaps),
         call_forms,
-        stage: stage(&mechanism.stage, gap),
+        stage: stage(&mechanism.stage, gaps),
         parameter_forms,
-        missing_parameter: missing_parameter(mechanism, &input.message_functions, gap),
-        checks: checks(&mechanism.checks, &input.message_functions, gap),
+        missing_parameter: missing_parameter(mechanism, &input.message_functions, gaps),
+        checks: checks(&mechanism.checks, &input.message_functions, gaps),
     }
 }
 
 fn definitions(
     sources: &[DefinitionInput],
-    gap: &mut impl FnMut(Property, Unresolved),
+    gaps: &mut Vec<(Property, Unresolved)>,
 ) -> GrammarProperty<Vec<ExpansionDefinitions>> {
     let mut found = Vec::new();
 
@@ -223,13 +220,13 @@ fn definitions(
             }
             DefinitionInput::SameFile(true) => found.push(ExpansionDefinitions::SameFile),
             DefinitionInput::Directory(_) => {
-                gap(
+                gaps.push((
                     Property::Definitions,
                     Unresolved::new("definition-directory"),
-                );
+                ));
             }
             DefinitionInput::SameFile(false) => {
-                gap(Property::Definitions, Unresolved::new("file-definitions"));
+                gaps.push((Property::Definitions, Unresolved::new("file-definitions")));
             }
         }
     }
@@ -241,7 +238,7 @@ fn definitions(
         return GrammarProperty::Partial(found);
     }
     if found.len() > 1 {
-        gap(Property::Definitions, Unresolved::new("lookup-order"));
+        gaps.push((Property::Definitions, Unresolved::new("lookup-order")));
         return GrammarProperty::Partial(found);
     }
 
@@ -251,7 +248,7 @@ fn definitions(
 fn hosts(
     mechanism: &MechanismInput,
     allocations: &BTreeSet<u64>,
-    gap: &mut impl FnMut(Property, Unresolved),
+    gaps: &mut Vec<(Property, Unresolved)>,
 ) -> GrammarProperty<Vec<ExpansionHost>> {
     let mut found = BTreeSet::new();
     let mut unproved = false;
@@ -277,13 +274,13 @@ fn hosts(
     }
 
     if unproved {
-        gap(Property::Hosts, Unresolved::new("placeholder-object"));
+        gaps.push((Property::Hosts, Unresolved::new("placeholder-object")));
     }
     if unjoined {
-        gap(Property::Hosts, Unresolved::new("unjoined-reader"));
+        gaps.push((Property::Hosts, Unresolved::new("unjoined-reader")));
     }
     if found.is_empty() {
-        gap(Property::Hosts, Unresolved::new("no-host"));
+        gaps.push((Property::Hosts, Unresolved::new("no-host")));
         return GrammarProperty::Unresolved;
     }
 
@@ -356,14 +353,14 @@ fn callee_saved(register: &str) -> bool {
 
 fn stage(
     input: &StageInput,
-    gap: &mut impl FnMut(Property, Unresolved),
+    gaps: &mut Vec<(Property, Unresolved)>,
 ) -> GrammarProperty<ExpansionStage> {
     let holds = !input.links.is_empty()
         && input.links.iter().all(|callers| {
             callers.contains(&LinkCaller::Expected) && !callers.contains(&LinkCaller::Other)
         });
     if !holds {
-        gap(Property::Stage, Unresolved::new("stage-chain"));
+        gaps.push((Property::Stage, Unresolved::new("stage-chain")));
         return GrammarProperty::Unresolved;
     }
 
@@ -373,7 +370,7 @@ fn stage(
 fn missing_parameter(
     mechanism: &MechanismInput,
     message_functions: &BTreeSet<u64>,
-    gap: &mut impl FnMut(Property, Unresolved),
+    gaps: &mut Vec<(Property, Unresolved)>,
 ) -> GrammarProperty<Option<MissingParameter>> {
     match &mechanism.missing_parameter {
         MissingInput::NoParameters => GrammarProperty::Known(None),
@@ -381,10 +378,10 @@ fn missing_parameter(
             GrammarProperty::Known(Some(MissingParameter::Diagnostic))
         }
         MissingInput::Logged(_) => {
-            gap(
+            gaps.push((
                 Property::MissingParameter,
                 Unresolved::new("message-argument"),
-            );
+            ));
             GrammarProperty::Unresolved
         }
         // An unbound stated rule already gives its gap with the forms.
@@ -398,7 +395,7 @@ fn missing_parameter(
 fn checks(
     sites: &[(ExpansionCheck, MessageSite)],
     message_functions: &BTreeSet<u64>,
-    gap: &mut impl FnMut(Property, Unresolved),
+    gaps: &mut Vec<(Property, Unresolved)>,
 ) -> GrammarProperty<Vec<ExpansionCheck>> {
     let mut found = BTreeSet::new();
 
@@ -406,7 +403,7 @@ fn checks(
         if logs(site, message_functions) {
             found.insert(*check);
         } else {
-            gap(Property::Checks, Unresolved::new("message-argument"));
+            gaps.push((Property::Checks, Unresolved::new("message-argument")));
         }
     }
 

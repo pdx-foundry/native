@@ -221,7 +221,7 @@ pub(in crate::binding) fn read(
     let image = Image::read(bytes, symbols, strings, candidates)?;
     let bound = STATED_CONDITIONS
         .iter()
-        .all(|name| !image.addresses(name).is_empty());
+        .all(|name| !addresses(image.symbols, name).is_empty());
     let stated = |mechanism| {
         bound
             .then(|| stated_forms(mechanism))
@@ -248,9 +248,9 @@ pub(in crate::binding) fn read(
         mechanisms,
         message_functions: MESSAGE_FUNCTIONS
             .iter()
-            .flat_map(|name| image.addresses(name))
+            .flat_map(|name| addresses(image.symbols, name))
             .collect(),
-        allocations: image.addresses(OPERATOR_NEW),
+        allocations: addresses(image.symbols, OPERATOR_NEW),
     })
 }
 
@@ -443,10 +443,6 @@ impl<'a> Image<'a> {
         })
     }
 
-    fn addresses(&self, name: &str) -> BTreeSet<u64> {
-        addresses(self.symbols, name)
-    }
-
     /// Whether the function at `function` has one of `names`.
     fn named(&self, function: u64, names: &[&str]) -> bool {
         self.names
@@ -456,7 +452,7 @@ impl<'a> Image<'a> {
 
     /// Every direct call or tail call of a function named `name`.
     fn callers(&self, name: &str) -> Vec<Caller> {
-        let sites = self.text.calls_into(&self.addresses(name));
+        let sites = self.text.calls_into(&addresses(self.symbols, name));
 
         self.holding(sites.into_iter().map(|(site, _)| site))
     }
@@ -464,8 +460,7 @@ impl<'a> Image<'a> {
     /// Every direct call of a function named `name`. A tail call, such as one constructor of a
     /// class that continues in another, is not a use.
     fn calls(&self, name: &str) -> Vec<Caller> {
-        let sites = self
-            .addresses(name)
+        let sites = addresses(self.symbols, name)
             .into_iter()
             .flat_map(|target| self.text.direct_calls(target));
 
@@ -594,7 +589,7 @@ impl<'a> Image<'a> {
             (Some(address), None) => address,
             _ => 0,
         };
-        let rows = match self.addresses(function).first() {
+        let rows = match addresses(self.symbols, function).first() {
             Some(entry) => self.rows(*entry)?,
             None => Vec::new(),
         };
@@ -610,7 +605,7 @@ impl<'a> Image<'a> {
     }
 
     fn body(&self, name: &str) -> Result<Vec<Constructor>, AnalysisError> {
-        self.addresses(name)
+        addresses(self.symbols, name)
             .into_iter()
             .map(|entry| {
                 let (address, code) = self.text.function(entry)?;
@@ -625,7 +620,7 @@ impl<'a> Image<'a> {
     /// The directory that the function named `loader` enumerates.
     fn enumerated_directory(&self, loader: &str) -> Result<Directory, AnalysisError> {
         let anchors = Anchors {
-            file_enumerations: self.addresses(directories::FILE_ENUMERATION),
+            file_enumerations: addresses(self.symbols, directories::FILE_ENUMERATION),
             ..Anchors::default()
         };
 
@@ -640,8 +635,8 @@ impl<'a> Image<'a> {
     /// a `CString` built from a literal.
     fn argument_directory(&self, caller: &str, callee: &str) -> Result<Directory, AnalysisError> {
         let anchors = Anchors {
-            base_constructors: self.addresses(callee),
-            string_constructors: self.addresses(directories::STRING_CONSTRUCTOR),
+            base_constructors: addresses(self.symbols, callee),
+            string_constructors: addresses(self.symbols, directories::STRING_CONSTRUCTOR),
             file_enumerations: BTreeSet::new(),
         };
         let arguments: Vec<_> = self
