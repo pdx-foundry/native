@@ -92,7 +92,7 @@ stores a signed 32-bit integer, `CReader::Read(CFixedPoint&)` a signed 64-bit in
 32,768, `CReader::Read(float&)` binary32 bits and `CReader::Read(short&)` 16 bits with no sign
 interpretation. Conditional paths, several reader alternatives, an unproven token or destination
 and other signatures stay unavailable. The observed values are in
-`tests/expected/numeric-m451/live.json`; [numeric conversion](numeric-conversion.md#live-observations)
+`tests/expected/numeric-m452/live.json`; [numeric conversion](numeric-conversion.md#live-observations)
 interprets them.
 
 The template reader has no root field in the registry population. Its live case uses the inline
@@ -100,7 +100,7 @@ loader of `common/special_projects` (not a discovered registry): `FixtureFieldQu
 selects the embedded `SProjectRequirements`, whose `fleet_power` reader reads a comparison operator
 and then tail-calls the decoder. Only initial file-load outcomes are supported there.
 
-Current M451-hotfix fixture-binding population, 184 numeric root fields:
+M451-hotfix fixture-binding population, 184 numeric root fields:
 
 | Reader kind | Decoder and verified loader | Decoder, no verified loader | No proven decoder/destination |
 | --- | ---: | ---: | ---: |

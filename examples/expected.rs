@@ -213,7 +213,7 @@ fn generate(directory: &Path, files: &[&str]) -> parity::Result<()> {
         file.write_all(&bytes)?;
         eprintln!("wrote {name}");
     }
-    eprintln!("Candidates only: review the diff before copying any file into tests/expected/m451.");
+    eprintln!("Candidates only: review the diff before copying any file into tests/expected/m452.");
     Ok(())
 }
 

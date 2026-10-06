@@ -1,25 +1,31 @@
-# M451-hotfix population baselines
+# M452 population baselines
 
 These compact answer baselines cover executable SHA-256
-`29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38`.
+`c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`.
 Generate and review updates with the commands in
 [method authoring](../../../docs/native/method-authoring.md#run-over-the-whole-population).
 Update the affected baseline in the same PR that changes method answers. Each subject occupies
 one JSON line. Only comparison inputs are tracked: answers, errors, status and command inventory
 uncertainty. Generate full diagnostic reports under the ignored `.local/population/` directory.
 Two runs of each baseline produced identical bytes and zero changed answers. The command
-grammar baseline takes about 80 seconds.
+grammar baseline takes about three minutes.
 
 `command-fixture-sample.json` is the SDK-548 live fixture sample, fixed before the final
 population run: the ordering rule, the eligible commands of each kind, and the 20 chosen. It was
 selected on M45-release and keeps that build stamp; `cargo live fixture_argument` checks the same
-20 commands on M451-hotfix.
+20 commands on M452.
 
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
 | Registry fields | 164 registries | 8 | 156 | 0 |
-| Effect grammars | 1,074 named commands | 146 | 926 | 2 |
-| Trigger grammars | 1,096 named commands | 119 | 977 | 0 |
+| Effect grammars | 1,080 named commands | 149 | 929 | 2 |
+| Trigger grammars | 1,098 named commands | 119 | 979 | 0 |
+
+Compared with M451-hotfix, after the `accepted_categories` member that SDK-708 added: eight new
+commands; civics lost `multiply_by_habitability_effect_modifier` and edicts gained
+`relay_network_modifier`; six `set_ai_*` armor, shield and weapon-preference effects have new
+reader identities; and `is_species_class` keeps the same value but now stops at value acceptance
+in `PostValidate` instead of the form reader call and reference lookup. Each is a 4.5.2 change.
 
 ## Historical comparison control
 

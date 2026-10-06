@@ -116,7 +116,7 @@ without a diagnostic.
 Seventy-three fields in the population of 164 registries have a weight reader: 71 share
 `f08cb83d92484a89` and two use `fd8c6ad9ff94a8f2`. All are **partial: 0 complete, 73 partial, 0
 failed**; equal identities have equal blocks, for the roots and for the three nested entry readers
-(five identities). The compact selections are in `tests/expected/m451/weight-blocks.json`, where
+(five identities). The compact selections are in `tests/expected/m452/weight-blocks.json`, where
 field selections refer to them by reader identity.
 The read scope is the stored scope: agenda and tradition `ai_weight` read in `country`. A key or
 condition that reads the block's own stored scope reports `Enclosing`, so the grammar does not

@@ -174,9 +174,9 @@ authored tests independent of an installed game.
 
 ## Check parity on the supported build
 
-Keep reviewed expected output in [`tests/expected/m451/`](../../tests/expected/m451/), and check it
+Keep reviewed expected output in [`tests/expected/m452/`](../../tests/expected/m452/), and check it
 in [`tests/static_questions.rs`](../../tests/static_questions.rs). Those ignored tests read the
-exact M451-hotfix executable and start no game:
+exact M452 executable and start no game:
 
 ```sh
 cargo test --release --test static_questions -- --ignored
@@ -190,7 +190,7 @@ Generate a candidate tree with the same questions and selections as the parity t
 
 ```sh
 cargo run --release --example expected -- --out /tmp/native-expected-candidate
-cargo run --release --example expected -- --compare tests/expected/m451 /tmp/native-expected-candidate --build BUILD_ID
+cargo run --release --example expected -- --compare tests/expected/m452 /tmp/native-expected-candidate --build BUILD_ID
 ```
 
 To review one or a few files, add `--only` with their names, for example
@@ -210,7 +210,7 @@ Stored-duration behavior can be compared against an existing fresh live report w
 the session:
 
 ```sh
-cargo run --release --example expected -- --compare-durations tests/expected/duration-m451/live.json .local/durations/live.json --build BUILD_ID
+cargo run --release --example expected -- --compare-durations tests/expected/duration-m452/live.json .local/durations/live.json --build BUILD_ID
 ```
 
 The duration mode compares `cases`, including diagnostic and stored count order, after checking the
@@ -220,7 +220,7 @@ The generator is not verification. Review each changed answer against the method
 engine evidence. Copy only reviewed files back, then run `cargo parity`, for example:
 
 ```sh
-cp /tmp/native-expected-candidate/fields-traditions.json tests/expected/m451/fields-traditions.json
+cp /tmp/native-expected-candidate/fields-traditions.json tests/expected/m452/fields-traditions.json
 cargo parity
 ```
 
@@ -318,10 +318,10 @@ For fields, use [`registry-field-sweep.rs`](../../examples/registry-field-sweep.
 ```sh
 mkdir -p .local/population
 cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > .local/population/fields.json
-cargo run --release --example registry-field-sweep -- --diff tests/population/m451-hotfix/registry-field-sweep.json .local/population/fields.json
+cargo run --release --example registry-field-sweep -- --diff tests/population/m452/registry-field-sweep.json .local/population/fields.json
 ```
 
-The tracked [M451-hotfix population reports](../../tests/population/m451-hotfix/) are the
+The tracked [M452 population reports](../../tests/population/m452/) are the
 baseline. The diff compares normalized answers, ignoring method and Native version stamps but not
 build and basis, and reports once which absent members matched their serde defaults.
 
@@ -329,7 +329,7 @@ For command grammars, run and compare the whole population:
 
 ```sh
 cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
-cargo run --release --example command-population -- --diff tests/population/m451-hotfix/command-population.json .local/population/commands.json
+cargo run --release --example command-population -- --diff tests/population/m452/command-population.json .local/population/commands.json
 ```
 
 A tracked baseline can be stale on `main`. To separate what your change did from what `main`
@@ -361,8 +361,8 @@ also deletes its build.
 Review changed answers, then update the affected baseline in the same PR as the method change:
 
 ```sh
-cargo run --release --example registry-field-sweep -- --baseline "$STELLARIS_PATH" > tests/population/m451-hotfix/registry-field-sweep.json
-cargo run --release --example command-population -- --baseline "$STELLARIS_PATH" > tests/population/m451-hotfix/command-population.json
+cargo run --release --example registry-field-sweep -- --baseline "$STELLARIS_PATH" > tests/population/m452/registry-field-sweep.json
+cargo run --release --example command-population -- --baseline "$STELLARIS_PATH" > tests/population/m452/command-population.json
 ```
 
 `--baseline` stores only comparison inputs (answers, errors, status, inventory uncertainty), one

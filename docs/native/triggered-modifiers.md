@@ -115,7 +115,7 @@ Failure shapes, by field count:
 - Owners outside the population: `CTrait` (no registry), starbase buildings and modules (their
   sites are behind the base `CStarbaseComponent<…>::ReadMember` call), districts and zones.
 
-The compact selections are in `tests/expected/m451/triggered-modifiers.json`.
+The compact selections are in `tests/expected/m452/triggered-modifiers.json`.
 
 ## Gaps
 

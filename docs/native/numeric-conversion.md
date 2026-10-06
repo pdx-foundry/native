@@ -6,7 +6,7 @@ fixed keys and ordering-selected readers. `Known(None)` is an established nonnum
 retired clamp property is in Git at `d8f9d8a`: no complete reader shape has an explicit clamp,
 which is a different fact from overflow behavior.
 
-## Current result on M451-hotfix
+## Result on M451-hotfix
 
 At `main` `6f643a1`, the numeric population covers all 164 registries with no failed question.
 Numeric root fields: 184 in 63 registries, **0 complete, 184 partial, 0 failed**; 174 have a
@@ -42,7 +42,7 @@ establish libc overflow, locale, tokenization or full-string consumption.
 
 The modifier-entry proof follows the declaration-table numeric path into the direct fixed-point
 reader (`a9818fec780f8313`) and through both insertion capacity paths to a 64-bit entry store;
-`m451_numeric_reader_static_parity` checks it against `tests/expected/numeric-m451/modifier-entry.json`.
+`m452_numeric_reader_static_parity` checks it against `tests/expected/numeric-m452/modifier-entry.json`.
 [Modifier blocks](modifier-blocks.md) reuse this entry identity. Storage of an authored entry is not
 observed: the fixture route does not decode modifier entries. `add_resource` resource amounts have
 no static reader: `CAddResourceEffect::ReadMember` gives every other key to
@@ -66,7 +66,7 @@ enough, and a known range does not close `numeric-overflow`.
 | `float` | `Unresolved` | No exact binary32 variant in `NumericBound`; the public `NumericConversion` gap says so. |
 
 Scoped literals inherit these ranges only when their concrete storage is established; see
-[scoped numeric](scoped-numeric.md#engine-facts-and-method-m45-release-m451-hotfix).
+[scoped numeric](scoped-numeric.md#engine-facts-and-method-m45-release-to-m452).
 
 ## Engine boundary facts (M451-hotfix)
 
@@ -107,7 +107,7 @@ constructor (`0x1025bd784`), not an authored spelling.
 ### Exact platform scanner
 
 `tests/numeric_scanner.rs` compiles `tools/numeric_scanner.c` and checks finite observations
-against `tests/expected/numeric-m451/scanner-platform.json`, plus the game's undefined `_sscanf` and
+against `tests/expected/numeric-m452/scanner-platform.json`, plus the game's undefined `_sscanf` and
 `_atoll` imports and the loaded `libsystem_c.dylib` identity (UUID
 `fba7b23eaa603a909aa4a7a2e0ad63ee`, macOS build `26A428`). Another image or OS build fails the
 test instead of inheriting the observations. The probe uses locale `C`. For `%lld%lf`, a failed
@@ -117,7 +117,7 @@ second conversion leaves `%n` unreached (`consumed: -1`), not zero characters co
 
 `tests/live/numeric.rs` (`cargo live fixture_numeric`) holds the boundary, fractional, malformed,
 suffix and quoted cases for int, direct and template fixed point, float and short;
-`tests/expected/numeric-m451/live.json` holds the values, and `check_storage` fails a run when
+`tests/expected/numeric-m452/live.json` holds the values, and `check_storage` fails a run when
 static representation, width, scale or signedness differ from the observed storage. Six integer
 readers (`signed char`, `unsigned char`, `unsigned short`, `unsigned int`, `long long`,
 `unsigned long long`) have no root or exposed nested field in the bounded population (982 member

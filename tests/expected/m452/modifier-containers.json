@@ -70,6 +70,7 @@
   },
   "common/edicts": {
     "modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]},
+    "relay_network_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]},
     "triggered_country_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Espionage", "Owned Ships", "Colony"]},
     "triggered_country_modifier.modifier": "Enclosing"
   },

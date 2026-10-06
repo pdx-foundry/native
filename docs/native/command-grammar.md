@@ -4,7 +4,7 @@
 command's forms, targets, child families, fixed keys (with [reference lookups](references.md)),
 numeric keys, ordering and duration groups. `Partial` keeps established values without claiming the
 property is exhaustive; a missing registered command gives `UnknownCommand`. The method runs on
-M451-hotfix ([targets](targets.md)); addresses and counts below are from the earlier M45-release
+M452 ([targets](targets.md)); addresses and counts below are from the earlier M45-release
 target unless a section names another build. `grammar.rs` has only a one-line
 module comment, so this page also describes the method.
 
@@ -71,7 +71,7 @@ by token identity, not spelling (`ambiguous-key-token`). Missing member vtables,
 ### Current value-form results
 
 The tracked baseline and its counts are in
-[`tests/population/m451-hotfix/README.md`](../../tests/population/m451-hotfix/README.md). A failed
+[`tests/population/m452/README.md`](../../tests/population/m452/README.md). A failed
 answer has every property unresolved: the failed receiver joins are `factory-terminal`
 (`add_starbase_component`, `remove_starbase_component`). `set_location` joins since the shared
 evaluator runs `ld1r` (SDK-547). The six
@@ -129,7 +129,7 @@ gap with an authored test.
 ## Live fixtures of complete grammars
 
 `cargo live fixture_argument` checks complete grammars with the sample fixed in
-`tests/population/m451-hotfix/command-fixture-sample.json`, validated in `common/traditions`
+`tests/population/m452/command-fixture-sample.json`, validated in `common/traditions`
 (`potential` for triggers, `on_enabled` for effects).
 
 - Only a rejection that the method established on every path is a rejected sample. A value given

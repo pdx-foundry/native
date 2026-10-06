@@ -207,7 +207,7 @@ pub(super) async fn matrix() -> Outcome {
     }
     let actual = serde_json::json!({"build": native.build(), "cases": report});
     let expected: serde_json::Value =
-        serde_json::from_str(include_str!("../expected/numeric-m451/live.json"))?;
+        serde_json::from_str(include_str!("../expected/numeric-m452/live.json"))?;
     if actual != expected {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(".local/sdk-655/numeric-conversion-live.json");

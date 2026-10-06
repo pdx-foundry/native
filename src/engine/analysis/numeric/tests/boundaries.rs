@@ -231,15 +231,15 @@ fn binary32_bounds_have_a_specific_gap_only_after_the_conversion_is_proved() {
 }
 
 #[test]
-#[ignore = "requires exact M451-hotfix through STELLARIS_PATH"]
-fn m451_numeric_boundary_engine_parity() {
+#[ignore = "requires exact M452 through STELLARIS_PATH"]
+fn m452_numeric_boundary_engine_parity() {
     use crate::binding::inspect::{Image, read_image};
     let path = std::path::PathBuf::from(std::env::var_os("STELLARIS_PATH").unwrap());
     let bytes = read_image(&path).unwrap();
     let image = Image::read(&bytes).unwrap();
     assert_eq!(
         image.identity().unwrap().executable,
-        "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38"
+        "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b"
     );
     for (vtable, target, result) in [
         ("vtable for CTextLexer", "CTextLexer::IsBinary() const", 0),
@@ -257,11 +257,11 @@ fn m451_numeric_boundary_engine_parity() {
         );
     }
     for (address, operation, operands) in [
-        (0x1025b1ddc, "str", "x1,[x0,#0x30]"),
-        (0x1025bd798, "mov", "w8,#0x167"),
-        (0x1025bd79c, "str", "w8,[x0]"),
-        (0x1025bd7c0, "ldr", "x9,[x1]"),
-        (0x1025bd154, "strb", "wzr,[x21,x20]"),
+        (0x1025b4d18, "str", "x1,[x0,#0x30]"),
+        (0x1025c06d4, "mov", "w8,#0x167"),
+        (0x1025c06d8, "str", "w8,[x0]"),
+        (0x1025c06fc, "ldr", "x9,[x1]"),
+        (0x1025c0090, "strb", "wzr,[x21,x20]"),
     ] {
         let listing = image.disassemble(address, 4).unwrap();
         assert_eq!(listing.rows[0].operation, operation);

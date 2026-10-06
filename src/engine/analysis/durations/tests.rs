@@ -569,7 +569,7 @@ fn register_only_instructions_do_not_hide_a_factor() {
 /// The exact-build bodies, each mutated so that its proof must fail.
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-fn m451_duration_execution_proofs() {
+fn m452_duration_execution_proofs() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = native.bound().analysis.as_ref().unwrap();
     let (input, _) = analysis
@@ -623,10 +623,10 @@ fn m451_duration_execution_proofs() {
 /// Every command in the tracked expected file, with its public durations and their gaps.
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-fn m451_duration_static_parity() {
+fn m452_duration_static_parity() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let expected: serde_json::Map<String, serde_json::Value> = serde_json::from_str(include_str!(
-        "../../../../tests/expected/duration-m451/static.json"
+        "../../../../tests/expected/duration-m452/static.json"
     ))
     .unwrap();
     let mut actual = serde_json::Map::new();
@@ -827,7 +827,7 @@ fn the_authored_trait_execute_requires_the_product_and_consumer() {
 /// Each installed-build path added for stack transfers, byte presence and overwritten resets.
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
-fn m451_duration_stack_and_presence_parity() {
+fn m452_duration_stack_and_presence_parity() {
     use crate::{DeclarationKind, DurationCombination, GrammarProperty};
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let scoped = native

@@ -114,8 +114,8 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
-    fn m451_checks_carry_the_named_receivers_and_their_count_slots() {
+    #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+    fn m452_checks_carry_the_named_receivers_and_their_count_slots() {
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         let analysis = native.bound().analysis.as_ref().unwrap();
         assert!(

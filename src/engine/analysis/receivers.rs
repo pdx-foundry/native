@@ -1149,12 +1149,12 @@ mod string_tests {
     }
 
     #[test]
-    #[ignore = "requires STELLARIS_PATH with M451-hotfix"]
+    #[ignore = "requires STELLARIS_PATH with M452"]
     fn exact_build_string_and_token_constructor_effects() {
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         assert_eq!(
             native.build().0,
-            "29fa877366040a528098da39ec7e70b7baac76782a2a6bd161616d691f86fa38"
+            "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b"
         );
         let analysis = native.bound().analysis.as_ref().unwrap();
         let (grammar, _) = analysis
@@ -1175,7 +1175,7 @@ mod string_tests {
         // Both ABI entries are checked: the complete-object entry forwards to the base entry.
         for case in [
             ConstructorCase {
-                entries: [0x102521f3c, 0x102521fec],
+                entries: [0x102524e4c, 0x102524efc],
                 lengths: [0, 3, 22, 23],
                 inline_capacity: 23,
                 text_offset: 0,
@@ -1183,7 +1183,7 @@ mod string_tests {
                 allocator_given_the_member: true,
             },
             ConstructorCase {
-                entries: [0x1025bc848, 0x1025bca48],
+                entries: [0x1025bf784, 0x1025bf984],
                 lengths: [0, 3, 255, 256],
                 inline_capacity: 256,
                 text_offset: 32,

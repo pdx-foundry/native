@@ -210,7 +210,7 @@ add xr10,xr10,G = vtable for CPdxArray<CPostInitVariableValue*, int>
 add xr10,xr10,#0x10
 stp xzr,xzr,[x0,#0x8]
 str xr10,[x0]
-str x0,[xr7,#0x760]
+str x0,[xr7,G] = CPostInitVariableValueDatabase::_pInstance
 mov w0,#0x58
 bl CALL = operator new(unsigned long)
 mov xr8,x0

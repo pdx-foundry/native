@@ -212,8 +212,8 @@ fn check_report(native: &Native, cases: &BTreeMap<String, serde_json::Value>) ->
     std::fs::write(&path, serde_json::to_string_pretty(&actual)?)?;
     let report = comparison::compare_durations(
         &native.build(),
-        "duration-m451/live.json",
-        include_bytes!("../expected/duration-m451/live.json"),
+        "duration-m452/live.json",
+        include_bytes!("../expected/duration-m452/live.json"),
         &serde_json::to_vec(&actual)?,
     );
     eprint!("{}", report.render_and_save()?);

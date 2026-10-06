@@ -15,8 +15,8 @@ fn output(command: &mut Command) -> String {
 }
 
 #[test]
-#[ignore = "requires M451-hotfix, the recorded macOS libc image, and the C compiler"]
-fn m451_numeric_scanner_platform_observations() {
+#[ignore = "requires M452, the recorded macOS libc image, and the C compiler"]
+fn m452_numeric_scanner_platform_observations() {
     let hint = PathBuf::from(std::env::var_os("STELLARIS_PATH").expect("set STELLARIS_PATH"));
     let native = pdx_native::Native::open(&hint).unwrap();
     let executable = if hint.is_file() {
@@ -73,7 +73,7 @@ fn m451_numeric_scanner_platform_observations() {
         std::fs::write(path, serde_json::to_string_pretty(&actual).unwrap()).unwrap();
     }
     let expected: serde_json::Value =
-        serde_json::from_str(include_str!("expected/numeric-m451/scanner-platform.json")).unwrap();
+        serde_json::from_str(include_str!("expected/numeric-m452/scanner-platform.json")).unwrap();
     assert_eq!(actual["build"], expected["build"], "game build");
     assert_eq!(actual["imports"], expected["imports"], "game imports");
     let actual = actual["observations"].as_array().unwrap();

@@ -11,9 +11,10 @@ declarations.
 
 ## Effects and triggers
 
-`Native::declarations` returns 1,074 effects and 1,096 triggers on M45-release, with no unnamed
-registration; names and documentation equal the live logs. `tests/expected/m451/declaration-recovered.json`
-records each command that a mechanism other than a direct call registers.
+`Native::declarations` returns 1,080 effects and 1,098 triggers on M452 (1,074 and 1,096 on
+M45-release), with no unnamed registration; names and documentation equal the live logs.
+`tests/expected/m452/declaration-recovered.json` records each command that a mechanism other than
+a direct call registers.
 
 ### Registration mechanisms
 
@@ -41,7 +42,7 @@ live documentation shows for `if`; other masks list names in bit order.
 
 Every resolved scope set equals the `Supported Scopes:` line of its command in the release build's
 `effects.log` and `triggers.log`. The unresolved sets (27 effects and 14 triggers, eight of them at
-`command-vtable`) are in `tests/expected/m451/declaration-gaps.json`.
+`command-vtable`) are in `tests/expected/m452/declaration-gaps.json`.
 
 ### Target getters are not target sets
 
@@ -349,9 +350,9 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
 
 ## Defines
 
-On M45-release, `Native::defines()` finds 2,385 compiled `NDefines` and `NUncheckedDefines`
-`ReadDefine` helpers and follows 2,305 of them to a literal namespace, a literal name and a typed
-engine reader; `tests/expected/m451/defines.json` holds the counts by type. The other 80 named
+On M452, `Native::defines()` finds 2,386 compiled `NDefines` and `NUncheckedDefines`
+`ReadDefine` helpers and follows 2,306 of them to a literal namespace, a literal name and a typed
+engine reader; `tests/expected/m452/defines.json` holds the counts by type. The other 80 named
 helpers use a table-search loop that exceeds the path search; they are `UnresolvedReader` gaps,
 including `NGraphics.ORBIT_HSV` (SDK-610). No helper fails or is unnamed.
 
