@@ -46,7 +46,8 @@ pub use trace::trace_causes;
 /// The most instructions that one run may execute.
 const STEP_LIMIT: usize = 20_000;
 
-/// The most paths that one [`Machine::run_paths`] follows.
+/// The most paths that one [`Machine::run_paths`] follows, unless the caller sets another limit
+/// with [`Machine::set_path_limit`].
 pub const PATH_LIMIT: usize = 64;
 
 /// The most times that one path of [`Machine::run_paths_to`] arrives at one loop head.
@@ -335,6 +336,8 @@ pub struct Machine<'a> {
     frames: Vec<u64>,
     /// The entry of the present run.
     entry: u64,
+    /// The most paths that one run of several paths follows.
+    path_limit: usize,
     /// The instruction that the run is at, or the last one it ran.
     pc: u64,
     /// The target of each entered call, beside `frames`.
@@ -423,6 +426,7 @@ impl<'a> Machine<'a> {
             unknown_stores: Vec::new(),
             owner: None,
             loop_visits: BTreeMap::new(),
+            path_limit: PATH_LIMIT,
             frames: Vec::new(),
             entry: 0,
             pc: 0,
@@ -536,6 +540,11 @@ impl<'a> Machine<'a> {
         self.copy_owner_taint_to_callee(&mut callee);
 
         callee
+    }
+
+    /// Follow at most `limit` paths in a run of several paths, in place of [`PATH_LIMIT`].
+    pub fn set_path_limit(&mut self, limit: usize) {
+        self.path_limit = limit;
     }
 
     /// Set the stack position for an authored caller or a separately evaluated call frame.
@@ -961,8 +970,9 @@ impl<'a> Machine<'a> {
                     branches,
                     steps,
                 } => {
-                    if ended.len() - covered + pending.len() + branches.len() > PATH_LIMIT {
-                        let limit = Obstacle::Bound(Bound::Paths(PATH_LIMIT));
+                    let path_limit = machine.path_limit;
+                    if ended.len() - covered + pending.len() + branches.len() > path_limit {
+                        let limit = Obstacle::Bound(Bound::Paths(path_limit));
                         ended.push(Path {
                             end: Err(machine.stop(at, "path-limit", limit)),
                             machine,
@@ -1847,6 +1857,30 @@ impl<'a> Machine<'a> {
                 let address_inputs = self.take_inputs();
                 self.vectors[*index] = address.and_then(|address| self.load_bytes(address, *bytes));
                 let sources = self.loaded_inputs(address_inputs, address, *bytes);
+                self.set_owner_vector(*index, sources.owner);
+                if let Some(provenance) = &mut self.provenance {
+                    provenance.vectors[*index] = sources.receiver;
+                }
+            }
+            (
+                "ld1r",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        lane,
+                        ..
+                    }),
+                    Operand::Memory(memory),
+                    rest @ ..,
+                ],
+            ) => {
+                let address = self.address(memory, rest)?;
+                let address_inputs = self.take_inputs();
+                let element = address.and_then(|address| self.load_bytes(address, *lane));
+                self.vectors[*index] =
+                    element.map(|element| replicate(element as u64, *lane, *bytes));
+                let sources = self.loaded_inputs(address_inputs, address, *lane);
                 self.set_owner_vector(*index, sources.owner);
                 if let Some(provenance) = &mut self.provenance {
                     provenance.vectors[*index] = sources.receiver;
@@ -2816,6 +2850,12 @@ impl Operand {
         if let Some(inner) = text.strip_prefix('[') {
             return Memory::parse(inner).map(Self::Memory);
         }
+        if let Some(single) = text
+            .strip_prefix('{')
+            .and_then(|rest| rest.strip_suffix('}'))
+        {
+            return Register::parse(single).map(Self::Register);
+        }
         if let Some(value) = text.strip_prefix('#') {
             if value.contains('.') {
                 return value.parse().ok().map(Self::Float);
@@ -3694,6 +3734,36 @@ mod tests {
         assert_eq!(machine.register(2), Some(0x1234));
         assert_eq!(machine.read(stored, 8), Some(0x1234));
         assert_eq!(machine.read(stored + 8, 8), Some(0x55));
+    }
+
+    #[test]
+    fn a_replicating_load_fills_every_lane_with_one_element() {
+        let code = rows(&[
+            (0x100, "ld1r", "{v0.2d},[x1]"),
+            (0x104, "str", "q0,[x2]"),
+            (0x108, "ld1r", "{v1.4s},[x1],#4"),
+            (0x10c, "str", "q1,[x3]"),
+            (0x110, "ret", ""),
+        ]);
+        let data = ReadOnlyData::new(vec![(
+            0x8000,
+            0x1122_3344_5566_7788u64.to_le_bytes().to_vec(),
+        )]);
+        let mut machine = Machine::new(&code, &data);
+        let doubles = machine.allocate(16);
+        let words = machine.allocate(16);
+        machine.set_register(1, 0x8000);
+        machine.set_register(2, doubles);
+        machine.set_register(3, words);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+
+        assert_eq!(machine.read(doubles, 8), Some(0x1122_3344_5566_7788));
+        assert_eq!(machine.read(doubles + 8, 8), Some(0x1122_3344_5566_7788));
+        assert_eq!(machine.read(words, 8), Some(0x5566_7788_5566_7788));
+        assert_eq!(machine.read(words + 8, 8), Some(0x5566_7788_5566_7788));
+        assert_eq!(machine.register(1), Some(0x8004));
     }
 
     #[test]

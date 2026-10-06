@@ -72,8 +72,9 @@ Linear.
   lists of `modifier_categories.cwt` are written by hand and have errors. A static probe on
   M451-hotfix (`.local/modifier-node-probe/REPORT.md`) found a fixed graph of 35 modifier nodes with
   constant category masks, except the ship, and restricted parse-time containers. SDK-547 builds the
-  node table and the container masks, and keeps a typed gap for where a category takes effect and
-  for the three categories with no node. Atlas derives candidate scopes through a stated
+  node table and keeps a typed gap for where a category takes effect and for the three categories
+  with no node; SDK-708 builds the container masks. [Modifier masks](../native/modifier-masks.md)
+  holds the findings. Atlas derives candidate scopes through a stated
   node-to-scope mapping; a disagreement with the config is a case to review. The gap text is: "Where
   a modifier takes effect is decided at application by each receiver's category mask and the include
   and exclude masks of each propagation edge. The engine reports no diagnostic for a filtered entry.

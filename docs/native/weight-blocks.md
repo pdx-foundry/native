@@ -113,8 +113,8 @@ without a diagnostic.
 
 ## Result on M451-hotfix
 
-Sixty-eight fields in the population of 164 registries have a weight reader: 67 share
-`f08cb83d92484a89` and one uses `fd8c6ad9ff94a8f2`. All are **partial: 0 complete, 68 partial, 0
+Seventy-three fields in the population of 164 registries have a weight reader: 71 share
+`f08cb83d92484a89` and two use `fd8c6ad9ff94a8f2`. All are **partial: 0 complete, 73 partial, 0
 failed**; equal identities have equal blocks, for the roots and for the three nested entry readers
 (five identities). The compact selections are in `tests/expected/m451/weight-blocks.json`, where
 field selections refer to them by reader identity.
@@ -126,25 +126,26 @@ Failure shapes, by field count:
 
 | Shape | Fields |
 | --- | ---: |
-| Numeric and scoped-literal conversion limits ([numeric conversion](numeric-conversion.md), [scoped numeric](scoped-numeric.md)) | 68 |
-| Zero-mask read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential` | 68 |
-| Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 68 |
-| `trigger` lookup stage and match, and the scripted-trigger placeholder (`ReaderSemantics`) | 68 |
-| `parameters` read by the object that `trigger` stores | 68 |
-| Field repeat behavior (`Repeat behavior or nested fields remain unresolved`) | 68 |
+| Numeric and scoped-literal conversion limits ([numeric conversion](numeric-conversion.md), [scoped numeric](scoped-numeric.md)) | 73 |
+| Zero-mask read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential` | 73 |
+| Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 73 |
+| `trigger` lookup stage and match, and the scripted-trigger placeholder (`ReaderSemantics`) | 73 |
+| `parameters` read by the object that `trigger` stores | 73 |
+| Field repeat behavior (`Repeat behavior or nested fields remain unresolved`) | 73 |
 
 Nine root fields also have a zero-mask read scope of their own, because their owner constructor
 stores scope `0`: the five weight fields of `common/buildings`, `planet_damage` in
 `common/bombardment_stances`, `weight_modifier` in `common/colony_types`, and `random_weight` in
 `common/ethics` and `common/governments/authorities`.
 
-Fifteen fields with weight names are persistent blocks without a constructor-proven reader, so the
+Thirteen fields with weight names are persistent blocks without a constructor-proven reader, so the
 method does not see them: `ai_weight` in `common/federation_laws`, `common/federation_types`,
-`common/governments/civics`, `common/leader_classes`, `common/resolutions` and
-`common/war_goals`; `random_weight` in civics; `ai_location_weight` in leader classes; `weight` in
-`common/galactic_focuses`, `common/pop_categories` and `common/pop_jobs`; `weight_modifier` in
-`common/personalities`; `network_weight` and `strategy_weight` in `common/ai_espionage/spynetworks`;
-`spawn_weight` in `common/storm_types`. The sweep lists them under
+`common/governments/civics`, `common/leader_classes` and `common/resolutions`; `random_weight` in
+civics; `ai_location_weight` in leader classes; `weight` in `common/galactic_focuses`,
+`common/pop_categories` and `common/pop_jobs`; `network_weight` and `strategy_weight` in
+`common/ai_espionage/spynetworks`; `spawn_weight` in `common/storm_types`. The owner constructors of
+`ai_weight` in `common/war_goals` and `weight_modifier` in `common/personalities` run `ld1r`; they
+join since the shared evaluator runs it (SDK-547). The sweep lists them under
 `modifier_blocks.failed_persistent_fields`.
 
 ## Gaps

@@ -3,8 +3,8 @@ use pdx_native::internals::registry_field_stops;
 use pdx_native::{
     Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags, Disposal,
     DynamicNameForm, DynamicNameKind, EntryScope, Error, GameOptions, GapKind, GapSubject,
-    GenerationCondition, LinkData, LocalizationOutput, NamespaceOwner, Native, Operation,
-    OutputScope, ReaderKind, RuleKind, Support,
+    GenerationCondition, KeptCategories, LinkData, LocalizationOutput, NamespaceOwner, Native,
+    Operation, OutputScope, ReaderKind, RuleKind, Support,
 };
 use serde_json::json;
 use std::{fs, path::Path};
@@ -274,6 +274,43 @@ fn defines_read_recorded_names_types_gaps_and_basis() {
 
     fs::remove_file(root.path().join("defines.json")).unwrap();
     assert!(matches!(native.defines(), Err(Error::NotRecorded { .. })));
+}
+
+#[test]
+fn modifier_nodes_read_recorded_owners_masks_and_basis() {
+    let root = recorded();
+    write(
+        root.path(),
+        "modifier_nodes.json",
+        json!({ "Ok": {
+            "value": [
+                { "id": 24, "source_nodes": [], "owners": [{ "owner": "CFleet", "kept_categories": { "Constant": ["Fleets"] } }] },
+                { "id": 32, "source_nodes": [24], "owners": [{ "owner": "CShip",
+                    "kept_categories": { "Recalculated": [["Owned Ships"], ["Pops", "Owned Ships"]] } }] }
+            ],
+            "completeness": "Complete",
+            "gaps": [{ "kind": "OutsideMethod", "subject": null, "detail": "Example." }],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let answer = native.modifier_nodes().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(answer.value[1].source_nodes, [answer.value[0].id]);
+    assert_eq!(answer.value[1].owners[0].owner, "CShip");
+    assert_eq!(
+        answer.value[1].owners[0].kept_categories,
+        KeptCategories::Recalculated(vec![
+            vec!["Owned Ships".into()],
+            vec!["Pops".into(), "Owned Ships".into()]
+        ])
+    );
+
+    fs::remove_file(root.path().join("modifier_nodes.json")).unwrap();
+    assert!(matches!(
+        native.modifier_nodes(),
+        Err(Error::NotRecorded { .. })
+    ));
 }
 
 #[test]

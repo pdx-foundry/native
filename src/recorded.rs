@@ -7,8 +7,8 @@
 //! Layout: `build.json`, `registries.json`, `registry_fields/<registry>.json`,
 //! `modifier_families/<registry>.json`, `derived_names/<registry>.json`, where `<registry>` is
 //! the content directory, such as `common/traditions`. The language
-//! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json`, `defines.json` and
-//! `dynamic_names.json`, and
+//! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json`, `defines.json`,
+//! `dynamic_names.json` and `modifier_nodes.json`, and
 //! `declarations/<kind>.json`. Command grammar uses `command_grammar/<kind>/<name>.json` for
 //! plain names; other names use an injective hex component under `<kind>/encoded/`. Fixture answers use
 //! `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys, not provenance.
@@ -189,7 +189,8 @@ fn layout(operation: crate::Operation) -> Layout {
         | OnActions
         | GameRules
         | Defines
-        | DynamicNames => Layout::File,
+        | DynamicNames
+        | ModifierNodes => Layout::File,
     }
 }
 

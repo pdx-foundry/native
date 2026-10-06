@@ -109,6 +109,7 @@ assignment, inline short-string bytes, or a 16-byte vector copy. It names 32 cat
 print these two, because no loaded modifier uses them alone. A modifier's tags follow
 `CModifier::LogDefinitions`: the name of the whole mask when one exists, otherwise the name of
 each set bit.
+The categories that each modifier node keeps are on [modifier masks](modifier-masks.md).
 
 ### Scope types
 

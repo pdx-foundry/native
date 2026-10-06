@@ -1203,6 +1203,21 @@ impl BoundAnalysis {
         self.verified()?.modifier_input(recipe)
     }
 
+    /// The node type symbols, node constructor calls and static initializers.
+    pub(crate) fn modifier_node_input(
+        &self,
+    ) -> Result<crate::engine::analysis::modifier_nodes::ModifierNodeInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        let verified = self.verified()?;
+        binary::modifier_nodes::read(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &verified.catalog.pointers,
+            &verified.catalog.bound_slots,
+            recipe,
+        )
+    }
+
     /// Every generation call, its joins to the named registries, and each registry's code.
     pub(crate) fn family_index(&self) -> Result<&FamilyIndex, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;

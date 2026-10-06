@@ -109,6 +109,8 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub modifier_category_offset: u64,
     /// Stack offset of the category argument of the call that registers a generated modifier.
     pub dynamic_modifier_category_offset: u64,
+    /// Where a modifier node keeps its category mask and how its constructor receives it.
+    pub modifier_nodes: crate::engine::analysis::modifier_nodes::ModifierNodeLayout,
     /// Offset of the token in an event target object.
     pub event_target_token_offset: u64,
     /// The engine's string object: its size, and the offset of a short string's length byte.
@@ -325,6 +327,12 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     ],
     modifier_category_offset: 0x4,
     dynamic_modifier_category_offset: 0x0,
+    modifier_nodes: crate::engine::analysis::modifier_nodes::ModifierNodeLayout {
+        category_offset: 0xdc,
+        category_argument: 5,
+        calculation_argument: 3,
+        calculation_function_offset: 8,
+    },
     event_target_token_offset: 0x58,
     string_object_size: 0x18,
     short_string_length_offset: M45_TEMPLATE_LAYOUT.string_tag_offset(),
