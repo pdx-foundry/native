@@ -15,6 +15,7 @@ exact M45-release build. Atlas owns the fixtures, matrices and rule conclusions 
 | Unknown child key | Only `Unexpected token`; no key set | Reader hook; the ordinary log adds the key |
 | Wrong target type | `has a target of not fleet type!` for `auto_follow_fleet` with `target = owner`, staged `engine-validation-log` | `CAutoFollowFleetEffect::PostValidate` bypasses the log for type 0 or `0x40`; the message does not give the actual type |
 | Unknown weight key | `unknown command '<key>' for MTTH/script value in file <file> line : <n>` (M451-hotfix) | `CLogger::Log` in `CMeanTimeToHappen::ReadMember`; the fixture source join reads `file: ` and ` line: `, so this message reaches only `error.log` |
+| Entry outside a container's categories | `Modifier has entry not allowed by category:  file: <file> line: <n>` (M451-hotfix); no key and no category; the entry stays stored, and a plain container never logs it ([container masks](modifier-masks.md#container-masks-sdk-709)) | `CPdxLogFileAndLine` in `CPdxModifier<…>::TryReadMember`; reaches fixture diagnostics as `engine-parser-log`, joined to the entry line |
 | Missing deferred reference | `Failed to deferred read key reference <key> from database  file: <file> line: <n>`; the argument after `from database` is a source description, not the database name | `CTechAndLevel::ReadDeferred` → `ResolveReference`, `CPdxLogFileAndLine` |
 
 The reader hook captures messages before final formatting; this is not string truncation. The

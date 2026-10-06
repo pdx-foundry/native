@@ -80,14 +80,8 @@ method confirmed them and corrected one.
   starbase edge (`csel`), and six leader-trait sites that take the include as an argument. Content
   sources call `AddModifierInternal` at 611 sites; 530 pass All and 0, and a straight-line scan
   resolves 560 of them to constants (an approximate count).
-- **Parse-time containers (SDK-708).** `CPdxModifier<…>::TryReadMember(CReader&, int)` inserts each
-  entry during file read, then tests `[this+0xac] & def[+0x84]` and logs `Modifier has entry not
-  allowed by category: %s`. The entry is stored anyway. The default constructor writes (1,
-  0xffffffff), so a plain container accepts every category. Restricted containers are
-  `CStaticModifier(int, ModifierCategory)` in `CDistrictType`, `CPopCategory`,
-  `CGovernmentAuthorityType` and `CStarbaseComponent`, and the triggered modifiers that the
-  `ReadMember` of `CTrait`, `CBuildingType`, `CDistrictType` and `CMegaStructureType` make. They
-  reuse the node mask constants. The script key of each container is not mapped yet.
+- **Parse-time containers.** See [container masks](#container-masks-sdk-709) below. SDK-708 owns
+  the method.
 
 ## Result on M451-hotfix
 
@@ -145,6 +139,200 @@ Species, pop factions, deposits, ship designs and systems have no node of their 
   no other store to +0xdc in any `Calculate*` or `Recalc*` function. The initializer read does not
   model the memory writes of the initializer's callees. Extend either search when a new build
   shows such a write.
+
+## Container masks (SDK-709)
+
+The SDK-709 investigation found these facts for SDK-708, which adds the accepted-category mask of
+each modifier container by script key. No method reads them yet. The scripts and site lists are in
+`.local/sdk-709/` (its `README.md` gives the commands).
+
+### Engine facts (M451-hotfix)
+
+- **The check.** `CPdxModifier<…>::TryReadMember(CReader&, int)` (0x10015ac00) inserts the entry,
+  then tests `[this+0xac] & def[+0x84]` (0x10015ae10). On a zero result it logs `Modifier has entry
+  not allowed by category: %s` through `CPdxLogFileAndLine`, with `CReader::GetFileLocationDescription()`
+  as the argument. The entry stays stored. The message names the file and line, not the key or
+  the category.
+- **The word.** A container's category mask is the word at +0xac of its `CModifier`. Only two
+  constructors take it as an argument:
+  - `CStaticModifier::CStaticModifier(int, ModifierCategory)` (0x1009776f4, alias 0x10097754c)
+    stores `w1` at +0xa8 and `w2` at +0xac (`stp w21, w20, [x19, #0xa8]`, 0x100977690), after its
+    `SetKey` call. `CCustomDescriptionModifier(int, ModifierCategory)` calls it.
+  - `CTriggeredModifierBase<T>(int, ModifierCategory, EScopeType)` passes `w2` to `T`'s category
+    constructor at +0x238. `CTriggeredModifierWithTooltipData(int, ModifierCategory, EScopeType)`
+    calls the Static one.
+- **Default.** `CStaticModifier()` (0x1009770a8) and `CStaticModifier(CString const&)` store the
+  8-byte literal at 0x102c35898, (1, 0xffffffff), at +0xa8, before their `SetKey` call. Owner
+  constructors that build a `CModifierWithTooltipData` inline store the same literal
+  (`CBuildingType::CBuildingType`, 0x1000cded4). A container built in one of these ways accepts
+  every category.
+- **Other writers.** The scan below found only the copy constructor, `Clone`, `Swap` and
+  `operator=` of `CPdxModifier` as other functions that write +0xac. A scan for `stp wA, wB, [xN, #0xa8]` and `str wN, [xM, #0xac]` found no inline
+  category constructor in the constructor or `ReadMember` of a registry type. The scan did not
+  cover 8-byte stores (`str dN` or `str xN` at +0xa8), the form of the inline default.
+- **Calls.** There are 127 calls of the category constructors: 23 in owner constructors (members)
+  and 104 clause creations in `ReadMember` functions. A clause call is direct to a branch-island
+  stub (0x1029938d8 and 0x1029938e4 for Static, 0x102993908 and 0x102993914 for CustomDesc), direct
+  to the Tooltip constructor, or through a `PdxMakeScopedPtr` factory (0x1000d05d4, 0x1000d0640,
+  0x100ce7de8) that receives the category by reference and loads it into `w2`.
+- **Argument forms.** An immediate; a `__TEXT,__const` constant (`CPopGroup::ModifierCategories`);
+  a global-offset-table bind to a `<weak-def-coalesce>` constant (`CColonyCarrier::ALL_MODIFIER_CATEGORIES`,
+  `CCountry::MODIFIER_CATEGORIES`); the `__DATA,__common` word `CGalacticObject::MODIFIER_CATEGORIES`
+  (0x1032e9054, which the node method reads as 0x403fdafe); and, in `CStarbaseComponent<T>::ReadMember`,
+  the owner's own word at member+0xac, so each starbase clause reuses the mask of the member with
+  the same scope.
+
+### Restricted containers
+
+Masks by script key. "Planet" is 0x400aca7e (`CColonyCarrier::ALL_MODIFIER_CATEGORIES`), "pop
+group" 0xa8002 (`CPopGroup::ModifierCategories`), "country" 0x50bfcffe (`CCountry::MODIFIER_CATEGORIES`),
+"system" `CGalacticObject::MODIFIER_CATEGORIES` and "fleet" 0x400ac2fe (`CFleet::MODIFIER_CATEGORIES`).
+`triggered_planet_pop_group_modifier_for_all` and `_for_species` always have the pop group mask; the
+owners are buildings, colony types, deposits, districts, pop categories, pop jobs, storm types,
+zones and traits.
+
+| Owner (registry) | Key: mask |
+| --- | --- |
+| `CBuildingType` (`common/buildings`) | `triggered_planet_modifier`: planet; `triggered_country_modifier`, `triggered_waystation_network_country_modifier`: country; `triggered_waystation_network_system_modifier`: All |
+| `CColonyType` (`common/colony_types`), `CDepositType` (`common/deposits`) | `triggered_planet_modifier`: planet |
+| `CPopCategory` (`common/pop_categories`) | members `pop_group_modifier`: pop group, `planet_modifier`: planet, `country_modifier`: country; `triggered_pop_group_modifier`: pop group, `triggered_planet_modifier`: planet, `triggered_country_modifier`: country |
+| `CJobType` (`common/pop_jobs`, Tooltip clauses) | `triggered_planet_modifier`: planet; `triggered_country_modifier`: country; `triggered_system_modifier`: system |
+| `CCosmicStormType` (`common/storm_types`) | `triggered_planet_modifier`: planet; `triggered_country_modifier`: country; `triggered_fleet_modifier`: fleet; `triggered_ship_modifier`: 0x407c; `triggered_system_modifier`: system |
+| `CEdict`, `CEthic`, `CGovernmentCouncilorType`, `CRelic`, `CSpecimen`, `CMegaStructureType` (`edicts`, `ethics`, `governments/councilors`, `relics`, `specimens`, `megastructures`) | `triggered_country_modifier`: country |
+| `CGovernmentAuthorityType` (`common/governments/authorities`) | member `country_modifier`: country |
+| `CFederationPerkType` (`common/federation_perks`) | `federation_triggered_modifier`: 0x400000 (Federations); `leader_triggered_modifier`, `member_triggered_modifier`: All |
+| `CResolutionType` (`common/resolutions`) | `triggered_modifier`: country |
+| `CSituationType` (`common/situations`), and its nested `stages` (`CSituationStage`) and `approach` (`CSituationApproach`) | `triggered_modifier`: country; `triggered_target_modifier`: planet |
+| `CTraditionType` (`common/traditions`, `common/ascension_perks`), nested `tradition_swap` (`CTraditionSwap`) | `triggered_modifier`: country (CustomDesc clauses) |
+| `CPsionicAuraType` (`common/patrons/psionic_auras`), nested `intensity_level` (`CIntensityLevel`) | `triggered_system_modifier`: system; `owner_`, `neutral_`, `rival_fleet_modifier`: fleet; `owner_`, `neutral_`, `rival_planet_modifier`: planet |
+| `CPatronCovenantType`, `CPatronPassiveAccord` (`covenant`, `passive_accord` in `common/patrons`) | `triggered_modifier`: country |
+| `CSpeciesRightBase` (all nine `common/species_rights/*` registries) | `triggered_pop_group_modifier`: pop group |
+| `CDistrictType` (`common/districts`) | member `planet_modifier`: planet; `triggered_planet_modifier`: planet |
+| `CZoneType::CSerializer` (`common/zones`) | `triggered_planet_modifier`, `triggered_district_planet_modifier`: planet; `triggered_country_modifier`, `triggered_district_country_modifier`: country |
+| `CStarbaseComponent<CStarbaseModule>`, `<CStarbaseBuilding>` (`common/starbase_modules`, `common/starbase_buildings`) | members `station_modifier`: 0x402ec27e, `country_modifier`: All, `system_modifier`: 0x4008c8fe, `planet_modifier`: planet, `orbit_modifier`: 0x400840fe, `ship_modifier`: 0x4008407e, `defense_platform_modifier`: 0x8407c, `waystation_network_system_modifier`, `waystation_network_country_modifier`: All; `triggered_station_`, `triggered_country_`, `triggered_system_`, `triggered_planet_`, `triggered_waystation_network_system_`, `triggered_waystation_network_country_modifier`: the member mask |
+| `CComponentTemplate` (`common/component_templates`, not a discovered registry) | `triggered_ship_modifier`: 0x400ac27e; `triggered_ship_design_modifier`: 0x8407c |
+| `CTrait` (`common/traits`, not a discovered registry) | `triggered_planet_modifier`, `triggered_planet_growth_habitability_modifier`, `triggered_background_planet_modifier`: planet; `triggered_system_modifier`, `triggered_sector_modifier`: system; `triggered_self_modifier`, `triggered_leader_modifier`: 0x80400; `triggered_species_modifier`, `triggered_pop_group_modifier`: pop group; `triggered_councilor_modifier`, `triggered_galcom_modifier`: country; `triggered_fleet_modifier`: fleet; `triggered_army_modifier`: 0x84200; `triggered_federation_modifier`: 0x400000; `triggered_modifier`: All |
+
+The table holds every direct, branch-island and factory call of a category constructor. Another
+container is plain only where its default construction is seen. The registry field method gives
+no field for these keys in districts and zones (no root fields), starbase modules and buildings (their keys are behind the
+base `CStarbaseComponent<T>::ReadMember` call) or the species-rights registries (behind
+`CSpeciesRightBase::ReadMember`). Their keys come from the token comparisons of those readers. Seven
+species-rights readers call the base reader; living standards and military service types inherit
+it: their vtable member slots (0x10308d7e8, 0x10308d8f0) hold `CSpeciesRightBase::ReadMember`
+(0x100be29e4). A caller search misses that form.
+
+- **Tradition `modifier` is plain.** `CTraditionType::CTraditionType` builds the member at +0x210
+  with `CCustomDescriptionModifier()` (call at 0x100cdc228), which calls `CStaticModifier()`.
+  `CTraditionType::ReadMember` reads token 0x3fff (`modifier`) into +0x210 (0x100cdc7d0);
+  `CTraditionSwap` reads it into +0x170. So the naval capacity modifiers (category Countries, such as
+  `country_naval_cap_add`) are accepted there, and in the country mask too.
+
+### Diagnostic route (live, M451-hotfix)
+
+One fixture file `common/traditions/native_category.txt` held three definitions:
+`federation_fleet_cap_add` (Federations only) in a `triggered_modifier`, `country_naval_cap_add` in
+a `triggered_modifier`, and both entries in a plain `modifier`. `observe_fixture` gave
+`DiagnosticCoverage::Complete` and exactly one diagnostic, stage `engine-parser-log`, joined to the
+first definition, its `triggered_modifier` field and the entry line:
+`Modifier has entry not allowed by category:  file: common/traditions/native_category.txt line: 5`.
+The two controls gave none. The answer is `.local/sdk-709/fixture-answer.json`.
+
+### Script category keys
+
+The 19 `## modifier_categories` annotations of the config are on `enum[scripted_modifier_category]`
+(`enums.cwt`), the value of `category` in `common/scripted_modifiers` and of `modifier_category` in
+`common/economic_categories`. They are not container masks. The engine fact is
+`GetModifierCategoryFromToken(int)` (0x10095d218), a switch from the value token to a mask.
+`CScriptedModifier::ReadMember` stores the result at +0x74; `CEconomicCategory::ReadMember` stores it
+at +0x128 and `GenerateModifiers` passes it to `FillModifierMatrix`. A zero result logs `Invalid
+modifier category '%s' at %s`, except for `none` (token 0x165).
+
+| Key | Mask | Key | Mask |
+| --- | --- | --- | --- |
+| `all` | All | `planet` | Planets |
+| `pop_group` | Pops (0x2) | `colony` | Colony |
+| `ship` | 0x407c (four ship and two station bits) | `deposit` | Deposits |
+| `station` | 0xc (Orbital and Space Stations) | `megastructure` | Megastructures |
+| `fleet` | Fleets | `habitability` | Habitability |
+| `country` | Countries | `starbase` | Starbases |
+| `army` | Armies | `economic_unit` | Economic Units |
+| `leader` | Leaders | `system` | Star Systems |
+| `component` | Ship Components | `federation` | Federations |
+| `pop_faction` | Pop Factions | `espionage` | Espionage |
+| `waystation` | Waystations | `galactic_community` | Galactic Community |
+| `storm_influence_field` | Cosmic Storm Influence Field | `none` | 0, no message |
+
+Differences from the config: `pop_job` (config: `Job`) is a token but maps to 0, so it is an invalid
+category on this build; `waystation`, `galactic_community` and `storm_influence_field` are missing
+from the config. The config adds AI Economy to every annotated key; the switch does not, so the
+key table is the parsed mask, not the final tags of a generated modifier.
+`CEconomicCategory::FillModifierTable<true>` and `<false>` compute `category | 0x1000000` (AI
+Economy, 0x101c3aba4 and 0x101c3b08c) and pass it to `CModifier::TryAddDynamicModifier`
+(0x101c3adb4, 0x101c3b2ac), so every modifier that an economic category generates has AI Economy,
+even with `none`. Whether scripted modifiers add it is not established.
+
+### Route for SDK-708
+
+Read the category argument at the call of a category constructor, with the shared evaluator, in
+the walks that already reach the call:
+
+- **Members:** the owner constructor walk of `fields/persistent.rs`. The receiver offset at the call
+  names the member, and the persistent join names its field.
+- **Clauses:** the nested-collection proof of `fields/nested.rs` stops at the clause constructor
+  call with the token in hand; `w2` there is the mask.
+- **Mask forms:** the four forms that `modifier_nodes` reads, and the starbase form, a load from
+  the owner's member word, joined to that member's constructor argument. `modifier_nodes` keeps the
+  mask's address and reads a `__common` word from its initializer; at a container call `w2` already
+  holds the loaded value (zero-fill), so the walk must keep the load's source address.
+
+**Unrestricted needs positive evidence.** A field is unrestricted only when the walk sees its own
+destination built by a default constructor (`CStaticModifier()`, `CStaticModifier(CString const&)`,
+`CCustomDescriptionModifier()`), by an inline store of the default literal, or by a category
+argument of All. A field that the walk does not reach, an unknown argument, paths that disagree and
+a missing field join are gaps, never All. The rule assumes, for this build, that no later code
+before the check writes +0xac (see the other writers above).
+
+**Coverage.** On M451-hotfix the existing joins reach only part of the table:
+
+- Clauses at the root of a discovered registry: 50 root fields have a joined clause reader
+  ([triggered modifiers](triggered-modifiers.md#result-on-m451-hotfix)). Their category calls are in
+  the nested proof's walk.
+- Members: the joined modifier fields, for example the authority `country_modifier` and the
+  tradition `modifier`. The pop category members are not joined (their fields have no reader
+  family), because `CPopCategory::CPopCategory` halts at `mvni.2s` (0x100a6f31c), and the buildings
+  modifier members are read through a `CModifierWithTooltipData::CSerializer` on the stack, with no
+  persistent point. Both need a repair in the shared walk before their masks have a field.
+- Gaps until another ticket: the nested owners (`tradition_swap`, situation `stages` and
+  `approach`, psionic `intensity_level`, patron `covenant` and `passive_accord`), because nested
+  results have no collections (SDK-676); the readers behind a base or inherited `ReadMember`
+  (starbase components, species rights); districts and zones (no root fields); and the owners with no
+  discovered registry (traits, component templates).
+
+A local trial (patch in `.local/sdk-709/route-trial.patch`, not committed) logged the argument at
+these calls. It shows the argument, not a completed field answer. Logged: the three `CPopCategory`
+members (pop group, planet, country), the authority `country_modifier` (country), and 18 of 22
+clause calls in pop categories, traditions, buildings, colony types and psionic auras. Plain: the
+tradition `modifier` constructor call is the default constructor at +0x210. Not resolved: the three
+buildings clauses whose factory loads the mask through a global-offset-table bind, and the psionic
+aura `triggered_system_modifier` (the `__common` word).
+
+### Pitfalls
+
+- **Read the word after construction, not at it.** The trial also read +0xa8 after the owner
+  constructor (`PersistentInput::requested_words`). It gave the authority word, but the default
+  constructor stores its word before `SetKey`, which the walk does not model, so the plain
+  tradition container had no word. `CPopCategory::CPopCategory` halts later at `mvni.2s`
+  (0x100a6f31c), and the buildings modifier members have no persistent point.
+- **Do not list only the factory calls.** The probe found the clause sites through the
+  `PdxMakeScopedPtr` factories (39 sites), so it missed the 65 direct calls: 60 to the branch-island
+  stubs and 5 to the Tooltip constructor. They include colony types, deposits, edicts, situations,
+  traditions, pop jobs and zones.
+- **Jump tables hide tokens.** `ReadMember` functions dispatch through `ldrb` or `ldrh` jump tables
+  after a range check (`add w8, w2, w8` with `w8 = -base`, then `cmp`, `b.hi` or `b.ls`). Decode the
+  table to map a call to its token. The range check can be several blocks before the `br`.
+- **A missing message is not acceptance.** The message reaches diagnostics only for a restricted
+  container. A fixture check of a plain container must run a positive control in the same window.
 
 ## Comparison with `modifier_categories.cwt` (probe, for Atlas)
 
