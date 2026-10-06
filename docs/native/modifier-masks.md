@@ -165,11 +165,12 @@ each modifier container by script key. No method reads them yet. The scripts and
   8-byte literal at 0x102c35898, (1, 0xffffffff), at +0xa8, before their `SetKey` call. Owner
   constructors that build a `CModifierWithTooltipData` inline store the same literal
   (`CBuildingType::CBuildingType`, 0x1000cded4). A container built in one of these ways accepts
-  every category.
-- **Other writers.** The scan below found only the copy constructor, `Clone`, `Swap` and
-  `operator=` of `CPdxModifier` as other functions that write +0xac. A scan for `stp wA, wB, [xN, #0xa8]` and `str wN, [xM, #0xac]` found no inline
-  category constructor in the constructor or `ReadMember` of a registry type. The scan did not
-  cover 8-byte stores (`str dN` or `str xN` at +0xa8), the form of the inline default.
+  every category. The test is `tst`, so an entry whose own mask (`def[+0x84]`) is 0 logs the
+  message in any container; whether a loaded modifier can have mask 0 is not established.
+- **Other writers.** A scan for `stp wA, wB, [xN, #0xa8]` and `str wN, [xM, #0xac]` found only the
+  copy constructor, `Clone`, `Swap` and `operator=` of `CPdxModifier` among the modifier functions,
+  and no inline category constructor in the constructor or `ReadMember` of a registry type. The
+  scan did not cover 8-byte stores (`str dN` or `str xN` at +0xa8), the form of the inline default.
 - **Calls.** There are 127 calls of the category constructors: 23 in owner constructors (members)
   and 104 clause creations in `ReadMember` functions. A clause call is direct to a branch-island
   stub (0x1029938d8 and 0x1029938e4 for Static, 0x102993908 and 0x102993914 for CustomDesc), direct
@@ -331,8 +332,9 @@ aura `triggered_system_modifier` (the `__common` word).
 - **Jump tables hide tokens.** `ReadMember` functions dispatch through `ldrb` or `ldrh` jump tables
   after a range check (`add w8, w2, w8` with `w8 = -base`, then `cmp`, `b.hi` or `b.ls`). Decode the
   table to map a call to its token. The range check can be several blocks before the `br`.
-- **A missing message is not acceptance.** The message reaches diagnostics only for a restricted
-  container. A fixture check of a plain container must run a positive control in the same window.
+- **A missing message is not acceptance.** A plain container logs the message only for an entry
+  whose own mask is 0. A fixture check of a plain container must run a positive control in the
+  same window.
 
 ## Comparison with `modifier_categories.cwt` (probe, for Atlas)
 
