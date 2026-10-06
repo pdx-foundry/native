@@ -536,6 +536,10 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
             "use pdx_native::{KeptCategories, ModifierNode, ModifierNodeId, ModifierNodeOwner}; fn f() { let _ = pdx_native::Operation::ModifierNodes; }",
             true,
         ),
+        (
+            "use pdx_native::ModifierCategoryKey; fn f() { let _ = pdx_native::Operation::ModifierCategoryKeys; }",
+            true,
+        ),
         ("use pdx_native::{Native, internals};", false),
         ("use pdx_native as native; fn f() {}", false),
         ("extern crate pdx_native as native; fn f() {}", false),

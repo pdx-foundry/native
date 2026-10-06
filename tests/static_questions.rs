@@ -636,6 +636,31 @@ fn modifier_categories_are_the_names_of_the_category_switch() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn modifier_category_keys_are_the_parsed_masks_with_an_empty_none() {
+    let native = native();
+    assert_eq!(
+        native.supports(Operation::ModifierCategoryKeys),
+        pdx_native::Support::Supported
+    );
+    let answer = native.modifier_category_keys().unwrap();
+    assert_declared(&answer);
+    assert_eq!(answer.completeness, Completeness::Complete);
+    let key = |name: &str| {
+        let key = answer.value.iter().find(|key| key.name == name);
+        key.map(|key| key.categories.clone())
+    };
+
+    let categories = native.modifier_categories().unwrap();
+    let all = categories.value.iter().find(|category| category.name == "All");
+
+    assert_eq!(answer.value.len(), 24);
+    assert_eq!(key("none"), Some(DeclaredTags::Listed(vec![])));
+    assert_eq!(key("all").as_ref(), all.map(|all| &all.categories));
+    assert_eq!(key("pop_job"), None);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
 fn modifier_nodes_give_owners_masks_and_sources_but_no_scopes() {
     let native = native();
     assert_eq!(
@@ -1377,6 +1402,7 @@ fn observe(native: &Native) -> Observed {
     answers.push(json!(native.game_rules()));
     answers.push(json!(native.defines()));
     answers.push(json!(native.modifier_nodes()));
+    answers.push(json!(native.modifier_category_keys()));
     let families: BTreeMap<String, Value> = expected("modifier-families.json");
     for registry in families.keys() {
         answers.push(json!(native.modifier_families(registry)));

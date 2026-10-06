@@ -253,6 +253,23 @@ pub fn tags(categories: &CategoryNames, mask: u64) -> Tags {
     Tags::Listed(names)
 }
 
+/// The name of each single category in `mask`. A bit that the switch establishes as unnamed is
+/// not a category. `categories` must name each single bit.
+pub fn single_categories(categories: &CategoryNames, mask: u64) -> Result<Vec<String>, Unresolved> {
+    let mut names = Vec::new();
+
+    for bit in (0..CATEGORY_MASK_BITS).filter(|bit| mask >> bit & 1 == 1) {
+        match categories.get(&(1 << bit)) {
+            Some(Ok(Some(name))) => names.push(name.clone()),
+            Some(Ok(None)) => {}
+            Some(Err(unresolved)) => return Err(unresolved_category_name(unresolved.clone())),
+            None => return Err(Unresolved::new("category-name")),
+        }
+    }
+
+    Ok(names)
+}
+
 /// A category name that did not resolve, under the one reason that public gap text quotes.
 fn unresolved_category_name(unresolved: Unresolved) -> Unresolved {
     Unresolved {

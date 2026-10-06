@@ -314,6 +314,32 @@ fn modifier_nodes_read_recorded_owners_masks_and_basis() {
 }
 
 #[test]
+fn modifier_category_keys_read_recorded_categories_and_basis() {
+    let root = recorded();
+    write(
+        root.path(),
+        "modifier_category_keys.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "none", "categories": { "Listed": [] } },
+                { "name": "ship", "categories": { "Listed": ["Ships"] } }
+            ],
+            "completeness": "Complete",
+            "gaps": [],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let answer = native.modifier_category_keys().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(answer.value[0].categories, DeclaredTags::Listed(vec![]));
+    assert_eq!(
+        answer.value[1].categories,
+        DeclaredTags::Listed(vec!["Ships".into()])
+    );
+}
+
+#[test]
 fn dynamic_names_read_recorded_namespaces_and_basis() {
     let root = recorded();
     write(

@@ -5,10 +5,11 @@ use super::Native;
 use super::questions::{error, scope_id, scope_references};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredScopes, DeclaredTags, Error, Gap, GapKind,
-    GapSubject, LinkData, ModifierCategory, ModifierDeclaration, Operation, OutputScope,
-    ScopeDeclaration, ScopeGroup, ScopeInventory, ScopeLink, Source,
+    GapSubject, LinkData, ModifierCategory, ModifierCategoryKey, ModifierDeclaration, Operation,
+    OutputScope, ScopeDeclaration, ScopeGroup, ScopeInventory, ScopeLink, Source,
 };
 use crate::engine::analysis::{
+    category_keys::{self, CategoryKeyResult},
     declarations::ScopeOutcome,
     modifiers::{self, CATEGORY_METHOD, DefinitionSite, MODIFIER_METHOD, ModifierResult, Tags},
     scopes::{self, LINK_METHOD, LinkResult, Output, SCOPE_METHOD, ScopeResult},
@@ -39,6 +40,26 @@ impl Native {
         self.answer("modifier_categories", None, || {
             let result = self.modifier_result(Operation::ModifierCategories)?;
             Ok(normalized_categories(&result, self.build()))
+        })
+    }
+
+    /// Read the values that script writes for a modifier category, such as `category = planet` in
+    /// `common/scripted_modifiers`, and the categories that the engine reads each as.
+    ///
+    /// A value that the engine reads as no category and reports as invalid is not listed; `none`
+    /// is listed with no categories. The categories are the parsed value's: a later step can add
+    /// one, as economic-category generation adds AI Economy to each modifier that it generates.
+    pub fn modifier_category_keys(&self) -> Result<Answer<Vec<ModifierCategoryKey>>, Error> {
+        self.answer("modifier_category_keys", None, || {
+            let operation = Operation::ModifierCategoryKeys;
+            let input = self
+                .declaration_analysis(operation)?
+                .category_key_input()
+                .map_err(|failure| error(operation, failure))?;
+            Ok(normalized_category_keys(
+                &category_keys::analyze(&input),
+                self.build(),
+            ))
         })
     }
 
@@ -222,12 +243,12 @@ pub(crate) fn normalized_categories(
     result: &ModifierResult,
     build: BuildId,
 ) -> Answer<Vec<ModifierCategory>> {
-    let mut names = BTreeSet::new();
+    let mut masks = BTreeMap::<&String, BTreeSet<u64>>::new();
     let mut unresolved = 0;
-    for name in result.categories.values() {
+    for (&mask, name) in &result.categories {
         match name {
             Ok(Some(name)) => {
-                names.insert(name.clone());
+                masks.entry(name).or_default().insert(mask);
             }
             Ok(None) => {}
             Err(_) => unresolved += 1,
@@ -248,9 +269,12 @@ pub(crate) fn normalized_categories(
         "The search covers each single category and each whole mask that a built-in modifier uses. Categories are intended-use tags; where a modifier takes effect is outside it.",
     ));
 
-    let value = names
+    let value = masks
         .into_iter()
-        .map(|name| ModifierCategory { name })
+        .map(|(name, masks)| ModifierCategory {
+            name: name.clone(),
+            categories: name_categories(&result.categories, name, &masks, &mut gaps),
+        })
         .collect();
     answer(
         value,
@@ -259,6 +283,85 @@ pub(crate) fn normalized_categories(
         build,
         CATEGORY_METHOD,
     )
+}
+
+/// The single categories that `name` covers, from each mask that the switch gives that name.
+fn name_categories(
+    categories: &modifiers::CategoryNames,
+    name: &str,
+    masks: &BTreeSet<u64>,
+    gaps: &mut Vec<Gap>,
+) -> DeclaredTags {
+    let expansions: BTreeSet<_> = masks
+        .iter()
+        .map(|&mask| modifiers::single_categories(categories, mask))
+        .collect();
+    let reason = match expansions.first() {
+        Some(Ok(names)) if expansions.len() == 1 => return DeclaredTags::Listed(names.clone()),
+        Some(Err(unresolved)) => unresolved.reason,
+        _ => "masks-disagree",
+    };
+
+    gaps.push(gap(
+        GapKind::UnresolvedPath,
+        Some(name),
+        format!("the single categories of the name could not be read: {reason}"),
+    ));
+    DeclaredTags::Unresolved
+}
+
+fn normalized_category_keys(
+    result: &CategoryKeyResult,
+    build: BuildId,
+) -> Answer<Vec<ModifierCategoryKey>> {
+    let mut gaps = vec![gap(
+        GapKind::OutsideMethod,
+        None,
+        "The categories are those of the parsed value. Economic-category generation adds AI Economy to each modifier that it generates; whether a scripted modifier gains a category after it is read is not established.",
+    )];
+    if let Some(unresolved) = &result.empty {
+        gaps.push(gap(
+            GapKind::UnresolvedPath,
+            None,
+            format!(
+                "no value is established as the empty category: {}",
+                unresolved.reason
+            ),
+        ));
+    }
+    if result.unreadable > 0 {
+        gaps.push(gap(
+            GapKind::UnresolvedPath,
+            None,
+            format!(
+                "{} value tokens could not be followed through the category switch",
+                result.unreadable
+            ),
+        ));
+    }
+
+    let value = result
+        .keys
+        .iter()
+        .map(|(name, &mask)| {
+            let categories = match modifiers::single_categories(&result.categories, mask) {
+                Ok(names) => DeclaredTags::Listed(names),
+                Err(unresolved) => {
+                    let detail = format!(
+                        "the value's categories could not be named: {}",
+                        unresolved.reason
+                    );
+                    gaps.push(gap(GapKind::UnresolvedPath, Some(name), detail));
+                    DeclaredTags::Unresolved
+                }
+            };
+            ModifierCategoryKey {
+                name: name.clone(),
+                categories,
+            }
+        })
+        .collect();
+    answer(value, gaps, |key| &key.name, build, category_keys::METHOD)
 }
 
 pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<ScopeInventory> {
@@ -443,6 +546,47 @@ mod tests {
             type_masks: BTreeMap::new(),
         };
         normalized_modifiers(&result, BuildId("test".into()))
+    }
+
+    #[test]
+    fn a_whole_mask_name_covers_its_named_single_categories_or_is_unresolved() {
+        let name = |name: &str| Ok(Some(name.to_owned()));
+        let result = ModifierResult {
+            sites: Vec::new(),
+            categories: BTreeMap::from([
+                (0b0001, name("Pops")),
+                (0b0010, Ok(None)),
+                (0b0100, name("Fleets")),
+                (0b0111, name("Mobile")),
+                (0b1000, Err(Unresolved::new("exit"))),
+                (0b1100, name("Broken")),
+            ]),
+            generation_sites: 0,
+            type_masks: BTreeMap::new(),
+        };
+
+        let answer = normalized_categories(&result, BuildId("test".into()));
+        let categories = |name: &str| {
+            let category = answer.value.iter().find(|category| category.name == name);
+            category.unwrap().categories.clone()
+        };
+
+        assert_eq!(
+            categories("Mobile"),
+            DeclaredTags::Listed(vec!["Pops".into(), "Fleets".into()])
+        );
+        assert_eq!(
+            categories("Pops"),
+            DeclaredTags::Listed(vec!["Pops".into()])
+        );
+        assert_eq!(categories("Broken"), DeclaredTags::Unresolved);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.subject == Some(GapSubject::answer_item("Broken"))
+                    && gap.kind == GapKind::UnresolvedPath)
+        );
     }
 
     #[test]

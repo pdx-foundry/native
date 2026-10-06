@@ -5,7 +5,8 @@ use object::{Object, ObjectSection, SectionKind};
 
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    decode::decode_arm64,
+    category_keys::CategoryKeyInput,
+    decode::{decode_arm64, is_control_transfer},
     discovery::Symbol,
     evaluate::{Code, ReadOnlyData},
     localization::{LocalizationFunctions, LocalizationInput},
@@ -23,6 +24,11 @@ pub(super) const GENERATE_MODIFIER: [&str; 2] = [
     "CModifier::TryAddDynamicModifier(ModifierType&, CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, CFixedPoint, bool)",
     "CModifier::AddDynamicModifier(CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, CFixedPoint, bool)",
 ];
+const CATEGORY_FROM_TOKEN: &str = "GetModifierCategoryFromToken(int)";
+const LOG_FILE_AND_LINE: &str =
+    "CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)";
+/// Bytes after a call of the category switch that hold its reader's check and message call.
+const CATEGORY_CHECK_WINDOW: u64 = 0x100;
 const CATEGORY_NAME: &str =
     "(anonymous namespace)::GetModifierCategoryName(ModifierCategory, CString&)";
 const ASSIGN_LITERAL: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
@@ -50,6 +56,35 @@ pub(in crate::binding) fn modifiers(
         define,
         category_offset: recipe.modifier_category_offset,
         generation_sites,
+        categories: categories(bytes, symbols, &text, recipe)?,
+    })
+}
+
+/// Read the category switch, its call sites and the category-name switch.
+pub(in crate::binding) fn category_keys(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    strings: &BTreeMap<u64, String>,
+    recipe: &DeclarationRecipe,
+) -> Result<CategoryKeyInput, AnalysisError> {
+    let switch = unique(symbols, CATEGORY_FROM_TOKEN)?;
+    let text = Text::read(bytes, symbols)?;
+    let sites = text
+        .direct_calls(switch)
+        .into_iter()
+        .map(|call| {
+            let start = call - 4;
+            let window = text.bytes(start, 4 + CATEGORY_CHECK_WINDOW)?;
+            decode_arm64(window, start).map_err(|_| AnalysisError::InvalidRange)
+        })
+        .collect::<Result<_, _>>()?;
+
+    Ok(CategoryKeyInput {
+        tokens: text.token_names(symbols, strings)?,
+        switch,
+        code: code(&text, &[switch])?,
+        sites,
+        log: addresses(symbols, LOG_FILE_AND_LINE),
         categories: categories(bytes, symbols, &text, recipe)?,
     })
 }
@@ -163,14 +198,6 @@ pub(super) fn code(text: &Text, functions: &[u64]) -> Result<Code, AnalysisError
         .map(|&start| text.function(start))
         .collect::<Result<_, _>>()?;
     Code::decode(&ranges).map_err(AnalysisError::Input)
-}
-
-fn is_control_transfer(operation: &str) -> bool {
-    operation.starts_with("b.")
-        || matches!(
-            operation,
-            "b" | "bl" | "blr" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
-        )
 }
 
 const SCOPE_OBJECT: &str = "CGameText::SetScopeObject(CScopeObjectReference const&)";

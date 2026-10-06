@@ -91,6 +91,7 @@ pub const FILES: &[&str] = &[
     "modifier-categories.json",
     "modifier-families.json",
     "modifier-nodes.json",
+    "modifier-category-keys.json",
     "derived-names-traditions.json",
     "derived-names-tradition_categories.json",
     "modifier-blocks.json",
@@ -206,9 +207,20 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             current_answer(native, native.modifier_categories()?)?
                 .value
                 .iter()
-                .map(|item| &item.name)
-                .collect::<Vec<_>>()
+                .map(|item| (&item.name, &item.categories))
+                .collect::<BTreeMap<_, _>>()
         )),
+        "modifier-category-keys.json" => {
+            let answer = current_answer(native, native.modifier_category_keys()?)?;
+            let keys: BTreeMap<_, _> = answer
+                .value
+                .iter()
+                .map(|key| (&key.name, &key.categories))
+                .collect();
+            Ok(json!({
+                "completeness": answer.completeness, "gaps": answer.gaps, "keys": keys
+            }))
+        }
         "modifier-nodes.json" => {
             let answer = current_answer(native, native.modifier_nodes()?)?;
             Ok(json!({

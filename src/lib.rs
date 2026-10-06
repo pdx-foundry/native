@@ -34,10 +34,10 @@ pub use answer::{
     GenerationCondition, KeptCategories, LinkData, LoadedContent, LoadedModifier, LoadedModifiers,
     LocalizationCommand, LocalizationContext, LocalizationContextId, LocalizationContextReference,
     LocalizationDeclarations, LocalizationLink, LocalizationOutput, MissingName, ModifierCategory,
-    ModifierDeclaration, ModifierFamily, ModifierNode, ModifierNodeId, ModifierNodeOwner,
-    NameLookup, NamePart, OnAction, Operation, OutputScope, ReadScope, Reader, ReaderId,
-    ReaderKind, Registry, RuleKind, ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory,
-    ScopeLink, ScopeReference, Source, Support,
+    ModifierCategoryKey, ModifierDeclaration, ModifierFamily, ModifierNode, ModifierNodeId,
+    ModifierNodeOwner, NameLookup, NamePart, OnAction, Operation, OutputScope, ReadScope, Reader,
+    ReaderId, ReaderKind, Registry, RuleKind, ScopeDeclaration, ScopeGroup, ScopeId,
+    ScopeInventory, ScopeLink, ScopeReference, Source, Support,
 };
 pub use api::OpenError;
 pub use duration::{Duration, DurationCombination, DurationUnit};
@@ -84,6 +84,7 @@ pub(crate) use engine::analysis::AnalysisError;
 #[doc(hidden)]
 pub mod internals {
     pub use crate::binding::inspect;
+    pub use crate::engine::analysis::category_keys::METHOD as MODIFIER_CATEGORY_KEYS_METHOD;
     pub use crate::engine::analysis::defines::METHOD as DEFINES_METHOD;
     pub use crate::engine::analysis::dynamic_names::METHOD as DYNAMIC_NAMES_METHOD;
     pub use crate::engine::analysis::evaluate::trace_causes;

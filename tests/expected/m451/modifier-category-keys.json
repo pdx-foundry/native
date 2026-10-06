@@ -1,0 +1,32 @@
+{
+  "completeness": "Complete",
+  "gaps": [
+    {"detail": "The categories are those of the parsed value. Economic-category generation adds AI Economy to each modifier that it generates; whether a scripted modifier gains a category after it is read is not established.", "kind": "OutsideMethod", "subject": null}
+  ],
+  "keys": {
+    "all": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]},
+    "army": {"Listed": ["Armies"]},
+    "colony": {"Listed": ["Colony"]},
+    "component": {"Listed": ["Ship Components"]},
+    "country": {"Listed": ["Countries"]},
+    "deposit": {"Listed": ["Deposits"]},
+    "economic_unit": {"Listed": ["Economic Units"]},
+    "espionage": {"Listed": ["Espionage"]},
+    "federation": {"Listed": ["Federations"]},
+    "fleet": {"Listed": ["Fleets"]},
+    "galactic_community": {"Listed": ["Galactic Community"]},
+    "habitability": {"Listed": ["Habitability"]},
+    "leader": {"Listed": ["Leaders"]},
+    "megastructure": {"Listed": ["Megastructures"]},
+    "none": {"Listed": []},
+    "planet": {"Listed": ["Planets"]},
+    "pop_faction": {"Listed": ["Pop Factions"]},
+    "pop_group": {"Listed": ["Pops"]},
+    "ship": {"Listed": ["Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Transport Ships"]},
+    "starbase": {"Listed": ["Starbases"]},
+    "station": {"Listed": ["Orbital Stations", "Space Stations"]},
+    "storm_influence_field": {"Listed": ["Cosmic Storm Influence Field"]},
+    "system": {"Listed": ["Star Systems"]},
+    "waystation": {"Listed": ["Waystations"]}
+  }
+}

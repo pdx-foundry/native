@@ -283,6 +283,18 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
+    fn category_key_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
+        binary::language::category_keys(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            recipe,
+        )
+    }
+
     /// Every generation call, its joins to the named registries, and each registry's code.
     fn family_index(
         &self,
@@ -1201,6 +1213,14 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.modifier_input(recipe)
+    }
+
+    /// The category switch, the reader checks after each call of it, and the token names.
+    pub(crate) fn category_key_input(
+        &self,
+    ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
+        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.category_key_input(recipe)
     }
 
     /// The node type symbols, node constructor calls and static initializers.
