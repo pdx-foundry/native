@@ -651,12 +651,73 @@ fn modifier_category_keys_are_the_parsed_masks_with_an_empty_none() {
     };
 
     let categories = native.modifier_categories().unwrap();
-    let all = categories.value.iter().find(|category| category.name == "All");
+    let all = categories
+        .value
+        .iter()
+        .find(|category| category.name == "All");
 
     assert_eq!(answer.value.len(), 24);
     assert_eq!(key("none"), Some(DeclaredTags::Listed(vec![])));
     assert_eq!(key("all").as_ref(), all.map(|all| &all.categories));
     assert_eq!(key("pop_job"), None);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M451-hotfix build"]
+fn modifier_containers_list_their_categories_or_keep_a_gap() {
+    use pdx_native::{AcceptedCategories, GapSubject};
+    let native = native();
+    let fields = |registry: &str| native.registry_fields(registry).unwrap();
+    let accepted = |answer: &Answer<Vec<pdx_native::Field>>, name: &str| {
+        let field = answer.value.iter().find(|field| field.name == name);
+        field.unwrap().accepted_categories.clone()
+    };
+    let named = |answer: &Answer<Vec<pdx_native::Field>>, path: &[&str]| {
+        answer.gaps.iter().any(|gap| match &gap.subject {
+            Some(GapSubject::Field { name }) => [name.as_str()] == path,
+            Some(GapSubject::KeyPath { path: gap_path }) => gap_path == path,
+            _ => false,
+        })
+    };
+    let categories = native.modifier_categories().unwrap();
+    let all = categories
+        .value
+        .iter()
+        .find(|category| category.name == "All")
+        .unwrap();
+
+    let traditions = fields("common/traditions");
+    let DeclaredTags::Listed(all) = &all.categories else {
+        panic!("All has no single categories");
+    };
+    assert_eq!(
+        accepted(&traditions, "modifier"),
+        AcceptedCategories::Listed(all.clone())
+    );
+    let AcceptedCategories::Listed(country) = accepted(&traditions, "triggered_modifier") else {
+        panic!("the tradition clause has no categories");
+    };
+    assert!(country.contains(&"Countries".to_owned()));
+    assert!(!country.contains(&"Federations".to_owned()));
+    assert!(named(
+        &traditions,
+        &["tradition_swap", "triggered_modifier"]
+    ));
+
+    let pop_categories = fields("common/pop_categories");
+    assert_eq!(
+        accepted(&pop_categories, "pop_group_modifier"),
+        AcceptedCategories::Unresolved
+    );
+    assert!(named(&pop_categories, &["pop_group_modifier"]));
+
+    let starbase_modules = fields("common/starbase_modules");
+    assert!(
+        starbase_modules
+            .value
+            .iter()
+            .all(|field| !matches!(field.accepted_categories, AcceptedCategories::Listed(_)))
+    );
 }
 
 #[test]

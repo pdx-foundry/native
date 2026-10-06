@@ -240,6 +240,7 @@ mod tests {
             uses: Vec::new(),
             entry_contexts: Vec::new(),
             read_scope: crate::GrammarProperty::Unresolved,
+            accepted_categories: crate::AcceptedCategories::NotApplicable,
             reference: FieldReference::NotEstablished,
         }
     }

@@ -1,4 +1,5 @@
 //! Join generic persistent member destinations to constructor-installed virtual methods.
+use super::containers::{self, PathMasks};
 use super::{ConcreteReader, FieldGap, FieldGapKind, FieldInput, ReaderJoin, RootField};
 use crate::engine::analysis::{
     evaluate::{Call, Code, Exit, ReadOnlyData},
@@ -17,6 +18,7 @@ pub(super) struct PersistentFields {
     pub scoped: BTreeMap<i64, u64>,
     /// Requested words that every constructor's entered run establishes with one value.
     pub words: BTreeMap<(i64, u64), u64>,
+    pub containers: BTreeMap<i64, Result<u64, Unresolved>>,
     pub gaps: Vec<FieldGap>,
 }
 
@@ -48,6 +50,7 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
     let ConstructorPoints {
         points,
         words,
+        containers,
         gaps,
     } = constructor_points(binding, &input.read_only_data, &offsets);
     let readers = points
@@ -79,6 +82,7 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
         points,
         scoped,
         words,
+        containers,
         gaps,
     }
 }
@@ -88,6 +92,9 @@ pub(crate) struct ConstructorPoints {
     pub points: BTreeMap<i64, u64>,
     /// Requested words that every constructor's entered run establishes with one value.
     pub words: BTreeMap<(i64, u64), u64>,
+    /// The category mask of each modifier container at a kept point, from every path of every
+    /// run that returned.
+    pub containers: BTreeMap<i64, Result<u64, Unresolved>>,
     pub gaps: Vec<FieldGap>,
 }
 
@@ -103,14 +110,20 @@ pub(crate) fn constructor_points(
             .iter()
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
-    );
+    )
+    .with_32_bit_words(&binding.initialized_words);
     let image = ConstructorImage::new(&sections, &binding.pointers, &binding.writable_slots)
         .with_calls(binding.constructor_calls.clone());
     let mut agreement: Option<BTreeMap<i64, u64>> = None;
     let mut word_agreement: Option<BTreeMap<(i64, u64), u64>> = None;
+    let mut container_paths = Vec::new();
     let mut gaps = Vec::new();
     for constructor in &binding.constructors {
-        type Run = (BTreeMap<i64, u64>, BTreeMap<(i64, u64), u64>);
+        type Run = (
+            BTreeMap<i64, u64>,
+            BTreeMap<(i64, u64), u64>,
+            Vec<BTreeMap<i64, BTreeSet<u64>>>,
+        );
         let run = |enter_constructors: bool| -> Result<Run, Unresolved> {
             let bodies: Vec<_> = binding
                 .constructors
@@ -158,6 +171,13 @@ pub(crate) fn constructor_points(
                 if target.is_some_and(|target| binding.never_return.contains(&target)) {
                     return Ok(Call::Stop);
                 }
+                let container = target.and_then(|target| binding.containers.mask(target, machine));
+                let receiver = machine
+                    .register(0)
+                    .filter(|receiver| (owner..owner + SPAN).contains(receiver));
+                if let (Some(mask), Some(receiver)) = (container, receiver) {
+                    machine.label(containers::LABEL | (receiver - owner), mask);
+                }
                 if target.is_some_and(|target| {
                     binding
                         .constructors
@@ -201,6 +221,7 @@ pub(crate) fn constructor_points(
             });
             let mut established: Option<BTreeMap<i64, u64>> = None;
             let mut established_words: Option<BTreeMap<(i64, u64), u64>> = None;
+            let mut path_containers = Vec::new();
             for path in paths {
                 match path.end? {
                     Exit::Stopped(target) if binding.never_return.contains(&target) => continue,
@@ -219,20 +240,31 @@ pub(crate) fn constructor_points(
                 let words = requested_words(&path.machine, owner, &points, binding);
                 intersect(&mut established, points);
                 intersect(&mut established_words, words);
+                path_containers.push(path_containers_of(&path.machine, owner, offsets, binding));
             }
             let points = established.ok_or(Unresolved::new("persistent-constructor-return"))?;
-            Ok((points, established_words.unwrap_or_default()))
+            Ok((
+                points,
+                established_words.unwrap_or_default(),
+                path_containers,
+            ))
         };
-        let baseline = run(false).map(|(points, _)| points);
+        let baseline = run(false).map(|(points, _, paths)| {
+            container_paths.extend(paths);
+            points
+        });
         let entered = run(true);
         // A constructor body that the baseline does not enter may write any word, so only an
         // entered run establishes words.
         let words = match &entered {
-            Ok((_, words)) => words.clone(),
+            Ok((_, words, _)) => words.clone(),
             Err(_) => BTreeMap::new(),
         };
         intersect(&mut word_agreement, words);
-        let entered = entered.map(|(points, _)| points);
+        let entered = entered.map(|(points, _, paths)| {
+            container_paths.extend(paths);
+            points
+        });
         let result = match (baseline, entered) {
             (Ok(baseline), Ok(mut entered)) => {
                 entered.extend(baseline);
@@ -256,11 +288,67 @@ pub(crate) fn constructor_points(
         .into_iter()
         .filter(|((offset, _), _)| points.contains_key(offset))
         .collect();
+    let containers = container_masks(&container_paths, &points);
     ConstructorPoints {
         points,
         words,
+        containers,
         gaps,
     }
+}
+
+/// The masks that one path gives each container, by owner offset: the mask of each construction
+/// that it labels, and the mask word that a requested modifier destination holds at its end.
+fn path_containers_of(
+    machine: &crate::engine::analysis::evaluate::Machine<'_>,
+    owner: u64,
+    offsets: &BTreeSet<i64>,
+    binding: &super::PersistentInput,
+) -> BTreeMap<i64, BTreeSet<u64>> {
+    let mut masks = BTreeMap::<i64, BTreeSet<u64>>::new();
+
+    for (&key, &mask) in machine
+        .labels()
+        .range(containers::LABEL..containers::LABEL + SPAN)
+    {
+        let offset = (key - containers::LABEL) as i64;
+        masks.entry(offset).or_default().insert(mask);
+    }
+
+    for &offset in offsets {
+        let destination = owner + offset as u64;
+        let modifier = machine
+            .read(destination, 8)
+            .and_then(|point| binding.readers.get(&point))
+            .is_some_and(|reader| reader.family == crate::BlockFamily::Modifier);
+        let word = machine.read(destination + binding.containers.mask_offset, 4);
+
+        if let (true, Some(word)) = (modifier, word) {
+            masks.entry(offset).or_default().insert(word);
+        }
+    }
+
+    masks
+}
+
+/// The agreed mask of each container at a kept point, over the masks of every path.
+fn container_masks(
+    paths: &[BTreeMap<i64, BTreeSet<u64>>],
+    points: &BTreeMap<i64, u64>,
+) -> BTreeMap<i64, Result<u64, Unresolved>> {
+    let offsets: BTreeSet<i64> = paths.iter().flat_map(|path| path.keys().copied()).collect();
+
+    offsets
+        .into_iter()
+        .filter(|offset| points.contains_key(offset))
+        .map(|offset| {
+            let mut masks = PathMasks::default();
+            for path in paths {
+                masks.add(path.get(&offset).into_iter().flatten().copied());
+            }
+            (offset, masks.agreed())
+        })
+        .collect()
 }
 
 /// The requested words inside each persistent destination at the end of one constructor path.

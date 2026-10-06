@@ -2,12 +2,18 @@
 //! A factory that returns the object through `x8` is entered, so its allocation and constructor
 //! call are evaluated. A moving insertion counts only when the binding proved that it clears its
 //! source; the model then clears the moved-from pointer.
+//!
+//! The walk reads constant pointer slots and initialized zero-fill words, so a constructor
+//! argument that the code loads through either is known. It labels the category mask of a
+//! modifier container's construction, which gives the collection's container mask.
+use super::containers::{self, PathMasks};
 use super::{
     CollectionField, FieldInput, RegistryFieldResult, RootField, dispatch, inventory, tokens,
 };
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
+use crate::engine::analysis::receivers::ConstructorImage;
 use crate::engine::analysis::stop::Unresolved;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 const OBJECT: u64 = 1 << 62;
 const ALLOCATED: u64 = 1 << 60;
@@ -60,6 +66,15 @@ pub(super) fn discover(
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
     );
+    let image = match &input.persistent {
+        Some(binding) => ConstructorImage::new(
+            &data.with_32_bit_words(&binding.initialized_words),
+            &binding.pointers,
+            &binding.writable_slots,
+        ),
+        None => ConstructorImage::new(&data, &BTreeMap::new(), &BTreeSet::new()),
+    };
+    let containers = input.persistent.as_ref().map(|binding| &binding.containers);
     let allocate: Vec<_> = input
         .symbols
         .iter()
@@ -73,7 +88,7 @@ pub(super) fn discover(
             .iter()
             .any(|join| matches!(join, super::ReaderJoin::Missing(_)))
     }) {
-        let mut machine = Machine::new(&code, &data);
+        let mut machine = Machine::new(&code, image.constant_data());
         let owner = machine.reserve(SPAN);
         let reader = machine.reserve(SPAN);
         // A store through an unknown pointer invalidates this sentinel along with any
@@ -99,6 +114,9 @@ pub(super) fn discover(
             }
             for (index, object) in input.objects.iter().enumerate() {
                 if object.constructors.contains(&target) {
+                    if let Some(mask) = containers.and_then(|known| known.mask(target, machine)) {
+                        machine.label(containers::LABEL, mask);
+                    }
                     let at = machine.known_register(0, "constructed-object")?;
                     if machine.labelled(ALLOCATED | at) != Some(1) {
                         return Err(Unresolved::new("object-not-allocated"));
@@ -156,19 +174,28 @@ pub(super) fn discover(
                     && path.machine.read(unchanged, 8) == Some(1)
                     && !path.machine.has_written(owner, SPAN))
                 .then_some(())?;
-                Some((
+                let inserted = (
                     path.machine.labelled(INSERTED_CLASS)?,
                     path.machine.labelled(INSERTED_OFFSET)?,
-                ))
+                );
+                Some((inserted, path.machine.labelled(containers::LABEL)))
             })
             .collect();
         let Some(joined) = joined.filter(|joined| !joined.is_empty()) else {
             continue;
         };
-        let first = joined[0];
-        if joined.iter().any(|other| *other != first) {
+        let first = joined[0].0;
+        if joined.iter().any(|(other, _)| *other != first) {
             continue;
         }
+        let container_mask = joined.iter().any(|(_, mask)| mask.is_some()).then(|| {
+            let mut masks = PathMasks::default();
+            for (_, mask) in &joined {
+                masks.add(*mask);
+            }
+
+            masks.agreed()
+        });
         let object = &input.objects[first.0 as usize];
         let reader = object
             .reader
@@ -193,6 +220,7 @@ pub(super) fn discover(
                 persistent_points: Default::default(),
                 scoped_destinations: Default::default(),
                 stored_words: Default::default(),
+                container_masks: Default::default(),
                 uses: Vec::new(),
                 fields,
                 paths,
@@ -200,6 +228,7 @@ pub(super) fn discover(
                 partition_accounted,
                 collections: Vec::new(),
             }),
+            container_mask,
         });
     }
     collections

@@ -13,7 +13,7 @@ fn recorded_field(name: &str, kind: &str) -> serde_json::Value {
     json!({ "name": name, "reader": { "id": if kind == "Unknown" { None } else { Some(name) }, "kind": kind, "family": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved" },
         "shape": { "value": "Unknown", "repeat": "Unknown" },
         "read": [{ "condition": "Unresolved", "outcome": "Unresolved" }],
-        "members": "Unresolved", "domain": "Unknown", "uses": [], "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved" })
+        "members": "Unresolved", "domain": "Unknown", "uses": [], "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "NotApplicable" })
 }
 
 fn source() -> serde_json::Value {

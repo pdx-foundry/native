@@ -139,6 +139,9 @@ pub struct NodeRead {
 pub struct ModifierNodeResult {
     pub nodes: BTreeMap<u32, NodeRead>,
     pub categories: CategoryNames,
+    /// Each 32-bit mask in zero-fill memory that a node constructor reads, with the value that
+    /// its static initializer leaves.
+    pub initialized_words: BTreeMap<u64, u64>,
 }
 
 /// Read every node's sources, owners and masks.
@@ -155,10 +158,11 @@ pub fn analyze(input: &ModifierNodeInput) -> ModifierNodeResult {
         })
         .collect();
 
+    let mut initialized_words = BTreeMap::new();
     for construction in &input.constructions {
         let owner = OwnerRead {
             owner: construction.owner.clone(),
-            masks: construction_masks(input, construction),
+            masks: construction_masks(input, construction, &mut initialized_words),
         };
         nodes
             .entry(construction.node)
@@ -180,15 +184,29 @@ pub fn analyze(input: &ModifierNodeInput) -> ModifierNodeResult {
         });
     let categories = category_names(&input.categories, masks.collect::<Vec<_>>());
 
-    ModifierNodeResult { nodes, categories }
+    ModifierNodeResult {
+        nodes,
+        categories,
+        initialized_words,
+    }
 }
 
-/// The constructor's mask, and the masks that the node's calculation function stores.
+/// The constructor's mask, and the masks that the node's calculation function stores. A mask
+/// read from zero-fill memory joins `initialized_words`.
 fn construction_masks(
     input: &ModifierNodeInput,
     construction: &Construction,
+    initialized_words: &mut BTreeMap<u64, u64>,
 ) -> Result<Masks, Unresolved> {
     let (mask, calculation) = construction_arguments(input, construction)?;
+    let mask = match mask {
+        Mask::Known(mask) => mask,
+        Mask::Initialized(address) => {
+            let mask = initialized_word(input, address)?;
+            initialized_words.insert(address, mask);
+            mask
+        }
+    };
     let mut masks = calculation_masks(input, calculation)?;
     masks.insert(mask);
 
@@ -198,11 +216,11 @@ fn construction_masks(
     Ok(Masks::Recalculated(masks))
 }
 
-/// The category mask and the calculation function that one constructor call passes.
+/// Where the category mask is, and the calculation function, that one constructor call passes.
 fn construction_arguments(
     input: &ModifierNodeInput,
     construction: &Construction,
-) -> Result<(u64, u64), Unresolved> {
+) -> Result<(Mask, u64), Unresolved> {
     let layout = input.layout;
     let code = Code::from_rows(input.text.rows(construction.caller)?);
     let mut machine = Machine::new(&code, &input.data);
@@ -239,16 +257,11 @@ fn construction_arguments(
         arguments.insert((mask, calculation));
     }
 
-    let (mask, calculation) = match (arguments.first(), arguments.len()) {
-        (Some(&arguments), 1) => arguments,
-        (_, 0) => return Err(Unresolved::new("construction-path")),
-        _ => return Err(Unresolved::new("construction-arguments")),
-    };
-    let mask = match mask {
-        Mask::Known(mask) => mask,
-        Mask::Initialized(address) => initialized_word(input, address)?,
-    };
-    Ok((mask, calculation))
+    match (arguments.first(), arguments.len()) {
+        (Some(&arguments), 1) => Ok(arguments),
+        (_, 0) => Err(Unresolved::new("construction-path")),
+        _ => Err(Unresolved::new("construction-arguments")),
+    }
 }
 
 /// Where a constructor call finds its category mask.

@@ -1330,6 +1330,11 @@ fn persistent_fixture() -> FieldInput {
         writable_slots: Default::default(),
         never_return: vec![],
         requested_words: BTreeMap::new(),
+        containers: fields::ModifierContainers {
+            mask_offset: 0xac,
+            ..Default::default()
+        },
+        initialized_words: BTreeMap::new(),
         readers: BTreeMap::from([(
             0xb000,
             ConcreteReader {
@@ -2249,4 +2254,163 @@ fn a_registry_writable_slot_has_no_established_target() {
             "{shape}"
         );
     }
+}
+
+/// The pointer slot, in constant data, of a category mask constant.
+const MASK_SLOT: u64 = 0x2_0000;
+/// A category mask constant.
+const MASK_CONSTANT: u64 = 0x2_1010;
+/// A category mask word in zero-fill memory.
+const ZERO_FILL_MASK: u64 = 0x2_2054;
+
+/// The persistent fixture whose constructor builds its 0x40 member with the container
+/// constructor 0xa000, after `argument` sets `w2`.
+fn member_container_fixture(argument: impl Fn(&mut Arm64)) -> FieldInput {
+    let mut input = persistent_fixture();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor; mov x19, x0; add x0, x0, #0x40);
+    argument(&mut constructor);
+    arm64!(constructor; bl extern 0xa000; mov x0, x19);
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    let binding = input.persistent.as_mut().unwrap();
+    binding.constructors[0].code = constructor.bytes();
+    binding.containers.category = BTreeSet::from([0xa000]);
+    input
+}
+
+fn member_mask(input: FieldInput) -> Result<u64, &'static str> {
+    derive(input).container_masks[&0x40]
+        .clone()
+        .map_err(|unresolved| unresolved.reason)
+}
+
+#[test]
+fn a_member_container_has_the_mask_of_its_category_argument() {
+    let immediate = member_container_fixture(|code| arm64!(code; mov w2, #0x407c));
+    let mut default = persistent_fixture();
+    default.persistent.as_mut().unwrap().containers.default = BTreeSet::from([0xa000]);
+
+    assert_eq!(member_mask(immediate), Ok(0x407c));
+    assert_eq!(
+        member_mask(default),
+        Ok(crate::engine::analysis::modifiers::EVERY_CATEGORY)
+    );
+}
+
+#[test]
+fn a_member_container_built_inline_has_the_mask_that_the_owner_stores() {
+    let mut inline = persistent_fixture();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor;
+        mov x19, x0;
+        add x0, x0, #0x40;
+        bl extern 0xa000;
+        movz x8, #1;
+        movk x8, #0xffff, lsl #32;
+        movk x8, #0xffff, lsl #48;
+        str x8, [x19, #0xe8]; // the default (1, every category) at member+0xa8
+        mov x0, x19
+    );
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    inline.persistent.as_mut().unwrap().constructors[0].code = constructor.bytes();
+
+    assert_eq!(
+        member_mask(inline),
+        Ok(crate::engine::analysis::modifiers::EVERY_CATEGORY)
+    );
+}
+
+#[test]
+fn an_unknown_category_argument_or_a_disagreement_is_unresolved_not_every_category() {
+    let unknown = member_container_fixture(|code| arm64!(code; ldr w2, [x1]));
+    let mut disagreeing = member_container_fixture(|code| arm64!(code; mov w2, #0x407c));
+    let mut other = Arm64::at(0xc000);
+    other.prologue();
+    arm64!(other; mov x19, x0; add x0, x0, #0x40; mov w2, #0x80; bl extern 0xa000; mov x0, x19);
+    other.epilogue();
+    arm64!(other; ret);
+    disagreeing
+        .persistent
+        .as_mut()
+        .unwrap()
+        .constructors
+        .push(Function {
+            name: "CExample::CExample(other)".into(),
+            address: 0xc000,
+            code: other.bytes(),
+        });
+
+    assert_eq!(member_mask(unknown), Err("category-argument"));
+    assert_eq!(member_mask(disagreeing), Err("container-paths-disagree"));
+}
+
+/// The factory fixture whose object constructor 0x9100 is a container constructor, after
+/// `argument` sets `w2` in the factory, with a mask constant behind a constant pointer slot and
+/// an initialized zero-fill mask.
+fn clause_container_fixture(argument: impl Fn(&mut Arm64)) -> FieldInput {
+    let mut input = factory_fixture();
+    let mut factory = Arm64::at(0x9500);
+    arm64!(factory; stp x19, x20, [sp, #-16]!);
+    factory.prologue();
+    arm64!(factory; mov x19, x8; bl extern 0x9000; mov x20, x0);
+    argument(&mut factory);
+    arm64!(factory; mov x0, x20; bl extern 0x9100; str x20, [x19]);
+    factory.epilogue();
+    arm64!(factory; ldp x19, x20, [sp], #16; ret);
+    let function = input
+        .functions
+        .iter_mut()
+        .find(|function| function.address == 0x9500)
+        .unwrap();
+    function.code = factory.bytes();
+    input.read_only_data.push(fields::DataSection {
+        address: MASK_CONSTANT,
+        bytes: 0x400a_ca7eu32.to_le_bytes().to_vec(),
+    });
+    let mut binding = persistent_fixture().persistent.unwrap();
+    binding.pointers = BTreeMap::from([(MASK_SLOT, MASK_CONSTANT)]);
+    binding.containers.category = BTreeSet::from([0x9100]);
+    binding.initialized_words = BTreeMap::from([(ZERO_FILL_MASK, 0x403f_dafe)]);
+    input.persistent = Some(binding);
+    input
+}
+
+fn clause_mask(input: FieldInput) -> Option<Result<u64, &'static str>> {
+    let result = derive(input);
+    let mask = result.collections[0].container_mask.clone();
+    mask.map(|mask| mask.map_err(|unresolved| unresolved.reason))
+}
+
+#[test]
+fn a_collected_container_has_the_mask_that_its_factory_passes() {
+    let immediate = clause_container_fixture(|code| arm64!(code; mov w2, #0x80));
+    let constant = clause_container_fixture(|code| {
+        code.load(9, MASK_SLOT);
+        arm64!(code; ldr w2, [x9]);
+    });
+    let zero_fill = clause_container_fixture(|code| {
+        code.address(9, ZERO_FILL_MASK);
+        arm64!(code; ldr w2, [x9]);
+    });
+
+    assert_eq!(clause_mask(immediate), Some(Ok(0x80)));
+    assert_eq!(clause_mask(constant), Some(Ok(0x400a_ca7e)));
+    assert_eq!(clause_mask(zero_fill), Some(Ok(0x403f_dafe)));
+    assert_eq!(clause_mask(factory_fixture()), None);
+}
+
+#[test]
+fn a_mask_behind_a_writable_pointer_slot_is_unresolved() {
+    let mut writable = clause_container_fixture(|code| {
+        code.load(9, MASK_SLOT);
+        arm64!(code; ldr w2, [x9]);
+    });
+    let binding = writable.persistent.as_mut().unwrap();
+    binding.writable_slots = BTreeSet::from([MASK_SLOT]);
+
+    assert_eq!(clause_mask(writable), Some(Err("category-argument")));
 }

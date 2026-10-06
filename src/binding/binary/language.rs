@@ -89,6 +89,15 @@ pub(in crate::binding) fn category_keys(
     })
 }
 
+/// The category-name switch and what running it needs, read from the executable.
+pub(in crate::binding) fn category_input(
+    bytes: &[u8],
+    symbols: &[Symbol],
+    recipe: &DeclarationRecipe,
+) -> Result<CategoryInput, AnalysisError> {
+    categories(bytes, symbols, &Text::read(bytes, symbols)?, recipe)
+}
+
 /// The category-name switch and what running it needs.
 pub(super) fn categories(
     bytes: &[u8],

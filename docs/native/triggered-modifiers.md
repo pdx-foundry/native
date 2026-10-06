@@ -5,7 +5,7 @@ has a triggered modifier clause reader, such as `triggered_modifier`,
 `triggered_country_modifier` or `triggered_planet_modifier`. The field has
 `BlockFamily::TriggeredModifier` and `repeat: Accumulate`; each occurrence is a new clause. The
 block reports the clause's own keys and `other_keys`, the shared modifier block that reads every
-other key. A `modifier` key carries that block too. Source stamp `registry-fields/v17`.
+other key. A `modifier` key carries that block too. Source stamp `registry-fields/v18`.
 
 The method is `src/engine/analysis/modifier_blocks/triggered.rs`, bound in
 `src/binding/binary/triggered_modifiers.rs` and normalized in `src/session/triggered_modifiers.rs`.

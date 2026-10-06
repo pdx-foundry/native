@@ -85,6 +85,8 @@ fn class(member: &str) -> PersistentInput {
         writable_slots: Default::default(),
         never_return: vec![],
         requested_words: BTreeMap::new(),
+        containers: Default::default(),
+        initialized_words: BTreeMap::new(),
         readers: BTreeMap::from([(
             MODIFIER_POINT,
             ConcreteReader {

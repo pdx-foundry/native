@@ -28,16 +28,17 @@ mod work_directory;
 pub mod supervisor;
 
 pub use answer::{
-    Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
-    DeclaredScopes, DeclaredTags, Define, DefineValueType, DerivedName, Disposal, EntryContext,
-    EntryScope, Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName,
-    GenerationCondition, KeptCategories, LinkData, LoadedContent, LoadedModifier, LoadedModifiers,
-    LocalizationCommand, LocalizationContext, LocalizationContextId, LocalizationContextReference,
-    LocalizationDeclarations, LocalizationLink, LocalizationOutput, MissingName, ModifierCategory,
-    ModifierCategoryKey, ModifierDeclaration, ModifierFamily, ModifierNode, ModifierNodeId,
-    ModifierNodeOwner, NameLookup, NamePart, OnAction, Operation, OutputScope, ReadScope, Reader,
-    ReaderId, ReaderKind, Registry, RuleKind, ScopeDeclaration, ScopeGroup, ScopeId,
-    ScopeInventory, ScopeLink, ScopeReference, Source, Support,
+    AcceptedCategories, Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes,
+    Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Define, DefineValueType,
+    DerivedName, Disposal, EntryContext, EntryScope, Error, Field, GameRule, Gap, GapKind,
+    GapSubject, GeneratedName, GenerationCondition, KeptCategories, LinkData, LoadedContent,
+    LoadedModifier, LoadedModifiers, LocalizationCommand, LocalizationContext,
+    LocalizationContextId, LocalizationContextReference, LocalizationDeclarations,
+    LocalizationLink, LocalizationOutput, MissingName, ModifierCategory, ModifierCategoryKey,
+    ModifierDeclaration, ModifierFamily, ModifierNode, ModifierNodeId, ModifierNodeOwner,
+    NameLookup, NamePart, OnAction, Operation, OutputScope, ReadScope, Reader, ReaderId,
+    ReaderKind, Registry, RuleKind, ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory,
+    ScopeLink, ScopeReference, Source, Support,
 };
 pub use api::OpenError;
 pub use duration::{Duration, DurationCombination, DurationUnit};

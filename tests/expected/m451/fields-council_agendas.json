@@ -1,5 +1,6 @@
 [
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [
    {
@@ -75,6 +76,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "None",
@@ -241,6 +243,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "None",
@@ -357,6 +360,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "None",
@@ -473,6 +477,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [
    {
@@ -558,6 +563,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [
    {
@@ -643,6 +649,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [
    {
@@ -718,6 +725,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": {
@@ -779,6 +787,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "None",
@@ -844,6 +853,40 @@
   "uses": []
  },
  {
+  "accepted_categories": {
+   "Listed": [
+    "Pops",
+    "Orbital Stations",
+    "Space Stations",
+    "Military Ships",
+    "Civilian Ships",
+    "Science Ships",
+    "Fleets",
+    "Countries",
+    "Armies",
+    "Leaders",
+    "Planets",
+    "Ship Components",
+    "Pop Factions",
+    "Transport Ships",
+    "Deposits",
+    "Megastructures",
+    "Habitability",
+    "Starbases",
+    "Economic Units",
+    "Star Systems",
+    "Waystations",
+    "Federations",
+    "Espionage",
+    "AI Economy",
+    "Ship Design Stats",
+    "Astral Rift",
+    "Cosmic Storm Influence Field",
+    "Owned Ships",
+    "Galactic Community",
+    "Colony"
+   ]
+  },
   "domain": "Unknown",
   "entry_contexts": [],
   "members": {

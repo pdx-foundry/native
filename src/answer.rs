@@ -641,6 +641,27 @@ pub struct Field {
     /// Scope alternatives supplied when the engine reads this block. A known empty list
     /// means no block scope applies. This does not describe evaluation or availability.
     pub read_scope: crate::GrammarProperty<Vec<ReadScope>>,
+    /// The categories of modifier entries that the field's modifier container accepts.
+    pub accepted_categories: AcceptedCategories,
+}
+
+/// The categories of modifier entries that a modifier container accepts. For an entry with none
+/// of them, the engine reports `Modifier has entry not allowed by category` and keeps the entry.
+/// Where an accepted entry takes effect is outside this answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum AcceptedCategories {
+    /// The field's reader is established and does not read modifier entries.
+    NotApplicable,
+    /// The single categories that the container accepts, as [`ModifierCategory::categories`]
+    /// lists them. An entry is accepted when one of its categories, expanded the same way, is
+    /// listed.
+    Listed(Vec<String>),
+    /// A key of a triggered modifier clause that reads into the clause's own container. The
+    /// clause's field lists the categories.
+    Enclosing,
+    /// Not established; a gap names the field.
+    Unresolved,
 }
 
 /// The scope used to read children of a block.
