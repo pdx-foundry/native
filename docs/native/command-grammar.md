@@ -259,7 +259,9 @@ the token at command `+0x20` and the file location at `+0x28`, checks the comman
   in one valid case), and the session ran into its deadline. Native observes the formatted
   `CPdxLogFileAndLine` dispatch and its formatting-failure branch, the string that
   `CScriptedTrigger::PostValidate` sends to `CLogStream` (deferred unknown triggers), and
-  `CScriptedEffect::OnError` (effect compilation errors, joined to the receiver's source string);
+  `CScriptedEffect::OnError` after its `GenerateSource` call (effect compilation errors with the
+  generated instance source, joined to the receiver's source string; see
+  [script expansion](script-expansion.md#pitfalls));
   the terminal is entry to `CModifier::LogDefinitions`. Hook locations live in the binding recipe.
 - Source-correlated engine-log diagnostics may arrive on another nonzero game thread in the bounded
   validation window; owner reads, parser entries and returns, and completion markers still require

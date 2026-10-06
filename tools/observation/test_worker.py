@@ -468,19 +468,30 @@ class ParserObservationTests(unittest.TestCase):
         self.assertEqual(self.observer.emit.call_args.kwargs['stage'], 'engine-validation-log')
         self.observer.stored_string.assert_not_called()
 
-    def test_sourced_log_joins_the_bound_owner_source(self):
-        self.observer.bindings['validation'] = dict(sourced_log_text_register='x1',
-            sourced_log_owner_register='x0', sourced_log_source_offset=0x28,
+    def test_sourced_log_joins_the_bound_owner_source_and_its_generated_source(self):
+        self.observer.bindings['validation'] = dict(sourced_log_text_register='x20',
+            sourced_log_owner_register='x19', sourced_log_source_offset=0x28,
+            sourced_log_generated_frame_offset=0x50,
             source_file_prefix='file: ', source_line_prefix=' line: ')
+        self.observer.bindings['string_tag_offset'] = 23
         self.observer.returned = True
-        self.observer.stored_string = Mock(side_effect=[
-            f'file: {self.file} line: 3', 'failed effect validation'])
-        with patch.object(worker, 'register', side_effect=[0x2000, 0x3000]):
-            self.observer.on_sourced_log(self.frame, Mock(), 7)
-        self.assertEqual([call.args[1] for call in self.observer.stored_string.call_args_list],
-                         [0x2028, 0x3000])
-        self.assertEqual(self.observer.emit.call_args.kwargs['line'], 3)
-        self.assertEqual(self.observer.emit.call_args.kwargs['stage'], 'engine-validation-log')
+        self.observer.stored_string = Mock(side_effect=[f'file: {self.file} line: 3', 'Unexpected token'])
+        values = dict(x19=0x2000, x20=0x3000, x29=0x4050)
+        for generated, ending in [(b'if = { }', 'resulting in source:\nif = { }'),
+                                  (b'x' * 5000, '[generated source cut at 4096 bytes]')]:
+            self.observer.stored_string.side_effect = [f'file: {self.file} line: 3', 'Unexpected token']
+            storage = (0x9000).to_bytes(8, 'little') + len(generated).to_bytes(8, 'little') + bytes(7)
+            storage = storage[:23] + bytes([128])
+            reads = {0x4000: storage, 0x9000: generated}
+            with patch.object(worker, 'register', side_effect=lambda frame, name: values[name]), \
+                    patch.object(worker, 'memory', side_effect=lambda process, address, size: reads[address][:size]):
+                self.observer.on_sourced_log(self.frame, Mock(), 7)
+            self.assertEqual([call.args[1] for call in self.observer.stored_string.call_args_list[-2:]],
+                             [0x2028, 0x3000])
+            call = self.observer.emit.call_args
+            self.assertEqual(call.kwargs['line'], 3)
+            self.assertEqual(call.kwargs['stage'], 'engine-validation-log')
+            self.assertTrue(call.kwargs['text'].endswith(ending), call.kwargs['text'][-80:])
 
     def test_sourced_log_ignores_other_files_and_closed_windows(self):
         self.observer.bindings['validation'] = dict(sourced_log_owner_register='x0',
@@ -493,6 +504,63 @@ class ParserObservationTests(unittest.TestCase):
         self.observer.validation_finished = True
         self.observer.on_sourced_log(self.frame, Mock(), 7)
         self.assertEqual(self.observer.stored_string.call_count, 1)
+
+    def test_expanded_text_joins_the_line_of_its_call(self):
+        self.observer.bindings['validation'] = dict(source_file_prefix='file: ', source_line_prefix=' line: ')
+        inline = f'{self.file}:5(inline_script) common/inline_scripts/paragon/swap.txt'
+        generated = f'scripted effect example_effect at file: {self.file} line: 9'
+        nested = f'{self.file}:4(inline_script) common/inline_scripts/a.txt:2(inline_script) common/inline_scripts/b.txt'
+        self.assertEqual(self.observer.fixture_line(self.file, 3), 3)
+        self.assertEqual(self.observer.fixture_line(inline, 3), 5)
+        self.assertEqual(self.observer.fixture_line(generated, 11), 9)
+        self.assertEqual(self.observer.fixture_line(nested, 1), 4)
+        for unrelated in ['common/traditions/other.txt',
+                          'common/traditions/other.txt:5(inline_script) common/inline_scripts/a.txt',
+                          f'scripted effect example_effect at file: common/traditions/other.txt line: 9']:
+            self.assertIsNone(self.observer.fixture_line(unrelated, 3))
+
+    def test_a_reader_report_from_expanded_text_keeps_its_own_line_in_the_text(self):
+        self.observer.bindings['validation'] = dict(source_file_prefix='file: ', source_line_prefix=' line: ')
+        inline = f'{self.file}:5(inline_script) common/inline_scripts/paragon/swap.txt'
+        for source, kept in [(inline, True), ('common/traditions/other.txt', False)]:
+            self.observer.emit.reset_mock()
+            self.observer.location = Mock(return_value=(source, 3))
+            self.observer.stored_string = Mock(return_value='Malformed token')
+            with patch.object(worker, 'register', return_value=0x3000):
+                self.observer.on_diagnostic(self.frame, Mock(), 7, dict(owner='x0', reader='x1'),
+                                            'reader-malformed-report')
+            if not kept:
+                self.observer.emit.assert_not_called()
+                continue
+            call = self.observer.emit.call_args
+            self.assertEqual((call.kwargs['file'], call.kwargs['line']), (self.file, 5))
+            self.assertEqual(call.kwargs['text'], f'Malformed token in {inline} near line 3')
+
+    def test_a_member_read_from_an_inline_script_reports_the_call_line(self):
+        self.observer.bindings['validation'] = dict(source_file_prefix='file: ', source_line_prefix=' line: ')
+        inline = f'{self.file}:5(inline_script) common/inline_scripts/paragon/swap.txt'
+        self.observer.location = Mock(side_effect=[(inline, 2), (inline, 4)])
+        registers = dict(owner='x0', reader='x1', **{'field-token': 'x2'})
+        values = dict(x0=0x2000, x1=0x3000, x2=1)
+        with patch.object(worker, 'register', side_effect=lambda frame, name: values[name]):
+            self.observer.on_member(self.frame, Mock(), registers)
+        name = self.observer.return_hook.call_args.args[1]
+        worker.breakpoints[name] = Mock()
+        self.observer.on_member_return(Mock(), 7, name)
+        calls = self.observer.emit.call_args_list
+        self.assertEqual([(call.kwargs['file'], call.kwargs['line']) for call in calls],
+                         [(self.file, 5), (self.file, 5)])
+
+        self.observer.location = Mock(return_value=('common/traditions/other.txt', 2))
+        with patch.object(worker, 'register', side_effect=lambda frame, name: values[name]), \
+                self.assertRaises(RuntimeError):
+            self.observer.on_member(self.frame, Mock(), registers)
+
+    def test_an_engine_log_from_expanded_text_joins_the_call_line(self):
+        text = (f'Error: "Malformed token: x, near line: 3" in file: '
+                f'"{self.file}:5(inline_script) common/inline_scripts/a.txt" near line: 3')
+        diagnostic = worker.interpret_fixture_log(text, self.file, 'file: ', ' line: ', False)
+        self.assertEqual(diagnostic['line'], 5)
 
     def test_validation_requires_a_returned_load_and_finishes_before_pause(self):
         self.observer.validation = True

@@ -123,7 +123,8 @@ impl Native {
             | Operation::DynamicNames
             | Operation::DerivedNames
             | Operation::ModifierNodes
-            | Operation::ModifierCategoryKeys => match &binding.analysis {
+            | Operation::ModifierCategoryKeys
+            | Operation::ScriptExpansions => match &binding.analysis {
                 Some(analysis) => match analysis.executable() {
                     Ok(_) => Support::Supported,
                     Err(reason) => Support::Unsupported(error(operation, reason).to_string()),

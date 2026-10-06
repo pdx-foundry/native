@@ -41,8 +41,9 @@ all production code except the binding authority, and it fails on the following:
 - a build or version test.
 
 Test code may name build-specific registries, fields and counts, because they are regression
-expectations. Each recorded manual exception is one entry in the gate's list, with its reason and
-removal route.
+expectations. Each recorded manual exception in scanned code is one entry in the gate's list, with
+its reason and removal route. A stated per-build fact in the binding authority, which the gate does
+not scan, records its exception in the binding's module comment and on its knowledge page.
 
 ### Measuring method transfer
 

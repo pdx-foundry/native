@@ -77,6 +77,9 @@ Pitfalls:
   the owner-relative destination from `x1` on the root-dispatch trace, with no field constant. It
   transferred to `common/ascension_perks` and `common/relics#portrait`. `common/federation_perks#icon`
   joined its owner but has no single nonconditional owner destination, so it stays unavailable.
+- **Expanded text joins its call.** A reader of an inline script or of a generated scripted-effect
+  instance names the fixture call in its source. The worker joins its reports and member reads to
+  the call's line ([script expansion](script-expansion.md)).
 - **Manual relationships remain per build.** The binding still supplies the parser diagnostic
   entry points, the `CString` representation, the reader and lexer source layout and the
   launch-thread window. A new build must reverify them.

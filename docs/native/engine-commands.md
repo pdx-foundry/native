@@ -175,11 +175,12 @@ Forms that are not links:
 | `A.B` | A chain of targets. `ValidateScope` checks each part in turn. |
 | Trailing `?` | An option on the target and its chain (`+0x189`). `CEventTarget::GetScope` reads it at run time. |
 | `@` in an `event_target:` value | The dynamic-flag form (`ReadAsDynamicFlag`, as in `has_country_flag = name@target`). It names the saved target. |
-| `value:`, `trigger:` and other value prefixes | `CVariableValue::ReadTriggerModifierOrScriptValue` splits them on `:` and reads a number, not a scope (SDK-550). |
+| `value:`, `trigger:` and other value prefixes | `CVariableValue::ReadTriggerModifierOrScriptValue` splits them on `:` and reads a number, not a scope ([script expansion](script-expansion.md)). |
 
 Which saved target or parameter a value names, and whether it exists in a running game, are not
 established: saved event targets are an `OutsideMethod` gap of
-[dynamic names](references.md#dynamic-name-gaps), and parameters belong to SDK-550.
+[dynamic names](references.md#dynamic-name-gaps). The parameters of `value:` and of scripted
+effects and triggers are in [script expansion](script-expansion.md).
 
 ## Localization contexts, commands and links
 

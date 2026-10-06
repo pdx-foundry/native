@@ -288,6 +288,17 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
+    fn expansion_input(
+        &self,
+    ) -> Result<crate::engine::analysis::expansions::ExpansionInput, AnalysisError> {
+        binary::expansions::read(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            &self.catalog.candidates,
+        )
+    }
+
     fn category_key_input(
         &self,
         recipe: &super::targets::DeclarationRecipe,
@@ -1228,6 +1239,15 @@ impl BoundAnalysis {
     ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.verified()?.category_key_input(recipe)
+    }
+
+    /// The engine functions, classified callers and message sites of each script expansion
+    /// mechanism. The stated forms in the input belong to builds with a declaration recipe.
+    pub(crate) fn expansion_input(
+        &self,
+    ) -> Result<crate::engine::analysis::expansions::ExpansionInput, AnalysisError> {
+        self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.expansion_input()
     }
 
     /// The modifier node graph, read once from the node type symbols, node constructor calls and

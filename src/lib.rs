@@ -13,6 +13,7 @@ mod duration;
 mod dynamic_name;
 mod engine;
 mod execution;
+mod expansion;
 mod field;
 mod fixture;
 mod game;
@@ -47,6 +48,10 @@ pub use dynamic_name::{
     NamespaceOwner,
 };
 pub(crate) use engine::operations::registry_items::GameReadiness;
+pub use expansion::{
+    CallForm, ExpansionCheck, ExpansionDefinitions, ExpansionHost, ExpansionMechanism,
+    ExpansionStage, MissingParameter, ParameterForm, ScriptExpansion,
+};
 pub use field::{
     EmptyKey, FieldCondition, FieldDomain, FieldMembers, FieldReadAlternative, FieldReadOutcome,
     FieldReference, FieldShape, FieldUse, FieldUseId, KeyMatch, LookupStage, MissingResult,
@@ -89,6 +94,7 @@ pub mod internals {
     pub use crate::engine::analysis::defines::METHOD as DEFINES_METHOD;
     pub use crate::engine::analysis::dynamic_names::METHOD as DYNAMIC_NAMES_METHOD;
     pub use crate::engine::analysis::evaluate::trace_causes;
+    pub use crate::engine::analysis::expansions::METHOD as SCRIPT_EXPANSIONS_METHOD;
     pub use crate::engine::analysis::grammar::METHOD as COMMAND_GRAMMAR_METHOD;
     pub use crate::engine::analysis::modifier_nodes::METHOD as MODIFIER_NODES_METHOD;
     pub use crate::engine::analysis::names::METHOD as DERIVED_NAMES_METHOD;
